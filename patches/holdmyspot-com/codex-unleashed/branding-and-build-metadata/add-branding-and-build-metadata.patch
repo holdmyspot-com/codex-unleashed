@@ -27,10 +27,10 @@ index abccc48..b5b80c1 100644
          println!("cargo:rustc-link-arg=-ObjC");
      }
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 71d0323..ff77aee 100644
+index ee42ceb..a4a3ddd 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -99,10 +99,33 @@ use codex_terminal_detection::TerminalName;
+@@ -114,10 +114,33 @@ use codex_terminal_detection::TerminalName;
  /// Codex CLI
  ///
  /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -65,7 +65,7 @@ index 71d0323..ff77aee 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -112,6 +130,10 @@ use codex_terminal_detection::TerminalName;
+@@ -127,6 +150,10 @@ use codex_terminal_detection::TerminalName;
      override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
  )]
  struct MultitoolCli {
@@ -76,7 +76,7 @@ index 71d0323..ff77aee 100644
      #[clap(flatten)]
      pub config_overrides: CliConfigOverrides,
  
-@@ -1048,11 +1070,16 @@ async fn cli_main(
+@@ -1136,12 +1163,17 @@ async fn cli_main(
  ) -> anyhow::Result<()> {
      let MultitoolCli {
 +        build_info,
@@ -90,11 +90,12 @@ index 71d0323..ff77aee 100644
 +        println!("{BUILD_INFO}");
 +        return Ok(());
 +    }
+     reject_unsupported_worktree_for_subcommand(interactive.shared.worktree, &subcommand)?;
      // Fold --enable/--disable into config overrides so they flow to all subcommands.
      let toggle_overrides = feature_toggles.to_overrides()?;
      root_config_overrides.raw_overrides.extend(toggle_overrides);
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index 7de0ba5..e28e058 100644
+index f72429a..d79114e 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
 @@ -4,6 +4,7 @@ version.workspace = true
@@ -118,53 +119,6 @@ index 0000000..a2e5b86
 +    println!("cargo:rustc-env=CODEX_UNLEASHED_BUILD_NUMBER={build_number}");
 +    println!("cargo:rerun-if-env-changed=CODEX_UNLEASHED_BUILD_NUMBER");
 +}
-diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 03df014..776ba4b 100644
---- a/codex-rs/tui/src/history_cell/session.rs
-+++ b/codex-rs/tui/src/history_cell/session.rs
-@@ -4,5 +4,6 @@ use super::*;
- use crate::line_truncation::line_width;
- use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
-+use crate::version::CODEX_UNLEASHED_URL;
- use crate::width::display_width;
- 
- pub(crate) const SESSION_HEADER_MAX_INNER_WIDTH: usize = 56; // Just an eyeballed value
-@@ -317,13 +318,17 @@ impl HistoryCell for SessionHeaderHistoryCell {
- 
-         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
- 
--        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
-+        // Title line rendered inside the box: ">_ OpenAI Codex (vX+build)"
-         let title_spans: Vec<Span<'static>> = vec![
-             Span::from(">_ ").dim(),
-             Span::from("OpenAI Codex").bold(),
-             Span::from(" ").dim(),
-             Span::from(format!("(v{})", self.version)).dim(),
-         ];
-+        let provider_url = Line::from(vec![
-+            Span::from("   "),
-+            Span::from(CODEX_UNLEASHED_URL).cyan().underlined(),
-+        ]);
- 
-         const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
-         const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
-@@ -369,6 +376,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
- 
-         let mut lines = vec![
-             make_row(title_spans),
-+            provider_url,
-             make_row(Vec::new()),
-             make_row(model_spans),
-             make_row(dir_spans),
-@@ -392,6 +400,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
-     fn raw_lines(&self) -> Vec<Line<'static>> {
-         let mut lines = vec![
-             Line::from(format!("OpenAI Codex (v{})", self.version)),
-+            Line::from(format!("   {CODEX_UNLEASHED_URL}")),
-             Line::from(format!(
-                 "model: {}{}",
-                 self.model,
- 
 diff --git a/codex-rs/tui/src/version.rs b/codex-rs/tui/src/version.rs
 index 8c8d108..516d07d 100644
 --- a/codex-rs/tui/src/version.rs

@@ -8,19 +8,21 @@ Subject: [PATCH] Register Codex Unleashed features
  1 file changed, 8 insertions(+)
 
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index fdeae5c..c5b52d7 100644
+index 1a31316..c5b52d7 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -91,6 +91,8 @@ impl Stage {
+@@ -96,8 +96,10 @@ pub enum Feature {
  /// Unique features toggled via configuration.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
+     /// Discover model catalogs for OpenAI API-key authentication.
+     ApiKeyModelDiscovery,
 +    /// Use the latest compacted conversation when replaying a resumed thread.
 +    UnleashedAgentFastSwitching,
      /// Enable the interactive transcript composer and turn-selection UI.
      TranscriptV2,
      // Stable.
-@@ -882,6 +884,12 @@ pub struct FeatureSpec {
+@@ -904,6 +906,12 @@ pub const FEATURES: &[FeatureSpec] = &[
  }
  
  pub const FEATURES: &[FeatureSpec] = &[

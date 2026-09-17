@@ -112,11 +112,11 @@ Invoke `codex --build-info` to see the provider and upstream details for an inst
 ```text
 Codex Unleashed build information
 
-Codex CLI version: 0.153.4+25
+Codex CLI version: 0.155.0+25
 Build number:      25
 
 Upstream project:  OpenAI Codex
-Upstream version:  0.153.4
+Upstream version:  0.155.0
 Upstream source:   https://github.com/openai/codex
 
 Provided by:       Codex Unleashed

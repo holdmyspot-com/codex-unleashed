@@ -10,7 +10,7 @@ The build number is supplied at compile time through
 ## `--version`
 
 ```text
-codex-cli 0.153.4+25
+codex-cli 0.155.0+25
 (See --build-info for more information)
 ```
 
@@ -19,16 +19,16 @@ codex-cli 0.153.4+25
 ```text
 Codex Unleashed build information
 
-Codex CLI version: 0.153.4+25
+Codex CLI version: 0.155.0+25
 Build number:      25
 
 Upstream project:  OpenAI Codex
-Upstream version:  0.153.4
+Upstream version:  0.155.0
 Upstream source:   https://github.com/openai/codex
 
 Provided by:       Codex Unleashed
 Project:           https://github.com/holdmyspot-com/codex-unleashed
 ```
 
-The interactive session header shows `v0.153.4+25` and the provider website
+The interactive session header shows `v0.155.0+25` and the provider website
 `https://holdmyspot.com/codex-unleashed/` beneath it, aligned with the title text.

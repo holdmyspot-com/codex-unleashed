@@ -27,16 +27,6 @@ runs:
       with:
         target: ${{ inputs.target }}
 
-    # rust-v0.153.4's workspace dependencies omit local paths from its
-    # lockfile, and rules_rust needs a direct codex-build-info mapping for the
-    # stale entry. Keep this CI-only compatibility repair close to the Bazel
-    # setup so all Bazel jobs use the same metadata.
-    - name: Repair upstream Cargo metadata for Bazel
-      shell: bash
-      run: |
-        set -euo pipefail
-        python3 .github/scripts/repair_bazel_cargo_metadata.py upstream/codex-rs
-
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
       shell: bash

@@ -4,184 +4,8 @@ Date: Fri, 4 Sep 2026 00:24:01 -0400
 Subject: [PATCH] Avoid slow agent switching and resume
 
 
-diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index a92304e..4b47d7f 100644
---- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-+++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -385,6 +385,171 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
-     Ok((app, codex_home))
- }
- 
-+#[test]
-+fn switching_back_replays_only_latest_compacted_conversation() -> Result<()> {
-+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
-+    std::thread::Builder::new()
-+        .stack_size(TEST_STACK_SIZE_BYTES)
-+        .spawn(|| {
-+            let runtime = tokio::runtime::Builder::new_multi_thread()
-+                .worker_threads(1)
-+                .thread_stack_size(TEST_STACK_SIZE_BYTES)
-+                .enable_all()
-+                .build()?;
-+            runtime.block_on(async {
-+                let one_window =
-+                    measure_switch_back_with_compactions(/*conversation_count*/ 1).await?;
-+                let fifty_windows =
-+                    measure_switch_back_with_compactions(/*conversation_count*/ 50).await?;
-+                assert!(
-+                    fifty_windows <= one_window + Duration::from_secs(1),
-+                    "switching scaled with compacted history: one window took {one_window:?}, fifty took {fifty_windows:?}"
-+                );
-+                Ok(())
-+            })
-+        })
-+        .map_err(|err| color_eyre::eyre::eyre!("failed to start test thread: {err}"))?
-+        .join()
-+        .map_err(|_| color_eyre::eyre::eyre!("test thread panicked"))?
-+}
-+
-+async fn measure_switch_back_with_compactions(conversation_count: usize) -> Result<Duration> {
-+    let (mut app, mut app_events, _ops) = make_test_app_with_channels().await;
-+    let codex_home = tempdir()?;
-+    app.config.codex_home = codex_home.path().to_path_buf().abs();
-+    app.config.sqlite = SqliteConfig::new_for_testing(codex_home.path().abs());
-+    let root_thread_id = ThreadId::from_string(
-+        &create_fake_paginated_rollout(
-+            codex_home.path(),
-+            "2026-01-02T00-00-00",
-+            "2026-01-02T00:00:00Z",
-+            "main conversation",
-+            Some(app.config.model_provider_id.as_str()),
-+            /*git_info*/ None,
-+        )
-+        .map_err(|err| color_eyre::eyre::eyre!("failed to create root rollout: {err}"))?,
-+    )?;
-+    let child_thread_id = ThreadId::from_string(
-+        &create_fake_parented_rollout_with_source(
-+            codex_home.path(),
-+            "2026-01-02T00-00-01",
-+            "2026-01-02T00:00:01Z",
-+            "worker response",
-+            Some(app.config.model_provider_id.as_str()),
-+            /*git_info*/ None,
-+            RolloutSessionSource::SubAgent(SubAgentSource::ThreadSpawn {
-+                parent_thread_id: root_thread_id,
-+                depth: 1,
-+                agent_path: Some(
-+                    AgentPath::try_from("/root/worker").map_err(color_eyre::eyre::Report::msg)?,
-+                ),
-+                agent_nickname: Some("worker".to_string()),
-+                agent_role: Some("worker".to_string()),
-+            }),
-+            root_thread_id.into(),
-+            root_thread_id,
-+        )
-+        .map_err(|err| color_eyre::eyre::eyre!("failed to create child rollout: {err}"))?,
-+    )?;
-+    let (mut app_server, _requests, proxy) =
-+        start_recording_app_server(&app.config, None, None).await?;
-+    let root = app_server
-+        .resume_thread(
-+            &app.local_settings,
-+            app.config.clone(),
-+            root_thread_id,
-+            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
-+        )
-+        .await?;
-+    app.enqueue_primary_thread_session(root.session, root.turns)
-+        .await?;
-+
-+    const CONTEXT_WINDOW_TOKENS: usize = 272_000;
-+    let conversation_text = "history ".repeat(CONTEXT_WINDOW_TOKENS);
-+    let conversation = |index: usize| codex_app_server_protocol::Turn {
-+        id: format!("turn-{index}"),
-+        items_view: codex_app_server_protocol::TurnItemsView::Full,
-+        items: vec![codex_app_server_protocol::ThreadItem::UserMessage {
-+            id: format!("user-{index}"),
-+            client_id: None,
-+            content: vec![codex_app_server_protocol::UserInput::Text {
-+                text: format!("conversation-{index} {conversation_text}"),
-+                text_elements: Vec::new(),
-+            }],
-+        }],
-+        status: codex_app_server_protocol::TurnStatus::Completed,
-+        error: None,
-+        started_at: None,
-+        completed_at: None,
-+        duration_ms: None,
-+    };
-+    let compaction = |index: usize| codex_app_server_protocol::Turn {
-+        id: format!("compaction-turn-{index}"),
-+        items_view: codex_app_server_protocol::TurnItemsView::Full,
-+        items: vec![codex_app_server_protocol::ThreadItem::ContextCompaction {
-+            id: format!("compaction-{index}"),
-+        }],
-+        status: codex_app_server_protocol::TurnStatus::Completed,
-+        error: None,
-+        started_at: None,
-+        completed_at: None,
-+        duration_ms: None,
-+    };
-+    let mut turns = Vec::new();
-+    for index in 0..conversation_count {
-+        turns.push(conversation(index));
-+        turns.push(compaction(index));
-+    }
-+    turns.push(conversation(conversation_count));
-+    app.thread_event_channels[&root_thread_id]
-+        .store
-+        .lock()
-+        .await
-+        .set_turns(turns);
-+
-+    app.agent_navigation.upsert(
-+        child_thread_id,
-+        Some("worker".to_string()),
-+        Some("worker".to_string()),
-+        /*is_closed*/ false,
-+    );
-+    assert!(
-+        app.attach_live_thread_for_selection(&mut app_server, child_thread_id)
-+            .await?
-+    );
-+    app.side_threads
-+        .insert(child_thread_id, SideThreadState::new(root_thread_id));
-+
-+    let mut tui = crate::tui::test_support::make_test_tui()?;
-+    app.select_agent_thread(&mut tui, &mut app_server, child_thread_id)
-+        .await?;
-+    let started = Instant::now();
-+    app.select_agent_thread(&mut tui, &mut app_server, root_thread_id)
-+        .await?;
-+    let elapsed = started.elapsed();
-+    assert!(
-+        elapsed < Duration::from_secs(3),
-+        "switching back to the main agent took {elapsed:?}"
-+    );
-+
-+    let rendered = std::iter::from_fn(|| app_events.try_recv().ok())
-+        .filter_map(|event| match event {
-+            AppEvent::InsertHistoryCell(cell) => Some(cell.display_lines(/*width*/ 80)),
-+            _ => None,
-+        })
-+        .map(|lines| lines_to_single_string(&lines))
-+        .collect::<String>();
-+    assert!(rendered.contains(&format!("conversation-{conversation_count}")));
-+    if conversation_count > 0 {
-+        assert!(!rendered.contains("conversation-0"));
-+        assert!(!rendered.contains(&format!("conversation-{}", conversation_count - 1)));
-+    }
-+
-+    app_server.shutdown().await?;
-+    proxy.await??;
-+    Ok(elapsed)
-+}
-+
- #[tokio::test]
- async fn removing_remote_thread_omits_disconnect_guidance() -> Result<()> {
-     for event in [
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 31af6ad..3852426 100644
+index d44f9da..0000000 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -76,6 +76,65 @@ async fn resumed_initial_messages_render_history() {
@@ -251,10 +75,10 @@ index 31af6ad..3852426 100644
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 61d69d1..8ed4df4 100644
+index 0fb1efd..0000000 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -14,5 +14,18 @@
+@@ -104,9 +104,22 @@ impl ChatWidget {
      pub(crate) fn replay_thread_turns(&mut self, turns: Vec<Turn>, replay_kind: ReplayKind) {
 +        let first_latest_conversation_turn = turns
 +            .iter()
@@ -269,6 +93,10 @@ index 61d69d1..8ed4df4 100644
 +            .into_iter()
 +            .skip(first_latest_conversation_turn)
 +            .collect::<Vec<_>>();
+         if matches!(replay_kind, ReplayKind::ThreadSnapshot) && !turns.is_empty() {
+             self.warning_display_state.startup_complete = true;
+         }
+         let latest_turn_id = turns.last().map(|turn| turn.id.clone());
          let hidden_nested_review_turns = std::iter::once(/*value*/ false)
              .chain(turns.windows(/*size*/ 2).map(|turns| {
                  crate::app_backtrack::is_hidden_nested_review_turn(&turns[0], &turns[1])
