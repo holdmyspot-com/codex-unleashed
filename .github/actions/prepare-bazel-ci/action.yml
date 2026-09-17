@@ -75,7 +75,7 @@ runs:
             'codex-voice-host = { path = "voice-host" }',
             'codex-worktree = { path = "worktree" }',
         ])
-        mappings.sort()
+        mappings = sorted(set(mappings))
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
             patch_start = text.index(patch_marker) + len(patch_marker)
