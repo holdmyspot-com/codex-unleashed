@@ -154,7 +154,11 @@ jobs:
               'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
               | grep -E '^(/|bazel-out/)'
           )"
-          mapfile -t bazel_output_paths <<< "${cquery_output}"
+          # macOS still ships Bash 3.2, which lacks `mapfile`.
+          bazel_output_paths=()
+          while IFS= read -r bazel_output_path; do
+            bazel_output_paths+=("${bazel_output_path}")
+          done <<< "${cquery_output}"
           if [[ ${#bazel_output_paths[@]} -ne 2 ]]; then
             echo "Expected both Bazel-built binaries, found ${#bazel_output_paths[@]}." >&2
             exit 1
