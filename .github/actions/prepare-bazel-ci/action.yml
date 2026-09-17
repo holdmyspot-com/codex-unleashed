@@ -91,6 +91,11 @@ runs:
             for target_data in package_data.get("target", {}).values():
                 local_dependency_specs.update(target_data.get("dependencies", {}))
             for name, dependency in workspace_dependencies.items():
+                # rules_rs handles registry workspace inheritance correctly;
+                # only expand path dependencies because this pinned release
+                # resolves those paths relative to the wrong manifest.
+                if not isinstance(dependency, dict) or "path" not in dependency:
+                    continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
                     key for key in (
