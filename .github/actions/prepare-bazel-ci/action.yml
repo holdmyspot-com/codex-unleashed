@@ -54,6 +54,7 @@ runs:
                 flags=re.DOTALL,
             )
             lockfile.write_text(lock_text, encoding="utf-8")
+        workspace = tomllib.loads(text).get("workspace", {})
         excluded_paths = {"analytics", "app-server/tests/common"}
         mappings = [
             f'{name} = {{ path = "{dependency["path"]}" }}'
