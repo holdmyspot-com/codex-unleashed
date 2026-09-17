@@ -42,6 +42,7 @@ runs:
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
         mappings = [
+            'codex-cli = { path = "cli" }',
             'codex-build-info = { path = "build-info" }',
             'codex-bwrap = { path = "bwrap" }',
             'codex-v8-poc = { path = "v8-poc" }',
