@@ -17,10 +17,16 @@ class RepairCargoMetadataTest(unittest.TestCase):
             bwrap_dir = root / "bwrap"
             bwrap_dir.mkdir(parents=True)
             (root / "Cargo.toml").write_text(
-                "[workspace.dependencies]\nanyhow = \"1\"\n", encoding="utf-8"
+                "[workspace.dependencies]\ncodex-v8-poc = { path = \"v8-poc\" }\n",
+                encoding="utf-8",
             )
             (bwrap_dir / "Cargo.toml").write_text(
                 "[package]\nname = \"codex-bwrap\"\nversion = \"0.0.0\"\n", encoding="utf-8"
+            )
+            v8_poc_dir = root / "v8-poc"
+            v8_poc_dir.mkdir()
+            (v8_poc_dir / "Cargo.toml").write_text(
+                "[package]\nname = \"codex-v8-poc\"\nversion = \"0.0.0\"\n", encoding="utf-8"
             )
 
             self.assertTrue(repair_cargo_metadata(root))
@@ -28,6 +34,7 @@ class RepairCargoMetadataTest(unittest.TestCase):
             self.assertIn('codex-bwrap = { path = "bwrap" }', repaired)
             patch_section = repaired.split("[patch.crates-io]\n", 1)[1]
             self.assertIn('codex-bwrap = { path = "bwrap" }', patch_section)
+            self.assertIn('codex-v8-poc = { path = "v8-poc" }', patch_section)
             self.assertFalse(repair_cargo_metadata(root))
 
 
