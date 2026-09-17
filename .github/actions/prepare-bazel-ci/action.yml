@@ -43,6 +43,17 @@ runs:
         root = Path("upstream/codex-rs")
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
+        lockfile = root / "Cargo.lock"
+        if lockfile.is_file():
+            lock_text = lockfile.read_text(encoding="utf-8")
+            lock_text = re.sub(
+                r'\n\[\[package\]\]\nname = "app_test_support"\n.*?(?=\n\[\[package\]\])',
+                "",
+                lock_text,
+                count=1,
+                flags=re.DOTALL,
+            )
+            lockfile.write_text(lock_text, encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
         mappings_by_name = {}
         for member in workspace.get("members", []):
