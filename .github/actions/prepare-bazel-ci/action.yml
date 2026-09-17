@@ -84,11 +84,6 @@ runs:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
             package_data = tomllib.loads(package_text)
-            nested_workspace = re.search(
-                r'^\[workspace(?:\.|\])', package_text, flags=re.MULTILINE
-            ) is not None or package_data.get("package", {}).get("name", "").startswith(
-                "codex-agent-"
-            )
             local_dependency_specs = {}
             for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
                 local_dependency_specs.update(package_data.get(dependency_section, {}))
@@ -98,7 +93,7 @@ runs:
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
                 # resolves those paths relative to the wrong manifest.
-                if not nested_workspace and (not isinstance(dependency, dict) or "path" not in dependency):
+                if not isinstance(dependency, (str, dict)):
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
