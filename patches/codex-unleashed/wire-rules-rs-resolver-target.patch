@@ -13,12 +13,15 @@ new file mode 100644
 diff --git a/MODULE.bazel b/MODULE.bazel
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -158,0 +158,1 @@
+@@ -152,5 +152,6 @@ single_version_override(
+     patches = [
+         "//patches:rules_rs_build_script_deps_annotation.patch",
+         "//patches:rules_rs_windows_msvc_linker.patch",
 +        "//patches:rules_rs_resolver_target.patch",
+     ],
      version = "0.0.96",
- )
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -18,0 +18,1 @@
+@@ -12,0 +13,1 @@
 +    "rules_rs_resolver_target.patch",
