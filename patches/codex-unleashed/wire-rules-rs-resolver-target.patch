@@ -1,16 +1,10 @@
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ b/patches/rules_rs_build_script_deps_annotation.patch
-@@ -58,0 +59,12 @@
+@@ -58,0 +59,6 @@
 +
 +--- a/rs/private/resolver.bzl
 ++++ b/rs/private/resolver.bzl
 +@@ -19 +19 @@
 +-    remaining = dep["target"]
 ++    remaining = dep.get("target", set())
-+diff --git a/rs/private/cargo_workspace_graph.bzl b/rs/private/cargo_workspace_graph.bzl
-+--- a/rs/private/cargo_workspace_graph.bzl
-++++ b/rs/private/cargo_workspace_graph.bzl
-+@@ -140,1 +140,2 @@
-+         if not workspace:
-++            return _cargo_toml_dep_to_dep_dict_inner(dep, {"version": "*"}, is_build = is_build, target = target)
