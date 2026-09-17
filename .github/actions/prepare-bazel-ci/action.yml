@@ -59,7 +59,11 @@ runs:
             member for member in workspace.get("members", [])
             if member == "analytics"
             or not (root / member / "Cargo.toml").is_file()
-            or "[workspace]" in (root / member / "Cargo.toml").read_text(encoding="utf-8")
+            or re.search(
+                r'^\[workspace(?:\.|\])',
+                (root / member / "Cargo.toml").read_text(encoding="utf-8"),
+                flags=re.MULTILINE,
+            ) is not None
         ]
         for member in missing_members:
             text = re.sub(
