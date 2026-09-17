@@ -86,6 +86,7 @@ runs:
             if isinstance(dependency, dict)
             and "path" in dependency
             and dependency["path"] not in excluded_paths
+            and not dependency["path"].startswith("analytics/")
         ]
         mappings.extend([
             'codex-build-info = { path = "build-info" }',
