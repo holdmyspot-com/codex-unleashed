@@ -96,6 +96,13 @@ runs:
                 if not isinstance(dependency, (str, dict)):
                     continue
                 local_spec = local_dependency_specs.get(name)
+                if isinstance(local_spec, dict) and "features" in local_spec:
+                    package_text = re.sub(
+                        rf'(^\s*{re.escape(name)}\s*=\s*\{{.*?),\s*features\s*=\s*\[[^\]]*\](?P<tail>.*?\}})',
+                        rf'\g<1>\g<tail>',
+                        package_text,
+                        flags=re.MULTILINE | re.DOTALL,
+                    )
                 overridden_keys = {
                     key for key in (
                         "default-features", "default_features", "features", "optional", "package",
@@ -109,10 +116,14 @@ runs:
                         "path", "version", "git", "rev", "branch", "tag", "registry",
                         "default-features", "default_features", "features", "optional", "package",
                     ):
-                        if key in overridden_keys:
+                        if key in overridden_keys and key != "features":
                             continue
                         if key in dependency:
                             value = dependency[key]
+                            if key == "features" and isinstance(local_spec, dict):
+                                local_features = local_spec.get("features", [])
+                                if isinstance(local_features, list):
+                                    value = list(dict.fromkeys(list(value) + local_features))
                             if key == "path":
                                 value = Path(os.path.relpath(root / value, package_manifest.parent)).as_posix()
                             fields.append(f'{key} = {json.dumps(value)}')
