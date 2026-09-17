@@ -1,7 +1,7 @@
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ b/patches/rules_rs_build_script_deps_annotation.patch
-@@ -58,0 +59,10 @@
+@@ -58,0 +59,13 @@
 +
 +--- a/rs/private/resolver.bzl
 ++++ b/rs/private/resolver.bzl
@@ -10,5 +10,8 @@ diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules
 ++    remaining = dep.get("target", set())
 +--- a/rs/private/cargo_workspace_graph.bzl
 ++++ b/rs/private/cargo_workspace_graph.bzl
-+@@ -140,0 +141,1 @@
++@@ -139,3 +139,4 @@
++        workspace = (workspace_cargo_toml_json or {}).get("workspace")
++        if not workspace:
 ++            return _cargo_toml_dep_to_dep_dict_inner(dep, {"version": "*"}, is_build = is_build, target = target)
++        fail("Package %s depends on %s with workspace inheritance, but no workspace section was found" % (package_name, dep))
