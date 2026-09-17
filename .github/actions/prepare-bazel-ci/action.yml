@@ -27,6 +27,13 @@ runs:
       with:
         target: ${{ inputs.target }}
 
+    # rules_rust resolves path-only packages from Cargo.toml, but this release
+    # branch leaves a few workspace members (including codex-bwrap) out of
+    # that table. Add only missing local mappings before Bazel reads metadata.
+    - name: Repair upstream Cargo metadata for Bazel
+      shell: bash
+      run: python3 .github/scripts/repair_bazel_cargo_metadata.py upstream/codex-rs
+
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
       shell: bash

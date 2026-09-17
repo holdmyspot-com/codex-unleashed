@@ -44,18 +44,15 @@ jobs:
             sh -euxc '
               python -m venv /tmp/uv
               /tmp/uv/bin/python -m pip install uv==0.11.3
-              # Keep the executable outside /tmp: the container setup can
-              # clean temporary environments while creating the project one.
-              uv_bin="${CODEX_UPSTREAM_DIR}/.codex-uv"
-              install -m 755 /tmp/uv/bin/uv "${uv_bin}"
-              "${uv_bin}" sync --group dev --frozen
-              "${uv_bin}" run --frozen --no-sync ruff check --output-format=github .
-              "${uv_bin}" run --frozen --no-sync ruff format --check .
+              export PATH="/tmp/uv/bin:${PATH}"
+              uv sync --group dev --frozen
+              uv run --frozen --no-sync ruff check --output-format=github .
+              uv run --frozen --no-sync ruff format --check .
               # The upstream formatter implementation uses cargo fmt, but its
               # matching assertion still expects the removed direct-rustfmt
               # implementation. Keep the rest of the upstream SDK tests
               # active until upstream updates that assertion.
-              "${uv_bin}" run --frozen --no-sync pytest \
+              uv run --frozen --no-sync pytest \
                 --deselect tests/test_artifact_workflow_and_binaries.py::test_root_format_driver_covers_all_formatter_groups
             '
 
