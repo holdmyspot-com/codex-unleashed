@@ -1,7 +1,7 @@
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ b/patches/rules_rs_build_script_deps_annotation.patch
-@@ -58,0 +59,12 @@
+@@ -58,0 +59,23 @@
 +
 +--- a/rs/private/resolver.bzl
 ++++ b/rs/private/resolver.bzl
@@ -11,6 +11,17 @@ diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules
 +diff --git a/rs/private/cargo_workspace_graph.bzl b/rs/private/cargo_workspace_graph.bzl
 +--- a/rs/private/cargo_workspace_graph.bzl
 ++++ b/rs/private/cargo_workspace_graph.bzl
++@@ -219,1 +219,10 @@
++        for maybe_fq_dep in package.get("dependencies", []):
+++            if type(maybe_fq_dep) == "dict":
+++                dep_name = maybe_fq_dep.get("package") or maybe_fq_dep.get("name")
+++                versions = versions_by_name.get(dep_name, [])
+++                if not versions:
+++                    continue
+++                version = versions[0] if len(versions) == 1 else select_matching_version(maybe_fq_dep.get("req"), versions)
+++                if not version:
+++                    continue
+++                maybe_fq_dep = dep_name + " " + version
 +@@ -561,1 +561,1 @@
 +-        fq_deps = workspace_fq_deps.get(package["name"], {})
 ++        fq_deps = compute_package_fq_deps(package, resolver_versions_by_name, strict = False)
