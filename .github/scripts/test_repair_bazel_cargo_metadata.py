@@ -26,6 +26,8 @@ class RepairCargoMetadataTest(unittest.TestCase):
             self.assertTrue(repair_cargo_metadata(root))
             repaired = (root / "Cargo.toml").read_text(encoding="utf-8")
             self.assertIn('codex-bwrap = { path = "bwrap" }', repaired)
+            patch_section = repaired.split("[patch.crates-io]\n", 1)[1]
+            self.assertIn('codex-bwrap = { path = "bwrap" }', patch_section)
             self.assertFalse(repair_cargo_metadata(root))
 
 

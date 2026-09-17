@@ -34,7 +34,13 @@ def repair_cargo_metadata(root: Path) -> bool:
     if not mappings:
         return False
     additions = "\n".join(mappings[name] for name in sorted(mappings)) + "\n"
-    manifest.write_text(text.replace(workspace_marker, workspace_marker + additions, 1), encoding="utf-8")
+    text = text.replace(workspace_marker, workspace_marker + additions, 1)
+    patch_marker = "[patch.crates-io]\n"
+    if patch_marker in text:
+        text = text.replace(patch_marker, patch_marker + additions, 1)
+    else:
+        text = text.rstrip() + "\n\n" + patch_marker + additions
+    manifest.write_text(text, encoding="utf-8")
     return True
 
 
