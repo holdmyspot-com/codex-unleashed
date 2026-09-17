@@ -86,9 +86,9 @@ runs:
             package_data = tomllib.loads(package_text)
             nested_workspace = re.search(
                 r'^\[workspace(?:\.|\])', package_text, flags=re.MULTILINE
-            ) is not None or package_data.get("package", {}).get("name") in {
-                "codex-agent-graph-store", "codex-agent-identity",
-            }
+            ) is not None or package_data.get("package", {}).get("name", "").startswith(
+                "codex-agent-"
+            )
             local_dependency_specs = {}
             for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
                 local_dependency_specs.update(package_data.get(dependency_section, {}))
