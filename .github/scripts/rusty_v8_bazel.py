@@ -269,7 +269,20 @@ def upstream_release_pair_paths(
         "rusty_v8.lib" if target.endswith("-pc-windows-msvc") else "librusty_v8.a"
     )
     gn_out = target_dir / target / "release" / "gn_out"
-    return gn_out / "obj" / lib_name, gn_out / "src_binding.rs"
+    expected = (gn_out / "obj" / lib_name, gn_out / "src_binding.rs")
+    if all(path.exists() for path in expected):
+        return expected
+
+    # Cargo/rusty_v8 has used both a target-root gn_out directory and a
+    # build-script output directory over time. Search the target-specific
+    # release tree so Windows source builds remain compatible with either
+    # layout (Path also handles native Windows separators here).
+    release_dir = target_dir / target / "release"
+    libraries = sorted(release_dir.rglob(lib_name))
+    bindings = sorted(release_dir.rglob("src_binding.rs"))
+    if libraries and bindings:
+        return libraries[0], bindings[0]
+    return expected
 
 
 def stage_upstream_release_pair(

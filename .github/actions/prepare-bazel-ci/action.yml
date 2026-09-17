@@ -27,10 +27,10 @@ runs:
       with:
         target: ${{ inputs.target }}
 
-    # rust-v0.153.4 has a stale lockfile entry for codex-build-info. Bazel's
-    # rules_rs parser requires an explicit Cargo patch mapping, which upstream
-    # added after that release. Keep this CI-only repair close to the Bazel
-    # setup so all Bazel jobs use the same compatibility behavior.
+    # rust-v0.153.4 has stale lockfile entries for workspace crates. Bazel's
+    # rules_rs parser requires explicit Cargo patch mappings for these crates,
+    # which upstream added after that release. Keep this CI-only repair close
+    # to the Bazel setup so all Bazel jobs use the same compatibility behavior.
     - name: Repair upstream Cargo metadata for Bazel
       shell: bash
       run: |
@@ -38,29 +38,28 @@ runs:
         python3 - <<'PY'
         from pathlib import Path
 
-        import tomllib
-
         root = Path("upstream/codex-rs")
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
-        mappings = []
-        for package_manifest in root.rglob("Cargo.toml"):
-            with package_manifest.open("rb") as package_file:
-                package = tomllib.load(package_file).get("package")
-            if not package or "name" not in package:
-                continue
-            relative_manifest = package_manifest.relative_to(root)
-            relative_directory = relative_manifest.parent.as_posix() or "."
-            mapping = f'{package["name"]} = {{ path = "{relative_directory}" }}'
-            if mapping not in text:
-                mappings.append(mapping)
-        if mappings:
-            marker = "[patch.crates-io]\n"
-            additions = "\n".join(mappings) + "\n"
-            if marker in text:
-                repaired = text.replace(marker, marker + additions, 1)
+        mappings = [
+            'codex-build-info = { path = "build-info" }',
+            'codex-v8-poc = { path = "v8-poc" }',
+        ]
+        patch_marker = "[patch.crates-io]\n"
+        if patch_marker in text:
+            patch_start = text.index(patch_marker) + len(patch_marker)
+            next_section = text.find("\n[", patch_start)
+            patch_section = text[patch_start:] if next_section == -1 else text[patch_start:next_section]
+        else:
+            patch_start = len(text)
+            patch_section = ""
+        additions = [mapping for mapping in mappings if mapping not in patch_section]
+        if additions:
+            additions_text = "\n".join(additions) + "\n"
+            if patch_marker in text:
+                repaired = text[:patch_start] + additions_text + text[patch_start:]
             else:
-                repaired = text.rstrip() + "\n\n" + marker + additions
+                repaired = text.rstrip() + "\n\n" + patch_marker + additions_text
             manifest.write_text(repaired, encoding="utf-8")
         PY
 
