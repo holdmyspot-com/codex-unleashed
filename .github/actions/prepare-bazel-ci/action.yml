@@ -43,7 +43,7 @@ runs:
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
-        mappings = []
+        mappings_by_name = {}
         for member in workspace.get("members", []):
             member_path = root / member
             member_manifest = member_path / "Cargo.toml"
@@ -53,8 +53,14 @@ runs:
             name = package.get("name", "")
             if name.startswith("codex-"):
                 relative_path = member_path.relative_to(root).as_posix()
-                mappings.append(f'{name} = {{ path = "{relative_path}" }}')
-        mappings.sort()
+                mappings_by_name[name] = relative_path
+        for name, dependency in workspace.get("dependencies", {}).items():
+            if isinstance(dependency, dict) and "path" in dependency:
+                mappings_by_name[name] = dependency["path"]
+        mappings = [
+            f'{name} = {{ path = "{path}" }}'
+            for name, path in sorted(mappings_by_name.items())
+        ]
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
             patch_start = text.index(patch_marker) + len(patch_marker)
