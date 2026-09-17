@@ -55,6 +55,30 @@ runs:
             )
             lockfile.write_text(lock_text, encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
+        workspace_dependencies = workspace.get("dependencies", {})
+        inherited_values = {}
+        for name, dependency in workspace_dependencies.items():
+            if isinstance(dependency, str):
+                inherited_values[name] = f'version = "{dependency}"'
+            elif isinstance(dependency, dict):
+                fields = []
+                for key in ("path", "version", "git", "rev", "branch", "tag", "registry"):
+                    if key in dependency:
+                        fields.append(f'{key} = "{dependency[key]}"')
+                if fields:
+                    inherited_values[name] = ", ".join(fields)
+        for package_manifest in root.rglob("Cargo.toml"):
+            if package_manifest == manifest:
+                continue
+            package_text = package_manifest.read_text(encoding="utf-8")
+            for name, inherited_value in inherited_values.items():
+                package_text = re.sub(
+                    rf'(^{re.escape(name)}\s*=\s*\{{\s*)workspace\s*=\s*true',
+                    rf'\g<1>{inherited_value}',
+                    package_text,
+                    flags=re.MULTILINE,
+                )
+            package_manifest.write_text(package_text, encoding="utf-8")
         excluded_paths = {"analytics", "app-server/tests/common"}
         mappings = [
             f'{name} = {{ path = "{dependency["path"]}" }}'
