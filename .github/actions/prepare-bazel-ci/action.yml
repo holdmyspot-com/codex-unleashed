@@ -85,10 +85,21 @@ runs:
             package_text = package_manifest.read_text(encoding="utf-8")
             package_data = tomllib.loads(package_text)
             local_dependency_specs = {}
+            def add_local_specs(specs):
+                for local_name, local_value in specs.items():
+                    existing_value = local_dependency_specs.get(local_name)
+                    if isinstance(existing_value, dict) and isinstance(local_value, dict):
+                        merged_value = dict(existing_value)
+                        merged_value.update(local_value)
+                        if isinstance(existing_value.get("features"), list) and isinstance(local_value.get("features"), list):
+                            merged_value["features"] = list(dict.fromkeys(existing_value["features"] + local_value["features"]))
+                        local_dependency_specs[local_name] = merged_value
+                    else:
+                        local_dependency_specs[local_name] = local_value
             for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
-                local_dependency_specs.update(package_data.get(dependency_section, {}))
+                add_local_specs(package_data.get(dependency_section, {}))
             for target_data in package_data.get("target", {}).values():
-                local_dependency_specs.update(target_data.get("dependencies", {}))
+                add_local_specs(target_data.get("dependencies", {}))
             for name, dependency in workspace_dependencies.items():
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
