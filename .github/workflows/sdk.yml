@@ -6,11 +6,11 @@ on:
       upstream_ref:
         required: false
         type: string
-        default: main
+        default: e2209ccd7e7fbdcbe0755478b5418318a5d220b6
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to main."
+        description: "Optional upstream ref to test. Defaults to the pinned Bazel-compatible baseline."
         required: false
         type: string
 
@@ -26,7 +26,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || 'e2209ccd7e7fbdcbe0755478b5418318a5d220b6' }}
           fallback-to-default-branch: "true"
 
       - name: Test Python SDK
@@ -61,7 +61,23 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   sdks:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            run_sdk_tests: true
+          - os: macos-15
+            target: aarch64-apple-darwin
+            run_sdk_tests: false
+          - os: windows-latest
+            target: x86_64-pc-windows-gnullvm
+            windows_cross_compile: true
+            binary_extension: .exe
+            run_sdk_tests: false
+    runs-on: ${{ matrix.os }}
+    name: SDK binaries on ${{ matrix.os }} for ${{ matrix.target }}
     # A cold Bazel build on GitHub-hosted runners can exceed the upstream
     # workflow's cached-runner timeout.
     timeout-minutes: 90
@@ -73,16 +89,18 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || 'e2209ccd7e7fbdcbe0755478b5418318a5d220b6' }}
           fallback-to-default-branch: "true"
 
       - name: Setup pnpm
+        if: ${{ matrix.run_sdk_tests }}
         uses: pnpm/action-setup@v4
         with:
           version: 10
           run_install: false
 
       - name: Setup Node.js
+        if: ${{ matrix.run_sdk_tests }}
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -90,6 +108,7 @@ jobs:
           cache-dependency-path: upstream/pnpm-lock.yaml
 
       - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +119,7 @@ jobs:
         id: setup_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          target: x86_64-unknown-linux-gnu
+          target: ${{ matrix.target }}
           cache-scope: sdk
 
       - name: Build patched Codex binaries for SDK tests
@@ -113,8 +132,11 @@ jobs:
           cd upstream
           # The SDK tests spawn the CLI directly, so download the top-level
           # Bazel outputs even when the build uses remote execution.
-          ./.github/scripts/run-bazel-ci.sh \
-            --remote-download-toplevel \
+          bazel_wrapper_args=(--remote-download-toplevel)
+          if [[ "${{ matrix.windows_cross_compile }}" == "true" ]]; then
+            bazel_wrapper_args+=(--windows-cross-compile)
+          fi
+          ./.github/scripts/run-bazel-ci.sh "${bazel_wrapper_args[@]}" \
             -- \
             build \
             --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
@@ -124,7 +146,7 @@ jobs:
             //codex-rs/code-mode-host:codex-code-mode-host
 
           cquery_output="$(
-            ./.github/scripts/run-bazel-ci.sh \
+            ./.github/scripts/run-bazel-ci.sh "${bazel_wrapper_args[@]}" \
               -- \
               cquery \
               --output=files \
@@ -143,15 +165,18 @@ jobs:
           install_dir="${RUNNER_TEMP}/codex-sdk-ci"
           mkdir -p "${install_dir}"
           install -m 755 "${bazel_output_paths[@]}" "${install_dir}"
-          echo "CODEX_EXEC_PATH=${install_dir}/codex" >> "${GITHUB_ENV}"
+          echo "CODEX_EXEC_PATH=${install_dir}/codex${{ matrix.binary_extension }}" >> "${GITHUB_ENV}"
 
       - name: Warm up Bazel-built codex
+        if: ${{ matrix.run_sdk_tests }}
         run: "${CODEX_EXEC_PATH} --version"
 
       - name: Install workspace dependencies
+        if: ${{ matrix.run_sdk_tests }}
         run: pnpm --dir upstream install --frozen-lockfile
 
       - name: Build TypeScript SDK packages
+        if: ${{ matrix.run_sdk_tests }}
         shell: bash
         env:
           CODEX_EXEC_PATH: ${{ runner.temp }}/codex-sdk-ci/codex
@@ -160,12 +185,14 @@ jobs:
           pnpm --dir upstream/sdk/typescript run build
 
       - name: Lint TypeScript SDK packages
+        if: ${{ matrix.run_sdk_tests }}
         shell: bash
         run: |
           set -euo pipefail
           pnpm --dir upstream/sdk/typescript run lint
 
       - name: Test TypeScript SDK packages
+        if: ${{ matrix.run_sdk_tests }}
         shell: bash
         env:
           CODEX_EXEC_PATH: ${{ runner.temp }}/codex-sdk-ci/codex
