@@ -84,7 +84,9 @@ runs:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
             package_data = tomllib.loads(package_text)
-            nested_workspace = "workspace" in package_data
+            nested_workspace = re.search(
+                r'^\[workspace(?:\.|\])', package_text, flags=re.MULTILINE
+            ) is not None
             local_dependency_specs = {}
             for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
                 local_dependency_specs.update(package_data.get(dependency_section, {}))
