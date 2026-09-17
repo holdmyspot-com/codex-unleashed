@@ -174,10 +174,10 @@ runs:
     - name: Refresh temporary Bazel module lockfile
       shell: bash
       run: |
-      set -euo pipefail
-      cd upstream
-      rm -f MODULE.bazel.lock
-      bazel mod deps --lockfile_mode=update
+        set -euo pipefail
+        cd upstream
+        rm -f MODULE.bazel.lock
+        bazel mod deps --lockfile_mode=update
 
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
