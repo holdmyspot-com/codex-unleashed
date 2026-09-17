@@ -85,6 +85,17 @@ runs:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
             for name, dependency in workspace_dependencies.items():
+                inline_match = re.search(
+                    rf'^{re.escape(name)}\s*=\s*\{{(?P<body>.*?)\}}',
+                    package_text,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
+                inline_body = inline_match.group("body") if inline_match else ""
+                overridden_keys = {
+                    key for key in (
+                        "default-features", "default_features", "features", "optional", "package",
+                    ) if re.search(rf'\b{re.escape(key)}\s*=', inline_body)
+                }
                 if isinstance(dependency, str):
                     inherited_value = f'version = "{dependency}"'
                 elif isinstance(dependency, dict):
@@ -93,6 +104,8 @@ runs:
                         "path", "version", "git", "rev", "branch", "tag", "registry",
                         "default-features", "default_features", "features", "optional", "package",
                     ):
+                        if key in overridden_keys:
+                            continue
                         if key in dependency:
                             value = dependency[key]
                             if key == "path":
