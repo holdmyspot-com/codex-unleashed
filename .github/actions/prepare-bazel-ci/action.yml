@@ -107,7 +107,7 @@ runs:
                 if not isinstance(dependency, (str, dict)):
                     continue
                 local_spec = local_dependency_specs.get(name)
-                if isinstance(local_spec, dict) and "features" in local_spec:
+                if isinstance(local_spec, dict) and "features" in local_spec and isinstance(dependency, dict) and dependency.get("features"):
                     package_text = re.sub(
                         rf'(^\s*{re.escape(name)}\s*=\s*\{{.*?),\s*features\s*=\s*\[[^\]]*\](?P<tail>.*?\}})',
                         rf'\g<1>\g<tail>',
@@ -121,18 +121,16 @@ runs:
                 }
                 if isinstance(dependency, str):
                     inherited_value = f'version = "{dependency}"'
-                    if isinstance(local_spec, dict) and isinstance(local_spec.get("features"), list):
-                        inherited_value += ", features = " + json.dumps(local_spec["features"])
                 elif isinstance(dependency, dict):
                     fields = []
                     for key in (
                         "path", "version", "git", "rev", "branch", "tag", "registry",
                         "default-features", "default_features", "features", "optional", "package",
                     ):
-                        if key in overridden_keys and key != "features":
+                        if key in overridden_keys and not (key == "features" and isinstance(dependency, dict) and dependency.get("features")):
                             continue
-                        if key in dependency or (key == "features" and isinstance(local_spec, dict) and isinstance(local_spec.get("features"), list)):
-                            value = dependency.get(key, [])
+                        if key in dependency:
+                            value = dependency[key]
                             if key == "features" and isinstance(local_spec, dict):
                                 local_features = local_spec.get("features", [])
                                 if isinstance(local_features, list):
