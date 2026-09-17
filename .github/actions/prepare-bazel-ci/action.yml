@@ -86,11 +86,11 @@ runs:
             package_text = package_manifest.read_text(encoding="utf-8")
             for name, dependency in workspace_dependencies.items():
                 inline_match = re.search(
-                    rf'^{re.escape(name)}\s*=\s*\{{(?P<body>.*?)\}}',
+                    rf'^{re.escape(name)}\s*=\s*\{{[^}}]*\}}',
                     package_text,
                     flags=re.MULTILINE | re.DOTALL,
                 )
-                inline_body = inline_match.group("body") if inline_match else ""
+                inline_body = inline_match.group(0) if inline_match else ""
                 overridden_keys = {
                     key for key in (
                         "default-features", "default_features", "features", "optional", "package",
