@@ -1,7 +1,7 @@
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ b/patches/rules_rs_build_script_deps_annotation.patch
-@@ -58,0 +59,23 @@
+@@ -58,0 +59,33 @@
 +
 +--- a/rs/private/resolver.bzl
 ++++ b/rs/private/resolver.bzl
@@ -25,6 +25,13 @@ diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules
 ++                continue
 ++            maybe_fq_dep = dep_name + " " + version
 ++        idx = maybe_fq_dep.find(" ")
-+@@ -561,1 +561,1 @@
++@@ -561,1 +561,8 @@
 +-        fq_deps = workspace_fq_deps.get(package["name"], {})
 ++        fq_deps = compute_package_fq_deps(package, resolver_versions_by_name, strict = False)
+++        for dep in package.get("dependencies", []):
+++            dep_package = _dep_package_name(dep)
+++            if dep_package not in fq_deps:
+++                fq_deps[dep_package] = [
+++                    fq_crate(dep_package, version)
+++                    for version in resolver_versions_by_name.get(dep_package, [])
+++                ]
