@@ -45,6 +45,7 @@ runs:
             'codex-cli = { path = "cli" }',
             'codex-build-info = { path = "build-info" }',
             'codex-bwrap = { path = "bwrap" }',
+            'codex-code-mode-host = { path = "code-mode-host" }',
             'codex-v8-poc = { path = "v8-poc" }',
         ]
         patch_marker = "[patch.crates-io]\n"
