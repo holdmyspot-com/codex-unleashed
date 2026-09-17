@@ -42,6 +42,12 @@ runs:
         root = Path("upstream/codex-rs")
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
+        # rules_rs needs path-only test support crates to be workspace members
+        # in order to resolve their `workspace = true` dependencies.
+        member_marker = '    "app-server/tests/common",\n'
+        if member_marker not in text:
+            text = text.replace('members = [\n', 'members = [\n' + member_marker, 1)
+            manifest.write_text(text, encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
         mappings_by_name = {}
         for member in workspace.get("members", []):
