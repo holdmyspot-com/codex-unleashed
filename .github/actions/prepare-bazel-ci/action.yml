@@ -79,16 +79,7 @@ runs:
                     flags=re.MULTILINE,
                 )
             package_manifest.write_text(package_text, encoding="utf-8")
-        excluded_paths = {"analytics", "app-server/tests/common"}
         mappings = [
-            f'{name} = {{ path = "{dependency["path"]}" }}'
-            for name, dependency in workspace.get("dependencies", {}).items()
-            if isinstance(dependency, dict)
-            and "path" in dependency
-            and dependency["path"] not in excluded_paths
-            and not dependency["path"].startswith("analytics/")
-        ]
-        mappings.extend([
             'codex-build-info = { path = "build-info" }',
             'codex-bwrap = { path = "bwrap" }',
             'codex-cli = { path = "cli" }',
@@ -99,8 +90,7 @@ runs:
             'codex-v8-poc = { path = "v8-poc" }',
             'codex-voice-host = { path = "voice-host" }',
             'codex-worktree = { path = "worktree" }',
-        ])
-        mappings = sorted(set(mappings))
+        ]
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
             patch_start = text.index(patch_marker) + len(patch_marker)
