@@ -65,6 +65,15 @@ runs:
         ]
         mappings.extend([
             'codex-build-info = { path = "build-info" }',
+            'codex-bwrap = { path = "bwrap" }',
+            'codex-cli = { path = "cli" }',
+            'codex-code-mode-host = { path = "code-mode-host" }',
+            'codex-config-schema = { path = "config-schema" }',
+            'codex-thread-manager-sample = { path = "thread-manager-sample" }',
+            'codex-utils-readiness = { path = "utils/readiness" }',
+            'codex-v8-poc = { path = "v8-poc" }',
+            'codex-voice-host = { path = "voice-host" }',
+            'codex-worktree = { path = "worktree" }',
         ])
         mappings.sort()
         patch_marker = "[patch.crates-io]\n"
