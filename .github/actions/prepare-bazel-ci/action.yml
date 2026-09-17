@@ -105,6 +105,12 @@ runs:
                     package_text,
                     flags=re.MULTILINE,
                 )
+                package_text = re.sub(
+                    rf'^{re.escape(name)}\.workspace\s*=\s*true\s*$',
+                    f'{name} = {{ {inherited_value} }}',
+                    package_text,
+                    flags=re.MULTILINE,
+                )
             package_manifest.write_text(package_text, encoding="utf-8")
         mappings = [
             'codex-build-info = { path = "build-info" }',
