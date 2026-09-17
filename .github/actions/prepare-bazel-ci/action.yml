@@ -63,6 +63,9 @@ runs:
             and "path" in dependency
             and dependency["path"] not in excluded_paths
         ]
+        mappings.extend([
+            'codex-build-info = { path = "build-info" }',
+        ])
         mappings.sort()
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
