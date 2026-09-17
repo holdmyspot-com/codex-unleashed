@@ -64,6 +64,7 @@ runs:
             'codex-thread-manager-sample = { path = "thread-manager-sample" }',
             'codex-utils-readiness = { path = "utils/readiness" }',
             'codex-v8-poc = { path = "v8-poc" }',
+            'codex-voice-host = { path = "voice-host" }',
         ]
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
