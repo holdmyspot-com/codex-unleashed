@@ -92,14 +92,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: upstream/pnpm-lock.yaml
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Configure rusty_v8 artifacts
-        uses: ./.github/actions/setup-rusty-v8
-        with:
-          target: x86_64-unknown-linux-gnu
-
       - name: Install Linux build dependencies
         shell: bash
         run: |
@@ -107,20 +99,56 @@ jobs:
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev
 
-      - name: Build patched codex binary for SDK tests
+      - name: Prepare Bazel CI
+        id: setup_bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+          cache-scope: sdk
+
+      - name: Build patched Codex binaries for SDK tests
+        id: build_bazel
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --manifest-path upstream/codex-rs/Cargo.toml --release \
-            --package codex-cli \
-            --package codex-code-mode-host
+          cd upstream
+          # The SDK tests spawn the CLI directly, so download the top-level
+          # Bazel outputs even when the build uses remote execution.
+          ./.github/scripts/run-bazel-ci.sh \
+            --remote-download-toplevel \
+            -- \
+            build \
+            --build_metadata="COMMIT_SHA=${GITHUB_SHA}" \
+            --build_metadata="TAG_job=sdk" \
+            -- \
+            //codex-rs/cli:codex \
+            //codex-rs/code-mode-host:codex-code-mode-host
+
+          cquery_output="$(
+            ./.github/scripts/run-bazel-ci.sh \
+              -- \
+              cquery \
+              --output=files \
+              -- \
+              'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
+              | grep -E '^(/|bazel-out/)'
+          )"
+          mapfile -t bazel_output_paths <<< "${cquery_output}"
+          if [[ ${#bazel_output_paths[@]} -ne 2 ]]; then
+            echo "Expected both Bazel-built binaries, found ${#bazel_output_paths[@]}." >&2
+            exit 1
+          fi
+
+          # Stage only the two binaries the SDK tests need. Keeping them
+          # together lets the CLI find its sibling code-mode host.
           install_dir="${RUNNER_TEMP}/codex-sdk-ci"
           mkdir -p "${install_dir}"
-          install -m 755 upstream/codex-rs/target/release/codex "${install_dir}/codex"
-          install -m 755 upstream/codex-rs/target/release/codex-code-mode-host "${install_dir}/codex-code-mode-host"
+          install -m 755 "${bazel_output_paths[@]}" "${install_dir}"
           echo "CODEX_EXEC_PATH=${install_dir}/codex" >> "${GITHUB_ENV}"
 
-      - name: Warm up Cargo-built codex
+      - name: Warm up Bazel-built codex
         run: "${CODEX_EXEC_PATH} --version"
 
       - name: Install workspace dependencies
@@ -149,6 +177,14 @@ jobs:
           # The first SDK test starts a freshly compiled binary and can exceed
           # Jest's five-second per-test default on a cold GitHub runner.
           pnpm --dir upstream/sdk/typescript exec jest --testTimeout=30000
+
+      - name: Save Bazel repository cache
+        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.setup_bazel.outputs.repository-cache-path }}
+          key: ${{ steps.setup_bazel.outputs.repository-cache-key }}
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
