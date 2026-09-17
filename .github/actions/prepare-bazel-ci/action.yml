@@ -37,18 +37,24 @@ runs:
         set -euo pipefail
         python3 - <<'PY'
         from pathlib import Path
+        import tomllib
 
         root = Path("upstream/codex-rs")
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
-        mappings = [
-            'codex-cli = { path = "cli" }',
-            'codex-build-info = { path = "build-info" }',
-            'codex-bwrap = { path = "bwrap" }',
-            'codex-code-mode-host = { path = "code-mode-host" }',
-            'codex-config-schema = { path = "config-schema" }',
-            'codex-v8-poc = { path = "v8-poc" }',
-        ]
+        workspace = tomllib.loads(text).get("workspace", {})
+        mappings = []
+        for member in workspace.get("members", []):
+            member_path = root / member
+            member_manifest = member_path / "Cargo.toml"
+            if not member_manifest.is_file():
+                continue
+            package = tomllib.loads(member_manifest.read_text(encoding="utf-8")).get("package", {})
+            name = package.get("name", "")
+            if name.startswith("codex-"):
+                relative_path = member_path.relative_to(root).as_posix()
+                mappings.append(f'{name} = {{ path = "{relative_path}" }}')
+        mappings.sort()
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
             patch_start = text.index(patch_marker) + len(patch_marker)
