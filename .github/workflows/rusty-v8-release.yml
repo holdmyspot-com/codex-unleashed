@@ -22,7 +22,7 @@ jobs:
       release_tag: ${{ steps.release_tag.outputs.release_tag }}
       v8_version: ${{ steps.v8_version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -154,7 +154,7 @@ jobs:
             v8_cpu: arm64
             variant: ptrcomp-sandbox
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -298,7 +298,7 @@ jobs:
           - x86_64-pc-windows-msvc
           - aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -314,7 +314,7 @@ jobs:
           fallback-to-default-branch: "true"
 
       - name: Check out upstream rusty_v8
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: denoland/rusty_v8
           ref: v${{ needs.metadata.outputs.v8_version }}

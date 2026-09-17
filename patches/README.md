@@ -4,17 +4,20 @@ Patch layout:
 
 - `patches/<owner>/<repo>/issue-<number>/README.md`
 - `patches/<owner>/<repo>/issue-<number>/<short-slug>.patch`
+- `patches/<owner>/<repo>/security-<advisory-id>/<short-slug>.patch`
 
 Examples:
 
 - `patches/openai/codex/issue-1234/README.md`
 - `patches/openai/codex/issue-1234/fix-crash-on-startup.patch`
+- `patches/openai/codex/security-rustsec-2026-0285/update-rustls.patch`
 - `patches/codex-unleashed/codex-unleashed/issue-12/README.md`
 - `patches/codex-unleashed/codex-unleashed/issue-12/fix-release-notes.patch`
 
 Operational rules:
 
-- one issue directory per repository-relative GitHub issue
+- one issue directory per repository-relative GitHub issue; security advisory
+  patches may instead use `security-<advisory-id>`
 - each issue directory must contain a human-readable `README.md`
 - patches should be generated with `git format-patch`
 - each patch should correspond to one logical bug fix
@@ -40,7 +43,8 @@ Why numeric prefixes may still be useful:
 
 Issue directory `README.md` should include:
 
-- canonical issue reference, for example `openai/codex#1234`
+- canonical issue or advisory reference, for example `openai/codex#1234` or
+  `RUSTSEC-2026-0285`
 - patch intent and scope
 - reproduction summary
 - regression-test description and before/after results

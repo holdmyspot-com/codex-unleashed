@@ -65,7 +65,7 @@ jobs:
             image: arm64v8/ubuntu:24.04
             archive_name: codex-zsh-aarch64-unknown-linux-musl.tar.gz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -109,7 +109,7 @@ jobs:
             target: aarch64-apple-darwin
             archive_name: codex-zsh-aarch64-apple-darwin.tar.gz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
@@ -147,7 +147,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
