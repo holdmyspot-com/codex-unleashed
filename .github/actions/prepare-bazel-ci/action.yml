@@ -90,15 +90,10 @@ runs:
             for target_data in package_data.get("target", {}).values():
                 local_dependency_specs.update(target_data.get("dependencies", {}))
             for name, dependency in workspace_dependencies.items():
-                # rules_rs handles registry workspace inheritance correctly;
-                # only expand path dependencies because this pinned release
-                # resolves those paths relative to the wrong manifest.
-                if not isinstance(dependency, dict) or (
-                    "path" not in dependency
-                    and name != "gix"
-                    and dependency.get("default-features") is not False
-                    and dependency.get("default_features") is not False
-                ):
+                # Expand every workspace dependency because this pinned
+                # rules_rs release can otherwise omit inherited edges from
+                # generated Bazel targets.
+                if not isinstance(dependency, (str, dict)):
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
