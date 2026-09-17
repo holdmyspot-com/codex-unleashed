@@ -61,6 +61,7 @@ runs:
             'codex-cli = { path = "cli" }',
             'codex-code-mode-host = { path = "code-mode-host" }',
             'codex-config-schema = { path = "config-schema" }',
+            'codex-thread-manager-sample = { path = "thread-manager-sample" }',
             'codex-v8-poc = { path = "v8-poc" }',
         ]
         patch_marker = "[patch.crates-io]\n"
