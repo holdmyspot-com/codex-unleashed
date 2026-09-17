@@ -110,6 +110,8 @@ runs:
                 }
                 if isinstance(dependency, str):
                     inherited_value = f'version = "{dependency}"'
+                    if isinstance(local_spec, dict) and isinstance(local_spec.get("features"), list):
+                        inherited_value += ", features = " + json.dumps(local_spec["features"])
                 elif isinstance(dependency, dict):
                     fields = []
                     for key in (
@@ -118,8 +120,8 @@ runs:
                     ):
                         if key in overridden_keys and key != "features":
                             continue
-                        if key in dependency:
-                            value = dependency[key]
+                        if key in dependency or (key == "features" and isinstance(local_spec, dict) and isinstance(local_spec.get("features"), list)):
+                            value = dependency.get(key, [])
                             if key == "features" and isinstance(local_spec, dict):
                                 local_features = local_spec.get("features", [])
                                 if isinstance(local_features, list):
