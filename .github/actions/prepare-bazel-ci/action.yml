@@ -92,13 +92,10 @@ runs:
                 local_dependency_specs.update(target_data.get("dependencies", {}))
             for name, dependency in workspace_dependencies.items():
                 local_spec = local_dependency_specs.get(name)
-                inline_body = ""
-                if isinstance(local_spec, dict):
-                    inline_body = json.dumps(local_spec)
                 overridden_keys = {
                     key for key in (
                         "default-features", "default_features", "features", "optional", "package",
-                    ) if re.search(rf'\b{re.escape(key)}\s*=', inline_body)
+                    ) if isinstance(local_spec, dict) and key in local_spec
                 }
                 if isinstance(dependency, str):
                     inherited_value = f'version = "{dependency}"'
