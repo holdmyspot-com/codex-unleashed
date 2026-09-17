@@ -54,15 +54,17 @@ runs:
                 flags=re.DOTALL,
             )
             lockfile.write_text(lock_text, encoding="utf-8")
-        workspace = tomllib.loads(text).get("workspace", {})
-        mappings = []
-        for name, dependency in workspace.get("dependencies", {}).items():
-            if not isinstance(dependency, dict) or "path" not in dependency:
-                continue
-            dependency_path = root / dependency["path"]
-            if (dependency_path / "Cargo.toml").is_file():
-                mappings.append(f'{name} = {{ path = "{dependency["path"]}" }}')
-        mappings.sort()
+        mappings = [
+            'codex-build-info = { path = "build-info" }',
+            'codex-bwrap = { path = "bwrap" }',
+            'codex-cli = { path = "cli" }',
+            'codex-code-mode-host = { path = "code-mode-host" }',
+            'codex-config-schema = { path = "config-schema" }',
+            'codex-thread-manager-sample = { path = "thread-manager-sample" }',
+            'codex-utils-readiness = { path = "utils/readiness" }',
+            'codex-v8-poc = { path = "v8-poc" }',
+            'codex-voice-host = { path = "voice-host" }',
+        ]
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
             patch_start = text.index(patch_marker) + len(patch_marker)
