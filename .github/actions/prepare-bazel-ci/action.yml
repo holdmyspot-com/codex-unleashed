@@ -84,6 +84,7 @@ runs:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
             package_data = tomllib.loads(package_text)
+            nested_workspace = "workspace" in package_data
             local_dependency_specs = {}
             for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
                 local_dependency_specs.update(package_data.get(dependency_section, {}))
@@ -93,7 +94,7 @@ runs:
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
                 # resolves those paths relative to the wrong manifest.
-                if not isinstance(dependency, dict) or "path" not in dependency:
+                if not nested_workspace and (not isinstance(dependency, dict) or "path" not in dependency):
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
