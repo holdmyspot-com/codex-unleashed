@@ -93,10 +93,7 @@ runs:
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
                 # resolves those paths relative to the wrong manifest.
-                is_agent_graph_store = "agent-graph-store" in package_manifest.parent.parts
-                if not is_agent_graph_store and (
-                    not isinstance(dependency, dict) or "path" not in dependency
-                ):
+                if not isinstance(dependency, (str, dict)):
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
