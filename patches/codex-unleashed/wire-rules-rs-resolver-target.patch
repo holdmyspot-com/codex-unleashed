@@ -1,0 +1,12 @@
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -158,0 +158,1 @@
++        "//patches:rules_rs_resolver_target.patch",
+     version = "0.0.96",
+ )
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -18,0 +18,1 @@
++    "rules_rs_resolver_target.patch",

@@ -1,0 +1,6 @@
+diff --git a/rs/private/resolver.bzl b/rs/private/resolver.bzl
+--- a/rs/private/resolver.bzl
++++ b/rs/private/resolver.bzl
+@@ -19 +19 @@
+-    remaining = dep["target"]
++    remaining = dep.get("target", set())
