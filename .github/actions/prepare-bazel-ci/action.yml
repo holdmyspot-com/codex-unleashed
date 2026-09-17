@@ -146,6 +146,16 @@ runs:
             manifest.write_text(repaired, encoding="utf-8")
         PY
 
+    # The CI-only rules_rs compatibility patch changes the content hash of an
+    # existing module override. Refresh the generated lockfile in the temporary
+    # upstream checkout so Bazel can evaluate that override.
+    - name: Refresh temporary Bazel module lockfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd upstream
+        bazel mod deps --lockfile_mode=update
+
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
       shell: bash
