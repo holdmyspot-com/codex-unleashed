@@ -57,7 +57,7 @@ runs:
         workspace = tomllib.loads(text).get("workspace", {})
         missing_members = [
             member for member in workspace.get("members", [])
-            if not (root / member / "Cargo.toml").is_file()
+            if member == "analytics" or not (root / member / "Cargo.toml").is_file()
         ]
         for member in missing_members:
             text = re.sub(
