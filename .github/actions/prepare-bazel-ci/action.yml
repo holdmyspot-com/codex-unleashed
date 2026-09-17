@@ -55,47 +55,13 @@ runs:
             )
             lockfile.write_text(lock_text, encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
-        mappings_by_name = {}
-        for member in workspace.get("members", []):
-            member_path = root / member
-            member_manifest = member_path / "Cargo.toml"
-            if not member_manifest.is_file():
-                continue
-            package = tomllib.loads(member_manifest.read_text(encoding="utf-8")).get("package", {})
-            name = package.get("name", "")
-            if name.startswith("codex-"):
-                relative_path = member_path.relative_to(root).as_posix()
-                mappings_by_name[name] = relative_path
-        for name, dependency in workspace.get("dependencies", {}).items():
-            if isinstance(dependency, dict) and "path" in dependency:
-                mappings_by_name[name] = dependency["path"]
-        workspace_dependencies = workspace.get("dependencies", {})
-        for support_path in ("app-server/tests/common", "core/tests/common", "mcp-server/tests/common"):
-            support_manifest = root / support_path / "Cargo.toml"
-            if not support_manifest.is_file():
-                continue
-            support_text = support_manifest.read_text(encoding="utf-8")
-            for name, dependency in workspace_dependencies.items():
-                if isinstance(dependency, str):
-                    inherited_value = f'version = "{dependency}"'
-                elif isinstance(dependency, dict):
-                    fields = []
-                    for key in ("path", "version", "git", "rev", "branch", "tag", "registry"):
-                        if key in dependency:
-                            fields.append(f'{key} = "{dependency[key]}"')
-                    inherited_value = ", ".join(fields)
-                else:
-                    continue
-                support_text = re.sub(
-                    rf'(^{re.escape(name)}\s*=\s*\{{\s*)workspace\s*=\s*true',
-                    rf'\g<1>{inherited_value}',
-                    support_text,
-                    flags=re.MULTILINE,
-                )
-            support_manifest.write_text(support_text, encoding="utf-8")
         mappings = [
-            f'{name} = {{ path = "{path}" }}'
-            for name, path in sorted(mappings_by_name.items())
+            'codex-build-info = { path = "build-info" }',
+            'codex-bwrap = { path = "bwrap" }',
+            'codex-cli = { path = "cli" }',
+            'codex-code-mode-host = { path = "code-mode-host" }',
+            'codex-config-schema = { path = "config-schema" }',
+            'codex-v8-poc = { path = "v8-poc" }',
         ]
         patch_marker = "[patch.crates-io]\n"
         if patch_marker in text:
