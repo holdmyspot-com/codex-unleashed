@@ -84,13 +84,17 @@ runs:
             if package_manifest == manifest:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
+            package_data = tomllib.loads(package_text)
+            local_dependency_specs = {}
+            for dependency_section in ("dependencies", "build-dependencies", "dev-dependencies"):
+                local_dependency_specs.update(package_data.get(dependency_section, {}))
+            for target_data in package_data.get("target", {}).values():
+                local_dependency_specs.update(target_data.get("dependencies", {}))
             for name, dependency in workspace_dependencies.items():
-                inline_match = re.search(
-                    rf'^{re.escape(name)}\s*=\s*\{{[^}}]*\}}',
-                    package_text,
-                    flags=re.MULTILINE | re.DOTALL,
-                )
-                inline_body = inline_match.group(0) if inline_match else ""
+                local_spec = local_dependency_specs.get(name)
+                inline_body = ""
+                if isinstance(local_spec, dict):
+                    inline_body = json.dumps(local_spec)
                 overridden_keys = {
                     key for key in (
                         "default-features", "default_features", "features", "optional", "package",
