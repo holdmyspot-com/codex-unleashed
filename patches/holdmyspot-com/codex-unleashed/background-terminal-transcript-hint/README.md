@@ -1,7 +1,7 @@
 # Background-terminal transcript hint
 
 - Issue: [holdmyspot-com/codex-unleashed#3](https://github.com/holdmyspot-com/codex-unleashed/issues/3)
-- Applies to: upstream `openai/codex` `rust-v0.155.0`
+- Applies to: upstream `openai/codex` commit `e2209ccd7e7fbdcbe0755478b5418318a5d220b6`
 - Related upstream requests: [openai/codex#13858](https://github.com/openai/codex/issues/13858), [openai/codex#14928](https://github.com/openai/codex/issues/14928), [openai/codex#16935](https://github.com/openai/codex/issues/16935)
 
 ## Intent

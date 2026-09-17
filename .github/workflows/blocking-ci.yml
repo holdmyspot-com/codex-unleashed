@@ -17,7 +17,7 @@ jobs:
     name: cargo-deny
     uses: ./.github/workflows/cargo-deny.yml
     with:
-      upstream_ref: rust-v0.155.0
+      upstream_ref: e2209ccd7e7fbdcbe0755478b5418318a5d220b6
     secrets: inherit
 
   codespell:
@@ -29,21 +29,21 @@ jobs:
     name: repo-checks
     uses: ./.github/workflows/repo-checks.yml
     with:
-      upstream_ref: rust-v0.155.0
+      upstream_ref: e2209ccd7e7fbdcbe0755478b5418318a5d220b6
     secrets: inherit
 
   rust-ci:
     name: rust-ci
     uses: ./.github/workflows/rust-ci.yml
     with:
-      upstream_ref: rust-v0.155.0
+      upstream_ref: e2209ccd7e7fbdcbe0755478b5418318a5d220b6
     secrets: inherit
 
   sdk:
     name: sdk
     uses: ./.github/workflows/sdk.yml
     with:
-      upstream_ref: rust-v0.155.0
+      upstream_ref: e2209ccd7e7fbdcbe0755478b5418318a5d220b6
     secrets: inherit
 
   required:

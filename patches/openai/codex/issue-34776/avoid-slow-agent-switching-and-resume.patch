@@ -75,10 +75,12 @@ index d44f9da..0000000 100644
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 0fb1efd..0000000 100644
+index bbfa13a..0000000 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -104,9 +104,22 @@ impl ChatWidget {
+@@ -12,6 +12,19 @@ impl ChatWidget {
+     /// avoid triggering side effects. Event ids are passed as `None` to
+     /// distinguish replayed events from live ones.
      pub(crate) fn replay_thread_turns(&mut self, turns: Vec<Turn>, replay_kind: ReplayKind) {
 +        let first_latest_conversation_turn = turns
 +            .iter()
@@ -93,10 +95,6 @@ index 0fb1efd..0000000 100644
 +            .into_iter()
 +            .skip(first_latest_conversation_turn)
 +            .collect::<Vec<_>>();
-         if matches!(replay_kind, ReplayKind::ThreadSnapshot) && !turns.is_empty() {
-             self.warning_display_state.startup_complete = true;
-         }
-         let latest_turn_id = turns.last().map(|turn| turn.id.clone());
          let hidden_nested_review_turns = std::iter::once(/*value*/ false)
              .chain(turns.windows(/*size*/ 2).map(|turns| {
                  crate::app_backtrack::is_hidden_nested_review_turn(&turns[0], &turns[1])

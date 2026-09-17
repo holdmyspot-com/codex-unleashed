@@ -27,10 +27,10 @@ index abccc48..b5b80c1 100644
          println!("cargo:rustc-link-arg=-ObjC");
      }
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index ee42ceb..a4a3ddd 100644
+index 0bfea04..a4a3ddd 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -114,10 +114,33 @@ use codex_terminal_detection::TerminalName;
+@@ -99,10 +99,33 @@ use codex_terminal_detection::TerminalName;
  /// Codex CLI
  ///
  /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -65,7 +65,7 @@ index ee42ceb..a4a3ddd 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -127,6 +150,10 @@ use codex_terminal_detection::TerminalName;
+@@ -112,6 +135,10 @@ use codex_terminal_detection::TerminalName;
      override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
  )]
  struct MultitoolCli {
@@ -76,7 +76,8 @@ index ee42ceb..a4a3ddd 100644
      #[clap(flatten)]
      pub config_overrides: CliConfigOverrides,
  
-@@ -1136,12 +1163,17 @@ async fn cli_main(
+@@ -1048,12 +1048,17 @@ async fn cli_main(
+     remote_control_disabled: bool,
  ) -> anyhow::Result<()> {
      let MultitoolCli {
 +        build_info,
@@ -90,12 +91,11 @@ index ee42ceb..a4a3ddd 100644
 +        println!("{BUILD_INFO}");
 +        return Ok(());
 +    }
-     reject_unsupported_worktree_for_subcommand(interactive.shared.worktree, &subcommand)?;
      // Fold --enable/--disable into config overrides so they flow to all subcommands.
      let toggle_overrides = feature_toggles.to_overrides()?;
      root_config_overrides.raw_overrides.extend(toggle_overrides);
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index f72429a..d79114e 100644
+index 7de0ba5..d79114e 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
 @@ -4,6 +4,7 @@ version.workspace = true
