@@ -57,7 +57,7 @@ runs:
         workspace = tomllib.loads(text).get("workspace", {})
         missing_members = [
             member for member in workspace.get("members", [])
-            if member == "analytics"
+            if member in {"analytics", "agent-graph-store"}
             or not (root / member / "Cargo.toml").is_file()
             or re.search(
                 r'^\[workspace(?:\.|\])',
