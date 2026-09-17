@@ -93,7 +93,7 @@ runs:
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
                 # resolves those paths relative to the wrong manifest.
-                if not isinstance(dependency, (str, dict)):
+                if not isinstance(dependency, dict) or "path" not in dependency:
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
