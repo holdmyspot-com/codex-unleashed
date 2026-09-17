@@ -39,12 +39,21 @@ runs:
         from pathlib import Path
 
         import tomllib
+        from glob import glob
 
         root = Path("upstream/codex-rs")
         manifest = root / "Cargo.toml"
         text = manifest.read_text(encoding="utf-8")
+        workspace = tomllib.loads(text).get("workspace", {})
+        member_manifests = []
+        for member in workspace.get("members", []):
+            member_paths = glob(str(root / member))
+            for member_path in member_paths:
+                package_manifest = Path(member_path) / "Cargo.toml"
+                if package_manifest.is_file():
+                    member_manifests.append(package_manifest)
         mappings = []
-        for package_manifest in root.rglob("Cargo.toml"):
+        for package_manifest in member_manifests:
             with package_manifest.open("rb") as package_file:
                 package = tomllib.load(package_file).get("package")
             if not package or "name" not in package:
