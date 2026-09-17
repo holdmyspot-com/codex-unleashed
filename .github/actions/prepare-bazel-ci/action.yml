@@ -93,7 +93,12 @@ runs:
                 # rules_rs handles registry workspace inheritance correctly;
                 # only expand path dependencies because this pinned release
                 # resolves those paths relative to the wrong manifest.
-                if not isinstance(dependency, dict) or ("path" not in dependency and name != "gix"):
+                if not isinstance(dependency, dict) or (
+                    "path" not in dependency
+                    and name != "gix"
+                    and dependency.get("default-features") is not False
+                    and dependency.get("default_features") is not False
+                ):
                     continue
                 local_spec = local_dependency_specs.get(name)
                 overridden_keys = {
