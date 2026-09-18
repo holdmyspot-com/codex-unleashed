@@ -1,7 +1,7 @@
 diff --git a/BUILD.bazel b/BUILD.bazel
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -81,7 +81,12 @@
+@@ -81,7 +81,13 @@
  config_setting(
      name = "aarch64_linux",
      constraint_values = [
@@ -13,4 +13,5 @@ diff --git a/BUILD.bazel b/BUILD.bazel
 +cc_library(
 +    name = "aarch64_linux_compiler_rt_builtins",
 +    srcs = ["@llvm//runtimes/compiler-rt:clang_rt.builtins.static"],
++    visibility = ["//visibility:public"],
 +)
