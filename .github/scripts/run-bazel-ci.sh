@@ -267,9 +267,6 @@ post_config_bazel_args=()
 # analyzing this repository and its cross-platform toolchains. Keep the local
 # Bazel client bounded; remote execution still provides parallel action work.
 post_config_bazel_args+=(--jobs=2)
-# The ARM code-mode-host link is large enough to hit the remote linker's peak
-# memory limit. Ask lld not to retain input sections after they are consumed.
-post_config_bazel_args+=(--linkopt=-Wl,--no-keep-memory)
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0
