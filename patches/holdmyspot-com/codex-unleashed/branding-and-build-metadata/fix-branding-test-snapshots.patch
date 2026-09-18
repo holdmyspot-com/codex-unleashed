@@ -27,6 +27,9 @@ diff --git a/codex-rs/tui/src/version.rs b/codex-rs/tui/src/version.rs
  pub const CODEX_CLI_VERSION: &str = concat!(
      env!("CARGO_PKG_VERSION"),
      "+",
+@@ -8,1 +8,2 @@
++#[cfg(not(test))]
+ pub const CODEX_UNLEASHED_URL: &str = "https://holdmyspot.com/codex-unleashed/";
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
