@@ -1,8 +1,7 @@
 diff --git a/MODULE.bazel b/MODULE.bazel
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -269,0 +270,27 @@ crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
-+
+@@ -269,0 +270,26 @@ crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
 +crate.annotation(
 +    crate = "codex-code-mode-host",
 +    rustc_flags_select = {
