@@ -269,6 +269,7 @@ post_config_bazel_args=()
 bazel_jobs=2
 if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
   bazel_jobs=1
+  post_config_bazel_args+=("--loading_phase_threads=1")
 fi
 post_config_bazel_args+=("--jobs=${bazel_jobs}")
 
