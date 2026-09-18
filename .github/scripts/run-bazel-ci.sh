@@ -266,7 +266,7 @@ post_config_bazel_args=()
 # The hosted runners can exhaust their native-thread limit while Bazel is
 # analyzing this repository and its cross-platform toolchains. Keep the local
 # Bazel client bounded; remote execution still provides parallel action work.
-post_config_bazel_args+=(--jobs=8)
+post_config_bazel_args+=(--jobs=2)
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0
@@ -308,7 +308,7 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUI
   # The Windows cross-compile config depends on authenticated remote
   # execution. When credentials are unavailable, keep the local build shape
   # and its lower concurrency cap.
-  post_config_bazel_args+=(--jobs=8)
+  post_config_bazel_args+=(--jobs=2)
 fi
 
 if [[ -n "${BAZEL_REPO_CONTENTS_CACHE:-}" ]]; then
