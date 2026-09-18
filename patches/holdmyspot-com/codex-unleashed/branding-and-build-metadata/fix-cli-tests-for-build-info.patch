@@ -1,0 +1,28 @@
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -3014,6 +3014,7 @@
+         let MultitoolCli {
+             mut interactive,
+             config_overrides: mut root_overrides,
++            build_info: _,
+             subcommand,
+             feature_toggles: _,
+             remote: _,
+@@ -3050,6 +3051,7 @@
+         let MultitoolCli {
+             mut interactive,
+             config_overrides: mut root_overrides,
++            build_info: _,
+             subcommand,
+             feature_toggles: _,
+             remote: _,
+@@ -3095,6 +3097,7 @@
+         let MultitoolCli {
+             interactive,
+             config_overrides: root_overrides,
++            build_info: _,
+             subcommand,
+             feature_toggles: _,
+             remote: _,
+         } = cli;

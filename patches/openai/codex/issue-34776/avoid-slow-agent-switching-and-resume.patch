@@ -8,7 +8,7 @@ diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs
 index a92304e..4b47d7f 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -385,6 +385,171 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
+@@ -385,6 +385,170 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
      Ok((app, codex_home))
  }
  
@@ -82,7 +82,6 @@ index a92304e..4b47d7f 100644
 +        start_recording_app_server(&app.config, None, None).await?;
 +    let root = app_server
 +        .resume_thread(
-+            &app.local_settings,
 +            app.config.clone(),
 +            root_thread_id,
 +            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
