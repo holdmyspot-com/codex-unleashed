@@ -263,6 +263,11 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUI
 fi
 
 post_config_bazel_args=()
+# The hosted runners can exhaust their native-thread limit while Bazel is
+# analyzing this repository and its cross-platform toolchains. Keep the local
+# Bazel client bounded; remote execution still provides parallel action work.
+post_config_bazel_args+=(--jobs=8)
+
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0
   for arg in "${bazel_args[@]}"; do
