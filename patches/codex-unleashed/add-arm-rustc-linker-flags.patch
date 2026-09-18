@@ -6,5 +6,5 @@ diff --git a/defs.bzl b/defs.bzl
              Wine-exec variant for each integration test. Variants inherit the
              native test's timeout, tags, and shard count.
      """
-+    rustc_flags_extra = rustc_flags_extra + ARM_LINUX_RUSTC_LINK_FLAGS
++    rustc_flags_extra = rustc_flags_extra + LINUX_RUSTC_LINK_FLAGS
      test_env = {
