@@ -3,7 +3,7 @@ diff --git a/defs.bzl b/defs.bzl
 +++ b/defs.bzl
 @@ -28,3 +28,11 @@
 +LINUX_RUSTC_LINK_FLAGS = select({
-+    "@platforms//os:linux": [
++    "//:aarch64_linux": [
 +        "-C",
 +        "link-arg=-lgcc",
 +    ],

@@ -1,0 +1,12 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -4,0 +5,8 @@ xcode_config(name = "disable_xcode")
++
++config_setting(
++    name = "aarch64_linux",
++    constraint_values = [
++        "@platforms//cpu:aarch64",
++        "@platforms//os:linux",
++    ],
++)
