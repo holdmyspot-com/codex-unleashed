@@ -1,0 +1,10 @@
+diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+--- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
++++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+@@ -27,5 +27,5 @@
+     assert_eq!(
+         history,
+-        vec!["• Ran cat replay\n  └ (no output)\n".to_string()]
++        vec!["• Ran cat replay\n  └ (no output)\n(ctrl + t to view transcript)\n".to_string()]
+     );
+ }
