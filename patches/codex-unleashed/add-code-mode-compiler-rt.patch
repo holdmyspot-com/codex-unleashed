@@ -14,7 +14,7 @@ diff --git a/codex-rs/code-mode-runtime/BUILD.bazel b/codex-rs/code-mode-runtime
 @@ -5,2 +5,6 @@ codex_rust_crate(
      crate_name = "codex_code_mode_runtime",
 +    deps_extra = select({
-+        "//:aarch64_linux": ["@llvm//runtimes/compiler-rt:clang_rt.builtins.static"],
++        "//:aarch64_linux": ["//:aarch64_linux_compiler_rt_builtins"],
 +        "//conditions:default": [],
 +    }),
  )
