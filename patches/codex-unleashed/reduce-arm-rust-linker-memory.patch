@@ -1,30 +1,18 @@
-diff --git a/MODULE.bazel b/MODULE.bazel
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -269,0 +270,26 @@ crate = use_extension("@rules_rs//rs:extensions.bzl", "crate")
-+crate.annotation(
-+    crate = "codex-code-mode-host",
-+    rustc_flags_select = {
-+        "aarch64-unknown-linux-gnu": [
+diff --git a/defs.bzl b/defs.bzl
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -28,3 +28,14 @@
++ARM_LINUX_RUSTC_LINK_FLAGS = select({
++    "@platforms//cpu:aarch64": select({
++        "@platforms//os:linux": [
 +            "-C",
-+            "link-arg=-Wl,--no-keep-memory",
++            "link-arg=-lgcc",
 +        ],
-+        "aarch64-unknown-linux-musl": [
-+            "-C",
-+            "link-arg=-Wl,--no-keep-memory",
-+        ],
-+    },
-+)
-+crate.annotation(
-+    crate = "codex-code-mode-runtime",
-+    rustc_flags_select = {
-+        "aarch64-unknown-linux-gnu": [
-+            "-C",
-+            "link-arg=-Wl,--no-keep-memory",
-+        ],
-+        "aarch64-unknown-linux-musl": [
-+            "-C",
-+            "link-arg=-Wl,--no-keep-memory",
-+        ],
-+    },
-+)
++        "//conditions:default": [],
++    }),
++    "//conditions:default": [],
++})
++
+ WINDOWS_GNULLVM_INCOMPATIBLE = select({
+     "@llvm//constraints/windows/abi:gnullvm": ["@platforms//:incompatible"],
+     "//conditions:default": [],
