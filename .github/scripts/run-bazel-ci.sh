@@ -266,7 +266,11 @@ post_config_bazel_args=()
 # The hosted runners can exhaust their native-thread limit while Bazel is
 # analyzing this repository and its cross-platform toolchains. Keep the local
 # Bazel client bounded; remote execution still provides parallel action work.
-post_config_bazel_args+=(--jobs=2)
+bazel_jobs=2
+if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
+  bazel_jobs=1
+fi
+post_config_bazel_args+=("--jobs=${bazel_jobs}")
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0
