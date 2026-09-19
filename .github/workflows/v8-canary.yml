@@ -218,7 +218,6 @@ jobs:
           else
             stage_args+=(--bazel-config v8-release-compat)
           fi
-          stage_args+=(--skip-build)
           python3 .github/scripts/rusty_v8_bazel.py stage-release-pair "${stage_args[@]}"
 
       - name: Smoke test staged artifact with Cargo

@@ -194,7 +194,6 @@ jobs:
             test \
             --skip_incompatible_explicit_targets \
             --test_tag_filters=-argument-comment-lint \
-            --test_env=GITHUB_ACTIONS \
             --test_verbose_timeout_warnings \
             --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
             --build_metadata=TAG_windows_test_shard=${BAZEL_TEST_SHARD} \
