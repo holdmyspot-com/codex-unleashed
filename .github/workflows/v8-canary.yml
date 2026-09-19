@@ -50,7 +50,7 @@ jobs:
     name: Build ${{ matrix.variant }} ${{ matrix.target }}
     needs: metadata
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -277,6 +277,7 @@ jobs:
     name: Build ptrcomp-sandbox ${{ matrix.target }} from source
     needs: metadata
     runs-on: windows-latest
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
