@@ -363,6 +363,7 @@ jobs:
       - name: Build upstream rusty_v8 sandbox release pair
         env:
           SCCACHE_IDLE_TIMEOUT: 0
+          CARGO_TARGET_DIR: ${{ github.workspace }}/upstream-rusty-v8/target
           TARGET: ${{ matrix.target }}
           V8_FROM_SOURCE: "1"
         shell: bash
