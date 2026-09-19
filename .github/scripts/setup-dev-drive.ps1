@@ -43,11 +43,24 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
         $Disk = $Mounted | Get-Disk -ErrorAction Stop
         $Disk | Initialize-Disk -PartitionStyle GPT -ErrorAction Stop
         $Partition = $Disk | New-Partition -AssignDriveLetter -UseMaximumSize -ErrorAction Stop
-        $Volume = $Partition | Format-Volume -FileSystem ReFS -NewFileSystemLabel "CodexDevDrive" -DevDrive -Confirm:$false -Force -ErrorAction Stop
+        $FormatVolumeParameters = (Get-Command Format-Volume -ErrorAction Stop).Parameters
+        $FormatVolumeArguments = @{
+            FileSystem = "ReFS"
+            NewFileSystemLabel = "CodexDevDrive"
+            Confirm = $false
+            Force = $true
+            ErrorAction = "Stop"
+        }
+        if ($FormatVolumeParameters.ContainsKey("DevDrive")) {
+            $FormatVolumeArguments.DevDrive = $true
+        } else {
+            Write-Warning "Format-Volume does not support -DevDrive; using a regular ReFS volume."
+        }
+        $Volume = $Partition | Format-Volume @FormatVolumeArguments
 
         $Drive = "$($Volume.DriveLetter):"
 
-        if (-not (Test-DevDrive $Drive)) {
+        if ($FormatVolumeParameters.ContainsKey("DevDrive") -and -not (Test-DevDrive $Drive)) {
             throw "Provisioned volume at $Drive did not pass Dev Drive verification."
         }
 
