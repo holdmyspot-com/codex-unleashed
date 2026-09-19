@@ -1,9 +1,16 @@
 # Local npm releases
 
 `publish_npm_from_release.py` converts the six public `codex-package-*` GitHub
-Release archives into one npm selector package and six platform packages. It
-defaults to the local Verdaccio registry at `http://127.0.0.1:4873` and uses
-the `@holdmyspot` scope.
+Release archives into public and early-access npm package families. It creates
+one selector package and six platform packages for each family:
+
+- `@holdmyspot/codex-unleashed` and its public platform packages
+- `@holdmyspot/codex-unleashed-ea` and its private platform packages
+
+The early-access packages are published with npm access `restricted`; users
+must belong to an npm organization team with read access to all seven
+early-access packages. The script defaults to the local Verdaccio registry at
+`http://127.0.0.1:4873` and uses the `@holdmyspot` scope.
 
 GitHub release tags may use `0.153.4+25`, but npm removes SemVer build
 metadata when publishing. The script therefore publishes that release as
@@ -31,7 +38,7 @@ python3 scripts/publish_npm_from_release.py \
 The package can then be tested with:
 
 ```bash
-scripts/test_local_npm_release.sh /tmp/codex-npm-release/packages/main
+scripts/test_local_npm_release.sh /tmp/codex-npm-release/packages/public/main
 ```
 
 The publisher requires all six `codex-package-<target>.tar.gz` archives and
