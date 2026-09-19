@@ -305,14 +305,22 @@ def stage_release_pair(
     compilation_mode: str = "fastbuild",
     bazel_configs: list[str] | None = None,
     sandbox: bool = False,
+    skip_build: bool = False,
 ) -> None:
     bazel_configs = artifact_bazel_configs(bazel_configs)
-    outputs = ensure_bazel_output_files(
-        platform,
-        [release_pair_label(target, sandbox)],
-        compilation_mode,
-        bazel_configs,
-    )
+    labels = [release_pair_label(target, sandbox)]
+    if skip_build:
+        outputs = bazel_output_files(platform, labels, compilation_mode, bazel_configs)
+        missing = [str(path) for path in outputs if not path.exists()]
+        if missing:
+            raise SystemExit(f"missing built outputs for {target}: {missing}")
+    else:
+        outputs = ensure_bazel_output_files(
+            platform,
+            labels,
+            compilation_mode,
+            bazel_configs,
+        )
 
     try:
         lib_path = next(path for path in outputs if path.suffix in {".a", ".lib"})
@@ -336,6 +344,11 @@ def parse_args() -> argparse.Namespace:
     stage_release_pair_parser.add_argument("--target", required=True)
     stage_release_pair_parser.add_argument("--output-dir", required=True)
     stage_release_pair_parser.add_argument("--sandbox", action="store_true")
+    stage_release_pair_parser.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Reuse outputs from the preceding Bazel build instead of rebuilding.",
+    )
     stage_release_pair_parser.add_argument(
         "--bazel-config",
         action="append",
@@ -391,6 +404,7 @@ def main() -> int:
             compilation_mode=args.compilation_mode,
             bazel_configs=args.bazel_configs,
             sandbox=args.sandbox,
+            skip_build=args.skip_build,
         )
         return 0
     if args.command == "stage-upstream-release-pair":
