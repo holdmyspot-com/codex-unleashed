@@ -1,8 +1,8 @@
 diff --git a/.github/scripts/rusty_v8_bazel.py b/.github/scripts/rusty_v8_bazel.py
-index 6150aff..5947a64 100644
+index 6150aff..b386447 100644
 --- a/.github/scripts/rusty_v8_bazel.py
 +++ b/.github/scripts/rusty_v8_bazel.py
-@@ -289,14 +289,22 @@ def stage_release_pair(
+@@ -289,14 +289,29 @@ def stage_release_pair(
      compilation_mode: str = "fastbuild",
      bazel_configs: list[str] | None = None,
      sandbox: bool = False,
@@ -17,6 +17,13 @@ index 6150aff..5947a64 100644
 -    )
 +    labels = [release_pair_label(target, sandbox)]
 +    if skip_build:
++        bazel_build(
++            platform,
++            labels,
++            compilation_mode,
++            bazel_configs,
++            download_toplevel=True,
++        )
 +        outputs = bazel_output_files(platform, labels, compilation_mode, bazel_configs)
 +        missing = [str(path) for path in outputs if not path.exists()]
 +        if missing:
@@ -31,7 +38,7 @@ index 6150aff..5947a64 100644
  
      try:
          lib_path = next(path for path in outputs if path.suffix in {".a", ".lib"})
-@@ -320,6 +328,11 @@ def parse_args() -> argparse.Namespace:
+@@ -320,6 +335,11 @@ def parse_args() -> argparse.Namespace:
      stage_release_pair_parser.add_argument("--target", required=True)
      stage_release_pair_parser.add_argument("--output-dir", required=True)
      stage_release_pair_parser.add_argument("--sandbox", action="store_true")
@@ -43,7 +50,7 @@ index 6150aff..5947a64 100644
      stage_release_pair_parser.add_argument(
          "--bazel-config",
          action="append",
-@@ -375,6 +388,7 @@ def main() -> int:
+@@ -375,6 +395,7 @@ def main() -> int:
              compilation_mode=args.compilation_mode,
              bazel_configs=args.bazel_configs,
              sandbox=args.sandbox,

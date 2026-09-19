@@ -310,6 +310,13 @@ def stage_release_pair(
     bazel_configs = artifact_bazel_configs(bazel_configs)
     labels = [release_pair_label(target, sandbox)]
     if skip_build:
+        bazel_build(
+            platform,
+            labels,
+            compilation_mode,
+            bazel_configs,
+            download_toplevel=True,
+        )
         outputs = bazel_output_files(platform, labels, compilation_mode, bazel_configs)
         missing = [str(path) for path in outputs if not path.exists()]
         if missing:
