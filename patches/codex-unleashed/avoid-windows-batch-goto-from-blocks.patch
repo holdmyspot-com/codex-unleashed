@@ -1,0 +1,27 @@
+diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
+--- a/workspace_root_test_launcher.bat.tpl
++++ b/workspace_root_test_launcher.bat.tpl
+@@ -118,3 +118,2 @@ for %%R in ("%RUNFILES_DIR%" "%TEST_SRCDIR%") do (
+       set "resolve_runfile_result=!resolve_runfile_root!\!resolve_runfile_native_logical_path!"
+-      goto :resolve_runfile_success
+     )
+@@ -122,3 +121,2 @@ for %%R in ("%RUNFILES_DIR%" "%TEST_SRCDIR%") do (
+       set "resolve_runfile_result=!resolve_runfile_root!\!resolve_runfile_native_workspace_logical_path!"
+-      goto :resolve_runfile_success
+     )
+@@ -126,2 +124,3 @@ for %%R in ("%RUNFILES_DIR%" "%TEST_SRCDIR%") do (
+ )
++if defined resolve_runfile_result goto :resolve_runfile_success
+ 
+@@ -144,3 +143,2 @@ if defined resolve_runfile_manifest if exist "!resolve_runfile_manifest!" (
+       set "resolve_runfile_result=!resolve_runfile_manifest_path!"
+-      goto :resolve_runfile_success
+     )
+@@ -150,3 +148,2 @@ if defined resolve_runfile_manifest if exist "!resolve_runfile_manifest!" (
+       set "resolve_runfile_result=!resolve_runfile_manifest_path!"
+-      goto :resolve_runfile_success
+     )
+@@ -154,2 +151,3 @@ if defined resolve_runfile_manifest if exist "!resolve_runfile_manifest!" (
+ )
++if defined resolve_runfile_result goto :resolve_runfile_success
+ 
