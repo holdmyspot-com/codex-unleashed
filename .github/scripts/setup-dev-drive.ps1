@@ -22,8 +22,13 @@ function Invoke-BestEffort {
     }
 }
 
+$SupportsDevDrive = (Get-Command Format-Volume -ErrorAction Stop).Parameters.ContainsKey("DevDrive")
+
 if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
     Write-Output "Using existing Dev Drive at D:"
+    $Drive = "D:"
+} elseif ((Test-Path "D:\") -and -not $SupportsDevDrive) {
+    Write-Output "Using existing regular D: volume on a runner without Dev Drive support."
     $Drive = "D:"
 } else {
     if (Test-Path "D:\") {
@@ -43,7 +48,6 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
         $Disk = $Mounted | Get-Disk -ErrorAction Stop
         $Disk | Initialize-Disk -PartitionStyle GPT -ErrorAction Stop
         $Partition = $Disk | New-Partition -AssignDriveLetter -UseMaximumSize -ErrorAction Stop
-        $FormatVolumeParameters = (Get-Command Format-Volume -ErrorAction Stop).Parameters
         $FormatVolumeArguments = @{
             FileSystem = "ReFS"
             NewFileSystemLabel = "CodexDevDrive"
@@ -51,7 +55,7 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
             Force = $true
             ErrorAction = "Stop"
         }
-        if ($FormatVolumeParameters.ContainsKey("DevDrive")) {
+        if ($SupportsDevDrive) {
             $FormatVolumeArguments.DevDrive = $true
         } else {
             Write-Warning "Format-Volume does not support -DevDrive; using a regular ReFS volume."
@@ -60,11 +64,11 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
 
         $Drive = "$($Volume.DriveLetter):"
 
-        if ($FormatVolumeParameters.ContainsKey("DevDrive") -and -not (Test-DevDrive $Drive)) {
+        if ($SupportsDevDrive -and -not (Test-DevDrive $Drive)) {
             throw "Provisioned volume at $Drive did not pass Dev Drive verification."
         }
 
-        if ($FormatVolumeParameters.ContainsKey("DevDrive")) {
+        if ($SupportsDevDrive) {
             Invoke-BestEffort { fsutil devdrv trust $Drive } "Trusting Dev Drive $Drive"
             Invoke-BestEffort { fsutil devdrv enable /disallowAv } "Disabling AV filter attachment for Dev Drives"
         }
