@@ -1,0 +1,25 @@
+diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
+index 5825893..72a083d 100755
+--- a/.github/scripts/run-bazel-ci.sh
++++ b/.github/scripts/run-bazel-ci.sh
+@@ -266,4 +266,12 @@
+ fi
+ 
+ post_config_bazel_args=()
++# Keep hosted runners within their native-thread budget while preserving
++# remote action parallelism.
++bazel_jobs=2
++if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
++  bazel_jobs=1
++  post_config_bazel_args+=("--loading_phase_threads=1")
++fi
++post_config_bazel_args+=("--jobs=${bazel_jobs}")
+ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
+@@ -305,6 +313,6 @@
+ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
+   # The Windows cross-compile config depends on authenticated remote
+   # execution. When credentials are unavailable, keep the local build shape
+   # and its lower concurrency cap.
+-  post_config_bazel_args+=(--jobs=8)
++  post_config_bazel_args+=(--jobs=2)
+ fi
