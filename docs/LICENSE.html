@@ -34,8 +34,7 @@
   .skip { position: absolute; left: 1rem; top: -5rem; padding: .5rem 1rem; background: white; z-index: 5; }
   .skip:focus { top: 1rem; }
   .shell { width: min(1160px, calc(100% - 48px)); margin: auto; }
-  .masthead { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: space-between; align-items: center; min-height: 88px; border-bottom: 1px solid rgba(89, 5, 64, .08); }
-  .wordmark { display: inline-flex; width: 220px; color: var(--plum-deep); }
+  .wordmark { display: flex; width: min(7em, calc(100% - 124px)); margin-bottom: .22em; color: var(--plum-deep); }
   .wordmark-logo { display: block; width: 100%; height: auto; }
 .theme-toggle {
   display: inline-flex;
@@ -68,7 +67,8 @@
   .theme-toggle { transition: background-color 180ms ease; }
   .theme-toggle:hover { background: var(--cream-deep); }
   .theme-toggle:focus-visible { outline: 3px solid var(--plum); outline-offset: 5px; }
-  header { padding: 4.5rem 0 3.5rem; }
+  header { position: relative; padding: 3rem 0 3.5rem; }
+  header > .theme-toggle { position: absolute; top: 3rem; right: 0; }
   .hero-copy { max-width: 1000px; }
   h1 { font: 750 clamp(2.5rem, 4.6vw, 3.75rem)/1.12 var(--sans); letter-spacing: -.045em; margin: 0 0 1.5rem; color: var(--plum-deep); }
   .title-version { display: inline-block; vertical-align: middle; padding: .45rem .8rem; border: 1px solid var(--line); border-radius: 999px; font: 650 .9rem/1.4 var(--sans); letter-spacing: 0; white-space: nowrap; }
@@ -203,8 +203,8 @@
 
   @media (max-width: 760px) {
     .shell { width: min(100% - 32px, 620px); }
-    .masthead { padding: 1.2rem 0; }
-    header { padding: 2.6rem 0; }
+    header { padding: 2rem 0 2.6rem; }
+    header > .theme-toggle { top: 2rem; }
     h1 { font-size: clamp(2rem, 6.5vw, 2.8rem); }
     .title-version { margin-top: .75rem; }
     .overview { margin-bottom: 2.5rem; padding: 2rem 0; }
@@ -216,13 +216,13 @@
     .terms, .explanation, .foundation, .guide-preface { padding: 1.5rem; }
     .view-options { display: flex; flex-direction: column; border-radius: 24px; }
     .view-label { justify-content: flex-start; padding: .8rem 1rem; border-radius: 18px; }
-    .wordmark { width: 175px; }
     nav a { display: flex; align-items: center; min-height: 44px; }
     .section-menu ol { padding: 1rem .25rem 0; }
     .back-to-top { padding: .5rem 0; min-height: 44px; }
   }
 
   @media (max-width: 480px) {
+    .wordmark { width: min(7em, calc(100% - 60px)); }
     .theme-toggle { min-width: 44px; padding: 10px; }
     .theme-label { display: none; }
     .terms, .explanation, .foundation, .guide-preface { padding: 1.25rem; }
@@ -255,7 +255,7 @@
     .skip, nav, .reading-controls, .reading-note, .mode-note, .hero-links, .back-to-top, .overview-hint, .card summary::after, .theme-toggle { display: none !important; }
     header { display: block; padding: 1rem 0; }
     h1 { font-size: 28pt; }
-    .masthead { padding: .5rem 0; }
+    .wordmark { width: 7em; }
     .overview { margin-bottom: 1rem; }
     .cards { display: block; }
     .card { break-inside: avoid; margin-bottom: 1rem; box-shadow: none; }
@@ -292,7 +292,6 @@
       --line: rgba(239, 184, 221, .2);
     }
     body { background: radial-gradient(ellipse at 90% 0, rgba(143, 67, 113, .16), transparent 850px), linear-gradient(125deg, var(--cream), #251b25 580px, var(--cream) 1000px); }
-    .masthead { border-bottom-color: var(--line); }
     .wordmark-logo > g[fill="#40022e"] { fill: #fff1f8; }
     .wordmark-logo > g[fill="#a8565f"] { fill: #e6a4aa; }
     .skip { background: var(--paper); }
@@ -383,15 +382,14 @@
 <body>
 <a href="#license" class="skip">Skip to license</a>
 <div class="shell" id="top">
-  <div class="masthead"><a class="wordmark" href="https://holdmyspot.com/" aria-label="HoldMySpot home"><svg class="wordmark-logo" xmlns="http://www.w3.org/2000/svg" viewBox="-24 -80 1264 288" role="img" aria-labelledby="wordmark-title"><title id="wordmark-title">HoldMySpot</title><g fill="#40022e" transform="translate(-322 -362)"><path d="M332 362h14q10 0 10 10v36q0 10 10 10h48q10 0 10-10v-36q0-10 10-10h14q10 0 10 10v121q0 10-10 10h-14q-10 0-10-10v-32q0-14-14-14h-44q-10 0-10 10v36q0 10-10 10h-14q-10 0-10-10V372q0-10 10-10Z"/><circle cx="339" cy="328" r="22"/></g><g fill="#40022e"><path transform="translate(153)" fill-rule="evenodd" d="M49 32h24c31 0 49 21 49 55 0 35-18 56-49 56H49C18 143 0 122 0 87c0-34 18-55 49-55Zm1 25c-16 0-21 11-21 30 0 20 6 31 21 31h22c15 0 21-11 21-31 0-19-5-30-21-30Z"/><path transform="translate(290)" d="M8-7h16q8 0 8 8v132q0 8-8 8H8q-8 0-8-8V1q0-8 8-8Z"/><path transform="translate(337)" fill-rule="evenodd" d="M88-7h16q8 0 8 8v132q0 8-8 8H90q-8 0-8-8v-4c-9 10-19 14-33 14C19 143 0 121 0 87c0-34 19-56 49-56 14 0 24 4 31 12V1q0-8 8-8ZM55 58c-16 0-25 11-25 29 0 19 9 30 25 30s26-11 26-30c0-18-10-29-26-29Z"/><path transform="translate(466)" fill-rule="evenodd" d="M9 0h17q5 0 8 5l33 56q2 3 4 0l33-56q3-5 8-5h17q9 0 9 9v123q0 9-9 9h-16q-9 0-9-9V60L83 96q-4 6-10 6h-8q-6 0-10-6L34 60v72q0 9-9 9H9q-9 0-9-9V9q0-9 9-9Z"/><path transform="translate(615)" d="M6 34h18q6 0 8 6l25 66 24-66q2-6 8-6h18q7 0 4 8L65 156c-8 20-19 28-37 28-8 0-15-2-20-5q-5-2-3-8l5-14q2-5 7-3c5 2 8 2 11 2 7 0 12-4 16-14L1 42q-3-8 5-8Z"/><path transform="translate(737)" d="M106 12q6 3 3 9l-9 15q-3 5-8 2c-13-8-23-12-35-12-16 0-24 6-24 16 0 10 11 14 30 19 31 8 49 19 49 42 0 26-22 40-53 40-21 0-41-6-55-16q-5-3-2-9l10-15q3-5 8-1c14 10 29 15 41 15 14 0 22-5 22-14 0-10-11-14-30-20C23 76 4 65 4 42 4 16 26-2 57-2c19 0 36 5 49 14Z"/><path transform="translate(866)" fill-rule="evenodd" d="M8 34h15q8 0 8 8v3c9-10 20-14 34-14 30 0 49 22 49 56s-19 56-49 56c-14 0-25-4-33-12v44q0 8-8 8H8q-8 0-8-8V42q0-8 8-8Zm51 24c-16 0-27 11-27 29 0 19 11 30 27 30s25-11 25-30c0-18-9-29-25-29Z"/><path transform="translate(995)" fill-rule="evenodd" d="M49 32h24c31 0 49 21 49 55 0 35-18 56-49 56H49C18 143 0 122 0 87c0-34 18-55 49-55Zm1 25c-16 0-21 11-21 30 0 20 6 31 21 31h22c15 0 21-11 21-31 0-19-5-30-21-30Z"/><path transform="translate(1127)" d="M25 0h16q8 0 8 8v26h20q8 0 8 8v9q0 8-8 8H49v42c0 12 4 16 13 16 5 0 8-1 12-3q5-2 7 4l4 14q2 5-3 7c-8 4-16 6-25 6-27 0-40-14-40-40V59H8q-8 0-8-8v-9q0-8 8-8h9V8q0-8 8-8Z"/></g><g fill="#a8565f"><path transform="translate(153)" d="M44 97h34a8 8 0 0 1 0 16H44a8 8 0 0 1 0-16Z"/><path transform="translate(995)" d="M44 97h34a8 8 0 0 1 0 16H44a8 8 0 0 1 0-16Z"/></g></svg></a>
+  <header>
   <button class="theme-toggle" type="button" aria-label="Color theme: System. Switch to light mode" hidden>
     <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" /></svg>
     <span class="theme-label">System</span>
   </button>
-  </div>
-  <header>
     <div class="hero-copy">
-      <h1>Codex Unleashed<br>HoldMySpot Source-Available License <span class="title-version">Version 1.0</span></h1>
+      <h1 aria-label="HoldMySpot Source-Available License, Version 1.0"><a class="wordmark" href="https://holdmyspot.com/" aria-label="HoldMySpot home"><svg class="wordmark-logo" xmlns="http://www.w3.org/2000/svg" viewBox="-24 -80 1264 288" role="img" aria-labelledby="wordmark-title"><title id="wordmark-title">HoldMySpot</title><g fill="#40022e" transform="translate(-322 -362)"><path d="M332 362h14q10 0 10 10v36q0 10 10 10h48q10 0 10-10v-36q0-10 10-10h14q10 0 10 10v121q0 10-10 10h-14q-10 0-10-10v-32q0-14-14-14h-44q-10 0-10 10v36q0 10-10 10h-14q-10 0-10-10V372q0-10 10-10Z"/><circle cx="339" cy="328" r="22"/></g><g fill="#40022e"><path transform="translate(153)" fill-rule="evenodd" d="M49 32h24c31 0 49 21 49 55 0 35-18 56-49 56H49C18 143 0 122 0 87c0-34 18-55 49-55Zm1 25c-16 0-21 11-21 30 0 20 6 31 21 31h22c15 0 21-11 21-31 0-19-5-30-21-30Z"/><path transform="translate(290)" d="M8-7h16q8 0 8 8v132q0 8-8 8H8q-8 0-8-8V1q0-8 8-8Z"/><path transform="translate(337)" fill-rule="evenodd" d="M88-7h16q8 0 8 8v132q0 8-8 8H90q-8 0-8-8v-4c-9 10-19 14-33 14C19 143 0 121 0 87c0-34 19-56 49-56 14 0 24 4 31 12V1q0-8 8-8ZM55 58c-16 0-25 11-25 29 0 19 9 30 25 30s26-11 26-30c0-18-10-29-26-29Z"/><path transform="translate(466)" fill-rule="evenodd" d="M9 0h17q5 0 8 5l33 56q2 3 4 0l33-56q3-5 8-5h17q9 0 9 9v123q0 9-9 9h-16q-9 0-9-9V60L83 96q-4 6-10 6h-8q-6 0-10-6L34 60v72q0 9-9 9H9q-9 0-9-9V9q0-9 9-9Z"/><path transform="translate(615)" d="M6 34h18q6 0 8 6l25 66 24-66q2-6 8-6h18q7 0 4 8L65 156c-8 20-19 28-37 28-8 0-15-2-20-5q-5-2-3-8l5-14q2-5 7-3c5 2 8 2 11 2 7 0 12-4 16-14L1 42q-3-8 5-8Z"/><path transform="translate(737)" d="M106 12q6 3 3 9l-9 15q-3 5-8 2c-13-8-23-12-35-12-16 0-24 6-24 16 0 10 11 14 30 19 31 8 49 19 49 42 0 26-22 40-53 40-21 0-41-6-55-16q-5-3-2-9l10-15q3-5 8-1c14 10 29 15 41 15 14 0 22-5 22-14 0-10-11-14-30-20C23 76 4 65 4 42 4 16 26-2 57-2c19 0 36 5 49 14Z"/><path transform="translate(866)" fill-rule="evenodd" d="M8 34h15q8 0 8 8v3c9-10 20-14 34-14 30 0 49 22 49 56s-19 56-49 56c-14 0-25-4-33-12v44q0 8-8 8H8q-8 0-8-8V42q0-8 8-8Zm51 24c-16 0-27 11-27 29 0 19 11 30 27 30s25-11 25-30c0-18-9-29-25-29Z"/><path transform="translate(995)" fill-rule="evenodd" d="M49 32h24c31 0 49 21 49 55 0 35-18 56-49 56H49C18 143 0 122 0 87c0-34 18-55 49-55Zm1 25c-16 0-21 11-21 30 0 20 6 31 21 31h22c15 0 21-11 21-31 0-19-5-30-21-30Z"/><path transform="translate(1127)" d="M25 0h16q8 0 8 8v26h20q8 0 8 8v9q0 8-8 8H49v42c0 12 4 16 13 16 5 0 8-1 12-3q5-2 7 4l4 14q2 5-3 7c-8 4-16 6-25 6-27 0-40-14-40-40V59H8q-8 0-8-8v-9q0-8 8-8h9V8q0-8 8-8Z"/></g><g fill="#a8565f"><path transform="translate(153)" d="M44 97h34a8 8 0 0 1 0 16H44a8 8 0 0 1 0-16Z"/><path transform="translate(995)" d="M44 97h34a8 8 0 0 1 0 16H44a8 8 0 0 1 0-16Z"/></g></svg></a>
+        Source-Available License <span class="title-version">Version 1.0</span></h1>
       <p class="hero-tagline">Product application of the HoldMySpot Source-Available License.</p>
       <p class="lede">Read the overview, then explore the License Terms and their accompanying Explanation.</p>
       <div class="hero-links"><a class="primary-link" href="#overview-heading">Start with the overview</a><a href="#agreement-heading">Read the full agreement</a></div>

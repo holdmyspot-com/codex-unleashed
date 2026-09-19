@@ -25,8 +25,7 @@ TARGETS = {
 
 LEGAL_FILES = (
     "LICENSE.md",
-    "LICENSE-APACHE-2.0",
-    "docs/codex-unleashed-license-1.0.html",
+    "docs/LICENSE.html",
     "docs/terms.html",
     "docs/privacy.html",
 )
@@ -146,12 +145,20 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def copy_legal_files(package_dir: Path) -> None:
+def copy_legal_files(package_dir: Path, source_root: Path) -> None:
     for relative_name in LEGAL_FILES:
-        source = Path(__file__).resolve().parents[1] / relative_name
+        source = source_root / relative_name
         destination = package_dir / relative_name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
+    third_party_source = source_root / "licenses"
+    if not third_party_source.is_dir():
+        raise RuntimeError(f"Missing generated third-party licenses: {third_party_source}")
+    shutil.copytree(
+        third_party_source,
+        package_dir / "licenses",
+        dirs_exist_ok=True,
+    )
 
 
 def main() -> int:
@@ -198,7 +205,7 @@ def main() -> int:
                 vendor_dir = platform_dir / "vendor" / target
                 vendor_dir.parent.mkdir(parents=True)
                 shutil.copytree(extracted_archives[target], vendor_dir, dirs_exist_ok=True)
-                copy_legal_files(platform_dir)
+                copy_legal_files(platform_dir, extracted_archives[target])
                 write_json(platform_dir / "package.json", {
                     "name": platform_package_name,
                     "version": version,
@@ -206,7 +213,7 @@ def main() -> int:
                     "license": "See LICENSE.md",
                     "os": [platform_name.split("-")[0]],
                     "cpu": [platform_name.split("-")[-1]],
-                    "files": ["vendor", *LEGAL_FILES],
+                    "files": ["vendor", "licenses", *LEGAL_FILES],
                 })
                 package_dirs.append((platform_dir, access))
                 platform_packages.append((platform_name, platform_package_name))
@@ -219,7 +226,7 @@ def main() -> int:
             )
             (main_dir / "bin" / "codex.js").write_text(launcher, encoding="utf-8")
             (main_dir / "bin" / "codex.js").chmod(0o755)
-            copy_legal_files(main_dir)
+            copy_legal_files(main_dir, next(iter(extracted_archives.values())))
             optional = {name: version for _, name in platform_packages}
             write_json(main_dir / "package.json", {
                 "name": package_name,
@@ -228,12 +235,12 @@ def main() -> int:
                 "license": "See LICENSE.md",
                 "type": "module",
                 "bin": {"codex": "bin/codex.js"},
-                "files": ["bin", *LEGAL_FILES],
+                "files": ["bin", "licenses", *LEGAL_FILES],
                 "optionalDependencies": optional,
                 "publishConfig": {"registry": args.registry},
             })
             (main_dir / "README.md").write_text(
-                f"# {package_name}\n\nCodex Unleashed build {version}.\n\nLicense: [Codex Unleashed product license](LICENSE.md); upstream materials remain under [Apache License 2.0](LICENSE-APACHE-2.0).\n",
+                f"# {package_name}\n\nCodex Unleashed build {version}.\n\nLicense: [Codex Unleashed product license](LICENSE.md); upstream and third-party materials retain their licenses under [licenses/](licenses/), including [Apache License 2.0](licenses/openai-codex/LICENSE-APACHE-2.0).\n",
                 encoding="utf-8",
             )
             package_dirs.append((main_dir, access))

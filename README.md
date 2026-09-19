@@ -4,7 +4,7 @@ A public patch queue and patched binary distribution for OpenAI Codex.
 
 > Warning: Unofficial, not affiliated with OpenAI.
 
-[![License](https://img.shields.io/badge/license-source--available-590540)](docs/codex-unleashed-license-1.0.html)
+[![License](https://img.shields.io/badge/license-source--available-590540)](docs/LICENSE.html)
 [![Public patches](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/holdmyspot-com/codex-unleashed/main/docs/badges/public-patches.json)](https://github.com/holdmyspot-com/codex-unleashed/tree/main/patches)
 [![Early-access patches](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/holdmyspot-com/codex-unleashed/main/docs/badges/early-access.json)](https://holdmyspot.com/codex-unleashed/)
 
@@ -132,7 +132,7 @@ Project:           https://github.com/holdmyspot-com/codex-unleashed
 
 ## License
 
-Codex Unleashed company-owned additions and modifications are covered by the [HoldMySpot Source-Available License, Version 1.0](LICENSE.md), with an [HTML edition](docs/codex-unleashed-license-1.0.html). Upstream OpenAI Codex materials and other third-party materials retain their own licenses, notices, and attribution; the upstream Apache License 2.0 is preserved in [LICENSE](LICENSE).
+Codex Unleashed company-owned additions and modifications are covered by the [HoldMySpot Source-Available License, Version 1.0](LICENSE.md), with an [HTML edition](docs/LICENSE.html). Upstream OpenAI Codex materials and other third-party materials retain their own licenses, notices, and attribution under [licenses/](licenses/); the upstream Apache License 2.0 is preserved in [licenses/openai-codex/LICENSE-APACHE-2.0](licenses/openai-codex/LICENSE-APACHE-2.0).
 
 The supplied product policies are [Codex Unleashed Terms of Service](docs/terms.html) and [Codex Unleashed Privacy Notice](docs/privacy.html). They are also bundled with release packages for offline inspection.
 

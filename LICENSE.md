@@ -1,4 +1,4 @@
-For improved readability, see the [HTML edition](docs/codex-unleashed-license-1.0.html).
+For improved readability, see the [HTML edition](docs/LICENSE.html).
 
 # Codex Unleashed application of the HoldMySpot Source-Available License · Version 1.0
 

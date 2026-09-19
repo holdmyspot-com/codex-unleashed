@@ -1,8 +1,11 @@
 """Canonical Codex package directory layout."""
 
 import json
+import os
 import shutil
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 from .targets import PackageInputs
@@ -101,9 +104,11 @@ def copy_legal_materials(package_dir: Path) -> None:
     """Bundle the product agreement and the supplied policy versions offline."""
     product_files = {
         PATCH_REPO_ROOT / "LICENSE.md": package_dir / "LICENSE.md",
-        PATCH_REPO_ROOT / "LICENSE": package_dir / "LICENSE-APACHE-2.0",
-        PATCH_REPO_ROOT / "docs" / "codex-unleashed-license-1.0.html": (
-            package_dir / "docs" / "codex-unleashed-license-1.0.html"
+        PATCH_REPO_ROOT / "licenses" / "openai-codex" / "LICENSE-APACHE-2.0": (
+            package_dir / "licenses" / "openai-codex" / "LICENSE-APACHE-2.0"
+        ),
+        PATCH_REPO_ROOT / "docs" / "LICENSE.html": (
+            package_dir / "docs" / "LICENSE.html"
         ),
         PATCH_REPO_ROOT / "docs" / "terms.html": package_dir / "docs" / "terms.html",
         PATCH_REPO_ROOT / "docs" / "privacy.html": package_dir / "docs" / "privacy.html",
@@ -113,6 +118,24 @@ def copy_legal_materials(package_dir: Path) -> None:
             raise RuntimeError(f"Missing legal material: {source}")
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
+
+    workspace_root = os.environ.get("CODEX_PACKAGE_WORKSPACE_ROOT")
+    if workspace_root:
+        manifest = Path(workspace_root) / "codex-rs" / "Cargo.toml"
+        if manifest.is_file():
+            collector = PATCH_REPO_ROOT / "scripts" / "collect_third_party_licenses.py"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(collector),
+                    "--manifest",
+                    str(manifest),
+                    "--output",
+                    str(package_dir / "licenses" / "rust"),
+                    "--require-license-files",
+                ],
+                check=True,
+            )
 
 
 def validate_package_dir(
@@ -156,8 +179,8 @@ def validate_package_dir(
 
     required_files = [
         Path("LICENSE.md"),
-        Path("LICENSE-APACHE-2.0"),
-        Path("docs") / "codex-unleashed-license-1.0.html",
+        Path("licenses") / "openai-codex" / "LICENSE-APACHE-2.0",
+        Path("docs") / "LICENSE.html",
         Path("docs") / "terms.html",
         Path("docs") / "privacy.html",
         Path("bin") / variant.entrypoint_name(spec),
