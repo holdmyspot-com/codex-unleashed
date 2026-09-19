@@ -1,6 +1,81 @@
 diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
 --- a/workspace_root_test_launcher.bat.tpl
 +++ b/workspace_root_test_launcher.bat.tpl
+@@ -1,6 +1,74 @@
+ @echo off
+ setlocal EnableExtensions EnableDelayedExpansion
+ 
++goto :main
++
++:resolve_runfile
++set "resolve_runfile_result="
++set "resolve_runfile_logical_path=%~1"
++set "resolve_runfile_workspace_logical_path=!resolve_runfile_logical_path!"
++if defined TEST_WORKSPACE set "resolve_runfile_workspace_logical_path=%TEST_WORKSPACE%/!resolve_runfile_logical_path!"
++set "resolve_runfile_native_logical_path=!resolve_runfile_logical_path:/=\!"
++set "resolve_runfile_native_workspace_logical_path=!resolve_runfile_workspace_logical_path:/=\!"
++
++for %%R in ("%RUNFILES_DIR%" "%TEST_SRCDIR%") do (
++  set "resolve_runfile_root=%%~R"
++  if defined resolve_runfile_root (
++    if exist "!resolve_runfile_root!\!resolve_runfile_native_logical_path!" (
++      set "resolve_runfile_result=!resolve_runfile_root!\!resolve_runfile_native_logical_path!"
++    )
++    if exist "!resolve_runfile_root!\!resolve_runfile_native_workspace_logical_path!" (
++      set "resolve_runfile_result=!resolve_runfile_root!\!resolve_runfile_native_workspace_logical_path!"
++    )
++  )
++)
++if defined resolve_runfile_result goto :resolve_runfile_success
++
++set "resolve_runfile_manifest=%RUNFILES_MANIFEST_FILE%"
++if not defined resolve_runfile_manifest if exist "%~f0.runfiles_manifest" set "resolve_runfile_manifest=%~f0.runfiles_manifest"
++if not defined resolve_runfile_manifest if exist "%~dpn0.runfiles_manifest" set "resolve_runfile_manifest=%~dpn0.runfiles_manifest"
++if not defined resolve_runfile_manifest if exist "%~f0.exe.runfiles_manifest" set "resolve_runfile_manifest=%~f0.exe.runfiles_manifest"
++
++if defined resolve_runfile_manifest if exist "!resolve_runfile_manifest!" (
++  for /f "usebackq tokens=1,* delims= " %%A in ("!resolve_runfile_manifest!") do (
++    if "%%A"=="!resolve_runfile_logical_path!" (
++      set "resolve_runfile_manifest_path=%%B"
++      if not defined resolve_runfile_manifest_path set "resolve_runfile_manifest_path=%%A"
++      set "resolve_runfile_result=!resolve_runfile_manifest_path!"
++    )
++    if "%%A"=="!resolve_runfile_workspace_logical_path!" (
++      set "resolve_runfile_manifest_path=%%B"
++      if not defined resolve_runfile_manifest_path set "resolve_runfile_manifest_path=%%A"
++      set "resolve_runfile_result=!resolve_runfile_manifest_path!"
++    )
++  )
++)
++if defined resolve_runfile_result goto :resolve_runfile_success
++
++>&2 echo failed to resolve runfile: !resolve_runfile_logical_path!
++call :clear_resolve_runfile_state
++exit /b 1
++
++:resolve_runfile_success
++if not defined resolve_runfile_result (
++  >&2 echo resolved runfile has an empty path: !resolve_runfile_logical_path!
++  call :clear_resolve_runfile_state
++  exit /b 1
++)
++call :clear_resolve_runfile_state
++exit /b 0
++
++:clear_resolve_runfile_state
++set "resolve_runfile_logical_path="
++set "resolve_runfile_workspace_logical_path="
++set "resolve_runfile_native_logical_path="
++set "resolve_runfile_native_workspace_logical_path="
++set "resolve_runfile_root="
++set "resolve_runfile_manifest="
++set "resolve_runfile_manifest_path="
++exit /b 0
++
++:main
+ call :resolve_runfile "__WORKSPACE_ROOT_MARKER__"
+ if errorlevel 1 exit /b 1
+ set "workspace_root_marker=!resolve_runfile_result!"
 @@ -12,8 +12,12 @@ call :resolve_runfile "__TEST_BIN__"
  call :resolve_runfile "__TEST_BIN__"
  if errorlevel 1 exit /b 1
