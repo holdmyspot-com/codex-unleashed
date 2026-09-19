@@ -1,6 +1,19 @@
 diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
 --- a/workspace_root_test_launcher.bat.tpl
 +++ b/workspace_root_test_launcher.bat.tpl
+@@ -12,8 +12,12 @@ call :resolve_runfile "__TEST_BIN__"
+ call :resolve_runfile "__TEST_BIN__"
+ if errorlevel 1 exit /b 1
+ set "test_bin=!resolve_runfile_result!"
+ 
++set "workspace_root_test_bin=!test_bin!"
+ __RUNFILE_ENV_EXPORTS__
+ 
++if not defined test_bin set "test_bin=!workspace_root_test_bin!"
++set "workspace_root_test_bin="
++
+ if not defined test_bin (
+   >&2 echo resolved test binary was lost while exporting runfile environment variables
 @@ -118,3 +118,2 @@ for %%R in ("%RUNFILES_DIR%" "%TEST_SRCDIR%") do (
        set "resolve_runfile_result=!resolve_runfile_root!\!resolve_runfile_native_logical_path!"
 -      goto :resolve_runfile_success
