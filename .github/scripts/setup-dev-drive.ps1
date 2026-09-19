@@ -64,8 +64,10 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
             throw "Provisioned volume at $Drive did not pass Dev Drive verification."
         }
 
-        Invoke-BestEffort { fsutil devdrv trust $Drive } "Trusting Dev Drive $Drive"
-        Invoke-BestEffort { fsutil devdrv enable /disallowAv } "Disabling AV filter attachment for Dev Drives"
+        if ($FormatVolumeParameters.ContainsKey("DevDrive")) {
+            Invoke-BestEffort { fsutil devdrv trust $Drive } "Trusting Dev Drive $Drive"
+            Invoke-BestEffort { fsutil devdrv enable /disallowAv } "Disabling AV filter attachment for Dev Drives"
+        }
 
         Write-Output "Using Dev Drive at $Drive"
     } catch {
