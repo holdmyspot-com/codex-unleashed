@@ -139,8 +139,8 @@ jobs:
           - 2
           - 3
           - 4
-    runs-on: windows-latest
-    name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm shard ${{ matrix.shard }}/4
+    runs-on: windows-2022
+    name: Bazel test on windows-2022 for x86_64-pc-windows-gnullvm shard ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@v6
         with:
@@ -225,7 +225,7 @@ jobs:
     if: always()
     needs: test-windows-shard
     runs-on: ubuntu-latest
-    name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm
+    name: Bazel test on windows-2022 for x86_64-pc-windows-gnullvm
     steps:
       - name: Confirm Windows Bazel test shards passed
         shell: bash
@@ -238,8 +238,8 @@ jobs:
   test-windows-native-main:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     timeout-minutes: 60
-    runs-on: windows-latest
-    name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm (native main)
+    runs-on: windows-2022
+    name: Bazel test on windows-2022 for x86_64-pc-windows-gnullvm (native main)
     steps:
       - uses: actions/checkout@v6
         with:
