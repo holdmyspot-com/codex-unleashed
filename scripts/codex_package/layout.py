@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .targets import PackageInputs
 from .targets import PackageVariant
+from .targets import PATCH_REPO_ROOT
 from .targets import TargetSpec
 from .zsh import ZSH_RESOURCE_PATH
 
@@ -44,6 +45,8 @@ def build_package_dir(
     bin_dir.mkdir()
     resources_dir.mkdir()
     path_dir.mkdir()
+
+    copy_legal_materials(package_dir)
 
     entrypoint_name = variant.entrypoint_name(spec)
     copy_executable(
@@ -94,6 +97,24 @@ def build_package_dir(
     write_json(package_dir / "codex-package.json", metadata)
 
 
+def copy_legal_materials(package_dir: Path) -> None:
+    """Bundle the product agreement and the supplied policy versions offline."""
+    product_files = {
+        PATCH_REPO_ROOT / "LICENSE.md": package_dir / "LICENSE.md",
+        PATCH_REPO_ROOT / "LICENSE": package_dir / "LICENSE-APACHE-2.0",
+        PATCH_REPO_ROOT / "docs" / "codex-unleashed-license-1.0.html": (
+            package_dir / "docs" / "codex-unleashed-license-1.0.html"
+        ),
+        PATCH_REPO_ROOT / "docs" / "terms.html": package_dir / "docs" / "terms.html",
+        PATCH_REPO_ROOT / "docs" / "privacy.html": package_dir / "docs" / "privacy.html",
+    }
+    for source, destination in product_files.items():
+        if not source.is_file():
+            raise RuntimeError(f"Missing legal material: {source}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+
+
 def validate_package_dir(
     package_dir: Path,
     variant: PackageVariant,
@@ -134,11 +155,20 @@ def validate_package_dir(
             )
 
     required_files = [
+        Path("LICENSE.md"),
+        Path("LICENSE-APACHE-2.0"),
+        Path("docs") / "codex-unleashed-license-1.0.html",
+        Path("docs") / "terms.html",
+        Path("docs") / "privacy.html",
         Path("bin") / variant.entrypoint_name(spec),
         Path("bin") / f"codex-code-mode-host{spec.exe_suffix}",
         Path("codex-path") / spec.rg_name,
     ]
-    executable_files = list(required_files)
+    executable_files = [
+        Path("bin") / variant.entrypoint_name(spec),
+        Path("bin") / f"codex-code-mode-host{spec.exe_suffix}",
+        Path("codex-path") / spec.rg_name,
+    ]
 
     if include_zsh:
         zsh_path = Path("codex-resources") / ZSH_RESOURCE_PATH

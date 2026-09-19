@@ -2,6 +2,7 @@
   "name": "workspace",
   "version": "1.0.0",
   "description": "A public patch queue and patched binary distribution for OpenAI Codex.",
+  "license": "See LICENSE.md",
   "main": "index.js",
   "directories": {
     "doc": "docs"

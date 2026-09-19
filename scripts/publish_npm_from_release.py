@@ -23,6 +23,19 @@ TARGETS = {
     "aarch64-pc-windows-msvc": "win32-arm64",
 }
 
+LEGAL_FILES = (
+    "LICENSE.md",
+    "LICENSE-APACHE-2.0",
+    "docs/codex-unleashed-license-1.0.html",
+    "docs/terms.html",
+    "docs/privacy.html",
+)
+
+PACKAGE_VARIANTS = (
+    ("public", "codex-unleashed", "public"),
+    ("ea", "codex-unleashed-ea", "restricted"),
+)
+
 LAUNCHER = r'''#!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -46,7 +59,7 @@ const platformName = {
   "x86_64-pc-windows-msvc": "win32-x64",
   "aarch64-pc-windows-msvc": "win32-arm64",
 }[target];
-const platformPackage = `@holdmyspot/codex-${platformName}`;
+const platformPackage = `__PLATFORM_PACKAGE_PREFIX__${platformName}`;
 let platformRoot;
 try {
   platformRoot = path.dirname(require.resolve(`${platformPackage}/package.json`));
@@ -133,6 +146,14 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def copy_legal_files(package_dir: Path) -> None:
+    for relative_name in LEGAL_FILES:
+        source = Path(__file__).resolve().parents[1] / relative_name
+        destination = package_dir / relative_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+
+
 def main() -> int:
     args = parse_args()
     if not args.tag and not args.version:
@@ -141,7 +162,6 @@ def main() -> int:
     version = npm_version(release_version)
     if not args.scope.startswith("@"):
         raise SystemExit("--scope must include the @ prefix")
-    package_name = f"{args.scope}/codex"
     output = args.output_dir or Path(tempfile.mkdtemp(prefix="codex-npm-"))
     output.mkdir(parents=True, exist_ok=True)
     archives = args.archive_dir or output / "archives"
@@ -157,60 +177,72 @@ def main() -> int:
         shutil.rmtree(packages)
     packages.mkdir()
 
-    platform_packages = []
+    package_dirs = []
     with tempfile.TemporaryDirectory(prefix="codex-npm-extract-") as temp:
         temp_root = Path(temp)
-        for target, platform_name in TARGETS.items():
+        extracted_archives = {}
+        for target in TARGETS:
             archive = archives / f"codex-package-{target}.tar.gz"
             if not archive.is_file():
                 raise SystemExit(f"missing archive: {archive}")
             extracted = temp_root / target
             extracted.mkdir()
             safe_extract(archive, extracted)
+            extracted_archives[target] = extracted
 
-            platform_package_name = f"{package_name}-{platform_name}"
-            platform_dir = packages / platform_name
-            vendor_dir = platform_dir / "vendor" / target
-            vendor_dir.parent.mkdir(parents=True)
-            shutil.copytree(extracted, vendor_dir, dirs_exist_ok=True)
-            write_json(platform_dir / "package.json", {
-                "name": platform_package_name,
+        for variant, package_base, access in PACKAGE_VARIANTS:
+            platform_packages = []
+            for target, platform_name in TARGETS.items():
+                platform_package_name = f"{args.scope}/{package_base}-{platform_name}"
+                platform_dir = packages / variant / platform_name
+                vendor_dir = platform_dir / "vendor" / target
+                vendor_dir.parent.mkdir(parents=True)
+                shutil.copytree(extracted_archives[target], vendor_dir, dirs_exist_ok=True)
+                copy_legal_files(platform_dir)
+                write_json(platform_dir / "package.json", {
+                    "name": platform_package_name,
+                    "version": version,
+                    "description": f"Codex Unleashed native binaries for {platform_name}.",
+                    "license": "See LICENSE.md",
+                    "os": [platform_name.split("-")[0]],
+                    "cpu": [platform_name.split("-")[-1]],
+                    "files": ["vendor", *LEGAL_FILES],
+                })
+                package_dirs.append((platform_dir, access))
+                platform_packages.append((platform_name, platform_package_name))
+
+            package_name = f"{args.scope}/{package_base}"
+            main_dir = packages / variant / "main"
+            (main_dir / "bin").mkdir(parents=True)
+            launcher = LAUNCHER.replace(
+                "__PLATFORM_PACKAGE_PREFIX__", f"{args.scope}/{package_base}-"
+            )
+            (main_dir / "bin" / "codex.js").write_text(launcher, encoding="utf-8")
+            (main_dir / "bin" / "codex.js").chmod(0o755)
+            copy_legal_files(main_dir)
+            optional = {name: version for _, name in platform_packages}
+            write_json(main_dir / "package.json", {
+                "name": package_name,
                 "version": version,
-                "description": f"Codex Unleashed native binaries for {platform_name}.",
-                "license": "Apache-2.0",
-                "os": [platform_name.split("-")[0]],
-                "cpu": [platform_name.split("-")[-1]],
-                "files": ["vendor"],
+                "description": "Codex CLI distributed by Codex Unleashed.",
+                "license": "See LICENSE.md",
+                "type": "module",
+                "bin": {"codex": "bin/codex.js"},
+                "files": ["bin", *LEGAL_FILES],
+                "optionalDependencies": optional,
+                "publishConfig": {"registry": args.registry},
             })
-            platform_packages.append((platform_name, platform_package_name))
+            (main_dir / "README.md").write_text(
+                f"# {package_name}\n\nCodex Unleashed build {version}.\n\nLicense: [Codex Unleashed product license](LICENSE.md); upstream materials remain under [Apache License 2.0](LICENSE-APACHE-2.0).\n",
+                encoding="utf-8",
+            )
+            package_dirs.append((main_dir, access))
 
-    main_dir = packages / "main"
-    (main_dir / "bin").mkdir(parents=True)
-    (main_dir / "bin" / "codex.js").write_text(LAUNCHER, encoding="utf-8")
-    (main_dir / "bin" / "codex.js").chmod(0o755)
-    optional = {name: version for _, name in platform_packages}
-    write_json(main_dir / "package.json", {
-        "name": package_name,
-        "version": version,
-        "description": "Codex CLI distributed by Codex Unleashed.",
-        "license": "Apache-2.0",
-        "type": "module",
-        "bin": {"codex": "bin/codex.js"},
-        "files": ["bin"],
-        "optionalDependencies": optional,
-        "publishConfig": {"registry": args.registry},
-    })
-    (main_dir / "README.md").write_text(
-        f"# {package_name}\n\nCodex Unleashed build {version}.\n",
-        encoding="utf-8",
-    )
-
-    package_dirs = [packages / name for name, _ in platform_packages] + [main_dir]
-    for package_dir in package_dirs:
+    for package_dir, _ in package_dirs:
         npm(args, package_dir, "pack", "--pack-destination", str(output))
     if args.publish:
-        for package_dir in package_dirs:
-            npm(args, package_dir, "publish", "--access", "public", "--tag", "latest")
+        for package_dir, access in package_dirs:
+            npm(args, package_dir, "publish", "--access", access, "--tag", "latest")
     print(f"Created {len(package_dirs)} npm packages in {output}")
     if not args.publish:
         print("Packages were not published; pass --publish to publish to the configured registry.")
