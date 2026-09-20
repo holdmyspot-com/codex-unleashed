@@ -36,6 +36,7 @@ runs:
         set -euo pipefail
         python3 - <<'PY'
         from pathlib import Path
+        import tomllib
 
         manifest = Path("upstream/codex-rs/Cargo.toml")
         text = manifest.read_text(encoding="utf-8")
@@ -52,6 +53,23 @@ runs:
             'codex-voice-host = { path = "voice-host" }',
             'codex-worktree = { path = "worktree" }',
         ]
+        workspace = tomllib.loads(text).get("workspace", {})
+        for dependency_name, dependency in workspace.get("dependencies", {}).items():
+            if isinstance(dependency, dict) and "path" in dependency:
+                package_name = dependency.get("package", dependency_name)
+                mapping = f'{package_name} = {{ path = "{dependency["path"]}" }}'
+                if mapping not in mappings:
+                    mappings.append(mapping)
+        root = manifest.parent
+        for member in workspace.get("members", []):
+            package_manifest = root / member / "Cargo.toml"
+            if package_manifest.is_file():
+                package = tomllib.loads(package_manifest.read_text(encoding="utf-8")).get("package", {})
+                package_name = package.get("name")
+                if package_name:
+                    mapping = f'{package_name} = {{ path = "{member}" }}'
+                    if mapping not in mappings:
+                        mappings.append(mapping)
         if marker not in text:
             raise SystemExit(f"Missing {marker.strip()} in {manifest}")
         start = text.index(marker) + len(marker)
