@@ -282,8 +282,6 @@ runs:
         for (name, _version), block in generated_blocks.items():
             key = (name, _version)
             if name == "gix" or name in local_package_names or name not in original_versions:
-                if name in local_package_names:
-                    block = align_third_party_versions(block)
                 selected_generated_blocks[key] = block
 
         # Retain the transitive generated records needed by the selected
@@ -319,8 +317,6 @@ runs:
                 if replacements:
                     original = original.replace(old_block, replacements[0], 1)
         for key, block in selected_generated_blocks.items():
-            if key[0] in local_package_names:
-                block = align_third_party_versions(block)
             if key[0] != "gix" or key not in original_blocks:
                 original = original.rstrip() + "\n" + block
 
