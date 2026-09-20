@@ -207,20 +207,30 @@ runs:
         subprocess.run(["cargo", "generate-lockfile"], check=True)
         generated = lockfile.read_text(encoding="utf-8")
 
-        def package_block(text, name):
-            match = re.search(
-                rf'\n\[\[package\]\]\nname = "{re.escape(name)}"\n.*?(?=\n\[\[package\]\]|\Z)',
+        def package_blocks(text):
+            blocks = {}
+            for match in re.finditer(
+                r'\n\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n.*?(?=\n\[\[package\]\]|\Z)',
                 text,
                 flags=re.DOTALL,
-            )
-            return match.group(0) if match else None
+            ):
+                blocks[(match.group(1), match.group(2))] = match.group(0)
+            return blocks
 
-        for name in ("prost", "prost-build", "prost-derive", "prost-types"):
-            old_block = package_block(original, name)
-            new_block = package_block(generated, name)
-            if old_block and new_block:
-                generated = generated.replace(new_block, old_block, 1)
-        lockfile.write_text(generated, encoding="utf-8")
+        original_blocks = package_blocks(original)
+        generated_blocks = package_blocks(generated)
+
+        # Keep upstream's resolved graph intact. The generated lockfile is only
+        # used to supply metadata for dependencies introduced by the temporary
+        # workspace manifest (currently gix-credentials and its transitive deps).
+        for key, old_block in original_blocks.items():
+            if key[0] == "gix" and key in generated_blocks:
+                original = original.replace(old_block, generated_blocks[key], 1)
+        for key, block in generated_blocks.items():
+            if key not in original_blocks:
+                original = original.rstrip() + "\n" + block
+
+        lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
         PY
 
     - name: Disable stale Windows-only Bazel patch on Linux
