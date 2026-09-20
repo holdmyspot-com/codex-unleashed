@@ -48,6 +48,7 @@ jobs:
               # clean temporary environments while creating the project one.
               uv_bin="${CODEX_UPSTREAM_DIR}/.codex-uv"
               install -m 755 /tmp/uv/bin/uv "${uv_bin}"
+              export PATH="/tmp/uv/bin:${PATH}"
               "${uv_bin}" sync --group dev --frozen
               "${uv_bin}" run --frozen --no-sync ruff check --output-format=github .
               "${uv_bin}" run --frozen --no-sync ruff format --check .
