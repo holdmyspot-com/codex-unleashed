@@ -76,6 +76,7 @@ runs:
         if missing_members:
             manifest.write_text(text, encoding="utf-8")
             workspace = tomllib.loads(text).get("workspace", {})
+        workspace_package = workspace.get("package", {})
         workspace_dependencies = workspace.get("dependencies", {})
 
         # The pinned release uses workspace inheritance in support crates that
@@ -85,6 +86,24 @@ runs:
             if package_manifest == manifest:
                 continue
             package_text = package_manifest.read_text(encoding="utf-8")
+
+            def toml_literal(value):
+                if isinstance(value, str):
+                    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+                if isinstance(value, bool):
+                    return "true" if value else "false"
+                return repr(value)
+
+            # Package metadata inheritance is represented as a table by
+            # Cargo metadata, but rules_rs expects a concrete semver string.
+            for metadata_name, metadata_value in workspace_package.items():
+                package_text = re.sub(
+                    rf'^[ \t]*{re.escape(metadata_name)}\.workspace[ \t]*=[ \t]*true[ \t]*$',
+                    f'{metadata_name} = {toml_literal(metadata_value)}',
+                    package_text,
+                    flags=re.MULTILINE,
+                )
+
             for dependency_name, dependency in workspace_dependencies.items():
                 if isinstance(dependency, str):
                     inherited = f'version = "{dependency}"'
