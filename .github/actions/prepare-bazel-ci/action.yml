@@ -202,6 +202,13 @@ runs:
             patch.write_text(text, encoding="utf-8")
         PY
 
+    - name: Refresh temporary Cargo lockfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd upstream/codex-rs
+        cargo generate-lockfile
+
     - name: Refresh temporary Bazel module lockfile
       shell: bash
       run: |
