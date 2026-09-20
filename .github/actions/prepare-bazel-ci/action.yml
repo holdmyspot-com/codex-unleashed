@@ -262,7 +262,7 @@ runs:
         # Keep upstream's resolved graph intact. The generated lockfile only
         # supplies metadata for dependencies introduced by temporary changes.
         for key, old_block in original_blocks.items():
-            if key[0] == "gix":
+            if key[0].startswith("codex-") or key[0] == "gix":
                 replacements = generated_by_name.get(key[0], [])
                 if replacements:
                     original = original.replace(old_block, replacements[0], 1)
