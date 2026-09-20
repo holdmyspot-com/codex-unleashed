@@ -293,7 +293,11 @@ runs:
                 )
             for key in referenced:
                 block = generated_blocks.get(key)
-                if block is not None and key not in selected_generated_blocks:
+                if (
+                    block is not None
+                    and key not in selected_generated_blocks
+                    and key not in original_blocks
+                ):
                     selected_generated_blocks[key] = block
                     changed = True
 
