@@ -107,10 +107,10 @@ runs:
                     return f'{match.group(1)} {contents} }}'
 
                 package_text = re.sub(
-                    rf'(^\s*{re.escape(dependency_name)}\s*=\s*\{{)([^}}\n]*workspace\s*=\s*true[^}}\n]*)(\}})',
+                    rf'(^\s*{re.escape(dependency_name)}\s*=\s*\{{)([^}}]*workspace\s*=\s*true[^}}]*)(\}})',
                     expand_inline,
                     package_text,
-                    flags=re.MULTILINE,
+                    flags=re.MULTILINE | re.DOTALL,
                 )
                 package_text = re.sub(
                     rf'^{re.escape(dependency_name)}\.workspace\s*=\s*true\s*$',
