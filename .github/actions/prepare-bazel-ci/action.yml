@@ -258,6 +258,10 @@ runs:
         generated_by_name = {}
         for (name, _version), block in generated_blocks.items():
             generated_by_name.setdefault(name, []).append(block)
+        local_package_names = {
+            name for (name, _version), block in generated_blocks.items()
+            if "\nsource = " not in block
+        }
 
         original_versions = {}
         for name, version in original_blocks:
@@ -265,7 +269,7 @@ runs:
 
         def align_third_party_versions(block):
             for name, version in original_versions.items():
-                if name.startswith("codex-"):
+                if name in local_package_names:
                     continue
                 block = re.sub(
                     rf'"{re.escape(name)} [^"]+"',
@@ -277,8 +281,8 @@ runs:
         selected_generated_blocks = {}
         for (name, _version), block in generated_blocks.items():
             key = (name, _version)
-            if name == "gix" or name.startswith("codex-") or name not in original_versions:
-                if name.startswith("codex-"):
+            if name == "gix" or name in local_package_names or name not in original_versions:
+                if name in local_package_names:
                     block = align_third_party_versions(block)
                 selected_generated_blocks[key] = block
 
@@ -307,7 +311,7 @@ runs:
         # packages must come from the generated lockfile because their
         # temporary workspace manifests may add or change internal edges.
         for key, old_block in original_blocks.items():
-            if key[0].startswith("codex-"):
+            if key[0] in local_package_names:
                 original = original.replace(old_block, "", 1)
         for key, old_block in original_blocks.items():
             if key[0] == "gix":
@@ -315,7 +319,7 @@ runs:
                 if replacements:
                     original = original.replace(old_block, replacements[0], 1)
         for key, block in selected_generated_blocks.items():
-            if key[0].startswith("codex-"):
+            if key[0] in local_package_names:
                 block = align_third_party_versions(block)
             if key[0] != "gix" or key not in original_blocks:
                 original = original.rstrip() + "\n" + block
