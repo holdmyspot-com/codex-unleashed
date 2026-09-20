@@ -198,7 +198,6 @@ jobs:
             build
             -c
             opt
-            --remote_download_toplevel
             "--platforms=@llvm//platforms:${PLATFORM}"
             --config=rusty-v8-upstream-libcxx
             "--config=v8-target-${V8_CPU}"
@@ -215,6 +214,7 @@ jobs:
 
       - name: Stage release pair
         env:
+          BUILDBUDDY_API_KEY: ""
           BAZEL_CONFIG: ${{ matrix.bazel_config }}
           PLATFORM: ${{ matrix.platform }}
           SANDBOX: ${{ matrix.sandbox }}
@@ -229,7 +229,6 @@ jobs:
             --target "${TARGET}"
             --compilation-mode opt
             --output-dir "dist/${TARGET}"
-            --skip-build
             --bazel-config "${BAZEL_CONFIG}"
             --bazel-config "v8-target-${V8_CPU}"
           )
