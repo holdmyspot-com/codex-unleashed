@@ -272,6 +272,16 @@ runs:
                 )
             return block
 
+        refreshed_dependency_keys = set()
+        for (name, _version), block in generated_blocks.items():
+            if name == "gix" or name.startswith("codex-"):
+                if name.startswith("codex-"):
+                    block = align_third_party_versions(block)
+                for dependency_name, dependency_version in re.findall(
+                    r'"([^" ]+) ([0-9][^"]*)"', block
+                ):
+                    refreshed_dependency_keys.add((dependency_name, dependency_version))
+
         # Keep upstream's third-party resolutions intact. Internal Codex
         # packages must come from the generated lockfile because their
         # temporary workspace manifests may add or change internal edges.
@@ -286,7 +296,7 @@ runs:
         for key, block in generated_blocks.items():
             if key[0].startswith("codex-"):
                 original = original.rstrip() + "\n" + align_third_party_versions(block)
-            elif key[0] not in original_versions:
+            elif key[0] not in original_versions or key in refreshed_dependency_keys:
                 original = original.rstrip() + "\n" + block
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
