@@ -59,6 +59,11 @@ runs:
         missing_members = [
             member for member in workspace.get("members", [])
             if not (root / member / "Cargo.toml").is_file()
+            or re.search(
+                r'^\[workspace(?:\.|\])',
+                (root / member / "Cargo.toml").read_text(encoding="utf-8"),
+                flags=re.MULTILINE,
+            ) is not None
         ]
         for member in missing_members:
             text = re.sub(
@@ -144,6 +149,66 @@ runs:
         if additions:
             manifest.write_text(text[:start] + additions + text[start:], encoding="utf-8")
         PY
+
+    # The pinned rules_rs resolver assumes every dependency has a target key.
+    # Keep this compatibility change in the temporary CI checkout rather than
+    # carrying a non-product patch in patches/.
+    - name: Repair pinned rules_rs resolver for Bazel CI
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+
+        patch = Path("upstream/patches/rules_rs_build_script_deps_annotation.patch")
+        text = patch.read_text(encoding="utf-8")
+        marker = "diff --git a/rs/private/resolver.bzl b/rs/private/resolver.bzl"
+        if marker not in text:
+        text += '''
+        diff --git a/rs/private/resolver.bzl b/rs/private/resolver.bzl
+        --- a/rs/private/resolver.bzl
+        +++ b/rs/private/resolver.bzl
+        @@ -19 +19 @@
+        -    remaining = dep["target"]
+        +    remaining = dep.get("target", set())
+        diff --git a/rs/private/cargo_workspace_graph.bzl b/rs/private/cargo_workspace_graph.bzl
+        --- a/rs/private/cargo_workspace_graph.bzl
+        +++ b/rs/private/cargo_workspace_graph.bzl
+        @@ -220,1 +220,12 @@
+        -        idx = maybe_fq_dep.find(" ")
+        +        if type(maybe_fq_dep) == "dict":
+        +            dep_name = maybe_fq_dep.get("package") or maybe_fq_dep.get("name")
+        +            versions = versions_by_name.get(dep_name, [])
+        +            if not versions:
+        +                if strict:
+        +                    fail("Malformed lockfile?")
+        +                continue
+        +            version = versions[0] if len(versions) == 1 else select_matching_version(maybe_fq_dep.get("req"), versions)
+        +            if not version:
+        +                continue
+        +            maybe_fq_dep = dep_name + " " + version
+        +        idx = maybe_fq_dep.find(" ")
+        @@ -561,1 +561,8 @@
+        -        fq_deps = workspace_fq_deps.get(package["name"], {})
+        +        fq_deps = compute_package_fq_deps(package, resolver_versions_by_name, strict = False)
+        +        for dep in package.get("dependencies", []):
+        +            dep_package = _dep_package_name(dep)
+        +            if dep_package not in fq_deps:
+        +                fq_deps[dep_package] = [
+        +                    fq_crate(dep_package, version)
+        +                    for version in resolver_versions_by_name.get(dep_package, [])
+        +                ]
+        '''
+            patch.write_text(text, encoding="utf-8")
+        PY
+
+    - name: Refresh temporary Bazel module lockfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd upstream
+        rm -f MODULE.bazel.lock
+        bazel mod deps --lockfile_mode=update
 
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
