@@ -183,7 +183,8 @@ runs:
         +                if strict:
         +                    fail("Malformed lockfile?")
         +                continue
-        +            version = versions[0] if len(versions) == 1 else select_matching_version(maybe_fq_dep.get("req"), versions)
+        +            req = maybe_fq_dep.get("req")
+        +            version = versions[0] if len(versions) == 1 or type(req) != "string" else select_matching_version(req, versions)
         +            if not version:
         +                continue
         +            maybe_fq_dep = dep_name + " " + version
