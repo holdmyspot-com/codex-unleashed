@@ -260,6 +260,7 @@ runs:
         module = Path("upstream/MODULE.bazel")
         text = module.read_text(encoding="utf-8")
         text = text.replace('        "//patches:zstd-sys_windows_msvc_include_dirs.patch",\n', "")
+        text = text.replace("prost-types-0.14.3", "prost-types-0.14.4")
         text = text.replace(
             'crate.from_cargo(\n    cargo_lock = "//codex-rs:Cargo.lock",',
             'crate.from_cargo(\n    validate_lockfile = False,\n    cargo_lock = "//codex-rs:Cargo.lock",',
