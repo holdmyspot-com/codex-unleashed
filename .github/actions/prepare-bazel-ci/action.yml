@@ -284,9 +284,9 @@ runs:
                 if replacements:
                     original = original.replace(old_block, replacements[0], 1)
         for key, block in generated_blocks.items():
-            if key not in original_blocks or key[0].startswith("codex-"):
-                if key[0].startswith("codex-"):
-                    block = align_third_party_versions(block)
+            if key[0].startswith("codex-"):
+                original = original.rstrip() + "\n" + align_third_party_versions(block)
+            elif key[0] not in original_versions:
                 original = original.rstrip() + "\n" + block
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
