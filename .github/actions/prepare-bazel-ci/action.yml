@@ -44,7 +44,33 @@ runs:
         text = manifest.read_text(encoding="utf-8")
         marker = "[patch.crates-io]\n"
         root = manifest.parent
+        lockfile = root / "Cargo.lock"
+        if lockfile.is_file():
+            lock_text = lockfile.read_text(encoding="utf-8")
+            lock_text = re.sub(
+                r'\n\[\[package\]\]\nname = "app_test_support"\n.*?(?=\n\[\[package\]\])',
+                "",
+                lock_text,
+                count=1,
+                flags=re.DOTALL,
+            )
+            lockfile.write_text(lock_text, encoding="utf-8")
         workspace = tomllib.loads(text).get("workspace", {})
+        missing_members = [
+            member for member in workspace.get("members", [])
+            if not (root / member / "Cargo.toml").is_file()
+        ]
+        for member in missing_members:
+            text = re.sub(
+                rf'^\s*"{re.escape(member)}",\s*\n',
+                "",
+                text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        if missing_members:
+            manifest.write_text(text, encoding="utf-8")
+            workspace = tomllib.loads(text).get("workspace", {})
         workspace_dependencies = workspace.get("dependencies", {})
 
         # The pinned release uses workspace inheritance in support crates that
