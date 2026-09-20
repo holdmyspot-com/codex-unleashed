@@ -190,6 +190,14 @@ runs:
         +                continue
         +            maybe_fq_dep = dep_name + " " + version
         +        idx = maybe_fq_dep.find(" ")
+        diff --git a/rs/private/semver.bzl b/rs/private/semver.bzl
+        --- a/rs/private/semver.bzl
+        +++ b/rs/private/semver.bzl
+        @@ -26,1 +26,3 @@
+        -    v = v.strip()
+        +    if type(v) != "string":
+        +        return None
+        +    v = v.strip()
         '''
             patch.write_text(text, encoding="utf-8")
         PY
