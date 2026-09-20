@@ -101,9 +101,14 @@ runs:
                     inherited = ", ".join(fields)
                 else:
                     continue
+                def expand_inline(match):
+                    remaining = re.sub(r'workspace\s*=\s*true\s*,?', '', match.group(2)).strip(' ,')
+                    contents = inherited if not remaining else f'{inherited}, {remaining}'
+                    return f'{match.group(1)} {contents} }}'
+
                 package_text = re.sub(
-                    rf'(^\s*{re.escape(dependency_name)}\s*=\s*\{{\s*)workspace\s*=\s*true',
-                    rf'\g<1>{inherited}',
+                    rf'(^\s*{re.escape(dependency_name)}\s*=\s*\{{)([^}}\n]*workspace\s*=\s*true[^}}\n]*)(\}})',
+                    expand_inline,
                     package_text,
                     flags=re.MULTILINE,
                 )
