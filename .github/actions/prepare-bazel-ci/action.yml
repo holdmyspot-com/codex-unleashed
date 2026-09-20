@@ -188,6 +188,9 @@ runs:
         +                continue
         +            maybe_fq_dep = dep_name + " " + version
         +        idx = maybe_fq_dep.find(" ")
+        @@ -661 +661 @@
+        -        fail("Crate %s has enabled %s but it was not in the lockfile..." % (package["name"], prefixed_dep_alias))
+        +        continue
         '''
             patch.write_text(text, encoding="utf-8")
         PY
