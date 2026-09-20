@@ -272,15 +272,30 @@ runs:
                 )
             return block
 
-        refreshed_dependency_keys = set()
+        selected_generated_blocks = {}
         for (name, _version), block in generated_blocks.items():
-            if name == "gix" or name.startswith("codex-"):
+            key = (name, _version)
+            if name == "gix" or name.startswith("codex-") or name not in original_versions:
                 if name.startswith("codex-"):
                     block = align_third_party_versions(block)
-                for dependency_name, dependency_version in re.findall(
-                    r'"([^" ]+) ([0-9][^"]*)"', block
-                ):
-                    refreshed_dependency_keys.add((dependency_name, dependency_version))
+                selected_generated_blocks[key] = block
+
+        # Retain the transitive generated records needed by the selected
+        # internal/new packages, even when upstream has the same package name
+        # at a different version.
+        changed = True
+        while changed:
+            changed = False
+            referenced = set()
+            for block in selected_generated_blocks.values():
+                referenced.update(
+                    re.findall(r'"([^" ]+) ([0-9][^"]*)"', block)
+                )
+            for key in referenced:
+                block = generated_blocks.get(key)
+                if block is not None and key not in selected_generated_blocks:
+                    selected_generated_blocks[key] = block
+                    changed = True
 
         # Keep upstream's third-party resolutions intact. Internal Codex
         # packages must come from the generated lockfile because their
@@ -293,10 +308,10 @@ runs:
                 replacements = generated_by_name.get(key[0], [])
                 if replacements:
                     original = original.replace(old_block, replacements[0], 1)
-        for key, block in generated_blocks.items():
+        for key, block in selected_generated_blocks.items():
             if key[0].startswith("codex-"):
-                original = original.rstrip() + "\n" + align_third_party_versions(block)
-            elif key[0] not in original_versions or key in refreshed_dependency_keys:
+                block = align_third_party_versions(block)
+            if key[0] != "gix" or key not in original_blocks:
                 original = original.rstrip() + "\n" + block
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
