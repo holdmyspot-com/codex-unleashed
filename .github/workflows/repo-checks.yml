@@ -63,7 +63,7 @@ jobs:
           version: "0.11.3"
 
       - name: Set up Zig
-        uses: mlugg/setup-zig@v1
+        uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c
         with:
           version: 0.14.0
 
