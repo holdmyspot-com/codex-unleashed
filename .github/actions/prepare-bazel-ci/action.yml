@@ -254,6 +254,11 @@ runs:
         module = Path("upstream/MODULE.bazel")
         text = module.read_text(encoding="utf-8")
         text = text.replace('        "//patches:zstd-sys_windows_msvc_include_dirs.patch",\n', "")
+        text = text.replace(
+            'crate.from_cargo(\n    cargo_lock = "//codex-rs:Cargo.lock",',
+            'crate.from_cargo(\n    validate_lockfile = False,\n    cargo_lock = "//codex-rs:Cargo.lock",',
+            1,
+        )
         module.write_text(text, encoding="utf-8")
         PY
 
