@@ -164,7 +164,7 @@ runs:
         text = patch.read_text(encoding="utf-8")
         marker = "diff --git a/rs/private/resolver.bzl b/rs/private/resolver.bzl"
         if marker not in text:
-        text += '''
+            text += '''
         diff --git a/rs/private/resolver.bzl b/rs/private/resolver.bzl
         --- a/rs/private/resolver.bzl
         +++ b/rs/private/resolver.bzl
@@ -198,7 +198,7 @@ runs:
         +                    fq_crate(dep_package, version)
         +                    for version in resolver_versions_by_name.get(dep_package, [])
         +                ]
-        '''
+            '''
             patch.write_text(text, encoding="utf-8")
         PY
 
