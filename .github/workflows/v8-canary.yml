@@ -291,6 +291,11 @@ jobs:
 
       - uses: ./.github/actions/setup-ci
 
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          fallback-to-default-branch: "true"
+
       - name: Configure git for upstream checkout
         shell: bash
         run: git config --global core.symlinks true
