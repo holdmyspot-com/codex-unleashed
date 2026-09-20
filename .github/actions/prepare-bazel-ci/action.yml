@@ -220,6 +220,9 @@ runs:
 
         original_blocks = package_blocks(original)
         generated_blocks = package_blocks(generated)
+        generated_by_name = {}
+        for (name, _version), block in generated_blocks.items():
+            generated_by_name.setdefault(name, []).append(block)
         workspace_names = set()
         for package_manifest in Path(".").rglob("Cargo.toml"):
             package = tomllib.loads(package_manifest.read_text(encoding="utf-8")).get("package", {})
@@ -230,8 +233,10 @@ runs:
         # used to refresh workspace packages after expanding inherited metadata
         # and to supply newly needed third-party metadata.
         for key, old_block in original_blocks.items():
-            if (key[0] in workspace_names or key[0].startswith("codex-") or key[0] == "gix") and key in generated_blocks:
-                original = original.replace(old_block, generated_blocks[key], 1)
+            if key[0] in workspace_names or key[0].startswith("codex-") or key[0] == "gix":
+                replacements = generated_by_name.get(key[0], [])
+                if replacements:
+                    original = original.replace(old_block, replacements[0], 1)
         for key, block in generated_blocks.items():
             if key not in original_blocks:
                 original = original.rstrip() + "\n" + block
