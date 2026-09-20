@@ -259,13 +259,33 @@ runs:
         for (name, _version), block in generated_blocks.items():
             generated_by_name.setdefault(name, []).append(block)
 
+        original_versions_by_name = {}
+        for name, version in original_blocks:
+            original_versions_by_name.setdefault(name, []).append(version)
+
+        def normalize_local_block(block):
+            lines = []
+            for line in block.splitlines():
+                match = re.fullmatch(r'(\s*)"([^" ]+) ([0-9][^" ]*)",', line)
+                if match:
+                    name, version = match.group(2), match.group(3)
+                    if (name, version) not in original_blocks and not name.startswith("codex-"):
+                        versions = original_versions_by_name.get(name, [])
+                        if len(versions) == 1:
+                            line = f'{match.group(1)}"{name} {versions[0]}",'
+                lines.append(line)
+            return "\n".join(lines)
+
         # Keep upstream's resolved graph intact. The generated lockfile only
         # supplies metadata for dependencies introduced by temporary changes.
         for key, old_block in original_blocks.items():
             if key[0].startswith("codex-") or key[0] == "gix":
                 replacements = generated_by_name.get(key[0], [])
                 if replacements:
-                    original = original.replace(old_block, replacements[0], 1)
+                    replacement = replacements[0]
+                    if key[0].startswith("codex-"):
+                        replacement = normalize_local_block(replacement)
+                    original = original.replace(old_block, replacement, 1)
         for key, block in generated_blocks.items():
             if key not in original_blocks:
                 original = original.rstrip() + "\n" + block
