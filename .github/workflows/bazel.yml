@@ -370,12 +370,17 @@ jobs:
           while IFS= read -r target; do
             bazel_targets+=("${target}")
           done <<< "${bazel_target_lines}"
+          bazel_resource_args=()
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            bazel_resource_args+=(--jobs=2)
+          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             ./.github/scripts/run-bazel-ci.sh \
               --print-failed-action-summary \
               --windows-cross-compile \
               -- \
               build \
+              "${bazel_resource_args[@]}" \
               "${bazel_clippy_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -384,6 +389,7 @@ jobs:
               --print-failed-action-summary \
               -- \
               build \
+              "${bazel_resource_args[@]}" \
               "${bazel_clippy_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -465,6 +471,10 @@ jobs:
           while IFS= read -r target; do
             bazel_targets+=("${target}")
           done <<< "${bazel_target_lines}"
+          bazel_resource_args=()
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            bazel_resource_args+=(--jobs=2)
+          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             ./.github/scripts/run-bazel-ci.sh \
               --print-failed-action-summary \
@@ -472,6 +482,7 @@ jobs:
               --remote-download-toplevel \
               -- \
               build \
+              "${bazel_resource_args[@]}" \
               "${bazel_build_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -480,6 +491,7 @@ jobs:
               --print-failed-action-summary \
               -- \
               build \
+              "${bazel_resource_args[@]}" \
               "${bazel_build_args[@]}" \
               -- \
               "${bazel_targets[@]}"
