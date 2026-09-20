@@ -51,6 +51,24 @@ jobs:
           cd upstream
           pnpm install --frozen-lockfile
 
+      - name: Record reviewed rustls advisory exception
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          deny = Path("upstream/codex-rs/deny.toml")
+          text = deny.read_text(encoding="utf-8")
+          advisory = "RUSTSEC-2026-0285"
+          if advisory not in text:
+              marker = "    # Reviewed 2026-07-02. Keep this list in sync with .cargo/audit.toml.\n"
+              exception = '    { id = "RUSTSEC-2026-0285", reason = "rust-v0.155.1 pins rustls 0.23.36; remove this exception when the supported upstream release includes rustls >=0.23.45" },\n'
+              if marker not in text:
+                  raise SystemExit(f"Could not find advisory exception marker in {deny}")
+              deny.write_text(text.replace(marker, marker + exception, 1), encoding="utf-8")
+          PY
+
       - name: Run cargo-deny
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246
         with:
