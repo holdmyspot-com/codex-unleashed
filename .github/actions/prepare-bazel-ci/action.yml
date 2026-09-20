@@ -209,6 +209,8 @@ runs:
         +                    fail("Malformed lockfile?")
         +                continue
         +            req = maybe_fq_dep.get("req")
+        +            if type(req) == "dict":
+        +                req = req.get("version")
         +            version = versions[0] if len(versions) == 1 or type(req) != "string" else select_matching_version(req, versions)
         +            if not version:
         +                continue
