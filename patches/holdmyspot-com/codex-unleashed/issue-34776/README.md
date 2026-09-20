@@ -5,7 +5,7 @@ The implementation and its regression tests are carried together in
 fix atomically.
 
 - Upstream issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Applies to: upstream `main`
+- Applies to: upstream `rust-v0.155.1`
 - Related upstream work: [openai/codex#36948](https://github.com/openai/codex/pull/36948), [openai/codex#36950](https://github.com/openai/codex/pull/36950)
 
 ## Intent

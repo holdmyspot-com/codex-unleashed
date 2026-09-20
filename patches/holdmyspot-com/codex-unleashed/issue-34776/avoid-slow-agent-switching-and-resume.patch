@@ -1,14 +1,19 @@
-From 5d1b2876c64fb2d51a24f66d5247ed5d0d7bce63 Mon Sep 17 00:00:00 2001
-From: Codex <holdmyspot-com@users.noreply.github.com>
-Date: Fri, 4 Sep 2026 00:24:01 -0400
-Subject: [PATCH] Avoid slow agent switching and resume
+From bdc2f938c13ee576ae380ea923ff02263fc5fc92 Mon Sep 17 00:00:00 2001
+From: Codex Rebase <codex-rebase@localhost>
+Date: Sun, 20 Sep 2026 14:56:29 -0400
+Subject: [PATCH] avoid-slow-agent-switching-and-resume
 
+---
+ .../app/tests/session_lifecycle_requests.rs   | 165 ++++++++++++++++++
+ codex-rs/tui/src/chatwidget/replay.rs         |  13 ++
+ .../src/chatwidget/tests/history_replay.rs    |  59 +++++++
+ 3 files changed, 237 insertions(+)
 
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index a92304e..4b47d7f 100644
+index f8d0532..e3a0d22 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -385,6 +385,170 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
+@@ -584,6 +584,171 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
      Ok((app, codex_home))
  }
  
@@ -82,6 +87,7 @@ index a92304e..4b47d7f 100644
 +        start_recording_app_server(&app.config, None, None).await?;
 +    let root = app_server
 +        .resume_thread(
++            &app.local_settings,
 +            app.config.clone(),
 +            root_thread_id,
 +            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
@@ -177,10 +183,34 @@ index a92304e..4b47d7f 100644
 +}
 +
  #[tokio::test]
- async fn removing_remote_thread_omits_disconnect_guidance() -> Result<()> {
-     for event in [
+ async fn deleting_remote_thread_omits_disconnect_guidance() -> Result<()> {
+     let (mut app, codex_home) = make_history_test_app().await?;
+diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
+index 0fb1efd..c126b53 100644
+--- a/codex-rs/tui/src/chatwidget/replay.rs
++++ b/codex-rs/tui/src/chatwidget/replay.rs
+@@ -105,6 +105,19 @@ impl ChatWidget {
+         if matches!(replay_kind, ReplayKind::ThreadSnapshot) && !turns.is_empty() {
+             self.warning_display_state.startup_complete = true;
+         }
++        let first_latest_conversation_turn = turns
++            .iter()
++            .rposition(|turn| {
++                turn.items
++                    .iter()
++                    .any(|item| matches!(item, ThreadItem::ContextCompaction { .. }))
++            })
++            .map(|index| index + 1)
++            .unwrap_or(0);
++        let turns = turns
++            .into_iter()
++            .skip(first_latest_conversation_turn)
++            .collect::<Vec<_>>();
+         let latest_turn_id = turns.last().map(|turn| turn.id.clone());
+         let hidden_nested_review_turns = std::iter::once(/*value*/ false)
+             .chain(turns.windows(/*size*/ 2).map(|turns| {
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 31af6ad..3852426 100644
+index d44f9da..352db18 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -76,6 +76,65 @@ async fn resumed_initial_messages_render_history() {
@@ -249,28 +279,5 @@ index 31af6ad..3852426 100644
  #[tokio::test]
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 61d69d1..8ed4df4 100644
---- a/codex-rs/tui/src/chatwidget/replay.rs
-+++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -14,5 +14,18 @@
-     pub(crate) fn replay_thread_turns(&mut self, turns: Vec<Turn>, replay_kind: ReplayKind) {
-+        let first_latest_conversation_turn = turns
-+            .iter()
-+            .rposition(|turn| {
-+                turn.items
-+                    .iter()
-+                    .any(|item| matches!(item, ThreadItem::ContextCompaction { .. }))
-+            })
-+            .map(|index| index + 1)
-+            .unwrap_or(0);
-+        let turns = turns
-+            .into_iter()
-+            .skip(first_latest_conversation_turn)
-+            .collect::<Vec<_>>();
-         let hidden_nested_review_turns = std::iter::once(/*value*/ false)
-             .chain(turns.windows(/*size*/ 2).map(|turns| {
-                 crate::app_backtrack::is_hidden_nested_review_turn(&turns[0], &turns[1])
-             }))
 -- 
 2.43.0
