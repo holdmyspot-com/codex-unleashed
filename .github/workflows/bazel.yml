@@ -163,7 +163,7 @@ jobs:
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          target: x86_64-pc-windows-msvc
+          target: x86_64-pc-windows-gnullvm
           cache-scope: bazel-test-windows-shard
 
       - name: Test BuildBuddy Bazel wrapper
@@ -260,7 +260,7 @@ jobs:
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          target: x86_64-pc-windows-gnullvm
+          target: x86_64-pc-windows-msvc
           cache-scope: bazel-test-windows-native-main
 
       - name: bazel test //...
