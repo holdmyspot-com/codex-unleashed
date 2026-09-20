@@ -201,6 +201,7 @@ runs:
         from pathlib import Path
         import re
         import subprocess
+        import tomllib
 
         lockfile = Path("Cargo.lock")
         original = lockfile.read_text(encoding="utf-8")
@@ -219,12 +220,17 @@ runs:
 
         original_blocks = package_blocks(original)
         generated_blocks = package_blocks(generated)
+        workspace_names = set()
+        for package_manifest in Path(".").rglob("Cargo.toml"):
+            package = tomllib.loads(package_manifest.read_text(encoding="utf-8")).get("package", {})
+            if package.get("name"):
+                workspace_names.add(package["name"])
 
         # Keep upstream's resolved graph intact. The generated lockfile is only
-        # used to supply metadata for dependencies introduced by the temporary
-        # workspace manifest (currently gix-credentials and its transitive deps).
+        # used to refresh workspace packages after expanding inherited metadata
+        # and to supply newly needed third-party metadata.
         for key, old_block in original_blocks.items():
-            if key[0] == "gix" and key in generated_blocks:
+            if (key[0] in workspace_names or key[0] == "gix") and key in generated_blocks:
                 original = original.replace(old_block, generated_blocks[key], 1)
         for key, block in generated_blocks.items():
             if key not in original_blocks:
