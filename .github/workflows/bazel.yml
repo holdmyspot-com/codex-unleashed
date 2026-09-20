@@ -46,7 +46,9 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+            # The local Codex patch stack is based on this upstream revision.
+            # Advance it only when the product patches have been rebased.
+            upstream-ref: ${{ inputs.upstream_ref || '3d2ee51c' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
@@ -156,7 +158,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '3d2ee51c' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
@@ -253,7 +255,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '3d2ee51c' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
@@ -334,7 +336,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '3d2ee51c' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
@@ -439,7 +441,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '3d2ee51c' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
