@@ -198,7 +198,7 @@ runs:
         diff --git a/rs/private/cargo_workspace_graph.bzl b/rs/private/cargo_workspace_graph.bzl
         --- a/rs/private/cargo_workspace_graph.bzl
         +++ b/rs/private/cargo_workspace_graph.bzl
-        @@ -220,1 +220,13 @@
+        @@ -220,1 +220,15 @@
         -        idx = maybe_fq_dep.find(" ")
         +        idx = maybe_fq_dep.find(" ") if type(maybe_fq_dep) == "string" else -1
         +        if type(maybe_fq_dep) == "dict":
