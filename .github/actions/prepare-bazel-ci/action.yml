@@ -243,11 +243,34 @@ runs:
         subprocess.run(["cargo", "generate-lockfile"], check=True)
         generated = lockfile.read_text(encoding="utf-8")
 
-        # Cargo has resolved this temporary workspace manifest, so keep the
-        # complete generated graph. Mixing it with upstream's lock entries
-        # creates incompatible versions of tightly coupled crates such as
-        # http, reqwest, rand, and rand_regex.
-        lockfile.write_text(generated, encoding="utf-8")
+        def package_blocks(text):
+            blocks = {}
+            for match in re.finditer(
+                r'\n\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n.*?(?=\n\[\[package\]\]|\Z)',
+                text,
+                flags=re.DOTALL,
+            ):
+                blocks[(match.group(1), match.group(2))] = match.group(0)
+            return blocks
+
+        original_blocks = package_blocks(original)
+        generated_blocks = package_blocks(generated)
+        generated_by_name = {}
+        for (name, _version), block in generated_blocks.items():
+            generated_by_name.setdefault(name, []).append(block)
+
+        # Keep upstream's resolved graph intact. The generated lockfile only
+        # supplies metadata for dependencies introduced by temporary changes.
+        for key, old_block in original_blocks.items():
+            if key[0] == "gix":
+                replacements = generated_by_name.get(key[0], [])
+                if replacements:
+                    original = original.replace(old_block, replacements[0], 1)
+        for key, block in generated_blocks.items():
+            if key not in original_blocks:
+                original = original.rstrip() + "\n" + block
+
+        lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
         PY
 
     - name: Disable stale Windows-only Bazel patch on Linux
@@ -266,12 +289,6 @@ runs:
             1,
         )
         module.write_text(text, encoding="utf-8")
-        prost_build = Path("upstream/bazel/toolchains/prost/BUILD.bazel")
-        prost_text = prost_build.read_text(encoding="utf-8")
-        prost_build.write_text(
-            prost_text.replace("prost-types-0.14.3", "prost-types-0.14.4"),
-            encoding="utf-8",
-        )
         PY
 
     - name: Refresh temporary Bazel module lockfile
