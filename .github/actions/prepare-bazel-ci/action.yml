@@ -257,6 +257,21 @@ runs:
         for (name, _version), block in generated_blocks.items():
             generated_by_name.setdefault(name, []).append(block)
 
+        original_versions = {}
+        for name, version in original_blocks:
+            original_versions.setdefault(name, version)
+
+        def align_third_party_versions(block):
+            for name, version in original_versions.items():
+                if name.startswith("codex-"):
+                    continue
+                block = re.sub(
+                    rf'"{re.escape(name)} [^"]+"',
+                    f'"{name} {version}"',
+                    block,
+                )
+            return block
+
         # Keep upstream's third-party resolutions intact. Internal Codex
         # packages must come from the generated lockfile because their
         # temporary workspace manifests may add or change internal edges.
@@ -270,6 +285,8 @@ runs:
                     original = original.replace(old_block, replacements[0], 1)
         for key, block in generated_blocks.items():
             if key not in original_blocks or key[0].startswith("codex-"):
+                if key[0].startswith("codex-"):
+                    block = align_third_party_versions(block)
                 original = original.rstrip() + "\n" + block
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
