@@ -36,11 +36,54 @@ runs:
         set -euo pipefail
         python3 - <<'PY'
         from pathlib import Path
+        import os
+        import re
         import tomllib
 
         manifest = Path("upstream/codex-rs/Cargo.toml")
         text = manifest.read_text(encoding="utf-8")
         marker = "[patch.crates-io]\n"
+        root = manifest.parent
+        workspace = tomllib.loads(text).get("workspace", {})
+        workspace_dependencies = workspace.get("dependencies", {})
+
+        # The pinned release uses workspace inheritance in support crates that
+        # rules_rs parses independently. Expand those entries in the temporary
+        # checkout, preserving any package-local features.
+        for package_manifest in root.rglob("Cargo.toml"):
+            if package_manifest == manifest:
+                continue
+            package_text = package_manifest.read_text(encoding="utf-8")
+            for dependency_name, dependency in workspace_dependencies.items():
+                if isinstance(dependency, str):
+                    inherited = f'version = "{dependency}"'
+                elif isinstance(dependency, dict):
+                    fields = []
+                    for key in ("path", "version", "git", "rev", "branch", "tag", "registry"):
+                        if key in dependency:
+                            value = dependency[key]
+                            if key == "path":
+                                value = os.path.relpath(root / value, package_manifest.parent).replace(os.sep, "/")
+                            fields.append(f'{key} = {value!r}')
+                    if not fields:
+                        continue
+                    inherited = ", ".join(fields)
+                else:
+                    continue
+                package_text = re.sub(
+                    rf'(^\s*{re.escape(dependency_name)}\s*=\s*\{{\s*)workspace\s*=\s*true',
+                    rf'\g<1>{inherited}',
+                    package_text,
+                    flags=re.MULTILINE,
+                )
+                package_text = re.sub(
+                    rf'^{re.escape(dependency_name)}\.workspace\s*=\s*true\s*$',
+                    f'{dependency_name} = {{ {inherited} }}',
+                    package_text,
+                    flags=re.MULTILINE,
+                )
+            package_manifest.write_text(package_text, encoding="utf-8")
+
         mappings = [
             'codex-build-info = { path = "build-info" }',
             'codex-bwrap = { path = "bwrap" }',
@@ -53,14 +96,12 @@ runs:
             'codex-voice-host = { path = "voice-host" }',
             'codex-worktree = { path = "worktree" }',
         ]
-        workspace = tomllib.loads(text).get("workspace", {})
         for dependency_name, dependency in workspace.get("dependencies", {}).items():
             if isinstance(dependency, dict) and "path" in dependency:
                 package_name = dependency.get("package", dependency_name)
                 mapping = f'{package_name} = {{ path = "{dependency["path"]}" }}'
                 if mapping not in mappings:
                     mappings.append(mapping)
-        root = manifest.parent
         for member in workspace.get("members", []):
             package_manifest = root / member / "Cargo.toml"
             if package_manifest.is_file():
