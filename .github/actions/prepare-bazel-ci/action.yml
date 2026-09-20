@@ -208,6 +208,21 @@ runs:
         set -euo pipefail
         cd upstream/codex-rs
         cargo generate-lockfile
+        cargo update -p prost --precise 0.14.3
+        cargo update -p prost-types --precise 0.14.3
+
+    - name: Disable stale Windows-only Bazel patch on Linux
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+
+        module = Path("upstream/MODULE.bazel")
+        text = module.read_text(encoding="utf-8")
+        text = text.replace('        "//patches:zstd-sys_windows_msvc_include_dirs.patch",\n', "")
+        module.write_text(text, encoding="utf-8")
+        PY
 
     - name: Refresh temporary Bazel module lockfile
       shell: bash
