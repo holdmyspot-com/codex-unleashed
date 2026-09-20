@@ -110,14 +110,14 @@ jobs:
 
       - name: Upload Cargo timings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cargo-timings-rust-ci-nextest-${{ inputs.artifact_id }}
           path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
           if-no-files-found: warn
 
       - name: Upload nextest archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nextest-archive-${{ inputs.artifact_id }}
           path: ${{ runner.temp }}/nextest-archive/${{ env.NEXTEST_ARCHIVE_FILE }}
@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload runtime test helpers
         if: ${{ runner.os == 'Linux' || runner.os == 'Windows' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.TEST_HELPERS_ARTIFACT }}
           path: ${{ runner.temp }}/${{ env.TEST_HELPERS_ARTIFACT }}/*
@@ -255,7 +255,7 @@ jobs:
 
       - name: Upload nextest JUnit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nextest-junit-rust-ci-${{ inputs.artifact_id }}-shard-${{ matrix.shard }}
           path: ${{ env.CARGO_TARGET_DIR }}/nextest/default/junit.xml

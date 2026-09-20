@@ -63,7 +63,7 @@ jobs:
             '
 
       - name: Upload Python SDK package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: python-sdk-package
           path: dist/python-sdk/*

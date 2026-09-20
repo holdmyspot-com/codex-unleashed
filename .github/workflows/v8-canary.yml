@@ -33,7 +33,7 @@ jobs:
           upstream-ref: ${{ inputs.upstream_ref || 'main' }}
           fallback-to-default-branch: "true"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -156,7 +156,7 @@ jobs:
           target: ${{ matrix.target }}
           cache-scope: v8-canary-build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -256,7 +256,7 @@ jobs:
           )
 
       - name: Upload staged artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: v8-canary-${{ needs.metadata.outputs.v8_version }}-${{ matrix.variant }}-${{ matrix.target }}
           path: upstream/dist/${{ matrix.target }}/*
@@ -308,7 +308,7 @@ jobs:
           path: upstream-rusty-v8
           submodules: recursive
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           architecture: x64
@@ -332,7 +332,7 @@ jobs:
         run: git submodule status --recursive > git_submodule_status.txt
 
       - name: Restore upstream source-build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             upstream-rusty-v8/target/sccache
@@ -406,7 +406,7 @@ jobs:
           )
 
       - name: Upload staged artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: v8-canary-${{ needs.metadata.outputs.v8_version }}-ptrcomp-sandbox-${{ matrix.target }}
           path: dist/${{ matrix.target }}/*

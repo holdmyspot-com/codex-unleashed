@@ -58,7 +58,7 @@ jobs:
           target: ${{ matrix.target }}
           cache-scope: bazel-test
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -118,7 +118,7 @@ jobs:
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bazel-execution-logs-test-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs
@@ -211,7 +211,7 @@ jobs:
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bazel-execution-logs-test-x86_64-pc-windows-gnullvm-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/bazel-execution-logs
@@ -297,7 +297,7 @@ jobs:
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bazel-execution-logs-test-windows-native-x86_64-pc-windows-gnullvm
           path: ${{ runner.temp }}/bazel-execution-logs
@@ -402,7 +402,7 @@ jobs:
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bazel-execution-logs-clippy-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs
@@ -504,7 +504,7 @@ jobs:
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bazel-execution-logs-verify-release-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs

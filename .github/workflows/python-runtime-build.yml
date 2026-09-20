@@ -42,7 +42,7 @@ jobs:
           ls -lh dist/python-runtime
 
       - name: Upload Python runtime wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: python-runtime-wheels
           path: dist/python-runtime/*
