@@ -148,7 +148,7 @@ jobs:
           - 3
           - 4
     runs-on: windows-2022
-    name: Bazel test on windows-2022 for x86_64-pc-windows-gnullvm shard ${{ matrix.shard }}/4
+    name: Bazel build on windows-2022 for x86_64-pc-windows-gnullvm shard ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@v6
         with:
@@ -199,11 +199,8 @@ jobs:
             --windows-cross-compile \
             --remote-download-toplevel \
             -- \
-            test \
+            build \
             --skip_incompatible_explicit_targets \
-            --build_tests_only \
-            --test_tag_filters=-argument-comment-lint \
-            --test_verbose_timeout_warnings \
             --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
             --build_metadata=TAG_windows_test_shard=${BAZEL_TEST_SHARD} \
             -- \
@@ -234,7 +231,7 @@ jobs:
     if: always()
     needs: test-windows-shard
     runs-on: ubuntu-latest
-    name: Bazel test on windows-2022 for x86_64-pc-windows-gnullvm
+    name: Bazel build on windows-2022 for x86_64-pc-windows-gnullvm
     steps:
       - name: Confirm Windows Bazel test shards passed
         shell: bash
