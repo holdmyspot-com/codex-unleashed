@@ -188,28 +188,9 @@ runs:
         +                continue
         +            maybe_fq_dep = dep_name + " " + version
         +        idx = maybe_fq_dep.find(" ")
-        @@ -561,1 +561,8 @@
-        -        fq_deps = workspace_fq_deps.get(package["name"], {})
-        +        fq_deps = compute_package_fq_deps(package, resolver_versions_by_name, strict = False)
-        +        for dep in package.get("dependencies", []):
-        +            dep_package = _dep_package_name(dep)
-        +            if dep_package not in fq_deps:
-        +                fq_deps[dep_package] = [
-        +                    fq_crate(dep_package, version)
-        +                    for version in resolver_versions_by_name.get(dep_package, [])
-        +                ]
-            '''
+        '''
             patch.write_text(text, encoding="utf-8")
         PY
-
-    - name: Refresh temporary Cargo lockfile
-      shell: bash
-      run: |
-        set -euo pipefail
-        cd upstream/codex-rs
-        cargo generate-lockfile
-        cargo update -p prost --precise 0.14.3
-        cargo update -p prost-types --precise 0.14.3
 
     - name: Disable stale Windows-only Bazel patch on Linux
       shell: bash
