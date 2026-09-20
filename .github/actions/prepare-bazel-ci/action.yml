@@ -243,84 +243,11 @@ runs:
         subprocess.run(["cargo", "generate-lockfile"], check=True)
         generated = lockfile.read_text(encoding="utf-8")
 
-        def package_blocks(text):
-            blocks = {}
-            for match in re.finditer(
-                r'\n\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n.*?(?=\n\[\[package\]\]|\Z)',
-                text,
-                flags=re.DOTALL,
-            ):
-                blocks[(match.group(1), match.group(2))] = match.group(0)
-            return blocks
-
-        original_blocks = package_blocks(original)
-        generated_blocks = package_blocks(generated)
-        generated_by_name = {}
-        for (name, _version), block in generated_blocks.items():
-            generated_by_name.setdefault(name, []).append(block)
-        local_package_names = {
-            name for (name, _version), block in generated_blocks.items()
-            if "\nsource = " not in block
-        }
-
-        original_versions = {}
-        for name, version in original_blocks:
-            original_versions.setdefault(name, version)
-
-        def align_third_party_versions(block):
-            for name, version in original_versions.items():
-                if name in local_package_names:
-                    continue
-                block = re.sub(
-                    rf'"{re.escape(name)} [^"]+"',
-                    f'"{name} {version}"',
-                    block,
-                )
-            return block
-
-        selected_generated_blocks = {}
-        for (name, _version), block in generated_blocks.items():
-            key = (name, _version)
-            if name == "gix" or name in local_package_names or name not in original_versions:
-                selected_generated_blocks[key] = block
-
-        # Retain the transitive generated records needed by the selected
-        # internal/new packages, even when upstream has the same package name
-        # at a different version.
-        changed = True
-        while changed:
-            changed = False
-            referenced = set()
-            for block in selected_generated_blocks.values():
-                referenced.update(
-                    re.findall(r'"([^" ]+) ([0-9][^"]*)"', block)
-                )
-            for key in referenced:
-                block = generated_blocks.get(key)
-                if (
-                    block is not None
-                    and key not in selected_generated_blocks
-                    and key not in original_blocks
-                ):
-                    selected_generated_blocks[key] = block
-                    changed = True
-
-        # Keep upstream's third-party resolutions intact. Internal Codex
-        # packages must come from the generated lockfile because their
-        # temporary workspace manifests may add or change internal edges.
-        for key, old_block in original_blocks.items():
-            if key[0] in local_package_names:
-                original = original.replace(old_block, "", 1)
-        for key, old_block in original_blocks.items():
-            if key[0] == "gix":
-                replacements = generated_by_name.get(key[0], [])
-                if replacements:
-                    original = original.replace(old_block, replacements[0], 1)
-        for key, block in selected_generated_blocks.items():
-            if key[0] != "gix" or key not in original_blocks:
-                original = original.rstrip() + "\n" + block
-
-        lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
+        # Cargo has resolved this temporary workspace manifest, so keep the
+        # complete generated graph. Mixing it with upstream's lock entries
+        # creates incompatible versions of tightly coupled crates such as
+        # http, reqwest, rand, and rand_regex.
+        lockfile.write_text(generated, encoding="utf-8")
         PY
 
     - name: Disable stale Windows-only Bazel patch on Linux
