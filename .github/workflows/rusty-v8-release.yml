@@ -198,6 +198,7 @@ jobs:
             build
             -c
             opt
+            --remote_download_toplevel
             "--platforms=@llvm//platforms:${PLATFORM}"
             --config=rusty-v8-upstream-libcxx
             "--config=v8-target-${V8_CPU}"

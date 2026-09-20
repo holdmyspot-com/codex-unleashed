@@ -181,6 +181,7 @@ jobs:
           pair_target="//third_party/v8:rusty_v8_${pair_kind}_${target_suffix}"
           bazel_args=(
             build
+            --remote_download_toplevel
             --platforms="@llvm//platforms:${PLATFORM}"
             --config=rusty-v8-upstream-libcxx
             "--config=v8-target-${V8_CPU}"
