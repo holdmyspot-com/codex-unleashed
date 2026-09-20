@@ -27,6 +27,39 @@ runs:
       with:
         target: ${{ inputs.target }}
 
+    # rules_rs cannot infer the local paths for workspace-inherited crates in
+    # rust-v0.155.1. Add the mappings only in this temporary CI checkout;
+    # patches/ remains limited to product source changes.
+    - name: Add Bazel Cargo path mappings
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+
+        manifest = Path("upstream/codex-rs/Cargo.toml")
+        text = manifest.read_text(encoding="utf-8")
+        marker = "[patch.crates-io]\n"
+        mappings = [
+            'codex-build-info = { path = "build-info" }',
+            'codex-bwrap = { path = "bwrap" }',
+            'codex-cli = { path = "cli" }',
+            'codex-code-mode-host = { path = "code-mode-host" }',
+            'codex-config-schema = { path = "config-schema" }',
+            'codex-thread-manager-sample = { path = "thread-manager-sample" }',
+            'codex-utils-readiness = { path = "utils/readiness" }',
+            'codex-v8-poc = { path = "v8-poc" }',
+            'codex-voice-host = { path = "voice-host" }',
+            'codex-worktree = { path = "worktree" }',
+        ]
+        if marker not in text:
+            raise SystemExit(f"Missing {marker.strip()} in {manifest}")
+        start = text.index(marker) + len(marker)
+        additions = "".join(f"{mapping}\n" for mapping in mappings if mapping not in text[start:])
+        if additions:
+            manifest.write_text(text[:start] + additions + text[start:], encoding="utf-8")
+        PY
+
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
       shell: bash
