@@ -313,9 +313,10 @@ runs:
                 if len(parts) == 2 and re.match(r"[0-9]", parts[1]):
                     yield (parts[0], parts[1])
                 else:
-                    for key in generated_blocks:
-                        if key[0] == token:
-                            yield key
+                    if token not in original_versions_by_name:
+                        for key in generated_blocks:
+                            if key[0] == token:
+                                yield key
 
         pending = list(generated_closure)
         while pending:
