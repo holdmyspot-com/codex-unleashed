@@ -114,7 +114,7 @@ runs:
                             value = dependency[key]
                             if key == "path":
                                 value = os.path.relpath(root / value, package_manifest.parent).replace(os.sep, "/")
-                            fields.append(f'{key} = {value!r}')
+                            fields.append(f'{key} = {toml_literal(value)}')
                     if not fields:
                         continue
                     inherited = ", ".join(fields)
