@@ -122,6 +122,8 @@ runs:
                     continue
                 def expand_inline(match):
                     remaining = re.sub(r'workspace\s*=\s*true\s*,?', '', match.group(2)).strip(' ,')
+                    if isinstance(dependency, dict) and "default-features" in dependency:
+                        remaining = re.sub(r'default-features\s*=\s*(?:true|false)\s*,?', '', remaining).strip(' ,')
                     contents = inherited if not remaining else f'{inherited}, {remaining}'
                     return f'{match.group(1)} {contents} }}'
 
