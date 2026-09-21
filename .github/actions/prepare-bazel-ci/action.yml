@@ -109,7 +109,7 @@ runs:
                     inherited = f'version = "{dependency}"'
                 elif isinstance(dependency, dict):
                     fields = []
-                    for key in ("path", "version", "git", "rev", "branch", "tag", "registry"):
+                    for key in ("path", "version", "git", "rev", "branch", "tag", "registry", "default-features"):
                         if key in dependency:
                             value = dependency[key]
                             if key == "path":
