@@ -275,7 +275,10 @@ runs:
                 match = re.fullmatch(r'(\s*)"([^" ]+) ([0-9][^" ]*)",', line)
                 if match:
                     name, version = match.group(2), match.group(3)
-                    if (name, version) not in original_blocks and not name.startswith("codex-"):
+                    if ((name, version) not in original_blocks
+                            and not name.startswith("codex-")
+                            and name != "gix"
+                            and not name.startswith("gix-")):
                         versions = original_versions_by_name.get(name, [])
                         try:
                             same_major = [candidate for candidate in versions
@@ -289,18 +292,21 @@ runs:
                 lines.append(line)
             return "\n".join(lines)
 
+        def is_temporary_workspace_crate(name):
+            return name.startswith("codex-") or name == "gix" or name.startswith("gix-")
+
         # Keep upstream's resolved graph intact. The generated lockfile only
         # supplies metadata for dependencies introduced by temporary changes.
         for key, old_block in original_blocks.items():
-            if key[0].startswith("codex-"):
+            if is_temporary_workspace_crate(key[0]):
                 replacements = generated_by_name.get(key[0], [])
                 if replacements:
                     replacement = replacements[0]
-                    if key[0].startswith("codex-"):
+                    if is_temporary_workspace_crate(key[0]):
                         replacement = normalize_local_block(replacement)
                     original = original.replace(old_block, replacement, 1)
         for key, block in generated_blocks.items():
-            if key not in original_blocks and key[0].startswith("codex-"):
+            if key not in original_blocks and is_temporary_workspace_crate(key[0]):
                 original = original.rstrip() + "\n" + normalize_local_block(block)
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
