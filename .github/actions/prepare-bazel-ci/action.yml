@@ -365,9 +365,6 @@ runs:
             'crate.from_cargo(\n    validate_lockfile = False,\n    cargo_lock = "//codex-rs:Cargo.lock",',
             1,
         )
-        # The upstream module's optional aws-lc build-info edge is stale for
-        # the generated rules_rs package used by this Linux CI build.
-        text = text.replace('    deps = ["@crates//:aws_lc_sys_build_info"],\n', "", 1)
         module.write_text(text, encoding="utf-8")
         PY
 
