@@ -276,13 +276,18 @@ runs:
         for name, version in original_blocks:
             original_versions_by_name.setdefault(name, []).append(version)
 
-        def normalize_local_block(block):
+        def normalize_local_block(block, baseline_block=None):
             def version_key(version):
                 match = re.match(r"(\d+(?:\.\d+){0,2})", version)
                 if not match:
                     raise ValueError(version)
                 return tuple(int(part) for part in match.group(1).split("."))
 
+            preferred_versions = {}
+            if baseline_block is not None:
+                preferred_versions.update(dict(re.findall(
+                    r'\s*"([^" ]+) ([0-9][^" ]*)",', baseline_block
+                )))
             lines = []
             for line in block.splitlines():
                 match = re.fullmatch(r'(\s*)"([^" ]+) ([0-9][^" ]*)",', line)
@@ -294,11 +299,13 @@ runs:
                             and not name.startswith("gix-")):
                         versions = original_versions_by_name.get(name, [])
                         try:
-                            same_major = [candidate for candidate in versions
-                                          if version_key(candidate)[0] == version_key(version)[0]]
-                            candidates = same_major or versions
-                            if candidates:
-                                selected = max(candidates, key=version_key)
+                            selected = preferred_versions.get(name)
+                            if selected is None:
+                                same_major = [candidate for candidate in versions
+                                              if version_key(candidate)[0] == version_key(version)[0]]
+                                candidates = same_major or versions
+                                selected = max(candidates, key=version_key) if candidates else None
+                            if selected is not None:
                                 line = f'{match.group(1)}"{name} {selected}",'
                         except ValueError:
                             pass
@@ -349,7 +356,7 @@ runs:
                 if replacements:
                     replacement = replacements[0]
                     if is_temporary_workspace_crate(key[0]):
-                        replacement = normalize_local_block(replacement)
+                        replacement = normalize_local_block(replacement, old_block)
                     original = original.replace(old_block, replacement, 1)
         for key in generated_closure:
             if key[0] not in original_versions_by_name:
@@ -376,6 +383,8 @@ runs:
             'crate.from_cargo(\n    validate_lockfile = False,\n    cargo_lock = "//codex-rs:Cargo.lock",',
             1,
         )
+        if 'crate = "gix-hash"' not in text:
+            text += '\ncrate.annotation(\n    crate = "gix-hash",\n    crate_features = ["sha1"],\n)\n'
         module.write_text(text, encoding="utf-8")
         PY
 
