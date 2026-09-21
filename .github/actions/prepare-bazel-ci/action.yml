@@ -322,7 +322,8 @@ runs:
         while pending:
             key = pending.pop()
             for dependency_key in dependency_keys(generated_by_key[key]):
-                if dependency_key in generated_by_key and dependency_key not in original_blocks:
+                if (dependency_key in generated_by_key
+                        and dependency_key[0] not in original_versions_by_name):
                     if dependency_key not in generated_closure:
                         generated_closure.add(dependency_key)
                         pending.append(dependency_key)
@@ -338,7 +339,7 @@ runs:
                         replacement = normalize_local_block(replacement)
                     original = original.replace(old_block, replacement, 1)
         for key in generated_closure:
-            if key not in original_blocks:
+            if key[0] not in original_versions_by_name:
                 block = generated_by_key[key]
                 if is_temporary_workspace_crate(key[0]):
                     block = normalize_local_block(block)
