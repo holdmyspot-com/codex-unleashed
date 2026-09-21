@@ -298,7 +298,7 @@ runs:
                     original = original.replace(old_block, replacement, 1)
         for key, block in generated_blocks.items():
             if key not in original_blocks and key[0].startswith("codex-"):
-                original = original.rstrip() + "\n" + block
+                original = original.rstrip() + "\n" + normalize_local_block(block)
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
         PY
