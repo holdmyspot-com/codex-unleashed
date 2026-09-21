@@ -295,6 +295,23 @@ runs:
         def is_temporary_workspace_crate(name):
             return name.startswith("codex-") or name == "gix" or name.startswith("gix-")
 
+        generated_by_key = {
+            key: block for key, block in generated_blocks.items()
+        }
+        generated_closure = {
+            key for key in generated_blocks
+            if is_temporary_workspace_crate(key[0])
+        }
+        pending = list(generated_closure)
+        while pending:
+            key = pending.pop()
+            for dependency in re.findall(r'\s*"([^" ]+) ([0-9][^" ]*)",', generated_by_key[key]):
+                dependency_key = tuple(dependency)
+                if dependency_key in generated_by_key and dependency_key not in original_blocks:
+                    if dependency_key not in generated_closure:
+                        generated_closure.add(dependency_key)
+                        pending.append(dependency_key)
+
         # Keep upstream's resolved graph intact. The generated lockfile only
         # supplies metadata for dependencies introduced by temporary changes.
         for key, old_block in original_blocks.items():
@@ -305,9 +322,12 @@ runs:
                     if is_temporary_workspace_crate(key[0]):
                         replacement = normalize_local_block(replacement)
                     original = original.replace(old_block, replacement, 1)
-        for key, block in generated_blocks.items():
-            if key not in original_blocks and is_temporary_workspace_crate(key[0]):
-                original = original.rstrip() + "\n" + normalize_local_block(block)
+        for key in generated_closure:
+            if key not in original_blocks:
+                block = generated_by_key[key]
+                if is_temporary_workspace_crate(key[0]):
+                    block = normalize_local_block(block)
+                original = original.rstrip() + "\n" + block
 
         lockfile.write_text(original.rstrip() + "\n", encoding="utf-8")
         PY
