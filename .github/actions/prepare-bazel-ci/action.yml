@@ -295,7 +295,7 @@ runs:
             return "\n".join(lines)
 
         def is_temporary_workspace_crate(name):
-            return name.startswith("codex-") or name == "gix" or name.startswith("gix-")
+            return name.startswith("codex-") or name == "gix-credentials"
 
         generated_by_key = {
             key: block for key, block in generated_blocks.items()
