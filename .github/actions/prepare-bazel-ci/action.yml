@@ -92,6 +92,8 @@ runs:
                     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
                 if isinstance(value, bool):
                     return "true" if value else "false"
+                if isinstance(value, list):
+                    return "[" + ", ".join(toml_literal(item) for item in value) + "]"
                 return repr(value)
 
             # Package metadata inheritance is represented as a table by
@@ -120,10 +122,19 @@ runs:
                     inherited = ", ".join(fields)
                 else:
                     continue
+                inherited_features = dependency.get("features", []) if isinstance(dependency, dict) else []
                 def expand_inline(match):
                     remaining = re.sub(r'workspace\s*=\s*true\s*,?', '', match.group(2)).strip(' ,')
                     if isinstance(dependency, dict) and "default-features" in dependency:
                         remaining = re.sub(r'default-features\s*=\s*(?:true|false)\s*,?', '', remaining).strip(' ,')
+                    if inherited_features:
+                        feature_match = re.search(r'features\s*=\s*\[([^]]*)\]', remaining, flags=re.DOTALL)
+                        local_features = re.findall(r'"([^"]+)"', feature_match.group(1)) if feature_match else []
+                        merged_features = list(dict.fromkeys(inherited_features + local_features))
+                        if feature_match:
+                            remaining = remaining[:feature_match.start()] + f'features = {toml_literal(merged_features)}' + remaining[feature_match.end():]
+                        else:
+                            remaining = f'features = {toml_literal(merged_features)}, {remaining}' if remaining else f'features = {toml_literal(merged_features)}'
                     contents = inherited if not remaining else f'{inherited}, {remaining}'
                     return f'{match.group(1)} {contents} }}'
 
