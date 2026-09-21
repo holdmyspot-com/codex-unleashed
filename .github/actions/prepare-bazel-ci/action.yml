@@ -302,11 +302,25 @@ runs:
             key for key in generated_blocks
             if is_temporary_workspace_crate(key[0])
         }
+
+        def dependency_keys(block):
+            for line in block.splitlines():
+                token = line.strip()
+                if not (token.startswith('"') and token.endswith('",')):
+                    continue
+                token = token[1:-2]
+                parts = token.rsplit(" ", 1)
+                if len(parts) == 2 and re.match(r"[0-9]", parts[1]):
+                    yield (parts[0], parts[1])
+                else:
+                    for key in generated_blocks:
+                        if key[0] == token:
+                            yield key
+
         pending = list(generated_closure)
         while pending:
             key = pending.pop()
-            for dependency in re.findall(r'\s*"([^" ]+) ([0-9][^" ]*)",', generated_by_key[key]):
-                dependency_key = tuple(dependency)
+            for dependency_key in dependency_keys(generated_by_key[key]):
                 if dependency_key in generated_by_key and dependency_key not in original_blocks:
                     if dependency_key not in generated_closure:
                         generated_closure.add(dependency_key)
