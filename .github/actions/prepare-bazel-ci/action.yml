@@ -264,6 +264,9 @@ runs:
             original_versions_by_name.setdefault(name, []).append(version)
 
         def normalize_local_block(block):
+            def version_key(version):
+                return tuple(int(part) for part in version.split(".")[:3])
+
             lines = []
             for line in block.splitlines():
                 match = re.fullmatch(r'(\s*)"([^" ]+) ([0-9][^" ]*)",', line)
@@ -271,8 +274,15 @@ runs:
                     name, version = match.group(2), match.group(3)
                     if (name, version) not in original_blocks and not name.startswith("codex-"):
                         versions = original_versions_by_name.get(name, [])
-                        if len(versions) == 1:
-                            line = f'{match.group(1)}"{name} {versions[0]}",'
+                        try:
+                            same_major = [candidate for candidate in versions
+                                          if version_key(candidate)[0] == version_key(version)[0]]
+                            candidates = same_major or versions
+                            if candidates:
+                                selected = max(candidates, key=version_key)
+                                line = f'{match.group(1)}"{name} {selected}",'
+                        except ValueError:
+                            pass
                 lines.append(line)
             return "\n".join(lines)
 
