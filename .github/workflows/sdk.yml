@@ -107,7 +107,7 @@ jobs:
           target: x86_64-unknown-linux-gnu
           cache-scope: sdk
 
-      - name: Build patched Codex binaries for SDK tests
+      - name: Build patched Codex package binaries for SDK tests
         id: build_bazel
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -115,8 +115,8 @@ jobs:
         run: |
           set -euo pipefail
           cd upstream
-          # The SDK tests spawn the CLI directly, so download the top-level
-          # Bazel outputs even when the build uses remote execution.
+          # The SDK tests spawn the CLI directly, so download only the top-level
+          # Codex package binaries, even when the build uses remote execution.
           ./.github/scripts/run-bazel-ci.sh \
             --remote-download-toplevel \
             -- \
@@ -138,12 +138,11 @@ jobs:
           )"
           mapfile -t bazel_output_paths <<< "${cquery_output}"
           if [[ ${#bazel_output_paths[@]} -ne 2 ]]; then
-            echo "Expected both Bazel-built binaries, found ${#bazel_output_paths[@]}." >&2
+            echo "Expected both Codex package binaries, found ${#bazel_output_paths[@]}." >&2
             exit 1
           fi
 
-          # Stage only the two binaries the SDK tests need. Keeping them
-          # together lets the CLI find its sibling code-mode host.
+          # Stage only the Codex package binaries needed by the SDK tests.
           install_dir="${RUNNER_TEMP}/codex-sdk-ci"
           mkdir -p "${install_dir}"
           install -m 755 "${bazel_output_paths[@]}" "${install_dir}"
