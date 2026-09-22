@@ -30,7 +30,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - uses: actions/setup-python@v6
@@ -146,7 +146,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - name: Prepare Bazel CI
@@ -295,7 +295,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - name: Configure git for upstream checkout

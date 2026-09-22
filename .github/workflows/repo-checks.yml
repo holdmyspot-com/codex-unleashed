@@ -69,7 +69,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - name: Cache pnpm store
@@ -88,7 +88,7 @@ jobs:
             upstream/codex-rs -> target
           cache-targets: false
           cache-directories: ${{ env.CARGO_TARGET_DIR }}
-          key: repo-checks-${{ inputs.upstream_ref || 'main' }}
+          key: repo-checks-${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install upstream dependencies

@@ -1,7 +1,0 @@
-diff --git a/codex-rs/login/src/internal_identity.rs b/codex-rs/login/src/internal_identity.rs
-deleted file mode 100644
-index 95ac0cc..0000000
---- a/codex-rs/login/src/internal_identity.rs
-+++ /dev/null
-@@ -1 +0,0 @@
--//! Authentication identity helpers for optional diagnostics.

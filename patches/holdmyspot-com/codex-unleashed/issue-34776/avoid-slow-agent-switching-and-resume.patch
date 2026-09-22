@@ -1,22 +1,11 @@
-From bdc2f938c13ee576ae380ea923ff02263fc5fc92 Mon Sep 17 00:00:00 2001
-From: Codex Rebase <codex-rebase@localhost>
-Date: Sun, 20 Sep 2026 14:56:29 -0400
-Subject: [PATCH] avoid-slow-agent-switching-and-resume
-
----
- .../app/tests/session_lifecycle_requests.rs   | 165 ++++++++++++++++++
- codex-rs/tui/src/chatwidget/replay.rs         |  13 ++
- .../src/chatwidget/tests/history_replay.rs    |  59 +++++++
- 3 files changed, 237 insertions(+)
-
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f8d0532..e3a0d22 100644
+index 3333f430f9..f0fb8e64d6 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -584,6 +584,171 @@ async fn make_history_test_app() -> Result<(App, tempfile::TempDir)> {
-     Ok((app, codex_home))
+@@ -625,6 +625,171 @@ fn spawn_approved_task_tool_call(
+     });
  }
- 
+
 +#[test]
 +fn switching_back_replays_only_latest_compacted_conversation() -> Result<()> {
 +    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
@@ -183,13 +172,13 @@ index f8d0532..e3a0d22 100644
 +}
 +
  #[tokio::test]
- async fn deleting_remote_thread_omits_disconnect_guidance() -> Result<()> {
-     let (mut app, codex_home) = make_history_test_app().await?;
+ async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
+     let (app, _codex_home) = make_history_test_app().await?;
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 0fb1efd..c126b53 100644
+index 52b31fcbd6..4f8626e968 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -105,6 +105,19 @@ impl ChatWidget {
+@@ -33,6 +33,19 @@ impl ChatWidget {
          if matches!(replay_kind, ReplayKind::ThreadSnapshot) && !turns.is_empty() {
              self.warning_display_state.startup_complete = true;
          }
@@ -210,13 +199,13 @@ index 0fb1efd..c126b53 100644
          let hidden_nested_review_turns = std::iter::once(/*value*/ false)
              .chain(turns.windows(/*size*/ 2).map(|turns| {
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index d44f9da..352db18 100644
+index 31af6ad260..38524264bd 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -76,6 +76,65 @@ async fn resumed_initial_messages_render_history() {
      );
  }
- 
+
 +#[tokio::test]
 +async fn replayed_compacted_history_contains_only_latest_conversation() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -279,5 +268,3 @@ index d44f9da..352db18 100644
  #[tokio::test]
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
--- 
-2.43.0

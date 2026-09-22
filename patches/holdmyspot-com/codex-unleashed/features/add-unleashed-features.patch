@@ -1,28 +1,19 @@
-From 18e9e5811ba880be398cc9e2897ce41e17b3a8e0 Mon Sep 17 00:00:00 2001
-From: Codex Rebase <codex-rebase@localhost>
-Date: Sun, 20 Sep 2026 14:54:20 -0400
-Subject: [PATCH] add-unleashed-features
-
----
- codex-rs/features/src/lib.rs | 8 ++++++++
- 1 file changed, 8 insertions(+)
-
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 1a31316..a3b3f49 100644
+index 5b5206047c..09973e189f 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -93,6 +93,8 @@ impl Stage {
+@@ -91,6 +91,8 @@ impl Stage {
+ /// Unique features toggled via configuration.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
-     /// Discover model catalogs for OpenAI API-key authentication.
-     ApiKeyModelDiscovery,
 +    /// Use the latest compacted conversation when replaying a resumed thread.
 +    UnleashedAgentFastSwitching,
      /// Enable the interactive transcript composer and turn-selection UI.
      TranscriptV2,
      // Stable.
-@@ -902,6 +904,12 @@ pub struct FeatureSpec {
+@@ -898,6 +900,12 @@ pub struct FeatureSpec {
  }
- 
+
  pub const FEATURES: &[FeatureSpec] = &[
 +    FeatureSpec {
 +        id: Feature::UnleashedAgentFastSwitching,
@@ -33,5 +24,3 @@ index 1a31316..a3b3f49 100644
      FeatureSpec {
          id: Feature::TranscriptV2,
          key: "transcript_v2",
--- 
-2.43.0

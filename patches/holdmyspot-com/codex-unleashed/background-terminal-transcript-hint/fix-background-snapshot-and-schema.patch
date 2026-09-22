@@ -1,18 +1,8 @@
-diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
---- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
-+++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
-@@ -4,6 +4,7 @@
- History:
- • Ran echo repro-marker
-   └ repro-marker
-+(ctrl + t to view transcript)
- 
- Active:
- • Exploring
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 2d5d268a67..7006651227 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1023,6 +1023,9 @@
+@@ -1029,6 +1029,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -22,7 +12,7 @@ diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -6348,6 +6351,9 @@
+@@ -6424,6 +6427,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -32,3 +22,15 @@ diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
          "use_agent_identity": {
            "type": "boolean"
          },
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+index 85259b0b13..4ead6665a7 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+@@ -5,6 +5,7 @@ expression: snapshot
+ History:
+ • Ran echo repro-marker
+   └ repro-marker
++(ctrl + t to view transcript)
+
+ Active:
+ • Exploring

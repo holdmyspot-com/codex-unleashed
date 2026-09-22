@@ -1,10 +1,15 @@
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+index 012b4c8ebd..ae531aea0c 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -27,5 +27,5 @@
+@@ -74,7 +74,7 @@ async fn replayed_command_completion_preserves_tracking_without_duplicate_starts
+         .collect::<Vec<_>>();
      assert_eq!(
          history,
 -        vec!["• Ran cat replay\n  └ (no output)\n".to_string()]
 +        vec!["• Ran cat replay\n  └ (no output)\n(ctrl + t to view transcript)\n".to_string()]
      );
  }
+
+--
+2.43.0

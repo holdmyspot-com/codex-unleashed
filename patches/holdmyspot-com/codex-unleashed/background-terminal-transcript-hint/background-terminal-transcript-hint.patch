@@ -1,22 +1,22 @@
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index ed09151..080261b 100644
+index ed091515d3..080261b3ff 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -493,6 +493,10 @@ impl ExecCell {
              }
          }
- 
+
 +        if call.source == ExecCommandSource::UnifiedExecStartup && call.duration.is_some() {
 +            lines.push(Line::from("(ctrl + t to view transcript)".dim()));
 +        }
 +
          lines
      }
- 
+
 @@ -875,6 +879,30 @@ mod tests {
          );
      }
- 
+
 +    #[test]
 +    fn completed_background_terminal_includes_transcript_hint() {
 +        let cell = ExecCell::new(
@@ -45,7 +45,7 @@ index ed09151..080261b 100644
      fn output_lines_handles_newline_dense_output_without_materializing_every_line() {
          let output = CommandOutput::new(/*exit_code*/ 0, "\n".repeat(100_000));
 diff --git a/codex-rs/tui/src/history_cell/exec.rs b/codex-rs/tui/src/history_cell/exec.rs
-index 365558e..db76e3d 100644
+index 365558eb30..db76e3d1e6 100644
 --- a/codex-rs/tui/src/history_cell/exec.rs
 +++ b/codex-rs/tui/src/history_cell/exec.rs
 @@ -130,6 +130,11 @@ impl HistoryCell for UnifiedExecProcessesCell {
@@ -58,10 +58,10 @@ index 365558e..db76e3d 100644
 +                .into(),
 +        );
          out.push("".into());
- 
+
          if self.processes.is_empty() {
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
-index e13dcf0..9a0b480 100644
+index e13dcf0a1e..9a0b48092f 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -72,14 +72,14 @@ index e13dcf0..9a0b480 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • just fix
      ↳   indented first
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_empty_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_empty_snapshot.snap
-index a638aca..3aaafc0 100644
+index a638aca723..3aaafc0470 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_empty_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_empty_snapshot.snap
 @@ -1,9 +1,11 @@
@@ -90,13 +90,13 @@ index a638aca..3aaafc0 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • No background terminals running.
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
-index a39929e..0274a25 100644
+index a39929e48f..0274a253d3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -106,14 +106,14 @@ index a39929e..0274a25 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • echo ｶﾞﾊﾟｶﾞﾊﾟ [...]
      ↳ output ｶﾞﾊﾟ [...]
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
-index 2bd4bf9..1f806b9 100644
+index 2bd4bf9fb9..1f806b9848 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -124,14 +124,14 @@ index 2bd4bf9..1f806b9 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • rg "foo" src --glob '**/*. [...]
      ↳ searching...
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
-index d0138b2..f8ab47c 100644
+index d0138b2744..f8ab47ca72 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -142,14 +142,14 @@ index d0138b2..f8ab47c 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • command 0
    • command 1
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
-index 0e31edd..ced2bc4 100644
+index 0e31eddfa0..ced2bc4985 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -160,20 +160,20 @@ index 0e31edd..ced2bc4 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • echo hello [...]
      ↳ hello
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index ae781fc..b074b0e 100644
+index 785ff02744..08526d25f6 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -672,6 +672,14 @@ fn ps_output_empty_snapshot() {
      insta::assert_snapshot!(rendered);
  }
- 
+
 +#[test]
 +fn ps_output_explains_how_to_view_full_transcript() {
 +    let cell = new_unified_exec_processes_output(Vec::new());

@@ -71,7 +71,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: main
+          upstream-ref: 848b3845884e3aaf3359867047751dfff12dc448
           fallback-to-default-branch: "true"
 
       - name: Install build prerequisites
@@ -115,7 +115,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: main
+          upstream-ref: 848b3845884e3aaf3359867047751dfff12dc448
           fallback-to-default-branch: "true"
 
       - name: Install build prerequisites

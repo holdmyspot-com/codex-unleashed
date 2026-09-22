@@ -26,7 +26,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - name: Test Python SDK
@@ -77,7 +77,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || 'main' }}
+          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
           fallback-to-default-branch: "true"
 
       - name: Setup pnpm
