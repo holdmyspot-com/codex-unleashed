@@ -187,6 +187,28 @@ runs:
             manifest.write_text(text[:start] + additions + text[start:], encoding="utf-8")
         PY
 
+    # The pinned upstream release has one stale test import that newer
+    # clippy rejects under Bazel's -Dwarnings configuration. Keep this
+    # compatibility cleanup in the temporary checkout instead of adding an
+    # upstream-source patch to patches/.
+    - name: Remove stale upstream clippy import
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+
+        source = Path("upstream/codex-rs/core/tests/suite/openai_file_mcp.rs")
+        text = source.read_text(encoding="utf-8")
+        stale_import = "use wiremock::matchers::body_json;\n"
+        if text.count(stale_import) != 1:
+            raise SystemExit(
+                f"Expected one stale body_json import in {source}, "
+                f"found {text.count(stale_import)}"
+            )
+        source.write_text(text.replace(stale_import, "", 1), encoding="utf-8")
+        PY
+
     # The pinned rules_rs resolver assumes every dependency has a target key.
     # Keep this compatibility change in the temporary CI checkout rather than
     # carrying a non-product patch in patches/.
