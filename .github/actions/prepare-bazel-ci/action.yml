@@ -313,7 +313,16 @@ runs:
             return "\n".join(lines)
 
         def is_temporary_workspace_crate(name):
-            return name.startswith("codex-") or name == "gix-credentials"
+            # The manifest rewrite above materializes workspace metadata for
+            # every local package. Most local packages use a codex-* name,
+            # but the shared test-support package is intentionally named
+            # core_test_support. Keep its generated lock record in sync too;
+            # otherwise rules_rs sees the upstream 0.0.0 record while the
+            # rewritten manifest says 0.155.1 and drops its test dependencies.
+            return (
+                name.startswith("codex-")
+                or name in {"core_test_support", "gix-credentials"}
+            )
 
         generated_by_key = {
             key: block for key, block in generated_blocks.items()
