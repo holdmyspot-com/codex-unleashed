@@ -29,10 +29,14 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
+          # Upstream disabled these ARM Bazel tests after recurring linker
+          # failures in the hosted ARM environment. Keep the supported
+          # multi-platform matrix aligned with upstream while retaining both
+          # macOS targets below.
+          # - os: ubuntu-24.04-arm
+          #   target: aarch64-unknown-linux-gnu
+          # - os: ubuntu-24.04-arm
+          #   target: aarch64-unknown-linux-musl
           - os: macos-15
             target: aarch64-apple-darwin
           - os: macos-15
