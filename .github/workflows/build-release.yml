@@ -1392,8 +1392,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_dir="${CARGO_TARGET_DIR}/${{ matrix.target }}/release"
-          find "$release_dir" -type f -name '*.pdb' -delete
+          find "$CARGO_TARGET_DIR" -type f -name '*.pdb' -delete
           find "$CARGO_TARGET_DIR" -type d -name cargo-timings -prune -exec rm -rf {} +
           find "$CARGO_TARGET_DIR" -type d -name 'staged-*' -prune -exec rm -rf {} +
 
