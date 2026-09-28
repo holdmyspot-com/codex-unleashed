@@ -31,7 +31,7 @@ on:
       reproducibility_mode:
         description: "Optional deterministic compiler mode for reproducibility experiments."
         required: false
-        default: off
+        default: "off"
         type: string
       cache_audit:
         description: "Upload a complete Cargo cache file/size manifest for one diagnostic run."
@@ -81,7 +81,7 @@ on:
       reproducibility_mode:
         description: "Compiler mode for reproducibility experiments."
         required: false
-        default: off
+        default: "off"
         type: choice
         options:
           - "off"
