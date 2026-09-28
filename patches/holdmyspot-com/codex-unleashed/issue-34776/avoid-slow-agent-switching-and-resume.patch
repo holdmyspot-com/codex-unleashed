@@ -1,32 +1,55 @@
-From 759c2b78b185ab342826417b31eb7876b60172ec Mon Sep 17 00:00:00 2001
-From: Codex Patch Queue <patches@codex-unleashed.invalid>
-Date: Sun, 27 Sep 2026 18:52:15 -0400
-Subject: [PATCH] Add fast agent switching and feature registration
+From 2c75d9eb07860aa7044ece8334e56c36b9b8bbc1 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 28 Sep 2026 04:57:18 -0400
+Subject: [PATCH] Speed up agent thread switching
 
 ---
+ codex-rs/core/config.schema.json              |   6 +
  codex-rs/features/src/lib.rs                  |   8 +
- .../app/tests/session_lifecycle_requests.rs   | 165 ++++++++++++++++++
- codex-rs/tui/src/chatwidget/replay.rs         |  13 ++
- .../src/chatwidget/tests/history_replay.rs    |  59 +++++++
- 4 files changed, 245 insertions(+)
+ codex-rs/tui/src/app/reconnect.rs             |   4 +-
+ codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
+ codex-rs/tui/src/app/tests.rs                 |   2 +-
+ .../app/tests/session_lifecycle_requests.rs   | 203 ++++++++++++++++++
+ codex-rs/tui/src/app/thread_events.rs         |  26 ++-
+ codex-rs/tui/src/app/thread_routing.rs        |  13 +-
+ .../src/chatwidget/tests/history_replay.rs    |  44 ++++
+ 9 files changed, 305 insertions(+), 5 deletions(-)
 
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index f653c997c..3bd60b975 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1131,3 +1131,6 @@
++            "unleashed_agent_fast_switching": {
++              "type": "boolean"
++            },
+             "use_agent_identity": {
+               "type": "boolean"
+             },
+@@ -7158,3 +7161,6 @@
++        "unleashed_agent_fast_switching": {
++          "type": "boolean"
++        },
+         "use_agent_identity": {
+           "type": "boolean"
+         },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 5b5206047..09973e189 100644
+index 171e6dc2e..d4ea5b439 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -91,6 +91,8 @@ impl Stage {
- /// Unique features toggled via configuration.
- #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
- pub enum Feature {
-+    /// Use the latest compacted conversation when replaying a resumed thread.
-+    UnleashedAgentFastSwitching,
-     /// Enable the interactive transcript composer and turn-selection UI.
-     TranscriptV2,
-     // Stable.
-@@ -898,6 +900,12 @@ pub struct FeatureSpec {
- }
+@@ -110,6 +110,8 @@ pub enum Feature {
  
- pub const FEATURES: &[FeatureSpec] = &[
+     /// Automatically start the shared local daemon for eligible interactive launches.
+     DaemonAutoStart,
++    /// Replay only the latest compacted conversation when switching back to a thread.
++    UnleashedAgentFastSwitching,
+ 
+     // Experimental
+     /// Send per-content-entry classifications in internal Responses metadata.
+@@ -937,6 +939,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+         stage: Stage::Stable,
+         default_enabled: true,
+     },
 +    FeatureSpec {
 +        id: Feature::UnleashedAgentFastSwitching,
 +        key: "unleashed_agent_fast_switching",
@@ -36,11 +59,54 @@ index 5b5206047..09973e189 100644
      FeatureSpec {
          id: Feature::TranscriptV2,
          key: "transcript_v2",
+diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
+index 01cc92847..81e89ea22 100644
+--- a/codex-rs/tui/src/app/reconnect.rs
++++ b/codex-rs/tui/src/app/reconnect.rs
+@@ -414,7 +414,9 @@ impl App {
+             self.thread_event_channels.insert(id, channel);
+         }
+         if let Some(id) = displayed
+-            && let Some((receiver, snapshot)) = self.activate_thread_for_replay(id).await
++            && let Some((receiver, snapshot)) = self
++                .activate_thread_for_replay(id, ThreadEventSnapshotMode::FullHistory)
++                .await
+         {
+             self.active_thread_id = Some(id);
+             self.active_thread_rx = Some(receiver);
+diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
+index 0b0089f0c..7fd454f6f 100644
+--- a/codex-rs/tui/src/app/session_lifecycle.rs
++++ b/codex-rs/tui/src/app/session_lifecycle.rs
+@@ -629,7 +629,9 @@ impl App {
+         }
+         self.store_active_thread_receiver().await;
+         self.active_thread_id = None;
+-        let Some((receiver, mut snapshot)) = self.activate_thread_for_replay(thread_id).await
++        let Some((receiver, mut snapshot)) = self
++            .activate_thread_for_replay(thread_id, ThreadEventSnapshotMode::AgentSwitch)
++            .await
+         else {
+             self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
+             if let Some(previous_thread_id) = previous_thread_id {
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index dd0aadf5d..cc0251653 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -1178,7 +1178,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
+ 
+     app.store_active_thread_receiver().await;
+     let (_receiver, snapshot) = app
+-        .activate_thread_for_replay(thread_id)
++        .activate_thread_for_replay(thread_id, ThreadEventSnapshotMode::FullHistory)
+         .await
+         .expect("detached thread should reactivate for replay");
+     app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 3333f430f..f0fb8e64d 100644
+index c183e79ec..26988bb1a 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -625,6 +625,171 @@ fn spawn_approved_task_tool_call(
+@@ -836,6 +836,209 @@ fn spawn_approved_task_tool_call(
      });
  }
  
@@ -56,13 +122,39 @@ index 3333f430f..f0fb8e64d 100644
 +                .enable_all()
 +                .build()?;
 +            runtime.block_on(async {
-+                let one_window =
-+                    measure_switch_back_with_compactions(/*conversation_count*/ 1).await?;
-+                let fifty_windows =
-+                    measure_switch_back_with_compactions(/*conversation_count*/ 50).await?;
++                let (one_window, _) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 1,
++                        /*fast_switching_enabled*/ true,
++                    )
++                    .await?;
++                let (fifty_windows, renders_older_conversation) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 50,
++                        /*fast_switching_enabled*/ true,
++                    )
++                    .await?;
++                assert!(
++                    !renders_older_conversation,
++                    "switching back with fifty compacted windows rendered an older conversation"
++                );
 +                assert!(
 +                    fifty_windows <= one_window + Duration::from_secs(1),
 +                    "switching scaled with compacted history: one window took {one_window:?}, fifty took {fifty_windows:?}"
++                );
++                assert!(
++                    fifty_windows < Duration::from_secs(3),
++                    "switching back to the main agent with fifty compacted windows took {fifty_windows:?}"
++                );
++                let (_, renders_older_conversation_when_disabled) =
++                    measure_switch_back_with_compactions(
++                        /*conversation_count*/ 1,
++                        /*fast_switching_enabled*/ false,
++                    )
++                    .await?;
++                assert!(
++                    renders_older_conversation_when_disabled,
++                    "disabling fast switching should replay the full conversation"
 +                );
 +                Ok(())
 +            })
@@ -72,8 +164,16 @@ index 3333f430f..f0fb8e64d 100644
 +        .map_err(|_| color_eyre::eyre::eyre!("test thread panicked"))?
 +}
 +
-+async fn measure_switch_back_with_compactions(conversation_count: usize) -> Result<Duration> {
++async fn measure_switch_back_with_compactions(
++    conversation_count: usize,
++    fast_switching_enabled: bool,
++) -> Result<(Duration, bool)> {
 +    let (mut app, mut app_events, _ops) = make_test_app_with_channels().await;
++    if !fast_switching_enabled {
++        app.config
++            .features
++            .disable(codex_features::Feature::UnleashedAgentFastSwitching)?;
++    }
 +    let codex_home = tempdir()?;
 +    app.config.codex_home = codex_home.path().to_path_buf().abs();
 +    app.config.sqlite = SqliteConfig::new_for_testing(codex_home.path().abs());
@@ -123,7 +223,7 @@ index 3333f430f..f0fb8e64d 100644
 +    app.enqueue_primary_thread_session(root.session, root.turns)
 +        .await?;
 +
-+    const CONTEXT_WINDOW_TOKENS: usize = 272_000;
++    const CONTEXT_WINDOW_TOKENS: usize = 27_200;
 +    let conversation_text = "history ".repeat(CONTEXT_WINDOW_TOKENS);
 +    let conversation = |index: usize| codex_app_server_protocol::Turn {
 +        id: format!("turn-{index}"),
@@ -182,14 +282,11 @@ index 3333f430f..f0fb8e64d 100644
 +    let mut tui = crate::tui::test_support::make_test_tui()?;
 +    app.select_agent_thread(&mut tui, &mut app_server, child_thread_id)
 +        .await?;
++
 +    let started = Instant::now();
 +    app.select_agent_thread(&mut tui, &mut app_server, root_thread_id)
 +        .await?;
 +    let elapsed = started.elapsed();
-+    assert!(
-+        elapsed < Duration::from_secs(3),
-+        "switching back to the main agent took {elapsed:?}"
-+    );
 +
 +    let rendered = std::iter::from_fn(|| app_events.try_recv().ok())
 +        .filter_map(|event| match event {
@@ -199,28 +296,53 @@ index 3333f430f..f0fb8e64d 100644
 +        .map(|lines| lines_to_single_string(&lines))
 +        .collect::<String>();
 +    assert!(rendered.contains(&format!("conversation-{conversation_count}")));
-+    if conversation_count > 0 {
-+        assert!(!rendered.contains("conversation-0"));
-+        assert!(!rendered.contains(&format!("conversation-{}", conversation_count - 1)));
-+    }
++    let renders_older_conversation = rendered.contains("conversation-0")
++        || rendered.contains(&format!("conversation-{}", conversation_count - 1));
++    assert_eq!(
++        app.thread_event_channels[&root_thread_id]
++            .store
++            .lock()
++            .await
++            .turns
++            .len(),
++        conversation_count * 2 + 1
++    );
 +
 +    app_server.shutdown().await?;
 +    proxy.await??;
-+    Ok(elapsed)
++    Ok((elapsed, renders_older_conversation))
 +}
 +
  #[tokio::test]
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
-diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 52b31fcbd..4f8626e96 100644
---- a/codex-rs/tui/src/chatwidget/replay.rs
-+++ b/codex-rs/tui/src/chatwidget/replay.rs
-@@ -33,6 +33,19 @@ impl ChatWidget {
-         if matches!(replay_kind, ReplayKind::ThreadSnapshot) && !turns.is_empty() {
-             self.warning_display_state.startup_complete = true;
-         }
-+        let first_latest_conversation_turn = turns
+diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
+index b7d34f637..78cb6bb1c 100644
+--- a/codex-rs/tui/src/app/thread_events.rs
++++ b/codex-rs/tui/src/app/thread_events.rs
+@@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
+     pub(super) input_state: Option<ThreadInputState>,
+ }
+ 
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(super) enum ThreadEventSnapshotMode {
++    FullHistory,
++    AgentSwitch,
++}
++
+ #[derive(Debug, Clone)]
+ pub(super) enum ThreadBufferedEvent {
+     Notification(Box<ServerNotification>),
+@@ -353,10 +359,28 @@ impl ThreadEventStore {
+     }
+ 
+     pub(super) fn snapshot(&self) -> ThreadEventSnapshot {
++        self.snapshot_with_turns(self.turns.clone())
++    }
++
++    pub(super) fn snapshot_for_agent_switch(&self) -> ThreadEventSnapshot {
++        let first_latest_conversation_turn = self
++            .turns
 +            .iter()
 +            .rposition(|turn| {
 +                turn.items
@@ -229,43 +351,67 @@ index 52b31fcbd..4f8626e96 100644
 +            })
 +            .map(|index| index + 1)
 +            .unwrap_or(0);
-+        let turns = turns
-+            .into_iter()
-+            .skip(first_latest_conversation_turn)
-+            .collect::<Vec<_>>();
-         let latest_turn_id = turns.last().map(|turn| turn.id.clone());
-         let hidden_nested_review_turns = std::iter::once(/*value*/ false)
-             .chain(turns.windows(/*size*/ 2).map(|turns| {
++        self.snapshot_with_turns(self.turns[first_latest_conversation_turn..].to_vec())
++    }
++
++    fn snapshot_with_turns(&self, turns: Vec<Turn>) -> ThreadEventSnapshot {
+         let mut snapshot = ThreadEventSnapshot {
+             session: self.session.clone(),
+             delegated_turns: self.delegated_turns.iter().cloned().collect(),
+-            turns: self.turns.clone(),
++            turns,
+             // Thread switches replay buffered events into a rebuilt ChatWidget. Only replay
+             // interactive prompts that are still pending, or answered approvals/input will reappear.
+             events: self
+diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
+index a3501c3a1..b874987cf 100644
+--- a/codex-rs/tui/src/app/thread_routing.rs
++++ b/codex-rs/tui/src/app/thread_routing.rs
+@@ -121,12 +121,23 @@ impl App {
+     pub(super) async fn activate_thread_for_replay(
+         &mut self,
+         thread_id: ThreadId,
++        snapshot_mode: ThreadEventSnapshotMode,
+     ) -> Option<(mpsc::Receiver<ThreadBufferedEvent>, ThreadEventSnapshot)> {
++        let replay_latest_compacted_conversation = snapshot_mode
++            == ThreadEventSnapshotMode::AgentSwitch
++            && self
++                .config
++                .features
++                .enabled(codex_features::Feature::UnleashedAgentFastSwitching);
+         let channel = self.thread_event_channels.get_mut(&thread_id)?;
+         let receiver = channel.receiver.take()?;
+         let mut store = channel.store.lock().await;
+         store.active = true;
+-        let snapshot = store.snapshot();
++        let snapshot = if replay_latest_compacted_conversation {
++            store.snapshot_for_agent_switch()
++        } else {
++            store.snapshot()
++        };
+         Some((receiver, snapshot))
+     }
+ 
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 31af6ad26..38524264b 100644
+index ad26ff947..9aac058eb 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -76,6 +76,65 @@ async fn resumed_initial_messages_render_history() {
+@@ -79,6 +79,50 @@ async fn resumed_initial_messages_render_history() {
      );
  }
  
 +#[tokio::test]
-+async fn replayed_compacted_history_contains_only_latest_conversation() {
++async fn initial_resume_keeps_compacted_history_when_fast_switching_is_enabled() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 +    let conversation = |index: usize| AppServerTurn {
-+        items: vec![
-+            AppServerThreadItem::UserMessage {
-+                id: format!("user-{index}"),
-+                client_id: None,
-+                content: vec![AppServerUserInput::Text {
-+                    text: format!("conversation-{index}"),
-+                    text_elements: Vec::new(),
-+                }],
-+            },
-+            AppServerThreadItem::AgentMessage {
-+                id: format!("answer-{index}"),
-+                text: format!("answer-{index}"),
-+                phase: Some(MessagePhase::FinalAnswer),
-+                memory_citation: None,
-+                delivery: None,
-+                questions: None,
-+            },
-+        ],
++        items: vec![AppServerThreadItem::UserMessage {
++            id: format!("user-{index}"),
++            client_id: None,
++            content: vec![AppServerUserInput::Text {
++                text: format!("conversation-{index}"),
++                text_elements: Vec::new(),
++            }],
++        }],
 +        ..app_server_turn(
 +            &format!("turn-{index}"),
 +            AppServerTurnStatus::Completed,
@@ -273,63 +419,34 @@ index 31af6ad26..38524264b 100644
 +            /*error*/ None,
 +        )
 +    };
-+    let compaction = |index: usize| AppServerTurn {
++    let compaction = AppServerTurn {
 +        items: vec![AppServerThreadItem::ContextCompaction {
-+            id: format!("compaction-{index}"),
++            id: "compaction-0".to_string(),
 +        }],
 +        ..app_server_turn(
-+            &format!("compaction-turn-{index}"),
++            "compaction-turn-0",
 +            AppServerTurnStatus::Completed,
 +            /*duration_ms*/ None,
 +            /*error*/ None,
 +        )
 +    };
-+    let mut turns = Vec::new();
-+    for index in 0..50 {
-+        turns.push(conversation(index));
-+        turns.push(compaction(index));
-+    }
-+    turns.push(conversation(50));
 +
-+    chat.replay_thread_turns(turns, ReplayKind::ThreadSnapshot);
++    chat.replay_thread_turns(
++        vec![conversation(0), compaction, conversation(1)],
++        ReplayKind::ResumeInitialMessages,
++    );
 +
 +    let rendered = drain_insert_history(&mut rx)
 +        .into_iter()
 +        .map(|lines| lines_to_single_string(&lines))
 +        .collect::<String>();
-+    assert!(rendered.contains("conversation-50"));
-+    assert!(rendered.contains("answer-50"));
-+    assert!(!rendered.contains("conversation-0"));
-+    assert!(!rendered.contains("answer-49"));
++    assert!(rendered.contains("conversation-0"));
++    assert!(rendered.contains("conversation-1"));
 +}
 +
  #[tokio::test]
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
-
-diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 2d5d268a67..7006651227 100644
---- a/codex-rs/core/config.schema.json
-+++ b/codex-rs/core/config.schema.json
-@@ -1029,6 +1029,9 @@
-             "unified_image_budget": {
-               "type": "boolean"
-             },
-+            "unleashed_agent_fast_switching": {
-+              "type": "boolean"
-+            },
-             "use_agent_identity": {
-               "type": "boolean"
-             },
-@@ -6424,6 +6427,9 @@
-         "unified_image_budget": {
-           "type": "boolean"
-         },
-+        "unleashed_agent_fast_switching": {
-+          "type": "boolean"
-+        },
-         "use_agent_identity": {
-           "type": "boolean"
-         },
 -- 
 2.43.0
+

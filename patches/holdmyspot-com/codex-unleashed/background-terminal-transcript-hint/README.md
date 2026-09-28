@@ -1,49 +1,58 @@
 # Background-terminal transcript hint
 
 - Issue: [holdmyspot-com/codex-unleashed#3](https://github.com/holdmyspot-com/codex-unleashed/issues/3)
-- Applies to: upstream `openai/codex` `848b3845884e3aaf3359867047751dfff12dc448`
+- Applies to: upstream `openai/codex` `rust-v0.158.0` at commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
 - Related upstream requests: [openai/codex#13858](https://github.com/openai/codex/issues/13858), [openai/codex#14928](https://github.com/openai/codex/issues/14928), [openai/codex#16935](https://github.com/openai/codex/issues/16935)
 
 ## Intent
 
-Tell users when the complete command and output for a background terminal become available, and how to inspect them with `Ctrl+T`.
+Show users how to view a background terminal's full transcript after it completes. While background terminals are running, `/ps` explains when the transcript will be available; completed terminal entries show the `Ctrl+T` shortcut.
 
-## Change
+## Feature configuration
 
-While a terminal is running, add this dimmed hint below the `Background terminals` heading:
+### Codex feature flag
+
+None. This behavior is always available and has no Codex feature flag.
+
+### Project-specific `config.toml` property
+
+None.
+
+## Reproduction
+
+While at least one background terminal is running, show this dimmed hint under the `/ps` heading:
 
 ```text
 (transcript will be available after terminal completes)
 ```
 
-After the background terminal completes, add this hint to its command history cell:
+After a background terminal completes, show this hint in its command history cell:
 
 ```text
-(ctrl + t to view transcript)
+(ctrl+t to view transcript)
 ```
 
-## Regression test
+An empty `/ps` result does not show the running-terminal hint.
 
-The `ps_output_explains_how_to_view_full_transcript` history-cell test checks the running-state availability hint. The `completed_background_terminal_includes_transcript_hint` exec-cell test checks the post-completion hint. The `replayed_command_completion_preserves_tracking_without_duplicate_starts` test checks that replayed command history includes the hint. The `/ps` snapshots and unified-exec chat snapshot are updated.
+## Regression test and TDD record
 
-On the declared upstream base, all three focused behavior tests failed because the transcript hints were absent:
+The `ps_output_explains_when_running_transcript_is_available` test checks the running-state hint, and `ps_output_empty_snapshot` checks that it is omitted when no terminal is running. `completed_background_terminal_includes_transcript_hint` checks the completed terminal cell, while `replayed_command_completion_preserves_tracking_and_transcript_hint` checks replayed command history.
+
+On the declared upstream base, these focused tests failed at the expected assertions because the corresponding hints were absent:
 
 ```sh
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui completed_background_terminal_includes_transcript_hint --lib
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui ps_output_explains_how_to_view_full_transcript --lib
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui replayed_command_completion_preserves_tracking_without_duplicate_starts --lib
+just test -p codex-tui -E 'test(ps_output_explains_when_running_transcript_is_available) | test(completed_background_terminal_includes_transcript_hint) | test(replayed_command_completion_preserves_tracking_and_transcript_hint)'
 ```
 
-Each command failed at its expected assertion. With the patch applied, these commands pass:
+With the patch applied, the focused suites passed:
 
 ```sh
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui ps_output_ --lib
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui completed_background_terminal_includes_transcript_hint --lib
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui replayed_command_completion_preserves_tracking_without_duplicate_starts --lib
+INSTA_UPDATE=always just test -p codex-tui -E 'test(ps_output_) | test(transcript_hint)'
 ```
 
-Results: 7, 1, and 1 tests passed, respectively.
+Results: 12 tests passed. Run the commands from `codex-rs/` with upstream's pinned Rust 1.95.0 toolchain.
 
-## Upstream status
+## Formatting
 
-This is a Codex Unleashed patch for issue #3. Remove it when equivalent upstream guidance ships.
+`python3 ../scripts/format.py --check` passed from `codex-rs/` with local
+Rust 1.98.0 and DotSlash 0.5.7.

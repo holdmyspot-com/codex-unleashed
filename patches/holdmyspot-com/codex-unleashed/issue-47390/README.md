@@ -1,7 +1,7 @@
 # Expanded diff previews in the full-screen transcript
 
-- Upstream issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` `rust-v0.157.1`, commit `36650394c5b38c2990ccf2a3457165ca3e9d9726`
+- Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
+- Applies to: upstream `openai/codex` `rust-v0.158.0`, commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
 
 ## Intent
 
@@ -75,14 +75,13 @@ default the feature flag to `true`, the same command ran on the patched tree. It
 passed (1 passed, 0 failed) and verified that the project property still
 defaults to `false` and the default preview remains compact.
 
-Run from `codex-rs`:
+Run these focused tests from `codex-rs/` on the declared upstream base:
 
-```text
-RUSTUP_HOME=/home/gili/.cache/codex-unleashed-rustup RUST_MIN_STACK=8388608 cargo +1.95.0 test -p codex-config config_toml_preserves_unleashed_expanded_diff_previews --lib
-RUST_MIN_STACK=8388608 cargo +stable test -p codex-config config_toml_preserves_unleashed_expanded_diff_previews --lib
-RUST_MIN_STACK=8388608 cargo +stable test -p codex-core runtime_config_resolves_unleashed_expanded_diff_previews --lib
-RUST_MIN_STACK=8388608 cargo +stable test -p codex-core project_unleashed_expanded_diff_previews_is_silent_when_feature_disabled --lib
-RUSTUP_HOME=/home/gili/.cache/codex-unleashed-rustup RUST_MIN_STACK=8388608 cargo +1.95.0 test -p codex-tui expanded_diff_previews_are_configurable_for_owned_transcript --lib
+```sh
+just test -p codex-config -E 'test(config_toml_preserves_unleashed_expanded_diff_previews)'
+just test -p codex-core -E 'test(runtime_config_resolves_unleashed_expanded_diff_previews)'
+just test -p codex-core -E 'test(project_unleashed_expanded_diff_previews_is_silent_when_feature_disabled)'
+just test -p codex-tui -E 'test(expanded_diff_previews_are_configurable_for_owned_transcript)'
 ```
 
 The schema test failed before registration because the serialized property was
@@ -95,8 +94,15 @@ assertion (exit status 101), then passed with the upstream-pinned Rust 1.95.
 Local Rust 1.98 failed earlier in unchanged upstream `codex-chatgpt` code on the
 same TUI target, so the pin was used for that check only.
 
+The patched v0.158.0 tree was checked with this combined focused run:
+
+```sh
+just test -p codex-config -p codex-core -p codex-tui -E 'test(config_toml_preserves_unleashed_expanded_diff_previews) | test(runtime_config_resolves_unleashed_expanded_diff_previews) | test(project_unleashed_expanded_diff_previews_is_silent_when_feature_disabled) | test(expanded_diff_previews_are_configurable_for_owned_transcript)'
+```
+
+Results: all 4 focused tests passed.
+
 ## Formatting
 
-The changed Rust files pass `rustfmt --edition 2024 --check` with local Rust
-1.98 rustfmt. It requested wrapping changes only on lines introduced by this
-patch; those lines were formatted with the local version.
+`python3 ../scripts/format.py --check` passed from `codex-rs/` with local
+Rust 1.98.0 and DotSlash 0.5.7.

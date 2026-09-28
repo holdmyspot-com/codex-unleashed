@@ -1,13 +1,12 @@
-# Avoid slow agent switching and resume
+# Faster `/subagents` switching
 
-- Upstream issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Applies to: upstream `openai/codex` `848b3845884e3aaf3359867047751dfff12dc448`
+- Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
+- Applies to: upstream `openai/codex` `rust-v0.158.0`, commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
 - Related upstream work: [openai/codex#36948](https://github.com/openai/codex/pull/36948), [openai/codex#36950](https://github.com/openai/codex/pull/36950)
 
 ## Intent
 
-Make `/subagents` switch faster when the main agent has a long history spanning
-many compactions.
+Make `/subagents` switch back to the main agent quickly when its history spans many compactions. The feature can be disabled to restore full-history replay.
 
 ## Feature configuration
 
@@ -32,40 +31,39 @@ None.
 
 ## Reproduction
 
-The slow path can be exercised without a multi-day session: resume a populated
-main session whose history contains repeated compaction windows, use
-`/subagents` to switch to a child, then use `/subagents` again to switch back
-to the main agent.
-The regression fixture gives every window an approximately 272K-token payload.
-Rebuilding the chat widget now replays only the conversation after the latest
-compaction, so switching time does not grow with the number of older windows.
+Resume a main session with several compaction windows, start a worker from
+`/subagents`, then switch back to the main agent. The return switch should stay
+responsive as older conversation windows accumulate.
 
-## Regression test
+## Regression test and TDD record
 
-`switching_back_replays_only_latest_compacted_conversation` in
-`codex-rs/tui/src/app/tests/session_lifecycle_requests.rs` exercises the
-user-visible flow: it switches from the main thread to a worker and back while
-the main thread contains fifty synthetic compaction windows, each with an
-approximately 272K-token payload. It measures the return switch and verifies
-that only the current conversation is rendered. It runs the flow with one and
-fifty windows and requires the timings to remain comparable after the fix.
+`switching_back_replays_only_latest_compacted_conversation` exercises the
+`/subagents` return switch with fifty compaction windows, checks that switching
+takes less than three seconds, and compares the result with a one-window
+session. It also confirms that older history remains cached and that disabling
+the feature restores full-history replay.
 
-`replayed_compacted_history_contains_only_latest_conversation` in
-`codex-rs/tui/src/chatwidget/tests/history_replay.rs` provides focused coverage
-of the replay boundary with the same fifty-window scenario.
+On the declared upstream base, the test failed because the returned transcript
+still contained `conversation-0` from before the latest compaction. With the
+patch, the switch and resume regression tests passed; the switch test also
+confirmed older history remained cached and ordinary session resumption still
+replayed it.
 
-Run the tests from `codex-rs` with:
-
-```text
-cargo +stable test -p codex-tui switching_back_replays_only_latest_compacted_conversation --no-fail-fast
-cargo +stable test -p codex-tui replayed_compacted_history_contains_only_latest_conversation --no-fail-fast
+```sh
+CONTEXT_WINDOW_TOKENS=27_200 just test -p codex-tui -E 'test(switching_back_replays_only_latest_compacted_conversation)'
 ```
 
-The end-to-end test enforces the three-second switch limit and checks that
-timing remains comparable for one and fifty windows. The focused test verifies
-that earlier conversation windows are not rendered.
+The focused patched run used:
 
-## Validation
+```sh
+just test -p codex-tui -E 'test(switching_back_replays_only_latest_compacted_conversation) | test(initial_resume_keeps_compacted_history_when_fast_switching_is_enabled)'
+```
 
-The change was verified with `git apply --check` on a clean checkout of the
-upstream `main` revision.
+Results: 2 tests passed. They used upstream's Rust 1.95.0 pin because local
+Rust 1.98 previously failed in unchanged `codex-chatgpt` code on the TUI test
+target. Run the commands from `codex-rs/`.
+
+## Formatting
+
+`python3 ../scripts/format.py --check` passed from `codex-rs/` with local
+Rust 1.98.0 and DotSlash 0.5.7.

@@ -1,14 +1,27 @@
-From 99fe65108bcb2dc9d83c83ff10f3ae1d7e90341d Mon Sep 17 00:00:00 2001
+From 2e64a39cce6f79ee8ec349ee46d3e817997da437 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sun, 27 Sep 2026 20:47:24 -0400
-Subject: [PATCH] Expand patch previews in full-screen transcript
+Date: Mon, 28 Sep 2026 03:59:09 -0400
+Subject: [PATCH] Expand patch previews in owned transcript
 
+---
+ codex-rs/config/src/config_toml.rs            |  3 +
+ codex-rs/config/src/types_tests.rs            |  9 +++
+ codex-rs/core/config.schema.json              | 10 +++
+ .../core/src/config/config_loader_tests.rs    | 58 +++++++++++++++++
+ codex-rs/core/src/config/config_tests.rs      | 23 +++++++
+ codex-rs/core/src/config/mod.rs               |  6 ++
+ codex-rs/features/src/lib.rs                  |  8 +++
+ codex-rs/tui/src/app/owned_transcript.rs      |  6 ++
+ .../tui/src/app/owned_transcript_tests.rs     | 65 +++++++++++++++++++
+ codex-rs/tui/src/transcript_view.rs           | 14 ++++
+ codex-rs/tui/src/transcript_view/layout.rs    | 11 +++-
+ 11 files changed, 211 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index e15bb847b..dc556ef82 100644
+index 3369f4613..8dd27a6f3 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -164,6 +164,9 @@ pub struct FeatureToggleToml {
+@@ -163,6 +163,9 @@ pub struct FeatureToggleToml {
  #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
  #[schemars(deny_unknown_fields)]
  pub struct ConfigToml {
@@ -35,8 +48,37 @@ index ab383ca19..202d9c3f2 100644
 +    let serialized = serde_json::to_value(parsed).expect("serialize parsed configuration");
 +    assert_eq!(serialized["unleashed_expanded_diff_previews"], true);
 +}
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index f653c997c..41a808389 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1131,3 +1131,6 @@
++            "unleashed_expanded_diff_previews": {
++              "type": "boolean"
++            },
+             "use_agent_identity": {
+               "type": "boolean"
+             },
+@@ -7158,3 +7161,6 @@
++        "unleashed_expanded_diff_previews": {
++          "type": "boolean"
++        },
+         "use_agent_identity": {
+           "type": "boolean"
+         },
+@@ -7655,6 +7661,10 @@
+       ],
+       "description": "Collection of settings that are specific to the TUI."
+     },
++    "unleashed_expanded_diff_previews": {
++      "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
++      "type": "boolean"
++    },
+     "web_search": {
+       "allOf": [
+         {
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 1257a40c0..e17f62c31 100644
+index d50816a84..3768eb581 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
 @@ -3970,6 +3970,64 @@ wire_api = "responses"
@@ -105,10 +147,10 @@ index 1257a40c0..e17f62c31 100644
  #[tokio::test]
  async fn project_trust_does_not_match_configured_alias_for_canonical_cwd() -> std::io::Result<()> {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 5013f50b3..d33451b26 100644
+index f91a2885d..25ea6c523 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1366,6 +1366,29 @@ async fn runtime_config_uses_tui_raw_output_mode() {
+@@ -1374,6 +1374,29 @@ async fn runtime_config_uses_tui_raw_output_mode() {
      assert!(cfg.tui_raw_output_mode);
  }
  
@@ -139,34 +181,34 @@ index 5013f50b3..d33451b26 100644
  async fn tui_auto_recap_defaults_and_cli_overrides() -> anyhow::Result<()> {
      for (toml, override_value, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 907870838..df8532f03 100644
+index a782af1a5..0a3522bb3 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -786,6 +786,9 @@ pub struct Config {
      /// Own the fullscreen transcript when the alternate screen is enabled.
      pub tui_fullscreen_transcript: bool,
  
-+    /// Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.
++    /// Expand patch diffs in the owned fullscreen transcript when enabled.
 +    pub unleashed_expanded_diff_previews: bool,
 +
-     /// Start the TUI in the specified collaboration mode (plan/default).
+     /// Override the terminal-specific default for copying transcript mouse selections.
+     pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
-     /// Controls whether the TUI uses the terminal's alternate screen buffer.
-@@ -4469,6 +4472,9 @@ impl Config {
+@@ -4492,6 +4495,9 @@ impl Config {
                  .tui
                  .as_ref()
                  .is_none_or(|tui| tui.fullscreen_transcript),
 +            unleashed_expanded_diff_previews: cfg
 +                .unleashed_expanded_diff_previews
 +                .unwrap_or(false),
-             tui_alternate_screen: cfg
+             tui_copy_on_select: cfg
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 5ea619d0a..83cac71ea 100644
+index 171e6dc2e..1f90e2f70 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -91,6 +91,8 @@ impl Stage {
+@@ -90,6 +90,8 @@ impl Stage {
  /// Unique features toggled via configuration.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
@@ -175,7 +217,7 @@ index 5ea619d0a..83cac71ea 100644
      /// Preview consumer five-hour and weekly allowance history.
      AnalyticsPlanHistory,
      /// Discover model catalogs for OpenAI API-key authentication.
-@@ -927,6 +929,12 @@ pub struct FeatureSpec {
+@@ -921,6 +923,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -189,10 +231,10 @@ index 5ea619d0a..83cac71ea 100644
          id: Feature::AnalyticsPlanHistory,
          key: "analytics_plan_history",
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index 18ba69560..aa8d387ef 100644
+index 91faa302b..d1da2ed58 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -38,10 +38,16 @@ impl App {
+@@ -39,12 +39,18 @@ impl App {
      }
  
      fn sync_owned_transcript(&mut self, width: u16) -> bool {
@@ -204,16 +246,18 @@ index 18ba69560..aa8d387ef 100644
          let chat_widget = &self.chat_widget;
          let transcript_width = chat_widget.history_wrap_width(width);
          let view = &mut self.transcript_view;
-         view.set_keymap_bindings(&self.keymap);
+         view.copy_on_select = self
+             .local_settings
+             .copy_on_select(&codex_terminal_detection::terminal_info());
 +        view.set_expanded_diff_previews(expanded_diff_previews);
+         view.set_keymap_bindings(&self.keymap);
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
-         let detailed = view.is_detailed();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index c06fef4b5..0695566a7 100644
+index 46c0da6d9..1559dc76d 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -73,6 +73,71 @@ pub(super) fn buffer_text(buffer: &Buffer) -> String {
+@@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
          .join("\n")
  }
  
@@ -286,10 +330,10 @@ index c06fef4b5..0695566a7 100644
  async fn external_writer_escape_returns_to_command_center_without_editing() -> Result<()> {
      for (detailed, scrolled, offline) in [
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index d7c03bb2d..5fb145562 100644
+index db58338e2..f68d865c0 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
-@@ -101,6 +101,7 @@ pub(crate) struct TranscriptView {
+@@ -104,6 +104,7 @@ pub(crate) struct TranscriptView {
      search: Search,
      detailed: bool,
      mode: HistoryRenderMode,
@@ -297,7 +341,7 @@ index d7c03bb2d..5fb145562 100644
      pub(crate) history: TranscriptHistoryState,
      highlight: Option<usize>,
      saved_position: Option<Position>,
-@@ -131,6 +132,7 @@ impl Default for TranscriptView {
+@@ -136,6 +137,7 @@ impl Default for TranscriptView {
              search: Search::default(),
              detailed: false,
              mode: HistoryRenderMode::Rich,
@@ -305,7 +349,7 @@ index d7c03bb2d..5fb145562 100644
              history: TranscriptHistoryState::Idle,
              highlight: None,
              saved_position: None,
-@@ -323,6 +325,18 @@ impl TranscriptView {
+@@ -341,6 +343,18 @@ impl TranscriptView {
          self.mode = mode;
      }
  
@@ -325,10 +369,10 @@ index d7c03bb2d..5fb145562 100644
          self.selection.is_some() || self.search.is_active() || self.is_activity_focused()
      }
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
-index fe66fb9b9..6421aa511 100644
+index e2eb21034..bc6e3e442 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
-@@ -128,7 +128,12 @@ impl TranscriptView {
+@@ -129,7 +129,12 @@ impl TranscriptView {
          let detailed = self.detailed;
          let mode = self.mode;
          let ids = cell.activity_ids();
@@ -342,7 +386,7 @@ index fe66fb9b9..6421aa511 100644
          let expanded = disclosure && self.disclosure.is_expanded(&ids);
          if expanded {
              self.disclosure.expanded.extend(ids);
-@@ -140,7 +145,9 @@ impl TranscriptView {
+@@ -142,7 +147,9 @@ impl TranscriptView {
              disclosure,
          };
          Some(self.cache.get(cell, width, presentation, || {
@@ -355,3 +399,4 @@ index fe66fb9b9..6421aa511 100644
                          activity: if expanded {
 -- 
 2.43.0
+
