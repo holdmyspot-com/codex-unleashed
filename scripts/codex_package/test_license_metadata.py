@@ -52,7 +52,7 @@ class CargoMetadataTest(unittest.TestCase):
                 ],
                 check=True,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
             )
             copied_license = output / "example-crate-1.2.3" / "LICENSE-MIT"
             self.assertEqual(

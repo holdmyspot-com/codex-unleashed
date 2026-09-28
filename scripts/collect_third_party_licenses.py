@@ -36,7 +36,7 @@ def cargo_metadata(manifest: Path) -> dict:
             ],
             check=True,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
         )
     except subprocess.CalledProcessError as error:
         if error.stderr:
