@@ -147,7 +147,7 @@ def copy_legal_materials(package_dir: Path) -> None:
                     str(manifest),
                     "--output",
                     str(package_dir / "licenses" / "rust"),
-                    "--require-license-files",
+                    "--require-license-evidence",
                 ],
                 check=True,
             )

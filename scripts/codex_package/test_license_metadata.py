@@ -31,7 +31,7 @@ class CargoMetadataTest(unittest.TestCase):
                     str(manifest),
                     "--output",
                     str(output),
-                    "--require-license-files",
+                    "--require-license-evidence",
                 ],
             ), patch.object(
                 collect_third_party_licenses.subprocess,
@@ -61,6 +61,70 @@ class CargoMetadataTest(unittest.TestCase):
             )
             notices = (output / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
             self.assertIn("`example-crate 1.2.3`", notices)
+
+    def test_main_accepts_declared_license_without_payload_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest, metadata, output = metadata_fixture(
+                root,
+                include_license_file=False,
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "collect_third_party_licenses.py",
+                    "--manifest",
+                    str(manifest),
+                    "--output",
+                    str(output),
+                    "--require-license-evidence",
+                ],
+            ), patch.object(
+                collect_third_party_licenses.subprocess,
+                "run",
+                return_value=CompletedProcess([], 0, stdout=metadata, stderr=""),
+            ):
+                collect_third_party_licenses.main()
+
+            notices = (output / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+            self.assertIn("`example-crate 1.2.3` — `MIT`", notices)
+            self.assertIn(
+                "No license payload file was present in the crate source.",
+                notices,
+            )
+
+    def test_main_rejects_dependency_without_license_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest, metadata, output = metadata_fixture(
+                root,
+                include_license_file=False,
+                declared_license=None,
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "collect_third_party_licenses.py",
+                    "--manifest",
+                    str(manifest),
+                    "--output",
+                    str(output),
+                    "--require-license-evidence",
+                ],
+            ), patch.object(
+                collect_third_party_licenses.subprocess,
+                "run",
+                return_value=CompletedProcess([], 0, stdout=metadata, stderr=""),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "Missing license evidence for: example-crate 1.2.3",
+                ):
+                    collect_third_party_licenses.main()
 
     def test_main_reports_cargo_metadata_stderr(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -106,7 +170,12 @@ class CargoMetadataTest(unittest.TestCase):
             )
 
 
-def metadata_fixture(root: Path) -> tuple[Path, str, Path]:
+def metadata_fixture(
+    root: Path,
+    *,
+    include_license_file: bool = True,
+    declared_license: str | None = "MIT",
+) -> tuple[Path, str, Path]:
     manifest = root / "workspace" / "codex-rs" / "Cargo.toml"
     manifest.parent.mkdir(parents=True)
     manifest.write_text("[workspace]\n", encoding="utf-8")
@@ -114,9 +183,10 @@ def metadata_fixture(root: Path) -> tuple[Path, str, Path]:
     dependency_manifest = root / "registry" / "example-crate" / "Cargo.toml"
     dependency_manifest.parent.mkdir(parents=True)
     dependency_manifest.write_text("[package]\n", encoding="utf-8")
-    (dependency_manifest.parent / "LICENSE-MIT").write_text(
-        "Example dependency license.\n", encoding="utf-8"
-    )
+    if include_license_file:
+        (dependency_manifest.parent / "LICENSE-MIT").write_text(
+            "Example dependency license.\n", encoding="utf-8"
+        )
 
     metadata = json.dumps(
         {
@@ -135,7 +205,7 @@ def metadata_fixture(root: Path) -> tuple[Path, str, Path]:
                     "name": "example-crate",
                     "version": "1.2.3",
                     "manifest_path": str(dependency_manifest),
-                    "license": "MIT",
+                    "license": declared_license,
                     "license_file": None,
                 },
             ],

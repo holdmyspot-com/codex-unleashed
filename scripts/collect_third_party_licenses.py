@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--require-license-files", action="store_true")
+    parser.add_argument("--require-license-evidence", action="store_true")
     return parser.parse_args()
 
 
@@ -64,11 +64,12 @@ def safe_name(value: str) -> str:
     return "".join(char if char.isalnum() or char in ".-_" else "_" for char in value)
 
 
-def collect(metadata: dict, output: Path, require_license_files: bool) -> None:
+def collect(metadata: dict, output: Path, require_license_evidence: bool) -> None:
     output.mkdir(parents=True, exist_ok=True)
     workspace_ids = set(metadata.get("workspace_members", []))
     entries = []
-    missing = []
+    missing_payloads = []
+    missing_evidence = []
     for package in sorted(metadata["packages"], key=lambda item: (item["name"], item["version"])):
         if package["id"] in workspace_ids:
             continue
@@ -81,7 +82,10 @@ def collect(metadata: dict, output: Path, require_license_files: bool) -> None:
             shutil.copyfile(source, target)
             copied.append(target.relative_to(output).as_posix())
         if not copied:
-            missing.append(f"{package['name']} {package['version']}")
+            package_name = f"{package['name']} {package['version']}"
+            missing_payloads.append(package_name)
+            if not package.get("license"):
+                missing_evidence.append(package_name)
         entries.append((package, copied))
 
     lines = [
@@ -98,17 +102,17 @@ def collect(metadata: dict, output: Path, require_license_files: bool) -> None:
             lines.extend(f"  - `{path}`" for path in copied)
         else:
             lines.append("  - No license payload file was present in the crate source.")
-    if missing:
+    if missing_payloads:
         lines.extend(["", "## Missing payload files", ""])
-        lines.extend(f"- `{item}`" for item in missing)
+        lines.extend(f"- `{item}`" for item in missing_payloads)
     (output / "THIRD_PARTY_NOTICES.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    if missing and require_license_files:
-        raise RuntimeError("Missing license payload files for: " + ", ".join(missing))
+    if missing_evidence and require_license_evidence:
+        raise RuntimeError("Missing license evidence for: " + ", ".join(missing_evidence))
 
 
 def main() -> None:
     args = parse_args()
-    collect(cargo_metadata(args.manifest), args.output, args.require_license_files)
+    collect(cargo_metadata(args.manifest), args.output, args.require_license_evidence)
 
 
 if __name__ == "__main__":
