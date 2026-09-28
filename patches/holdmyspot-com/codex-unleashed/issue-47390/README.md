@@ -5,14 +5,19 @@
 
 ## Intent
 
-Add the `unleashed_expanded_diff_previews` feature and its project-specific
-configuration property. Patch activities in the rich, owned full-screen
-transcript show their complete diff only when both settings are enabled. Other
-activity types and patch-failure diagnostics keep their compact presentation.
-This preserves rich transcript rendering and applies to live and restored patch
-history.
+Show complete diffs for patch activities in the full-screen transcript,
+including reopened sessions, when both the feature and project setting are
+enabled. Keep other activities and patch-failure messages compact.
 
-## Configuration
+## Feature configuration
+
+### Codex feature flag
+
+The feature flag is stable and enabled by default:
+
+```text
+unleashed_expanded_diff_previews  stable  true
+```
 
 Enable or disable the Codex feature flag with:
 
@@ -21,14 +26,18 @@ codex features enable unleashed_expanded_diff_previews
 codex features disable unleashed_expanded_diff_previews
 ```
 
-Set the project-specific property in that project's `config.toml`:
+### Project-specific `config.toml` property
+
+Set this property in the project's `config.toml`:
 
 ```toml
 unleashed_expanded_diff_previews = true
 ```
 
-The property defaults to `false`. With the feature flag disabled, the property
-is silently ignored: it has no effect and produces no unknown-key warning.
+The property defaults to `false`, independently of the enabled feature flag,
+so previews remain compact by default. With the feature flag disabled, Codex
+silently ignores this property: it has no effect and produces no unknown-key
+warning.
 
 ## Reproduction
 
@@ -41,9 +50,11 @@ complete patch appears while long patch-failure diagnostics remain compact.
 
 `expanded_diff_previews_are_configurable_for_owned_transcript` renders a patch
 activity and a patch-failure activity with 40 lines each. It verifies that the
-default is compact, the feature flag alone does not expand previews, both
-settings together expand patch lines without expanding failure diagnostics, and
-disabling the feature makes a `true` project setting inert.
+feature flag defaults to enabled, the project property defaults to disabled,
+and the preview is compact by default. It also verifies that the feature flag
+alone does not expand previews, both settings together expand patch lines
+without expanding failure diagnostics, and disabling the feature makes a
+`true` project setting inert.
 
 `config_toml_preserves_unleashed_expanded_diff_previews` initially failed
 because `ConfigToml` discarded the new root-level setting. It passed after the
@@ -54,10 +65,15 @@ copied into runtime `Config`. The project-loader test
 verifies that a trusted project can set the property while the feature is off,
 the value survives project-layer loading, and startup warnings remain empty.
 
-The TUI regression was run before behavior was gated on both settings. It failed
-at the flag-only assertion because enabling the feature flag expanded the patch
-without the project setting. The same test passed after adding the two-setting
-gate.
+The TUI regression was first run before behavior was gated on both settings. It
+failed at the flag-only assertion because enabling the feature flag expanded the
+patch without the project setting. The same test passed after adding the
+two-setting gate. For the default-on change, the TUI command below ran on the
+declared upstream base with this patch applied but `default_enabled: false`; it
+exited 101 at the new feature-default assertion. After changing the patch to
+default the feature flag to `true`, the same command ran on the patched tree. It
+passed (1 passed, 0 failed) and verified that the project property still
+defaults to `false` and the default preview remains compact.
 
 Run from `codex-rs`:
 

@@ -185,3 +185,32 @@ index 785ff02744..08526d25f6 100644
  #[tokio::test]
  async fn session_info_uses_availability_nux_tooltip_override() {
      let config = test_config().await;
+
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+index 85259b0b13..4ead6665a7 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+@@ -5,6 +5,7 @@ expression: snapshot
+ History:
+ • Ran echo repro-marker
+   └ repro-marker
++(ctrl + t to view transcript)
+
+ Active:
+ • Exploring
+
+diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+index 012b4c8ebd..ae531aea0c 100644
+--- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
++++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+@@ -74,7 +74,7 @@ async fn replayed_command_completion_preserves_tracking_without_duplicate_starts
+         .collect::<Vec<_>>();
+     assert_eq!(
+         history,
+-        vec!["• Ran cat replay\n  └ (no output)\n".to_string()]
++        vec!["• Ran cat replay\n  └ (no output)\n(ctrl + t to view transcript)\n".to_string()]
+     );
+ }
+
+--
+2.43.0

@@ -163,7 +163,7 @@ index 907870838..df8532f03 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 5ea619d0a..6c23cfe4b 100644
+index 5ea619d0a..83cac71ea 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -91,6 +91,8 @@ impl Stage {
@@ -183,7 +183,7 @@ index 5ea619d0a..6c23cfe4b 100644
 +        id: Feature::UnleashedExpandedDiffPreviews,
 +        key: "unleashed_expanded_diff_previews",
 +        stage: Stage::Stable,
-+        default_enabled: false,
++        default_enabled: true,
 +    },
      FeatureSpec {
          id: Feature::AnalyticsPlanHistory,
@@ -210,16 +210,22 @@ index 18ba69560..aa8d387ef 100644
          let active_key = chat_widget.active_cell_transcript_key();
          let detailed = view.is_detailed();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index c06fef4b5..01b4ebd99 100644
+index c06fef4b5..0695566a7 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -73,6 +73,65 @@ pub(super) fn buffer_text(buffer: &Buffer) -> String {
+@@ -73,6 +73,71 @@ pub(super) fn buffer_text(buffer: &Buffer) -> String {
          .join("\n")
  }
  
 +#[tokio::test]
 +async fn expanded_diff_previews_are_configurable_for_owned_transcript() -> Result<()> {
 +    let mut app = crate::app::test_support::make_test_app().await;
++    assert!(
++        app.config
++            .features
++            .enabled(codex_features::Feature::UnleashedExpandedDiffPreviews)
++    );
++    assert!(!app.config.unleashed_expanded_diff_previews);
 +    let patch = crate::history_cell::new_patch_event(
 +        std::collections::HashMap::from([(
 +            std::path::PathBuf::from("new.txt"),
@@ -349,4 +355,3 @@ index fe66fb9b9..6421aa511 100644
                          activity: if expanded {
 -- 
 2.43.0
-

@@ -24,15 +24,25 @@ After the background terminal completes, add this hint to its command history ce
 
 ## Regression test
 
-The `ps_output_explains_how_to_view_full_transcript` history-cell test checks the running-state availability message. The `completed_background_terminal_includes_transcript_hint` exec-cell test checks the post-completion message. The existing `/ps` rendering snapshots are updated for the running-state hint.
+The `ps_output_explains_how_to_view_full_transcript` history-cell test checks the running-state availability hint. The `completed_background_terminal_includes_transcript_hint` exec-cell test checks the post-completion hint. The `replayed_command_completion_preserves_tracking_without_duplicate_starts` test checks that replayed command history includes the hint. The `/ps` snapshots and unified-exec chat snapshot are updated.
 
-Run the focused test with:
+On the declared upstream base, all three focused behavior tests failed because the transcript hints were absent:
 
-```text
-RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui ps_output_ --lib
+```sh
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui completed_background_terminal_includes_transcript_hint --lib
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui ps_output_explains_how_to_view_full_transcript --lib
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui replayed_command_completion_preserves_tracking_without_duplicate_starts --lib
 ```
 
-Validation completed successfully: 8 focused tests passed.
+Each command failed at its expected assertion. With the patch applied, these commands pass:
+
+```sh
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui ps_output_ --lib
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui completed_background_terminal_includes_transcript_hint --lib
+RUSTUP_TOOLCHAIN=stable cargo test -p codex-tui replayed_command_completion_preserves_tracking_without_duplicate_starts --lib
+```
+
+Results: 7, 1, and 1 tests passed, respectively.
 
 ## Upstream status
 

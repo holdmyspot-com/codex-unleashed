@@ -1,30 +1,41 @@
 # Avoid slow agent switching and resume
 
-The implementation and its regression tests are carried together in
-`avoid-slow-agent-switching-and-resume.patch` so the patch queue applies this
-fix atomically.
-
 - Upstream issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
 - Applies to: upstream `openai/codex` `848b3845884e3aaf3359867047751dfff12dc448`
 - Related upstream work: [openai/codex#36948](https://github.com/openai/codex/pull/36948), [openai/codex#36950](https://github.com/openai/codex/pull/36950)
 
 ## Intent
 
-Make `/agent` switches responsive when the selected thread already has a cached
-replay channel. After a compaction, the cached transcript may contain many old
-conversation windows. The picker renders only the latest window during the
-switch; older windows remain available to the history-loading machinery instead
-of being replayed synchronously.
+Make `/subagents` switch faster when the main agent has a long history spanning
+many compactions.
 
-Session resumption remains covered by upstream's paginated transcript history
-implementation, which hydrates a bounded initial page and loads older history
-on demand.
+## Feature configuration
+
+### Codex feature flag
+
+The feature flag is stable and enabled by default:
+
+```text
+unleashed_agent_fast_switching  stable  true
+```
+
+Enable or disable the Codex feature flag with:
+
+```text
+codex features enable unleashed_agent_fast_switching
+codex features disable unleashed_agent_fast_switching
+```
+
+### Project-specific `config.toml` property
+
+None.
 
 ## Reproduction
 
 The slow path can be exercised without a multi-day session: resume a populated
-main session whose history contains repeated compaction windows, use `/agent`
-to switch to a child, then use `/agent` again to switch back to the main agent.
+main session whose history contains repeated compaction windows, use
+`/subagents` to switch to a child, then use `/subagents` again to switch back
+to the main agent.
 The regression fixture gives every window an approximately 272K-token payload.
 Rebuilding the chat widget now replays only the conversation after the latest
 compaction, so switching time does not grow with the number of older windows.

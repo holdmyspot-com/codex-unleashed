@@ -1,11 +1,49 @@
+From 759c2b78b185ab342826417b31eb7876b60172ec Mon Sep 17 00:00:00 2001
+From: Codex Patch Queue <patches@codex-unleashed.invalid>
+Date: Sun, 27 Sep 2026 18:52:15 -0400
+Subject: [PATCH] Add fast agent switching and feature registration
+
+---
+ codex-rs/features/src/lib.rs                  |   8 +
+ .../app/tests/session_lifecycle_requests.rs   | 165 ++++++++++++++++++
+ codex-rs/tui/src/chatwidget/replay.rs         |  13 ++
+ .../src/chatwidget/tests/history_replay.rs    |  59 +++++++
+ 4 files changed, 245 insertions(+)
+
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index 5b5206047..09973e189 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -91,6 +91,8 @@ impl Stage {
+ /// Unique features toggled via configuration.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ pub enum Feature {
++    /// Use the latest compacted conversation when replaying a resumed thread.
++    UnleashedAgentFastSwitching,
+     /// Enable the interactive transcript composer and turn-selection UI.
+     TranscriptV2,
+     // Stable.
+@@ -898,6 +900,12 @@ pub struct FeatureSpec {
+ }
+ 
+ pub const FEATURES: &[FeatureSpec] = &[
++    FeatureSpec {
++        id: Feature::UnleashedAgentFastSwitching,
++        key: "unleashed_agent_fast_switching",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+         id: Feature::TranscriptV2,
+         key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 3333f430f9..f0fb8e64d6 100644
+index 3333f430f..f0fb8e64d 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 @@ -625,6 +625,171 @@ fn spawn_approved_task_tool_call(
      });
  }
-
+ 
 +#[test]
 +fn switching_back_replays_only_latest_compacted_conversation() -> Result<()> {
 +    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
@@ -175,7 +213,7 @@ index 3333f430f9..f0fb8e64d6 100644
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
 diff --git a/codex-rs/tui/src/chatwidget/replay.rs b/codex-rs/tui/src/chatwidget/replay.rs
-index 52b31fcbd6..4f8626e968 100644
+index 52b31fcbd..4f8626e96 100644
 --- a/codex-rs/tui/src/chatwidget/replay.rs
 +++ b/codex-rs/tui/src/chatwidget/replay.rs
 @@ -33,6 +33,19 @@ impl ChatWidget {
@@ -199,13 +237,13 @@ index 52b31fcbd6..4f8626e968 100644
          let hidden_nested_review_turns = std::iter::once(/*value*/ false)
              .chain(turns.windows(/*size*/ 2).map(|turns| {
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 31af6ad260..38524264bd 100644
+index 31af6ad26..38524264b 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -76,6 +76,65 @@ async fn resumed_initial_messages_render_history() {
      );
  }
-
+ 
 +#[tokio::test]
 +async fn replayed_compacted_history_contains_only_latest_conversation() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -268,3 +306,30 @@ index 31af6ad260..38524264bd 100644
  #[tokio::test]
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 2d5d268a67..7006651227 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1029,6 +1029,9 @@
+             "unified_image_budget": {
+               "type": "boolean"
+             },
++            "unleashed_agent_fast_switching": {
++              "type": "boolean"
++            },
+             "use_agent_identity": {
+               "type": "boolean"
+             },
+@@ -6424,6 +6427,9 @@
+         "unified_image_budget": {
+           "type": "boolean"
+         },
++        "unleashed_agent_fast_switching": {
++          "type": "boolean"
++        },
+         "use_agent_identity": {
+           "type": "boolean"
+         },
+-- 
+2.43.0
