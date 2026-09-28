@@ -43,6 +43,11 @@ on:
         required: false
         default: true
         type: boolean
+      publish_npm:
+        description: "Publish the npm packages associated with the release."
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       upstream_tag:
@@ -91,6 +96,11 @@ on:
         required: false
         default: true
         type: boolean
+      publish_npm:
+        description: "Publish the npm packages associated with the release."
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: >-
@@ -98,7 +108,7 @@ concurrency:
       inputs.focus_target || 'all-targets'
     }}-${{ inputs.focus_bundle || 'all-bundles' }}-${{
       inputs.reproducibility_mode || 'off'
-    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}
+    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}
   # A newer commit supersedes an in-progress release check. Keeping the old
   # run alive only wastes hosted-runner time and can publish stale artifacts.
   cancel-in-progress: true
@@ -1526,6 +1536,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Configure npm registry
+        if: ${{ inputs.publish_npm }}
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 24
@@ -1713,6 +1724,7 @@ jobs:
             release-stage/*
 
       - name: Publish npm packages
+        if: ${{ inputs.publish_npm }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash

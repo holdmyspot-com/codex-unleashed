@@ -19,6 +19,11 @@ on:
         required: false
         default: true
         type: boolean
+      publish_npm:
+        description: "Publish the npm packages associated with the release."
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   resolve:
@@ -50,4 +55,5 @@ jobs:
       upstream_tag: ${{ needs.resolve.outputs.upstream_tag }}
       build_number: ${{ inputs.build_number || '' }}
       ghcr_cache: ${{ inputs.ghcr_cache || false }}
+      publish_npm: ${{ github.event_name == 'push' || inputs.publish_npm }}
     secrets: inherit
