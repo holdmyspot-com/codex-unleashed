@@ -561,11 +561,6 @@ jobs:
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      # This mode is opt-in because serializing LLVM can significantly slow
-      # release builds. It is used to test whether our own output is stable,
-      # not to claim compatibility with upstream's ordinary build.
-      RUSTFLAGS: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' && '-Ccodegen-units=1 -Zno-parallel-backend' || '' }}
-      RUSTC_BOOTSTRAP: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' && '1' || '' }}
       CARGO_INCREMENTAL: "0"
       REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
       ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
@@ -751,6 +746,15 @@ jobs:
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           targets: ${{ matrix.target }}
+
+      - name: Configure deterministic compiler mode
+        if: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' }}
+        shell: bash
+        run: |
+          # Even an empty job-level value overrides upstream Cargo target
+          # flags, so define these only for the opt-in compiler experiment.
+          echo "RUSTFLAGS=-Ccodegen-units=1 -Zno-parallel-backend" >> "$GITHUB_ENV"
+          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
 
       - name: Record Rust compiler cache input
         id: rust_compiler
@@ -1151,8 +1155,6 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
       CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
       CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_gzip_mtime }}
-      RUSTFLAGS: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' && '-Ccodegen-units=1 -Zno-parallel-backend' || '' }}
-      RUSTC_BOOTSTRAP: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' && '1' || '' }}
       CARGO_INCREMENTAL: "0"
       REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
     strategy:
@@ -1215,6 +1217,15 @@ jobs:
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           targets: ${{ matrix.target }}
+
+      - name: Configure deterministic compiler mode
+        if: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' }}
+        shell: bash
+        run: |
+          # Even an empty job-level value overrides upstream Cargo target
+          # flags, so define these only for the opt-in compiler experiment.
+          echo "RUSTFLAGS=-Ccodegen-units=1 -Zno-parallel-backend" >> "$GITHUB_ENV"
+          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
 
       - name: Record Rust compiler cache input
         id: rust_compiler
