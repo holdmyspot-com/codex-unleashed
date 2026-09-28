@@ -119,6 +119,21 @@ def copy_legal_materials(package_dir: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
 
+    prepared_licenses = os.environ.get("CODEX_PACKAGE_RUST_LICENSES_DIR")
+    if prepared_licenses:
+        license_dir = Path(prepared_licenses)
+        if not license_dir.is_dir():
+            raise FileNotFoundError(
+                f"Prepared Cargo license directory does not exist: {license_dir}"
+            )
+        notices_file = license_dir / "THIRD_PARTY_NOTICES.md"
+        if not notices_file.is_file():
+            raise FileNotFoundError(
+                f"Prepared Cargo license notices do not exist: {notices_file}"
+            )
+        shutil.copytree(license_dir, package_dir / "licenses" / "rust")
+        return
+
     workspace_root = os.environ.get("CODEX_PACKAGE_WORKSPACE_ROOT")
     if workspace_root:
         manifest = Path(workspace_root) / "codex-rs" / "Cargo.toml"

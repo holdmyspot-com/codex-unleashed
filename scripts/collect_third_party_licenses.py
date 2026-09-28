@@ -7,6 +7,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -22,20 +23,26 @@ def parse_args() -> argparse.Namespace:
 
 
 def cargo_metadata(manifest: Path) -> dict:
-    result = subprocess.run(
-        [
-            "cargo",
-            "metadata",
-            "--format-version",
-            "1",
-            "--locked",
-            "--manifest-path",
-            str(manifest),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "cargo",
+                "metadata",
+                "--format-version",
+                "1",
+                "--locked",
+                "--manifest-path",
+                str(manifest),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        if error.stderr:
+            sys.stderr.write(error.stderr)
+        raise
+
     return json.loads(result.stdout)
 
 

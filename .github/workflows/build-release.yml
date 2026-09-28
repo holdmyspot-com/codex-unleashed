@@ -887,6 +887,21 @@ jobs:
           fi
           ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output"
 
+      - name: Prepare third-party Cargo licenses
+        working-directory: upstream/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -euo pipefail
+          license_dir="${RUNNER_TEMP}/codex-package-rust-licenses-${TARGET}-${BUNDLE}"
+          python3 "${GITHUB_WORKSPACE}/scripts/collect_third_party_licenses.py" \
+            --manifest Cargo.toml \
+            --output "$license_dir" \
+            --require-license-files
+          echo "CODEX_PACKAGE_RUST_LICENSES_DIR=${license_dir}" >> "$GITHUB_ENV"
+
       - name: Strip Unix release binaries
         if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'apple-darwin') }}
         shell: bash
@@ -1302,6 +1317,27 @@ jobs:
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
             cargo build --target "$target" --release --timings "${build_args[@]}"
 
+      - name: Prepare third-party Cargo licenses
+        working-directory: upstream/codex-rs
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -euo pipefail
+          license_dir="${RUNNER_TEMP}/codex-package-rust-licenses-${TARGET}-${BUNDLE}"
+          python3 "${GITHUB_WORKSPACE}/scripts/collect_third_party_licenses.py" \
+            --manifest Cargo.toml \
+            --output "$license_dir" \
+            --require-license-files
+
+      - name: Upload third-party Cargo licenses
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: codex-package-rust-licenses-${{ matrix.target }}-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/codex-package-rust-licenses-${{ matrix.target }}-${{ matrix.bundle }}/**
+          if-no-files-found: error
+
       - name: Upload Cargo timings
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
@@ -1464,6 +1500,12 @@ jobs:
           name: windows-binaries-${{ matrix.target }}-primary
           path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
 
+      - name: Download third-party Cargo licenses
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-package-rust-licenses-${{ matrix.target }}-primary
+          path: ${{ runner.temp }}/codex-package-rust-licenses
+
       - name: Stage artifacts
         shell: bash
         run: |
@@ -1477,6 +1519,8 @@ jobs:
 
       - name: Build Codex package archives
         shell: bash
+        env:
+          CODEX_PACKAGE_RUST_LICENSES_DIR: ${{ runner.temp }}/codex-package-rust-licenses
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
