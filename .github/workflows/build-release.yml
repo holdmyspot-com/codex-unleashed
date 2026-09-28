@@ -420,8 +420,8 @@ jobs:
             {"runner":"macos-15","target":"aarch64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"aarch64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"}
           ]'
           windows_matrix='[
-            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner"},
-            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner"}
+            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"},
+            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"}
           ]'
           filter_matrix() {
             jq -c --arg target "$FOCUS_TARGET" --arg bundle "$FOCUS_BUNDLE" \
@@ -1317,6 +1317,13 @@ jobs:
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
             cargo build --target "$target" --release --timings "${build_args[@]}"
 
+          helper_build_args=()
+          for binary in ${{ matrix.helper_binaries }}; do
+            helper_build_args+=(--bin "$binary")
+          done
+          bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
+            cargo build --target "$target" --release --timings "${helper_build_args[@]}"
+
       - name: Prepare third-party Cargo licenses
         working-directory: upstream/codex-rs
         shell: bash
@@ -1353,7 +1360,7 @@ jobs:
           release_dir="$CARGO_TARGET_DIR/${{ matrix.target }}/release"
           output_dir="$release_dir/staged-${{ matrix.bundle }}"
           mkdir -p "$output_dir"
-          for binary in ${{ matrix.binaries }}; do
+          for binary in ${{ matrix.binaries }} ${{ matrix.helper_binaries }}; do
             pdb_name="${binary//-/_}"
             pdb_path="$release_dir/${pdb_name}.pdb"
             if [[ ! -f "$pdb_path" ]]; then
@@ -1465,6 +1472,7 @@ jobs:
         always() &&
         !cancelled() &&
         needs.prepare.outputs.should_release == 'true' &&
+        needs.build-windows-binaries.result == 'success' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
         (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == ''
