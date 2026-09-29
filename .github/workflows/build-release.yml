@@ -570,7 +570,7 @@ jobs:
       CODEX_PACKAGE_ARCHIVE_MEMBER_MTIMES: ${{ toJSON(fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].member_mtimes) }}
       CODEX_STANDALONE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].standalone_archive_mtime }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.unix_matrix) }}
     steps:
@@ -1166,7 +1166,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
       REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.windows_matrix) }}
     steps:
