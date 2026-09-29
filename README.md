@@ -105,6 +105,9 @@ Patched releases add a vendor build number to the upstream version:
 
 The `+25` suffix identifies the vendor build. Build numbers are assigned by the release workflow and distinguish later patched builds based on the same upstream version.
 
+The corresponding npm package version uses `-` in place of `+`, for example
+`1.3.6-25`, so successive vendor builds have distinct ordered npm versions.
+
 ### Build information
 
 Invoke `codex --build-info` to see the provider and upstream details for an installed build:

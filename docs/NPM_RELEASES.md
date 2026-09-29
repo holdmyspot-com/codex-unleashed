@@ -12,10 +12,10 @@ must belong to an npm organization team with read access to all seven
 early-access packages. The script defaults to the local Verdaccio registry at
 `http://127.0.0.1:4873` and uses the `@holdmyspot` scope.
 
-GitHub release tags may use `0.153.4+25`, but npm removes SemVer build
-metadata when publishing. The script therefore publishes that release as
-`0.153.4-unleashed.25` so the vendor build remains distinguishable and all
-platform dependencies resolve to the same version.
+GitHub release tags may use `rust-v0.153.4+25`. For npm package versions,
+replace the `+` before the vendor build number with `-`: that release is
+published as `0.153.4-25`. This keeps successive vendor builds ordered and
+ensures all platform dependencies resolve to the same version.
 
 Build packages from an online GitHub Release without publishing them:
 

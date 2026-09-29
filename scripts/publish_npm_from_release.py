@@ -98,14 +98,14 @@ def version_from_tag(tag: str) -> str:
 
 
 def npm_version(version: str) -> str:
-    """Convert a GitHub SemVer build suffix to one npm preserves."""
+    """Convert a GitHub vendor build suffix to an ordered npm prerelease."""
     match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:\+([0-9]+))?", version)
     if not match:
         raise ValueError(
             f"Expected a stable vendor version such as 0.153.4+25; got {version!r}"
         )
     base, build = match.groups()
-    return f"{base}-unleashed.{build}" if build else base
+    return f"{base}-{build}" if build else base
 
 
 def download_archives(repository: str, tag: str, destination: Path) -> None:
