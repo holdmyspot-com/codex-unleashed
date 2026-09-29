@@ -6,7 +6,8 @@
 
 Show the Codex Unleashed build number in `codex --version` and the session
 header. Identify Codex Unleashed in the session header as an unofficial fork
-of OpenAI Codex, with the complete project URL on its own line. The URL wraps
+of OpenAI Codex, with the complete project URL on its own line. The fork label
+and URL align with the title, and the label has no trailing colon. The URL wraps
 on narrow terminals. Let users run `codex --build-info` to see the upstream
 version and the provider.
 

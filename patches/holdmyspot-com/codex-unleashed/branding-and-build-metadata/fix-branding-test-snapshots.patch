@@ -1,20 +1,20 @@
-From 9f11c517958c17a3aeec3a7f55c7f79cd81986e4 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 17:12:10 -0400
+From d4a5c85d260a5d63b2fc7e35eb872e2f838e1d1b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 29 Sep 2026 17:43:56 -0400
 Subject: [PATCH] Update branding session-header expectations
 
 ---
  .../tui/src/chatwidget/rendering_tests.rs     |  6 +-
- ...__catalog_model_session_header_resume.snap |  4 +-
- ..._catalog_model_session_header_startup.snap |  4 +-
- ...og_model_session_header_unknown_model.snap |  4 +-
+ ...__catalog_model_session_header_resume.snap |  5 +-
+ ..._catalog_model_session_header_startup.snap |  6 +-
+ ...og_model_session_header_unknown_model.snap |  5 +-
  ...session_header_clamps_to_narrow_width.snap |  7 +-
  ...s__session_header_halfwidth_directory.snap | 79 ++++++++++---------
  ...s__session_header_indicates_yolo_mode.snap |  7 +-
- 7 files changed, 61 insertions(+), 50 deletions(-)
+ 7 files changed, 65 insertions(+), 50 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 624d587..415775a 100644
+index 624d587..3b05347 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 @@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
@@ -32,16 +32,16 @@ index 624d587..415775a 100644
      insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @r"
 -      >_ OpenAI Codex (v<VERSION>)
 +      >_ Codex Unleashed (v<VERSION>)
-+        Unofficial fork of OpenAI Codex:
-+        https://holdmyspot.com/codex-unleashed/
++         Unofficial fork of OpenAI Codex
++         https://holdmyspot.com/codex-unleashed/
           /tmp/project
      ");
  }
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
-index 915041d..4221444 100644
+index 915041d..e54e441 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
-@@ -1,8 +1,8 @@
+@@ -1,8 +1,9 @@
  ---
  source: tui/src/chatwidget/tests/app_server.rs
 -assertion_line: 99
@@ -49,30 +49,33 @@ index 915041d..4221444 100644
  ---
 -OpenAI Codex (v<VERSION>)
 +Codex Unleashed (v<VERSION>)
-+    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-index 65f9035..dc6c426 100644
+index 65f9035..a716e3a 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-@@ -1,9 +1,9 @@
+@@ -1,9 +1,11 @@
  ---
  source: tui/src/chatwidget/tests/app_server.rs
 -assertion_line: 99
++assertion_line: 100
  expression: rendered
  ---
 -OpenAI Codex (v<VERSION>)
 +Codex Unleashed (v<VERSION>)
-+    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
  
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
-index 147a544..1e4beee 100644
+index 147a544..d9e4662 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
-@@ -1,8 +1,8 @@
+@@ -1,8 +1,9 @@
  ---
  source: tui/src/chatwidget/tests/app_server.rs
 -assertion_line: 99
@@ -80,11 +83,12 @@ index 147a544..1e4beee 100644
  ---
 -OpenAI Codex (v<VERSION>)
 +Codex Unleashed (v<VERSION>)
-+    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
  model: us.openai.gpt-5.6-luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-index 13e70b5..e25f65a 100644
+index 13e70b5..3842c99 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 @@ -1,9 +1,10 @@
@@ -97,19 +101,19 @@ index 13e70b5..e25f65a 100644
 -
 -  >_ OpenAI Codex (vtest)
 +  >_ Codex Unleashed (vtest)
-+    Unofficial fork of OpenAI Codex:
-+    https://holdmyspot.com/codex-unleashed/
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
       project
    permissions: YOLO mode
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-index fa464a0..6591090 100644
+index fa464a0..9de8db3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 @@ -1,48 +1,55 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1903
-+assertion_line: 1963
++assertion_line: 1983
  expression: "format!(\"{buf:?}\")"
  ---
  Buffer {
@@ -119,9 +123,9 @@ index fa464a0..6591090 100644
 -        "                                          ",
 -        "  >_ OpenAI Codex (vtest)                 ",
 +        "  >_ Codex Unleashed (vtest)              ",
-+        "    Unofficial fork of OpenAI Codex:      ",
-+        "    https://holdmyspot.com/codex-unleashed",
-+        "    /                                     ",
++        "     Unofficial fork of OpenAI Codex      ",
++        "     https://holdmyspot.com/codex-unleashe",
++        "     d/                                   ",
          "     …ｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project", // hidden by multi-width symbols: [(7, " "), (9, " "), (11, " "), (13, " "), (15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " "), (33, " ")]
      ],
      styles: [
@@ -162,10 +166,10 @@ index fa464a0..6591090 100644
 +        x: 5, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
 +        x: 20, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 +        x: 28, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-+        x: 4, y: 2, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
++        x: 5, y: 2, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
 +        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-+        x: 4, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
-+        x: 5, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 5, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
++        x: 7, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
 +        x: 5, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 +        x: 7, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
 +        x: 8, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
@@ -198,21 +202,21 @@ index fa464a0..6591090 100644
      ]
  }
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-index ab195e3..42e1efa 100644
+index ab195e3..98baae3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 @@ -1,9 +1,10 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1885
-+assertion_line: 1945
++assertion_line: 1965
  expression: rendered
  ---
 -
 -  >_ OpenAI Codex (vtest)
 +  >_ Codex Unleashed (vtest)
-+    Unofficial fork of OpenAI Codex:
-+    https://holdmyspot.com/codex-unleashed/
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
       /tmp/project
    permissions: YOLO mode
 -- 
