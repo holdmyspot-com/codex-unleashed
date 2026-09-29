@@ -1,7 +1,7 @@
 # Expanded diff previews in the full-screen transcript
 
 - Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` `rust-v0.158.0`, commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
+- Applies to: upstream `openai/codex` `rust-v0.159.0`, commit `687a119f0fcaace47e1f1abcc77cec6c813fd6da`
 
 ## Intent
 
@@ -69,7 +69,7 @@ The TUI regression was first run before behavior was gated on both settings. It
 failed at the flag-only assertion because enabling the feature flag expanded the
 patch without the project setting. The same test passed after adding the
 two-setting gate. For the default-on change, the TUI command below ran on the
-declared upstream base with this patch applied but `default_enabled: false`; it
+original `rust-v0.158.0` base with this patch applied but `default_enabled: false`; it
 exited 101 at the new feature-default assertion. After changing the patch to
 default the feature flag to `true`, the same command ran on the patched tree. It
 passed (1 passed, 0 failed) and verified that the project property still
@@ -101,6 +101,10 @@ just test -p codex-config -p codex-core -p codex-tui -E 'test(config_toml_preser
 ```
 
 Results: all 4 focused tests passed.
+
+On `rust-v0.159.0`, the focused
+`expanded_diff_previews_are_configurable_for_owned_transcript` test passed with
+Rust 1.95.0, and the full patch queue applied cleanly to the declared base.
 
 ## Formatting
 

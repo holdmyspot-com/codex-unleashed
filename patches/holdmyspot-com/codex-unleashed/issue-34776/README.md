@@ -1,7 +1,7 @@
 # Faster `/subagents` switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- Applies to: upstream `openai/codex` `rust-v0.158.0`, commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
+- Applies to: upstream `openai/codex` `rust-v0.159.0`, commit `687a119f0fcaace47e1f1abcc77cec6c813fd6da`
 - Related upstream work: [openai/codex#36948](https://github.com/openai/codex/pull/36948), [openai/codex#36950](https://github.com/openai/codex/pull/36950)
 
 ## Intent
@@ -43,7 +43,7 @@ takes less than three seconds, and compares the result with a one-window
 session. It also confirms that older history remains cached and that disabling
 the feature restores full-history replay.
 
-On the declared upstream base, the test failed because the returned transcript
+On the original `rust-v0.158.0` base, the test failed because the returned transcript
 still contained `conversation-0` from before the latest compaction. With the
 patch, the switch and resume regression tests passed; the switch test also
 confirmed older history remained cached and ordinary session resumption still

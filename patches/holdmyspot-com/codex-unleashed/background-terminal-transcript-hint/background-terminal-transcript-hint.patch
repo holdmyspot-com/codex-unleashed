@@ -1,7 +1,7 @@
-From 9d5b3f209ae5c6bdc323444d3f9af426d5ce722d Mon Sep 17 00:00:00 2001
-From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Mon, 28 Sep 2026 05:01:15 -0400
-Subject: [PATCH] Explain background terminal transcript availability
+From 3c6404ed020bfbbc87b01fa14601ab8425e4c2d6 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 11:20:46 -0400
+Subject: [PATCH] Show background terminal transcript hints
 
 ---
  .../tui/src/chatwidget/tests/exec_flow.rs     |  4 +--
@@ -17,7 +17,7 @@ Subject: [PATCH] Explain background terminal transcript availability
  10 files changed, 63 insertions(+), 7 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 9e6c59c76..176fc1554 100644
+index 9e6c59c..176fc15 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -47,7 +47,7 @@ async fn external_writer_snapshot_freezes_active_command_and_mcp_rows() {
@@ -39,10 +39,10 @@ index 9e6c59c76..176fc1554 100644
  }
  
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index 86d66a80d..663829c01 100644
+index d8b326d..dde04f0 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
-@@ -446,7 +446,14 @@ impl ExecCell {
+@@ -448,7 +448,14 @@ impl ExecCell {
      }
  
      fn command_display_lines(&self, width: u16) -> Vec<HyperlinkLine> {
@@ -58,7 +58,7 @@ index 86d66a80d..663829c01 100644
      }
  
      fn command_display_lines_with_hidden_details(&self, width: u16) -> CommandDisplay {
-@@ -849,6 +856,30 @@ mod tests {
+@@ -851,6 +858,30 @@ mod tests {
              .collect::<String>()
      }
  
@@ -90,7 +90,7 @@ index 86d66a80d..663829c01 100644
      fn user_shell_output_is_limited_by_screen_lines() {
          let long_url_like = format!(
 diff --git a/codex-rs/tui/src/history_cell/exec.rs b/codex-rs/tui/src/history_cell/exec.rs
-index 57c2f166c..4851e4474 100644
+index 57c2f16..4851e44 100644
 --- a/codex-rs/tui/src/history_cell/exec.rs
 +++ b/codex-rs/tui/src/history_cell/exec.rs
 @@ -141,13 +141,20 @@ impl HistoryCell for UnifiedExecProcessesCell {
@@ -116,7 +116,7 @@ index 57c2f166c..4851e4474 100644
          let prefix_width = display_width(prefix);
          let truncation_suffix = " [...]";
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
-index e13dcf0a1..1cab3f93a 100644
+index e13dcf0..1cab3f9 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -133,7 +133,7 @@ index e13dcf0a1..1cab3f93a 100644
    • just fix
      ↳   indented first
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
-index a39929e48..76c0c1793 100644
+index a39929e..76c0c17 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 @@ -5,6 +5,7 @@ expression: rendered
@@ -145,7 +145,7 @@ index a39929e48..76c0c1793 100644
    • echo ｶﾞﾊﾟｶﾞﾊﾟ [...]
      ↳ output ｶﾞﾊﾟ [...]
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
-index 2bd4bf9fb..cac551593 100644
+index 2bd4bf9..cac5515 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -162,7 +162,7 @@ index 2bd4bf9fb..cac551593 100644
    • rg "foo" src --glob '**/*. [...]
      ↳ searching...
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
-index d0138b274..2b021a3af 100644
+index d0138b2..2b021a3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -179,7 +179,7 @@ index d0138b274..2b021a3af 100644
    • command 0
    • command 1
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
-index ce48f3512..eda1e79a5 100644
+index ce48f35..eda1e79 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
 @@ -5,5 +5,6 @@ expression: rendered
@@ -190,7 +190,7 @@ index ce48f3512..eda1e79a5 100644
  
    • (↵  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [...]
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
-index 609bafd3b..69b027b21 100644
+index 609bafd..69b027b 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 @@ -5,6 +5,7 @@ expression: rendered
@@ -202,7 +202,7 @@ index 609bafd3b..69b027b21 100644
    • echo hello↵and then some extra text
      ↳ hello
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 0be28aec0..7a314ac61 100644
+index 03c953f..2a5d8ce 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -732,9 +732,21 @@ fn final_message_separator_includes_worked_label_after_one_minute() {

@@ -1,6 +1,6 @@
 # Codex Unleashed branding and build information
 
-- Applies to: upstream `openai/codex` `rust-v0.158.0`, commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`
+- Applies to: upstream `openai/codex` `rust-v0.159.0`, commit `687a119f0fcaace47e1f1abcc77cec6c813fd6da`
 - Restores the branding patch set removed in commit `d162acc7fc954212bfb56dc0d9e4d5727e7fd6bf`
 
 ## Intent
@@ -24,7 +24,7 @@ shows the build number and provider link.
 
 ## Regression test and TDD record
 
-On the declared upstream base, `build_info_reports_upstream_and_provider`
+On the original `rust-v0.158.0` base, `build_info_reports_upstream_and_provider`
 failed because `--build-info` was unknown. Before restoring the remaining
 branding behavior, `version_identifies_codex_unleashed_build` failed because
 `--version` printed only `codex-cli 0.158.0`, and
@@ -52,6 +52,14 @@ and green runs used upstream-pinned Rust 1.95 after that failure. A full TUI
 library run stopped at a stack overflow in
 `analytics::plan::tests::plan_gate_prevents_requests_and_unavailable_plan_does_not_block_other_reports`;
 the focused branding checks passed.
+
+On `rust-v0.159.0`, `session_header_identifies_codex_unleashed_build` failed
+when the provider link was absent from the display, then passed after the
+session header was updated. The existing
+`initial_session_header_starts_at_the_top_of_the_viewport` test also passed
+after the added line was accommodated. The focused `session_header_` run passed
+all 10 matching tests with Rust 1.95.0. The patch queue applied cleanly to the
+declared base.
 
 ## Formatting
 

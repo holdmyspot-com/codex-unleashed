@@ -1,7 +1,7 @@
-From 2c75d9eb07860aa7044ece8334e56c36b9b8bbc1 Mon Sep 17 00:00:00 2001
-From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Mon, 28 Sep 2026 04:57:18 -0400
-Subject: [PATCH] Speed up agent thread switching
+From b447fc6d703df514395a3342cd98ecf4eb79b13b Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 11:13:44 -0400
+Subject: [PATCH] Keep subagent switches responsive with long history
 
 ---
  codex-rs/core/config.schema.json              |   6 +
@@ -16,17 +16,23 @@ Subject: [PATCH] Speed up agent thread switching
  9 files changed, 305 insertions(+), 5 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index f653c997c..3bd60b975 100644
+index af8f05e..547de98 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1131,3 +1131,6 @@
+@@ -1157,6 +1157,9 @@
+             "unified_image_budget": {
+               "type": "boolean"
+             },
 +            "unleashed_agent_fast_switching": {
 +              "type": "boolean"
 +            },
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -7158,3 +7161,6 @@
+@@ -7187,6 +7190,9 @@
+         "unified_image_budget": {
+           "type": "boolean"
+         },
 +        "unleashed_agent_fast_switching": {
 +          "type": "boolean"
 +        },
@@ -34,10 +40,10 @@ index f653c997c..3bd60b975 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 171e6dc2e..d4ea5b439 100644
+index ebd6d89..ad2b654 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -110,6 +110,8 @@ pub enum Feature {
+@@ -111,6 +111,8 @@ pub enum Feature {
  
      /// Automatically start the shared local daemon for eligible interactive launches.
      DaemonAutoStart,
@@ -46,7 +52,7 @@ index 171e6dc2e..d4ea5b439 100644
  
      // Experimental
      /// Send per-content-entry classifications in internal Responses metadata.
-@@ -937,6 +939,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -946,6 +948,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::Stable,
          default_enabled: true,
      },
@@ -60,7 +66,7 @@ index 171e6dc2e..d4ea5b439 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 01cc92847..81e89ea22 100644
+index bf07b73..5b09a26 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -414,7 +414,9 @@ impl App {
@@ -75,7 +81,7 @@ index 01cc92847..81e89ea22 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 0b0089f0c..7fd454f6f 100644
+index 6e73c00..29dcd86 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -629,7 +629,9 @@ impl App {
@@ -90,10 +96,10 @@ index 0b0089f0c..7fd454f6f 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index dd0aadf5d..cc0251653 100644
+index a25fcab..8a60fe6 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -1178,7 +1178,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
+@@ -1177,7 +1177,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
  
      app.store_active_thread_receiver().await;
      let (_receiver, snapshot) = app
@@ -103,10 +109,10 @@ index dd0aadf5d..cc0251653 100644
          .expect("detached thread should reactivate for replay");
      app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index c183e79ec..26988bb1a 100644
+index 3525357..f106359 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -836,6 +836,209 @@ fn spawn_approved_task_tool_call(
+@@ -837,6 +837,209 @@ fn spawn_approved_task_tool_call(
      });
  }
  
@@ -317,7 +323,7 @@ index c183e79ec..26988bb1a 100644
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index b7d34f637..78cb6bb1c 100644
+index b7d34f6..78cb6bb 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
 @@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
@@ -364,7 +370,7 @@ index b7d34f637..78cb6bb1c 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index a3501c3a1..b874987cf 100644
+index a3501c3..b874987 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
 @@ -121,12 +121,23 @@ impl App {
@@ -393,7 +399,7 @@ index a3501c3a1..b874987cf 100644
      }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index ad26ff947..9aac058eb 100644
+index ad26ff9..9aac058 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -79,6 +79,50 @@ async fn resumed_initial_messages_render_history() {
