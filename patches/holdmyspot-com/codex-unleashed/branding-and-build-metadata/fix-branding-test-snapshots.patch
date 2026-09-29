@@ -1,32 +1,44 @@
-From 5cefa7f14e8a08b3a65f253bb0682eccd9f2ebfa Mon Sep 17 00:00:00 2001
+From 9f11c517958c17a3aeec3a7f55c7f79cd81986e4 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 11:13:15 -0400
+Date: Tue, 29 Sep 2026 17:12:10 -0400
 Subject: [PATCH] Update branding session-header expectations
 
 ---
- codex-rs/tui/src/chatwidget/rendering_tests.rs       |  1 +
- ...__tests__catalog_model_session_header_resume.snap |  2 +-
- ..._tests__catalog_model_session_header_startup.snap |  2 +-
- ...__catalog_model_session_header_unknown_model.snap |  2 +-
- ...tests__session_header_clamps_to_narrow_width.snap |  2 +-
- ...l__tests__session_header_halfwidth_directory.snap | 12 +++++++-----
- ...l__tests__session_header_indicates_yolo_mode.snap |  2 +-
- 7 files changed, 13 insertions(+), 10 deletions(-)
+ .../tui/src/chatwidget/rendering_tests.rs     |  6 +-
+ ...__catalog_model_session_header_resume.snap |  4 +-
+ ..._catalog_model_session_header_startup.snap |  4 +-
+ ...og_model_session_header_unknown_model.snap |  4 +-
+ ...session_header_clamps_to_narrow_width.snap |  7 +-
+ ...s__session_header_halfwidth_directory.snap | 79 ++++++++++---------
+ ...s__session_header_indicates_yolo_mode.snap |  7 +-
+ 7 files changed, 61 insertions(+), 50 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 624d587..662ba30 100644
+index 624d587..415775a 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-@@ -402,6 +402,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+@@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+     let header = frame
+         .content
+         .chunks(usize::from(frame.area.width))
+-        .take(/*n*/ 3)
++        .take(/*n*/ 4)
+         .map(|row| {
+             row.iter()
+                 .map(ratatui::buffer::Cell::symbol)
+@@ -401,7 +401,9 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+     let cwd = widget.config.cwd.as_path().display().to_string();
  
      insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @r"
-       >_ OpenAI Codex (v<VERSION>)
-+         https://holdmyspot.com/codex-unleashed/
+-      >_ OpenAI Codex (v<VERSION>)
++      >_ Codex Unleashed (v<VERSION>)
++        Unofficial fork of OpenAI Codex:
++        https://holdmyspot.com/codex-unleashed/
           /tmp/project
      ");
  }
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
-index 915041d..1e910f7 100644
+index 915041d..4221444 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 @@ -1,8 +1,8 @@
@@ -35,12 +47,13 @@ index 915041d..1e910f7 100644
 -assertion_line: 99
  expression: rendered
  ---
- OpenAI Codex (v<VERSION>)
-+   https://holdmyspot.com/codex-unleashed/
+-OpenAI Codex (v<VERSION>)
++Codex Unleashed (v<VERSION>)
++    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-index 65f9035..64d9f4c 100644
+index 65f9035..dc6c426 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 @@ -1,9 +1,9 @@
@@ -49,13 +62,14 @@ index 65f9035..64d9f4c 100644
 -assertion_line: 99
  expression: rendered
  ---
- OpenAI Codex (v<VERSION>)
-+   https://holdmyspot.com/codex-unleashed/
+-OpenAI Codex (v<VERSION>)
++Codex Unleashed (v<VERSION>)
++    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
  
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
-index 147a544..26d6837 100644
+index 147a544..1e4beee 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 @@ -1,8 +1,8 @@
@@ -64,41 +78,50 @@ index 147a544..26d6837 100644
 -assertion_line: 99
  expression: rendered
  ---
- OpenAI Codex (v<VERSION>)
-+   https://holdmyspot.com/codex-unleashed/
+-OpenAI Codex (v<VERSION>)
++Codex Unleashed (v<VERSION>)
++    Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/
  model: us.openai.gpt-5.6-luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-index 13e70b5..226a0e7 100644
+index 13e70b5..e25f65a 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-@@ -1,9 +1,9 @@
+@@ -1,9 +1,10 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1867
++assertion_line: 1879
  expression: "render_lines(&lines).join(\"\\n\")"
  ---
- 
-   >_ OpenAI Codex (vtest)
-+     https://holdmyspot.com/codex-unleashed/
+-
+-  >_ OpenAI Codex (vtest)
++  >_ Codex Unleashed (vtest)
++    Unofficial fork of OpenAI Codex:
++    https://holdmyspot.com/codex-unleashed/
       project
    permissions: YOLO mode
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-index fa464a0..0bbdd6b 100644
+index fa464a0..6591090 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-@@ -1,20 +1,22 @@
+@@ -1,48 +1,55 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1903
++assertion_line: 1963
  expression: "format!(\"{buf:?}\")"
  ---
  Buffer {
-     area: Rect { x: 0, y: 0, width: 42, height: 3 },
+-    area: Rect { x: 0, y: 0, width: 42, height: 3 },
++    area: Rect { x: 0, y: 0, width: 42, height: 5 },
      content: [
 -        "                                          ",
-         "  >_ OpenAI Codex (vtest)                 ",
-+        "     https://holdmyspot.com/codex-unleash…",
+-        "  >_ OpenAI Codex (vtest)                 ",
++        "  >_ Codex Unleashed (vtest)              ",
++        "    Unofficial fork of OpenAI Codex:      ",
++        "    https://holdmyspot.com/codex-unleashed",
++        "    /                                     ",
          "     …ｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project", // hidden by multi-width symbols: [(7, " "), (9, " "), (11, " "), (13, " "), (15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " "), (33, " ")]
      ],
      styles: [
@@ -106,28 +129,90 @@ index fa464a0..0bbdd6b 100644
 -        x: 5, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
 -        x: 17, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 -        x: 25, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 5, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 7, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 8, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 9, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 10, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 11, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 12, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 13, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 14, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 16, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 17, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 18, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 19, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 20, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 21, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 22, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 23, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 24, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 25, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 26, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 27, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 28, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 30, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 31, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 32, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 33, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 34, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 +        x: 2, y: 0, fg: Rgb(99, 168, 248), bg: Reset, underline: Reset, modifier: NONE,
 +        x: 5, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
-+        x: 17, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-+        x: 25, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-+        x: 5, y: 1, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
-+        x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-         x: 5, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 7, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-         x: 8, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 20, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 28, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 4, y: 2, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
++        x: 0, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 4, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: UNDERLINED,
++        x: 5, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 5, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 7, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 8, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 9, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 10, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 11, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 12, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 13, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 14, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 15, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 16, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 17, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 18, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 19, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 20, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 21, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 22, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 23, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 24, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 25, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 26, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 27, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 28, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 29, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 30, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 31, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 32, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 33, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 34, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+     ]
+ }
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-index ab195e3..58e47dc 100644
+index ab195e3..42e1efa 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-@@ -1,9 +1,9 @@
+@@ -1,9 +1,10 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1885
++assertion_line: 1945
  expression: rendered
  ---
- 
-   >_ OpenAI Codex (vtest)
-+     https://holdmyspot.com/codex-unleashed/
+-
+-  >_ OpenAI Codex (vtest)
++  >_ Codex Unleashed (vtest)
++    Unofficial fork of OpenAI Codex:
++    https://holdmyspot.com/codex-unleashed/
       /tmp/project
    permissions: YOLO mode
 -- 

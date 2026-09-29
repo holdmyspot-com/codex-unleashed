@@ -131,7 +131,7 @@ Project:           https://github.com/holdmyspot-com/codex-unleashed
 - Commercial terms: [docs/COMMERCIAL_TERMS.md](docs/COMMERCIAL_TERMS.md)
 - Support policy: [SUPPORT.md](SUPPORT.md)
 - Security policy: [SECURITY.md](SECURITY.md)
-- Patch queue rules: [patches/README.md](patches/README.md)
+- Patch queue rules: [.cat/rules/common/patch-queue.md](.cat/rules/common/patch-queue.md)
 
 ## License
 

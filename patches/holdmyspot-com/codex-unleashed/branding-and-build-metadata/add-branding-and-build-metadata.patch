@@ -1,18 +1,18 @@
-From e6227c565687b73e8992ebb6c7608298ea9291bc Mon Sep 17 00:00:00 2001
+From 9ba9c004bce07697a791e918b13548fdccd8f50d Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 11:08:36 -0400
+Date: Tue, 29 Sep 2026 17:11:34 -0400
 Subject: [PATCH] Restore Codex Unleashed branding and build metadata
 
 ---
- codex-rs/cli/build.rs                    |  5 +++
- codex-rs/cli/src/main.rs                 | 40 ++++++++++++++++++-
- codex-rs/cli/tests/build_info.rs         | 49 ++++++++++++++++++++++++
+ codex-rs/cli/build.rs                    |  5 ++
+ codex-rs/cli/src/main.rs                 | 40 ++++++++++++++-
+ codex-rs/cli/tests/build_info.rs         | 49 ++++++++++++++++++
  codex-rs/tui/Cargo.toml                  |  1 +
  codex-rs/tui/build.rs                    |  6 +++
- codex-rs/tui/src/history_cell/session.rs |  7 +++-
- codex-rs/tui/src/history_cell/tests.rs   | 21 ++++++++++
- codex-rs/tui/src/version.rs              |  8 +++-
- 8 files changed, 134 insertions(+), 3 deletions(-)
+ codex-rs/tui/src/history_cell/session.rs | 40 +++++++++++----
+ codex-rs/tui/src/history_cell/tests.rs   | 63 ++++++++++++++++++++++++
+ codex-rs/tui/src/version.rs              |  8 ++-
+ 8 files changed, 200 insertions(+), 12 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
@@ -212,7 +212,7 @@ index 0000000..529d11c
 +    println!("cargo:rerun-if-env-changed=CODEX_UNLEASHED_BUILD_NUMBER");
 +}
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 32d2f0d..001cd09 100644
+index 32d2f0d..043986b 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -8,6 +8,7 @@ use crate::empty_state_animation::Greeting;
@@ -223,35 +223,116 @@ index 32d2f0d..001cd09 100644
  use crate::width::display_width;
  
  /// Render `lines` inside a border whose inner width is at least `inner_width`.
-@@ -360,8 +361,11 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -44,11 +45,15 @@ pub(crate) fn with_border_with_inner_width(
+     out
+ }
+ 
+-/// Brand title shared by the session header and the status card; each owns its own indentation.
++/// Brand title used by the status card; each caller owns its own indentation.
+ pub(crate) fn codex_title(version: &str) -> Vec<Span<'static>> {
++    branded_title("OpenAI Codex", version)
++}
++
++fn branded_title(name: &'static str, version: &str) -> Vec<Span<'static>> {
+     vec![
+         ">_ ".fg(accent_color()),
+-        "OpenAI Codex".bold(),
++        name.bold(),
+         format!(" (v{version})").dim(),
+     ]
+ }
+@@ -358,16 +363,28 @@ impl HistoryCell for SessionHeaderHistoryCell {
+     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+         let width = usize::from(width);
          let mut title = vec!["  ".into()];
-         title.extend(codex_title(self.version));
+-        title.extend(codex_title(self.version));
++        title.extend(branded_title("Codex Unleashed", self.version));
          let mut lines = vec![
 -            Line::default(),
              Line::from(title),
-+            Line::from(vec![
-+                "     ".into(),
-+                CODEX_UNLEASHED_URL.cyan().underlined(),
-+            ]),
-             Line::from(vec![
-                 "     ".into(),
-                 self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
-@@ -397,6 +401,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
+-            Line::from(vec![
+-                "     ".into(),
+-                self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
+-                    .dim(),
+-            ]),
++            Line::from("    Unofficial fork of OpenAI Codex:"),
+         ];
++        let url_indent = " ".repeat(width.saturating_sub(/*rhs*/ 1).min(/*rhs*/ 4));
++        let url_width = width.saturating_sub(url_indent.len()).max(/*rhs*/ 1);
++        let wrap_options = textwrap::Options::new(url_width)
++            .word_separator(textwrap::WordSeparator::AsciiSpace)
++            .word_splitter(textwrap::WordSplitter::NoHyphenation)
++            .break_words(/*break_words*/ true);
++        for part in textwrap::wrap(CODEX_UNLEASHED_URL, wrap_options) {
++            lines.push(Line::from(vec![
++                url_indent.clone().into(),
++                part.into_owned().cyan().underlined(),
++            ]));
++        }
++        lines.push(Line::from(vec![
++            "     ".into(),
++            self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
++                .dim(),
++        ]));
+         if self.yolo_mode {
+             lines.push(Line::from(vec![
+                 "  permissions: ".dim(),
+@@ -396,7 +413,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
+                 .collect();
          }
          let mut lines = vec![
-             Line::from(format!("OpenAI Codex (v{})", self.version)),
-+            Line::from(format!("   {CODEX_UNLEASHED_URL}")),
+-            Line::from(format!("OpenAI Codex (v{})", self.version)),
++            Line::from(format!("Codex Unleashed (v{})", self.version)),
++            Line::from(format!(
++                "    Unofficial fork of OpenAI Codex: {CODEX_UNLEASHED_URL}"
++            )),
              Line::from(format!(
                  "model: {}{}",
                  self.model,
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 03c953f..8e718c5 100644
+index 03c953f..75f928d 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1867,6 +1867,27 @@ fn session_header_clamps_to_narrow_width() {
+@@ -1867,6 +1867,69 @@ fn session_header_clamps_to_narrow_width() {
      insta::assert_snapshot!(render_lines(&lines).join("\n"));
  }
  
++#[test]
++fn session_header_keeps_full_url_at_narrow_widths() {
++    let cell = SessionHeaderHistoryCell::new(
++        "gpt-5".to_string(),
++        /*reasoning_effort*/ None,
++        PathBuf::from("project"),
++        "test",
++    );
++
++    for width in [44, 48, 20, 1, 75, 76] {
++        let lines = cell.display_lines(width);
++        let rendered = render_lines(&lines).join("\n");
++        let without_whitespace = rendered
++            .chars()
++            .filter(|ch| !ch.is_whitespace())
++            .collect::<String>();
++
++        assert!(
++            without_whitespace.contains(crate::version::CODEX_UNLEASHED_URL),
++            "URL missing at width {width}: {rendered}"
++        );
++        assert!(
++            lines
++                .iter()
++                .all(|line| line_width(line) <= usize::from(width))
++        );
++    }
++
++    let wide_header = render_lines(&cell.display_lines(/*width*/ 80)).join("\n");
++    assert!(
++        wide_header.contains(
++            "Unofficial fork of OpenAI Codex:\n    https://holdmyspot.com/codex-unleashed/"
++        )
++    );
++}
++
 +#[test]
 +fn session_header_identifies_codex_unleashed_build() {
 +    let cell = SessionHeaderHistoryCell::new(
@@ -262,15 +343,21 @@ index 03c953f..8e718c5 100644
 +    );
 +    let build_number = option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev");
 +    let expected_version = format!("v{}+{build_number}", env!("CARGO_PKG_VERSION"));
-+    let provider_url = "https://holdmyspot.com/codex-unleashed/";
++    let expected_title = format!("Codex Unleashed ({expected_version})");
++    let expected_provider =
++        "Unofficial fork of OpenAI Codex: https://holdmyspot.com/codex-unleashed/";
 +
 +    let display = render_lines(&cell.display_lines(/*width*/ 80)).join("\n");
-+    assert!(display.contains(&expected_version));
-+    assert!(display.contains(provider_url));
++    assert!(display.contains(&expected_title));
++    assert!(
++        display.contains(
++            "Unofficial fork of OpenAI Codex:\n    https://holdmyspot.com/codex-unleashed/"
++        )
++    );
 +
 +    let raw = render_lines(&cell.raw_lines()).join("\n");
-+    assert!(raw.contains(&expected_version));
-+    assert!(raw.contains(provider_url));
++    assert!(raw.contains(&expected_title));
++    assert!(raw.contains(expected_provider));
 +}
 +
  #[test]
