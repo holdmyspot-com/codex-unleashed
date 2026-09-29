@@ -12,6 +12,43 @@ CACHE_SCRIPT = REPOSITORY_ROOT / ".github" / "scripts" / "ghcr-cargo-target-cach
 
 
 class GhcrCargoTargetCacheTest(unittest.TestCase):
+    def test_pull_rejects_unexpected_tag_before_restoring(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-test-") as directory:
+            root = Path(directory)
+            stub_dir = root / "bin"
+            stub_dir.mkdir()
+            oras = stub_dir / "oras"
+            oras.write_text(
+                '#!/bin/sh\nprintf called > "$CACHE_TEST_MARKER"\n',
+                encoding="utf-8",
+            )
+            oras.chmod(0o755)
+            marker = root / "oras-called"
+            environment = os.environ.copy()
+            environment.update(
+                PATH=f"{stub_dir}:{environment['PATH']}",
+                CACHE_TEST_MARKER=str(marker),
+            )
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(CACHE_SCRIPT),
+                    "pull",
+                    "ghcr.io/example/cargo-cache",
+                    "unexpected-tag",
+                    str(root / "restored"),
+                    "rust-v0.158.0",
+                ],
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("Cargo cache tag", result.stderr)
+            self.assertFalse(marker.exists())
+
     def test_pull_restores_dependencies_without_release_binaries(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-test-") as directory:
             root = Path(directory)
@@ -43,6 +80,11 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             oras.chmod(0o755)
 
             target = root / "restored"
+            cached_release = target / "x86_64-apple-darwin" / "release"
+            cached_release.mkdir(parents=True)
+            (cached_release / "codex-responses-api-proxy").write_bytes(b"previous cache")
+            cached_symbols = cached_release / "codex.dSYM" / "Contents"
+            cached_symbols.mkdir(parents=True)
             environment = os.environ.copy()
             environment.update(
                 PATH=f"{stub_dir}:{environment['PATH']}",

@@ -71,6 +71,13 @@ prune_old_tags() {
 
 case "$operation" in
   pull)
+    cache_target="${tag#cargo-}"
+    cache_target="${cache_target%-${upstream_tag}}"
+    if [[ -z "$cache_target" || ! "$cache_target" =~ ^[A-Za-z0-9_-]+$ || "$tag" != "cargo-${cache_target}-${upstream_tag}" ]]; then
+      echo "Cargo cache tag does not identify a target for ${upstream_tag}: ${tag}" >&2
+      exit 2
+    fi
+
     mkdir -p "$target_directory"
     archive_directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/codex-ghcr-cache.XXXXXX")"
     trap 'rm -rf "$archive_directory"' EXIT
@@ -83,6 +90,20 @@ case "$operation" in
     tar --zstd -xf "$archive_directory/cargo-target.tar.zst" -C "$target_directory" \
       --exclude='./*/release/codex*' \
       --exclude='./*/release/bwrap*'
+    # Enforce the same result when tar matches exclusions differently or an
+    # earlier cache layer already placed release outputs in the target tree.
+    release_dir="$target_directory/$cache_target/release"
+    if [[ -d "$release_dir" ]]; then
+      for artifact in "$release_dir"/codex* "$release_dir"/bwrap*; do
+        [[ -e "$artifact" || -L "$artifact" ]] || continue
+        if [[ -d "$artifact" ]]; then
+          [[ "$artifact" == *.dSYM ]] || continue
+          rm -r -- "$artifact"
+        else
+          rm -- "$artifact"
+        fi
+      done
+    fi
     ;;
   push)
     [[ -d "$target_directory" ]] || {
