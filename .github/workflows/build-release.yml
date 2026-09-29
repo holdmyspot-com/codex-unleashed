@@ -767,6 +767,12 @@ jobs:
             fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
           fi
           echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
+          v8_version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          python3 .github/scripts/release-cache-keys.py \
+            --target "${{ matrix.target }}" \
+            --compiler-fingerprint "$fingerprint" \
+            --v8-version "$v8_version" \
+            --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         id: pnpm_cache
@@ -788,12 +794,12 @@ jobs:
           # the GitHub Actions cache.
           cache-targets: false
           # Do not include runner- and run-specific environment paths in the
-          # cache key. Build inputs are covered by shared-key below, while
-          # rust-cache's environment hash would prevent reuse on Windows.
+          # cache key: this cache contains source downloads, while compiled
+          # outputs have a separate compiler identity in GHCR.
           add-rust-environment-hash-key: false
-          # Share one target-level cache across bundles. The target directory
-          # contains reusable Cargo outputs; the bundle only changes packaging.
-          shared-key: codex-release-v4-${{ matrix.target }}-${{ inputs.reproducibility_mode || 'off' }}-${{ needs.prepare.outputs.upstream_tag }}-${{ needs.prepare.outputs.patch_hash }}-${{ hashFiles('.github/actions/release-cache-policy', '.github/actions/setup-rusty-v8/action.yml', 'scripts/build-release.sh') }}-${{ steps.rust_compiler.outputs.fingerprint }}-${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
+          # Dependency downloads do not depend on the patch set, source
+          # timestamps, or upstream release. Compiled outputs live in GHCR.
+          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
           cache-workspace-crates: false
           # Cargo's installed binaries are setup tools, not release outputs;
           # cache them through their dedicated setup steps instead.
@@ -820,7 +826,7 @@ jobs:
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -848,7 +854,7 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .cache/rusty_v8
-          key: rusty-v8-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
 
       - name: Configure rusty_v8 artifact overrides and verify checksums
         uses: ./.github/actions/setup-rusty-v8
@@ -1067,13 +1073,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Refresh after every successful build, including a restored cache, so
+      # subsequent releases retain newly compiled dependency versions.
       - name: Populate GHCR Cargo target overflow cache
-        if: ${{ inputs.ghcr_cache == true && steps.ghcr_cargo_cache.outputs.restored != 'true' }}
+        if: ${{ inputs.ghcr_cache == true }}
         continue-on-error: true
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -1089,7 +1097,7 @@ jobs:
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -1246,6 +1254,12 @@ jobs:
             fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
           fi
           echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
+          v8_version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          python3 .github/scripts/release-cache-keys.py \
+            --target "${{ matrix.target }}" \
+            --compiler-fingerprint "$fingerprint" \
+            --v8-version "$v8_version" \
+            --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
 
       - name: Configure LLVM linker
         uses: ./.github/actions/setup-msvc-env
@@ -1259,6 +1273,13 @@ jobs:
           rustup target add "${{ matrix.target }}"
           rustup target list --installed
 
+      - name: Cache rusty_v8 artifacts
+        id: rusty_v8_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .cache/rusty_v8
+          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
+
       - name: Configure rusty_v8 artifact overrides and verify checksums
         uses: ./.github/actions/setup-rusty-v8
         with:
@@ -1270,17 +1291,15 @@ jobs:
         with:
           workspaces: |
             upstream/codex-rs -> target
-          # Keep the cache key stable across hosted Windows runners. The
-          # explicit shared-key already covers all build-affecting inputs.
+          # Keep dependency-download identity stable across hosted runners.
           add-rust-environment-hash-key: false
           # Cargo target directories belong exclusively to the GHCR overflow
           # cache below. Do not list CARGO_TARGET_DIR as an additional cache
           # directory, or the two backends would own the same outputs.
           cache-targets: false
-          # Build all Windows binaries for a target in one job so the target
-          # directory and its compiled dependencies are shared by the primary
-          # and helper binaries before the directory is uploaded to GHCR.
-          shared-key: codex-release-v4-${{ matrix.target }}-${{ inputs.reproducibility_mode || 'off' }}-${{ needs.prepare.outputs.upstream_tag }}-${{ needs.prepare.outputs.patch_hash }}-${{ hashFiles('.github/actions/release-cache-policy', '.github/actions/setup-rusty-v8/action.yml', 'scripts/build-release.sh') }}-${{ steps.rust_compiler.outputs.fingerprint }}-${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
+          # Share dependency downloads across upstream releases and patch
+          # sets. Compiled dependencies use the compiler-scoped GHCR cache.
+          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
           cache-workspace-crates: false
           cache-bin: false
           cache-all-crates: false
@@ -1305,7 +1324,7 @@ jobs:
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -1459,13 +1478,15 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Refresh after every successful build, including a restored cache, so
+      # subsequent releases retain newly compiled dependency versions.
       - name: Populate GHCR Cargo target overflow cache
-        if: ${{ inputs.ghcr_cache == true && steps.ghcr_cargo_cache.outputs.restored != 'true' }}
+        if: ${{ inputs.ghcr_cache == true }}
         continue-on-error: true
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
         run: |
           set -euo pipefail
           bash .github/scripts/ghcr-cargo-target-cache.sh push \
@@ -1480,7 +1501,7 @@ jobs:
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: cargo-${{ matrix.target }}-${{ needs.prepare.outputs.upstream_tag }}
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
         run: |
           set -euo pipefail
           bash .github/scripts/ghcr-cargo-target-cache.sh prune \
