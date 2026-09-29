@@ -77,7 +77,12 @@ case "$operation" in
     oras pull "$reference" \
       --allow-path-traversal \
       --output "$archive_directory"
-    tar --zstd -xf "$archive_directory/cargo-target.tar.zst" -C "$target_directory"
+    # Reuse compiled dependencies, but rebuild release executables and their
+    # symbols from the current patch set and build metadata. Cached executables
+    # can otherwise survive a Cargo build without the matching macOS dSYM.
+    tar --zstd -xf "$archive_directory/cargo-target.tar.zst" -C "$target_directory" \
+      --exclude='./*/release/codex*' \
+      --exclude='./*/release/bwrap*'
     ;;
   push)
     [[ -d "$target_directory" ]] || {
