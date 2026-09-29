@@ -835,6 +835,14 @@ jobs:
             echo "restored=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Rebuild release binaries from cached dependencies
+        shell: bash
+        run: |
+          python3 .github/scripts/clean-cached-release-binaries.py \
+            upstream/codex-rs \
+            "${{ matrix.target }}" \
+            ${{ matrix.binaries }}
+
       - name: Cache rusty_v8 artifacts
         id: rusty_v8_cache
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -1311,6 +1319,14 @@ jobs:
             echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
             echo "restored=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Rebuild release binaries from cached dependencies
+        shell: bash
+        run: |
+          python3 .github/scripts/clean-cached-release-binaries.py \
+            upstream/codex-rs \
+            "${{ matrix.target }}" \
+            ${{ matrix.binaries }} ${{ matrix.helper_binaries }}
 
       - name: Cargo build (Windows binaries)
         working-directory: upstream/codex-rs
