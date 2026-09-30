@@ -6,11 +6,10 @@ on:
       upstream_ref:
         required: false
         type: string
-        default: main
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to main."
+        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
         required: false
         type: string
 
@@ -18,7 +17,7 @@ jobs:
   cargo-deny:
     uses: ./.github/workflows/cargo-deny.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   codespell:
@@ -28,31 +27,31 @@ jobs:
   repo-checks:
     uses: ./.github/workflows/repo-checks.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   rust-ci:
     uses: ./.github/workflows/rust-ci.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   sdk:
     uses: ./.github/workflows/sdk.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   bazel:
     uses: ./.github/workflows/bazel.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   v8-canary:
     uses: ./.github/workflows/v8-canary.yml
     with:
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   tests-linux-x64:
@@ -62,7 +61,7 @@ jobs:
       target: x86_64-unknown-linux-gnu
       profile: ci-test
       artifact_id: linux-x64
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   tests-macos-arm64:
@@ -72,7 +71,7 @@ jobs:
       target: aarch64-apple-darwin
       profile: ci-test
       artifact_id: macos-arm64
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   tests-windows-x64:
@@ -82,7 +81,7 @@ jobs:
       target: x86_64-pc-windows-msvc
       profile: ci-test
       artifact_id: windows-x64
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   tests-linux-arm64:
@@ -92,7 +91,7 @@ jobs:
       target: aarch64-unknown-linux-gnu
       profile: ci-test
       artifact_id: linux-arm64
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   tests-macos-x64:
@@ -102,7 +101,7 @@ jobs:
       target: x86_64-apple-darwin
       profile: ci-test
       artifact_id: macos-x64
-      upstream_ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+      upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
   results:

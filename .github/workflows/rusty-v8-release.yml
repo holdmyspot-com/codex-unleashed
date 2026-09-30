@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to main."
+        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
         required: false
         type: string
 
@@ -28,8 +28,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
-          fallback-to-default-branch: "true"
+          upstream-ref: ${{ inputs.upstream_ref }}
 
       - uses: actions/setup-python@v6
         with:
@@ -161,8 +160,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
-          fallback-to-default-branch: "true"
+          upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -314,8 +312,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
-          fallback-to-default-branch: "true"
+          upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Check out upstream rusty_v8
         uses: actions/checkout@v6

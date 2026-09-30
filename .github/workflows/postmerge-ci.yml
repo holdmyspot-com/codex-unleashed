@@ -13,8 +13,6 @@ jobs:
   cargo-deny:
     name: cargo-deny
     uses: ./.github/workflows/cargo-deny.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   codespell:
@@ -25,36 +23,26 @@ jobs:
   repo-checks:
     name: repo-checks
     uses: ./.github/workflows/repo-checks.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   rust-ci:
     name: rust-ci
     uses: ./.github/workflows/rust-ci.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   sdk:
     name: sdk
     uses: ./.github/workflows/sdk.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   bazel:
     name: bazel
     uses: ./.github/workflows/bazel.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   v8-canary:
     name: v8-canary
     uses: ./.github/workflows/v8-canary.yml
-    with:
-      upstream_ref: 848b3845884e3aaf3359867047751dfff12dc448
     secrets: inherit
 
   results:

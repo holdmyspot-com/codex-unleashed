@@ -6,11 +6,10 @@ on:
       upstream_ref:
         required: false
         type: string
-        default: main
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to main."
+        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
         required: false
         type: string
 
@@ -69,8 +68,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
-          fallback-to-default-branch: "true"
+          upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Cache pnpm store
         id: pnpm_cache
@@ -88,7 +86,7 @@ jobs:
             upstream/codex-rs -> target
           cache-targets: false
           cache-directories: ${{ env.CARGO_TARGET_DIR }}
-          key: repo-checks-${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
+          key: repo-checks-${{ hashFiles('upstream/codex-rs/Cargo.lock') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install upstream dependencies

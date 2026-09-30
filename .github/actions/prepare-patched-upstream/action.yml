@@ -3,8 +3,9 @@ description: Clone upstream Codex and apply local patches.
 
 inputs:
   upstream-ref:
-    description: Upstream git ref or tag to check out.
-    required: true
+    description: Upstream git ref or tag to check out. Defaults to .github/upstream-ref.
+    required: false
+    default: ''
   expected-upstream-commit:
     description: Optional commit SHA that the resolved ref must produce.
     required: false
@@ -39,6 +40,11 @@ runs:
         FALLBACK_TO_DEFAULT_BRANCH: ${{ inputs.fallback-to-default-branch }}
       run: |
         set -euo pipefail
+
+        if [[ -z "${UPSTREAM_REF}" ]]; then
+          UPSTREAM_REF="$(cat "${GITHUB_WORKSPACE}/.github/upstream-ref")"
+          test -n "${UPSTREAM_REF}"
+        fi
 
         repo_url="https://github.com/${UPSTREAM_REPO}.git"
         rm -rf "${CHECKOUT_PATH}"

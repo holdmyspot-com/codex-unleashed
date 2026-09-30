@@ -6,11 +6,10 @@ on:
       upstream_ref:
         required: false
         type: string
-        default: main
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to main."
+        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
         required: false
         type: string
 
@@ -41,8 +40,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
-          upstream-ref: ${{ inputs.upstream_ref || '848b3845884e3aaf3359867047751dfff12dc448' }}
-          fallback-to-default-branch: "true"
+          upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Install upstream dependencies
         shell: bash
@@ -50,24 +48,6 @@ jobs:
           set -euo pipefail
           cd upstream
           pnpm install --frozen-lockfile
-
-      - name: Record reviewed rustls advisory exception
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          deny = Path("upstream/codex-rs/deny.toml")
-          text = deny.read_text(encoding="utf-8")
-          advisory = "RUSTSEC-2026-0285"
-          if advisory not in text:
-              marker = "    # Reviewed 2026-07-02. Keep this list in sync with .cargo/audit.toml.\n"
-              exception = '    { id = "RUSTSEC-2026-0285", reason = "848b3845884e3aaf3359867047751dfff12dc448 pins rustls 0.23.36; remove this exception when the supported upstream release includes rustls >=0.23.45" },\n'
-              if marker not in text:
-                  raise SystemExit(f"Could not find advisory exception marker in {deny}")
-              deny.write_text(text.replace(marker, marker + exception, 1), encoding="utf-8")
-          PY
 
       - name: Run cargo-deny
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246
