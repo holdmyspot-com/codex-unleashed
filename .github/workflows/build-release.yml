@@ -118,7 +118,7 @@ jobs:
     if: inputs.verification_level == 'full' || inputs.verification_level == 'sentinel' || inputs.verification_level == ''
     permissions:
       actions: read
-      contents: read
+      contents: write
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.prepare.outputs.should_release }}
@@ -133,6 +133,9 @@ jobs:
       patch_hash: ${{ steps.prepare.outputs.patch_hash }}
       build_metadata: ${{ steps.prepare.outputs.build_metadata }}
       artifact_run_id: ${{ steps.prepare.outputs.artifact_run_id }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_run_attempt: ${{ steps.source.outputs.source_run_attempt }}
       unix_matrix: ${{ steps.focus.outputs.unix_matrix }}
       windows_matrix: ${{ steps.focus.outputs.windows_matrix }}
     steps:
@@ -241,6 +244,7 @@ jobs:
             fi
 
             echo "Reusing final artifacts from build run ${INPUT_ARTIFACT_RUN_ID} for ${patched_tag}."
+            echo "build_number=${patched_tag##*+}" >> "${GITHUB_OUTPUT}"
             echo "should_release=true" >> "${GITHUB_OUTPUT}"
             echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
             echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
@@ -397,6 +401,24 @@ jobs:
           echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
           echo "build_metadata=${build_metadata}" >> "${GITHUB_OUTPUT}"
           echo "artifact_run_id=${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+
+      - name: Reserve and verify release source tag
+        id: source
+        if: >-
+          ${{ steps.prepare.outputs.should_release == 'true' &&
+              (inputs.verification_level == '' || inputs.verification_level == 'full') &&
+              inputs.focus_target == '' && inputs.focus_bundle == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.patched_tag }}
+          ARTIFACT_RUN_ID: ${{ steps.prepare.outputs.artifact_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/ensure-release-tag.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --artifact-run-id "$ARTIFACT_RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Select release comparison matrix
         id: focus
@@ -1633,6 +1655,8 @@ jobs:
     steps:
       - name: Checkout patch repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Configure npm registry
         if: ${{ inputs.publish_npm }}
@@ -1710,10 +1734,10 @@ jobs:
             --build-date "${{ needs.prepare.outputs.build_date }}" \
             --builder-type github-actions \
             --workflow-path .github/workflows/build-release.yml \
-            --workflow-ref "$GITHUB_REF" \
-            --workflow-sha "$GITHUB_SHA" \
-            --workflow-run-id "$GITHUB_RUN_ID" \
-            --workflow-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --workflow-ref "${{ needs.prepare.outputs.source_ref }}" \
+            --workflow-sha "${{ needs.prepare.outputs.source_sha }}" \
+            --workflow-run-id "${{ needs.prepare.outputs.artifact_run_id }}" \
+            --workflow-run-attempt "${{ needs.prepare.outputs.source_run_attempt }}" \
             --supported-targets "${{ needs.prepare.outputs.supported_targets }}" \
             --consolidated-checksums SHA256SUMS \
             --attestation-bundle ""
@@ -1741,7 +1765,7 @@ jobs:
             patch_list="- None"
           else
             for patch_file in ${patch_files}; do
-              patch_url="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/${patch_file}"
+              patch_url="https://github.com/${GITHUB_REPOSITORY}/blob/${{ needs.prepare.outputs.source_sha }}/${patch_file}"
               patch_list+="- [\`${patch_file}\`](${patch_url})"$'\n'
             done
             patch_list="${patch_list%$'\n'}"
@@ -1804,8 +1828,9 @@ jobs:
             echo "Release already exists: $tag" >&2
             exit 1
           fi
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "Tag already exists: $tag" >&2
+          tagged_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
+          if [[ "$tagged_sha" != "${{ needs.prepare.outputs.source_sha }}" ]]; then
+            echo "Release tag identifies a different source commit: $tag" >&2
             exit 1
           fi
 
@@ -1817,7 +1842,7 @@ jobs:
           set -euo pipefail
           gh release create "${{ needs.prepare.outputs.patched_tag }}" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --verify-tag \
             --title "${{ needs.prepare.outputs.release_name }}" \
             --notes-file RELEASE_NOTES.md \
             release-stage/*
