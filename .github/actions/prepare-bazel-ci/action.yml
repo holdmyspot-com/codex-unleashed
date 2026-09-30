@@ -35,7 +35,7 @@ runs:
       run: |
         set -euo pipefail
         cd upstream/codex-rs
-        cargo metadata --format-version 1 --no-deps > /dev/null
+        cargo metadata --format-version 1 > /dev/null
 
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
