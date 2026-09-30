@@ -1,6 +1,9 @@
 name: Build release
 
 on:
+  push:
+    tags:
+      - "rust-v*.*.*"
   workflow_call:
     inputs:
       upstream_tag:
@@ -102,6 +105,13 @@ on:
         default: true
         type: boolean
 
+permissions:
+  actions: read
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
 concurrency:
   group: >-
     build-release-${{ github.ref }}-${{ inputs.upstream_tag || 'latest' }}-${{ inputs.verification_level || 'full' }}-${{
@@ -161,6 +171,8 @@ jobs:
           INPUT_FOCUS_TARGET: ${{ inputs.focus_target || '' }}
           INPUT_FOCUS_BUNDLE: ${{ inputs.focus_bundle || '' }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -264,6 +276,9 @@ jobs:
 
           if [[ -n "${INPUT_UPSTREAM_TAG:-}" ]]; then
             upstream_tag="${INPUT_UPSTREAM_TAG}"
+            upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^rust-v[0-9] ]]; then
+            upstream_tag="${GITHUB_REF_NAME%%+*}"
             upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
           else
             upstream_release_json="$(./scripts/check-upstream-release.sh openai/codex)"
@@ -1659,7 +1674,7 @@ jobs:
           ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Configure npm registry
-        if: ${{ inputs.publish_npm }}
+        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 24
@@ -1848,7 +1863,7 @@ jobs:
             release-stage/*
 
       - name: Publish npm packages
-        if: ${{ inputs.publish_npm }}
+        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash

@@ -44,4 +44,4 @@ jobs:
           UPSTREAM_TAG: ${{ needs.detect.outputs.upstream_tag }}
           GH_REPO: ${{ github.repository }}
           BUILD_REF: ${{ github.ref_name }}
-        run: gh workflow run rust-release.yml --ref "$BUILD_REF" -f upstream_tag="$UPSTREAM_TAG"
+        run: gh workflow run build-release.yml --ref "$BUILD_REF" -f upstream_tag="$UPSTREAM_TAG"

@@ -34,7 +34,7 @@ def main():
     with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
         summary.write(f"## Upstream release\n\n- Upstream: `{tag}`\n"
                       f"- Public build needed: **{needed}**\n"
-                      "- No compilation performed. Use `rust-release.yml` to publish; "
+                      "- No compilation performed. Use `build-release.yml` to publish; "
                       "automatic dispatch requires `AUTO_RELEASE=true`.\n")
 
 
