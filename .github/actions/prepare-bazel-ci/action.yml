@@ -27,6 +27,16 @@ runs:
       with:
         target: ${{ inputs.target }}
 
+    # Release manifests use the release version while local package entries in
+    # Cargo.lock retain 0.0.0. Cargo reconciles those entries without changing
+    # the resolved external dependency versions; rules_rs needs them to agree.
+    - name: Resolve release package versions with Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd upstream/codex-rs
+        cargo metadata --format-version 1 --no-deps > /dev/null
+
     - name: Compute bazel repository cache key
       id: cache_bazel_repository_key
       shell: bash
