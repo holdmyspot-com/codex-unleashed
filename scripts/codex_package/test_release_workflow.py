@@ -23,6 +23,10 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertTrue((REPOSITORY_ROOT / ".codespellignore").is_file())
         self.assertTrue((REPOSITORY_ROOT / ".github/codespell-matcher.json").is_file())
 
+    def test_codespell_accepts_the_tui_library_name(self) -> None:
+        ignored_words = (REPOSITORY_ROOT / ".codespellignore").read_text().splitlines()
+        self.assertIn("ratatui", ignored_words)
+
     def test_release_entry_points_use_one_workflow(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertFalse((WORKFLOW_PATH.parent / "rust-release.yml").exists())
