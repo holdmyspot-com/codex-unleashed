@@ -1,55 +1,48 @@
-From 7d245500dc2e64be3b6185a7c67b8275b0f0716b Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 16:29:16 -0400
+From 9f6ee98173b82fc33592981ca7a70c36a0253625 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Wed, 30 Sep 2026 19:15:02 -0400
 Subject: [PATCH] Expand patch diff previews when configured
 
+Base: openai/codex rust-v0.159.2 ff6aec96948b70d94983af2641a6b67c94faeff5
+Prerequisite: base-configuration/codex-unleashed-configuration.patch
+
+Own the expanded_diff_previews property and stable default-on feature flag.
+Use the shared configuration table without introducing another feature's
+runtime properties or behavior. The property remains false by default.
+
+Verification (Rust 1.95.0, RUST_MIN_STACK=16777216):
+- cargo test -p codex-config --lib codex_unleashed: 2 passed.
+- cargo test -p codex-core --lib codex_unleashed: all selected tests pass.
+- Full-queue schema CLI equality and owned-transcript configuration checks
+  verify the extracted declaration composes with both feature patches.
 ---
- codex-rs/config/src/config_toml.rs            | 11 +++
- codex-rs/config/src/types_tests.rs            | 12 +++
- codex-rs/core/config.schema.json              | 25 ++++++
- .../core/src/config/config_loader_tests.rs    | 86 +++++++++++++++++++
- codex-rs/core/src/config/config_tests.rs      | 23 +++++
- codex-rs/core/src/config/mod.rs               |  8 ++
- codex-rs/features/src/lib.rs                  |  8 ++
+ codex-rs/config/src/config_toml.rs            |  2 +
+ codex-rs/config/src/types_tests.rs            | 12 ++++
+ codex-rs/core/config.schema.json              |  6 ++
+ .../core/src/config/config_loader_tests.rs    | 60 +++++++++++++++++
+ codex-rs/core/src/config/config_tests.rs      | 23 +++++++
+ codex-rs/core/src/config/mod.rs               |  8 +++
+ codex-rs/features/src/lib.rs                  |  8 +++
  codex-rs/tui/src/app/owned_transcript.rs      |  6 ++
- .../tui/src/app/owned_transcript_tests.rs     | 65 ++++++++++++++
- codex-rs/tui/src/transcript_view.rs           | 14 +++
- codex-rs/tui/src/transcript_view/layout.rs    | 11 ++-
- 11 files changed, 267 insertions(+), 2 deletions(-)
+ .../tui/src/app/owned_transcript_tests.rs     | 65 +++++++++++++++++++
+ codex-rs/tui/src/transcript_view.rs           | 14 ++++
+ codex-rs/tui/src/transcript_view/layout.rs    | 11 +++-
+ 11 files changed, 213 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 84b5321..498fe96 100644
+index 5634e8d..d01b17e 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -159,10 +159,21 @@ pub struct FeatureToggleToml {
-     pub enabled: Option<bool>,
- }
- 
-+/// Project settings for Codex Unleashed features.
-+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
-+#[schemars(deny_unknown_fields)]
-+pub struct CodexUnleashedToml {
+@@ -165,2 +165,4 @@ pub struct FeatureToggleToml {
+ pub struct CodexUnleashedToml {
 +    /// Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.
 +    pub expanded_diff_previews: Option<bool>,
-+}
-+
- /// Base config deserialized from ~/.codex/config.toml.
- #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
- #[schemars(deny_unknown_fields)]
- pub struct ConfigToml {
-+    /// Project settings for Codex Unleashed features.
-+    pub codex_unleashed: Option<CodexUnleashedToml>,
-+
-     /// Optional override of model selection.
-     pub model: Option<String>,
-     /// Review model override used by the `/review` feature.
+     // Fields are registered by their owning feature patches.
 diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
-index ab383ca..525d00a 100644
+index 3c58873..5062573 100644
 --- a/codex-rs/config/src/types_tests.rs
 +++ b/codex-rs/config/src/types_tests.rs
-@@ -121,3 +121,15 @@ fn rendering_preferences_default_individually_and_ignore_animation_switch() {
-         );
-     }
+@@ -136 +136,13 @@ fn rendering_preferences_default_individually_and_ignore_animation_switch() {
  }
 +
 +#[test]
@@ -64,63 +57,26 @@ index ab383ca..525d00a 100644
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index af8f05e..91f5786 100644
+index af8f05e..6046bc4 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -602,6 +602,17 @@
-       },
-       "type": "object"
-     },
-+    "CodexUnleashedToml": {
-+      "additionalProperties": false,
-+      "description": "Project settings for Codex Unleashed features.",
-+      "properties": {
-+        "expanded_diff_previews": {
-+          "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
-+          "type": "boolean"
-+        }
-+      },
-+      "type": "object"
-+    },
-     "ComputerUseConfigToml": {
-       "additionalProperties": false,
-       "properties": {
-@@ -1160,3 +1171,6 @@
+@@ -1159,2 +1159,5 @@
+             },
 +            "unleashed_expanded_diff_previews": {
 +              "type": "boolean"
 +            },
              "use_agent_identity": {
-               "type": "boolean"
-             },
-@@ -6658,6 +6672,14 @@
-       ],
-       "description": "Cloud-owned feature settings."
-     },
-+    "codex_unleashed": {
-+      "allOf": [
-+        {
-+          "$ref": "#/definitions/CodexUnleashedToml"
-+        }
-+      ],
-+      "description": "Project settings for Codex Unleashed features."
-+    },
-     "compact_prompt": {
-       "description": "Compact prompt used for history compaction.",
-       "type": "string"
-@@ -7190,3 +7212,6 @@
+@@ -7189,2 +7192,5 @@
+         },
 +        "unleashed_expanded_diff_previews": {
 +          "type": "boolean"
 +        },
          "use_agent_identity": {
-           "type": "boolean"
-         },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index d50816a..a0ed452 100644
+index a2c6abd..a0ed452 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -3970,6 +3970,92 @@ wire_api = "responses"
-     Ok(())
- }
+@@ -3972,2 +3972,62 @@ wire_api = "responses"
  
 +#[tokio::test]
 +async fn project_codex_unleashed_expanded_diff_previews_is_silent_when_feature_disabled()
@@ -182,42 +138,12 @@ index d50816a..a0ed452 100644
 +    Ok(())
 +}
 +
-+#[tokio::test]
-+async fn strict_config_rejects_unknown_codex_unleashed_settings() {
-+    for (contents, expected) in [
-+        (
-+            "unleashed_expanded_diff_previews = true",
-+            "unknown configuration field `unleashed_expanded_diff_previews`",
-+        ),
-+        (
-+            "[codex_unleashed]\nunused = true",
-+            "unknown configuration field `codex_unleashed.unused`",
-+        ),
-+    ] {
-+        let tmp = tempdir().expect("tempdir");
-+        std::fs::write(tmp.path().join(CONFIG_TOML_FILE), contents).expect("write config");
-+        let err = ConfigBuilder::default()
-+            .codex_home(tmp.path().to_path_buf())
-+            .fallback_cwd(Some(tmp.path().to_path_buf()))
-+            .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
-+            .strict_config(/*strict_config*/ true)
-+            .build()
-+            .await
-+            .expect_err("unknown setting should be rejected");
-+        assert_eq!(config_error_from_io(&err).message, expected);
-+    }
-+}
-+
- #[cfg(unix)]
  #[tokio::test]
- async fn project_trust_does_not_match_configured_alias_for_canonical_cwd() -> std::io::Result<()> {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
 index fca03ec..a924ae8 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -1374,6 +1374,29 @@ async fn runtime_config_uses_tui_raw_output_mode() {
-     assert!(cfg.tui_raw_output_mode);
- }
+@@ -1376,2 +1376,25 @@ async fn runtime_config_uses_tui_raw_output_mode() {
  
 +#[tokio::test]
 +async fn runtime_config_resolves_codex_unleashed_expanded_diff_previews() {
@@ -243,25 +169,17 @@ index fca03ec..a924ae8 100644
 +}
 +
  #[tokio::test]
- async fn tui_auto_recap_defaults_and_cli_overrides() -> anyhow::Result<()> {
-     for (toml, override_value, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
 index 571fc2d..901d87a 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -790,6 +790,9 @@ pub struct Config {
-     /// Own the fullscreen transcript when the alternate screen is enabled.
-     pub tui_fullscreen_transcript: bool,
+@@ -792,2 +792,5 @@ pub struct Config {
  
 +    /// Expand patch diffs in the owned fullscreen transcript when enabled.
 +    pub unleashed_expanded_diff_previews: bool,
 +
      /// Override the terminal-specific default for copying transcript mouse selections.
-     pub tui_copy_on_select: codex_config::types::CopyOnSelect,
- 
-@@ -4501,6 +4504,11 @@ impl Config {
-                 .tui
-                 .as_ref()
+@@ -4503,2 +4506,7 @@ impl Config {
                  .is_none_or(|tui| tui.fullscreen_transcript),
 +            unleashed_expanded_diff_previews: cfg
 +                .codex_unleashed
@@ -269,24 +187,16 @@ index 571fc2d..901d87a 100644
 +                .and_then(|codex_unleashed| codex_unleashed.expanded_diff_previews)
 +                .unwrap_or(false),
              tui_copy_on_select: cfg
-                 .tui
-                 .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
 index ebd6d89..86c2a40 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -91,6 +91,8 @@ impl Stage {
- /// Unique features toggled via configuration.
- #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+@@ -93,2 +93,4 @@ impl Stage {
  pub enum Feature {
 +    /// Expand patch diffs in the owned fullscreen transcript.
 +    UnleashedExpandedDiffPreviews,
      /// Preview consumer five-hour and weekly allowance history.
-     AnalyticsPlanHistory,
-     /// Discover model catalogs for OpenAI API-key authentication.
-@@ -930,6 +932,12 @@ pub struct FeatureSpec {
- }
- 
+@@ -932,2 +934,8 @@ pub struct FeatureSpec {
  pub const FEATURES: &[FeatureSpec] = &[
 +    FeatureSpec {
 +        id: Feature::UnleashedExpandedDiffPreviews,
@@ -295,15 +205,11 @@ index ebd6d89..86c2a40 100644
 +        default_enabled: true,
 +    },
      FeatureSpec {
-         id: Feature::AnalyticsPlanHistory,
-         key: "analytics_plan_history",
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
 index 2e07262..d2459da 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -39,12 +39,18 @@ impl App {
-     }
- 
+@@ -41,2 +41,7 @@ impl App {
      fn sync_owned_transcript(&mut self, width: u16) -> bool {
 +        let expanded_diff_previews = self
 +            .config
@@ -311,22 +217,15 @@ index 2e07262..d2459da 100644
 +            .enabled(codex_features::Feature::UnleashedExpandedDiffPreviews)
 +            && self.config.unleashed_expanded_diff_previews;
          let chat_widget = &self.chat_widget;
-         let transcript_width = chat_widget.history_wrap_width(width);
-         let view = &mut self.transcript_view;
-         view.copy_on_select = self
-             .local_settings
+@@ -47,2 +52,3 @@ impl App {
              .copy_on_select(&codex_terminal_detection::terminal_info());
 +        view.set_expanded_diff_previews(expanded_diff_previews);
          view.set_keymap_bindings(&self.keymap);
-         view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
-         let active_key = chat_widget.active_cell_transcript_key();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
 index 46c0da6..1559dc7 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
-         .join("\n")
- }
+@@ -76,2 +76,67 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {
  
 +#[tokio::test]
 +async fn expanded_diff_previews_are_configurable_for_owned_transcript() -> Result<()> {
@@ -394,31 +293,19 @@ index 46c0da6..1559dc7 100644
 +}
 +
  #[tokio::test]
- async fn external_writer_escape_returns_to_command_center_without_editing() -> Result<()> {
-     for (detailed, scrolled, offline) in [
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
 index 548f63c..ee7bd6d 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
-@@ -104,6 +104,7 @@ pub(crate) struct TranscriptView {
-     search: Search,
-     detailed: bool,
+@@ -106,2 +106,3 @@ pub(crate) struct TranscriptView {
      mode: HistoryRenderMode,
 +    expanded_diff_previews: bool,
      pub(crate) history: TranscriptHistoryState,
-     highlight: Option<usize>,
-     saved_position: Option<Position>,
-@@ -136,6 +137,7 @@ impl Default for TranscriptView {
-             search: Search::default(),
-             detailed: false,
+@@ -138,2 +139,3 @@ impl Default for TranscriptView {
              mode: HistoryRenderMode::Rich,
 +            expanded_diff_previews: false,
              history: TranscriptHistoryState::Idle,
-             highlight: None,
-             saved_position: None,
-@@ -345,6 +347,18 @@ impl TranscriptView {
-         self.mode = mode;
-     }
+@@ -347,2 +349,14 @@ impl TranscriptView {
  
 +    pub(crate) fn set_expanded_diff_previews(&mut self, expanded: bool) {
 +        if self.expanded_diff_previews == expanded {
@@ -433,15 +320,11 @@ index 548f63c..ee7bd6d 100644
 +    }
 +
      pub(crate) fn has_active_interaction(&self) -> bool {
-         self.selection.is_some() || self.search.is_active() || self.is_activity_focused()
-     }
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
 index bac11e7..1907181 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
-@@ -143,7 +143,12 @@ impl TranscriptView {
-         let detailed = self.detailed;
-         let mode = self.mode;
+@@ -145,3 +145,8 @@ impl TranscriptView {
          let ids = cell.activity_ids();
 -        let disclosure = !detailed && mode == HistoryRenderMode::Rich && !ids.is_empty();
 +        let expand_patch_diff = self.expanded_diff_previews
@@ -451,18 +334,13 @@ index bac11e7..1907181 100644
 +        let disclosure =
 +            !expand_patch_diff && !detailed && mode == HistoryRenderMode::Rich && !ids.is_empty();
          let expanded = disclosure && self.disclosure.is_expanded(&ids);
-         if expanded {
-             self.disclosure.expanded.extend(ids);
-@@ -160,7 +165,9 @@ impl TranscriptView {
-             .keymap
-             .primary_hint(KeymapContext::Global, "open_transcript");
+@@ -162,3 +167,5 @@ impl TranscriptView {
          Some(self.cache.get(cell, width, presentation, || {
 -            if disclosure {
 +            if expand_patch_diff {
 +                TextLayout::new(cell.expanded_hyperlink_lines(width), width)
 +            } else if disclosure {
                  activity_layout(
-                     ActivityTranscriptLines {
-                         activity: if expanded {
 -- 
 2.43.0
+

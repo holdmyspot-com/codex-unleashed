@@ -1,21 +1,44 @@
-From 319ee074f814cbc82fd88afcd69b6f492debed33 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 17:11:34 -0400
-Subject: [PATCH] Restore Codex Unleashed branding and build metadata
+From b2dc128264a937e260cf07b3de7989a168580bdd Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Wed, 30 Sep 2026 14:46:10 -0400
+Subject: [PATCH] Add Codex Unleashed branding and build metadata
 
-Keep the complete project URL on a separate line, align the fork label and URL under the title, and omit the label colon.
+Identify the unofficial fork in the welcome screen and /status. Keep the
+OpenAI Codex title in /status, align its fork label and project URL with the
+title text, and retain the complete URL when it wraps on narrow terminals.
+Share the fork notice renderer between the two headers.
 
-TDD: RUSTUP_HOME=/home/gili/codex-unleashed/worktrees/.rustup-release RUSTUP_TOOLCHAIN=1.95.0 CODEX_UNLEASHED_BUILD_NUMBER=18 cargo test -p codex-tui --lib session_header_keeps_full_url_at_narrow_widths fails before alignment (column 4 instead of 5), and passes after. cargo test -p codex-tui --lib session_header_ passes 11 tests after snapshot updates.
+TDD for /status against rust-v0.159.2 (ff6aec96948b70d94983af2641a6b67c94faeff5):
+RED: apply the existing branding patch, add the rendered-header assertion,
+and run from codex-rs:
+  CODEX_UNLEASHED_BUILD_NUMBER=15 cargo +1.95.0 test -p codex-tui --lib status_snapshot_includes_reasoning_details
+Result: 0 passed, 1 failed at the missing fork label and URL assertion.
+
+GREEN with the accompanying snapshot expectations patch, from codex-rs:
+  RUST_MIN_STACK=16777216 CODEX_UNLEASHED_BUILD_NUMBER=15 INSTA_UPDATE=no cargo +1.95.0 test -p codex-tui --lib status::tests::
+Result: 50 passed, including the exact header and full URL at widths 20/40/80.
+  RUST_MIN_STACK=16777216 CODEX_UNLEASHED_BUILD_NUMBER=15 INSTA_UPDATE=no cargo +1.95.0 test -p codex-tui --lib session_header_
+Result: 11 passed.
+  cargo +1.95.0 fmt --package codex-cli --package codex-tui -- --check
+Result: passed.
+
+The initial local Rust 1.98 command fails before testing in unchanged
+codex-chatgpt code with a query-depth overflow. The same check with upstream's
+Rust 1.95 compiles and reaches the expected behavioral failure. The broader
+status suite needs the test-thread stack setting above. No upstream source
+is changed to accommodate either environmental failure.
 ---
  codex-rs/cli/build.rs                    |  5 ++
  codex-rs/cli/src/main.rs                 | 40 +++++++++++++-
  codex-rs/cli/tests/build_info.rs         | 49 +++++++++++++++++
  codex-rs/tui/Cargo.toml                  |  1 +
  codex-rs/tui/build.rs                    |  6 +++
- codex-rs/tui/src/history_cell/session.rs | 39 ++++++++++----
+ codex-rs/tui/src/history_cell/session.rs | 54 ++++++++++++++-----
  codex-rs/tui/src/history_cell/tests.rs   | 68 ++++++++++++++++++++++++
+ codex-rs/tui/src/status/card.rs          |  4 ++
+ codex-rs/tui/src/status/tests.rs         | 12 +++++
  codex-rs/tui/src/version.rs              |  8 ++-
- 8 files changed, 204 insertions(+), 12 deletions(-)
+ 10 files changed, 232 insertions(+), 15 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
@@ -215,7 +238,7 @@ index 0000000..529d11c
 +    println!("cargo:rerun-if-env-changed=CODEX_UNLEASHED_BUILD_NUMBER");
 +}
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 32d2f0d..ffe2375 100644
+index 32d2f0d..17fcf4e 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -8,6 +8,7 @@ use crate::empty_state_animation::Greeting;
@@ -226,7 +249,7 @@ index 32d2f0d..ffe2375 100644
  use crate::width::display_width;
  
  /// Render `lines` inside a border whose inner width is at least `inner_width`.
-@@ -44,11 +45,15 @@ pub(crate) fn with_border_with_inner_width(
+@@ -44,15 +45,42 @@ pub(crate) fn with_border_with_inner_width(
      out
  }
  
@@ -244,34 +267,50 @@ index 32d2f0d..ffe2375 100644
          format!(" (v{version})").dim(),
      ]
  }
-@@ -358,16 +363,28 @@ impl HistoryCell for SessionHeaderHistoryCell {
+ 
++const CODEX_UNLEASHED_FORK_LABEL: &str = "Unofficial fork of OpenAI Codex";
++
++pub(crate) fn fork_notice_lines(width: usize, indent: usize) -> Vec<Line<'static>> {
++    let indent = " ".repeat(width.saturating_sub(/*rhs*/ 1).min(indent));
++    let wrap_options = textwrap::Options::new(width.saturating_sub(indent.len()).max(/*rhs*/ 1))
++        .word_separator(textwrap::WordSeparator::AsciiSpace)
++        .word_splitter(textwrap::WordSplitter::NoHyphenation)
++        .break_words(/*break_words*/ true);
++    let mut lines = Vec::new();
++    for (text, style) in [
++        (CODEX_UNLEASHED_FORK_LABEL, Style::default()),
++        (CODEX_UNLEASHED_URL, Style::default().cyan().underlined()),
++    ] {
++        for part in textwrap::wrap(text, wrap_options.clone()) {
++            lines.push(Line::from(vec![
++                indent.clone().into(),
++                Span::styled(part.into_owned(), style),
++            ]));
++        }
++    }
++    lines
++}
++
+ #[derive(Debug)]
+ struct TooltipHistoryCell {
+     tip: String,
+@@ -358,16 +386,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          let width = usize::from(width);
          let mut title = vec!["  ".into()];
 -        title.extend(codex_title(self.version));
-+        title.extend(branded_title("Codex Unleashed", self.version));
-         let mut lines = vec![
+-        let mut lines = vec![
 -            Line::default(),
-             Line::from(title),
+-            Line::from(title),
 -            Line::from(vec![
 -                "     ".into(),
 -                self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
 -                    .dim(),
 -            ]),
-+            Line::from("     Unofficial fork of OpenAI Codex"),
-         ];
-+        let url_indent = " ".repeat(width.saturating_sub(/*rhs*/ 1).min(/*rhs*/ 5));
-+        let url_width = width.saturating_sub(url_indent.len()).max(/*rhs*/ 1);
-+        let wrap_options = textwrap::Options::new(url_width)
-+            .word_separator(textwrap::WordSeparator::AsciiSpace)
-+            .word_splitter(textwrap::WordSplitter::NoHyphenation)
-+            .break_words(/*break_words*/ true);
-+        for part in textwrap::wrap(CODEX_UNLEASHED_URL, wrap_options) {
-+            lines.push(Line::from(vec![
-+                url_indent.clone().into(),
-+                part.into_owned().cyan().underlined(),
-+            ]));
-+        }
+-        ];
++        title.extend(branded_title("Codex Unleashed", self.version));
++        let mut lines = vec![Line::from(title)];
++        lines.extend(fork_notice_lines(width, /*indent*/ 5));
 +        lines.push(Line::from(vec![
 +            "     ".into(),
 +            self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
@@ -280,13 +319,13 @@ index 32d2f0d..ffe2375 100644
          if self.yolo_mode {
              lines.push(Line::from(vec![
                  "  permissions: ".dim(),
-@@ -396,7 +413,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -396,7 +422,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
                  .collect();
          }
          let mut lines = vec![
 -            Line::from(format!("OpenAI Codex (v{})", self.version)),
 +            Line::from(format!("Codex Unleashed (v{})", self.version)),
-+            Line::from("     Unofficial fork of OpenAI Codex"),
++            Line::from(format!("     {CODEX_UNLEASHED_FORK_LABEL}")),
 +            Line::from(format!("     {CODEX_UNLEASHED_URL}")),
              Line::from(format!(
                  "model: {}{}",
@@ -370,6 +409,51 @@ index 03c953f..0257a97 100644
  #[test]
  #[cfg_attr(
      target_os = "windows",
+diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
+index 60300d0..56109d8 100644
+--- a/codex-rs/tui/src/status/card.rs
++++ b/codex-rs/tui/src/status/card.rs
+@@ -879,6 +879,10 @@ impl StatusHistoryCell {
+             [Line::from(title)],
+             RtOptions::new(available_width).subsequent_indent(indent.into()),
+         );
++        rendered.extend(crate::history_cell::fork_notice_lines(
++            available_width,
++            indent.len() + ">_ ".len(),
++        ));
+         rendered.push(Line::default());
+         // Providers such as Bedrock manage limits and billing elsewhere.
+         if self.show_chatgpt_usage_link {
+diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
+index f501402..412e1d0 100644
+--- a/codex-rs/tui/src/status/tests.rs
++++ b/codex-rs/tui/src/status/tests.rs
+@@ -189,6 +189,7 @@ fn sanitize_directory(lines: Vec<String>) -> Vec<String> {
+     lines
+         .into_iter()
+         .map(|line| {
++            let line = line.replace(crate::version::CODEX_CLI_VERSION, "<VERSION>");
+             if let Some((prefix, value)) = line.split_once("Directory:") {
+                 let padding = &value[..value.len() - value.trim_start().len()];
+                 format!("{prefix}Directory:{padding}[[workspace]]")
+@@ -344,6 +345,17 @@ async fn status_snapshot_includes_reasoning_details() {
+             *line = line.replace('\\', "/");
+         }
+     }
++    let text = rendered_lines.join("\n");
++    assert!(text.contains(&format!(
++        "  >_ OpenAI Codex (v{})\n     Unofficial fork of OpenAI Codex\n     {}\n\n  Visit ",
++        crate::version::CODEX_CLI_VERSION,
++        crate::version::CODEX_UNLEASHED_URL,
++    )));
++    for width in [20, 40, 80] {
++        let text = render_lines(&composite.display_lines(width)).join("");
++        let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
++        assert!(compact.contains(crate::version::CODEX_UNLEASHED_URL));
++    }
+     let sanitized = sanitize_directory(rendered_lines).join("\n");
+     assert_snapshot!(sanitized);
+ }
 diff --git a/codex-rs/tui/src/version.rs b/codex-rs/tui/src/version.rs
 index 8c8d108..a7f907b 100644
 --- a/codex-rs/tui/src/version.rs

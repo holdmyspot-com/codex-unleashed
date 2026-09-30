@@ -1,0 +1,1538 @@
+From 236d4d5f0d69f86dc283060d63a4f1b9debcade5 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Wed, 30 Sep 2026 19:15:02 -0400
+Subject: [PATCH] feat(tui): collapse tool activity only with project opt-in
+
+Require [codex_unleashed] collapsed_tool_activity = true (default false)
+and the stable default-on unleashed_collapsed_tool_activity feature flag.
+Use one Config gate for live command notifications and resumed history.
+Register the boolean setting even while the feature is disabled, retaining
+normal unknown-key warnings for undeclared fields and rejecting non-booleans.
+
+Prerequisite: base-configuration/codex-unleashed-configuration.patch
+
+Configuration TDD receipts (Rust 1.95.0, RUST_MIN_STACK=16777216):
+- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity_requires_project_opt_in
+  RED: default configuration groups 2 calls instead of 1.
+- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity
+  RED: 9 passed, 2 failed; default live and resumed grouping bypass opt-in.
+  GREEN: 11 passed, covering absent/false/true, feature-off, invalid boolean,
+  retained resumed commands/output/failures, and existing mouse/lifecycle behavior.
+- cargo test -p codex-core --lib project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled
+  RED: trusted project warns about codex_unleashed.collapsed_tool_activity.
+  GREEN: no startup warnings with feature disabled.
+- cargo test -p codex-core --lib codex_unleashed: all selected tests pass,
+  including strict rejection of undeclared fields and expanded-preview settings.
+
+Original presentation TDD and regression receipts:
+Group adjacent agent file reads and shell calls, keep full retained output
+available, highlight collapsed summaries on hover, and make whole section
+clicks toggle a gray expanded surface. Collapse this turn's sections at
+completion. Preserve upstream presentation when the new stable, default-on
+unleashed_collapsed_tool_activity flag is disabled.
+
+Base: openai/codex rust-v0.159.2
+ff6aec96948b70d94983af2641a6b67c94faeff5
+
+TDD receipts (commands run from codex-rs):
+- cargo test -p codex-features --lib unleashed_collapsed_tool_activity
+  RED: feature lookup missing; GREEN: 1 passed.
+- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity
+  Behavioral RED gates before each production slice: missing shell grouping
+  (1 vs 4 calls); unhandled hover; header padding click did not expand;
+  live expanded section persisted after turn completion; auxiliary output
+  painted gray; output summary used "1 lines"; elapsed transcript tick was
+  None instead of Some(12); live unclassified unified shell had no activity.
+  GREEN: 9 passed, including feature-off and completed timer behavior.
+- cargo test -p codex-config-schema --test collapsed_tool_activity
+  RED: generated feature schema differs from maintained fixture;
+  GREEN: 1 passed, using the real schema CLI.
+- cargo test -p codex-features --lib: 43 passed.
+- cargo test -p codex-tui --lib exec_cell: 22 passed.
+- cargo test -p codex-tui --lib chatwidget::tests::exec_flow: 60 passed.
+- cargo test -p codex-tui --lib thread_transcript: 12 passed.
+- cargo fmt --package codex-features --package codex-config-schema
+  --package codex-tui -- --check: passed.
+
+Checks use upstream Rust 1.95.0 and RUST_MIN_STACK=16777216. The unmodified
+upstream base on local Rust 1.98 fails in codex-chatgpt's compiler query
+depth; the same source compiles with upstream's pin. No unmodified source
+or unrelated snapshots are changed to resolve that environmental failure.
+
+Additional regression evidence:
+- With inherited Windows Terminal color variables, pristine rust-v0.159.2
+  reproduces the same three pre-existing transcript-view failures as the
+  patched tree (follow_control, activity_focus footer, diff_source).
+- env -u WT_SESSION -u TERM -u COLORTERM <compiled codex-tui test binary>
+  transcript_view --test-threads=1: 197 passed on the patched tree.
+- The release tag's unmodified empty-state header snapshot expects v0.0.0
+  while its Cargo package is v0.159.2; the pristine release reproduces this
+  failure. No unrelated snapshot changes are included in this patch.
+- With the same terminal-variable cleanup, app::owned_transcript excluding
+  that pre-existing empty-state version snapshot: 42 passed.
+- All six downstream patches apply together to the declared upstream base.
+
+The configuration fixture keeps the new flag outside the existing downstream
+flags' insertion contexts so this patch applies independently and in the
+queue. JSON property order does not change the schema; the real schema CLI
+integration compares the complete schema as JSON values.
+
+Final combined-queue gates on the latest stable base:
+- cargo +1.95.0 test -p codex-tui --lib unleashed_collapsed_tool_activity:
+  9 passed; codex-config-schema integration: 1 passed.
+- codex-features --lib: 43 passed.
+- TUI related regression filters: exec_cell 23 passed, transcript_view 197
+  passed, exec_flow 60 passed, thread_transcript 12 passed, owned_transcript
+  43 passed (excluding the independently reproduced upstream empty-state
+  release-version snapshot).
+- The background-terminal patch owns the two updated completed-command
+  snapshots needed by the combined exec_flow gate; this feature patch does
+  not contain unrelated snapshot or background-hint changes.
+- Combined feature, schema, and TUI formatting check: passed.
+---
+ codex-rs/config/src/config_toml.rs            |   2 +
+ codex-rs/core/config.schema.json              |   6 +
+ .../core/src/config/config_loader_tests.rs    |  60 ++++++
+ codex-rs/core/src/config/mod.rs               |  14 ++
+ codex-rs/features/src/lib.rs                  |   8 +
+ codex-rs/features/src/tests.rs                |  13 ++
+ codex-rs/tui/src/app/history_ui.rs            |   3 +
+ codex-rs/tui/src/app/owned_transcript.rs      |   1 +
+ .../tui/src/app/owned_transcript_tests.rs     | 104 ++++++++++
+ codex-rs/tui/src/chatwidget.rs                |   6 +-
+ .../tui/src/chatwidget/activity_groups.rs     |   2 +-
+ .../tui/src/chatwidget/command_lifecycle.rs   |  33 ++--
+ .../tui/src/chatwidget/tests/exec_flow.rs     | 170 ++++++++++++++++
+ codex-rs/tui/src/chatwidget/tests/helpers.rs  |   5 +
+ codex-rs/tui/src/exec_cell/mod.rs             |   1 +
+ codex-rs/tui/src/exec_cell/model.rs           |  37 +++-
+ codex-rs/tui/src/exec_cell/render.rs          |  16 +-
+ codex-rs/tui/src/exec_cell/tool_activity.rs   | 152 ++++++++++++++
+ .../tui/src/history_cell/activity_preview.rs  |   1 +
+ codex-rs/tui/src/thread_transcript.rs         |   4 +-
+ .../src/thread_transcript/activity_pages.rs   |  10 +-
+ .../thread_transcript/exploration_groups.rs   |  17 +-
+ .../tui/src/thread_transcript/tools_tests.rs  |  67 +++++++
+ codex-rs/tui/src/transcript_view.rs           |  17 +-
+ .../tui/src/transcript_view/disclosure.rs     |  25 ++-
+ codex-rs/tui/src/transcript_view/input.rs     |  15 ++
+ codex-rs/tui/src/transcript_view/layout.rs    |  16 +-
+ codex-rs/tui/src/transcript_view/text.rs      |   4 +
+ .../tui/src/transcript_view/tool_activity.rs  | 113 +++++++++++
+ codex-rs/tui/src/transcript_view_tests.rs     | 187 ++++++++++++++++++
+ 30 files changed, 1073 insertions(+), 36 deletions(-)
+ create mode 100644 codex-rs/tui/src/exec_cell/tool_activity.rs
+ create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 5634e8d..f1e3215 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -166,2 +166,4 @@ pub struct CodexUnleashedToml {
+     // Fields are registered by their owning feature patches.
++    /// Group adjacent file reads and shell commands when the matching feature is enabled.
++    pub collapsed_tool_activity: Option<bool>,
+ }
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index af8f05e..e49ecaf 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1162,2 +1162,5 @@
+             },
++            "unleashed_collapsed_tool_activity": {
++              "type": "boolean"
++            },
+             "use_legacy_landlock": {
+@@ -7192,2 +7195,5 @@
+         },
++        "unleashed_collapsed_tool_activity": {
++          "type": "boolean"
++        },
+         "use_legacy_landlock": {
+diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
+index a2c6abd..05d78f1 100644
+--- a/codex-rs/core/src/config/config_loader_tests.rs
++++ b/codex-rs/core/src/config/config_loader_tests.rs
+@@ -144,2 +144,62 @@ command = "{command}"
+ 
++#[tokio::test]
++async fn project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled()
++-> std::io::Result<()> {
++    let tmp = tempdir()?;
++    let project_root = tmp.path().join("project");
++    let dot_codex = project_root.join(".codex");
++    tokio::fs::create_dir_all(&dot_codex).await?;
++    tokio::fs::write(
++        dot_codex.join(CONFIG_TOML_FILE),
++        r#"
++[codex_unleashed]
++collapsed_tool_activity = true
++
++[features]
++unleashed_collapsed_tool_activity = false
++"#,
++    )
++    .await?;
++
++    let codex_home = tmp.path().join("home");
++    tokio::fs::create_dir_all(&codex_home).await?;
++    make_config_for_test(
++        &codex_home,
++        &project_root,
++        TrustLevel::Trusted,
++        /*project_root_markers*/ None,
++    )
++    .await?;
++
++    let cwd = AbsolutePathBuf::from_absolute_path(&project_root)?;
++    let layers = load_config_layers_state(
++        LOCAL_FS.as_ref(),
++        &codex_home,
++        Some(cwd),
++        &[] as &[(String, TomlValue)],
++        LoaderOverrides::default(),
++        &codex_config::NoopThreadConfigLoader,
++    )
++    .await?;
++
++    assert_eq!(
++        layers
++            .effective_config()
++            .get("codex_unleashed")
++            .and_then(|codex_unleashed| codex_unleashed.get("collapsed_tool_activity")),
++        Some(&TomlValue::Boolean(true))
++    );
++    assert_eq!(
++        layers
++            .effective_config()
++            .get("features")
++            .and_then(|features| features.get("unleashed_collapsed_tool_activity")),
++        Some(&TomlValue::Boolean(false))
++    );
++    let no_warnings: &[String] = &[];
++    assert_eq!(layers.startup_warnings(), Some(no_warnings));
++
++    Ok(())
++}
++
+ #[tokio::test]
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 571fc2d..93d9318 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -795,2 +795,5 @@ pub struct Config {
+ 
++    /// Group adjacent file reads and shell commands when enabled.
++    pub unleashed_collapsed_tool_activity: bool,
++
+     /// Right-click text paste fallback for the fullscreen TUI.
+@@ -1563,2 +1566,8 @@ impl ConfigBuilder {
+ impl Config {
++    pub fn collapsed_tool_activity_enabled(&self) -> bool {
++        self.features
++            .enabled(Feature::UnleashedCollapsedToolActivity)
++            && self.unleashed_collapsed_tool_activity
++    }
++
+     pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
+@@ -4508,2 +4517,7 @@ impl Config {
+                 .unwrap_or_default(),
++            unleashed_collapsed_tool_activity: cfg
++                .codex_unleashed
++                .as_ref()
++                .and_then(|settings| settings.collapsed_tool_activity)
++                .unwrap_or(false),
+             tui_right_click_paste: cfg
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index ebd6d89..bd686f5 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -106,2 +106,4 @@ pub enum Feature {
+     SleepTool,
++    /// Group adjacent tool activity into collapsible transcript sections.
++    UnleashedCollapsedToolActivity,
+     /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
+@@ -1219,2 +1221,8 @@ pub const FEATURES: &[FeatureSpec] = &[
+     },
++    FeatureSpec {
++        id: Feature::UnleashedCollapsedToolActivity,
++        key: "unleashed_collapsed_tool_activity",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
+index e11d777..bbd33bc 100644
+--- a/codex-rs/features/src/tests.rs
++++ b/codex-rs/features/src/tests.rs
+@@ -881 +881,14 @@ code_mode = true
+ }
++
++#[test]
++fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled() {
++    let feature = feature_for_key("unleashed_collapsed_tool_activity")
++        .expect("collapsed tool activity feature is registered");
++    let mut features = Features::with_defaults();
++    assert!(features.enabled(feature));
++    features.apply_map(&BTreeMap::from([(
++        "unleashed_collapsed_tool_activity".to_owned(),
++        false,
++    )]));
++    assert!(!features.enabled(feature));
++}
+diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
+index 52e7e02..5346ef6 100644
+--- a/codex-rs/tui/src/app/history_ui.rs
++++ b/codex-rs/tui/src/app/history_ui.rs
+@@ -52,2 +52,5 @@ impl App {
+         }
++        self.transcript_view
++            .sync_tool_activity_turn(&self.transcript_cells, self.chat_widget.is_task_running());
++        self.transcript_view.track_turn_tool_activity(cell.as_ref());
+         let is_session_header = cell.as_any().is::<history_cell::SessionInfoCell>();
+diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
+index 2e07262..64d6761 100644
+--- a/codex-rs/tui/src/app/owned_transcript.rs
++++ b/codex-rs/tui/src/app/owned_transcript.rs
+@@ -50,2 +50,3 @@ impl App {
+         let active_key = chat_widget.active_cell_transcript_key();
++        view.sync_tool_activity_turn(&self.transcript_cells, chat_widget.is_task_running());
+         let detailed = view.is_detailed();
+diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
+index 46c0da6..645838b 100644
+--- a/codex-rs/tui/src/app/owned_transcript_tests.rs
++++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
+@@ -1514 +1514,105 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
+ }
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_turn_completion_closes_live_expansion() {
++    use codex_app_server_protocol::{CommandExecutionSource, CommandExecutionStatus, ThreadItem};
++    let (mut app, mut events, _operations) = make_test_app_with_channels().await;
++    assert!(app.chat_widget.set_feature_enabled(
++        codex_features::Feature::UnleashedCollapsedToolActivity,
++        true
++    ));
++    app.transcript_cells.clear();
++    let turn = |status| codex_app_server_protocol::Turn {
++        id: "tool-turn".into(),
++        items_view: codex_app_server_protocol::TurnItemsView::Full,
++        items: Vec::new(),
++        status,
++        error: None,
++        started_at: None,
++        completed_at: None,
++        duration_ms: None,
++    };
++    app.chat_widget.handle_server_notification(
++        ServerNotification::TurnStarted(codex_app_server_protocol::TurnStartedNotification {
++            thread_id: String::new(),
++            turn: turn(codex_app_server_protocol::TurnStatus::InProgress),
++        }),
++        None,
++    );
++    let mut item = ThreadItem::CommandExecution {
++        id: "turn-command".into(),
++        plugin_id: None,
++        script_path: None,
++        model_context: None,
++        sandbox_type: None,
++        command: "printf retained-command".into(),
++        cwd: codex_utils_path_uri::LegacyAppPathString::from_string("/tmp"),
++        process_id: None,
++        source: CommandExecutionSource::Agent,
++        status: CommandExecutionStatus::InProgress,
++        command_actions: Vec::new(),
++        aggregated_output: None,
++        exit_code: None,
++        duration_ms: None,
++    };
++    app.chat_widget
++        .handle_command_execution_started_now(item.clone());
++    app.sync_owned_transcript(80);
++    let area = Rect::new(0, 0, 80, 20);
++    let mut buffer = Buffer::empty(area);
++    app.transcript_view
++        .render(area, &mut buffer, &app.transcript_cells);
++    let click = MouseEvent {
++        kind: Down(Left),
++        column: 60,
++        row: 0,
++        modifiers: KeyModifiers::NONE,
++    };
++    app.transcript_view
++        .handle_mouse(click, &app.transcript_cells);
++    app.sync_owned_transcript(80);
++    app.transcript_view
++        .render(area, &mut buffer, &app.transcript_cells);
++    assert_eq!(buffer[(60, 0)].bg, ratatui::style::Color::Gray);
++    if let ThreadItem::CommandExecution {
++        status,
++        aggregated_output,
++        exit_code,
++        duration_ms,
++        ..
++    } = &mut item
++    {
++        *status = CommandExecutionStatus::Completed;
++        *aggregated_output = Some("completion output\n".into());
++        *exit_code = Some(0);
++        *duration_ms = Some(1000);
++    }
++    app.chat_widget.handle_command_execution_completed_now(item);
++    app.chat_widget.handle_server_notification(
++        ServerNotification::TurnCompleted(codex_app_server_protocol::TurnCompletedNotification {
++            thread_id: String::new(),
++            turn: turn(codex_app_server_protocol::TurnStatus::Completed),
++        }),
++        None,
++    );
++    while let Ok(event) = events.try_recv() {
++        if let AppEvent::InsertHistoryCell(cell) = event
++            && cell.as_any().is::<crate::exec_cell::ExecCell>()
++        {
++            app.transcript_cells.push(Arc::from(cell));
++        }
++    }
++    app.sync_owned_transcript(80);
++    buffer = Buffer::empty(area);
++    app.transcript_view
++        .render(area, &mut buffer, &app.transcript_cells);
++    assert!(buffer_text(&buffer).contains("Ran 1 shell command"));
++    assert!(!buffer_text(&buffer).contains("completion output"));
++    assert_ne!(buffer[(60, 0)].bg, ratatui::style::Color::Gray);
++    app.transcript_view
++        .handle_mouse(click, &app.transcript_cells);
++    app.sync_owned_transcript(80);
++    app.transcript_view
++        .render(area, &mut buffer, &app.transcript_cells);
++    assert!(buffer_text(&buffer).contains("completion output"));
++}
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index eb9c9cd..575e68f 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -1707,5 +1707,9 @@ impl ChatWidget {
+ 
++    pub(crate) fn is_task_running(&self) -> bool {
++        self.bottom_pane.is_task_running()
++    }
++
+     #[cfg(test)]
+     pub(crate) fn is_task_running_for_test(&self) -> bool {
+-        self.bottom_pane.is_task_running()
++        self.is_task_running()
+     }
+diff --git a/codex-rs/tui/src/chatwidget/activity_groups.rs b/codex-rs/tui/src/chatwidget/activity_groups.rs
+index 232d6c0..3584dfa 100644
+--- a/codex-rs/tui/src/chatwidget/activity_groups.rs
++++ b/codex-rs/tui/src/chatwidget/activity_groups.rs
+@@ -33,3 +33,3 @@ impl ChatWidget {
+         if let Some(exploration) = active.as_any_mut().downcast_mut::<ExecCell>()
+-            && exploration.is_exploring_cell()
++            && exploration.is_groupable_cell()
+         {
+diff --git a/codex-rs/tui/src/chatwidget/command_lifecycle.rs b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
+index a0533b3..069c12f 100644
+--- a/codex-rs/tui/src/chatwidget/command_lifecycle.rs
++++ b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
+@@ -43,3 +43,5 @@ impl ChatWidget {
+             self.bottom_pane.ensure_status_indicator();
+-            if !is_standard_tool_call(&parsed_cmd) {
++            let show_shell_activity = *source == ExecCommandSource::UnifiedExecStartup
++                && self.config.collapsed_tool_activity_enabled();
++            if !is_standard_tool_call(&parsed_cmd) && !show_shell_activity {
+                 return;
+@@ -299,10 +301,13 @@ impl ChatWidget {
+ 
+-            self.transcript.active_cell = Some(Box::new(new_active_exec_command(
+-                id,
+-                command,
+-                parsed_cmd,
+-                source,
+-                /*interaction_input*/ None,
+-                self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
+-            )));
++            self.transcript.active_cell = Some(Box::new(
++                new_active_exec_command(
++                    id,
++                    command,
++                    parsed_cmd,
++                    source,
++                    /*interaction_input*/ None,
++                    self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
++                )
++                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled()),
++            ));
+             self.bump_active_cell_revision();
+@@ -444,3 +449,4 @@ impl ChatWidget {
+                     self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
+-                );
++                )
++                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
+                 let completed = orphan.complete_call(&id, output, duration);
+@@ -459,3 +465,4 @@ impl ChatWidget {
+                     self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
+-                );
++                )
++                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
+                 let completed = cell.complete_call(&id, output, duration);
+@@ -468,4 +475,4 @@ impl ChatWidget {
+                     && !active.is_active()
+-                    && active.is_exploring_cell()
+-                    && cell.is_exploring_cell()
++                    && active.is_groupable_cell()
++                    && cell.is_groupable_cell()
+                 {
+diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+index 9e6c59c..3b6a28d 100644
+--- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
++++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
+@@ -2250 +2250,171 @@ async fn apply_patch_request_omits_diff_summary_from_modal() -> anyhow::Result<(
+ }
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_groups_reads_and_shell_commands() {
++    for enabled in [true, false] {
++        let (mut chat, mut rx, _operations) = make_chatwidget_manual(None).await;
++        chat.config
++            .features
++            .set_enabled(Feature::UnleashedCollapsedToolActivity, enabled)
++            .expect("set collapsed tool activity feature");
++        chat.on_task_started();
++        for (id, command) in [
++            ("read", "cat .gitattributes"),
++            ("branch", "git branch --show-current"),
++            ("log", "git log -3 --format='%h %s'"),
++        ] {
++            let item = begin_exec(&mut chat, id, command);
++            end_exec(&mut chat, item, "retained output\n", "", 0);
++        }
++        let last = begin_exec(&mut chat, "wait", "date +%T; sleep 60; date +%T");
++        let cell = chat.transcript.active_cell.as_ref().unwrap();
++        let command = cell.as_any().downcast_ref::<ExecCell>().unwrap();
++        assert_eq!(command.iter_calls().count(), if enabled { 4 } else { 1 });
++        if enabled {
++            let text = lines_to_single_string(&cell.display_lines(80));
++            assert!(
++                text.contains("Reading 1 file, running 3 shell commands"),
++                "{text}"
++            );
++            assert!(text.contains("date +%T; sleep 60; date +%T"), "{text}");
++            assert!(!text.contains("retained output"), "{text}");
++            assert!(drain_insert_history(&mut rx).is_empty());
++        }
++        end_exec(&mut chat, last, "first clock\nsecond clock\n", "", 0);
++        chat.on_task_complete(None, None, false);
++        if enabled {
++            let cells = drain_insert_history(&mut rx);
++            let text = cells
++                .iter()
++                .map(|lines| lines_to_single_string(lines))
++                .collect::<Vec<_>>()
++                .join("\n");
++            assert!(text.contains("Read 1 file, ran 3 shell commands"), "{text}");
++            assert!(!text.contains("date +%T"), "{text}");
++        }
++    }
++}
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_displays_live_unclassified_unified_exec() {
++    for enabled in [true, false] {
++        let (mut chat, mut events, _operations) = make_chatwidget_manual(None).await;
++        chat.config
++            .features
++            .set_enabled(Feature::UnleashedCollapsedToolActivity, enabled)
++            .expect("configure collapsed tool activity");
++        chat.on_task_started();
++        let item = begin_unified_exec_startup(
++            &mut chat,
++            "unclassified",
++            "process",
++            "date +%T; sleep 60; date +%T",
++        );
++        if enabled {
++            let cell = chat
++                .transcript
++                .active_cell
++                .as_ref()
++                .expect("running shell activity");
++            let summary = lines_to_single_string(&cell.display_lines(80));
++            assert!(summary.contains("Running 1 shell command"), "{summary}");
++            assert!(
++                chat.active_cell_transcript_key()
++                    .unwrap()
++                    .animation_tick
++                    .is_some()
++            );
++            chat.on_exec_command_output_delta("unclassified", "clock output\n");
++            let summary = lines_to_single_string(
++                &chat
++                    .transcript
++                    .active_cell
++                    .as_ref()
++                    .unwrap()
++                    .display_lines(80),
++            );
++            assert!(summary.contains("1 line)"), "{summary}");
++        } else {
++            assert!(chat.transcript.active_cell.is_none());
++        }
++        end_exec(&mut chat, item, "clock output\n", "", 0);
++        chat.on_task_complete(None, None, false);
++        let cells = drain_insert_history_with(&mut events, |cell| {
++            if enabled {
++                assert!(cell.transcript_animation_tick().is_none());
++                assert!(
++                    lines_to_single_string(&cell.transcript_lines(80)).contains("clock output")
++                );
++            }
++            cell.display_lines(80)
++        });
++        if enabled {
++            assert_eq!(cells.len(), 1);
++            assert!(lines_to_single_string(&cells[0]).contains("Ran 1 shell command"));
++        }
++    }
++}
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_requires_project_opt_in() {
++    for (contents, enabled) in [
++        ("", false),
++        ("[codex_unleashed]\ncollapsed_tool_activity = false", false),
++        ("[codex_unleashed]\ncollapsed_tool_activity = true", true),
++        (
++            "[codex_unleashed]\ncollapsed_tool_activity = true\n[features]\nunleashed_collapsed_tool_activity = false",
++            false,
++        ),
++    ] {
++        let home = tempfile::tempdir().unwrap();
++        std::fs::write(home.path().join(codex_config::CONFIG_TOML_FILE), contents).unwrap();
++        let config = crate::legacy_core::config::ConfigBuilder::default()
++            .codex_home(home.path().to_path_buf())
++            .fallback_cwd(Some(home.path().to_path_buf()))
++            .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++            .strict_config(true)
++            .build()
++            .await
++            .unwrap();
++        let (mut chat, _events, _operations) = make_chatwidget_manual(None).await;
++        chat.config = config;
++        chat.on_task_started();
++        let first = begin_exec(&mut chat, "first", "git branch --show-current");
++        end_exec(&mut chat, first, "main\n", "", 0);
++        begin_exec(&mut chat, "second", "git log -1");
++        let command = chat
++            .transcript
++            .active_cell
++            .as_ref()
++            .unwrap()
++            .as_any()
++            .downcast_ref::<ExecCell>()
++            .unwrap();
++        assert_eq!(
++            command.iter_calls().count(),
++            if enabled { 2 } else { 1 },
++            "{contents}"
++        );
++    }
++}
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_rejects_non_boolean_project_setting() {
++    let home = tempfile::tempdir().unwrap();
++    std::fs::write(
++        home.path().join(codex_config::CONFIG_TOML_FILE),
++        "[codex_unleashed]\ncollapsed_tool_activity = 1",
++    )
++    .unwrap();
++    let result = crate::legacy_core::config::ConfigBuilder::default()
++        .codex_home(home.path().to_path_buf())
++        .fallback_cwd(Some(home.path().to_path_buf()))
++        .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++        .strict_config(true)
++        .build()
++        .await;
++    assert!(
++        result.is_err(),
++        "the project setting accepts only boolean values"
++    );
++}
+diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+index 6565e1e..aa65b62 100644
+--- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
++++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+@@ -221,2 +221,7 @@ pub(super) async fn make_chatwidget_manual_with_auth(
+     let (codex_home, mut cfg) = test_config().await;
++    // Fixtures opt into the project setting; feature-specific tests enable the flag.
++    cfg.unleashed_collapsed_tool_activity = true;
++    cfg.features
++        .set_enabled(Feature::UnleashedCollapsedToolActivity, false)
++        .unwrap();
+     let resolved_model = model_override
+diff --git a/codex-rs/tui/src/exec_cell/mod.rs b/codex-rs/tui/src/exec_cell/mod.rs
+index aaa32e1..5c93f90 100644
+--- a/codex-rs/tui/src/exec_cell/mod.rs
++++ b/codex-rs/tui/src/exec_cell/mod.rs
+@@ -4,2 +4,3 @@ mod model;
+ mod render;
++mod tool_activity;
+ mod transcript;
+diff --git a/codex-rs/tui/src/exec_cell/model.rs b/codex-rs/tui/src/exec_cell/model.rs
+index a99ea49..47c0b38 100644
+--- a/codex-rs/tui/src/exec_cell/model.rs
++++ b/codex-rs/tui/src/exec_cell/model.rs
+@@ -81,2 +81,4 @@ pub(crate) struct ExecCell {
+     animations_enabled: bool,
++    pub(super) collapsed_tool_activity: bool,
++    pub(super) activity_started_at: Instant,
+ }
+@@ -85,2 +87,3 @@ impl ExecCell {
+     pub(crate) fn new(call: ExecCall, animations_enabled: bool) -> Self {
++        let activity_started_at = call.start_time.unwrap_or_else(Instant::now);
+         Self {
+@@ -88,2 +91,4 @@ impl ExecCell {
+             animations_enabled,
++            collapsed_tool_activity: false,
++            activity_started_at,
+         }
+@@ -91,2 +96,19 @@ impl ExecCell {
+ 
++    pub(crate) fn with_collapsed_tool_activity(mut self, enabled: bool) -> Self {
++        self.collapsed_tool_activity =
++            enabled
++                && self.group.calls.iter().all(|call| {
++                    !call.is_user_shell_command() && !call.is_unified_exec_interaction()
++                });
++        self
++    }
++
++    pub(crate) fn uses_collapsed_tool_activity(&self) -> bool {
++        self.collapsed_tool_activity
++    }
++
++    pub(crate) fn is_groupable_cell(&self) -> bool {
++        self.collapsed_tool_activity || self.is_exploring_cell()
++    }
++
+     pub(crate) fn add_call(
+@@ -109,3 +131,8 @@ impl ExecCell {
+         };
+-        if self.is_exploring_cell() && Self::is_exploring_call(&call) {
++        if self.is_groupable_cell()
++            && (Self::is_exploring_call(&call)
++                || (self.collapsed_tool_activity
++                    && !call.is_user_shell_command()
++                    && !call.is_unified_exec_interaction()))
++        {
+             self.group.calls.push(call);
+@@ -119,3 +146,7 @@ impl ExecCell {
+     pub(crate) fn append_completed(&mut self, mut newer: Self) -> Result<(), Self> {
+-        if !self.is_exploring_cell() || self.should_flush() || !newer.is_exploring_cell() {
++        if !self.is_groupable_cell()
++            || self.should_flush()
++            || !newer.is_groupable_cell()
++            || self.collapsed_tool_activity != newer.collapsed_tool_activity
++        {
+             return Err(newer);
+@@ -164,3 +195,3 @@ impl ExecCell {
+         // Exploration stays open for adjacent calls, including after a failed read/list/search.
+-        !self.is_exploring_cell() && self.group.calls.iter().all(|c| c.duration.is_some())
++        !self.is_groupable_cell() && self.group.calls.iter().all(|c| c.duration.is_some())
+     }
+diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
+index d8b326d..a81648a 100644
+--- a/codex-rs/tui/src/exec_cell/render.rs
++++ b/codex-rs/tui/src/exec_cell/render.rs
+@@ -212,4 +212,9 @@ fn activity_marker(start_time: Option<Instant>, animations_enabled: bool) -> Spa
+ impl HistoryCell for ExecCell {
++    fn transcript_animation_tick(&self) -> Option<u64> {
++        (self.collapsed_tool_activity && self.is_active())
++            .then(|| self.activity_started_at.elapsed().as_secs())
++    }
++
+     fn append_reasoning(&mut self, cell: Box<dyn HistoryCell>) -> Result<(), Box<dyn HistoryCell>> {
+-        if self.is_exploring_cell() {
++        if self.is_groupable_cell() {
+             self.group.push_detail(std::sync::Arc::from(cell));
+@@ -222,2 +227,5 @@ impl HistoryCell for ExecCell {
+     fn activity_disclosure(&self, width: u16) -> Option<ActivityDisclosure> {
++        if self.collapsed_tool_activity {
++            return Some(ActivityDisclosure::ToolActivity);
++        }
+         if self.is_exploring_cell() {
+@@ -237,2 +245,5 @@ impl HistoryCell for ExecCell {
+     fn compact_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        if self.collapsed_tool_activity {
++            return self.tool_activity_lines(width);
++        }
+         if self.group.calls.iter().any(ExecCall::is_user_shell_command) {
+@@ -274,2 +285,5 @@ impl HistoryCell for ExecCell {
+     fn display_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        if self.collapsed_tool_activity {
++            return self.tool_activity_lines(width);
++        }
+         if self.is_exploring_cell() {
+diff --git a/codex-rs/tui/src/exec_cell/tool_activity.rs b/codex-rs/tui/src/exec_cell/tool_activity.rs
+new file mode 100644
+index 0000000..ed89db9
+--- /dev/null
++++ b/codex-rs/tui/src/exec_cell/tool_activity.rs
+@@ -0,0 +1,152 @@
++//! Compact command activity retains complete command and output in the detailed transcript.
++
++use super::model::ExecCell;
++use crate::exec_command::strip_bash_lc_and_escape;
++use crate::history_cell::activity_preview::clipped_line;
++use crate::terminal_hyperlinks::HyperlinkLine;
++use codex_protocol::parse_command::ParsedCommand;
++use ratatui::style::Stylize;
++use ratatui::text::Line;
++use std::collections::HashSet;
++
++impl ExecCell {
++    pub(super) fn tool_activity_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        let active = self.is_active();
++        let reads = self
++            .group
++            .calls
++            .iter()
++            .flat_map(|call| &call.parsed)
++            .filter_map(|parsed| match parsed {
++                ParsedCommand::Read { path, .. } => Some(path),
++                _ => None,
++            })
++            .collect::<HashSet<_>>()
++            .len();
++        let shells = self
++            .group
++            .calls
++            .iter()
++            .filter(|call| {
++                call.parsed.is_empty()
++                    || !call
++                        .parsed
++                        .iter()
++                        .all(|parsed| matches!(parsed, ParsedCommand::Read { .. }))
++            })
++            .count();
++        let mut parts = Vec::new();
++        if reads > 0 {
++            parts.push(format!(
++                "{} {reads} {}",
++                if active { "Reading" } else { "Read" },
++                if reads == 1 { "file" } else { "files" }
++            ));
++        }
++        if shells > 0 {
++            parts.push(format!(
++                "{} {shells} shell {}",
++                if active {
++                    if reads > 0 { "running" } else { "Running" }
++                } else if reads > 0 {
++                    "ran"
++                } else {
++                    "Ran"
++                },
++                if shells == 1 { "command" } else { "commands" }
++            ));
++        }
++        let mut summary = parts.join(", ");
++        if active {
++            summary.push_str(&format!(
++                " · {}s…",
++                self.activity_started_at.elapsed().as_secs()
++            ));
++        }
++        let failures = self
++            .group
++            .calls
++            .iter()
++            .filter(|call| {
++                call.output
++                    .as_ref()
++                    .is_some_and(|output| output.exit_code != 0)
++            })
++            .count();
++        let header = if failures > 0 {
++            format!("! {failures} failed · {summary}")
++        } else {
++            format!("• {summary}")
++        };
++        let mut lines = vec![clipped_line(Line::from(header.dark_gray()), width)];
++        if active
++            && let Some(call) = self
++                .group
++                .calls
++                .iter()
++                .rev()
++                .find(|call| call.duration.is_none())
++        {
++            let command = strip_bash_lc_and_escape(&call.command)
++                .lines()
++                .map(str::trim)
++                .collect::<Vec<_>>()
++                .join(" ");
++            let elapsed = call
++                .start_time
++                .map(|start| start.elapsed().as_secs())
++                .unwrap_or_default();
++            let output_lines = call
++                .output
++                .as_ref()
++                .map(|output| output.line_counts().0)
++                .unwrap_or_default();
++            let noun = if output_lines == 1 { "line" } else { "lines" };
++            let suffix = format!(" ({elapsed}s · {output_lines} {noun})");
++            let preview_width = width.saturating_sub(
++                Line::from(suffix.clone())
++                    .width()
++                    .try_into()
++                    .unwrap_or(u16::MAX),
++            );
++            let mut preview = clipped_line(
++                Line::from(format!("  ⎿  $ {command}").dark_gray()),
++                preview_width,
++            );
++            preview.line.spans.push(suffix.dark_gray());
++            lines.push(clipped_line(preview.line, width));
++        }
++        lines
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use crate::history_cell::HistoryCell;
++
++    #[test]
++    fn unleashed_collapsed_tool_activity_elapsed_time_invalidates_live_transcript() {
++        let mut cell = crate::exec_cell::new_active_exec_command(
++            "timer".to_string(),
++            vec!["sleep".to_string(), "60".to_string()],
++            Vec::new(),
++            codex_app_server_protocol::CommandExecutionSource::Agent,
++            None,
++            false,
++        )
++        .with_collapsed_tool_activity(true);
++        cell.activity_started_at = std::time::Instant::now() - std::time::Duration::from_secs(12);
++        assert_eq!(cell.transcript_animation_tick(), Some(12));
++        cell.activity_started_at -= std::time::Duration::from_secs(1);
++        assert_eq!(cell.transcript_animation_tick(), Some(13));
++        cell.collapsed_tool_activity = false;
++        assert_eq!(cell.transcript_animation_tick(), None);
++        cell.collapsed_tool_activity = true;
++        cell.complete_call(
++            "timer",
++            crate::exec_cell::CommandOutput::new(0, String::new()),
++            std::time::Duration::from_secs(13),
++        );
++        assert_eq!(cell.transcript_animation_tick(), None);
++    }
++}
+diff --git a/codex-rs/tui/src/history_cell/activity_preview.rs b/codex-rs/tui/src/history_cell/activity_preview.rs
+index 0a8ade1..8cadf54 100644
+--- a/codex-rs/tui/src/history_cell/activity_preview.rs
++++ b/codex-rs/tui/src/history_cell/activity_preview.rs
+@@ -11,2 +11,3 @@ pub(crate) const DETAIL_PREVIEW_LINES: usize = 3;
+ pub(crate) enum ActivityDisclosure {
++    ToolActivity,
+     Generic,
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index babf331..f4937cf 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -186,3 +186,5 @@ pub(crate) fn thread_items_to_transcript_cells(
+                 if let Some(command) = tools::CommandHistory::from_item(item) {
+-                    let newer = command.into_cell();
++                    let newer = command.into_cell().with_collapsed_tool_activity(
++                        config.is_some_and(|config| config.collapsed_tool_activity_enabled()),
++                    );
+                     if let Some(PendingActivity::Exploration(group)) = &mut pending {
+diff --git a/codex-rs/tui/src/thread_transcript/activity_pages.rs b/codex-rs/tui/src/thread_transcript/activity_pages.rs
+index 2f44848..2c25212 100644
+--- a/codex-rs/tui/src/thread_transcript/activity_pages.rs
++++ b/codex-rs/tui/src/thread_transcript/activity_pages.rs
+@@ -31,3 +31,3 @@ pub(crate) fn fold_trailing_activity_details(
+             let group = older.as_any().downcast_ref::<ExecCell>()?;
+-            if !group.is_exploring_cell() || group.should_flush() {
++            if !group.is_groupable_cell() || group.should_flush() {
+                 return None;
+@@ -60,3 +60,9 @@ pub(crate) fn fold_trailing_activity_details(
+     } else {
+-        let mut group = super::exploration_groups::completed_group(items)?;
++        let mut group = super::exploration_groups::completed_group(
++            items,
++            older
++                .as_any()
++                .downcast_ref::<ExecCell>()?
++                .uses_collapsed_tool_activity(),
++        )?;
+         group.group.details = retained;
+diff --git a/codex-rs/tui/src/thread_transcript/exploration_groups.rs b/codex-rs/tui/src/thread_transcript/exploration_groups.rs
+index 5b6194e..b7d3f98 100644
+--- a/codex-rs/tui/src/thread_transcript/exploration_groups.rs
++++ b/codex-rs/tui/src/thread_transcript/exploration_groups.rs
+@@ -17,3 +17,3 @@ pub(crate) fn join_exploration_groups(
+     let items = adjacent_items(older, newer, turns)?;
+-    let mut group = completed_group(items)?;
++    let mut group = completed_group(items, newer.uses_collapsed_tool_activity())?;
+     group.group.details = newer.group.details.clone();
+@@ -39,3 +39,3 @@ pub(crate) fn older_exploration_group(
+         .collect::<Vec<_>>();
+-    let mut group = completed_group(&older_items)?;
++    let mut group = completed_group(&older_items, newer.uses_collapsed_tool_activity())?;
+     group.group.details = older.group.details.clone();
+@@ -49,3 +49,3 @@ fn adjacent_items<'a>(
+ ) -> Option<&'a [ThreadItem]> {
+-    if !older.is_exploring_cell() || older.should_flush() || !newer.is_exploring_cell() {
++    if !older.is_groupable_cell() || older.should_flush() || !newer.is_groupable_cell() {
+         return None;
+@@ -60,3 +60,6 @@ fn adjacent_items<'a>(
+ 
+-pub(super) fn completed_group(items: &[ThreadItem]) -> Option<ExecCell> {
++pub(super) fn completed_group(
++    items: &[ThreadItem],
++    collapsed_tool_activity: bool,
++) -> Option<ExecCell> {
+     let mut group: Option<ExecCell> = None;
+@@ -66,4 +69,6 @@ pub(super) fn completed_group(items: &[ThreadItem]) -> Option<ExecCell> {
+         }
+-        let call = CommandHistory::from_item(item.clone())?.into_cell();
+-        if !call.is_exploring_cell() {
++        let call = CommandHistory::from_item(item.clone())?
++            .into_cell()
++            .with_collapsed_tool_activity(collapsed_tool_activity);
++        if !call.is_groupable_cell() {
+             return None;
+diff --git a/codex-rs/tui/src/thread_transcript/tools_tests.rs b/codex-rs/tui/src/thread_transcript/tools_tests.rs
+index 267168c..0c4c5c4 100644
+--- a/codex-rs/tui/src/thread_transcript/tools_tests.rs
++++ b/codex-rs/tui/src/thread_transcript/tools_tests.rs
+@@ -339 +339,68 @@ fn agent_tool_fallbacks_preserve_status_without_duplicating_v2_activity() {
+ }
++
++#[tokio::test]
++async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_failures() {
++    for (contents, enabled) in [
++        ("", false),
++        ("[codex_unleashed]\ncollapsed_tool_activity = false", false),
++        ("[codex_unleashed]\ncollapsed_tool_activity = true", true),
++        (
++            "[codex_unleashed]\ncollapsed_tool_activity = true\n[features]\nunleashed_collapsed_tool_activity = false",
++            false,
++        ),
++    ] {
++        let home = tempfile::tempdir().unwrap();
++        std::fs::write(home.path().join(codex_config::CONFIG_TOML_FILE), contents).unwrap();
++        let config = crate::legacy_core::config::ConfigBuilder::default()
++            .codex_home(home.path().to_path_buf())
++            .fallback_cwd(Some(home.path().to_path_buf()))
++            .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++            .strict_config(true)
++            .build()
++            .await
++            .unwrap();
++        let mut items = Vec::new();
++        for index in 0..3 {
++            let mut item = command_item(CommandExecutionStatus::Completed);
++            if let ThreadItem::CommandExecution { id, exit_code, .. } = &mut item {
++                *id = format!("resumed-{index}");
++                *exit_code = Some(if index == 1 { 1 } else { 0 });
++            }
++            items.push(item);
++        }
++        let cells = thread_items_to_transcript_cells(
++            None,
++            &test_path_buf("/workspace").abs(),
++            items,
++            RawReasoningVisibility::Hidden,
++            Some(&config),
++        );
++        assert_eq!(cells.len(), if enabled { 1 } else { 3 }, "{contents}");
++        if enabled {
++            let compact = cells[0]
++                .display_lines(80)
++                .iter()
++                .map(ToString::to_string)
++                .collect::<Vec<_>>()
++                .join("\n");
++            assert!(
++                compact.contains("Ran 3 shell commands") && compact.contains("1 failed"),
++                "{compact}"
++            );
++            assert!(!compact.contains("output line"));
++        }
++        let detail = cells
++            .iter()
++            .flat_map(|cell| cell.transcript_lines(80))
++            .map(|line| line.to_string())
++            .collect::<Vec<_>>()
++            .join("\n");
++        assert_eq!(detail.matches("cargo check").count(), 3);
++        assert_eq!(detail.matches("output line 12").count(), 3);
++        assert!(
++            cells
++                .iter()
++                .all(|cell| cell.transcript_animation_tick().is_none())
++        );
++    }
++}
+diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
+index 548f63c..54385a7 100644
+--- a/codex-rs/tui/src/transcript_view.rs
++++ b/codex-rs/tui/src/transcript_view.rs
+@@ -21,2 +21,3 @@ mod snapshot;
+ mod text;
++mod tool_activity;
+ mod turn_tip;
+@@ -264,2 +265,3 @@ impl TranscriptView {
+         }
++        self.render_tool_activity(buf);
+         self.render_selection(buf);
+@@ -293,5 +295,16 @@ impl TranscriptView {
+             .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
+-        self.sync_live_layout(width, key, |width| {
++        let changed = self.sync_live_layout(width, key, |width| {
+             lines(width).map(|lines| layout::activity_layout(lines, width, expanded, shortcut))
+-        })
++        });
++        if self.disclosure.turn_running
++            && self
++                .live
++                .as_ref()
++                .is_some_and(|layout| layout.tool_activity.is_some())
++        {
++            self.disclosure
++                .turn_tool_ids
++                .extend(self.disclosure.live_ids.iter().cloned());
++        }
++        changed
+     }
+diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
+index ccbc373..90e8d82 100644
+--- a/codex-rs/tui/src/transcript_view/disclosure.rs
++++ b/codex-rs/tui/src/transcript_view/disclosure.rs
+@@ -18,2 +18,5 @@ pub(super) struct Disclosure {
+     pub(super) expanded: HashSet<String>,
++    pub(super) pointer: Option<(u16, u16)>,
++    pub(super) turn_running: bool,
++    pub(super) turn_tool_ids: HashSet<String>,
+     pub(super) focused: Option<Vec<String>>,
+@@ -27,2 +30,5 @@ impl Default for Disclosure {
+             expanded: HashSet::new(),
++            pointer: None,
++            turn_running: false,
++            turn_tool_ids: HashSet::new(),
+             focused: None,
+@@ -108,2 +114,5 @@ impl TranscriptView {
+     ) {
++        if layout.tool_activity.is_some() {
++            return;
++        }
+         let focused = self
+@@ -150,6 +159,14 @@ impl TranscriptView {
+         };
+-        if visible.layout.disclosure_row() != Some(visible.row)
+-            || column
+-                .checked_sub(self.area.x)
+-                .is_none_or(|column| !visible.layout.disclosure_columns().contains(&column))
++        let in_section = column
++            .checked_sub(self.area.x)
++            .is_some_and(|column| column < self.area.width)
++            && !(visible.layout.separated && visible.row == 0);
++        let tool_activity = visible.layout.tool_activity.is_some_and(|presentation| {
++            visible.layout.position_at(visible.row, 0) <= presentation.source_end()
++        }) && in_section;
++        if !tool_activity
++            && (visible.layout.disclosure_row() != Some(visible.row)
++                || column
++                    .checked_sub(self.area.x)
++                    .is_none_or(|column| !visible.layout.disclosure_columns().contains(&column)))
+         {
+diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
+index 83c7cc0..50ec5ad 100644
+--- a/codex-rs/tui/src/transcript_view/input.rs
++++ b/codex-rs/tui/src/transcript_view/input.rs
+@@ -193,2 +193,14 @@ impl TranscriptView {
+     ) -> Option<ViewAction> {
++        let pointer_changed = if event.kind == MouseEventKind::Moved {
++            let point = (event.column, event.row);
++            let changed = self.disclosure.pointer != Some(point);
++            let has_tool_activity = self
++                .visible
++                .iter()
++                .any(|row| row.layout.tool_activity.is_some());
++            self.disclosure.pointer = has_tool_activity.then_some(point);
++            changed && has_tool_activity
++        } else {
++            false
++        };
+         if let Some(action) = self.handle_follow_control_mouse(event) {
+@@ -196,2 +208,5 @@ impl TranscriptView {
+         }
++        if event.kind == MouseEventKind::Moved {
++            return pointer_changed.then_some(ViewAction::Changed);
++        }
+         if event.kind == MouseEventKind::Down(MouseButton::Left)
+diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
+index bac11e7..8acfd6f 100644
+--- a/codex-rs/tui/src/transcript_view/layout.rs
++++ b/codex-rs/tui/src/transcript_view/layout.rs
+@@ -33,3 +33,13 @@ pub(super) fn activity_layout(
+     lines.activity.extend(lines.auxiliary);
+-    let layout = TextLayout::new(lines.activity, width);
++    let mut layout = TextLayout::new(lines.activity, width);
++    if lines.disclosure == Some(ActivityDisclosure::ToolActivity) {
++        layout.disclosure = true;
++        let source_end = source_offset.unwrap_or_else(|| layout.text().len());
++        layout.tool_activity = Some(if expanded {
++            super::tool_activity::ToolActivityPresentation::Expanded { source_end }
++        } else {
++            super::tool_activity::ToolActivityPresentation::Collapsed { source_end }
++        });
++        return layout;
++    }
+     if !has_details {
+@@ -51,3 +61,5 @@ pub(super) fn activity_layout(
+         }
+-        (false, Some(ActivityDisclosure::Generic) | None) => "+ Show details".to_owned(),
++        (false, Some(ActivityDisclosure::Generic | ActivityDisclosure::ToolActivity) | None) => {
++            "+ Show details".to_owned()
++        }
+     };
+diff --git a/codex-rs/tui/src/transcript_view/text.rs b/codex-rs/tui/src/transcript_view/text.rs
+index 4487755..6486d28 100644
+--- a/codex-rs/tui/src/transcript_view/text.rs
++++ b/codex-rs/tui/src/transcript_view/text.rs
+@@ -50,2 +50,3 @@ pub(super) struct TextLayout {
+     pub(super) disclosure: bool,
++    pub(super) tool_activity: Option<super::tool_activity::ToolActivityPresentation>,
+     disclosure_control: Option<DisclosureControl>,
+@@ -79,2 +80,4 @@ impl TextLayout {
+         let mut layout = Self::from_logical(self.logical.clone(), width);
++        layout.tool_activity = self.tool_activity;
++        layout.disclosure = self.disclosure;
+         if let Some(control) = &self.disclosure_control {
+@@ -400,2 +403,3 @@ impl TextLayout {
+             disclosure: false,
++            tool_activity: None,
+             disclosure_control: None,
+diff --git a/codex-rs/tui/src/transcript_view/tool_activity.rs b/codex-rs/tui/src/transcript_view/tool_activity.rs
+new file mode 100644
+index 0000000..52be250
+--- /dev/null
++++ b/codex-rs/tui/src/transcript_view/tool_activity.rs
+@@ -0,0 +1,113 @@
++//! Tool section surfaces follow current viewport geometry, including wrapping and scrolling.
++
++use super::*;
++use ratatui::style::Color;
++use ratatui::style::Modifier;
++use ratatui::style::Style;
++
++#[derive(Clone, Copy)]
++pub(super) enum ToolActivityPresentation {
++    Collapsed { source_end: usize },
++    Expanded { source_end: usize },
++}
++
++impl TranscriptView {
++    pub(super) fn render_tool_activity(&self, buf: &mut Buffer) {
++        let hovered = self.disclosure.pointer.and_then(|(x, y)| {
++            if !self.area.contains(ratatui::layout::Position::new(x, y)) {
++                return None;
++            }
++            let row = self.visible.get(usize::from(y - self.area.y))?;
++            if row.layout.separated && row.row == 0 {
++                return None;
++            }
++            let presentation = row.layout.tool_activity?;
++            if row.layout.position_at(row.row, 0) > presentation.source_end() {
++                return None;
++            }
++            Some(&row.activity_ids)
++        });
++        for (screen_row, row) in self.visible.iter().enumerate() {
++            if row.layout.separated && row.row == 0 {
++                continue;
++            }
++            let Some(presentation) = row.layout.tool_activity else {
++                continue;
++            };
++            if row.layout.position_at(row.row, 0) > presentation.source_end() {
++                continue;
++            }
++            let style = match presentation {
++                ToolActivityPresentation::Collapsed { .. } => {
++                    let highlighted = hovered
++                        .is_some_and(|ids| ids.iter().any(|id| row.activity_ids.contains(id)));
++                    Style::default().fg(if highlighted {
++                        Color::Gray
++                    } else {
++                        Color::DarkGray
++                    })
++                }
++                ToolActivityPresentation::Expanded { .. } => {
++                    Style::default().bg(Color::Gray).fg(Color::Black)
++                }
++            }
++            .remove_modifier(Modifier::DIM);
++            buf.set_style(
++                Rect::new(
++                    self.area.x,
++                    self.area.y + screen_row as u16,
++                    self.area.width,
++                    1,
++                ),
++                style,
++            );
++        }
++    }
++}
++
++impl ToolActivityPresentation {
++    pub(super) fn source_end(self) -> usize {
++        match self {
++            Self::Collapsed { source_end } | Self::Expanded { source_end } => source_end,
++        }
++    }
++}
++
++impl TranscriptView {
++    pub(crate) fn sync_tool_activity_turn(
++        &mut self,
++        cells: &[Arc<dyn HistoryCell>],
++        running: bool,
++    ) {
++        if self.disclosure.turn_running && !running {
++            let changed = self
++                .disclosure
++                .expanded
++                .iter()
++                .any(|id| self.disclosure.turn_tool_ids.contains(id));
++            self.disclosure
++                .expanded
++                .retain(|id| !self.disclosure.turn_tool_ids.contains(id));
++            self.disclosure.turn_tool_ids.clear();
++            if changed {
++                self.end_selection(cells);
++                self.release_live_reading();
++                self.cache.clear();
++                self.live_key = None;
++                self.live_separated = None;
++                self.disclosure.focused = None;
++                self.restart_search();
++            }
++        }
++        self.disclosure.turn_running = running;
++    }
++
++    pub(crate) fn track_turn_tool_activity(&mut self, cell: &dyn HistoryCell) {
++        if self.disclosure.turn_running
++            && cell.activity_disclosure(self.area.width.max(1))
++                == Some(crate::history_cell::ActivityDisclosure::ToolActivity)
++        {
++            self.disclosure.turn_tool_ids.extend(cell.activity_ids());
++        }
++    }
++}
+diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
+index 8492e22..b0c9fd1 100644
+--- a/codex-rs/tui/src/transcript_view_tests.rs
++++ b/codex-rs/tui/src/transcript_view_tests.rs
+@@ -1094 +1094,188 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
+ }
++
++#[test]
++fn unleashed_collapsed_tool_activity_hover_and_click_toggle_complete_section() {
++    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use codex_app_server_protocol::CommandExecutionSource;
++    use ratatui::style::Color;
++    use std::time::Duration;
++
++    let mut command = new_active_exec_command(
++        "interactive".into(),
++        vec!["echo visible output".into()],
++        Vec::new(),
++        CommandExecutionSource::Agent,
++        None,
++        false,
++    )
++    .with_collapsed_tool_activity(true);
++    assert!(command.complete_call(
++        "interactive",
++        CommandOutput::new(0, "first output\nsecond output\n".into()),
++        Duration::from_secs(1)
++    ));
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command), cell("normal terminal output")];
++    let mut view = TranscriptView::default();
++    let collapsed = render(&mut view, &cells, 80, 20);
++    assert!(text(&collapsed).contains("Ran 1 shell command"));
++    assert!(!text(&collapsed).contains("first output"));
++    assert_eq!(collapsed[(2, 0)].fg, Color::DarkGray);
++    let mouse = |kind, column, row| MouseEvent {
++        kind,
++        column,
++        row,
++        modifiers: KeyModifiers::NONE,
++    };
++    assert!(
++        view.handle_mouse(mouse(MouseEventKind::Moved, 60, 0), &cells)
++            .is_some()
++    );
++    let hover = render(&mut view, &cells, 80, 20);
++    assert_eq!(hover[(2, 0)].fg, Color::Gray);
++    assert!(
++        view.handle_mouse(
++            mouse(MouseEventKind::Down(MouseButton::Left), 60, 0),
++            &cells
++        )
++        .is_some()
++    );
++    let expanded = render(&mut view, &cells, 80, 20);
++    assert!(text(&expanded).contains("first output"));
++    let output_row = (0..20)
++        .find(|y| {
++            (0..80)
++                .map(|x| expanded[(x, *y)].symbol())
++                .collect::<String>()
++                .contains("first output")
++        })
++        .unwrap();
++    assert_eq!(expanded[(60, output_row)].bg, Color::Gray);
++    let normal_row = (0..20)
++        .find(|y| {
++            (0..80)
++                .map(|x| expanded[(x, *y)].symbol())
++                .collect::<String>()
++                .contains("normal terminal output")
++        })
++        .unwrap();
++    assert_ne!(expanded[(60, normal_row)].bg, Color::Gray);
++    assert!(
++        view.handle_mouse(
++            mouse(MouseEventKind::Down(MouseButton::Left), 60, output_row),
++            &cells
++        )
++        .is_some()
++    );
++    let collapsed_again = render(&mut view, &cells, 80, 20);
++    assert!(!text(&collapsed_again).contains("first output"));
++    view.handle_mouse(mouse(MouseEventKind::Moved, 79, 19), &cells);
++    let unhovered = render(&mut view, &cells, 80, 20);
++    assert_eq!(unhovered[(2, 0)].fg, Color::DarkGray);
++}
++
++#[test]
++fn unleashed_collapsed_tool_activity_summary_click_expands_without_footer() {
++    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use codex_app_server_protocol::CommandExecutionSource;
++    let mut command = new_active_exec_command(
++        "click".into(),
++        vec!["echo details".into()],
++        Vec::new(),
++        CommandExecutionSource::Agent,
++        None,
++        false,
++    )
++    .with_collapsed_tool_activity(true);
++    command.complete_call(
++        "click",
++        CommandOutput::new(0, "retained details\n".into()),
++        std::time::Duration::from_secs(1),
++    );
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
++    let mut view = TranscriptView::default();
++    render(&mut view, &cells, 80, 20);
++    view.handle_mouse(
++        MouseEvent {
++            kind: MouseEventKind::Down(MouseButton::Left),
++            column: 60,
++            row: 0,
++            modifiers: KeyModifiers::NONE,
++        },
++        &cells,
++    );
++    assert!(text(&render(&mut view, &cells, 80, 20)).contains("retained details"));
++}
++
++#[test]
++fn unleashed_collapsed_tool_activity_auxiliary_output_stays_outside_section() {
++    use crate::history_cell::ActivityDisclosure;
++    let mut view = TranscriptView::default();
++    view.sync_live_activity(&[], vec!["exec:auxiliary".into()]);
++    view.sync_live_activity_tail(
++        80,
++        Some(ActiveCellTranscriptKey {
++            revision: 1,
++            animation_tick: None,
++            is_stream_continuation: false,
++            cacheable: true,
++        }),
++        true,
++        |_| {
++            Some(ActivityTranscriptLines {
++                activity: vec![HyperlinkLine::from("expanded command output")],
++                auxiliary: vec![HyperlinkLine::from("normal auxiliary output")],
++                disclosure: Some(ActivityDisclosure::ToolActivity),
++            })
++        },
++    );
++    let buffer = render(&mut view, &[], 80, 20);
++    assert_eq!(buffer[(60, 0)].bg, ratatui::style::Color::Gray);
++    assert_ne!(buffer[(60, 1)].bg, ratatui::style::Color::Gray);
++}
++
++#[test]
++fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_visible() {
++    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use codex_app_server_protocol::CommandExecutionSource;
++    let script = format!("echo first\necho {}", "long command ".repeat(100));
++    let mut command = new_active_exec_command(
++        "stream".into(),
++        vec!["bash".into(), "-lc".into(), script.clone()],
++        Vec::new(),
++        CommandExecutionSource::Agent,
++        None,
++        false,
++    )
++    .with_collapsed_tool_activity(true);
++    assert!(command.append_output("stream", "one output line\n"));
++    let live = command
++        .display_lines(80)
++        .iter()
++        .map(ToString::to_string)
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(live.contains("1 line)"), "{live}");
++    command.complete_call(
++        "stream",
++        CommandOutput::new(1, "failure details\n".into()),
++        std::time::Duration::from_secs(1),
++    );
++    let compact = command
++        .display_lines(20)
++        .iter()
++        .map(ToString::to_string)
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(compact.contains("1 failed"), "{compact}");
++    let raw = command
++        .raw_lines()
++        .iter()
++        .map(ToString::to_string)
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(
++        script.lines().all(|line| raw.contains(line.trim_end())),
++        "{raw}"
++    );
++    assert!(raw.contains("failure details"));
++}
+-- 
+2.43.0
+

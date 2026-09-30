@@ -1,13 +1,18 @@
 # Expanded diff previews in the full-screen transcript
 
 - Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` `rust-v0.159.1`, commit `8e68a98ef03cdde76d2e6800791ebdf1b3b95b24`
+- Applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
 
 ## Intent
 
 Show complete diffs for patch activities in the full-screen transcript,
 including reopened sessions, when both the feature and project setting are
 enabled. Keep other activities and patch-failure messages compact.
+
+## Dependencies and application order
+
+Apply the [shared configuration patch README.md](../base-configuration/README.md)
+before this patch. This feature does not require other feature patches.
 
 ## Feature configuration
 
@@ -75,13 +80,15 @@ Run the focused configuration checks from `codex-rs/`:
 cargo test -p codex-config --lib config_toml_preserves_codex_unleashed_expanded_diff_previews
 cargo test -p codex-core --lib codex_unleashed_expanded_diff_previews
 cargo test -p codex-core --lib strict_config_rejects_unknown_codex_unleashed_settings
-cargo test -p codex-core --lib config_schema_matches_fixture
 ```
 
 The checks expect the setting to survive TOML parsing, resolve to the requested
 runtime value, load from a trusted project without a warning when the feature
-is disabled, reject unknown keys in strict mode, and match the config schema.
+is disabled, and reject unknown keys in strict mode.
 The runtime and project checks cover absent, `true`, and `false` values.
+
+On the complete patch queue, run `cargo test -p codex-core --lib
+config_schema_matches_fixture` to verify the shared published schema.
 
 Run the focused TUI check from `codex-rs/`:
 

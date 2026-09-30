@@ -1,10 +1,32 @@
-From 3c6404ed020bfbbc87b01fa14601ab8425e4c2d6 Mon Sep 17 00:00:00 2001
+From 522d5ce35c87e9821ba4739f5b5de458a308ca6d Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 11:20:46 -0400
+Date: Wed, 30 Sep 2026 17:17:25 -0400
 Subject: [PATCH] Show background terminal transcript hints
 
+Base: openai/codex rust-v0.159.2
+ff6aec96948b70d94983af2641a6b67c94faeff5
+
+Keep completed and replayed background-terminal snapshots consistent with
+the Ctrl+T hint that command_display_lines displays. Preserve retained output
+and exploration group boundaries.
+
+TDD snapshot receipts:
+- cargo +1.95.0 test -p codex-tui --lib chatwidget::tests::exec_flow
+  -- --test-threads=1
+  RED in the combined patch queue: 58 passed, 2 failed. The adjacent
+  exploration and unified-exec-unknown snapshots omit the completed command's
+  literal (ctrl+t to view transcript) hint.
+  GREEN after updating those two snapshots: 60 passed using the compiled
+  combined-queue test executable identified by Cargo's run receipt.
+- cargo +1.95.0 test -p codex-tui --lib exec_cell: 23 passed in the queue,
+  including completed_background_terminal_includes_transcript_hint.
+
+Checks use RUST_MIN_STACK=16777216 and remove inherited WT_SESSION, TERM,
+and COLORTERM for the upstream noninteractive snapshot environment.
 ---
+ ...nknown_end_with_active_exploring_cell.snap |  4 ++-
  .../tui/src/chatwidget/tests/exec_flow.rs     |  4 +--
+ ...ps_across_reasoning_live_and_replayed.snap |  2 ++
  codex-rs/tui/src/exec_cell/render.rs          | 33 ++++++++++++++++++-
  codex-rs/tui/src/history_cell/exec.rs         |  9 ++++-
  ...put_chunk_leading_whitespace_snapshot.snap |  3 +-
@@ -14,8 +36,26 @@ Subject: [PATCH] Show background terminal transcript hints
  ...utput_multiline_long_command_snapshot.snap |  1 +
  ...__tests__ps_output_multiline_snapshot.snap |  1 +
  codex-rs/tui/src/history_cell/tests.rs        | 12 +++++++
- 10 files changed, 63 insertions(+), 7 deletions(-)
+ 12 files changed, 68 insertions(+), 8 deletions(-)
 
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+index 85259b0..78ec5c3 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
+@@ -1,10 +1,12 @@
+ ---
+-source: tui/src/chatwidget/tests.rs
++source: tui/src/chatwidget/tests/exec_flow.rs
++assertion_line: 1004
+ expression: snapshot
+ ---
+ History:
+ • Ran echo repro-marker
+   └ repro-marker
++(ctrl+t to view transcript)
+ 
+ Active:
+ • Exploring
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 index 9e6c59c..176fc15 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
@@ -38,6 +78,25 @@ index 9e6c59c..176fc15 100644
      );
  }
  
+diff --git a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
+index d4e4fe5..7180468 100644
+--- a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
++++ b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
+@@ -1,5 +1,6 @@
+ ---
+ source: tui/src/chatwidget/tests/exec_flow.rs
++assertion_line: 328
+ expression: "renders[0]"
+ ---
+ Compact:
+@@ -9,6 +10,7 @@ Compact:
+ 
+ • Ran echo boundary
+   └ run output
++(ctrl+t to view transcript)
+ 
+ • Explored
+   └ Read later.txt
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
 index d8b326d..dde04f0 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs

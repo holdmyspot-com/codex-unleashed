@@ -1,0 +1,115 @@
+From 15c2b8bad3dd3739f0a54edd005d227be44339c6 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Wed, 30 Sep 2026 18:48:00 -0400
+Subject: [PATCH] config: share the Codex Unleashed configuration table
+
+Base: openai/codex rust-v0.159.2 ff6aec96948b70d94983af2641a6b67c94faeff5
+
+Declare the shared table without feature flags or runtime properties. Each
+feature patch supplies its own typed fields. Preserve strict rejection of
+undeclared settings through the existing config loader.
+
+TDD receipts (Rust 1.95.0):
+- cargo test -p codex-config --lib codex_unleashed_table_schema_rejects_undeclared_properties
+  RED on pristine base: table reference missing (None vs Some).
+  GREEN with the shared declaration: 1 passed.
+- cargo test -p codex-core --lib codex_unleashed: 4 passed in the complete queue,
+  including strict rejection of undeclared fields and silent disabled settings.
+
+The schema/refresh-config-schema.patch artifact publishes the generated schema
+and owns the real CLI exact-output check after all runtime patches are applied.
+---
+ codex-rs/config/src/config_toml.rs            | 10 +++++++
+ codex-rs/config/src/types_tests.rs            | 13 ++++++++++
+ .../core/src/config/config_loader_tests.rs    | 26 +++++++++++++++++++
+ 3 files changed, 49 insertions(+)
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 84b5321..5634e8d 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -159,10 +159,20 @@ pub struct FeatureToggleToml {
+     pub enabled: Option<bool>,
+ }
+ 
++/// Project settings for Codex Unleashed features.
++#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
++#[schemars(deny_unknown_fields)]
++pub struct CodexUnleashedToml {
++    // Fields are registered by their owning feature patches.
++}
++
+ /// Base config deserialized from ~/.codex/config.toml.
+ #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
+ #[schemars(deny_unknown_fields)]
+ pub struct ConfigToml {
++    /// Project settings for Codex Unleashed features.
++    pub codex_unleashed: Option<CodexUnleashedToml>,
++
+     /// Optional override of model selection.
+     pub model: Option<String>,
+     /// Review model override used by the `/review` feature.
+diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
+index ab383ca..3c58873 100644
+--- a/codex-rs/config/src/types_tests.rs
++++ b/codex-rs/config/src/types_tests.rs
+@@ -1,6 +1,19 @@
+ use super::*;
+ use pretty_assertions::assert_eq;
+ 
++#[test]
++fn codex_unleashed_table_schema_rejects_undeclared_properties() {
++    let schema = serde_json::to_value(crate::schema::config_schema()).unwrap();
++    assert_eq!(
++        schema.pointer("/properties/codex_unleashed/allOf/0/$ref"),
++        Some(&serde_json::json!("#/definitions/CodexUnleashedToml"))
++    );
++    assert_eq!(
++        schema.pointer("/definitions/CodexUnleashedToml/additionalProperties"),
++        Some(&serde_json::json!(false))
++    );
++}
++
+ #[test]
+ fn deserialize_skill_config_with_name_selector() {
+     let cfg: SkillConfig = toml::from_str(
+diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
+index d50816a..a2c6abd 100644
+--- a/codex-rs/core/src/config/config_loader_tests.rs
++++ b/codex-rs/core/src/config/config_loader_tests.rs
+@@ -3970,6 +3970,32 @@ wire_api = "responses"
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn strict_config_rejects_unknown_codex_unleashed_settings() {
++    for (contents, expected) in [
++        (
++            "unleashed_expanded_diff_previews = true",
++            "unknown configuration field `unleashed_expanded_diff_previews`",
++        ),
++        (
++            "[codex_unleashed]\nunused = true",
++            "unknown configuration field `codex_unleashed.unused`",
++        ),
++    ] {
++        let tmp = tempdir().expect("tempdir");
++        std::fs::write(tmp.path().join(CONFIG_TOML_FILE), contents).expect("write config");
++        let err = ConfigBuilder::default()
++            .codex_home(tmp.path().to_path_buf())
++            .fallback_cwd(Some(tmp.path().to_path_buf()))
++            .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++            .strict_config(/*strict_config*/ true)
++            .build()
++            .await
++            .expect_err("unknown setting should be rejected");
++        assert_eq!(config_error_from_io(&err).message, expected);
++    }
++}
++
+ #[cfg(unix)]
+ #[tokio::test]
+ async fn project_trust_does_not_match_configured_alias_for_canonical_cwd() -> std::io::Result<()> {
+-- 
+2.43.0
+

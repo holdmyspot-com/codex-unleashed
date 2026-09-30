@@ -14,6 +14,15 @@
   `false`, so previews remain compact until a project opts in. See
   [its patch README](holdmyspot-com/codex-unleashed/issue-47390/README.md) for
   the feature controls and project property.
+- `unleashed_collapsed_tool_activity` groups adjacent file reads and shell
+  commands into compact summaries. In full-screen chat, hover highlights the
+  summary and clicking expands or collapses the complete commands and output.
+  The feature flag is enabled by default; the
+  `[codex_unleashed] collapsed_tool_activity` property defaults to `false`,
+  so grouping requires
+  explicit opt-in. See
+  [its patch README](holdmyspot-com/codex-unleashed/collapsed-tool-activity/README.md)
+  for the feature controls and mouse interaction requirements.
 
 ## Contributor rules
 

@@ -1,0 +1,183 @@
+From f22216b667e1cf66436387063a473c6c7253f2e9 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Wed, 30 Sep 2026 19:25:09 -0400
+Subject: [PATCH] config: publish the canonical schema after runtime feature
+ patches
+
+Base: openai/codex rust-v0.159.2 ff6aec96948b70d94983af2641a6b67c94faeff5
+Prerequisite: complete runtime patch queue, including base-configuration,
+collapsed-tool-activity, and issue-47390. Apply this generated artifact last.
+
+Publish the Codex Unleashed table metadata and preserve the generator's
+property order. Each feature patch retains its own typed property, runtime
+controls, feature flag, and flag schema registration. This patch owns only
+the shared generated fixture and the real schema CLI verification.
+
+TDD receipts (Rust 1.95.0):
+- cargo test -p codex-config-schema --test codex_unleashed
+  Initial RED: published fixture misses the newly registered property.
+  Exact-output RED: semantic equality passes but schema CLI output ordering
+  differs from the fixture. GREEN with the real generated fixture: 1 passed.
+  The check asserts boolean project settings and exact output, normalizing
+  Windows CRLF as upstream does.
+- cargo test -p codex-core --lib config_schema_matches_fixture
+  RED during config module regression: generated ordering differs from fixture.
+  GREEN after generation; the complete config module passes 527 tests.
+- codex-config unit suite: 347 passed.
+- TUI related regression filters: exec_cell 23 passed, exec_flow 62 passed,
+  thread_transcript 12 passed, transcript_view 197 passed, owned_transcript
+  43 passed (excluding the previously reproduced upstream release-version
+  empty-state snapshot). Terminal palette variables are unset for regressions.
+
+No runtime behavior or additional feature flags are introduced here.
+---
+ codex-rs/config-schema/Cargo.toml             |  4 ++
+ .../config-schema/tests/codex_unleashed.rs    | 48 +++++++++++++++++++
+ codex-rs/core/config.schema.json              | 35 +++++++++++---
+ 3 files changed, 81 insertions(+), 6 deletions(-)
+ create mode 100644 codex-rs/config-schema/tests/codex_unleashed.rs
+
+diff --git a/codex-rs/config-schema/Cargo.toml b/codex-rs/config-schema/Cargo.toml
+index ec6458b..2330940 100644
+--- a/codex-rs/config-schema/Cargo.toml
++++ b/codex-rs/config-schema/Cargo.toml
+@@ -15,3 +15,7 @@ workspace = true
+ anyhow = { workspace = true }
+ clap = { workspace = true, features = ["derive"] }
+ codex-config = { workspace = true }
++
++[dev-dependencies]
++serde_json = { workspace = true }
++tempfile = { workspace = true }
+diff --git a/codex-rs/config-schema/tests/codex_unleashed.rs b/codex-rs/config-schema/tests/codex_unleashed.rs
+new file mode 100644
+index 0000000..38c7a42
+--- /dev/null
++++ b/codex-rs/config-schema/tests/codex_unleashed.rs
+@@ -0,0 +1,48 @@
++use std::process::Command;
++
++#[test]
++fn codex_unleashed_config_schema_matches_published_fixture() {
++    let temp = tempfile::tempdir().unwrap();
++    let output = temp.path().join("config.schema.json");
++    assert!(
++        Command::new(env!("CARGO_BIN_EXE_codex-write-config-schema"))
++            .arg("--out")
++            .arg(&output)
++            .status()
++            .unwrap()
++            .success()
++    );
++    let generated_bytes = std::fs::read(output).unwrap();
++    #[cfg(windows)]
++    let generated_bytes = String::from_utf8(generated_bytes)
++        .unwrap()
++        .replace("\r\n", "\n")
++        .into_bytes();
++    let generated: serde_json::Value = serde_json::from_slice(&generated_bytes).unwrap();
++    let fixture =
++        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config.schema.json");
++    let published_bytes = std::fs::read(fixture).unwrap();
++    #[cfg(windows)]
++    let published_bytes = String::from_utf8(published_bytes)
++        .unwrap()
++        .replace("\r\n", "\n")
++        .into_bytes();
++    let published: serde_json::Value = serde_json::from_slice(&published_bytes).unwrap();
++    for property in ["collapsed_tool_activity", "expanded_diff_previews"] {
++        assert_eq!(
++            generated.pointer(&format!(
++                "/definitions/CodexUnleashedToml/properties/{property}/type"
++            )),
++            Some(&serde_json::json!("boolean")),
++            "{property} must be a registered boolean setting"
++        );
++    }
++    assert!(
++        generated_bytes == published_bytes,
++        "published configuration schema must match the schema CLI output exactly"
++    );
++    assert!(
++        generated == published,
++        "published config schema must match generated schema"
++    );
++}
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index a662516..abfdac7 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -602,6 +602,21 @@
+       },
+       "type": "object"
+     },
++    "CodexUnleashedToml": {
++      "additionalProperties": false,
++      "description": "Project settings for Codex Unleashed features.",
++      "properties": {
++        "collapsed_tool_activity": {
++          "description": "Group adjacent file reads and shell commands when the matching feature is enabled.",
++          "type": "boolean"
++        },
++        "expanded_diff_previews": {
++          "description": "Expand patch diffs in the owned fullscreen transcript when the matching feature is enabled.",
++          "type": "boolean"
++        }
++      },
++      "type": "object"
++    },
+     "ComputerUseConfigToml": {
+       "additionalProperties": false,
+       "properties": {
+@@ -1160,13 +1175,13 @@
+             "unleashed_agent_fast_switching": {
+               "type": "boolean"
+             },
+-            "unleashed_expanded_diff_previews": {
++            "unleashed_collapsed_tool_activity": {
+               "type": "boolean"
+             },
+-            "use_agent_identity": {
++            "unleashed_expanded_diff_previews": {
+               "type": "boolean"
+             },
+-            "unleashed_collapsed_tool_activity": {
++            "use_agent_identity": {
+               "type": "boolean"
+             },
+             "use_legacy_landlock": {
+@@ -6667,6 +6682,14 @@
+       ],
+       "description": "Cloud-owned feature settings."
+     },
++    "codex_unleashed": {
++      "allOf": [
++        {
++          "$ref": "#/definitions/CodexUnleashedToml"
++        }
++      ],
++      "description": "Project settings for Codex Unleashed features."
++    },
+     "compact_prompt": {
+       "description": "Compact prompt used for history compaction.",
+       "type": "string"
+@@ -7199,13 +7222,13 @@
+         "unleashed_agent_fast_switching": {
+           "type": "boolean"
+         },
+-        "unleashed_expanded_diff_previews": {
++        "unleashed_collapsed_tool_activity": {
+           "type": "boolean"
+         },
+-        "use_agent_identity": {
++        "unleashed_expanded_diff_previews": {
+           "type": "boolean"
+         },
+-        "unleashed_collapsed_tool_activity": {
++        "use_agent_identity": {
+           "type": "boolean"
+         },
+         "use_legacy_landlock": {
+-- 
+2.43.0
+

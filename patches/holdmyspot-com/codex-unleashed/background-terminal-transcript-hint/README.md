@@ -1,7 +1,7 @@
 # Background-terminal transcript hint
 
 - Issue: [holdmyspot-com/codex-unleashed#3](https://github.com/holdmyspot-com/codex-unleashed/issues/3)
-- Applies to: upstream `openai/codex` `rust-v0.159.1` at commit `8e68a98ef03cdde76d2e6800791ebdf1b3b95b24`
+- Applies to: upstream `openai/codex` `rust-v0.159.2` at commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
 - Related upstream requests: [openai/codex#13858](https://github.com/openai/codex/issues/13858), [openai/codex#14928](https://github.com/openai/codex/issues/14928), [openai/codex#16935](https://github.com/openai/codex/issues/16935)
 
 ## Intent
@@ -41,6 +41,13 @@ entries, and replayed command history. Run them from `codex-rs/`:
 
 ```sh
 just test -p codex-tui -E 'test(ps_output_explains_when_running_transcript_is_available) | test(completed_background_terminal_includes_transcript_hint) | test(replayed_command_completion_preserves_tracking_and_transcript_hint)'
+```
+
+Completed command hints also remain visible next to exploration groups:
+
+```sh
+cargo test -p codex-tui --lib adjacent_exploration_groups_across_reasoning_live_and_replayed
+cargo test -p codex-tui --lib unified_exec_unknown_end_with_active_exploring_cell_snapshot
 ```
 
 The checks expect the running hint only while a background terminal is active
