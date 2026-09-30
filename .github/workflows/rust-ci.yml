@@ -124,8 +124,7 @@ jobs:
           cd upstream
           pnpm install --frozen-lockfile
       - name: cargo shear
-        working-directory: upstream/codex-rs
-        run: cargo shear --deny-warnings
+        run: python3 .github/scripts/check-cargo-shear.py upstream
 
   results:
     name: rust-ci results
