@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import re
 import subprocess
 import unittest
 
@@ -10,6 +11,14 @@ WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "build-release.yml"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
+    def test_verification_and_packaging_have_read_only_tokens(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        for job_name in ("verify", "build-windows-package"):
+            with self.subTest(job=job_name):
+                job = re.split(r"\n  \S", workflow.split(f"\n  {job_name}:\n", 1)[1], maxsplit=1)[0]
+                self.assertTrue("    permissions:\n      contents: read\n" in job,
+                                f"{job_name} must not inherit release write permissions")
+
     def test_codespell_referenced_files_exist(self) -> None:
         self.assertTrue((REPOSITORY_ROOT / ".codespellignore").is_file())
         self.assertTrue((REPOSITORY_ROOT / ".github/codespell-matcher.json").is_file())

@@ -484,6 +484,8 @@ jobs:
 
   verify:
     needs: prepare
+    permissions:
+      contents: read
     if: >-
       ${{
         always() &&
@@ -1548,6 +1550,8 @@ jobs:
             "${{ needs.prepare.outputs.upstream_tag }}"
 
   build-windows-package:
+    permissions:
+      contents: read
     needs:
       - build-windows-binaries
       - prepare
