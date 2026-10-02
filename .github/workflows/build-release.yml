@@ -11,7 +11,7 @@ on:
         required: false
         type: string
       build_number:
-        description: "Optional vendor build number. Defaults to the workflow run number."
+        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
         required: false
         type: string
       artifact_run_id:
@@ -58,7 +58,7 @@ on:
         required: false
         type: string
       build_number:
-        description: "Optional vendor build number. Defaults to the workflow run number."
+        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
         required: false
         type: string
       artifact_run_id:
@@ -271,7 +271,6 @@ jobs:
             exit 0
           fi
 
-          build_number="${INPUT_BUILD_NUMBER:-${GITHUB_RUN_NUMBER}}"
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           if [[ -n "${INPUT_UPSTREAM_TAG:-}" ]]; then
@@ -306,6 +305,14 @@ jobs:
             exit 0
           fi
 
+          if [[ -n "${INPUT_BUILD_NUMBER}" ]]; then
+            build_number="${INPUT_BUILD_NUMBER}"
+          else
+            build_number="$(
+              gh api "repos/${GITHUB_REPOSITORY}/tags" --paginate --jq '.[].name' |
+                python3 .github/scripts/next-release-build-number.py "${upstream_tag}"
+            )"
+          fi
           patched_tag="${upstream_tag}+${build_number}"
           release_name="${patched_tag#rust-v}"
           failure_marker_name="failed-upstream-release-${patched_tag}-${GITHUB_SHA}"
