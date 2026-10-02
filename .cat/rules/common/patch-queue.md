@@ -1,5 +1,14 @@
 # Patch queue
 
+## Design Goals
+
+- Keep downstream patches independently reviewable and applicable, with documented
+  configuration, upstream provenance, dependencies, and release versioning.
+- Accept patch verification only when the declared upstream checks pass on the
+  emitted patch applied to its declared base.
+
+## Guidance
+
 Apply these rules when creating, updating, or releasing patches under `patches/`.
 
 ## Layout
@@ -51,6 +60,16 @@ Apply these rules when creating, updating, or releasing patches under `patches/`
   intended outcome. Retain failing and passing commands and results in the
   patch commit message or task execution record. List current verification
   commands and expected outcomes in the patch README.
+- Before selecting verification commands, read the declared upstream base's
+  maintained check entry points and use their commands, options, and configuration.
+  Do not substitute a direct tool invocation for an upstream check wrapper or
+  omit its options when claiming that check passes. Focused checks supplement,
+  rather than replace, required upstream gates. For Codex formatting, run
+  `just fmt-check` from the patched checkout root; plain `cargo fmt -- --check`
+  does not establish that gate. After generating the patch, apply it to a fresh
+  checkout of its declared base with its documented prerequisites and rerun the
+  required checks there. Record the commands, results, base commit, and emitted
+  patch identity; an authoring-tree result does not verify the emitted patch.
 - When a local patch check reports an error in source unchanged from its
   declared upstream base, verify the base and compare the local toolchain,
   command, dependencies, configuration, environment, generated state, and

@@ -100,6 +100,57 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
 
             self.assertEqual(deletions.read_text().splitlines(), ["4", "5"])
 
+    def test_push_and_pull_round_trip_with_drive_letter_temp_path(self) -> None:
+        # A relative D: directory reproduces GNU tar's remote-host parsing on
+        # Linux. The hosted Windows check exercises the real drive-letter path.
+        with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-drive-") as directory:
+            root = Path(directory)
+            (root / "D:").mkdir()
+            source = root / "source"
+            dependency = source / "x86_64-pc-windows-msvc" / "release" / "deps" / "example.rlib"
+            dependency.parent.mkdir(parents=True)
+            dependency.write_bytes(b"compiled dependency")
+            stub_dir = root / "bin"
+            stub_dir.mkdir()
+            # These fixture processes model the registry and package-list
+            # boundaries while the production script runs real Bash and tar.
+            oras = stub_dir / "oras"
+            oras.write_text(
+                f"#!{sys.executable}\n"
+                "import os, shutil, sys\n"
+                "from pathlib import Path\n"
+                "remote = Path(os.environ['CACHE_TEST_REMOTE'])\n"
+                "if sys.argv[1] == 'push':\n"
+                "    shutil.copyfile('cargo-target.tar.zst', remote)\n"
+                "else:\n"
+                "    destination = Path(sys.argv[sys.argv.index('--output') + 1])\n"
+                "    shutil.copyfile(remote, destination / 'cargo-target.tar.zst')\n",
+                encoding="utf-8",
+            )
+            oras.chmod(0o755)
+            gh = stub_dir / "gh"
+            gh.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+            gh.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update(
+                PATH=f"{stub_dir}:{environment['PATH']}",
+                RUNNER_TEMP="D:",
+                CACHE_TEST_REMOTE=str(root / "registry-archive"),
+            )
+            target = root / "restored"
+            for operation, target_directory in (("push", source), ("pull", target)):
+                result = subprocess.run(
+                    ["bash", str(CACHE_SCRIPT), operation, "ghcr.io/example/cargo-cache",
+                     "cargo-v2-x86_64-pc-windows-msvc-off-" + "a" * 64,
+                     str(target_directory), "rust-v0.160.0"],
+                    cwd=root, env=environment, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (target / dependency.relative_to(source)).read_bytes(), b"compiled dependency",
+            )
+            self.assertEqual(list((root / "D:").iterdir()), [])
+
     def restore_dependencies(self, cache_tag: str, upstream_tag: str, stable_cache_missing: bool = False) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-test-") as directory:
             root = Path(directory)
@@ -112,13 +163,22 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             codex_dependency.write_bytes(b"reusable codex dependency")
             for binary in ("codex", "codex-code-mode-host", "codex-responses-api-proxy"):
                 (release / binary).write_bytes(b"cached executable")
+            (release / "bwrap").write_bytes(b"cached bwrap")
+            os.link(release / "codex", dependency.parent / "codex-hashed-binary")
+            os.link(release / "bwrap", dependency.parent / "bwrap-hashed-binary")
             symbol = release / "codex.dSYM" / "Contents" / "Resources" / "DWARF" / "codex"
             symbol.parent.mkdir(parents=True)
             symbol.write_bytes(b"cached symbols")
 
             archive = root / "cargo-target.tar.zst"
             subprocess.run(
-                ["tar", "--zstd", "-cf", str(archive), "-C", str(source), "."],
+                ["tar", "--zstd", "-cf", str(archive), "-C", str(source),
+                 "./x86_64-apple-darwin/release/codex",
+                 "./x86_64-apple-darwin/release/bwrap",
+                 "./x86_64-apple-darwin/release/deps",
+                 "./x86_64-apple-darwin/release/codex-code-mode-host",
+                 "./x86_64-apple-darwin/release/codex-responses-api-proxy",
+                 "./x86_64-apple-darwin/release/codex.dSYM"],
                 check=True,
             )
             stub_dir = root / "bin"
@@ -177,6 +237,11 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
                 (restored / "deps" / codex_dependency.name).read_bytes(),
                 b"reusable codex dependency",
             )
+            self.assertEqual((restored / "deps" / "codex-hashed-binary").read_bytes(),
+                             b"cached executable")
+            self.assertEqual((restored / "deps" / "bwrap-hashed-binary").read_bytes(),
+                             b"cached bwrap")
+            self.assertFalse((restored / "bwrap").exists())
             for binary in ("codex", "codex-code-mode-host", "codex-responses-api-proxy"):
                 self.assertFalse((restored / binary).exists(), binary)
             self.assertFalse((restored / "codex.dSYM").exists())

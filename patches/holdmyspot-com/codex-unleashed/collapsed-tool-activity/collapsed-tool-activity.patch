@@ -1,4 +1,4 @@
-From 236d4d5f0d69f86dc283060d63a4f1b9debcade5 Mon Sep 17 00:00:00 2001
+From 32b5bdaf08881e369dec52b02004da7a6b21d451 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Wed, 30 Sep 2026 19:15:02 -0400
 Subject: [PATCH] feat(tui): collapse tool activity only with project opt-in
@@ -89,6 +89,14 @@ Final combined-queue gates on the latest stable base:
   snapshots needed by the combined exec_flow gate; this feature patch does
   not contain unrelated snapshot or background-hint changes.
 - Combined feature, schema, and TUI formatting check: passed.
+
+Formatting correction verification (local Rust 1.98.0 / rustfmt 1.9.0):
+- On rust-v0.159.2 with the documented prerequisite and this feature patch,
+  just fmt-check RED: exit 1, four grouped-import differences; other groups pass.
+- After splitting those imports, just fmt-check GREEN: exit 0, all groups pass.
+- The plain cargo fmt receipts above do not establish upstream's formatting
+  gate: stable rustfmt ignores the unstable TOML setting but honors the CLI
+  override supplied by upstream's formatter wrapper.
 ---
  codex-rs/config/src/config_toml.rs            |   2 +
  codex-rs/core/config.schema.json              |   6 +
@@ -98,10 +106,10 @@ Final combined-queue gates on the latest stable base:
  codex-rs/features/src/tests.rs                |  13 ++
  codex-rs/tui/src/app/history_ui.rs            |   3 +
  codex-rs/tui/src/app/owned_transcript.rs      |   1 +
- .../tui/src/app/owned_transcript_tests.rs     | 104 ++++++++++
+ .../tui/src/app/owned_transcript_tests.rs     | 106 ++++++++++
  codex-rs/tui/src/chatwidget.rs                |   6 +-
  .../tui/src/chatwidget/activity_groups.rs     |   2 +-
- .../tui/src/chatwidget/command_lifecycle.rs   |  33 ++--
+ .../tui/src/chatwidget/command_lifecycle.rs   |  33 +--
  .../tui/src/chatwidget/tests/exec_flow.rs     | 170 ++++++++++++++++
  codex-rs/tui/src/chatwidget/tests/helpers.rs  |   5 +
  codex-rs/tui/src/exec_cell/mod.rs             |   1 +
@@ -112,15 +120,15 @@ Final combined-queue gates on the latest stable base:
  codex-rs/tui/src/thread_transcript.rs         |   4 +-
  .../src/thread_transcript/activity_pages.rs   |  10 +-
  .../thread_transcript/exploration_groups.rs   |  17 +-
- .../tui/src/thread_transcript/tools_tests.rs  |  67 +++++++
+ .../tui/src/thread_transcript/tools_tests.rs  |  67 ++++++
  codex-rs/tui/src/transcript_view.rs           |  17 +-
  .../tui/src/transcript_view/disclosure.rs     |  25 ++-
  codex-rs/tui/src/transcript_view/input.rs     |  15 ++
  codex-rs/tui/src/transcript_view/layout.rs    |  16 +-
  codex-rs/tui/src/transcript_view/text.rs      |   4 +
  .../tui/src/transcript_view/tool_activity.rs  | 113 +++++++++++
- codex-rs/tui/src/transcript_view_tests.rs     | 187 ++++++++++++++++++
- 30 files changed, 1073 insertions(+), 36 deletions(-)
+ codex-rs/tui/src/transcript_view_tests.rs     | 190 ++++++++++++++++++
+ 30 files changed, 1078 insertions(+), 36 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/tool_activity.rs
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
@@ -299,15 +307,17 @@ index 2e07262..64d6761 100644
 +        view.sync_tool_activity_turn(&self.transcript_cells, chat_widget.is_task_running());
          let detailed = view.is_detailed();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 46c0da6..645838b 100644
+index 46c0da6..010ec97 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -1514 +1514,105 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
+@@ -1514 +1514,107 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
  }
 +
 +#[tokio::test]
 +async fn unleashed_collapsed_tool_activity_turn_completion_closes_live_expansion() {
-+    use codex_app_server_protocol::{CommandExecutionSource, CommandExecutionStatus, ThreadItem};
++    use codex_app_server_protocol::CommandExecutionSource;
++    use codex_app_server_protocol::CommandExecutionStatus;
++    use codex_app_server_protocol::ThreadItem;
 +    let (mut app, mut events, _operations) = make_test_app_with_channels().await;
 +    assert!(app.chat_widget.set_feature_enabled(
 +        codex_features::Feature::UnleashedCollapsedToolActivity,
@@ -1341,15 +1351,16 @@ index 0000000..52be250
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index 8492e22..b0c9fd1 100644
+index 8492e22..c8762ff 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
-@@ -1094 +1094,188 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
+@@ -1094 +1094,191 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
  }
 +
 +#[test]
 +fn unleashed_collapsed_tool_activity_hover_and_click_toggle_complete_section() {
-+    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use crate::exec_cell::CommandOutput;
++    use crate::exec_cell::new_active_exec_command;
 +    use codex_app_server_protocol::CommandExecutionSource;
 +    use ratatui::style::Color;
 +    use std::time::Duration;
@@ -1429,7 +1440,8 @@ index 8492e22..b0c9fd1 100644
 +
 +#[test]
 +fn unleashed_collapsed_tool_activity_summary_click_expands_without_footer() {
-+    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use crate::exec_cell::CommandOutput;
++    use crate::exec_cell::new_active_exec_command;
 +    use codex_app_server_protocol::CommandExecutionSource;
 +    let mut command = new_active_exec_command(
 +        "click".into(),
@@ -1489,7 +1501,8 @@ index 8492e22..b0c9fd1 100644
 +
 +#[test]
 +fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_visible() {
-+    use crate::exec_cell::{CommandOutput, new_active_exec_command};
++    use crate::exec_cell::CommandOutput;
++    use crate::exec_cell::new_active_exec_command;
 +    use codex_app_server_protocol::CommandExecutionSource;
 +    let script = format!("echo first\necho {}", "long command ".repeat(100));
 +    let mut command = new_active_exec_command(

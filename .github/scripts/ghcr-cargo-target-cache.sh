@@ -96,14 +96,13 @@ case "$operation" in
         --allow-path-traversal \
         --output "$archive_directory"
     fi
-    # Reuse compiled dependencies, but rebuild release executables and their
-    # symbols from the current patch set and build metadata. Cached executables
-    # can otherwise survive a Cargo build without the matching macOS dSYM.
-    tar --zstd -xf "$archive_directory/cargo-target.tar.zst" -C "$target_directory" \
-      --exclude='./*/release/codex*' \
-      --exclude='./*/release/bwrap*'
-    # Enforce the same result when tar matches exclusions differently or an
-    # earlier cache layer already placed release outputs in the target tree.
+    # Extract before removing release outputs: dependency entries can be hard
+    # links to those executables. Excluding their targets breaks extraction.
+    # Stream the archive so GNU tar never interprets a Windows drive letter
+    # in its filename as a remote-host specification.
+    tar --zstd -xf - -C "$target_directory" < "$archive_directory/cargo-target.tar.zst"
+    # Reuse compiled dependencies, but rebuild release executables and symbols
+    # from the current patch set and build metadata, including matching dSYMs.
     release_dir="$target_directory/$cache_target/release"
     if [[ -d "$release_dir" ]]; then
       for artifact in "$release_dir"/codex* "$release_dir"/bwrap*; do
@@ -125,7 +124,7 @@ case "$operation" in
     archive_directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/codex-ghcr-cache.XXXXXX")"
     trap 'rm -rf "$archive_directory"' EXIT
     archive="$archive_directory/cargo-target.tar.zst"
-    tar --zstd -cf "$archive" -C "$target_directory" .
+    tar --zstd -cf - -C "$target_directory" . > "$archive"
     (
       cd "$archive_directory"
       oras push "$reference" \

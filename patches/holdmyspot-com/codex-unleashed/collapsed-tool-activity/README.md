@@ -104,11 +104,16 @@ published configuration schema matches the generated schema.
 
 ## Formatting
 
-Run from `codex-rs/`:
+Run from the patched upstream checkout root:
 
 ```sh
-cargo fmt --package codex-features --package codex-config --package codex-core --package codex-tui -- --check
+just fmt-check
 ```
+
+The check expects all upstream formatter groups to pass. It supplies the Rust
+import-formatting options required by CI; plain `cargo fmt -- --check` does
+not establish the same result. Verify the emitted patch in a fresh checkout of
+the declared base with its documented prerequisite applied.
 
 ## Upstream status
 

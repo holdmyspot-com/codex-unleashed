@@ -1,0 +1,18 @@
+{
+  "guidance": ".cat/rules/common/patch-queue.md",
+  "response": "For each case, identify the verification command to select, its execution context, and the evidence needed for the stated claim. Read the guidance before deciding; inspect the declared upstream entry point when available.",
+  "cases": [
+    {
+      "input": "An openai/codex patch adds grouped Rust imports and needs a formatting acceptance result on its declared upstream base.",
+      "acceptance": "Select upstream just fmt-check rather than plain cargo fmt. Preserve its options and configuration. Verify the emitted patch on a fresh declared-base checkout with documented prerequisites. Record command, result, base commit, and patch identity."
+    },
+    {
+      "input": "A patch to another repository needs its lint acceptance result. The declared upstream base provides a maintained make lint wrapper that supplies flags and configuration to the linter.",
+      "acceptance": "Read and select the upstream make lint entry point; do not replace it with a direct linter invocation. Verify the emitted patch on a fresh declared-base checkout with prerequisites and record its identity and result."
+    },
+    {
+      "input": "A developer asks only for one focused behavior test, with no upstream formatting, lint, or full-gate acceptance claim.",
+      "acceptance": "Run and report the focused test without imposing unrelated formatter or lint gates or claiming they passed."
+    }
+  ]
+}

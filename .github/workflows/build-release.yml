@@ -1526,6 +1526,7 @@ jobs:
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
           GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash .github/scripts/ghcr-cargo-target-cache.sh push \
@@ -1541,6 +1542,7 @@ jobs:
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
           GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash .github/scripts/ghcr-cargo-target-cache.sh prune \
@@ -1648,12 +1650,14 @@ jobs:
   publish:
     needs:
       - prepare
+      - verify
       - build-unix
       - build-windows-package
     if: >-
       ${{
         always() &&
         !cancelled() &&
+        needs.verify.result == 'success' &&
         needs.prepare.outputs.should_release == 'true' &&
         (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == '' &&
