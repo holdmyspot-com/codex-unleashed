@@ -32,12 +32,18 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
             environment = os.environ.copy()
-            environment.update(CARGO_TARGET_DIR=str(root / "target"), CARGO_CACHE_SOURCE_ID="upstream:patch-one")
+            cargo_home = root / ".cargo-home"
+            cargo_home.mkdir()
+            cache_marker = cargo_home / "download-state"
+            cache_marker.write_text("initial downloaded dependency state")
+            environment.update(CARGO_TARGET_DIR=str(root / "target"), CARGO_HOME=str(cargo_home),
+                               CARGO_CACHE_SOURCE_ID="upstream:patch-one")
             cleanup = ["python3", str(SCRIPT), str(root), target, "app"]
             build = ["cargo", "build", "--offline", "--release", "--target", target,
                      "--message-format=json"]
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)
             subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            cache_marker.write_text("download state refreshed during compilation")
             record = ["python3", str(SCRIPT), "--record-source-inputs", str(root), target]
             subprocess.run(record, env=environment, check=True, capture_output=True)
 

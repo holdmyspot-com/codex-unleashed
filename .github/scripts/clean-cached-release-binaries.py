@@ -19,22 +19,28 @@ import sys
 LIBRARY_TARGET_KINDS = frozenset({"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"})
 
 
-def source_inputs(workspace: Path, target_directory: Path) -> tuple[Path, dict]:
-    """Return the checkout root and file digests, excluding build outputs."""
+def source_inputs(workspace: Path, target_directory: Path, cargo_home: Path | None = None) -> tuple[Path, dict]:
+    """Return source digests and timestamps, excluding compiled outputs and Cargo downloads."""
     repository = subprocess.run(["git", "-C", str(workspace), "rev-parse", "--show-toplevel"],
                                 capture_output=True, text=True)
     root = Path(repository.stdout.strip()) if repository.returncode == 0 else workspace
+    excluded = [target_directory.resolve()]
+    if cargo_home is not None:
+        excluded.append(cargo_home.resolve())
     if repository.returncode == 0:
-        names = subprocess.check_output(
-            ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
-        ).split(b"\0")
+        tracked = subprocess.check_output(["git", "-C", str(root), "ls-files", "--cached", "-z"])
+        pathspecs = ["."] + [f":(exclude,literal){path.relative_to(root).as_posix()}"
+                             for path in excluded if root in path.parents]
+        untracked = subprocess.check_output(
+            ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard", "-z", "--", *pathspecs])
+        names = (tracked + untracked).split(b"\0")
         paths = [root / os.fsdecode(name) for name in names if name]
     else:
         paths = []
         for directory, children, files in os.walk(root):
             children[:] = [name for name in children
                            if name not in {".git", "target", "node_modules"}
-                           and (Path(directory) / name).resolve() != target_directory.resolve()]
+                           and (Path(directory) / name).resolve() not in excluded]
             paths.extend(Path(directory) / name for name in files)
     resolved_target = target_directory.resolve()
     sources = [path for path in paths if path.is_file() and resolved_target not in path.resolve().parents]
@@ -111,7 +117,8 @@ def main() -> int:
     target_directory = Path(metadata.get("target_directory", os.environ.get("CARGO_TARGET_DIR", workspace / "target")))
     snapshot = target_directory / ".codex-source-inputs" / f"{target_directory_name}.json"
     pending = snapshot.with_suffix(".pending")
-    source_root, current_inputs = source_inputs(workspace, target_directory)
+    cargo_home = Path(os.environ["CARGO_HOME"]) if os.environ.get("CARGO_HOME") else None
+    source_root, current_inputs = source_inputs(workspace, target_directory, cargo_home)
     if record_sources:
         prepared = json.loads(pending.read_text(encoding="utf-8")) if pending.is_file() else None
         # Cargo can create or refresh its lockfile while resolving the build.
