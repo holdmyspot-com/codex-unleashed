@@ -77,6 +77,31 @@ def main() -> int:
         print(f"Release binaries absent from Cargo metadata: {', '.join(missing)}", file=sys.stderr)
         return 1
 
+    source_id = os.environ.get("CARGO_CACHE_SOURCE_ID")
+    if source_id is not None:
+        if not source_id.strip():
+            print("CARGO_CACHE_SOURCE_ID must not be empty", file=sys.stderr)
+            return 2
+        identity_file = Path(metadata["target_directory"]) / ".codex-source-identities" / target_directory_name
+        previous_id = identity_file.read_text(encoding="utf-8") if identity_file.exists() else None
+        if previous_id != source_id:
+            # The archive can contain workspace outputs from a different patch set.
+            # Clear those outputs before recording the inputs their replacements use.
+            command = [cargo, "clean", "--release", "--target", target, "--manifest-path", str(manifest)]
+            workspace_members = set(metadata["workspace_members"])
+            packages = sorted(package["name"] for package in metadata["packages"]
+                              if package["id"] in workspace_members)
+            for package in packages:
+                command.extend(["-p", package])
+            subprocess.run(command, check=True)
+            identity_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary_identity = identity_file.with_suffix(".tmp")
+            temporary_identity.write_text(source_id, encoding="utf-8")
+            temporary_identity.replace(identity_file)
+            print(f"Source identity changed or absent; rebuilding {len(packages)} workspace packages; "
+                  "external dependencies retained.")
+            return 0
+
     library_owners = {
         package["name"]
         for package in metadata["packages"]

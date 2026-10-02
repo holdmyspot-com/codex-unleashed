@@ -58,6 +58,16 @@ class ReleaseWorkflowTest(unittest.TestCase):
             with self.subTest(step=step.splitlines()[0]):
                 self.assertIn("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}", step)
 
+    def test_native_cache_consumers_normalize_source_timestamps(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        for name in ("build-unix", "build-windows-binaries"):
+            with self.subTest(job=name):
+                job = re.split(r"\n  \S", workflow.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]
+                self.assertIn('python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"', job)
+                self.assertIn("CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}", job)
+                self.assertLess(job.index("Normalize patched source timestamps"),
+                                job.index("Restore GHCR Cargo target cache"))
+
     def test_codespell_referenced_files_exist(self) -> None:
         self.assertTrue((REPOSITORY_ROOT / ".codespellignore").is_file())
         self.assertTrue((REPOSITORY_ROOT / ".github/codespell-matcher.json").is_file())

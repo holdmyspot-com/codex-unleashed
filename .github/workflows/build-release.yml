@@ -598,6 +598,7 @@ jobs:
       packages: write
     env:
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_INCREMENTAL: "0"
@@ -718,22 +719,7 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
         run: |
           set -euo pipefail
-          python3 - "$SOURCE_DATE_EPOCH" <<'PY'
-          import os
-          import sys
-
-          timestamp = int(sys.argv[1])
-          # Cargo fingerprints include directory mtimes for build-script
-          # inputs. Walk bottom-up so changing a child does not immediately
-          # make its parent directory newer than the cached fingerprint.
-          for root, directories, files in os.walk("upstream", topdown=False):
-              directories[:] = [directory for directory in directories if directory != ".git"]
-              for filename in files:
-                  os.utime(os.path.join(root, filename), (timestamp, timestamp))
-              for directory in directories:
-                  os.utime(os.path.join(root, directory), (timestamp, timestamp))
-          os.utime("upstream", (timestamp, timestamp))
-          PY
+          python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
 
       - name: Align upstream checkout with release path
         shell: bash
@@ -1207,6 +1193,7 @@ jobs:
       packages: write
     env:
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}
       SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
       CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
       CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_gzip_mtime }}
@@ -1226,6 +1213,14 @@ jobs:
         with:
           upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
           expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
+
+      - name: Normalize patched source timestamps
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
 
       - name: Record source provenance
         shell: bash

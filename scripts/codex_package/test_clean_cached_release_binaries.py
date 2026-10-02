@@ -127,6 +127,99 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
                     self.assertEqual(marker.read_text(encoding="utf-8"), "unrelated cache")
                     self.assertEqual(binary.read_text(encoding="utf-8"), "unrelated binary")
 
+    def test_changed_source_identity_rebuilds_normalized_library(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-source-identity-test-") as directory:
+            root = Path(directory) / "workspace"
+            root.mkdir()
+            (root / "src").mkdir()
+            (root / "Cargo.toml").write_text(
+                '[package]\nname="source-demo"\nversion="0.1.0"\nedition="2021"\n'
+                '[workspace]\nmembers=["."]\nexclude=["dependency"]\n'
+                '[dependencies]\ncached-dependency={path="../dependency"}\n',
+                encoding="utf-8",
+            )
+            dependency = Path(directory) / "dependency"
+            (dependency / "src").mkdir(parents=True)
+            (dependency / "Cargo.toml").write_text(
+                '[package]\nname="cached-dependency"\nversion="0.1.0"\nedition="2021"\n',
+                encoding="utf-8",
+            )
+            (dependency / "src/lib.rs").write_text("pub fn value() {}\n", encoding="utf-8")
+            source = root / "src/lib.rs"
+            source.write_text("pub fn value() -> u8 { 7 }\n", encoding="utf-8")
+            (root / "src/main.rs").write_text(
+                'fn main() { println!("{}", source_demo::value()); }\n', encoding="utf-8"
+            )
+            target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
+            environment = os.environ.copy()
+            environment["CARGO_TARGET_DIR"] = str(root / "target")
+            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-one"
+            metadata = json.loads(subprocess.check_output(
+                ["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=root, env=environment, text=True))
+            self.assertEqual(len(metadata["workspace_members"]), 1, metadata["workspace_members"])
+            cleanup = ["python3", str(SCRIPT), str(root), target, "source-demo"]
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            os.utime(source, (1000000000, 1000000000))
+            build = ["cargo", "build", "--offline", "--release", "--target", target,
+                     "--message-format=json"]
+            subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            source.write_text("pub fn value() -> u8 { 9 }\n", encoding="utf-8")
+            os.utime(source, (1000000000, 1000000000))
+            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-two"
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True,
+                                    capture_output=True, text=True)
+            libraries = [message for line in result.stdout.splitlines()
+                         if (message := json.loads(line)).get("reason") == "compiler-artifact"
+                         and message["target"]["name"] == "source_demo"]
+            self.assertTrue(libraries)
+            self.assertTrue(all(not message["fresh"] for message in libraries))
+            dependencies = [message for line in result.stdout.splitlines()
+                            if (message := json.loads(line)).get("reason") == "compiler-artifact"
+                            and message["target"]["name"] == "cached_dependency"]
+            self.assertTrue(dependencies)
+            self.assertTrue(all(message["fresh"] for message in dependencies), result.stderr)
+            binary = root / "target" / target / "release" / ("source-demo.exe" if os.name == "nt" else "source-demo")
+            self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "9")
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True,
+                                    capture_output=True, text=True)
+            libraries = [message for line in result.stdout.splitlines()
+                         if (message := json.loads(line)).get("reason") == "compiler-artifact"
+                         and message["target"]["name"] == "source_demo"]
+            self.assertTrue(all(message["fresh"] for message in libraries))
+
+    def test_failed_source_invalidation_keeps_previous_identity_for_retry(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-source-identity-test-") as directory:
+            root = Path(directory)
+            target_directory = root / "target"
+            identity = target_directory / ".codex-source-identities" / "test-target"
+            identity.parent.mkdir(parents=True)
+            identity.write_text("old-inputs", encoding="utf-8")
+            metadata = {
+                "target_directory": str(target_directory), "workspace_members": ["demo-id"],
+                "packages": [{"id": "demo-id", "name": "demo", "targets": [
+                    {"name": "demo", "kind": ["bin"]}, {"name": "demo", "kind": ["lib"]}]}],
+            }
+            cargo = root / "cargo"
+            cargo.write_text(
+                "#!/usr/bin/env python3\nimport json, os, sys\n"
+                f"metadata = {metadata!r}\n"
+                "if sys.argv[1] == 'metadata': print(json.dumps(metadata))\n"
+                "elif sys.argv[1] == 'clean': sys.exit(int(os.environ['FAIL_CLEAN']))\n"
+                "else: sys.exit(2)\n", encoding="utf-8",
+            )
+            cargo.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update(CARGO=str(cargo), CARGO_CACHE_SOURCE_ID="new-inputs", FAIL_CLEAN="1")
+            command = ["python3", str(SCRIPT), str(root), "test-target", "demo"]
+            result = subprocess.run(command, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(identity.read_text(encoding="utf-8"), "old-inputs")
+            environment["FAIL_CLEAN"] = "0"
+            subprocess.run(command, env=environment, check=True, capture_output=True)
+            self.assertEqual(identity.read_text(encoding="utf-8"), "new-inputs")
+
     def test_cleans_packages_owning_requested_binaries(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-cargo-clean-test-") as directory:
             root = Path(directory)
