@@ -169,7 +169,7 @@ def main() -> int:
     version = npm_version(release_version)
     if not args.scope.startswith("@"):
         raise SystemExit("--scope must include the @ prefix")
-    output = args.output_dir or Path(tempfile.mkdtemp(prefix="codex-npm-"))
+    output = (args.output_dir or Path(tempfile.mkdtemp(prefix="codex-npm-"))).resolve()
     output.mkdir(parents=True, exist_ok=True)
     archives = args.archive_dir or output / "archives"
     archives.mkdir(parents=True, exist_ok=True)
