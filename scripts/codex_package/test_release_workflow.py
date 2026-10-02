@@ -2,8 +2,11 @@
 
 from pathlib import Path
 import json
+import os
 import re
 import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
@@ -67,6 +70,72 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 self.assertIn("CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}", job)
                 self.assertLess(job.index("Normalize patched source timestamps"),
                                 job.index("Restore GHCR Cargo target cache"))
+
+    def test_windows_cache_audit_records_library_reuse_before_main_build(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        job = workflow.split("\n  build-windows-binaries:\n", 1)[1].split("\n  build-windows-package:\n", 1)[0]
+        self.assertIn("Build Windows sandbox helper binaries", job)
+        self.assertIn("cargo build --target", job)
+        self.assertIn("--message-format=json-render-diagnostics", job)
+        self.assertEqual(job.count("for binary in ${{ matrix.helper_binaries }}"), 1)
+        self.assertEqual(job.count("scripts/run-cancellable-command.sh"), 2)
+        self.assertEqual(job.count("LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC"), 1)
+        environment_step = job.split("Configure Windows Cargo build environment", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("matrix.target == 'x86_64-pc-windows-msvc'", environment_step)
+        self.assertLess(job.index("Configure Windows Cargo build environment"),
+                        job.index("Build Windows sandbox helper binaries"))
+        self.assertIn("${{ matrix.helper_binaries }}", job)
+        self.assertIn("scripts/run-cancellable-command.sh", job)
+        self.assertIn("cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl", job)
+        self.assertLess(job.index("Rebuild release binaries from cached dependencies"),
+                        job.index("Build Windows sandbox helper binaries"))
+        self.assertLess(job.index("Upload Windows library cache reuse report"),
+                        job.index("Cargo build (Windows binaries)"))
+
+    def test_library_cache_audit_command_records_actual_cargo_reuse(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        step = workflow.split("      - name: Build Windows sandbox helper binaries\n", 1)[1]
+        step = step.split("\n      - name:", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
+        command = command.replace("${{ matrix.target }}", target).replace("${{ matrix.bundle }}", "primary")
+        command = command.replace("${{ matrix.helper_binaries }}", "codex-windows-sandbox")
+        with tempfile.TemporaryDirectory(prefix="codex-cache-audit-test-") as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "reports").mkdir()
+            (root / "Cargo.toml").write_text(
+                '[package]\nname="codex-windows-sandbox"\nversion="0.1.0"\nedition="2021"\n',
+                encoding="utf-8",
+            )
+            (root / "src/lib.rs").write_text("pub fn value() -> u8 { 7 }\n", encoding="utf-8")
+            (root / "src/main.rs").write_text(
+                'fn main() { let unused_warning = 1; println!("{}", codex_windows_sandbox::value()); }\n', encoding="utf-8"
+            )
+            environment = os.environ.copy()
+            environment.update(CARGO_TARGET_DIR=str(root / "target"), RUNNER_TEMP=str(root / "reports"),
+                               CARGO_CACHE_SOURCE_ID="unchanged-inputs", GITHUB_WORKSPACE=str(REPOSITORY_ROOT))
+            cleanup = ["python3", str(REPOSITORY_ROOT / ".github/scripts/clean-cached-release-binaries.py"),
+                       str(root), target, "codex-windows-sandbox"]
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            subprocess.run(["cargo", "build", "--offline", "--release", "--target", target],
+                           cwd=root, env=environment, check=True, capture_output=True)
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(["bash", "-c", command], cwd=root, env=environment,
+                                    check=True, capture_output=True, text=True)
+            self.assertIn("unused_warning", result.stderr)
+            report = root / "reports" / f"cargo-cache-reuse-{target}-primary.jsonl"
+            messages = [json.loads(line) for line in report.read_text(encoding="utf-8").splitlines()]
+            libraries = [message for message in messages if message.get("reason") == "compiler-artifact"
+                         and message["target"]["name"] == "codex_windows_sandbox"]
+            self.assertEqual(len(libraries), 1)
+            self.assertTrue(libraries[0]["fresh"])
+            self.assertEqual(libraries[0]["target"]["kind"], ["lib"])
+            binaries = [message for message in messages if message.get("reason") == "compiler-artifact"
+                        and message["target"]["kind"] == ["bin"]]
+            self.assertEqual(len(binaries), 1)
+            self.assertFalse(binaries[0]["fresh"])
+            self.assertEqual(messages[-1], {"reason": "build-finished", "success": True})
 
     def test_codespell_referenced_files_exist(self) -> None:
         self.assertTrue((REPOSITORY_ROOT / ".codespellignore").is_file())

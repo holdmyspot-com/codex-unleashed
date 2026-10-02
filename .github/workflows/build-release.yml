@@ -1381,28 +1381,45 @@ jobs:
             "${{ matrix.target }}" \
             ${{ matrix.binaries }} ${{ matrix.helper_binaries }}
 
+      - name: Configure Windows Cargo build environment
+        if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+        shell: bash
+        run: echo "LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC" >> "$GITHUB_ENV"
+
+      - name: Build Windows sandbox helper binaries
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          helper_build_args=()
+          for binary in ${{ matrix.helper_binaries }}; do
+            helper_build_args+=(--bin "$binary")
+          done
+          bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
+            cargo build --target "${{ matrix.target }}" --release --timings \
+            --message-format=json-render-diagnostics "${helper_build_args[@]}" \
+            > "$RUNNER_TEMP/cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl"
+
+      - name: Upload Windows library cache reuse report
+        if: ${{ inputs.cache_audit == true }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl
+          if-no-files-found: error
+
       - name: Cargo build (Windows binaries)
         working-directory: upstream/codex-rs
         shell: bash
         run: |
           set -euo pipefail
           target="${{ matrix.target }}"
-          if [[ "$target" == "x86_64-pc-windows-msvc" ]]; then
-            export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
-          fi
           build_args=()
           for binary in ${{ matrix.binaries }}; do
             build_args+=(--bin "$binary")
           done
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
             cargo build --target "$target" --release --timings "${build_args[@]}"
-
-          helper_build_args=()
-          for binary in ${{ matrix.helper_binaries }}; do
-            helper_build_args+=(--bin "$binary")
-          done
-          bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
-            cargo build --target "$target" --release --timings "${helper_build_args[@]}"
 
       - name: Prepare third-party Cargo licenses
         working-directory: upstream/codex-rs
