@@ -1,19 +1,45 @@
-From b447fc6d703df514395a3342cd98ecf4eb79b13b Mon Sep 17 00:00:00 2001
+From a902a91db2ad75e4b75d39aed21d8c2cbe3a1ece Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 29 Sep 2026 11:13:44 -0400
-Subject: [PATCH] Keep subagent switches responsive with long history
+Date: Fri, 2 Oct 2026 14:23:51 -0400
+Subject: [PATCH] Keep history replay and subagent switches responsive
 
+Retain bounded initial history hydration and older-page navigation. Skip
+visualization permission-context construction for ordinary replayed and
+completed assistant markdown and plain transcript pages. Visualization
+references keep fresh permission and fragment validation; live streams
+retain context for references arriving in later chunks.
+
+Preserve the stable default-enabled unleashed_agent_fast_switching feature
+and its latest-compaction window for agent switching.
+
+TDD on rust-v0.159.1 (8e68a98ef03cdde76d2e6800791ebdf1b3b95b24):
+just test -p codex-tui -E
+  'test(replay_plain_assistant_messages_with_many_writable_roots_stays_responsive)'
+RED: fails after 46.220s and 45.994s (exit 100), all message content retained.
+GREEN: regression passes in 0.190s; focused replay, pagination,
+visualization and switching selection passes 26/26 (exit 0).
+just fmt-check: passes (exit 0), including all upstream formatter groups.
+Full TUI suite and fresh emitted-patch checks are recorded in the execution
+record; baseline snapshot differences require unpatched comparison.
+
+Execution record:
+.cat/work/reports/resume-profile-01a0aa21/implementation.json
 ---
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/features/src/lib.rs                  |   8 +
  codex-rs/tui/src/app/reconnect.rs             |   4 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
+ .../app/tests/pagination_completion_tests.rs  |  13 ++
  .../app/tests/session_lifecycle_requests.rs   | 203 ++++++++++++++++++
  codex-rs/tui/src/app/thread_events.rs         |  26 ++-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
- .../src/chatwidget/tests/history_replay.rs    |  44 ++++
- 9 files changed, 305 insertions(+), 5 deletions(-)
+ codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
+ .../src/chatwidget/tests/history_replay.rs    | 103 +++++++++
+ codex-rs/tui/src/inline_visualization.rs      |  12 ++
+ .../tui/src/inline_visualization_tests.rs     |  59 +++++
+ codex-rs/tui/src/thread_transcript.rs         |  14 +-
+ 14 files changed, 464 insertions(+), 9 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
 index af8f05e..547de98 100644
@@ -108,6 +134,30 @@ index a25fcab..8a60fe6 100644
          .await
          .expect("detached thread should reactivate for replay");
      app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
+diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+index d3d9849..d4d620e 100644
+--- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
++++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
+@@ -206,6 +206,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
+                 crate::app_server_session::ResumeModelSettings::RestoreFromThread,
+             )
+             .await?;
++        let initial_answers = started
++            .turns
++            .iter()
++            .flat_map(|turn| &turn.items)
++            .filter_map(|item| match item {
++                ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
++                _ => None,
++            })
++            .collect::<Vec<_>>();
++        assert!(initial_answers.contains(&"Newest answer"));
++        assert!(!initial_answers.contains(&"Middle answer"));
++        assert!(!initial_answers.contains(&"Oldest answer"));
++
+         app.transcript_cells = crate::thread_transcript::thread_items_to_transcript_cells(
+             Some(thread_id),
+             &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 index 3525357..f106359 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
@@ -398,14 +448,101 @@ index a3501c3..b874987 100644
          Some((receiver, snapshot))
      }
  
+diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
+index d1d17f8..9b95470 100644
+--- a/codex-rs/tui/src/chatwidget/streaming.rs
++++ b/codex-rs/tui/src/chatwidget/streaming.rs
+@@ -124,9 +124,10 @@ impl ChatWidget {
+             });
+             if let Some(source) = source {
+                 let inline_visualization_context = self.thread_id.and_then(|thread_id| {
+-                    crate::inline_visualization::InlineVisualizationContext::from_config(
++                    crate::inline_visualization::InlineVisualizationContext::from_config_for_markdown(
+                         &self.config,
+                         thread_id,
++                        &source,
+                     )
+                 });
+                 self.note_stream_consolidation_queued();
+@@ -429,9 +430,10 @@ impl ChatWidget {
+             self.mark_safety_buffering_agent_message_started();
+             self.bottom_pane.hide_status_indicator();
+             let context = self.thread_id.and_then(|thread_id| {
+-                crate::inline_visualization::InlineVisualizationContext::from_config(
++                crate::inline_visualization::InlineVisualizationContext::from_config_for_markdown(
+                     &self.config,
+                     thread_id,
++                    &parsed.visible_markdown,
+                 )
+             });
+             self.add_to_history(
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index ad26ff9..9aac058 100644
+index ad26ff9..1d6e822 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -79,6 +79,50 @@ async fn resumed_initial_messages_render_history() {
+@@ -79,6 +79,109 @@ async fn resumed_initial_messages_render_history() {
      );
  }
  
++#[tokio::test]
++async fn replay_plain_assistant_messages_with_many_writable_roots_stays_responsive() {
++    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
++    let workspace = tempfile::tempdir().expect("temporary writable roots");
++    let mut entries = vec![FileSystemSandboxEntry {
++        path: FileSystemPath::Special {
++            value: FileSystemSpecialPath::Root,
++        },
++        access: FileSystemAccessMode::Read,
++        missing_path_behavior: None,
++    }];
++    for index in 0..64 {
++        let root = workspace.path().join(format!("root-{index}"));
++        std::fs::create_dir(&root).expect("create writable root");
++        entries.push(FileSystemSandboxEntry {
++            path: FileSystemPath::Path {
++                path: codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(root)
++                    .expect("absolute writable root")
++                    .into(),
++            },
++            access: FileSystemAccessMode::Write,
++            missing_path_behavior: None,
++        });
++    }
++    chat.config
++        .permissions
++        .set_permission_profile(PermissionProfile::Managed {
++            network: NetworkSandboxPolicy::Restricted,
++            file_system: ManagedFileSystemPermissions::Restricted {
++                entries,
++                glob_scan_max_depth: None,
++            },
++        })
++        .expect("set permission profile");
++    chat.thread_id = Some(ThreadId::new());
++
++    let started = std::time::Instant::now();
++    for index in 0..32 {
++        replay_agent_message(
++            &mut chat,
++            &format!("assistant-{index}"),
++            format!("Retained assistant message {index}."),
++            ReplayKind::ResumeInitialMessages,
++        );
++    }
++    let elapsed = started.elapsed();
++    let rendered = drain_insert_history(&mut rx)
++        .iter()
++        .map(|lines| lines_to_single_string(lines))
++        .collect::<String>();
++    for index in 0..32 {
++        assert!(rendered.contains(&format!("Retained assistant message {index}.")));
++    }
++    assert!(
++        elapsed < std::time::Duration::from_secs(/*secs*/ 3),
++        "plain assistant history replay took {elapsed:?} with many writable roots"
++    );
++}
++
 +#[tokio::test]
 +async fn initial_resume_keeps_compacted_history_when_fast_switching_is_enabled() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -453,6 +590,125 @@ index ad26ff9..9aac058 100644
  #[tokio::test]
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
+index 5f5c9cd..143ec23 100644
+--- a/codex-rs/tui/src/inline_visualization.rs
++++ b/codex-rs/tui/src/inline_visualization.rs
+@@ -46,6 +46,18 @@ impl InlineVisualizationContext {
+         Self::new_with_writable_roots(codex_home, thread_id, std::iter::empty())
+     }
+ 
++    pub(crate) fn from_config_for_markdown(
++        config: &crate::legacy_core::config::Config,
++        thread_id: ThreadId,
++        markdown: &str,
++    ) -> Option<Self> {
++        if !contains_inline_visualization(markdown) {
++            return None;
++        }
++
++        Self::from_config(config, thread_id)
++    }
++
+     pub(crate) fn from_config(
+         config: &crate::legacy_core::config::Config,
+         thread_id: ThreadId,
+diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
+index 7105d7c..7c1a914 100644
+--- a/codex-rs/tui/src/inline_visualization_tests.rs
++++ b/codex-rs/tui/src/inline_visualization_tests.rs
+@@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
+     (codex_home, context)
+ }
+ 
++#[tokio::test]
++async fn markdown_context_keeps_visualization_links_and_rechecks_permissions() {
++    use crate::legacy_core::config::ConfigBuilder;
++    use crate::legacy_core::config::ConfigOverrides;
++    use codex_config::LoaderOverrides;
++    use codex_protocol::models::PermissionProfile;
++    use codex_protocol::permissions::NetworkSandboxPolicy;
++    use codex_utils_absolute_path::AbsolutePathBuf;
++
++    let codex_home = tempfile::tempdir().expect("temporary codex home");
++    let mut config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(codex_home.path().to_path_buf()),
++            ..ConfigOverrides::default()
++        })
++        .build()
++        .await
++        .expect("isolated config");
++    config
++        .permissions
++        .set_permission_profile(PermissionProfile::read_only())
++        .expect("read-only permissions");
++    let thread_id = ThreadId::new();
++    assert!(
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, "Plain answer")
++            .is_none()
++    );
++    let markdown = "::codex-inline-vis{file=\"chart.html\"}";
++    let context =
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, markdown)
++            .expect("visualization context");
++    fs::create_dir_all(&context.thread_dir).expect("visualization directory");
++    fs::write(context.thread_dir.join("chart.html"), "<div>chart</div>").expect("fragment");
++    assert_eq!(
++        rewrite_inline_visualizations(markdown, Some(&context))
++            .trusted_file_links
++            .len(),
++        1
++    );
++
++    let writable_home =
++        AbsolutePathBuf::from_absolute_path(codex_home.path()).expect("absolute codex home");
++    config
++        .permissions
++        .set_permission_profile(PermissionProfile::workspace_write_with(
++            &[writable_home],
++            NetworkSandboxPolicy::Restricted,
++            /*exclude_tmpdir_env_var*/ true,
++            /*exclude_slash_tmp*/ true,
++        ))
++        .expect("writable viewer cache permissions");
++    assert!(
++        InlineVisualizationContext::from_config_for_markdown(&config, thread_id, markdown)
++            .is_none()
++    );
++}
++
+ #[test]
+ fn unterminated_visualization_preview_uses_the_stream_context() {
+     let (codex_home, context) = context_with_fragment("<div>chart</div>");
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index babf331..d033af3 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -128,9 +128,19 @@ pub(crate) fn thread_items_to_transcript_cells(
+     raw_reasoning_visibility: RawReasoningVisibility,
+     config: Option<&Config>,
+ ) -> TranscriptCells {
+-    let inline_visualization_context = config.and_then(|config| {
+-        thread_id.and_then(|thread_id| InlineVisualizationContext::from_config(config, thread_id))
++    let items = items.into_iter().collect::<Vec<_>>();
++    let has_inline_visualization = items.iter().any(|item| {
++        matches!(item, ThreadItem::AgentMessage { text, .. }
++            if crate::inline_visualization::contains_inline_visualization(text))
+     });
++    let inline_visualization_context =
++        config
++            .filter(|_| has_inline_visualization)
++            .and_then(|config| {
++                thread_id.and_then(|thread_id| {
++                    InlineVisualizationContext::from_config(config, thread_id)
++                })
++            });
+     let mut cells: TranscriptCells = Vec::new();
+     let mut pending = None;
+     for item in items {
 -- 
 2.43.0
 
