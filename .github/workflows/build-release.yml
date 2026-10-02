@@ -605,6 +605,7 @@ jobs:
       packages: write
     env:
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      # Legacy migration only; populated caches compare upstream source files.
       CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -937,6 +938,12 @@ jobs:
           fi
           ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output"
 
+      - name: Record successfully compiled source inputs
+        shell: bash
+        run: |
+          python3 .github/scripts/clean-cached-release-binaries.py --record-source-inputs \
+            upstream/codex-rs "${{ matrix.target }}"
+
       - name: Prepare third-party Cargo licenses
         working-directory: upstream/codex-rs
         shell: bash
@@ -1200,6 +1207,7 @@ jobs:
       packages: write
     env:
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      # Legacy migration only; populated caches compare upstream source files.
       CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}
       SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
       CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
@@ -1427,6 +1435,12 @@ jobs:
           done
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
             cargo build --target "$target" --release --timings "${build_args[@]}"
+
+      - name: Record successfully compiled source inputs
+        shell: bash
+        run: |
+          python3 .github/scripts/clean-cached-release-binaries.py --record-source-inputs \
+            upstream/codex-rs "${{ matrix.target }}"
 
       - name: Prepare third-party Cargo licenses
         working-directory: upstream/codex-rs

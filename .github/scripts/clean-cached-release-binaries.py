@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
-"""Invalidate cached Cargo outputs for release binaries while retaining dependencies."""
+"""Prepare cached release builds from source contents and record successful inputs.
 
+The default operation marks changed source inputs for Cargo and removes requested
+release binaries. --record-source-inputs commits the prepared source snapshot
+after compilation succeeds; callers must not invoke it after a failed build.
+"""
+
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +17,42 @@ import sys
 
 
 LIBRARY_TARGET_KINDS = frozenset({"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"})
+
+
+def source_inputs(workspace: Path, target_directory: Path) -> tuple[Path, dict]:
+    """Return the checkout root and file digests, excluding build outputs."""
+    repository = subprocess.run(["git", "-C", str(workspace), "rev-parse", "--show-toplevel"],
+                                capture_output=True, text=True)
+    root = Path(repository.stdout.strip()) if repository.returncode == 0 else workspace
+    if repository.returncode == 0:
+        names = subprocess.check_output(
+            ["git", "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+        ).split(b"\0")
+        paths = [root / os.fsdecode(name) for name in names if name]
+    else:
+        paths = []
+        for directory, children, files in os.walk(root):
+            children[:] = [name for name in children
+                           if name not in {".git", "target", "node_modules"}
+                           and (Path(directory) / name).resolve() != target_directory.resolve()]
+            paths.extend(Path(directory) / name for name in files)
+    resolved_target = target_directory.resolve()
+    sources = [path for path in paths if path.is_file() and resolved_target not in path.resolve().parents]
+    files = {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+             for path in sources}
+    timestamps = set(sources)
+    for path in sources:
+        timestamps.update(parent for parent in path.parents if parent == root or root in parent.parents)
+    mtimes = {path.relative_to(root).as_posix(): path.stat().st_mtime_ns for path in timestamps}
+    return root, {"schema_version": 1, "files": files, "mtimes": mtimes}
+
+
+def write_source_inputs(path: Path, inputs: dict) -> None:
+    """Atomically replace a source-input snapshot at the requested cache path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(inputs, sort_keys=True), encoding="utf-8")
+    temporary.replace(path)
 
 
 def invalidate_cached_binary(release_directory: Path, binary: str) -> None:
@@ -40,12 +82,14 @@ def invalidate_cached_binary(release_directory: Path, binary: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) < 4:
-        print("usage: clean-cached-release-binaries.py <workspace> <target> <binary>...", file=sys.stderr)
+    record_sources = sys.argv[1:2] == ["--record-source-inputs"]
+    arguments = sys.argv[2:] if record_sources else sys.argv[1:]
+    if len(arguments) < (2 if record_sources else 3):
+        print("usage: clean-cached-release-binaries.py [--record-source-inputs] <workspace> <target> [<binary>...]", file=sys.stderr)
         return 2
 
-    workspace = Path(sys.argv[1]).resolve()
-    target = sys.argv[2]
+    workspace = Path(arguments[0]).resolve()
+    target = arguments[1]
     target_directory_name = Path(target).stem if target.endswith(".json") else target
     if (
         Path(target).name != target
@@ -54,7 +98,7 @@ def main() -> int:
     ):
         print(f"Invalid Cargo target directory name: {target}", file=sys.stderr)
         return 2
-    binaries = set(sys.argv[3:])
+    binaries = set(arguments[2:])
     manifest = workspace / "Cargo.toml"
     cargo = os.environ.get("CARGO", "cargo")
 
@@ -64,6 +108,24 @@ def main() -> int:
             text=True,
         )
     )
+    target_directory = Path(metadata.get("target_directory", os.environ.get("CARGO_TARGET_DIR", workspace / "target")))
+    snapshot = target_directory / ".codex-source-inputs" / f"{target_directory_name}.json"
+    pending = snapshot.with_suffix(".pending")
+    source_root, current_inputs = source_inputs(workspace, target_directory)
+    if record_sources:
+        prepared = json.loads(pending.read_text(encoding="utf-8")) if pending.is_file() else None
+        # Cargo can create or refresh its lockfile while resolving the build.
+        without_lockfiles = lambda inputs: {name: digest for name, digest in inputs["files"].items()
+                                           if Path(name).name != "Cargo.lock"}
+        if prepared is None or without_lockfiles(prepared) != without_lockfiles(current_inputs):
+            print("Source inputs changed during the build or were not prepared; refusing cache snapshot.", file=sys.stderr)
+            return 1
+        write_source_inputs(snapshot, current_inputs)
+        pending.unlink()
+        print(f"Recorded {len(current_inputs['files'])} source file digests after successful compilation.")
+        return 0
+    interrupted_inputs = json.loads(pending.read_text(encoding="utf-8")) if pending.is_file() else None
+    write_source_inputs(pending, current_inputs)
     owners = {
         binary: package["name"]
         for package in metadata["packages"]
@@ -77,16 +139,56 @@ def main() -> int:
         print(f"Release binaries absent from Cargo metadata: {', '.join(missing)}", file=sys.stderr)
         return 1
 
+    previous_inputs = json.loads(snapshot.read_text(encoding="utf-8")) if snapshot.is_file() else None
     source_id = os.environ.get("CARGO_CACHE_SOURCE_ID")
-    if source_id is not None:
+    if previous_inputs is not None:
+        if previous_inputs.get("schema_version") != 1:
+            print("Unsupported source-input cache snapshot; refusing reuse.", file=sys.stderr)
+            return 1
+        previous_files = previous_inputs["files"]
+        current_files = current_inputs["files"]
+        changed = {name for name in previous_files.keys() | current_files.keys()
+                   if previous_files.get(name) != current_files.get(name)}
+        if interrupted_inputs is not None:
+            interrupted_files = interrupted_inputs["files"]
+            changed.update(name for name in interrupted_files.keys() | current_files.keys()
+                           if interrupted_files.get(name) != current_files.get(name))
+        # Identical checkout contents can receive newer normalized timestamps
+        # after an upstream release. Preserve the successful build's timestamps
+        # before marking actual changes, so Cargo still reuses identical inputs.
+        for name, timestamp in previous_inputs.get("mtimes", {}).items():
+            path = source_root / name
+            if path.resolve() != source_root and source_root not in path.resolve().parents:
+                print(f"Source-input cache path escapes checkout: {name}", file=sys.stderr)
+                return 1
+            if name not in changed and path.exists():
+                os.utime(path, ns=(timestamp, timestamp))
+        directories = set()
+        for name in changed:
+            path = source_root / name
+            if path.is_absolute() and source_root not in path.resolve().parents:
+                print(f"Source-input cache path escapes checkout: {name}", file=sys.stderr)
+                return 1
+            if path.is_file():
+                os.utime(path, None)
+            parent = path.parent
+            while parent != source_root.parent:
+                if parent.is_dir():
+                    directories.add(parent)
+                parent = parent.parent
+        for directory in directories:
+            os.utime(directory, None)
+        print(f"Source contents changed in {len(changed)} files; Cargo determines affected units; "
+              f"{len(current_files) - len(changed & current_files.keys())} unchanged files retained.")
+    elif source_id is not None:
         if not source_id.strip():
             print("CARGO_CACHE_SOURCE_ID must not be empty", file=sys.stderr)
             return 2
         identity_file = Path(metadata["target_directory"]) / ".codex-source-identities" / target_directory_name
         previous_id = identity_file.read_text(encoding="utf-8") if identity_file.exists() else None
-        if previous_id != source_id:
-            # The archive can contain workspace outputs from a different patch set.
-            # Clear those outputs before recording the inputs their replacements use.
+        if previous_id != source_id or interrupted_inputs is not None:
+            # Migrate caches that lack file digests. Legacy identity is consulted
+            # only here; subsequent builds compare the actual source contents.
             command = [cargo, "clean", "--release", "--target", target, "--manifest-path", str(manifest)]
             workspace_members = set(metadata["workspace_members"])
             packages = sorted(package["name"] for package in metadata["packages"]

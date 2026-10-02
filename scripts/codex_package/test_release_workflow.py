@@ -120,6 +120,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)
             subprocess.run(["cargo", "build", "--offline", "--release", "--target", target],
                            cwd=root, env=environment, check=True, capture_output=True)
+            subprocess.run(["python3", str(REPOSITORY_ROOT / ".github/scripts/clean-cached-release-binaries.py"),
+                            "--record-source-inputs", str(root), target],
+                           env=environment, check=True, capture_output=True)
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)
             result = subprocess.run(["bash", "-c", command], cwd=root, env=environment,
                                     check=True, capture_output=True, text=True)

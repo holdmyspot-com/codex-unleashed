@@ -10,6 +10,115 @@ SCRIPT = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "clean-ca
 
 
 class CleanCachedReleaseBinariesTest(unittest.TestCase):
+    def test_patch_identity_changes_reuse_unchanged_sources_and_rebuild_changed_crate(self):
+        with tempfile.TemporaryDirectory(prefix="codex-source-content-test-") as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "Cargo.toml").write_text(
+                '[workspace]\nmembers=["shared", "changed", "app"]\nresolver="2"\n')
+            for name in ("shared", "changed", "app"):
+                (root / name / "src").mkdir(parents=True)
+                manifest = f'[package]\nname="{name}"\nversion="0.1.0"\nedition="2021"\n'
+                if name == "app":
+                    manifest += '[dependencies]\nshared={path="../shared"}\nchanged={path="../changed"}\n'
+                    source = 'fn main() { println!("{}", shared::value() + changed::value()); }\n'
+                    filename = "main.rs"
+                else:
+                    source = 'pub fn value() -> u8 { 7 }\n'
+                    filename = "lib.rs"
+                (root / name / "Cargo.toml").write_text(manifest)
+                (root / name / "src" / filename).write_text(source)
+            (root / ".gitignore").write_text("/target/\n")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
+            environment = os.environ.copy()
+            environment.update(CARGO_TARGET_DIR=str(root / "target"), CARGO_CACHE_SOURCE_ID="upstream:patch-one")
+            cleanup = ["python3", str(SCRIPT), str(root), target, "app"]
+            build = ["cargo", "build", "--offline", "--release", "--target", target,
+                     "--message-format=json"]
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            record = ["python3", str(SCRIPT), "--record-source-inputs", str(root), target]
+            subprocess.run(record, env=environment, check=True, capture_output=True)
+
+            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-two"
+            # A new checkout can assign newer timestamps to identical files.
+            for name in ("shared/src/lib.rs", "changed/src/lib.rs"):
+                path = root / name
+                timestamp = path.stat().st_mtime_ns + 100_000_000_000
+                os.utime(path, ns=(timestamp, timestamp))
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True, text=True)
+            artifacts = [message for line in result.stdout.splitlines()
+                         if (message := json.loads(line)).get("reason") == "compiler-artifact"]
+            libraries = {message["target"]["name"]: message["fresh"] for message in artifacts
+                         if message["target"]["kind"] == ["lib"]}
+            self.assertEqual(libraries, {"shared": True, "changed": True}, result.stderr)
+            subprocess.run(record, env=environment, check=True, capture_output=True)
+
+            source = root / "changed/src/lib.rs"
+            timestamp = source.stat().st_mtime_ns
+            source.write_text('compile_error!("failed build fixture");\n')
+            os.utime(source, ns=(timestamp, timestamp))
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            failed = subprocess.run(build, cwd=root, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("failed build fixture", failed.stdout + failed.stderr)
+            source.write_text('pub fn value() -> u8 { 9 }\n')
+            os.utime(source, ns=(timestamp, timestamp))
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True, text=True)
+            artifacts = [message for line in result.stdout.splitlines()
+                         if (message := json.loads(line)).get("reason") == "compiler-artifact"]
+            libraries = {message["target"]["name"]: message["fresh"] for message in artifacts
+                         if message["target"]["kind"] == ["lib"]}
+            self.assertEqual(libraries, {"shared": True, "changed": False}, result.stderr)
+            binary = root / "target" / target / "release" / ("app.exe" if os.name == "nt" else "app")
+            self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "16")
+            subprocess.run(record, env=environment, check=True, capture_output=True)
+
+            # One library can finish before another fails. A retry that reverts
+            # that library must not reuse the partially built newer output.
+            shared_source = root / "shared/src/lib.rs"
+            shared_timestamp = shared_source.stat().st_mtime_ns
+            changed_timestamp = source.stat().st_mtime_ns
+            shared_source.write_text("pub fn value() -> u8 { 17 }\n")
+            source.write_text('compile_error!("partial build fixture");\n')
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            subprocess.run(build + ["-p", "shared"], cwd=root, env=environment,
+                           check=True, capture_output=True)
+            failed = subprocess.run(build, cwd=root, env=environment, capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            shared_source.write_text("pub fn value() -> u8 { 7 }\n")
+            source.write_text("pub fn value() -> u8 { 9 }\n")
+            os.utime(shared_source, ns=(shared_timestamp, shared_timestamp))
+            os.utime(source, ns=(changed_timestamp, changed_timestamp))
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "16")
+            subprocess.run(record, env=environment, check=True, capture_output=True)
+
+            extra = root / "included.rs"
+            extra.write_text("pub fn value() -> u8 { 11 }\n")
+            (root / "shared/src/lib.rs").write_text('include!("../../included.rs");\n')
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            subprocess.run(record, env=environment, check=True, capture_output=True)
+            timestamp = extra.stat().st_mtime_ns
+            extra.write_text("pub fn value() -> u8 { 13 }\n")
+            os.utime(extra, ns=(timestamp, timestamp))
+            subprocess.run(cleanup, env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True, text=True)
+            libraries = {message["target"]["name"]: message["fresh"] for line in result.stdout.splitlines()
+                         if (message := json.loads(line)).get("reason") == "compiler-artifact"
+                         and message["target"]["kind"] == ["lib"]}
+            self.assertEqual(libraries, {"shared": False, "changed": True}, result.stderr)
+            self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "22")
+            extra.write_text("pub fn value() -> u8 { 15 }\n")
+            rejected = subprocess.run(record, env=environment, capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("Source inputs changed during the build", rejected.stderr)
+
     def test_real_cargo_clean_preserves_dependency_artifact(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-cargo-clean-test-") as directory:
             root = Path(directory)
@@ -163,6 +272,8 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             build = ["cargo", "build", "--offline", "--release", "--target", target,
                      "--message-format=json"]
             subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            record = ["python3", str(SCRIPT), "--record-source-inputs", str(root), target]
+            subprocess.run(record, env=environment, check=True, capture_output=True)
             source.write_text("pub fn value() -> u8 { 9 }\n", encoding="utf-8")
             os.utime(source, (1000000000, 1000000000))
             environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-two"
@@ -181,6 +292,7 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             self.assertTrue(all(message["fresh"] for message in dependencies), result.stderr)
             binary = root / "target" / target / "release" / ("source-demo.exe" if os.name == "nt" else "source-demo")
             self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "9")
+            subprocess.run(record, env=environment, check=True, capture_output=True)
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)
             result = subprocess.run(build, cwd=root, env=environment, check=True,
                                     capture_output=True, text=True)
