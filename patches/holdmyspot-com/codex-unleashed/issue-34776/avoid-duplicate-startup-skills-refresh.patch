@@ -1,0 +1,300 @@
+From 46cb676514fe4f6c8144e927d9339979c212cd7d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 2 Oct 2026 23:48:56 -0400
+Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
+
+The app supplies initial skill metadata asynchronously, but session
+configuration also queues a blocking ListSkills command before the restored
+conversation is drawn. Start the existing background refresh before initial
+session projection and consume its directory ownership once. Preserve metadata
+that arrives before configuration. Later configurations, changed directories,
+explicit refreshes and error delivery retain their normal behavior.
+
+Declared base: rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc
+No downstream prerequisites; this commit touches only the TUI.
+
+TDD RED: just test -p codex-tui -E 'test(startup_skills_refresh_)'
+Both behavior tests fail on the upstream TUI: duplicate RPC and cleared
+pre-configuration skill metadata. Logs: tui-red-corrected.log.
+TDD GREEN: both tests pass; explicit refreshes and background errors are covered.
+Full just test -p codex-tui: 5532 pass, 75 pre-existing failures, 8 skip.
+Pre-fix TUI: 5530 pass, same 75 failures plus both new regressions, 8 skip.
+Root just fmt-check passes. Evidence: .cat/work/reports/resume-attribution.
+---
+ codex-rs/tui/src/app/background_requests.rs   |   4 +-
+ codex-rs/tui/src/app/startup.rs               |   2 +-
+ .../tui/src/app/tests/startup_frame_tests.rs  | 159 ++++++++++++++++++
+ codex-rs/tui/src/chatwidget.rs                |   6 +
+ codex-rs/tui/src/chatwidget/constructor.rs    |   1 +
+ codex-rs/tui/src/chatwidget/session_flow.rs   |  10 +-
+ 6 files changed, 178 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
+index 8b29753..d6aa3bc 100644
+--- a/codex-rs/tui/src/app/background_requests.rs
++++ b/codex-rs/tui/src/app/background_requests.rs
+@@ -227,7 +227,9 @@ impl App {
+     pub(super) fn refresh_startup_skills(&mut self, app_server: &AppServerSession) {
+         let request_handle = app_server.request_handle();
+         let app_event_tx = self.app_event_tx.clone();
+-        let cwd = self.config.cwd.to_path_buf();
++        let cwd = self.config.cwd.clone();
++        self.chat_widget.note_startup_skills_refresh(cwd.clone());
++        let cwd = cwd.to_path_buf();
+         tokio::spawn(async move {
+             let result = fetch_skills_list(request_handle, cwd.clone())
+                 .await
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index 37add4b..f266c61 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -907,6 +907,7 @@ See the Codex keymap documentation for supported actions and examples."
+             app.chat_widget.open_hooks_browser(entry);
+         }
+         app.update_visible_history_rows(tui.terminal.last_known_screen_size);
++        app.refresh_startup_skills(&app_server);
+         let initial_session_started_at = Instant::now();
+         if let Some(started) = initial_started_thread {
+             let thread_id = started.session.thread_id;
+@@ -1014,7 +1015,6 @@ See the Codex keymap documentation for supported actions and examples."
+             event_stream_ms = %event_stream_started_at.elapsed().as_millis(),
+             "tui startup initial frame scheduled"
+         );
+-        app.refresh_startup_skills(&app_server);
+         // Kick off a non-blocking rate-limit prefetch so the first `/status`
+         // already has data and available reset credits can be surfaced, without
+         // delaying the initial frame render.
+diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
+index c836d54..206175d 100644
+--- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
++++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
+@@ -214,3 +214,162 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
+     assert!(frame_text(&tui).contains("inline startup draft"));
+     Ok(())
+ }
++
++#[tokio::test]
++async fn startup_skills_refresh_avoids_blocking_duplicate_and_preserves_later_refreshes()
++-> Result<()> {
++    for same_cwd in [true, false] {
++        let (mut app, mut events) = make_startup_skills_app().await;
++        let mut server = start_config_write_test_app_server(&app).await?;
++        app.refresh_startup_skills(&server);
++        let cwd = if same_cwd {
++            app.config.cwd.to_path_buf()
++        } else {
++            app.config.cwd.join("different").to_path_buf()
++        };
++        let session = test_thread_session(ThreadId::new(), cwd.clone());
++        app.enqueue_primary_thread_session(session.clone(), Vec::new())
++            .await?;
++        let mut refreshes = Vec::new();
++        while let Ok(event) = events.try_recv() {
++            if let AppEvent::CodexOp(AppCommand::ListSkills { cwds, force_reload }) = event {
++                refreshes.push((cwds, force_reload));
++            }
++        }
++        assert_eq!(
++            refreshes,
++            if same_cwd {
++                Vec::new()
++            } else {
++                vec![(vec![cwd.clone()], true)]
++            }
++        );
++
++        // A subsequent configuration still requests fresh metadata, even in the same directory.
++        app.chat_widget.handle_thread_session_quiet(session);
++        let refresh = std::iter::from_fn(|| events.try_recv().ok()).find_map(|event| match event {
++            AppEvent::CodexOp(AppCommand::ListSkills { cwds, force_reload }) => {
++                Some((cwds, force_reload))
++            }
++            _ => None,
++        });
++        assert_eq!(refresh, Some((vec![cwd.clone()], true)));
++
++        app.app_event_tx.list_skills(vec![cwd.clone()], true);
++        let explicit_refresh =
++            std::iter::from_fn(|| events.try_recv().ok()).find_map(|event| match event {
++                AppEvent::CodexOp(AppCommand::ListSkills { cwds, force_reload }) => {
++                    Some((cwds, force_reload))
++                }
++                _ => None,
++            });
++        assert_eq!(explicit_refresh, Some((vec![cwd], true)));
++
++        if same_cwd {
++            let mut tui = crate::tui::test_support::make_test_tui()?;
++            // A failed background response still reaches the existing user-visible error handler.
++            app.handle_event(
++                &mut tui,
++                &mut server,
++                AppEvent::SkillsListLoaded {
++                    cwd: app.config.cwd.to_path_buf(),
++                    result: Err("startup request failed".into()),
++                },
++            )
++            .await?;
++            let errors = std::iter::from_fn(|| events.try_recv().ok())
++                .filter_map(|event| match event {
++                    AppEvent::InsertHistoryCell(cell) => {
++                        Some(lines_to_single_string(&cell.transcript_lines(80)))
++                    }
++                    _ => None,
++                })
++                .collect::<String>();
++            assert!(errors.contains("failed to load skills on startup: startup request failed"));
++            assert!(app.skill_load_warnings.startup_complete);
++        }
++        server.shutdown().await?;
++    }
++    Ok(())
++}
++
++async fn make_startup_skills_app() -> (Box<App>, tokio::sync::mpsc::UnboundedReceiver<AppEvent>) {
++    let (mut app, events, _ops) = make_test_app_with_channels().await;
++    let replacement = ChatWidget::new_with_app_event(ChatWidgetInit {
++        requires_openai_auth: true,
++        local_settings: crate::local_settings::LocalSettings::from(&app.config),
++        config: app.config.clone(),
++        frame_requester: crate::tui::FrameRequester::test_dummy(),
++        app_event_tx: app.app_event_tx.clone(),
++        workspace_command_runner: None,
++        initial_user_message: None,
++        enhanced_keys_supported: app.enhanced_keys_supported,
++        has_chatgpt_account: app.chat_widget.has_chatgpt_account(),
++        has_codex_backend_auth: app.chat_widget.has_codex_backend_auth(),
++        model_catalog: app.model_catalog.clone(),
++        feedback: app.feedback.clone(),
++        is_first_run: false,
++        status_account_display: app.chat_widget.status_account_display().cloned(),
++        initial_plan_type: app.chat_widget.current_plan_type(),
++        model: Some(app.chat_widget.current_model().to_string()),
++        startup_tooltip_override: None,
++        status_line_invalid_items_warned: app.status_line_invalid_items_warned.clone(),
++        terminal_title_invalid_items_warned: app.terminal_title_invalid_items_warned.clone(),
++        session_telemetry: app.session_telemetry.clone(),
++    });
++    app.replace_chat_widget(replacement);
++
++    (app, events)
++}
++
++#[tokio::test]
++async fn startup_skills_refresh_preserves_metadata_before_or_after_session_configuration()
++-> Result<()> {
++    for metadata_first in [true, false] {
++        let (mut app, _events) = make_startup_skills_app().await;
++        let mut server = start_config_write_test_app_server(&app).await?;
++        let mut tui = crate::tui::test_support::make_test_tui()?;
++        app.refresh_startup_skills(&server);
++        let cwd = app.config.cwd.to_path_buf();
++        let response = SkillsListResponse {
++            data: vec![codex_app_server_protocol::SkillsListEntry {
++                cwd: cwd.clone(),
++                skills: vec![codex_app_server_protocol::SkillMetadata {
++                    name: "startup-skill".into(),
++                    description: "Startup metadata".into(),
++                    short_description: None,
++                    interface: None,
++                    dependencies: None,
++                    path: app.config.cwd.join("SKILL.md"),
++                    scope: crate::test_support::skill_scope_user(),
++                    enabled: true,
++                    plugin_id: None,
++                }],
++                errors: Vec::new(),
++            }],
++        };
++        for deliver_metadata in [metadata_first, !metadata_first] {
++            if deliver_metadata {
++                app.handle_event(
++                    &mut tui,
++                    &mut server,
++                    AppEvent::SkillsListLoaded {
++                        cwd: cwd.clone(),
++                        result: Ok(response.clone()),
++                    },
++                )
++                .await?;
++            } else {
++                app.enqueue_primary_thread_session(
++                    test_thread_session(ThreadId::new(), cwd.clone()),
++                    Vec::new(),
++                )
++                .await?;
++            }
++        }
++        app.chat_widget.open_skills_list();
++        assert!(render_bottom_popup(&app.chat_widget, 80).contains("startup-skill"));
++        server.shutdown().await?;
++    }
++    Ok(())
++}
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index 7fafd6d..233da09 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -600,6 +600,7 @@ pub(crate) struct ChatWidget {
+     pending_collab_spawn_requests: HashMap<String, multi_agents::SpawnRequestSummary>,
+     suppressed_exec_calls: HashSet<String>,
+     skills_all: Vec<SkillMetadata>,
++    startup_skills_refresh_cwd: Option<AbsolutePathBuf>,
+     skills_initial_state: Option<HashMap<AbsolutePathBuf, bool>>,
+     last_unified_wait: Option<UnifiedExecWaitState>,
+     unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
+@@ -1804,6 +1805,11 @@ impl ChatWidget {
+         self.external_writer_view
+     }
+ 
++    /// Records the directory whose initial skill metadata is supplied by the app's background request.
++    pub(crate) fn note_startup_skills_refresh(&mut self, cwd: AbsolutePathBuf) {
++        self.startup_skills_refresh_cwd = Some(cwd);
++    }
++
+     fn refresh_skills_for_current_cwd(&mut self, force_reload: bool) {
+         self.submit_op(AppCommand::list_skills(
+             vec![self.config.cwd.to_path_buf()],
+diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
+index 755da1e..3db8597 100644
+--- a/codex-rs/tui/src/chatwidget/constructor.rs
++++ b/codex-rs/tui/src/chatwidget/constructor.rs
+@@ -119,6 +119,7 @@ impl ChatWidget {
+             local_settings,
+             effective_service_tier,
+             skills_all: Vec::new(),
++            startup_skills_refresh_cwd: None,
+             skills_initial_state: None,
+             current_collaboration_mode,
+             active_collaboration_mask,
+diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
+index e03b2d5..7b84a63 100644
+--- a/codex-rs/tui/src/chatwidget/session_flow.rs
++++ b/codex-rs/tui/src/chatwidget/session_flow.rs
+@@ -65,7 +65,11 @@ impl ChatWidget {
+             history_metadata.log_id,
+             history_metadata.entry_count,
+         );
+-        self.set_skills(/*skills*/ None);
++        let startup_skills_refresh_for_session =
++            self.startup_skills_refresh_cwd.take().as_ref() == Some(&session.cwd);
++        if !startup_skills_refresh_for_session {
++            self.set_skills(/*skills*/ None);
++        }
+         self.session_network_proxy = session.network_proxy.clone();
+         let previous_thread_id = self.thread_id;
+         let connector_scope_changed = previous_thread_id != Some(session.thread_id)
+@@ -226,7 +230,9 @@ impl ChatWidget {
+             self.bump_active_cell_revision();
+         }
+         self.transcript.saw_copy_source_this_turn = false;
+-        self.refresh_skills_for_current_cwd(/*force_reload*/ true);
++        if !startup_skills_refresh_for_session {
++            self.refresh_skills_for_current_cwd(/*force_reload*/ true);
++        }
+         self.refresh_connector_mentions(/*force_refresh*/ false);
+         let initial_user_message_pending = self.initial_user_message.is_some();
+         self.submit_initial_user_message_if_pending();
+-- 
+2.43.0
+

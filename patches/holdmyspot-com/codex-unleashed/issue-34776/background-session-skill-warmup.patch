@@ -1,0 +1,962 @@
+From 6d96322596dc9d82ef8e949938e3bc10ecd1043e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 3 Oct 2026 09:02:29 -0400
+Subject: [PATCH] Make resumed conversations available during skill discovery
+
+Run owned startup skill discovery without delaying session availability.
+History restoration captures model metadata without skill discovery. Execution
+waits for the shared warmup and keeps configuration-specific discovery.
+
+Cold client resumes register skill watches in the listener background. After
+watch installation and response/snapshot publication, refresh metadata so
+changes during registration cannot leave clients with a stale catalog. New
+sessions and forks retain synchronous watches and their response ordering.
+Late registrations cannot outlive a replaced or closed listener.
+
+Base: rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc.
+TDD receipts: workspace .cat/work/reports/resume-background/. Three initial
+restoration checks fail against base; six lifecycle checks pass with warmup.
+Existing watch-change check fails with blanket deferred registration. The new
+cold_resume_refreshes_skill_metadata_after_watches_are_ready check times out
+for its missing refresh (watch-readiness-red-2.log). After correcting startup
+policy, focused watch, publication-order, and lifecycle checks pass 6/6
+(watch-readiness-green-2.log). Author just fmt-check passes.
+This intermediate source snapshot requires final emitted-patch and native gates.
+---
+ .../request_processors/thread_lifecycle.rs    |  73 +++++-
+ .../request_processors/thread_processor.rs    |  11 +-
+ .../src/request_processors/turn_processor.rs  |   1 +
+ codex-rs/app-server/src/thread_state.rs       |  54 +++++
+ .../app-server/tests/suite/v2/skills_list.rs  |  69 ++++++
+ codex-rs/core/src/session/mod.rs              |   4 +-
+ .../core/src/session/resume_warmup_tests.rs   | 227 ++++++++++++++++++
+ codex-rs/core/src/session/session.rs          |  67 ++++--
+ codex-rs/core/src/session/tests.rs            |   5 +
+ codex-rs/core/src/session/turn_context.rs     |  57 ++++-
+ codex-rs/core/tests/suite/skills_extension.rs |  24 ++
+ 11 files changed, 547 insertions(+), 45 deletions(-)
+ create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
+
+diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+index b0fa49b..b098d86 100644
+--- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
++++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
+@@ -1,7 +1,10 @@
+ use super::*;
+ use crate::extensions::send_thread_warning;
++use codex_app_server_protocol::ServerNotification;
++use codex_app_server_protocol::SkillsChangedNotification;
+ use codex_app_server_protocol::ThreadQueueChangedNotification;
+ use codex_extension_api::ThreadIdleCause;
++use codex_file_watcher::WatchRegistration;
+ use codex_protocol::config_types::MultiAgentMode;
+ 
+ #[derive(Clone)]
+@@ -132,6 +135,13 @@ pub(super) enum EnsureConversationListenerResult {
+     ConnectionClosed,
+ }
+ 
++/// Determines when skill watches become ready relative to session publication.
++pub(super) enum SkillWatchStartup {
++    BeforeAvailability,
++    /// Refreshes metadata after watches are installed and the resume response is published.
++    AfterResumeResponse(tokio::sync::oneshot::Receiver<()>),
++}
++
+ #[expect(
+     clippy::await_holding_invalid_type,
+     reason = "listener subscription must be serialized against pending unloads"
+@@ -141,6 +151,7 @@ pub(super) async fn ensure_conversation_listener(
+     conversation_id: ThreadId,
+     connection_id: ConnectionId,
+     raw_events_enabled: bool,
++    skill_watch_startup: SkillWatchStartup,
+ ) -> Result<EnsureConversationListenerResult, JSONRPCErrorError> {
+     let conversation = match listener_task_context
+         .thread_manager
+@@ -175,6 +186,7 @@ pub(super) async fn ensure_conversation_listener(
+         conversation_id,
+         conversation,
+         thread_state,
++        skill_watch_startup,
+     )
+     .await
+     {
+@@ -216,6 +228,7 @@ pub(super) async fn ensure_listener_task_running(
+     conversation_id: ThreadId,
+     conversation: Arc<CodexThread>,
+     thread_state: Arc<Mutex<ThreadState>>,
++    skill_watch_startup: SkillWatchStartup,
+ ) -> Result<(), JSONRPCErrorError> {
+     let (cancel_tx, mut cancel_rx) = oneshot::channel();
+     let Some(mut unloading_state) = UnloadingState::new(
+@@ -231,14 +244,20 @@ pub(super) async fn ensure_listener_task_running(
+     };
+     let config = conversation.config().await;
+     let environments = conversation.environment_selections().await;
+-    let watch_registration = listener_task_context
+-        .skills_watcher
+-        .register_thread_config(
+-            config.as_ref(),
+-            listener_task_context.thread_manager.as_ref(),
+-            &environments,
+-        )
+-        .await;
++    let (watch_registration, resume_response_rx) = match skill_watch_startup {
++        SkillWatchStartup::BeforeAvailability => (
++            listener_task_context
++                .skills_watcher
++                .register_thread_config(
++                    config.as_ref(),
++                    listener_task_context.thread_manager.as_ref(),
++                    &environments,
++                )
++                .await,
++            None,
++        ),
++        SkillWatchStartup::AfterResumeResponse(rx) => (WatchRegistration::default(), Some(rx)),
++    };
+     let config_snapshot = conversation.config_snapshot().await;
+     let thread_settings_baseline = thread_settings_from_config_snapshot(&config_snapshot);
+     let (mut listener_command_rx, listener_generation) = {
+@@ -271,10 +290,22 @@ pub(super) async fn ensure_listener_task_running(
+         thread_watch_manager,
+         codex_home,
+         turn_cost_worker,
++        skills_watcher,
+         ..
+     } = listener_task_context;
+     let outgoing_for_task = Arc::clone(&outgoing);
+     tokio::spawn(async move {
++        let mut watch_registration_pending = resume_response_rx.is_some();
++        let mut watch_registration = Box::pin(async {
++            let registration = skills_watcher
++                .register_thread_config(config.as_ref(), thread_manager.as_ref(), &environments)
++                .await;
++            let published = match resume_response_rx {
++                Some(rx) => rx.await.is_ok(),
++                None => false,
++            };
++            (registration, published)
++        });
+         loop {
+             tokio::select! {
+                 biased;
+@@ -282,6 +313,32 @@ pub(super) async fn ensure_listener_task_running(
+                     // Listener was superseded or the thread is being torn down.
+                     break;
+                 }
++                (registration, published) = &mut watch_registration, if watch_registration_pending => {
++                    watch_registration_pending = false;
++                    let installed = thread_state.lock().await.set_listener_watch_registration(
++                        listener_generation,
++                        registration,
++                    );
++                    if installed {
++                        // Refresh metadata now that changes to these roots can invalidate the cache.
++                        thread_manager.skills_service().clear_cache();
++                        if published {
++                            // A refresh also covers changes that precede watch installation.
++                            let connections = thread_state_manager
++                                .subscribed_connection_ids(conversation_id)
++                                .await;
++                            ThreadScopedOutgoingMessageSender::new(
++                                outgoing_for_task.clone(),
++                                connections,
++                                conversation_id,
++                            )
++                            .send_server_notification(ServerNotification::SkillsChanged(
++                                SkillsChangedNotification {},
++                            ))
++                            .await;
++                        }
++                    }
++                }
+                 listener_command = listener_command_rx.recv() => {
+                     let Some(listener_command) = listener_command else {
+                         break;
+diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
+index 289cb63..2522dbb 100644
+--- a/codex-rs/app-server/src/request_processors/thread_processor.rs
++++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
+@@ -1105,6 +1105,7 @@ impl ThreadRequestProcessor {
+             conversation_id,
+             connection_id,
+             raw_events_enabled,
++            super::thread_lifecycle::SkillWatchStartup::BeforeAvailability,
+         )
+         .await
+     }
+@@ -1120,6 +1121,7 @@ impl ThreadRequestProcessor {
+             conversation_id,
+             conversation,
+             thread_state,
++            super::thread_lifecycle::SkillWatchStartup::BeforeAvailability,
+         )
+         .await
+     }
+@@ -1580,6 +1582,7 @@ impl ThreadRequestProcessor {
+                 thread_id,
+                 request_id.connection_id,
+                 experimental_raw_events,
++                super::thread_lifecycle::SkillWatchStartup::BeforeAvailability,
+             )
+             .instrument(tracing::info_span!(
+                 "app_server.thread_start.attach_listener",
+@@ -4053,11 +4056,16 @@ impl ThreadRequestProcessor {
+                     None
+                 };
+                 // Auto-attach a thread listener when resuming a thread.
++                let (skill_watch_response_tx, skill_watch_response_rx) = oneshot::channel();
+                 log_listener_attach_result(
+-                    self.ensure_conversation_listener(
++                    super::thread_lifecycle::ensure_conversation_listener(
++                        self.listener_task_context(),
+                         thread_id,
+                         request_id.connection_id,
+                         /*raw_events_enabled*/ false,
++                        super::thread_lifecycle::SkillWatchStartup::AfterResumeResponse(
++                            skill_watch_response_rx,
++                        ),
+                     )
+                     .await,
+                     thread_id,
+@@ -4216,6 +4224,7 @@ impl ThreadRequestProcessor {
+                 codex_thread
+                     .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
+                     .await;
++                let _ = skill_watch_response_tx.send(());
+             }
+             Err(err) => {
+                 let error = match err.details() {
+diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
+index e42e53d..64da67f 100644
+--- a/codex-rs/app-server/src/request_processors/turn_processor.rs
++++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
+@@ -1684,6 +1684,7 @@ impl TurnRequestProcessor {
+             conversation_id,
+             connection_id,
+             raw_events_enabled,
++            super::thread_lifecycle::SkillWatchStartup::BeforeAvailability,
+         )
+         .await
+     }
+diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
+index 8cfbc00..3cbf0d9 100644
+--- a/codex-rs/app-server/src/thread_state.rs
++++ b/codex-rs/app-server/src/thread_state.rs
+@@ -142,6 +142,20 @@ impl ThreadState {
+         (listener_command_rx, self.listener_generation)
+     }
+ 
++    /// Installs watches only while the listener that requested them remains active.
++    /// A result from a replaced or closed listener is dropped without changing its successor.
++    pub(crate) fn set_listener_watch_registration(
++        &mut self,
++        listener_generation: u64,
++        registration: WatchRegistration,
++    ) -> bool {
++        if self.listener_generation != listener_generation || self.listener_command_tx.is_none() {
++            return false;
++        }
++        self.watch_registration = registration;
++        true
++    }
++
+     pub(crate) fn clear_listener(&mut self) {
+         if let Some(cancel_tx) = self.cancel_tx.take() {
+             let _ = cancel_tx.send(());
+@@ -268,6 +282,46 @@ mod tests {
+     use codex_utils_absolute_path::AbsolutePathBuf;
+     use pretty_assertions::assert_eq;
+ 
++    #[test]
++    fn late_skill_watches_only_install_for_the_active_listener_generation() {
++        let mut state = ThreadState {
++            listener_generation: 7,
++            listener_command_tx: Some(mpsc::unbounded_channel().0),
++            ..Default::default()
++        };
++        assert!(state.set_listener_watch_registration(
++            /*listener_generation*/ 7,
++            WatchRegistration::default()
++        ));
++        assert!(!state.set_listener_watch_registration(
++            /*listener_generation*/ 6,
++            WatchRegistration::default()
++        ));
++        state.listener_generation = 8;
++        assert!(!state.set_listener_watch_registration(
++            /*listener_generation*/ 7,
++            WatchRegistration::default()
++        ));
++        assert!(state.set_listener_watch_registration(
++            /*listener_generation*/ 8,
++            WatchRegistration::default()
++        ));
++    }
++
++    #[test]
++    fn late_skill_watches_do_not_install_after_listener_close() {
++        let mut state = ThreadState {
++            listener_generation: 7,
++            listener_command_tx: Some(mpsc::unbounded_channel().0),
++            ..Default::default()
++        };
++        state.clear_listener();
++        assert!(!state.set_listener_watch_registration(
++            /*listener_generation*/ 7,
++            WatchRegistration::default()
++        ));
++    }
++
+     #[test]
+     fn note_thread_settings_reports_only_effective_changes() {
+         let mut state = ThreadState::default();
+diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+index 1b3d294..0f80449 100644
+--- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
++++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
+@@ -26,8 +26,12 @@ use codex_app_server_protocol::SkillsExtraRootsSetParams;
+ use codex_app_server_protocol::SkillsExtraRootsSetResponse;
+ use codex_app_server_protocol::SkillsListParams;
+ use codex_app_server_protocol::SkillsListResponse;
++use codex_app_server_protocol::ThreadResumeParams;
++use codex_app_server_protocol::ThreadResumeResponse;
+ use codex_app_server_protocol::ThreadStartParams;
+ use codex_app_server_protocol::ThreadStartResponse;
++use codex_app_server_protocol::TurnStartParams;
++use codex_app_server_protocol::UserInput;
+ use codex_config::types::AuthCredentialsStoreMode;
+ use codex_core::config::set_project_trust_level;
+ use codex_core_plugins::store::PluginStore;
+@@ -55,6 +59,71 @@ use wiremock::matchers::query_param_is_missing;
+ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+ const WATCHER_TIMEOUT: Duration = Duration::from_secs(20);
+ 
++#[tokio::test]
++async fn cold_resume_refreshes_skill_metadata_after_watches_are_ready() -> Result<()> {
++    skip_if_remote!(
++        Ok(()),
++        "host-local skill watching requires a local executor"
++    );
++    let server = create_mock_responses_server_repeating_assistant("Done").await;
++    let codex_home = TempDir::new()?;
++    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
++    write_skill(&codex_home, "demo")?;
++    let mut mcp = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
++        .await?;
++    let request = mcp
++        .send_thread_start_request_with_auto_env(ThreadStartParams::default())
++        .await?;
++    let started: ThreadStartResponse =
++        timeout(DEFAULT_TIMEOUT, mcp.read_response(request)).await??;
++    mcp.start_turn_and_wait_for_completion(TurnStartParams {
++        thread_id: started.thread.id.clone(),
++        input: vec![UserInput::Text {
++            text: "Persist the session".to_string(),
++            text_elements: Vec::new(),
++        }],
++        ..Default::default()
++    })
++    .await?;
++    // Restart the app server so resume creates a new listener and watch registration.
++    drop(mcp);
++    let mut mcp = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
++        .await?;
++    let request = mcp
++        .send_thread_resume_request(ThreadResumeParams {
++            thread_id: started.thread.id,
++            exclude_turns: true,
++            ..Default::default()
++        })
++        .await?;
++    let _: ThreadResumeResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(request)).await??;
++    // This refresh closes the interval in which filesystem changes precede watch installation.
++    expect_skills_changed_notification(&mut mcp, WATCHER_TIMEOUT).await?;
++    std::fs::write(
++        codex_home.path().join("skills/demo/SKILL.md"),
++        "---\nname: demo\ndescription: updated\n---\n\n# Updated\n",
++    )?;
++    expect_skills_changed_notification(&mut mcp, WATCHER_TIMEOUT).await?;
++    let request = mcp
++        .send_skills_list_request(SkillsListParams {
++            cwds: vec![codex_home.path().to_path_buf()],
++            force_reload: false,
++        })
++        .await?;
++    let skills: SkillsListResponse = timeout(DEFAULT_TIMEOUT, mcp.read_response(request)).await??;
++    assert!(
++        skills.data[0]
++            .skills
++            .iter()
++            .any(|skill| skill.name == "demo" && skill.description == "updated")
++    );
++    Ok(())
++}
++
+ fn write_skill(root: &TempDir, name: &str) -> Result<()> {
+     let skill_dir = root.path().join("skills").join(name);
+     std::fs::create_dir_all(&skill_dir)?;
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index e08a0fa..1f58068 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -1560,7 +1560,7 @@ impl Session {
+                 None
+             }
+             InitialHistory::Resumed(resumed_history) => {
+-                let turn_context = self.new_default_turn().await;
++                let turn_context = self.new_history_restoration_context().await;
+                 let rollout_items = resumed_history.history;
+                 if matches!(
+                     rollout_items.iter().rev().find_map(|item| match item {
+@@ -1618,7 +1618,7 @@ impl Session {
+                 None
+             }
+             InitialHistory::Forked(mut rollout_items) => {
+-                let turn_context = self.new_default_turn().await;
++                let turn_context = self.new_history_restoration_context().await;
+                 Self::assign_missing_rollout_response_item_ids(&mut rollout_items);
+                 self.apply_rollout_reconstruction(&turn_context, &rollout_items)
+                     .await;
+diff --git a/codex-rs/core/src/session/resume_warmup_tests.rs b/codex-rs/core/src/session/resume_warmup_tests.rs
+new file mode 100644
+index 0000000..f5b0919
+--- /dev/null
++++ b/codex-rs/core/src/session/resume_warmup_tests.rs
+@@ -0,0 +1,227 @@
++use super::make_session_and_context;
++use crate::session::*;
++use codex_history::ResumedHistory;
++use futures::FutureExt;
++use std::sync::atomic::AtomicUsize;
++use std::sync::atomic::Ordering;
++use tracing::instrument::WithSubscriber;
++use tracing_subscriber::Layer;
++use tracing_subscriber::layer::SubscriberExt;
++
++#[derive(Clone, Default)]
++struct SkillDiscoveryCalls(Arc<AtomicUsize>);
++
++impl<S: tracing::Subscriber> Layer<S> for SkillDiscoveryCalls {
++    fn on_new_span(
++        &self,
++        attrs: &tracing::span::Attributes<'_>,
++        _id: &tracing::span::Id,
++        _ctx: tracing_subscriber::layer::Context<'_, S>,
++    ) {
++        if attrs.metadata().name() == "skills_for_config" {
++            self.0.fetch_add(1, Ordering::SeqCst);
++        }
++    }
++}
++
++#[tokio::test]
++async fn resumed_history_does_not_discover_skills_before_restoration() {
++    let (session, _) = make_session_and_context().await;
++    let calls = SkillDiscoveryCalls::default();
++    let subscriber = tracing_subscriber::registry().with(calls.clone());
++    session
++        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
++            conversation_id: ThreadId::default(),
++            history: Arc::new(Vec::new()),
++            rollout_path: None,
++        }))
++        .with_subscriber(subscriber)
++        .await;
++    assert_eq!(
++        calls.0.load(Ordering::SeqCst),
++        0,
++        "restoration must not wait for skill discovery"
++    );
++    assert!(session.clone_history().await.raw_items().next().is_none());
++}
++
++#[tokio::test]
++async fn forked_history_does_not_discover_skills_before_restoration() {
++    let (session, _) = make_session_and_context().await;
++    let calls = SkillDiscoveryCalls::default();
++    let subscriber = tracing_subscriber::registry().with(calls.clone());
++    session
++        .record_initial_history(InitialHistory::Forked(Vec::new()))
++        .with_subscriber(subscriber)
++        .await;
++    assert_eq!(
++        calls.0.load(Ordering::SeqCst),
++        0,
++        "fork restoration must not wait for skill discovery"
++    );
++    assert!(session.clone_history().await.raw_items().next().is_none());
++}
++
++#[tokio::test]
++async fn execution_context_still_discovers_skills() {
++    let (session, _) = make_session_and_context().await;
++    let skill_root = tempfile::tempdir().expect("skill root");
++    let skill_dir = skill_root.path().join("resume-demo");
++    std::fs::create_dir(&skill_dir).expect("skill directory");
++    std::fs::write(
++        skill_dir.join("SKILL.md"),
++        "---\nname: resume-demo\ndescription: test skill\n---\nSkill contents\n",
++    )
++    .expect("skill document");
++    session.services.skills_service.set_extra_roots(vec![
++        AbsolutePathBuf::try_from(skill_root.path()).expect("absolute skill root"),
++    ]);
++    let calls = SkillDiscoveryCalls::default();
++    let subscriber = tracing_subscriber::registry().with(calls.clone());
++    let context = session.new_default_turn().with_subscriber(subscriber).await;
++    assert_eq!(calls.0.load(Ordering::SeqCst), 1);
++    assert!(
++        context
++            .skills_snapshot()
++            .outcome()
++            .skills
++            .iter()
++            .any(|skill| skill.name == "resume-demo")
++    );
++}
++
++#[derive(Clone)]
++struct PausedSkillDiscovery {
++    entered: Arc<tokio::sync::Notify>,
++    first: Arc<std::sync::atomic::AtomicBool>,
++    release: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
++}
++
++impl Default for PausedSkillDiscovery {
++    fn default() -> Self {
++        Self {
++            entered: Arc::default(),
++            first: Arc::new(std::sync::atomic::AtomicBool::new(true)),
++            release: Arc::default(),
++        }
++    }
++}
++
++impl PausedSkillDiscovery {
++    fn release(&self) {
++        let (lock, changed) = self.release.as_ref();
++        *lock.lock().expect("discovery release") = true;
++        changed.notify_all();
++    }
++}
++
++impl<S: tracing::Subscriber> Layer<S> for PausedSkillDiscovery {
++    fn on_new_span(
++        &self,
++        attrs: &tracing::span::Attributes<'_>,
++        _id: &tracing::span::Id,
++        _ctx: tracing_subscriber::layer::Context<'_, S>,
++    ) {
++        if attrs.metadata().name() == "skills_for_config"
++            && self.first.swap(false, Ordering::SeqCst)
++        {
++            self.entered.notify_one();
++            let (lock, changed) = self.release.as_ref();
++            let mut released = lock.lock().expect("discovery release");
++            while !*released {
++                released = changed.wait(released).expect("discovery release wait");
++            }
++        }
++    }
++}
++
++struct ReleaseDiscoveryOnDrop(PausedSkillDiscovery);
++
++impl Drop for ReleaseDiscoveryOnDrop {
++    fn drop(&mut self) {
++        self.0.release();
++    }
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++async fn session_is_available_during_skill_warmup_and_first_context_waits() {
++    let discovery = PausedSkillDiscovery::default();
++    let _release_on_drop = ReleaseDiscoveryOnDrop(discovery.clone());
++    let subscriber = tracing_subscriber::registry().with(discovery.clone());
++    let initialize =
++        tokio::spawn(super::make_session_with_config_and_rx(|_| {}).with_subscriber(subscriber));
++    tokio::time::timeout(
++        std::time::Duration::from_secs(10),
++        discovery.entered.notified(),
++    )
++    .await
++    .expect("skill discovery must start");
++    let (session, _) = tokio::time::timeout(std::time::Duration::from_secs(2), initialize)
++        .await
++        .expect("session initialization must finish while skill discovery is paused")
++        .expect("session initialization task")
++        .expect("session initialized");
++    let mut first_context = Box::pin(session.new_default_turn());
++    assert!(
++        tokio::time::timeout(std::time::Duration::from_millis(100), &mut first_context)
++            .await
++            .is_err(),
++        "the first execution context must await the pending discovery"
++    );
++    discovery.release();
++    tokio::time::timeout(std::time::Duration::from_secs(10), first_context)
++        .await
++        .expect("first execution context completes after discovery is released");
++    session.stop_mcp_prewarm_worker().await;
++}
++
++#[tokio::test]
++async fn cancelled_context_wait_preserves_pending_skill_warmup() {
++    let (session, _) = make_session_and_context().await;
++    let (release, discovery_finished) = tokio::sync::oneshot::channel();
++    // This task represents the startup discovery that an early request waits for.
++    let discovery = tokio::spawn(async move {
++        discovery_finished.await.expect("discovery released");
++    });
++    *session.startup_skill_warmup.lock().await = Some(
++        tokio_util::task::AbortOnDropHandle::new(discovery)
++            .map(|result| result.map_err(Arc::new))
++            .boxed()
++            .shared(),
++    );
++    assert!(
++        tokio::time::timeout(
++            std::time::Duration::from_millis(100),
++            session.new_default_turn()
++        )
++        .await
++        .is_err(),
++        "cancelling a waiting request must leave discovery running"
++    );
++    assert!(!release.is_closed());
++    release.send(()).expect("discovery is still running");
++    let context = tokio::time::timeout(
++        std::time::Duration::from_secs(10),
++        session.new_default_turn(),
++    )
++    .await
++    .expect("a later request can use the completed discovery");
++    assert!(!context.model_info().slug.is_empty());
++}
++
++#[tokio::test]
++async fn failed_skill_warmup_does_not_skip_execution_discovery() {
++    let (session, _) = make_session_and_context().await;
++    let discovery = tokio::spawn(async { panic!("injected startup discovery failure") });
++    *session.startup_skill_warmup.lock().await = Some(
++        tokio_util::task::AbortOnDropHandle::new(discovery)
++            .map(|result| result.map_err(Arc::new))
++            .boxed()
++            .shared(),
++    );
++    let calls = SkillDiscoveryCalls::default();
++    let subscriber = tracing_subscriber::registry().with(calls.clone());
++    let context = session.new_default_turn().with_subscriber(subscriber).await;
++    assert_eq!(calls.0.load(Ordering::SeqCst), 1);
++    assert!(!context.model_info().slug.is_empty());
++}
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 824cf58..7b1787c 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -48,8 +48,15 @@ use codex_sandboxing::SandboxType;
+ use codex_skills::SkillError;
+ use codex_utils_git_discovery::GitRootDiscovery;
+ use codex_utils_path::replace_path_and_deduplicate;
++use futures::FutureExt;
+ use std::sync::OnceLock;
+ use tokio::sync::Semaphore;
++use tokio_util::task::AbortOnDropHandle;
++use tracing::instrument::WithSubscriber;
++
++/// Shared startup discovery completion; its last owner aborts unfinished work on drop.
++pub(super) type StartupSkillWarmup =
++    Shared<BoxFuture<'static, Result<(), Arc<tokio::task::JoinError>>>>;
+ 
+ type McpToolApprovalMetadataMap =
+     HashMap<(String, String), std::sync::Weak<(Option<McpInvocation>, McpToolApprovalMetadata)>>;
+@@ -87,6 +94,8 @@ pub(crate) struct Session {
+     pub(super) mcp_prewarm_tx: async_channel::Sender<()>,
+     pub(super) mcp_prewarm_shutdown: CancellationToken,
+     pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
++    /// Execution waits for this warmup; history restoration and input do not.
++    pub(super) startup_skill_warmup: Mutex<Option<StartupSkillWarmup>>,
+     pub(crate) conversation: Arc<RealtimeConversationManager>,
+     pub(crate) realtime_history: Option<Mutex<crate::realtime_history::RealtimeHistoryState>>,
+     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
+@@ -613,6 +622,11 @@ pub(crate) struct AppServerClientMetadata {
+     pub(crate) client_version: Option<String>,
+ }
+ 
++#[tracing::instrument(
++    name = "session_init.plugin_skill_warmup",
++    skip_all,
++    fields(otel.name = "session_init.plugin_skill_warmup")
++)]
+ async fn warm_plugins_and_skills_for_session_init(
+     config: Arc<Config>,
+     plugins_manager: Arc<PluginsManager>,
+@@ -1444,17 +1458,6 @@ impl Session {
+             session_configuration.environments = turn_environments.selections();
+             let resolved_environments = turn_environments.snapshot().await;
+             let agents_md_manager = Arc::new(AgentsMdManager::new(instructions));
+-            let plugin_skill_warmup = warm_plugins_and_skills_for_session_init(
+-                Arc::clone(&config),
+-                Arc::clone(&plugins_manager),
+-                Arc::clone(&skills_service),
+-                &resolved_environments,
+-                extensions.as_ref(),
+-            )
+-            .instrument(info_span!(
+-                "session_init.plugin_skill_warmup",
+-                otel.name = "session_init.plugin_skill_warmup",
+-            ));
+             let thread_name_lookup = async {
+                 if config.ephemeral && matches!(&initial_history, InitialHistory::Forked(_)) {
+                     None
+@@ -1467,9 +1470,8 @@ impl Session {
+                 "session_init.thread_name_lookup",
+                 otel.name = "session_init.thread_name_lookup",
+             ));
+-            let (instruction_refresh, plugin_skill_errors, thread_name) = tokio::join!(
++            let (instruction_refresh, thread_name) = tokio::join!(
+                 agents_md_manager.refresh(config.as_ref(), &resolved_environments),
+-                plugin_skill_warmup,
+                 thread_name_lookup,
+             );
+             let (agents_md_result, instruction_warnings) = instruction_refresh;
+@@ -1481,13 +1483,6 @@ impl Session {
+                     msg: EventMsg::Warning(WarningEvent { message }),
+                 }),
+             );
+-            for err in &plugin_skill_errors {
+-                error!(
+-                    "failed to load skill {}: {}",
+-                    err.path.display(),
+-                    err.message
+-                );
+-            }
+             session_configuration.thread_name = thread_name.clone();
+             let mut state = SessionState::new_with_auto_compact_window_ids(
+                 session_configuration.clone(),
+@@ -1775,6 +1770,35 @@ impl Session {
+                 turn_environments: Arc::clone(&turn_environments),
+             };
+             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
++            let mcp_prewarm_shutdown = CancellationToken::new();
++            let warmup_shutdown = mcp_prewarm_shutdown.clone();
++            let warmup_config = Arc::clone(&config);
++            let warmup_plugins = Arc::clone(&plugins_manager);
++            let warmup_skills = Arc::clone(&services.skills_service);
++            let warmup_environments = resolved_environments.clone();
++            let warmup_extensions = Arc::clone(&extensions);
++            let startup_skill_warmup = AbortOnDropHandle::new(tokio::spawn(
++                async move {
++                    tokio::select! {
++                        _ = warmup_shutdown.cancelled() => {},
++                        errors = warm_plugins_and_skills_for_session_init(
++                            warmup_config,
++                            warmup_plugins,
++                            warmup_skills,
++                            &warmup_environments,
++                            warmup_extensions.as_ref(),
++                        ) => {
++                            for err in errors {
++                                error!("failed to load skill {}: {}", err.path.display(), err.message);
++                            }
++                        }
++                    }
++                }
++                .with_current_subscriber(),
++            ))
++            .map(|result| result.map_err(Arc::new))
++            .boxed()
++            .shared();
+             let sess = Arc::new(Session {
+                 thread_id,
+                 installation_id,
+@@ -1794,8 +1818,9 @@ impl Session {
+         mcp_elicitation_reviewer_handle: OnceLock::new(),
+                 mcp_elicitation_lifecycle_handle: OnceLock::new(),
+                 mcp_prewarm_tx,
+-                mcp_prewarm_shutdown: CancellationToken::new(),
++                mcp_prewarm_shutdown,
+                 mcp_prewarm_task: std::sync::Mutex::new(None),
++                startup_skill_warmup: Mutex::new(Some(startup_skill_warmup)),
+                 conversation: Arc::new(RealtimeConversationManager::new()),
+                 realtime_history: (session_configuration.history_mode == ThreadHistoryMode::Paginated
+                     && services.live_thread.is_some())
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 13ebc68..0ba0213 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -6752,6 +6752,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+         mcp_prewarm_tx: async_channel::bounded(1).0,
+         mcp_prewarm_shutdown: CancellationToken::new(),
+         mcp_prewarm_task: std::sync::Mutex::new(None),
++        startup_skill_warmup: Mutex::new(None),
+         conversation: Arc::new(RealtimeConversationManager::new()),
+         realtime_history: None,
+         active_turn: Mutex::new(None),
+@@ -9028,6 +9029,7 @@ where
+         mcp_prewarm_tx: async_channel::bounded(1).0,
+         mcp_prewarm_shutdown: CancellationToken::new(),
+         mcp_prewarm_task: std::sync::Mutex::new(None),
++        startup_skill_warmup: Mutex::new(None),
+         conversation: Arc::new(RealtimeConversationManager::new()),
+         realtime_history: None,
+         active_turn: Mutex::new(None),
+@@ -13096,3 +13098,6 @@ async fn session_start_hooks_require_project_trust_without_config_toml() -> std:
+ 
+     Ok(())
+ }
++
++#[path = "resume_warmup_tests.rs"]
++mod resume_warmup_tests;
+diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
+index 0d7b59d..532bf4a 100644
+--- a/codex-rs/core/src/session/turn_context.rs
++++ b/codex-rs/core/src/session/turn_context.rs
+@@ -373,6 +373,10 @@ enum TurnContextBuildMode {
+     /// shared model/multi-agent metadata.
+     StartupPrewarm,
+ 
++    /// Restores recorded history and model metadata without discovering skills or plugins.
++    /// Must not capture or execute a step.
++    RestoreHistory,
++
+     /// Captures recording settings without updating shared model/multi-agent metadata
+     /// or discovering skills. Must not initialize context or capture an execution step.
+     InjectItems,
+@@ -1155,6 +1159,21 @@ impl Session {
+         build_mode: TurnContextBuildMode,
+         git_enrichment_policy: GitEnrichmentPolicy,
+     ) -> Arc<TurnContext> {
++        if matches!(
++            build_mode,
++            TurnContextBuildMode::Full | TurnContextBuildMode::StartupPrewarm
++        ) {
++            // A cancelled waiter drops its clone while the session retains the shared task.
++            let warmup = self.startup_skill_warmup.lock().await.clone();
++            if let Some(task) = warmup {
++                let result = task.await;
++                if self.startup_skill_warmup.lock().await.take().is_some()
++                    && let Err(err) = result
++                {
++                    error!("startup skill warmup task failed: {err}");
++                }
++            }
++        }
+         let primary_turn_environment = turn_environments.primary();
+         // TODO(anp): Migrate per-turn config and legacy TurnContext cwd consumers to PathUri so
+         // a foreign primary environment does not fall back to the session's host cwd.
+@@ -1179,8 +1198,8 @@ impl Session {
+             )
+             .await;
+         let multi_agent_version = match build_mode {
+-            TurnContextBuildMode::Full => {
+-                // Only execution and initial context creation publish model metadata.
++            TurnContextBuildMode::Full | TurnContextBuildMode::RestoreHistory => {
++                // Execution and history restoration publish model metadata.
+                 self.services
+                     .thread_extension_data
+                     .insert(model_info.clone());
+@@ -1194,21 +1213,26 @@ impl Session {
+             }
+         };
+         let plugins_input = per_turn_config.plugins_config_input();
+-        let plugin_outcome = self
+-            .services
+-            .plugins_manager
+-            .plugins_for_config(&plugins_input)
+-            .await
+-            .without_plugins(&session_configuration.disabled_plugin_ids);
++        let plugin_outcome = if matches!(build_mode, TurnContextBuildMode::RestoreHistory) {
++            Default::default()
++        } else {
++            self.services
++                .plugins_manager
++                .plugins_for_config(&plugins_input)
++                .await
++                .without_plugins(&session_configuration.disabled_plugin_ids)
++        };
+         let trusted_plugin_roots = TrustedPluginRoots::from_plugin_load_outcome(
+             &plugin_outcome,
+             per_turn_config.codex_home.as_path(),
+         );
+-        let skills_snapshot = if matches!(build_mode, TurnContextBuildMode::InjectItems)
+-            || (per_turn_config
+-                .features
+-                .enabled(Feature::SkipHostSkillDiscovery)
+-                && !self.services.extensions.requires_host_skill_discovery())
++        let skills_snapshot = if matches!(
++            build_mode,
++            TurnContextBuildMode::InjectItems | TurnContextBuildMode::RestoreHistory
++        ) || (per_turn_config
++            .features
++            .enabled(Feature::SkipHostSkillDiscovery)
++            && !self.services.extensions.requires_host_skill_discovery())
+         {
+             // Executor and orchestrator catalogs are supplied independently of host skills.
+             HostSkillsSnapshot::new(Arc::new(SkillLoadOutcome::default()))
+@@ -1337,6 +1361,13 @@ impl Session {
+         self.new_default_turn_for(TurnContextBuildMode::Full).await
+     }
+ 
++    /// Captures the metadata needed to restore history without waiting for skill discovery.
++    /// This context must not be used to capture or execute a step.
++    pub(crate) async fn new_history_restoration_context(&self) -> Arc<TurnContext> {
++        self.new_default_turn_for(TurnContextBuildMode::RestoreHistory)
++            .await
++    }
++
+     /// Captures current recording settings without discovering skills.
+     /// This context must not be used to capture or execute a step.
+     pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
+diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
+index 5f116a9..8f5a478 100644
+--- a/codex-rs/core/tests/suite/skills_extension.rs
++++ b/codex-rs/core/tests/suite/skills_extension.rs
+@@ -58,6 +58,7 @@ use codex_protocol::protocol::TurnSettingsUpdateOutcome;
+ use codex_protocol::user_input::UserInput;
+ use codex_skills_extension::ExecutorSkillProvider;
+ use codex_skills_extension::HostSkillProvider;
++use codex_skills_extension::HostSkillsLoadInput;
+ use codex_skills_extension::SkillProvider;
+ use codex_skills_extension::SkillProviderSource;
+ use codex_skills_extension::SkillProviders;
+@@ -2714,6 +2715,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
+         .with_config(configure_catalog_test);
+     let test = builder.build_with_auto_env(&server).await?;
+ 
++    // Capture the catalog before deleting a known skill; session availability precedes discovery.
++    let plugins = test.thread_manager.plugins_manager();
++    let plugins_input = test.config.plugins_config_input();
++    let plugin_outcome = plugins.plugins_for_config(&plugins_input).await;
++    let skills_input = HostSkillsLoadInput::new(
++        test.config.cwd.clone(),
++        plugin_outcome.effective_plugin_skill_roots(),
++        test.config.config_layer_stack.clone(),
++    )
++    .with_plugin_skill_snapshots(plugins.plugin_skill_snapshots_for_config(&plugins_input));
++    let snapshot = test
++        .thread_manager
++        .skills_service()
++        .snapshot_for_config(&skills_input, Some(test.fs()))
++        .await;
++    assert!(
++        snapshot
++            .outcome()
++            .skills
++            .iter()
++            .any(|skill| skill.name == "missing-host")
++    );
++
+     std::fs::remove_file(&missing_skill_path)?;
+     test.codex
+         .start_or_steer_turn(TurnInputRequest::user_input(vec![
+-- 
+2.43.0
+

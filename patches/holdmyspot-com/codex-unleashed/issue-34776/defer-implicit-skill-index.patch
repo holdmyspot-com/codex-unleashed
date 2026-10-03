@@ -1,0 +1,200 @@
+From e5ae5f22a62d56bcca16d93234ea7967a57dc00e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 2 Oct 2026 22:54:16 -0400
+Subject: [PATCH] Defer implicit skill index construction until first use
+
+Keep configured skill discovery in startup and resolve the derived document
+and script aliases only when implicit invocation detection first needs them.
+Share the immutable index across unchanged snapshots and reset it when
+disabled skill paths change.
+
+Base: rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc
+
+TDD: just test -p codex-skills-extension -E
+'test(implicit_skill_index_resolves_aliases_on_first_use)' fails on base:
+lookup returns None after the scripts alias changes before any command.
+The same regression passes with this change. The skill suites exercise
+canonical document lookup, unchanged clones, and disabled skill isolation.
+
+Validation receipts: workspace .cat/work/reports/resume-attribution/.
+Author formatting: just fmt-check passes.
+---
+ codex-rs/ext/skills/src/host_outcome.rs       | 61 +++++++++++------
+ codex-rs/ext/skills/src/host_service_tests.rs | 65 +++++++++++++++++++
+ 2 files changed, 105 insertions(+), 21 deletions(-)
+
+diff --git a/codex-rs/ext/skills/src/host_outcome.rs b/codex-rs/ext/skills/src/host_outcome.rs
+index 79f4f2b..4ebf864 100644
+--- a/codex-rs/ext/skills/src/host_outcome.rs
++++ b/codex-rs/ext/skills/src/host_outcome.rs
+@@ -3,6 +3,7 @@ use std::collections::HashSet;
+ use std::fmt;
+ use std::io;
+ use std::sync::Arc;
++use std::sync::OnceLock;
+ 
+ use codex_exec_server::ExecutorFileSystem;
+ use codex_exec_server::LOCAL_FS;
+@@ -22,8 +23,13 @@ pub struct SkillLoadOutcome {
+     pub(crate) skill_discovery_path_by_path: Arc<HashMap<AbsolutePathBuf, AbsolutePathBuf>>,
+     pub(crate) agent_plugin_skill_paths: HashSet<AbsolutePathBuf>,
+     pub(crate) file_systems_by_skill_path: SkillFileSystemsByPath,
+-    pub(crate) implicit_skills_by_scripts_dir: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
+-    pub(crate) implicit_skills_by_doc_path: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
++    implicit_skill_index: Arc<OnceLock<ImplicitSkillIndex>>,
++}
++
++#[derive(Debug)]
++struct ImplicitSkillIndex {
++    by_scripts_dir: HashMap<AbsolutePathBuf, SkillMetadata>,
++    by_doc_path: HashMap<AbsolutePathBuf, SkillMetadata>,
+ }
+ 
+ impl SkillLoadOutcome {
+@@ -61,26 +67,35 @@ impl SkillLoadOutcome {
+ 
+     pub(crate) fn with_disabled_paths(mut self, disabled_paths: HashSet<AbsolutePathBuf>) -> Self {
+         self.disabled_paths = disabled_paths;
+-        let mut by_scripts_dir = HashMap::new();
+-        let mut by_doc_path = HashMap::new();
+-        for skill in self
+-            .skills
+-            .iter()
+-            .filter(|skill| self.is_skill_enabled(skill))
+-        {
+-            let skill_doc_path = canonicalize_if_exists(&skill.path_to_skills_md);
+-            by_doc_path.insert(skill_doc_path, skill.clone());
+-
+-            if let Some(skill_dir) = skill.path_to_skills_md.parent() {
+-                let scripts_dir = canonicalize_if_exists(&skill_dir.join("scripts"));
+-                by_scripts_dir.insert(scripts_dir, skill.clone());
+-            }
+-        }
+-        self.implicit_skills_by_scripts_dir = Arc::new(by_scripts_dir);
+-        self.implicit_skills_by_doc_path = Arc::new(by_doc_path);
++        self.implicit_skill_index = Arc::new(OnceLock::new());
+         self
+     }
+ 
++    /// Resolves enabled skill aliases on first lookup and shares the index with unchanged clones.
++    fn get_or_build_implicit_skill_index(&self) -> &ImplicitSkillIndex {
++        self.implicit_skill_index.get_or_init(|| {
++            let mut by_scripts_dir = HashMap::new();
++            let mut by_doc_path = HashMap::new();
++            for skill in self
++                .skills
++                .iter()
++                .filter(|skill| self.is_skill_enabled(skill))
++            {
++                let skill_doc_path = canonicalize_if_exists(&skill.path_to_skills_md);
++                by_doc_path.insert(skill_doc_path, skill.clone());
++
++                if let Some(skill_dir) = skill.path_to_skills_md.parent() {
++                    let scripts_dir = canonicalize_if_exists(&skill_dir.join("scripts"));
++                    by_scripts_dir.insert(scripts_dir, skill.clone());
++                }
++            }
++            ImplicitSkillIndex {
++                by_scripts_dir,
++                by_doc_path,
++            }
++        })
++    }
++
+     pub(crate) fn is_agent_plugin_skill(&self, skill: &SkillMetadata) -> bool {
+         self.agent_plugin_skill_paths
+             .contains(&skill.path_to_skills_md)
+@@ -125,11 +140,15 @@ impl SkillLoadOutcome {
+ 
+ impl codex_skills::ImplicitSkillLookup for SkillLoadOutcome {
+     fn implicit_skill_for_scripts_dir(&self, path: &AbsolutePathBuf) -> Option<&SkillMetadata> {
+-        self.implicit_skills_by_scripts_dir.get(path)
++        self.get_or_build_implicit_skill_index()
++            .by_scripts_dir
++            .get(path)
+     }
+ 
+     fn implicit_skill_for_doc_path(&self, path: &AbsolutePathBuf) -> Option<&SkillMetadata> {
+-        self.implicit_skills_by_doc_path.get(path)
++        self.get_or_build_implicit_skill_index()
++            .by_doc_path
++            .get(path)
+     }
+ }
+ 
+diff --git a/codex-rs/ext/skills/src/host_service_tests.rs b/codex-rs/ext/skills/src/host_service_tests.rs
+index 0b76742..d85b409 100644
+--- a/codex-rs/ext/skills/src/host_service_tests.rs
++++ b/codex-rs/ext/skills/src/host_service_tests.rs
+@@ -1013,3 +1013,68 @@ async fn skills_for_config_ignores_cwd_cache_when_session_flags_reenable_skill()
+         .expect("demo skill should be discovered");
+     assert_eq!(child_outcome.is_skill_enabled(child_skill), true);
+ }
++
++#[cfg(unix)]
++#[tokio::test]
++async fn implicit_skill_index_resolves_aliases_on_first_use() {
++    let codex_home = tempfile::tempdir().expect("tempdir");
++    let cwd = tempfile::tempdir().expect("tempdir");
++    write_user_skill(&codex_home, "demo", "demo", "demo skill");
++    let skill_dir = codex_home.path().join("skills/demo");
++    let scripts = skill_dir.join("scripts");
++    let old_scripts = cwd.path().join("old-scripts");
++    let new_scripts = cwd.path().join("new-scripts");
++    fs::create_dir(&old_scripts).unwrap();
++    fs::create_dir(&new_scripts).unwrap();
++    std::os::unix::fs::symlink(&old_scripts, &scripts).unwrap();
++    let service = HostSkillsService::new(codex_home.path().abs(), false);
++    let stack = config_stack(&codex_home, "");
++    let outcome = skills_for_config_with_stack(&service, &cwd, &stack, &[]).await;
++    let skill = outcome
++        .skills
++        .iter()
++        .find(|skill| skill.name == "demo")
++        .unwrap();
++
++    let unchanged = outcome.clone();
++
++    // No command accesses a skill before this alias changes.
++    fs::remove_file(&scripts).unwrap();
++    std::os::unix::fs::symlink(&new_scripts, &scripts).unwrap();
++    let canonical_scripts = fs::canonicalize(&new_scripts).unwrap().abs();
++    assert_eq!(
++        outcome.implicit_skill_for_scripts_dir(&canonical_scripts),
++        Some(skill)
++    );
++    assert_eq!(
++        outcome.implicit_skill_for_doc_path(&skill.path_to_skills_md),
++        Some(skill)
++    );
++
++    fs::remove_file(&scripts).unwrap();
++    std::os::unix::fs::symlink(&old_scripts, &scripts).unwrap();
++    assert_eq!(
++        unchanged.implicit_skill_for_scripts_dir(&canonical_scripts),
++        Some(skill)
++    );
++    assert_eq!(
++        unchanged.implicit_skill_for_scripts_dir(&fs::canonicalize(&old_scripts).unwrap().abs()),
++        None
++    );
++
++    let disabled = outcome
++        .clone()
++        .with_disabled_paths(HashSet::from([skill.path_to_skills_md.clone()]));
++    assert_eq!(
++        disabled.implicit_skill_for_scripts_dir(&canonical_scripts),
++        None
++    );
++    assert_eq!(
++        disabled.implicit_skill_for_doc_path(&skill.path_to_skills_md),
++        None
++    );
++    assert_eq!(
++        outcome.implicit_skill_for_scripts_dir(&canonical_scripts),
++        Some(skill)
++    );
++}
+-- 
+2.43.0
+
