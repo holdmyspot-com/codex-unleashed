@@ -10,7 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "clean-ca
 
 
 class CleanCachedReleaseBinariesTest(unittest.TestCase):
-    def test_patch_identity_changes_reuse_unchanged_sources_and_rebuild_changed_crate(self):
+    def test_unchanged_sources_reuse_libraries_and_changed_sources_rebuild_crate(self):
         with tempfile.TemporaryDirectory(prefix="codex-source-content-test-") as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -36,8 +36,7 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             cargo_home.mkdir()
             cache_marker = cargo_home / "download-state"
             cache_marker.write_text("initial downloaded dependency state")
-            environment.update(CARGO_TARGET_DIR=str(root / "target"), CARGO_HOME=str(cargo_home),
-                               CARGO_CACHE_SOURCE_ID="upstream:patch-one")
+            environment.update(CARGO_TARGET_DIR=str(root / "target"), CARGO_HOME=str(cargo_home))
             cleanup = ["python3", str(SCRIPT), str(root), target, "app"]
             build = ["cargo", "build", "--offline", "--release", "--target", target,
                      "--message-format=json"]
@@ -47,7 +46,6 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             record = ["python3", str(SCRIPT), "--record-source-inputs", str(root), target]
             subprocess.run(record, env=environment, check=True, capture_output=True)
 
-            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-two"
             # A new checkout can assign newer timestamps to identical files.
             for name in ("shared/src/lib.rs", "changed/src/lib.rs"):
                 path = root / name
@@ -158,6 +156,8 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ", 1)[1].splitlines()[0]
             environment = os.environ.copy()
             environment["CARGO_TARGET_DIR"] = str(root / "target")
+            subprocess.run(["python3", str(SCRIPT), str(root), target, "release-demo"],
+                           env=environment, check=True, capture_output=True)
             subprocess.run(
                 ["cargo", "build", "--offline", "--release", "--target", target, "--workspace"],
                 cwd=root,
@@ -165,6 +165,8 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            subprocess.run(["python3", str(SCRIPT), "--record-source-inputs", str(root), target],
+                           env=environment, check=True, capture_output=True)
             release_dir = root / "target" / target / "release"
             executable_suffix = ".exe" if os.name == "nt" else ""
             binary = release_dir / ("release-demo" + executable_suffix)
@@ -242,8 +244,8 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
                     self.assertEqual(marker.read_text(encoding="utf-8"), "unrelated cache")
                     self.assertEqual(binary.read_text(encoding="utf-8"), "unrelated binary")
 
-    def test_changed_source_identity_rebuilds_normalized_library(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="codex-source-identity-test-") as directory:
+    def test_changed_source_contents_rebuild_normalized_library(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-source-input-test-") as directory:
             root = Path(directory) / "workspace"
             root.mkdir()
             (root / "src").mkdir()
@@ -268,7 +270,6 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
             environment = os.environ.copy()
             environment["CARGO_TARGET_DIR"] = str(root / "target")
-            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-one"
             metadata = json.loads(subprocess.check_output(
                 ["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=root, env=environment, text=True))
             self.assertEqual(len(metadata["workspace_members"]), 1, metadata["workspace_members"])
@@ -282,7 +283,6 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             subprocess.run(record, env=environment, check=True, capture_output=True)
             source.write_text("pub fn value() -> u8 { 9 }\n", encoding="utf-8")
             os.utime(source, (1000000000, 1000000000))
-            environment["CARGO_CACHE_SOURCE_ID"] = "upstream:patch-two"
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)
             result = subprocess.run(build, cwd=root, env=environment, check=True,
                                     capture_output=True, text=True)
@@ -307,13 +307,54 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
                          and message["target"]["name"] == "source_demo"]
             self.assertTrue(all(message["fresh"] for message in libraries))
 
-    def test_failed_source_invalidation_keeps_previous_identity_for_retry(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="codex-source-identity-test-") as directory:
+    def test_cache_without_source_snapshot_rebuilds_normalized_library(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-missing-source-snapshot-") as directory:
+            root = Path(directory) / "workspace"
+            root.mkdir()
+            (root / "src").mkdir()
+            (root / "Cargo.toml").write_text(
+                '[package]\nname="missing-snapshot"\nversion="0.1.0"\nedition="2021"\n'
+                '[workspace]\nmembers=["."]\nexclude=["external"]\n'
+                '[dependencies]\ncached-dependency={path="../external"}\n')
+            dependency = Path(directory) / "external"
+            (dependency / "src").mkdir(parents=True)
+            (dependency / "Cargo.toml").write_text(
+                '[package]\nname="cached-dependency"\nversion="0.1.0"\nedition="2021"\n')
+            (dependency / "src/lib.rs").write_text("pub fn value() -> u8 { 0 }\n")
+            source = root / "src/lib.rs"
+            source.write_text("pub fn value() -> u8 { 7 }\n")
+            (root / "src/main.rs").write_text(
+                'fn main() { println!("{}", missing_snapshot::value() + cached_dependency::value()); }\n')
+            target = subprocess.check_output(["rustc", "-vV"], text=True).split("host: ")[1].splitlines()[0]
+            environment = os.environ.copy()
+            environment["CARGO_TARGET_DIR"] = str(root / "target")
+            metadata = json.loads(subprocess.check_output(
+                ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+                cwd=root, env=environment, text=True))
+            self.assertEqual(len(metadata["workspace_members"]), 1)
+            build = ["cargo", "build", "--offline", "--release", "--target", target, "--message-format=json"]
+            os.utime(source, (1000000000, 1000000000))
+            subprocess.run(build, cwd=root, env=environment, check=True, capture_output=True)
+            source.write_text("pub fn value() -> u8 { 9 }\n")
+            os.utime(source, (1000000000, 1000000000))
+            subprocess.run(["python3", str(SCRIPT), str(root), target, "missing-snapshot"],
+                           env=environment, check=True, capture_output=True)
+            result = subprocess.run(build, cwd=root, env=environment, check=True,
+                                    capture_output=True, text=True)
+            dependencies = [message for line in result.stdout.splitlines()
+                            if (message := json.loads(line)).get("reason") == "compiler-artifact"
+                            and message["target"]["name"] == "cached_dependency"]
+            self.assertTrue(dependencies)
+            self.assertTrue(all(message["fresh"] for message in dependencies), result.stderr)
+            binary = root / "target" / target / "release" / (
+                "missing-snapshot.exe" if os.name == "nt" else "missing-snapshot")
+            self.assertEqual(subprocess.check_output([str(binary)], text=True).strip(), "9")
+
+    def test_failed_cold_cache_cleanup_does_not_record_successful_inputs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-source-input-test-") as directory:
             root = Path(directory)
             target_directory = root / "target"
-            identity = target_directory / ".codex-source-identities" / "test-target"
-            identity.parent.mkdir(parents=True)
-            identity.write_text("old-inputs", encoding="utf-8")
+            snapshot = target_directory / ".codex-source-inputs" / "test-target.json"
             metadata = {
                 "target_directory": str(target_directory), "workspace_members": ["demo-id"],
                 "packages": [{"id": "demo-id", "name": "demo", "targets": [
@@ -329,14 +370,15 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
             )
             cargo.chmod(0o755)
             environment = os.environ.copy()
-            environment.update(CARGO=str(cargo), CARGO_CACHE_SOURCE_ID="new-inputs", FAIL_CLEAN="1")
+            environment.update(CARGO=str(cargo), FAIL_CLEAN="1")
             command = ["python3", str(SCRIPT), str(root), "test-target", "demo"]
             result = subprocess.run(command, env=environment, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertEqual(identity.read_text(encoding="utf-8"), "old-inputs")
+            self.assertFalse(snapshot.exists())
+            self.assertTrue(snapshot.with_suffix(".pending").exists())
             environment["FAIL_CLEAN"] = "0"
             subprocess.run(command, env=environment, check=True, capture_output=True)
-            self.assertEqual(identity.read_text(encoding="utf-8"), "new-inputs")
+            self.assertFalse(snapshot.exists())
 
     def test_cleans_packages_owning_requested_binaries(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-cargo-clean-test-") as directory:
@@ -350,6 +392,10 @@ class CleanCachedReleaseBinariesTest(unittest.TestCase):
                     {"name": "shared-dependency", "targets": [{"name": "shared-dependency", "kind": ["lib"]}]},
                 ]
             }
+            metadata["target_directory"] = str(root / "target")
+            snapshot = root / "target" / ".codex-source-inputs" / "aarch64-apple-darwin.json"
+            snapshot.parent.mkdir(parents=True)
+            snapshot.write_text(json.dumps({"schema_version": 1, "files": {}, "mtimes": {}}))
             cargo = root / "cargo"
             cargo.write_text(
                 "#!/usr/bin/env python3\n"

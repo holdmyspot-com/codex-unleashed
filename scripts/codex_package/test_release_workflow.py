@@ -67,7 +67,6 @@ class ReleaseWorkflowTest(unittest.TestCase):
             with self.subTest(job=name):
                 job = re.split(r"\n  \S", workflow.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]
                 self.assertIn('python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"', job)
-                self.assertIn("CARGO_CACHE_SOURCE_ID: ${{ needs.prepare.outputs.upstream_sha }}:${{ needs.prepare.outputs.patch_hash }}", job)
                 self.assertLess(job.index("Normalize patched source timestamps"),
                                 job.index("Restore GHCR Cargo target cache"))
 
@@ -114,7 +113,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
             )
             environment = os.environ.copy()
             environment.update(CARGO_TARGET_DIR=str(root / "target"), RUNNER_TEMP=str(root / "reports"),
-                               CARGO_CACHE_SOURCE_ID="unchanged-inputs", GITHUB_WORKSPACE=str(REPOSITORY_ROOT))
+                               GITHUB_WORKSPACE=str(REPOSITORY_ROOT))
             cleanup = ["python3", str(REPOSITORY_ROOT / ".github/scripts/clean-cached-release-binaries.py"),
                        str(root), target, "codex-windows-sandbox"]
             subprocess.run(cleanup, env=environment, check=True, capture_output=True)

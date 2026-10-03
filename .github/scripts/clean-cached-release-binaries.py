@@ -147,7 +147,6 @@ def main() -> int:
         return 1
 
     previous_inputs = json.loads(snapshot.read_text(encoding="utf-8")) if snapshot.is_file() else None
-    source_id = os.environ.get("CARGO_CACHE_SOURCE_ID")
     if previous_inputs is not None:
         if previous_inputs.get("schema_version") != 1:
             print("Unsupported source-input cache snapshot; refusing reuse.", file=sys.stderr)
@@ -187,29 +186,17 @@ def main() -> int:
             os.utime(directory, None)
         print(f"Source contents changed in {len(changed)} files; Cargo determines affected units; "
               f"{len(current_files) - len(changed & current_files.keys())} unchanged files retained.")
-    elif source_id is not None:
-        if not source_id.strip():
-            print("CARGO_CACHE_SOURCE_ID must not be empty", file=sys.stderr)
-            return 2
-        identity_file = Path(metadata["target_directory"]) / ".codex-source-identities" / target_directory_name
-        previous_id = identity_file.read_text(encoding="utf-8") if identity_file.exists() else None
-        if previous_id != source_id or interrupted_inputs is not None:
-            # Migrate caches that lack file digests. Legacy identity is consulted
-            # only here; subsequent builds compare the actual source contents.
-            command = [cargo, "clean", "--release", "--target", target, "--manifest-path", str(manifest)]
-            workspace_members = set(metadata["workspace_members"])
-            packages = sorted(package["name"] for package in metadata["packages"]
-                              if package["id"] in workspace_members)
-            for package in packages:
-                command.extend(["-p", package])
-            subprocess.run(command, check=True)
-            identity_file.parent.mkdir(parents=True, exist_ok=True)
-            temporary_identity = identity_file.with_suffix(".tmp")
-            temporary_identity.write_text(source_id, encoding="utf-8")
-            temporary_identity.replace(identity_file)
-            print(f"Source identity changed or absent; rebuilding {len(packages)} workspace packages; "
-                  "external dependencies retained.")
-            return 0
+    else:
+        command = [cargo, "clean", "--release", "--target", target, "--manifest-path", str(manifest)]
+        workspace_members = set(metadata["workspace_members"])
+        packages = sorted(package["name"] for package in metadata["packages"]
+                          if package["id"] in workspace_members)
+        for package in packages:
+            command.extend(["-p", package])
+        subprocess.run(command, check=True)
+        print(f"Source snapshot absent; rebuilding {len(packages)} workspace packages; "
+              "external dependencies retained.")
+        return 0
 
     library_owners = {
         package["name"]

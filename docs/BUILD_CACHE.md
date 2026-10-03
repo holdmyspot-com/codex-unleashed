@@ -26,5 +26,4 @@ Release binaries rebuild to embed the current release metadata.
 
 Source snapshots advance only after successful compilation. A failed or
 interrupted build keeps the previous snapshot for retry. Caches without a source
-snapshot use their legacy identity for a conservative, one-time migration; an
-unknown identity rebuilds workspace crates while retaining external dependencies.
+snapshot rebuild workspace crates once while retaining external dependencies.
