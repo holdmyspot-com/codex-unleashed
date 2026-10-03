@@ -16,6 +16,12 @@ target_directory="$4"
 upstream_tag="$5"
 reference="${repository}:${tag}"
 
+# Match the GNU tar used by dependency-cache restore on macOS.
+archive_tar=tar
+if command -v gtar >/dev/null 2>&1; then
+  archive_tar=gtar
+fi
+
 prune_old_tags() {
   # Compatible compiler/target caches span upstream releases. Preserve all
   # tagged v2 caches and the current legacy release during migration; remove
@@ -100,7 +106,7 @@ case "$operation" in
     # links to those executables. Excluding their targets breaks extraction.
     # Stream the archive so GNU tar never interprets a Windows drive letter
     # in its filename as a remote-host specification.
-    tar --zstd -xf - -C "$target_directory" < "$archive_directory/cargo-target.tar.zst"
+    "$archive_tar" --zstd -xf - -C "$target_directory" < "$archive_directory/cargo-target.tar.zst"
     # Reuse compiled dependencies, but rebuild release executables and symbols
     # from the current patch set and build metadata, including matching dSYMs.
     release_dir="$target_directory/$cache_target/release"
@@ -124,7 +130,7 @@ case "$operation" in
     archive_directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/codex-ghcr-cache.XXXXXX")"
     trap 'rm -rf "$archive_directory"' EXIT
     archive="$archive_directory/cargo-target.tar.zst"
-    tar --zstd -cf - -C "$target_directory" . > "$archive"
+    "$archive_tar" --zstd -cf - -C "$target_directory" . > "$archive"
     (
       cd "$archive_directory"
       oras push "$reference" \

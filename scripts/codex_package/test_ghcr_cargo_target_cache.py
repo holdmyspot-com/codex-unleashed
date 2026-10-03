@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -64,6 +65,13 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             "cargo-v2-x86_64-apple-darwin-off-" + "a" * 64,
             "rust-v0.159.1",
             stable_cache_missing=True,
+        )
+
+    def test_pull_uses_gnu_tar_when_available(self) -> None:
+        self.restore_dependencies(
+            "cargo-v2-x86_64-apple-darwin-off-" + "a" * 64,
+            "rust-v0.160.0",
+            gnu_tar_available=True,
         )
 
     def test_prune_preserves_compatible_caches_for_other_targets(self) -> None:
@@ -151,7 +159,8 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             )
             self.assertEqual(list((root / "D:").iterdir()), [])
 
-    def restore_dependencies(self, cache_tag: str, upstream_tag: str, stable_cache_missing: bool = False) -> None:
+    def restore_dependencies(self, cache_tag: str, upstream_tag: str, stable_cache_missing: bool = False,
+                             gnu_tar_available: bool = False) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-test-") as directory:
             root = Path(directory)
             source = root / "source"
@@ -196,6 +205,22 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
                 encoding="utf-8",
             )
             oras.chmod(0o755)
+
+            if gnu_tar_available:
+                # The native command models the hosted macOS extraction failure;
+                # GNU tar must restore this same archive through the production launcher.
+                real_tar = shutil.which("gtar") or shutil.which("tar")
+                self.assertIsNotNone(real_tar)
+                (stub_dir / "gtar").symlink_to(real_tar)
+                native_tar = stub_dir / "tar"
+                native_tar.write_text(
+                    f"#!{sys.executable}\n"
+                    "import sys\n"
+                    "print('native tar extraction failed', file=sys.stderr)\n"
+                    "raise SystemExit(1)\n",
+                    encoding="utf-8",
+                )
+                native_tar.chmod(0o755)
 
             target = root / "restored"
             cached_release = target / "x86_64-apple-darwin" / "release"
