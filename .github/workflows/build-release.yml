@@ -1,1956 +1,214 @@
-name: Build release
-
-on:
-  push:
-    tags:
-      - "rust-v*.*.*"
-  workflow_call:
-    inputs:
-      upstream_tag:
-        description: "Optional upstream tag override."
-        required: false
-        type: string
-      build_number:
-        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
-        required: false
-        type: string
-      artifact_run_id:
-        description: "Optional completed build run to reuse for publishing."
-        required: false
-        type: string
-      focus_target:
-        description: "Optional target to build during focused comparison runs."
-        required: false
-        type: string
-      focus_bundle:
-        description: "Optional bundle to build during focused comparison runs."
-        required: false
-        type: string
-      verification_level:
-        description: "Verification tier: full or sentinel. Detection runs separately."
-        required: false
-        default: full
-        type: string
-      reproducibility_mode:
-        description: "Optional deterministic compiler mode for reproducibility experiments."
-        required: false
-        default: "off"
-        type: string
-      cache_audit:
-        description: "Upload a complete Cargo cache file/size manifest for one diagnostic run."
-        required: false
-        default: false
-        type: boolean
-      ghcr_cache:
-        description: "Use the public GHCR Cargo target overflow cache. Disable only for cache diagnostics."
-        required: false
-        default: true
-        type: boolean
-      publish_npm:
-        description: "Publish the npm packages associated with the release."
-        required: false
-        default: true
-        type: boolean
-  workflow_dispatch:
-    inputs:
-      upstream_tag:
-        description: "Optional upstream tag override."
-        required: false
-        type: string
-      build_number:
-        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
-        required: false
-        type: string
-      artifact_run_id:
-        description: "Optional completed build run to reuse for publishing."
-        required: false
-        type: string
-      focus_target:
-        description: "Optional target to build during focused comparison runs."
-        required: false
-        type: string
-      focus_bundle:
-        description: "Optional bundle to build during focused comparison runs."
-        required: false
-        type: string
-      verification_level:
-        description: "Verification tier to run."
-        required: false
-        default: full
-        type: choice
-        options:
-          - sentinel
-          - full
-      reproducibility_mode:
-        description: "Compiler mode for reproducibility experiments."
-        required: false
-        default: "off"
-        type: choice
-        options:
-          - "off"
-          - deterministic
-      cache_audit:
-        description: "Upload a complete Cargo cache file/size manifest for one diagnostic run."
-        required: false
-        default: false
-        type: boolean
-      ghcr_cache:
-        description: "Use the public GHCR Cargo target overflow cache. Disable only for cache diagnostics."
-        required: false
-        default: true
-        type: boolean
-      publish_npm:
-        description: "Publish the npm packages associated with the release."
-        required: false
-        default: true
-        type: boolean
-
+name: Incremental release probe
+'on':
+  workflow_dispatch: {}
 permissions:
-  actions: read
-  contents: write
-  packages: write
-  id-token: write
-  attestations: write
-
-concurrency:
-  group: >-
-    build-release-${{ github.ref }}-${{ inputs.upstream_tag || 'latest' }}-${{ inputs.verification_level || 'full' }}-${{
-      inputs.focus_target || 'all-targets'
-    }}-${{ inputs.focus_bundle || 'all-bundles' }}-${{
-      inputs.reproducibility_mode || 'off'
-    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}
-  # A newer commit supersedes an in-progress release check. Keeping the old
-  # run alive only wastes hosted-runner time and can publish stale artifacts.
-  cancel-in-progress: true
-
+  contents: read
+  packages: read
 jobs:
-  prepare:
-    if: inputs.verification_level == 'full' || inputs.verification_level == 'sentinel' || inputs.verification_level == ''
-    permissions:
-      actions: read
-      contents: write
-    runs-on: ubuntu-latest
-    outputs:
-      should_release: ${{ steps.prepare.outputs.should_release }}
-      upstream_tag: ${{ steps.prepare.outputs.upstream_tag }}
-      build_number: ${{ steps.prepare.outputs.build_number }}
-      upstream_sha: ${{ steps.prepare.outputs.upstream_sha }}
-      patched_tag: ${{ steps.prepare.outputs.patched_tag }}
-      release_name: ${{ steps.prepare.outputs.release_name }}
-      build_date: ${{ steps.prepare.outputs.build_date }}
-      patch_files: ${{ steps.prepare.outputs.patch_files }}
-      supported_targets: ${{ steps.prepare.outputs.supported_targets }}
-      patch_hash: ${{ steps.prepare.outputs.patch_hash }}
-      build_metadata: ${{ steps.prepare.outputs.build_metadata }}
-      artifact_run_id: ${{ steps.prepare.outputs.artifact_run_id }}
-      source_sha: ${{ steps.source.outputs.source_sha }}
-      source_ref: ${{ steps.source.outputs.source_ref }}
-      source_run_attempt: ${{ steps.source.outputs.source_run_attempt }}
-      unix_matrix: ${{ steps.focus.outputs.unix_matrix }}
-      windows_matrix: ${{ steps.focus.outputs.windows_matrix }}
-    steps:
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Download metadata for artifact reuse
-        if: ${{ inputs.artifact_run_id != '' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-metadata
-          path: reused-metadata
-          run-id: ${{ inputs.artifact_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Determine upstream release
-        id: prepare
-        shell: bash
-        env:
-          INPUT_UPSTREAM_TAG: ${{ inputs.upstream_tag || '' }}
-          INPUT_BUILD_NUMBER: ${{ inputs.build_number || '' }}
-          INPUT_ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id || '' }}
-          INPUT_FOCUS_TARGET: ${{ inputs.focus_target || '' }}
-          INPUT_FOCUS_BUNDLE: ${{ inputs.focus_bundle || '' }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_TYPE: ${{ github.ref_type }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_WORKFLOW: ${{ github.workflow }}
-        run: |
-          set -euo pipefail
-
-          focused_comparison=false
-          if [[ -n "${INPUT_FOCUS_TARGET}" || -n "${INPUT_FOCUS_BUNDLE}" ]]; then
-            focused_comparison=true
-          fi
-
-          active_run_ids="$(
-            gh api \
-              "repos/${GITHUB_REPOSITORY}/actions/runs" \
-              --paginate \
-              -f status=in_progress \
-              -q '.workflow_runs[]
-                | select(.name == env.GITHUB_WORKFLOW)
-                | .id' \
-              2>/dev/null | grep -E '^[0-9]+$' || true
-          )"
-          if [[ -z "${INPUT_ARTIFACT_RUN_ID}" && -n "${active_run_ids}" ]]; then
-            oldest_active_run_id="$(printf '%s\n' "${active_run_ids}" | sort -n | head -n1)"
-            if [[ -n "${oldest_active_run_id}" && "${oldest_active_run_id}" != "${GITHUB_RUN_ID}" ]]; then
-              echo "Another ${GITHUB_WORKFLOW} run is already active (${oldest_active_run_id}); skipping duplicate run ${GITHUB_RUN_ID}."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=" >> "${GITHUB_OUTPUT}"
-              echo "release_name=" >> "${GITHUB_OUTPUT}"
-              echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-          fi
-
-          patch_hash="$(find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')"
-
-          if [[ -n "${INPUT_ARTIFACT_RUN_ID}" ]]; then
-            metadata_file="$(find reused-metadata -type f -name '*.json' -print -quit)"
-            if [[ -z "${metadata_file}" ]]; then
-              echo "ERROR: build run ${INPUT_ARTIFACT_RUN_ID} did not provide release metadata." >&2
-              exit 1
-            fi
-
-            upstream_tag="$(jq -er '.upstream_tag' "${metadata_file}")"
-            upstream_sha="$(jq -er '.upstream_sha' "${metadata_file}")"
-            patched_tag="$(jq -er '.patched_tag' "${metadata_file}")"
-            release_name="$(jq -er '.release_name // (.patched_tag | sub("^rust-v"; ""))' "${metadata_file}")"
-            build_date="$(jq -er '.build_date' "${metadata_file}")"
-            patch_files="$(jq -er '.patch_files' "${metadata_file}")"
-            supported_targets="$(jq -er '.supported_targets' "${metadata_file}")"
-            metadata_patch_hash="$(jq -er '.patch_hash' "${metadata_file}")"
-            if ! jq -e '.schema_version == 2 and (.build_metadata | type == "object")' "${metadata_file}" >/dev/null; then
-              echo "ERROR: build run ${INPUT_ARTIFACT_RUN_ID} uses incompatible release metadata; start a fresh build." >&2
-              exit 1
-            fi
-            build_metadata="$(jq -c -er '.build_metadata' "${metadata_file}")"
-
-            if [[ "${patch_hash}" != "${metadata_patch_hash}" ]]; then
-              echo "ERROR: current patch files do not match build run ${INPUT_ARTIFACT_RUN_ID}." >&2
-              exit 1
-            fi
-            if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
-              echo "Patched release ${patched_tag} already exists."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-              echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-              echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-              echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-
-            echo "Reusing final artifacts from build run ${INPUT_ARTIFACT_RUN_ID} for ${patched_tag}."
-            echo "build_number=${patched_tag##*+}" >> "${GITHUB_OUTPUT}"
-            echo "should_release=true" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-            echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-            echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-            echo "build_metadata=${build_metadata}" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-          if [[ -n "${INPUT_UPSTREAM_TAG:-}" ]]; then
-            upstream_tag="${INPUT_UPSTREAM_TAG}"
-            upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
-          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^rust-v[0-9] ]]; then
-            upstream_tag="${GITHUB_REF_NAME%%+*}"
-            upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
-          else
-            upstream_release_json="$(./scripts/check-upstream-release.sh openai/codex)"
-            upstream_tag="$(jq -r '.tag_name' <<<"${upstream_release_json}")"
-            upstream_prerelease="$(jq -r '(.prerelease or .draft)' <<<"${upstream_release_json}")"
-          fi
-
-          if [[ -z "${upstream_tag}" || "${upstream_tag}" == "null" ]]; then
-            echo "ERROR: failed to determine upstream tag" >&2
-            exit 1
-          fi
-
-          if [[ "${upstream_prerelease}" == "true" ]]; then
-            echo "Upstream release ${upstream_tag} is a prerelease or draft; skipping."
-            echo "should_release=false" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "upstream_sha=" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=" >> "${GITHUB_OUTPUT}"
-            echo "release_name=" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=" >> "${GITHUB_OUTPUT}"
-            echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          if [[ -n "${INPUT_BUILD_NUMBER}" ]]; then
-            build_number="${INPUT_BUILD_NUMBER}"
-          else
-            build_number="$(
-              gh api "repos/${GITHUB_REPOSITORY}/tags" --paginate --jq '.[].name' |
-                python3 .github/scripts/next-release-build-number.py "${upstream_tag}"
-            )"
-          fi
-          patched_tag="${upstream_tag}+${build_number}"
-          release_name="${patched_tag#rust-v}"
-          failure_marker_name="failed-upstream-release-${patched_tag}-${GITHUB_SHA}"
-          export failure_marker_name
-
-          if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
-            echo "Patched release ${patched_tag} already exists."
-            echo "should_release=false" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
-            failure_marker_id="$(
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
-                --paginate \
-                -q '.artifacts[]
-                  | select(.expired == false and .name == env.failure_marker_name)
-                  | .id' \
-                2>/dev/null | head -n1 || true
-            )"
-            if [[ -n "${failure_marker_id}" ]]; then
-              echo "A previous release attempt for ${patched_tag} failed on this workflow revision (${GITHUB_SHA}); skipping scheduled retry."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-              echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
-          fi
-
-          git clone --depth 1 --branch "${upstream_tag}" https://github.com/openai/codex.git upstream
-          upstream_sha="$(git -C upstream rev-parse HEAD)"
-          patch_files="$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
-          supported_targets="x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin, aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc"
-
-          # Use the upstream commit time for deterministic package metadata.
-          # The former implementation downloaded every upstream package and
-          # standalone asset here solely to copy their timestamps. We no
-          # longer compare our bytes with those independently-built assets.
-          build_metadata='{}'
-          for target in \
-            x86_64-unknown-linux-musl \
-            aarch64-unknown-linux-musl \
-            x86_64-apple-darwin \
-            aarch64-apple-darwin \
-            x86_64-pc-windows-msvc \
-            aarch64-pc-windows-msvc; do
-            bundles="primary app-server"
-            for bundle in ${bundles}; do
-              if [[ -n "${INPUT_FOCUS_TARGET}" && "${INPUT_FOCUS_TARGET}" != "${target}" ]]; then
-                continue
-              fi
-              if [[ -n "${INPUT_FOCUS_BUNDLE}" && "${INPUT_FOCUS_BUNDLE}" != "${bundle}" ]]; then
-                continue
-              fi
-              source_date_epoch="$(git -C upstream show -s --format=%ct "${upstream_sha}")"
-              archive_mtime="${source_date_epoch}"
-              archive_gzip_mtime="${source_date_epoch}"
-              standalone_archive_mtime="${source_date_epoch}"
-              member_mtimes='{}'
-              metadata_key="${target}|${bundle}"
-              build_metadata="$(jq -c \
-                --arg key "${metadata_key}" \
-                --argjson source_date_epoch "${source_date_epoch}" \
-                --argjson archive_mtime "${archive_mtime}" \
-                --argjson archive_gzip_mtime "${archive_gzip_mtime}" \
-                --argjson member_mtimes "${member_mtimes}" \
-                --argjson standalone_archive_mtime "${standalone_archive_mtime}" \
-                '. + {($key): {source_date_epoch: $source_date_epoch, archive_mtime: $archive_mtime, archive_gzip_mtime: $archive_gzip_mtime, standalone_archive_mtime: $standalone_archive_mtime, member_mtimes: $member_mtimes}}' \
-                <<<"${build_metadata}")"
-            done
-          done
-
-          jq -n \
-            --arg artifact_run_id "${GITHUB_RUN_ID}" \
-            --arg upstream_tag "${upstream_tag}" \
-            --arg upstream_sha "${upstream_sha}" \
-            --arg patched_tag "${patched_tag}" \
-            --arg release_name "${release_name}" \
-            --arg build_date "${build_date}" \
-            --arg patch_files "${patch_files}" \
-            --arg patch_hash "${patch_hash}" \
-            --arg supported_targets "${supported_targets}" \
-            --argjson build_metadata "${build_metadata}" \
-            '{schema_version: 2, artifact_run_id: $artifact_run_id, upstream_tag: $upstream_tag, upstream_sha: $upstream_sha, patched_tag: $patched_tag, release_name: $release_name, build_date: $build_date, patch_files: $patch_files, patch_hash: $patch_hash, supported_targets: $supported_targets, build_metadata: $build_metadata}' \
-            > release-metadata.json
-
-          echo "should_release=true" >> "${GITHUB_OUTPUT}"
-          echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-          echo "build_number=${build_number}" >> "${GITHUB_OUTPUT}"
-          echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-          echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-          echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-          echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-          echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-          echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-          echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-          echo "build_metadata=${build_metadata}" >> "${GITHUB_OUTPUT}"
-          echo "artifact_run_id=${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
-
-      - name: Reserve and verify release source tag
-        id: source
-        if: >-
-          ${{ steps.prepare.outputs.should_release == 'true' &&
-              (inputs.verification_level == '' || inputs.verification_level == 'full') &&
-              inputs.focus_target == '' && inputs.focus_bundle == '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.prepare.outputs.patched_tag }}
-          ARTIFACT_RUN_ID: ${{ steps.prepare.outputs.artifact_run_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/ensure-release-tag.py \
-            --repository "$GITHUB_REPOSITORY" \
-            --tag "$RELEASE_TAG" \
-            --artifact-run-id "$ARTIFACT_RUN_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Select release comparison matrix
-        id: focus
-        shell: bash
-        env:
-          FOCUS_TARGET: ${{ inputs.focus_target || '' }}
-          FOCUS_BUNDLE: ${{ inputs.focus_bundle || '' }}
-          VERIFICATION_LEVEL: ${{ inputs.verification_level || 'full' }}
-        run: |
-          set -euo pipefail
-          echo "Prepared release: ${{ steps.prepare.outputs.should_release }}"
-          echo "Prepared artifact run: ${{ steps.prepare.outputs.artifact_run_id }}"
-          if [[ "${VERIFICATION_LEVEL}" == "sentinel" && -z "${FOCUS_TARGET}" && -z "${FOCUS_BUNDLE}" ]]; then
-            FOCUS_TARGET="x86_64-unknown-linux-musl"
-            FOCUS_BUNDLE="primary"
-          fi
-          unix_matrix='[
-            {"runner":"ubuntu-latest","target":"x86_64-unknown-linux-musl","bundle":"primary","artifact_name":"x86_64-unknown-linux-musl","binaries":"codex codex-code-mode-host codex-responses-api-proxy bwrap"},
-            {"runner":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-musl","bundle":"primary","artifact_name":"aarch64-unknown-linux-musl","binaries":"codex codex-code-mode-host codex-responses-api-proxy bwrap"},
-            {"runner":"macos-15","target":"x86_64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"x86_64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"},
-            {"runner":"macos-15","target":"aarch64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"aarch64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"}
-          ]'
-          windows_matrix='[
-            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"},
-            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"}
-          ]'
-          filter_matrix() {
-            jq -c --arg target "$FOCUS_TARGET" --arg bundle "$FOCUS_BUNDLE" \
-              'map(select(($target == "" or .target == $target) and ($bundle == "" or .bundle == $bundle)))'
-          }
-          unix_matrix="$(printf '%s' "$unix_matrix" | filter_matrix)"
-          windows_matrix="$(printf '%s' "$windows_matrix" | filter_matrix)"
-          {
-            echo "unix_matrix=${unix_matrix}"
-            echo "windows_matrix=${windows_matrix}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload build metadata
-        if: >-
-          ${{
-            steps.prepare.outputs.should_release == 'true'
-          }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: release-metadata
-          path: release-metadata.json
-          retention-days: 30
-
-  verify:
-    needs: prepare
-    permissions:
-      contents: read
-    if: >-
-      ${{
-        always() &&
-        !cancelled() &&
-        needs.prepare.outputs.should_release == 'true'
-      }}
-    runs-on: ubuntu-latest
-    env:
-      # This upstream-only compatibility exception is narrowly scoped to the
-      # stale code-mode manifest exception; every other repository check remains
-      # enforced by run-upstream-repo-checks.sh.
-      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
-    steps:
-      - name: Record job start
-        id: timing_start
-        shell: bash
-        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: ./.github/actions/setup-ci
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
-        with:
-          version: 10
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: 22
-
-      - name: Determine pnpm store path
-        id: pnpm_store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          version: "0.11.3"
-
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
-          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
-
-      - name: Cache pnpm store
-        id: pnpm_cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ steps.pnpm_store.outputs.path }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
-
-      - name: Install upstream dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd upstream
-          pnpm install --frozen-lockfile
-
-      - name: Verify codex-rs Cargo manifests inherit workspace settings
-        run: ./scripts/run-upstream-repo-checks.sh upstream
-
-      - name: Write verify summary
-        if: always()
-        shell: bash
-        env:
-          START_EPOCH: ${{ steps.timing_start.outputs.epoch }}
-          PNPM_CACHE_HIT: ${{ steps.pnpm_cache.outputs.cache-hit || 'false' }}
-        run: |
-          set -euo pipefail
-          end_epoch="$(date +%s)"
-          duration="$(( end_epoch - START_EPOCH ))"
-          {
-            echo "## Verify summary"
-            echo
-            echo "- Outcome: ${{ job.status }}"
-            echo "- Duration (seconds): ${duration}"
-            echo "- pnpm cache hit: ${PNPM_CACHE_HIT}"
-            echo "- Cargo cache: managed by Swatinem/rust-cache"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  build-unix:
-    needs:
-      - prepare
-      - verify
-    if: >-
-      ${{
-        always() &&
-        !cancelled() &&
-        needs.prepare.outputs.should_release == 'true' &&
-        needs.prepare.outputs.artifact_run_id == github.run_id &&
-        (
-          inputs.focus_target == '' ||
-          contains(inputs.focus_target, 'linux') ||
-          contains(inputs.focus_target, 'apple-darwin')
-        )
-      }}
-    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout_minutes || 180 }}
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
-    env:
-      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
-      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      CARGO_INCREMENTAL: "0"
-      REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
-      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
-      SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
-      CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
-      CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_gzip_mtime }}
-      CODEX_PACKAGE_ARCHIVE_MEMBER_MTIMES: ${{ toJSON(fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].member_mtimes) }}
-      CODEX_STANDALONE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].standalone_archive_mtime }}
+  measure:
+    name: ${{ matrix.target }} incremental=${{ matrix.incremental }}
+    runs-on: macos-15
+    timeout-minutes: 360
     strategy:
       fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.unix_matrix) }}
-    steps:
-      - name: Record job start
-        id: timing_start
-        shell: bash
-        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: ./.github/actions/setup-ci
-        with:
-          # Linux hosted runners can use the path from upstream's build
-          # environment. Other platforms are aligned after the upstream
-          # checkout is prepared.
-          cargo-target-dir: ${{ runner.os == 'Linux' && '/home/runner/work/codex/codex/codex-rs/target' || '' }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
-        with:
-          version: 10
-          run_install: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: 22
-
-      - name: Determine pnpm store path
-        id: pnpm_store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Print runner specs (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cpu_model="$(lscpu | awk -F: '/Model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')"
-          total_ram="$(awk '/MemTotal/ {printf "%.1f GiB\n", $2 / 1024 / 1024}' /proc/meminfo)"
-          echo "Runner: ${RUNNER_NAME:-unknown}"
-          echo "OS: $(uname -a)"
-          echo "CPU model: ${cpu_model}"
-          echo "Logical CPUs: $(nproc)"
-          echo "Total RAM: ${total_ram}"
-          echo "Disk usage:"
-          df -h .
-
-      - name: Print runner specs (macOS)
-        if: ${{ runner.os == 'macOS' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          total_ram="$(sysctl -n hw.memsize | awk '{printf "%.1f GiB\n", $1 / 1024 / 1024 / 1024}')"
-          echo "Runner: ${RUNNER_NAME:-unknown}"
-          echo "OS: $(sw_vers -productName) $(sw_vers -productVersion)"
-          echo "Hardware model: $(sysctl -n hw.model)"
-          echo "CPU architecture: $(uname -m)"
-          echo "Logical CPUs: $(sysctl -n hw.logicalcpu)"
-          echo "Physical CPUs: $(sysctl -n hw.physicalcpu)"
-          echo "Total RAM: ${total_ram}"
-          echo "Disk usage:"
-          df -h .
-
-      - name: Set up Zig
-        if: ${{ contains(matrix.target, 'linux-musl') }}
-        uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c # v2.2.2
-        with:
-          version: 0.14.0
-          use-cache: false
-
-      - name: Prepare Linux APT cache directories
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
-          sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
-
-      - name: Restore APT cache
-        if: ${{ runner.os == 'Linux' }}
-        id: apt_cache
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: /var/cache/apt
-          key: apt-${{ runner.os }}-${{ matrix.target }}-v1
-
-      - name: Install Linux build dependencies
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
-
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
-          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
-          apply-patches: true
-
-      - name: Normalize patched source timestamps
-        shell: bash
-        env:
-          SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
-
-      - name: Align upstream checkout with release path
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Cargo embeds build-script output paths in release binaries. The
-          # upstream release is built from this canonical GitHub runner path;
-          # use the same physical path instead of compensating with RUSTFLAGS,
-          # which changes Cargo fingerprints.
-          release_checkout="${GITHUB_WORKSPACE%/*/*}/codex/codex"
-          if [[ "${release_checkout}" != "${GITHUB_WORKSPACE}/upstream" ]]; then
-            # setup-ci and the GHCR restore may already have populated this
-            # target directory. Preserve it while replacing the checkout;
-            # removing release_checkout wholesale would otherwise discard the
-            # restored Cargo fingerprints before Cargo can use them.
-            preserved_target="${RUNNER_TEMP}/codex-release-target"
-            if [[ -d "${release_checkout}/codex-rs/target" ]]; then
-              rm -rf "${preserved_target}"
-              mv "${release_checkout}/codex-rs/target" "${preserved_target}"
-            fi
-            rm -rf "${release_checkout}"
-            mkdir -p "$(dirname "${release_checkout}")"
-            mv "${GITHUB_WORKSPACE}/upstream" "${release_checkout}"
-            ln -s "${release_checkout}" "${GITHUB_WORKSPACE}/upstream"
-            if [[ -d "${preserved_target}" ]]; then
-              mkdir -p "${release_checkout}/codex-rs"
-              mv "${preserved_target}" "${release_checkout}/codex-rs/target"
-            fi
-          fi
-          mkdir -p "${release_checkout}/codex-rs/target"
-          # Upstream's release workflow exposes the physical source checkout
-          # through CODEX_REPO_ROOT. Set it after moving the checkout so build
-          # scripts embed the same canonical path as the official release.
-          echo "CODEX_REPO_ROOT=${release_checkout}" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=${release_checkout}/codex-rs/target" >> "$GITHUB_ENV"
-
-      - name: Use upstream-compatible Cargo home (Linux musl)
-        if: ${{ contains(matrix.target, 'linux-musl') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo_home="/home/runner/work/codex/codex/.cargo-home"
-          mkdir -p "${cargo_home}/bin"
-          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
-          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
-          : > "${cargo_home}/config.toml"
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Configure deterministic compiler mode
-        if: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' }}
-        shell: bash
-        run: |
-          # Even an empty job-level value overrides upstream Cargo target
-          # flags, so define these only for the opt-in compiler experiment.
-          echo "RUSTFLAGS=-Ccodegen-units=1 -Zno-parallel-backend" >> "$GITHUB_ENV"
-          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
-
-      - name: Record Rust compiler cache input
-        id: rust_compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v sha256sum >/dev/null 2>&1; then
-            fingerprint="$(rustc -Vv | sha256sum | awk '{print $1}')"
-          else
-            fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
-          fi
-          echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
-          v8_version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
-          python3 .github/scripts/release-cache-keys.py \
-            --target "${{ matrix.target }}" \
-            --compiler-fingerprint "$fingerprint" \
-            --v8-version "$v8_version" \
-            --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        id: pnpm_cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ${{ steps.pnpm_store.outputs.path }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
-
-      - name: Cache Cargo dependencies
-        id: cargo_cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            upstream/codex-rs -> target
-          # Cargo target directories belong exclusively to the GHCR overflow
-          # cache below. Keep only registry, Git, and other dependency data in
-          # the GitHub Actions cache.
-          cache-targets: false
-          # Do not include runner- and run-specific environment paths in the
-          # cache key: this cache contains source downloads, while compiled
-          # outputs have a separate compiler identity in GHCR.
-          add-rust-environment-hash-key: false
-          # Dependency downloads do not depend on the patch set, source
-          # timestamps, or upstream release. Compiled outputs live in GHCR.
-          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
-          cache-workspace-crates: false
-          # Cargo's installed binaries are setup tools, not release outputs;
-          # cache them through their dedicated setup steps instead.
-          cache-bin: false
-          cache-all-crates: false
-          save-if: true
-          cache-on-failure: true
-
-      - name: Set up ORAS for GHCR Cargo cache
-        if: ${{ inputs.ghcr_cache == true }}
-        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
-
-      - name: Log in to GHCR Cargo cache
-        if: ${{ inputs.ghcr_cache == true }}
-        shell: bash
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
-
-      - name: Restore GHCR Cargo target cache
-        id: ghcr_cargo_cache
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if bash .github/scripts/ghcr-cargo-target-cache.sh pull \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"; then
-            echo "restored=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
-            echo "restored=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Rebuild release binaries from cached dependencies
-        shell: bash
-        run: |
-          python3 .github/scripts/clean-cached-release-binaries.py \
-            upstream/codex-rs \
-            "${{ matrix.target }}" \
-            ${{ matrix.binaries }}
-
-      - name: Cache rusty_v8 artifacts
-        id: rusty_v8_cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .cache/rusty_v8
-          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
-
-      - name: Configure rusty_v8 artifact overrides and verify checksums
-        uses: ./.github/actions/setup-rusty-v8
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Install upstream dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd upstream
-          pnpm install --frozen-lockfile
-
-      - name: Configure Linux musl toolchain
-        if: ${{ contains(matrix.target, 'linux-musl') }}
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          bash upstream/.github/scripts/install-musl-build-tools.sh
-
-      - name: Disable aws-lc jitter entropy (musl)
-        if: ${{ contains(matrix.target, 'linux-musl') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
-          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
-          target_no_jitter="${target_no_jitter//-/_}"
-          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
-
-      - name: Build patched release
-        shell: bash
-        run: |
-          set -euo pipefail
-          export UPSTREAM_TARGET="${{ matrix.target }}"
-          export UPSTREAM_BINARIES="${{ matrix.binaries }}"
-          export PATCHES_ALREADY_APPLIED=1
-          export SKIP_UPSTREAM_TESTS=1
-          export SKIP_ARTIFACT_COLLECTION=1
-          if [[ "${{ inputs.cache_audit }}" == "true" ]]; then
-            # Cargo normally reports only that a crate is being compiled. In
-            # cache-audit runs, expose fingerprint decisions so a restored
-            # target cache can be distinguished from a cache that Cargo
-            # rejected because one of its inputs changed.
-            export CARGO_LOG="cargo::core::compiler::fingerprint=info"
-          fi
-          ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output"
-
-      - name: Record successfully compiled source inputs
-        shell: bash
-        run: |
-          python3 .github/scripts/clean-cached-release-binaries.py --record-source-inputs \
-            upstream/codex-rs "${{ matrix.target }}"
-
-      - name: Prepare third-party Cargo licenses
-        working-directory: upstream/codex-rs
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-          BUNDLE: ${{ matrix.bundle }}
-        run: |
-          set -euo pipefail
-          license_dir="${RUNNER_TEMP}/codex-package-rust-licenses-${TARGET}-${BUNDLE}"
-          python3 "${GITHUB_WORKSPACE}/scripts/collect_third_party_licenses.py" \
-            --manifest Cargo.toml \
-            --output "$license_dir" \
-            --require-license-evidence
-          echo "CODEX_PACKAGE_RUST_LICENSES_DIR=${license_dir}" >> "$GITHUB_ENV"
-
-      - name: Strip Unix release binaries
-        if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'apple-darwin') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          release_dir="${CARGO_TARGET_DIR}/${{ matrix.target }}/release"
-          for binary in ${{ matrix.binaries }}; do
-            binary_path="${release_dir}/${binary}"
-            if [[ ! -f "${binary_path}" ]]; then
-              echo "Binary ${binary_path} not found" >&2
-              exit 1
-            fi
-            if [[ "${{ matrix.target }}" == *linux-musl ]]; then
-              # build-release.sh strips bwrap before calculating its embedded
-              # digest. The other binaries are stripped here. Do not add a
-              # GNU debug link: the release does not publish the referenced
-              # symbol files, and its CRC would otherwise vary with details
-              # of the unshipped debug output.
-              if [[ "${binary}" == "bwrap" ]]; then
-                continue
-              fi
-              strip --strip-debug --strip-unneeded "${binary_path}"
-            else
-              # Upstream archives dSYMs and then strips the distributed
-              # executable with these macOS-specific flags.
-              if [[ ! -d "${binary_path}.dSYM" ]]; then
-                echo "dSYM ${binary_path}.dSYM not found" >&2
-                exit 1
-              fi
-              strip -S -x "${binary_path}"
-            fi
-          done
-
-      - name: Restore generated Cargo metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Cargo may refresh the upstream lockfile when building an older
-          # release with a newer toolchain. It is build-time state, not a
-          # repository patch, so restore it before the source audit.
-          git -C upstream checkout -- codex-rs/Cargo.lock
-
-      - name: Record source provenance
-        shell: bash
-        env:
-          UPSTREAM_REF: ${{ needs.prepare.outputs.upstream_tag }}
-          WORKFLOW_PATH: .github/workflows/build-release.yml
-          WORKFLOW_SHA: ${{ github.sha }}
-          WORKFLOW_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          python3 scripts/generate-source-provenance.py \
-            --upstream-checkout upstream \
-            --patch-repo . \
-            --output source-provenance.json \
-            --upstream-ref "$UPSTREAM_REF" \
-            --workflow-path "$WORKFLOW_PATH" \
-            --workflow-sha "$WORKFLOW_SHA" \
-            --workflow-run-id "$WORKFLOW_RUN_ID"
-          mv source-provenance.json "source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json"
-
-      - name: Upload source provenance
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}
-          path: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json
-          if-no-files-found: error
-
-      - name: Upload Cargo timings
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: cargo-timings-rust-release-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
-          if-no-files-found: warn
-
-      - name: Build Codex package archive
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-          BUNDLE: ${{ matrix.bundle }}
-        run: |
-          set -euo pipefail
-          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
-            --target "$TARGET" \
-            --bundle "$BUNDLE" \
-            --entrypoint-dir "${CARGO_TARGET_DIR}/${TARGET}/release" \
-            --archive-dir "dist/${TARGET}" \
-            --zsh-manifest "${GITHUB_WORKSPACE}/scripts/codex_package/codex-zsh" \
-            --rg-manifest "${GITHUB_WORKSPACE}/upstream/scripts/codex_package/rg"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz
-          if-no-files-found: error
-
-      - name: Prune and audit Cargo cache contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          release_dir="${CARGO_TARGET_DIR}/${{ matrix.target }}/release"
-          find "$release_dir" -type d -name '*.dSYM' -prune -exec rm -rf {} +
-          find "$CARGO_TARGET_DIR" -type d -name cargo-timings -prune -exec rm -rf {} +
-          find "$CARGO_TARGET_DIR" -type d -name 'staged-*' -prune -exec rm -rf {} +
-
-          echo "Largest Cargo cache directories:"
-          du -sh "$CARGO_TARGET_DIR"/* 2>/dev/null | sort -h | tail -20 || true
-          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -name '*.dSYM' -o -name '*.pdb' -o -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
-          if [[ -n "$forbidden_files" ]]; then
-            echo "Unwanted files remain in the Cargo cache:" >&2
-            printf '%s\n' "$forbidden_files" >&2
-            exit 1
-          fi
-
-      - name: Write complete Cargo cache manifest
-        if: ${{ inputs.cache_audit == true }}
-        shell: bash
-        env:
-          MANIFEST_PATH: ${{ runner.temp }}/cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}.tsv
-        run: |
-          set -euo pipefail
-          python3 - "$MANIFEST_PATH" <<'PY'
-          import os
-          import pathlib
-          import sys
-
-          output = pathlib.Path(sys.argv[1])
-          roots = [pathlib.Path(os.environ["CARGO_TARGET_DIR"])]
-          cargo_home = os.environ.get("CARGO_HOME")
-          if cargo_home:
-              roots.extend([
-                  pathlib.Path(cargo_home) / "registry" / "cache",
-                  pathlib.Path(cargo_home) / "git",
-              ])
-          with output.open("w", encoding="utf-8") as manifest:
-              for root in roots:
-                  if not root.exists():
-                      continue
-                  for path in sorted(root.rglob("*")):
-                      if path.is_file():
-                          manifest.write(f"{path.stat().st_size}\t{path}\n")
-          PY
-
-      - name: Upload complete Cargo cache manifest
-        if: ${{ inputs.cache_audit == true }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ runner.temp }}/cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}.tsv
-          retention-days: 7
-          if-no-files-found: error
-
-      # Refresh after every successful build, including a restored cache, so
-      # subsequent releases retain newly compiled dependency versions.
-      - name: Populate GHCR Cargo target overflow cache
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/ghcr-cargo-target-cache.sh push \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"
-
-      - name: Prune old GHCR Cargo cache tags
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/ghcr-cargo-target-cache.sh prune \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"
-
-      - name: Write build summary
-        if: always()
-        shell: bash
-        env:
-          START_EPOCH: ${{ steps.timing_start.outputs.epoch }}
-          PNPM_CACHE_HIT: ${{ steps.pnpm_cache.outputs.cache-hit || 'false' }}
-          APT_CACHE_HIT: ${{ steps.apt_cache.outputs.cache-hit || 'n/a' }}
-          RUSTY_V8_CACHE_HIT: ${{ steps.rusty_v8_cache.outputs.cache-hit || 'false' }}
-          CARGO_CACHE_HIT: ${{ steps.cargo_cache.outputs.cache-hit || 'false' }}
-        run: |
-          set -euo pipefail
-          end_epoch="$(date +%s)"
-          duration="$(( end_epoch - START_EPOCH ))"
-          {
-            echo "## Build summary"
-            echo
-            echo "- Target: ${{ matrix.target }}"
-            echo "- Bundle: ${{ matrix.bundle }}"
-            echo "- Outcome: ${{ job.status }}"
-            echo "- Duration (seconds): ${duration}"
-            echo "- pnpm cache hit: ${PNPM_CACHE_HIT}"
-            echo "- APT cache hit: ${APT_CACHE_HIT}"
-            echo "- rusty_v8 cache hit: ${RUSTY_V8_CACHE_HIT}"
-            echo "- Cargo cache hit: ${CARGO_CACHE_HIT}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # apt recreates archives/partial as root during installation. Make the
-      # cache tree readable by actions/cache before it is archived.
-      - name: Make APT cache readable
-        if: ${{ always() && !cancelled() && runner.os == 'Linux' }}
-        shell: bash
-        run: sudo chown -R "$USER:$USER" /var/cache/apt
-
-      - name: Save APT cache
-        if: ${{ always() && !cancelled() && runner.os == 'Linux' }}
-        continue-on-error: true
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: /var/cache/apt
-          key: apt-${{ runner.os }}-${{ matrix.target }}-v1
-
-  build-windows-binaries:
-    needs:
-      - prepare
-      - verify
-    if: >-
-      ${{
-        always() &&
-        !cancelled() &&
-        needs.prepare.outputs.should_release == 'true' &&
-        needs.prepare.outputs.artifact_run_id == github.run_id &&
-        (inputs.focus_target == '' || contains(inputs.focus_target, 'windows'))
-      }}
-    name: Build Windows binaries - ${{ matrix.target }} - ${{ matrix.bundle }}
-    runs-on: windows-latest
-    timeout-minutes: ${{ matrix.timeout_minutes || 180 }}
-    permissions:
-      contents: read
-      packages: write
-    env:
-      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
-      SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
-      CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
-      CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_gzip_mtime }}
-      CARGO_INCREMENTAL: "0"
-      REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.windows_matrix) }}
-    steps:
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: ./.github/actions/setup-ci
-
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
-          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
-
-      - name: Normalize patched source timestamps
-        shell: bash
-        env:
-          SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
-
-      - name: Record source provenance
-        shell: bash
-        env:
-          UPSTREAM_REF: ${{ needs.prepare.outputs.upstream_tag }}
-          WORKFLOW_PATH: .github/workflows/build-release.yml
-          WORKFLOW_SHA: ${{ github.sha }}
-          WORKFLOW_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          python scripts/generate-source-provenance.py \
-            --upstream-checkout upstream \
-            --patch-repo . \
-            --output source-provenance.json \
-            --upstream-ref "$UPSTREAM_REF" \
-            --workflow-path "$WORKFLOW_PATH" \
-            --workflow-sha "$WORKFLOW_SHA" \
-            --workflow-run-id "$WORKFLOW_RUN_ID"
-          mv source-provenance.json "source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json"
-
-      - name: Upload source provenance
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}
-          path: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json
-          if-no-files-found: error
-
-      - name: Print runner specs (Windows)
-        shell: powershell
-        run: |
-          $computer = Get-CimInstance Win32_ComputerSystem
-          $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-          $ramGiB = [math]::Round($computer.TotalPhysicalMemory / 1GB, 1)
-          Write-Host "Runner: $env:RUNNER_NAME"
-          Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
-          Write-Host "CPU: $($cpu.Name)"
-          Write-Host "Logical CPUs: $($computer.NumberOfLogicalProcessors)"
-          Write-Host "Physical CPUs: $($computer.NumberOfProcessors)"
-          Write-Host "Total RAM: $ramGiB GiB"
-          Write-Host "Disk usage:"
-          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Configure deterministic compiler mode
-        if: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' }}
-        shell: bash
-        run: |
-          # Even an empty job-level value overrides upstream Cargo target
-          # flags, so define these only for the opt-in compiler experiment.
-          echo "RUSTFLAGS=-Ccodegen-units=1 -Zno-parallel-backend" >> "$GITHUB_ENV"
-          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
-
-      - name: Record Rust compiler cache input
-        id: rust_compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v sha256sum >/dev/null 2>&1; then
-            fingerprint="$(rustc -Vv | sha256sum | awk '{print $1}')"
-          else
-            fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
-          fi
-          echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
-          v8_version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
-          python3 .github/scripts/release-cache-keys.py \
-            --target "${{ matrix.target }}" \
-            --compiler-fingerprint "$fingerprint" \
-            --v8-version "$v8_version" \
-            --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure LLVM linker
-        uses: ./.github/actions/setup-msvc-env
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Ensure requested Rust target is installed
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup target add "${{ matrix.target }}"
-          rustup target list --installed
-
-      - name: Cache rusty_v8 artifacts
-        id: rusty_v8_cache
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .cache/rusty_v8
-          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
-
-      - name: Configure rusty_v8 artifact overrides and verify checksums
-        uses: ./.github/actions/setup-rusty-v8
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Cache Cargo dependencies
-        id: cargo_cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            upstream/codex-rs -> target
-          # Keep dependency-download identity stable across hosted runners.
-          add-rust-environment-hash-key: false
-          # Cargo target directories belong exclusively to the GHCR overflow
-          # cache below. Do not list CARGO_TARGET_DIR as an additional cache
-          # directory, or the two backends would own the same outputs.
-          cache-targets: false
-          # Share dependency downloads across upstream releases and patch
-          # sets. Compiled dependencies use the compiler-scoped GHCR cache.
-          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
-          cache-workspace-crates: false
-          cache-bin: false
-          cache-all-crates: false
-          save-if: true
-          cache-on-failure: true
-
-      - name: Set up ORAS for GHCR Cargo cache
-        if: ${{ inputs.ghcr_cache == true }}
-        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
-
-      - name: Log in to GHCR Cargo cache
-        if: ${{ inputs.ghcr_cache == true }}
-        shell: bash
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
-
-      - name: Restore GHCR Cargo target cache
-        id: ghcr_cargo_cache
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if bash .github/scripts/ghcr-cargo-target-cache.sh pull \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"; then
-            echo "restored=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
-            echo "restored=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Rebuild release binaries from cached dependencies
-        shell: bash
-        run: |
-          python3 .github/scripts/clean-cached-release-binaries.py \
-            upstream/codex-rs \
-            "${{ matrix.target }}" \
-            ${{ matrix.binaries }} ${{ matrix.helper_binaries }}
-
-      - name: Configure Windows Cargo build environment
-        if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
-        shell: bash
-        run: echo "LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC" >> "$GITHUB_ENV"
-
-      - name: Build Windows sandbox helper binaries
-        working-directory: upstream/codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          helper_build_args=()
-          for binary in ${{ matrix.helper_binaries }}; do
-            helper_build_args+=(--bin "$binary")
-          done
-          bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
-            cargo build --target "${{ matrix.target }}" --release --timings \
-            --message-format=json-render-diagnostics "${helper_build_args[@]}" \
-            > "$RUNNER_TEMP/cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl"
-
-      - name: Upload Windows library cache reuse report
-        if: ${{ inputs.cache_audit == true }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ runner.temp }}/cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl
-          if-no-files-found: error
-
-      - name: Cargo build (Windows binaries)
-        working-directory: upstream/codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          target="${{ matrix.target }}"
-          build_args=()
-          for binary in ${{ matrix.binaries }}; do
-            build_args+=(--bin "$binary")
-          done
-          bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
-            cargo build --target "$target" --release --timings "${build_args[@]}"
-
-      - name: Record successfully compiled source inputs
-        shell: bash
-        run: |
-          python3 .github/scripts/clean-cached-release-binaries.py --record-source-inputs \
-            upstream/codex-rs "${{ matrix.target }}"
-
-      - name: Prepare third-party Cargo licenses
-        working-directory: upstream/codex-rs
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-          BUNDLE: ${{ matrix.bundle }}
-        run: |
-          set -euo pipefail
-          license_dir="${RUNNER_TEMP}/codex-package-rust-licenses-${TARGET}-${BUNDLE}"
-          python3 "${GITHUB_WORKSPACE}/scripts/collect_third_party_licenses.py" \
-            --manifest Cargo.toml \
-            --output "$license_dir" \
-            --require-license-evidence
-
-      - name: Upload third-party Cargo licenses
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: codex-package-rust-licenses-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ runner.temp }}/codex-package-rust-licenses-${{ matrix.target }}-${{ matrix.bundle }}/**
-          if-no-files-found: error
-
-      - name: Upload Cargo timings
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: cargo-timings-rust-release-windows-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
-          if-no-files-found: warn
-
-      - name: Stage Windows binaries
-        working-directory: upstream/codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          release_dir="$CARGO_TARGET_DIR/${{ matrix.target }}/release"
-          output_dir="$release_dir/staged-${{ matrix.bundle }}"
-          mkdir -p "$output_dir"
-          for binary in ${{ matrix.binaries }} ${{ matrix.helper_binaries }}; do
-            pdb_name="${binary//-/_}"
-            pdb_path="$release_dir/${pdb_name}.pdb"
-            if [[ ! -f "$pdb_path" ]]; then
-              pdb_path="$release_dir/${binary}.pdb"
-            fi
-            cp "$release_dir/${binary}.exe" "$output_dir/${binary}.exe"
-            cp "$pdb_path" "$output_dir/${binary}.pdb"
-          done
-
-      - name: Upload Windows binaries
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: windows-binaries-${{ matrix.target }}-${{ matrix.bundle }}
-          path: |
-            ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/staged-${{ matrix.bundle }}/*
-
-      - name: Prune and audit Cargo cache contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          find "$CARGO_TARGET_DIR" -type f -name '*.pdb' -delete
-          find "$CARGO_TARGET_DIR" -type d -name cargo-timings -prune -exec rm -rf {} +
-          find "$CARGO_TARGET_DIR" -type d -name 'staged-*' -prune -exec rm -rf {} +
-
-          echo "Largest Cargo cache directories:"
-          du -sh "$CARGO_TARGET_DIR"/* 2>/dev/null | sort -h | tail -20 || true
-          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -name '*.dSYM' -o -name '*.pdb' -o -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
-          if [[ -n "$forbidden_files" ]]; then
-            echo "Unwanted files remain in the Cargo cache:" >&2
-            printf '%s\n' "$forbidden_files" >&2
-            exit 1
-          fi
-
-      - name: Write complete Cargo cache manifest
-        if: ${{ inputs.cache_audit == true }}
-        shell: bash
-        env:
-          MANIFEST_PATH: ${{ runner.temp }}/cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}.tsv
-        run: |
-          set -euo pipefail
-          python3 - "$MANIFEST_PATH" <<'PY'
-          import os
-          import pathlib
-          import sys
-
-          output = pathlib.Path(sys.argv[1])
-          roots = [pathlib.Path(os.environ["CARGO_TARGET_DIR"])]
-          cargo_home = os.environ.get("CARGO_HOME")
-          if cargo_home:
-              roots.extend([
-                  pathlib.Path(cargo_home) / "registry" / "cache",
-                  pathlib.Path(cargo_home) / "git",
-              ])
-          with output.open("w", encoding="utf-8") as manifest:
-              for root in roots:
-                  if not root.exists():
-                      continue
-                  for path in sorted(root.rglob("*")):
-                      if path.is_file():
-                          manifest.write(f"{path.stat().st_size}\t{path}\n")
-          PY
-
-      - name: Upload complete Cargo cache manifest
-        if: ${{ inputs.cache_audit == true }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}
-          path: ${{ runner.temp }}/cargo-cache-manifest-${{ matrix.target }}-${{ matrix.bundle }}.tsv
-          retention-days: 7
-          if-no-files-found: error
-
-      # Refresh after every successful build, including a restored cache, so
-      # subsequent releases retain newly compiled dependency versions.
-      - name: Populate GHCR Cargo target overflow cache
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/ghcr-cargo-target-cache.sh push \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"
-
-      - name: Prune old GHCR Cargo cache tags
-        if: ${{ inputs.ghcr_cache == true }}
-        continue-on-error: true
-        shell: bash
-        env:
-          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          bash .github/scripts/ghcr-cargo-target-cache.sh prune \
-            "$GHCR_CACHE_REPOSITORY" \
-            "$GHCR_CACHE_TAG" \
-            "$CARGO_TARGET_DIR" \
-            "${{ needs.prepare.outputs.upstream_tag }}"
-
-  build-windows-package:
-    permissions:
-      contents: read
-    needs:
-      - build-windows-binaries
-      - prepare
-    if: >-
-      ${{
-        always() &&
-        !cancelled() &&
-        needs.prepare.outputs.should_release == 'true' &&
-        needs.build-windows-binaries.result == 'success' &&
-        needs.prepare.outputs.artifact_run_id == github.run_id &&
-        (inputs.verification_level == '' || inputs.verification_level == 'full') &&
-        inputs.focus_target == '' && inputs.focus_bundle == ''
-      }}
-    name: Build - windows-latest - ${{ matrix.target }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: true
       matrix:
         target:
-          - x86_64-pc-windows-msvc
-          - aarch64-pc-windows-msvc
+        - aarch64-apple-darwin
+        - x86_64-apple-darwin
+        incremental:
+        - '0'
+        - '1'
+        binaries:
+        - codex codex-code-mode-host codex-responses-api-proxy
     env:
-      WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner"
-      CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_mtime }}
-      CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_gzip_mtime }}
-      CODEX_PACKAGE_MEMBER_MTIMES_PRIMARY: ${{ toJSON(fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].member_mtimes) }}
-      CODEX_STANDALONE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].standalone_archive_mtime }}
+      CODEX_UNLEASHED_BUILD_NUMBER: '39'
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_INCREMENTAL: ${{ matrix.incremental }}
+      REPRODUCIBILITY_MODE: 'off'
+      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: '1'
+      SOURCE_DATE_EPOCH: '1790874817'
+      UPSTREAM_TARGET: ${{ matrix.target }}
+      UPSTREAM_BINARIES: ${{ matrix.binaries }}
+      PATCHES_ALREADY_APPLIED: '1'
+      SKIP_UPSTREAM_TESTS: '1'
+      SKIP_ARTIFACT_COLLECTION: '1'
     steps:
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+    - name: Record job start
+      id: timing_start
+      shell: bash
+      run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+    - name: Checkout patch repo
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - uses: ./.github/actions/setup-ci
+      with:
+        cargo-target-dir: ${{ runner.os == 'Linux' && '/home/runner/work/codex/codex/codex-rs/target' || '' }}
+    - name: Setup pnpm
+      uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+      with:
+        version: 10
+        run_install: false
+    - name: Setup Node.js
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+      with:
+        node-version: 22
+    - name: Determine pnpm store path
+      id: pnpm_store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    - name: Print runner specs (macOS)
+      if: ${{ runner.os == 'macOS' }}
+      shell: bash
+      run: 'set -euo pipefail
 
-      - uses: ./.github/actions/setup-ci
+        total_ram="$(sysctl -n hw.memsize | awk ''{printf "%.1f GiB\n", $1 / 1024 / 1024 / 1024}'')"
 
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
-          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
+        echo "Runner: ${RUNNER_NAME:-unknown}"
 
-      - name: Download prebuilt Windows primary binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: windows-binaries-${{ matrix.target }}-primary
-          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
+        echo "OS: $(sw_vers -productName) $(sw_vers -productVersion)"
 
-      - name: Download third-party Cargo licenses
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: codex-package-rust-licenses-${{ matrix.target }}-primary
-          path: ${{ runner.temp }}/codex-package-rust-licenses
+        echo "Hardware model: $(sysctl -n hw.model)"
 
-      - name: Stage artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          dest="dist/${{ matrix.target }}"
-          mkdir -p "$dest"
-          for binary in ${WINDOWS_BINARIES}; do
-            cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/${binary}.exe" \
-              "$dest/${binary}-${{ matrix.target }}.exe"
-          done
+        echo "CPU architecture: $(uname -m)"
 
-      - name: Build Codex package archives
-        shell: bash
-        env:
-          CODEX_PACKAGE_RUST_LICENSES_DIR: ${{ runner.temp }}/codex-package-rust-licenses
-        run: |
-          set -euo pipefail
-          target="${{ matrix.target }}"
-          archive_script="${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh"
-          temp_root="${RUNNER_TEMP}/codex-package-archives"
+        echo "Logical CPUs: $(sysctl -n hw.logicalcpu)"
 
-          bundle=primary
-          member_mtimes="$CODEX_PACKAGE_MEMBER_MTIMES_PRIMARY"
-          mkdir -p "$temp_root/$bundle"
-          CODEX_PACKAGE_ARCHIVE_MEMBER_MTIMES="$member_mtimes" \
-            TMPDIR="$temp_root/$bundle" \
-            TMP="$temp_root/$bundle" \
-            TEMP="$temp_root/$bundle" \
-            bash "$archive_script" \
-              --target "$target" \
-              --bundle "$bundle" \
-              --entrypoint-dir "$CARGO_TARGET_DIR/$target/release" \
-              --archive-dir "dist/$target" \
-              --zsh-manifest "${GITHUB_WORKSPACE}/scripts/codex_package/codex-zsh" \
-              --rg-manifest "${GITHUB_WORKSPACE}/upstream/scripts/codex_package/rg"
+        echo "Physical CPUs: $(sysctl -n hw.physicalcpu)"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: ${{ matrix.target }}
-          path: dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz
-          if-no-files-found: error
+        echo "Total RAM: ${total_ram}"
 
-  publish:
-    needs:
-      - prepare
-      - verify
-      - build-unix
-      - build-windows-package
-    if: >-
-      ${{
-        always() &&
-        !cancelled() &&
-        needs.verify.result == 'success' &&
-        needs.prepare.outputs.should_release == 'true' &&
-        (inputs.verification_level == '' || inputs.verification_level == 'full') &&
-        inputs.focus_target == '' && inputs.focus_bundle == '' &&
-        (
-          needs.prepare.outputs.artifact_run_id != github.run_id ||
-          (
-            needs['build-unix'].result == 'success' &&
-            needs['build-windows-package'].result == 'success'
-          )
-        )
-      }}
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: write
-      attestations: write
-      id-token: write
-    steps:
-      - name: Checkout patch repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+        echo "Disk usage:"
 
-      - name: Configure npm registry
-        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-          scope: "@holdmyspot"
+        df -h .
 
-      - name: Download target artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: release-artifacts
-          run-id: ${{ needs.prepare.outputs.artifact_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Match upstream's release workflow: download final target artifacts,
-          # not the intermediate build and timing artifacts.
-          pattern: "{aarch64,x86_64}-{apple-darwin,unknown-linux-musl,pc-windows-msvc}"
+        '
+    - name: Restore APT cache
+      if: ${{ runner.os == 'Linux' }}
+      id: apt_cache
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7
+      with:
+        path: /var/cache/apt
+        key: apt-${{ runner.os }}-${{ matrix.target }}-v1
+    - uses: ./.github/actions/prepare-patched-upstream
+      with:
+        upstream-ref: rust-v0.160.0
+        expected-upstream-commit: a956835d020762cb2b570053af06f643a11c0ecc
+        apply-patches: true
+    - name: Normalize patched source timestamps
+      shell: bash
+      env:
+        SOURCE_DATE_EPOCH: '1790874817'
+      run: 'set -euo pipefail
 
-      - name: Stage release assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-stage
-          declare -A seen=()
-          while IFS= read -r -d '' file; do
-            base="$(basename "$file")"
-            case "$base" in
-              codex-package-*.tar.gz)
-                staged_name="$base"
-                ;;
-              *)
-                # Only package archives are release assets. This also keeps
-                # internal build outputs out when artifacts are reused.
-                continue
-                ;;
-            esac
-            if [[ -n "${seen[$staged_name]+x}" ]]; then
-              echo "ERROR: duplicate release asset name after staging: ${staged_name}" >&2
-              exit 1
-            fi
-            seen[$staged_name]=1
-            cp "$file" "release-stage/${staged_name}"
-          done < <(find release-artifacts -type f -print0 | sort -z)
+        python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
 
-      - name: Verify upstream asset contract
-        env:
-          UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/verify-release-asset-contract.sh openai/codex "$UPSTREAM_TAG" release-stage
+        '
+    - name: Align upstream checkout with release path
+      shell: bash
+      run: "set -euo pipefail\n# Cargo embeds build-script output paths in release binaries. The\n# upstream release\
+        \ is built from this canonical GitHub runner path;\n# use the same physical path instead of compensating\
+        \ with RUSTFLAGS,\n# which changes Cargo fingerprints.\nrelease_checkout=\"${GITHUB_WORKSPACE%/*/*}/codex/codex\"\
+        \nif [[ \"${release_checkout}\" != \"${GITHUB_WORKSPACE}/upstream\" ]]; then\n  # setup-ci and the GHCR\
+        \ restore may already have populated this\n  # target directory. Preserve it while replacing the checkout;\n\
+        \  # removing release_checkout wholesale would otherwise discard the\n  # restored Cargo fingerprints before\
+        \ Cargo can use them.\n  preserved_target=\"${RUNNER_TEMP}/codex-release-target\"\n  if [[ -d \"${release_checkout}/codex-rs/target\"\
+        \ ]]; then\n    rm -rf \"${preserved_target}\"\n    mv \"${release_checkout}/codex-rs/target\" \"${preserved_target}\"\
+        \n  fi\n  rm -rf \"${release_checkout}\"\n  mkdir -p \"$(dirname \"${release_checkout}\")\"\n  mv \"${GITHUB_WORKSPACE}/upstream\"\
+        \ \"${release_checkout}\"\n  ln -s \"${release_checkout}\" \"${GITHUB_WORKSPACE}/upstream\"\n  if [[ -d\
+        \ \"${preserved_target}\" ]]; then\n    mkdir -p \"${release_checkout}/codex-rs\"\n    mv \"${preserved_target}\"\
+        \ \"${release_checkout}/codex-rs/target\"\n  fi\nfi\nmkdir -p \"${release_checkout}/codex-rs/target\"\n\
+        # Upstream's release workflow exposes the physical source checkout\n# through CODEX_REPO_ROOT. Set it after\
+        \ moving the checkout so build\n# scripts embed the same canonical path as the official release.\necho \"\
+        CODEX_REPO_ROOT=${release_checkout}\" >> \"$GITHUB_ENV\"\necho \"CARGO_TARGET_DIR=${release_checkout}/codex-rs/target\"\
+        \ >> \"$GITHUB_ENV\"\n"
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+      with:
+        targets: ${{ matrix.target }}
+    - name: Record Rust compiler cache input
+      id: rust_compiler
+      shell: bash
+      run: "set -euo pipefail\nif command -v sha256sum >/dev/null 2>&1; then\n  fingerprint=\"$(rustc -Vv | sha256sum\
+        \ | awk '{print $1}')\"\nelse\n  fingerprint=\"$(rustc -Vv | shasum -a 256 | awk '{print $1}')\"\nfi\necho\
+        \ \"fingerprint=${fingerprint}\" >> \"$GITHUB_OUTPUT\"\nv8_version=\"$(python3 .github/scripts/rusty_v8_bazel.py\
+        \ resolved-v8-crate-version)\"\npython3 .github/scripts/release-cache-keys.py \\\n  --target \"${{ matrix.target\
+        \ }}\" \\\n  --compiler-fingerprint \"$fingerprint\" \\\n  --v8-version \"$v8_version\" \\\n  --mode \"\
+        off\" >> \"$GITHUB_OUTPUT\"\n"
+    - name: Cache pnpm store
+      id: pnpm_cache
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+      with:
+        path: ${{ steps.pnpm_store.outputs.path }}
+        key: pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+        restore-keys: 'pnpm-${{ runner.os }}-
 
-      - name: Add reproducibility materials
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp scripts/reproduce-release.sh release-stage/reproduce-release.sh
-          chmod +x release-stage/reproduce-release.sh
-          (
-            cd release-stage
-            sha256sum codex-package-*.tar.gz reproduce-release.sh > SHA256SUMS
-          )
-          python3 scripts/generate-release-manifest.py \
-            --release-dir release-stage \
-            --output release-stage/release-manifest.json \
-            --patch-repo . \
-            --patch-repository "$GITHUB_REPOSITORY" \
-            --upstream-repository openai/codex \
-            --upstream-tag "${{ needs.prepare.outputs.upstream_tag }}" \
-            --upstream-commit "${{ needs.prepare.outputs.upstream_sha }}" \
-            --patched-tag "${{ needs.prepare.outputs.patched_tag }}" \
-            --build-number "${{ needs.prepare.outputs.build_number }}" \
-            --build-date "${{ needs.prepare.outputs.build_date }}" \
-            --builder-type github-actions \
-            --workflow-path .github/workflows/build-release.yml \
-            --workflow-ref "${{ needs.prepare.outputs.source_ref }}" \
-            --workflow-sha "${{ needs.prepare.outputs.source_sha }}" \
-            --workflow-run-id "${{ needs.prepare.outputs.artifact_run_id }}" \
-            --workflow-run-attempt "${{ needs.prepare.outputs.source_run_attempt }}" \
-            --supported-targets "${{ needs.prepare.outputs.supported_targets }}" \
-            --consolidated-checksums SHA256SUMS \
-            --attestation-bundle ""
+          '
+    - name: Cache Cargo dependencies
+      id: cargo_cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: 'upstream/codex-rs -> target
 
-      - name: Verify release manifest and checksums
-        shell: bash
-        run: bash scripts/verify-release.sh release-stage --patch-repo .
+          '
+        cache-targets: false
+        add-rust-environment-hash-key: false
+        shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
+        cache-workspace-crates: false
+        cache-bin: false
+        cache-all-crates: false
+        save-if: false
+        cache-on-failure: true
+    - name: Set up ORAS for GHCR Cargo cache
+      uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+    - name: Log in to GHCR Cargo cache
+      shell: bash
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+    - name: Restore GHCR Cargo target cache
+      id: ghcr_cargo_cache
+      continue-on-error: false
+      shell: bash
+      env:
+        GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+        GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'set -euo pipefail
 
-      - name: Attest release package archives
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: |
-            release-stage/codex-package-*.tar.gz
+        bash .github/scripts/ghcr-cargo-target-cache.sh pull "$GHCR_CACHE_REPOSITORY" "$GHCR_CACHE_TAG" "$CARGO_TARGET_DIR"
+        rust-v0.160.0
 
-      - name: Build release notes
-        shell: bash
-        run: |
-          set -euo pipefail
-          patch_files="${{ needs.prepare.outputs.patch_files }}"
-          if [[ -z "${patch_files}" ]]; then
-            patch_files="none"
-          fi
-          patch_list=""
-          if [[ "${patch_files}" == "none" ]]; then
-            patch_list="- None"
-          else
-            for patch_file in ${patch_files}; do
-              patch_url="https://github.com/${GITHUB_REPOSITORY}/blob/${{ needs.prepare.outputs.source_sha }}/${patch_file}"
-              patch_list+="- [\`${patch_file}\`](${patch_url})"$'\n'
-            done
-            patch_list="${patch_list%$'\n'}"
-          fi
-          release_asset_tag="${{ needs.prepare.outputs.patched_tag }}"
-          release_asset_tag="${release_asset_tag//+/%2B}"
-          release_asset_base_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${release_asset_tag}"
-          cat > RELEASE_NOTES.md <<EOF
-          # Codex Unleashed ${{ needs.prepare.outputs.release_name }}
+        '
+    - name: Rebuild release binaries from cached dependencies
+      shell: bash
+      run: "python3 .github/scripts/clean-cached-release-binaries.py \\\n  upstream/codex-rs \\\n  \"${{ matrix.target\
+        \ }}\" \\\n  ${{ matrix.binaries }}\n"
+    - name: Cache rusty_v8 artifacts
+      id: rusty_v8_cache
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+      with:
+        path: .cache/rusty_v8
+        key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
+    - name: Configure rusty_v8 artifact overrides and verify checksums
+      uses: ./.github/actions/setup-rusty-v8
+      with:
+        target: ${{ matrix.target }}
+    - name: Install upstream dependencies
+      shell: bash
+      run: 'set -euo pipefail
 
-          > A public patched Codex build for users who need targeted fixes sooner than the upstream release cycle.
+        cd upstream
 
-          > **Unofficial:** This distribution is not affiliated with or endorsed by OpenAI.
+        pnpm install --frozen-lockfile
 
-          ## Start here
-
-          1. Choose the recommended package for your platform below.
-          2. Download it from the **Assets** section at the bottom of this page.
-          3. Extract the archive and follow the platform-specific instructions.
-
-          | Platform | Asset |
-          | --- | --- |
-          | Linux x86_64 | [\`codex-package-x86_64-unknown-linux-musl.tar.gz\`](${release_asset_base_url}/codex-package-x86_64-unknown-linux-musl.tar.gz) |
-          | Linux ARM64 | [\`codex-package-aarch64-unknown-linux-musl.tar.gz\`](${release_asset_base_url}/codex-package-aarch64-unknown-linux-musl.tar.gz) |
-          | macOS Intel | [\`codex-package-x86_64-apple-darwin.tar.gz\`](${release_asset_base_url}/codex-package-x86_64-apple-darwin.tar.gz) |
-          | macOS Apple Silicon | [\`codex-package-aarch64-apple-darwin.tar.gz\`](${release_asset_base_url}/codex-package-aarch64-apple-darwin.tar.gz) |
-          | Windows x86_64 | [\`codex-package-x86_64-pc-windows-msvc.tar.gz\`](${release_asset_base_url}/codex-package-x86_64-pc-windows-msvc.tar.gz) |
-          | Windows ARM64 | [\`codex-package-aarch64-pc-windows-msvc.tar.gz\`](${release_asset_base_url}/codex-package-aarch64-pc-windows-msvc.tar.gz) |
-
-          ## What changed
-
-          This build is based on upstream Codex \`${{ needs.prepare.outputs.upstream_tag }}\` at commit \`${{ needs.prepare.outputs.upstream_sha }}\`.
-
-          **Patches applied**
-
-          ${patch_list}
-
-          ## Build details
-
-          - Build date: \`${{ needs.prepare.outputs.build_date }}\`
-          - Supported targets: \`${{ needs.prepare.outputs.supported_targets }}\`
-
-          ## Verify this build
-
-          - [Source and artifact manifest](${release_asset_base_url}/release-manifest.json)
-          - [SHA-256 checksums](${release_asset_base_url}/SHA256SUMS)
-          - [Reproduction script](${release_asset_base_url}/reproduce-release.sh)
-
-          This release is intended as a temporary patch layer; patches are removed once the corresponding fix is available upstream.
-          EOF
-
-      - name: Refuse to replace an existing release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ needs.prepare.outputs.patched_tag }}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release already exists: $tag" >&2
-            exit 1
-          fi
-          tagged_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
-          if [[ "$tagged_sha" != "${{ needs.prepare.outputs.source_sha }}" ]]; then
-            echo "Release tag identifies a different source commit: $tag" >&2
-            exit 1
-          fi
-
-      - name: Publish immutable GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release create "${{ needs.prepare.outputs.patched_tag }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "${{ needs.prepare.outputs.release_name }}" \
-            --notes-file RELEASE_NOTES.md \
-            release-stage/*
-
-      - name: Publish npm packages
-        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/publish_npm_from_release.py \
-            --repository "${GITHUB_REPOSITORY}" \
-            --tag "${{ needs.prepare.outputs.patched_tag }}" \
-            --archive-dir release-stage \
-            --output-dir npm-release \
-            --registry https://registry.npmjs.org \
-            --scope @holdmyspot \
-            --publish
-
-  record-failure-marker:
-    needs:
-      - prepare
-      - build-unix
-      - build-windows-package
-      - publish
-    if: >-
-      ${{
-        always() &&
-        needs.prepare.outputs.should_release == 'true' &&
-        inputs.focus_target == '' && inputs.focus_bundle == '' &&
-        !cancelled() &&
-        needs.publish.result != 'success'
-      }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Write failure marker
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p failure-marker
-          cat > failure-marker/README.txt <<EOF
-          Upstream release check failed.
-          Repository: ${{ github.repository }}
-          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          Workflow commit: ${{ github.sha }}
-          Upstream tag: ${{ needs.prepare.outputs.upstream_tag }}
-          Patched tag: ${{ needs.prepare.outputs.patched_tag }}
-          Recorded at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-          EOF
-
-      - name: Upload failure marker
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: failed-upstream-release-${{ needs.prepare.outputs.patched_tag }}-${{ github.sha }}
-          path: failure-marker/README.txt
-          retention-days: 30
+        '
+    - name: Measure build-number change
+      shell: bash
+      run: bash .github/scripts/probe-incremental-release.sh
+    - name: Upload diagnostic evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: incremental-${{ matrix.target }}-${{ matrix.incremental }}
+        path: ${{ runner.temp }}/incremental-evidence
+        if-no-files-found: error
