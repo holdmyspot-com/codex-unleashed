@@ -45,7 +45,6 @@ jobs:
       REPRODUCIBILITY_MODE: 'off'
       ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: '1'
       SOURCE_DATE_EPOCH: '1790874817'
-      CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
       UPSTREAM_TARGET: ${{ matrix.target }}
       UPSTREAM_BINARIES: ${{ matrix.binaries }}
       PATCHES_ALREADY_APPLIED: '1'
@@ -287,6 +286,8 @@ jobs:
     - name: Measure build-number change
       shell: bash
       run: bash .github/scripts/probe-incremental-release.sh
+      env:
+        CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
     - name: Upload diagnostic evidence
       if: always()
       uses: actions/upload-artifact@v4
@@ -334,7 +335,6 @@ jobs:
       REPRODUCIBILITY_MODE: 'off'
       ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: '1'
       SOURCE_DATE_EPOCH: '1790874817'
-      CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
       UPSTREAM_TARGET: ${{ matrix.target }}
       UPSTREAM_BINARIES: ${{ matrix.binaries }}
       PATCHES_ALREADY_APPLIED: '1'
@@ -466,6 +466,8 @@ jobs:
     - name: Measure build-number change
       shell: bash
       run: bash .github/scripts/probe-incremental-release.sh
+      env:
+        CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
     - name: Upload diagnostic evidence
       if: always()
       uses: actions/upload-artifact@v4
