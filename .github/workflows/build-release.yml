@@ -5,29 +5,47 @@ permissions:
   contents: read
   packages: read
 jobs:
-  measure:
+  unix:
     name: ${{ matrix.target }} incremental=${{ matrix.incremental }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        target:
-        - aarch64-apple-darwin
-        - x86_64-apple-darwin
-        incremental:
-        - '0'
-        - '1'
-        binaries:
-        - codex codex-code-mode-host codex-responses-api-proxy
+        include:
+        - runner: ubuntu-latest
+          target: x86_64-unknown-linux-musl
+          incremental: '0'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: ubuntu-latest
+          target: x86_64-unknown-linux-musl
+          incremental: '1'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: ubuntu-24.04-arm
+          target: aarch64-unknown-linux-musl
+          incremental: '0'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: ubuntu-24.04-arm
+          target: aarch64-unknown-linux-musl
+          incremental: '1'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy bwrap
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
     env:
       CODEX_UNLEASHED_BUILD_NUMBER: '39'
-      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: 'off'
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
       CARGO_INCREMENTAL: ${{ matrix.incremental }}
       REPRODUCIBILITY_MODE: 'off'
       ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: '1'
       SOURCE_DATE_EPOCH: '1790874817'
+      CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
       UPSTREAM_TARGET: ${{ matrix.target }}
       UPSTREAM_BINARIES: ${{ matrix.binaries }}
       PATCHES_ALREADY_APPLIED: '1'
@@ -56,30 +74,44 @@ jobs:
       id: pnpm_store
       shell: bash
       run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-    - name: Print runner specs (macOS)
-      if: ${{ runner.os == 'macOS' }}
+    - name: Print runner specs (Linux)
+      if: ${{ runner.os == 'Linux' }}
       shell: bash
       run: 'set -euo pipefail
 
-        total_ram="$(sysctl -n hw.memsize | awk ''{printf "%.1f GiB\n", $1 / 1024 / 1024 / 1024}'')"
+        cpu_model="$(lscpu | awk -F: ''/Model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}'')"
+
+        total_ram="$(awk ''/MemTotal/ {printf "%.1f GiB\n", $2 / 1024 / 1024}'' /proc/meminfo)"
 
         echo "Runner: ${RUNNER_NAME:-unknown}"
 
-        echo "OS: $(sw_vers -productName) $(sw_vers -productVersion)"
+        echo "OS: $(uname -a)"
 
-        echo "Hardware model: $(sysctl -n hw.model)"
+        echo "CPU model: ${cpu_model}"
 
-        echo "CPU architecture: $(uname -m)"
-
-        echo "Logical CPUs: $(sysctl -n hw.logicalcpu)"
-
-        echo "Physical CPUs: $(sysctl -n hw.physicalcpu)"
+        echo "Logical CPUs: $(nproc)"
 
         echo "Total RAM: ${total_ram}"
 
         echo "Disk usage:"
 
         df -h .
+
+        '
+    - name: Set up Zig
+      if: ${{ contains(matrix.target, 'linux-musl') }}
+      uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c
+      with:
+        version: 0.14.0
+        use-cache: false
+    - name: Prepare Linux APT cache directories
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
+
+        sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
 
         '
     - name: Restore APT cache
@@ -89,6 +121,16 @@ jobs:
       with:
         path: /var/cache/apt
         key: apt-${{ runner.os }}-${{ matrix.target }}-v1
+    - name: Install Linux build dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        sudo apt-get update -y
+
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+
+        '
     - uses: ./.github/actions/prepare-patched-upstream
       with:
         upstream-ref: rust-v0.160.0
@@ -121,6 +163,22 @@ jobs:
         \ moving the checkout so build\n# scripts embed the same canonical path as the official release.\necho \"\
         CODEX_REPO_ROOT=${release_checkout}\" >> \"$GITHUB_ENV\"\necho \"CARGO_TARGET_DIR=${release_checkout}/codex-rs/target\"\
         \ >> \"$GITHUB_ENV\"\n"
+    - name: Use upstream-compatible Cargo home (Linux musl)
+      if: ${{ contains(matrix.target, 'linux-musl') }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        cargo_home="/home/runner/work/codex/codex/.cargo-home"
+
+        mkdir -p "${cargo_home}/bin"
+
+        echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+
+        echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+
+        : > "${cargo_home}/config.toml"
+
+        '
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
       with:
@@ -202,6 +260,209 @@ jobs:
         pnpm install --frozen-lockfile
 
         '
+    - name: Configure Linux musl toolchain
+      if: ${{ contains(matrix.target, 'linux-musl') }}
+      shell: bash
+      env:
+        TARGET: ${{ matrix.target }}
+      run: 'set -euo pipefail
+
+        bash upstream/.github/scripts/install-musl-build-tools.sh
+
+        '
+    - name: Disable aws-lc jitter entropy (musl)
+      if: ${{ contains(matrix.target, 'linux-musl') }}
+      shell: bash
+      run: 'set -euo pipefail
+
+        echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+
+        target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
+
+        target_no_jitter="${target_no_jitter//-/_}"
+
+        echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+        '
+    - name: Measure build-number change
+      shell: bash
+      run: bash .github/scripts/probe-incremental-release.sh
+    - name: Upload diagnostic evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: incremental-${{ matrix.target }}-${{ matrix.incremental }}
+        path: ${{ runner.temp }}/incremental-evidence
+        if-no-files-found: error
+  windows:
+    name: ${{ matrix.target }} incremental=${{ matrix.incremental }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: windows-latest
+          target: x86_64-pc-windows-msvc
+          incremental: '0'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: windows-latest
+          target: x86_64-pc-windows-msvc
+          incremental: '1'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: windows-latest
+          target: aarch64-pc-windows-msvc
+          incremental: '0'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+        - runner: windows-latest
+          target: aarch64-pc-windows-msvc
+          incremental: '1'
+          binaries: codex codex-code-mode-host codex-responses-api-proxy
+          helper_binaries: codex-windows-sandbox-setup codex-command-runner
+          bundle: primary
+    env:
+      CODEX_UNLEASHED_BUILD_NUMBER: '39'
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: 'off'
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_INCREMENTAL: ${{ matrix.incremental }}
+      REPRODUCIBILITY_MODE: 'off'
+      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: '1'
+      SOURCE_DATE_EPOCH: '1790874817'
+      CARGO_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+      UPSTREAM_TARGET: ${{ matrix.target }}
+      UPSTREAM_BINARIES: ${{ matrix.binaries }}
+      PATCHES_ALREADY_APPLIED: '1'
+      SKIP_UPSTREAM_TESTS: '1'
+      SKIP_ARTIFACT_COLLECTION: '1'
+    steps:
+    - name: Checkout patch repo
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - uses: ./.github/actions/setup-ci
+    - uses: ./.github/actions/prepare-patched-upstream
+      with:
+        upstream-ref: rust-v0.160.0
+        expected-upstream-commit: a956835d020762cb2b570053af06f643a11c0ecc
+    - name: Normalize patched source timestamps
+      shell: bash
+      env:
+        SOURCE_DATE_EPOCH: '1790874817'
+      run: 'set -euo pipefail
+
+        python3 .github/scripts/normalize-source-timestamps.py upstream "$SOURCE_DATE_EPOCH"
+
+        '
+    - name: Print runner specs (Windows)
+      shell: powershell
+      run: '$computer = Get-CimInstance Win32_ComputerSystem
+
+        $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+
+        $ramGiB = [math]::Round($computer.TotalPhysicalMemory / 1GB, 1)
+
+        Write-Host "Runner: $env:RUNNER_NAME"
+
+        Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
+
+        Write-Host "CPU: $($cpu.Name)"
+
+        Write-Host "Logical CPUs: $($computer.NumberOfLogicalProcessors)"
+
+        Write-Host "Physical CPUs: $($computer.NumberOfProcessors)"
+
+        Write-Host "Total RAM: $ramGiB GiB"
+
+        Write-Host "Disk usage:"
+
+        Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name=''Size(GB)'';Expression={[math]::Round(($_.Used
+        + $_.Free) / 1GB, 1)}}, @{Name=''Free(GB)'';Expression={[math]::Round($_.Free / 1GB, 1)}}
+
+        '
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+      with:
+        targets: ${{ matrix.target }}
+    - name: Record Rust compiler cache input
+      id: rust_compiler
+      shell: bash
+      run: "set -euo pipefail\nif command -v sha256sum >/dev/null 2>&1; then\n  fingerprint=\"$(rustc -Vv | sha256sum\
+        \ | awk '{print $1}')\"\nelse\n  fingerprint=\"$(rustc -Vv | shasum -a 256 | awk '{print $1}')\"\nfi\necho\
+        \ \"fingerprint=${fingerprint}\" >> \"$GITHUB_OUTPUT\"\nv8_version=\"$(python3 .github/scripts/rusty_v8_bazel.py\
+        \ resolved-v8-crate-version)\"\npython3 .github/scripts/release-cache-keys.py \\\n  --target \"${{ matrix.target\
+        \ }}\" \\\n  --compiler-fingerprint \"$fingerprint\" \\\n  --v8-version \"$v8_version\" \\\n  --mode \"\
+        off\" >> \"$GITHUB_OUTPUT\"\n"
+    - name: Configure LLVM linker
+      uses: ./.github/actions/setup-msvc-env
+      with:
+        target: ${{ matrix.target }}
+    - name: Ensure requested Rust target is installed
+      shell: bash
+      run: 'set -euo pipefail
+
+        rustup target add "${{ matrix.target }}"
+
+        rustup target list --installed
+
+        '
+    - name: Cache rusty_v8 artifacts
+      id: rusty_v8_cache
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
+      with:
+        path: .cache/rusty_v8
+        key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
+    - name: Configure rusty_v8 artifact overrides and verify checksums
+      uses: ./.github/actions/setup-rusty-v8
+      with:
+        target: ${{ matrix.target }}
+    - name: Cache Cargo dependencies
+      id: cargo_cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: 'upstream/codex-rs -> target
+
+          '
+        add-rust-environment-hash-key: false
+        cache-targets: false
+        shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
+        cache-workspace-crates: false
+        cache-bin: false
+        cache-all-crates: false
+        save-if: false
+        cache-on-failure: true
+    - name: Set up ORAS for GHCR Cargo cache
+      uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+    - name: Log in to GHCR Cargo cache
+      shell: bash
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+    - name: Restore GHCR Cargo target cache
+      id: ghcr_cargo_cache
+      continue-on-error: false
+      shell: bash
+      env:
+        GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+        GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: 'set -euo pipefail
+
+        bash .github/scripts/ghcr-cargo-target-cache.sh pull "$GHCR_CACHE_REPOSITORY" "$GHCR_CACHE_TAG" "$CARGO_TARGET_DIR"
+        rust-v0.160.0
+
+        '
+    - name: Rebuild release binaries from cached dependencies
+      shell: bash
+      run: "python3 .github/scripts/clean-cached-release-binaries.py \\\n  upstream/codex-rs \\\n  \"${{ matrix.target\
+        \ }}\" \\\n  ${{ matrix.binaries }} ${{ matrix.helper_binaries }}\n"
+    - name: Configure Windows Cargo build environment
+      if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+      shell: bash
+      run: echo "LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC" >> "$GITHUB_ENV"
     - name: Measure build-number change
       shell: bash
       run: bash .github/scripts/probe-incremental-release.sh
