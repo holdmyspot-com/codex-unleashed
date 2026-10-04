@@ -41,7 +41,7 @@ while IFS= read -r -d '' file; do
       # not part of upstream's package-asset subset.
       continue
       ;;
-    codex-package-*.tar.gz)
+    codex-package-*.tar.gz|install.sh|install.ps1)
       ;;
     *)
       echo "Release contains an unexpected asset: ${name}" >&2

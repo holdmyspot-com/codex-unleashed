@@ -1736,6 +1736,18 @@ jobs:
           # not the intermediate build and timing artifacts.
           pattern: "{aarch64,x86_64}-{apple-darwin,unknown-linux-musl,pc-windows-msvc}"
 
+      - name: Checkout upstream source for patched installers
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: openai/codex
+          ref: ${{ needs.prepare.outputs.upstream_sha }}
+          path: upstream-installers
+          fetch-depth: 1
+
+      - name: Apply active patches for installer staging
+        shell: bash
+        run: bash scripts/apply-patches.sh upstream-installers
+
       - name: Stage release assets
         shell: bash
         run: |
@@ -1762,6 +1774,10 @@ jobs:
             cp "$file" "release-stage/${staged_name}"
           done < <(find release-artifacts -type f -print0 | sort -z)
 
+      - name: Stage patched release installers
+        shell: bash
+        run: python3 scripts/stage-release-installers.py upstream-installers release-stage
+
       - name: Verify upstream asset contract
         env:
           UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
@@ -1779,7 +1795,7 @@ jobs:
           chmod +x release-stage/reproduce-release.sh
           (
             cd release-stage
-            sha256sum codex-package-*.tar.gz reproduce-release.sh > SHA256SUMS
+            sha256sum codex-package-*.tar.gz install.sh install.ps1 reproduce-release.sh > SHA256SUMS
           )
           python3 scripts/generate-release-manifest.py \
             --release-dir release-stage \

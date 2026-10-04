@@ -1,0 +1,1206 @@
+From bd94ade544ff36da894f0216afddf5c6b06a35b5 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@holdmyspot.com>
+Date: Sun, 4 Oct 2026 00:20:42 -0400
+Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
+
+Keep the public stable menu text and update lifecycle. Fetch installers and packages exclusively from holdmyspot-com/codex-unleashed, validate numbered vendor versions, and preserve pins and failure recovery.
+
+TDD against rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc: Python installer tests first failed at OpenAI request URLs and rejection of 0.160.0+39; just test -p codex-app-server-daemon -E "test(installer_fetch_uses_exact_url)" failed at the OpenAI installer URL; vendor eligibility and package seed tests failed at missing latest-channel eligibility. Green: Python installer suite 12 passed; PowerShell release-selection check passed (pristine upstream rejects vendor version); just test -p codex-app-server-daemon 69 passed. The Cargo command regenerates upstream local package versions in Cargo.lock; no dependency change is carried.
+---
+ .../app-server-daemon/src/managed_install.rs  |  20 +-
+ .../src/managed_install_path_tests.rs         |  27 +
+ .../app-server-daemon/src/prepare_install.rs  |  10 +-
+ .../src/prepare_install_tests.rs              |  27 +
+ codex-rs/app-server-daemon/src/update_loop.rs |   6 +-
+ .../src/update_loop_tests.rs                  |   9 +-
+ scripts/install/install.ps1                   |  72 +--
+ scripts/install/install.sh                    |  87 +---
+ scripts/install/test_install_ps1.ps1          |  40 ++
+ scripts/install/test_install_sh.py            | 486 ++++--------------
+ 10 files changed, 233 insertions(+), 551 deletions(-)
+ create mode 100644 scripts/install/test_install_ps1.ps1
+
+diff --git a/codex-rs/app-server-daemon/src/managed_install.rs b/codex-rs/app-server-daemon/src/managed_install.rs
+index ce3107f..f9c6c49 100644
+--- a/codex-rs/app-server-daemon/src/managed_install.rs
++++ b/codex-rs/app-server-daemon/src/managed_install.rs
+@@ -70,6 +70,20 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
+     }
+ }
+ 
++/// Parse a non-development stable release, including a numeric downstream build number.
++pub(crate) fn stable_public_version(value: &str) -> Option<semver::Version> {
++    let version = semver::Version::parse(value).ok()?;
++    (version.pre.is_empty()
++        && (version.build.is_empty()
++            || version
++                .build
++                .as_str()
++                .bytes()
++                .all(|byte| byte.is_ascii_digit()))
++        && (version.major, version.minor, version.patch) != (0, 0, 0))
++        .then_some(version)
++}
++
+ /// Only latest-channel stable releases may run the public latest-version updater.
+ pub(crate) fn is_stable_standalone_release(codex_home: &Path, codex_bin: &Path) -> bool {
+     let standalone = package_root(codex_home);
+@@ -105,11 +119,7 @@ pub(crate) fn is_stable_standalone_release(codex_home: &Path, codex_bin: &Path)
+     else {
+         return false;
+     };
+-    let components: Vec<_> = version.split('.').collect();
+-    components.len() == 3
+-        && components.iter().all(|component| {
+-            !component.is_empty() && component.bytes().all(|byte| byte.is_ascii_digit())
+-        })
++    stable_public_version(version).is_some()
+         && std::fs::read_to_string(standalone.join("auto-update-version"))
+             .is_ok_and(|selected| selected == release_name)
+         && std::fs::canonicalize(codex_bin).is_ok_and(|bin| bin.starts_with(&release))
+diff --git a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
+index b227c7e..b25ae45 100644
+--- a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
++++ b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
+@@ -125,3 +125,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
+     std::fs::write(&binary, b"#!/bin/sh\nexit 0\n").expect("newer binary");
+     assert!(super::supports_daemon_update_loop(&binary).await);
+ }
++
++#[cfg(unix)]
++#[test]
++fn updater_accepts_unleashed_vendor_release_but_rejects_dev_and_prerelease() {
++    let home = tempfile::TempDir::new().expect("home");
++    let root = home.path().join("packages/app-server-daemon");
++    std::fs::create_dir_all(root.join("releases")).unwrap();
++    for (version, expected) in [
++        ("0.160.0+39", true),
++        ("0.160.0+dev", false),
++        ("0.160.0-alpha.1+39", false),
++    ] {
++        let name = format!("{version}-x86_64-unknown-linux-musl");
++        let release = root.join("releases").join(&name);
++        std::fs::create_dir_all(release.join("bin")).unwrap();
++        let bin = release.join("bin/codex");
++        std::fs::write(&bin, b"codex").unwrap();
++        let _ = std::fs::remove_file(root.join("current"));
++        std::os::unix::fs::symlink(&release, root.join("current")).unwrap();
++        std::fs::write(root.join("auto-update-version"), name).unwrap();
++        assert_eq!(
++            super::is_stable_standalone_release(home.path(), &bin),
++            expected,
++            "{version}"
++        );
++    }
++}
+diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
+index ecf2501..4f9f26e 100644
+--- a/codex-rs/app-server-daemon/src/prepare_install.rs
++++ b/codex-rs/app-server-daemon/src/prepare_install.rs
+@@ -220,7 +220,7 @@ async fn prepare_from_package(
+         "daemon running state changed while awaiting confirmation; retry the command"
+     );
+     let backend = current_backend;
+-    let stable = stable_version(&version).is_some();
++    let stable = managed_install::stable_public_version(&version).is_some();
+     let releases = root.join("releases");
+     std::fs::create_dir_all(&releases)?;
+     let stage = tempfile::Builder::new()
+@@ -416,14 +416,6 @@ fn package_tree(root: &Path, destination: Option<&Path>) -> Result<String> {
+     Ok(hasher.finalize().to_hex().to_string())
+ }
+ 
+-fn stable_version(value: &str) -> Option<semver::Version> {
+-    let version = semver::Version::parse(value).ok()?;
+-    (version.pre.is_empty()
+-        && version.build.is_empty()
+-        && (version.major, version.minor, version.patch) != (0, 0, 0))
+-        .then_some(version)
+-}
+-
+ fn validate_package(root: &Path) -> Result<()> {
+     let mut names = vec![
+         "codex-package.json",
+diff --git a/codex-rs/app-server-daemon/src/prepare_install_tests.rs b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
+index 810a45b..112bda0 100644
+--- a/codex-rs/app-server-daemon/src/prepare_install_tests.rs
++++ b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
+@@ -384,3 +384,30 @@ async fn broken_selection_is_not_a_missing_installation() {
+         PathBuf::from("missing-release")
+     );
+ }
++
++#[tokio::test]
++async fn vendor_package_seeds_latest_channel_and_development_stays_pinned() {
++    for (version, latest) in [("0.160.0+39", true), ("0.160.0+dev", false)] {
++        let temp = tempfile::TempDir::new().expect("temp");
++        let home = temp.path().join("home");
++        let daemon = daemon(&home);
++        let source = temp.path().join("source");
++        let bin = package(&source, version);
++        prepare_from_package(
++            &daemon,
++            &DaemonSettings::default(),
++            InstallMode::Missing,
++            Some(&source),
++            &bin,
++            |_| Ok(true),
++        )
++        .await
++        .unwrap();
++        let root = home.join("packages/app-server-daemon");
++        assert_eq!(
++            root.join("auto-update-version").exists(),
++            latest,
++            "{version}"
++        );
++    }
++}
+diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
+index 8f55126..5ffbb3f 100644
+--- a/codex-rs/app-server-daemon/src/update_loop.rs
++++ b/codex-rs/app-server-daemon/src/update_loop.rs
+@@ -63,9 +63,11 @@ pub(crate) async fn request_manual_update(
+ const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
+ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+ #[cfg(unix)]
+-const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
++const INSTALL_URL: &str =
++    "https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.sh";
+ #[cfg(windows)]
+-const INSTALL_URL: &str = "https://chatgpt.com/codex/install.ps1";
++const INSTALL_URL: &str =
++    "https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1";
+ 
+ pub(crate) async fn run(
+     http_client_factory: HttpClientFactory,
+diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+index d932742..8b1d013 100644
+--- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
++++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+@@ -34,7 +34,14 @@ async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
+             .expect("installer fetch should succeed"),
+         script
+     );
+-    assert_eq!(http.requested_urls(), vec![INSTALL_URL.to_string()]);
++    assert_eq!(
++        http.requested_urls(),
++        vec![if cfg!(windows) {
++            "https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1"
++        } else {
++            "https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.sh"
++        }.to_string()]
++    );
+ }
+ 
+ #[tokio::test]
+diff --git a/scripts/install/install.ps1 b/scripts/install/install.ps1
+index cd9c0c7..9eba3dc 100644
+--- a/scripts/install/install.ps1
++++ b/scripts/install/install.ps1
+@@ -12,13 +12,7 @@ if ([string]::IsNullOrWhiteSpace($Release)) {
+ }
+ 
+ $NonInteractive = $env:CODEX_NON_INTERACTIVE -match "^(?i:1|true|yes)$"
+-$DefaultPreferReleasesOpenAICom = $true
+-$PreferReleasesOpenAICom = if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM)) {
+-    $DefaultPreferReleasesOpenAICom
+-} else {
+-    $env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM -match "^(?i:1|true|yes)$"
+-}
+-$ReleasesBaseUri = "https://releases.openai.com/codex"
++$ReleasesBaseUri = "https://github.com/holdmyspot-com/codex-unleashed"
+ $ReleasesMetadataTimeoutSec = 30
+ $ReleasesAssetTimeoutSec = 300
+ 
+@@ -80,8 +74,8 @@ function Assert-ValidReleaseVersion {
+         [string]$Version
+     )
+ 
+-    if ($Version -cne "latest" -and $Version -cnotmatch "^[0-9]+\.[0-9]+\.[0-9]+(?:-alpha(?:\.[0-9]+){0,2}|-beta(?:\.[0-9]+)?)?$") {
+-        throw "Invalid Codex release version: $Version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]."
++    if ($Version -cne "latest" -and $Version -cnotmatch "^[0-9]+\.[0-9]+\.[0-9]+(?:-alpha(?:\.[0-9]+){0,2}|-beta(?:\.[0-9]+)?)?(?:\+[0-9]+)?$") {
++        throw "Invalid Codex release version: $Version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]][+BUILD]."
+     }
+ }
+ 
+@@ -165,17 +159,11 @@ function Resolve-ReleaseAssetSelection {
+     $version = $ResolvedRelease.Version
+     $releaseMetadata = $ResolvedRelease.Metadata
+     $packageAsset = "codex-package-$Target.tar.gz"
+-    $checksumAsset = "codex-package_SHA256SUMS"
++    $checksumAsset = "SHA256SUMS"
+     $packageUrl = $null
+     $packageFallbackUrl = $null
+     $checksumUrl = $null
+     $checksumFallbackUrl = $null
+-    if ($ResolvedRelease.Source -eq "ReleasesOpenAICom") {
+-        $packageUrl = "$ReleasesBaseUri/releases/$version/$packageAsset"
+-        $packageFallbackUrl = "https://github.com/openai/codex/releases/download/rust-v$version/$packageAsset"
+-        $checksumUrl = "$ReleasesBaseUri/releases/$version/$checksumAsset"
+-        $checksumFallbackUrl = "https://github.com/openai/codex/releases/download/rust-v$version/$checksumAsset"
+-    }
+ 
+     $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata -Url $packageUrl -FallbackUrl $packageFallbackUrl
+     $checksumMetadata = Find-ReleaseAssetMetadata -AssetName $checksumAsset -ReleaseMetadata $releaseMetadata -Url $checksumUrl -FallbackUrl $checksumFallbackUrl
+@@ -191,10 +179,6 @@ function Resolve-ReleaseAssetSelection {
+     $packageAsset = "codex-npm-$NpmTag-$version.tgz"
+     $packageUrl = $null
+     $packageFallbackUrl = $null
+-    if ($ResolvedRelease.Source -eq "ReleasesOpenAICom") {
+-        $packageUrl = "$ReleasesBaseUri/releases/$version/$packageAsset"
+-        $packageFallbackUrl = "https://github.com/openai/codex/releases/download/rust-v$version/$packageAsset"
+-    }
+     $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata -Url $packageUrl -FallbackUrl $packageFallbackUrl
+     if ($null -eq $packageMetadata) {
+         throw "Could not find Codex package or platform npm release assets for Codex $version."
+@@ -234,7 +218,7 @@ function Get-PackageArchiveDigest {
+         }
+     }
+ 
+-    throw "Could not find SHA-256 digest for $AssetName in codex-package_SHA256SUMS."
++    throw "Could not find SHA-256 digest for $AssetName in SHA256SUMS."
+ }
+ 
+ function Path-Contains {
+@@ -332,11 +316,11 @@ function Resolve-ReleaseFromGitHub {
+ 
+     if ($NormalizedVersion -eq "latest") {
+         $requestedRelease = "latest"
+-        $metadataUri = "https://api.github.com/repos/openai/codex/releases/latest"
++        $metadataUri = "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest"
+     } else {
+         $resolvedVersion = $NormalizedVersion
+         $requestedRelease = $resolvedVersion
+-        $metadataUri = "https://api.github.com/repos/openai/codex/releases/tags/rust-v$resolvedVersion"
++        $metadataUri = "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/rust-v$resolvedVersion"
+     }
+ 
+     try {
+@@ -356,47 +340,11 @@ function Resolve-ReleaseFromGitHub {
+     }
+ }
+ 
+-function Resolve-ReleaseFromReleases {
+-    param(
+-        [string]$NormalizedVersion
+-    )
+-
+-    $metadataUri = if ($NormalizedVersion -eq "latest") {
+-        "$ReleasesBaseUri/channels/latest"
+-    } else {
+-        "$ReleasesBaseUri/releases/$NormalizedVersion/release.json"
+-    }
+-    try {
+-        $metadataResponse = Invoke-WebRequest -UseBasicParsing -Uri $metadataUri -TimeoutSec $ReleasesMetadataTimeoutSec
+-        $releaseMetadata = [string]$metadataResponse.Content | ConvertFrom-Json -ErrorAction Stop
+-        $resolvedVersion = Resolve-VersionFromReleaseMetadata -ReleaseMetadata $releaseMetadata
+-        if ($NormalizedVersion -ne "latest" -and $resolvedVersion -cne $NormalizedVersion) {
+-            throw "Release metadata version did not match requested Codex version $NormalizedVersion."
+-        }
+-        $resolvedRelease = [PSCustomObject]@{
+-            Version = $resolvedVersion
+-            Metadata = $releaseMetadata
+-            Source = "ReleasesOpenAICom"
+-        }
+-        $null = Resolve-ReleaseAssetSelection -ResolvedRelease $resolvedRelease -Target $target -NpmTag $npmTag
+-    } catch {
+-        return $null
+-    }
+-    return $resolvedRelease
+-}
+ 
+ function Resolve-Release {
+     $normalizedVersion = Normalize-Version -RawVersion $Release
+     Assert-ValidReleaseVersion -Version $normalizedVersion
+ 
+-    if ($PreferReleasesOpenAICom) {
+-        $release = Resolve-ReleaseFromReleases -NormalizedVersion $normalizedVersion
+-        if ($null -ne $release) {
+-            return $release
+-        }
+-        Write-WarningStep "releases.openai.com is unavailable; falling back to GitHub Releases."
+-    }
+-
+     return Resolve-ReleaseFromGitHub -NormalizedVersion $normalizedVersion
+ }
+ 
+@@ -858,9 +806,9 @@ function Maybe-HandleConflictingInstall {
+     $manager = $Conflict.Manager
+ 
+     $uninstallArgs = if ($manager -eq "bun") {
+-        @("remove", "-g", "@openai/codex")
++        @("remove", "-g", "@holdmyspot-com/codex-unleashed")
+     } else {
+-        @("uninstall", "-g", "@openai/codex")
++        @("uninstall", "-g", "@holdmyspot-com/codex-unleashed")
+     }
+     $uninstallCommand = if ($manager -eq "bun") { "bun" } else { "npm" }
+ 
+@@ -963,7 +911,7 @@ Write-Step "Resolved version: $resolvedVersion"
+ $conflictingInstall = if ($daemonOnly) { $null } else { Get-ConflictingInstall -VisibleBinDir $visibleBinDir }
+ $oldStandaloneBackup = $null
+ 
+-$checksumAsset = "codex-package_SHA256SUMS"
++$checksumAsset = "SHA256SUMS"
+ $assetSelection = Resolve-ReleaseAssetSelection -ResolvedRelease $resolvedRelease -Target $target -NpmTag $npmTag
+ $packageAsset = $assetSelection.PackageAsset
+ $packageMetadata = $assetSelection.PackageMetadata
+diff --git a/scripts/install/install.sh b/scripts/install/install.sh
+index 58815c7..af5ed3a 100755
+--- a/scripts/install/install.sh
++++ b/scripts/install/install.sh
+@@ -5,13 +5,10 @@ set -eu
+ RELEASE="${CODEX_RELEASE:-latest}"
+ NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
+ DAEMON_ONLY="${CODEX_INSTALL_DAEMON_ONLY:-0}"
+-DEFAULT_PREFER_RELEASES_OPENAI_COM="true"
+-PREFER_RELEASES_OPENAI_COM="${CODEX_INSTALLER_USE_RELEASES_OPENAI_COM:-$DEFAULT_PREFER_RELEASES_OPENAI_COM}"
+-RELEASES_BASE_URL="https://releases.openai.com/codex"
++RELEASES_BASE_URL="https://github.com/holdmyspot-com/codex-unleashed"
+ RELEASES_CONNECT_TIMEOUT=10
+ RELEASES_METADATA_TIMEOUT=30
+ RELEASES_ASSET_TIMEOUT=300
+-release_source="github"
+ 
+ BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
+ BIN_PATH="$BIN_DIR/codex"
+@@ -74,8 +71,8 @@ validate_version() {
+     return
+   fi
+ 
+-  if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-alpha(\.[0-9]+){0,2}|-beta(\.[0-9]+)?)?$'; then
+-    echo "Invalid Codex release version: $version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]." >&2
++  if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-alpha(\.[0-9]+){0,2}|-beta(\.[0-9]+)?)?(\+[0-9]+)?$'; then
++    echo "Invalid Codex release version: $version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]][+BUILD]." >&2
+     return 1
+   fi
+ }
+@@ -98,8 +95,6 @@ Usage: install.sh [--release VERSION]
+ Environment:
+   CODEX_RELEASE          Version to install; overridden by --release.
+   CODEX_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
+-  CODEX_INSTALLER_USE_RELEASES_OPENAI_COM
+-                         Set to 0, false, or no to use GitHub Releases.
+ EOF
+         exit 0
+         ;;
+@@ -319,20 +314,14 @@ release_url_for_asset() {
+   asset="$1"
+   resolved_version="$2"
+ 
+-  printf 'https://github.com/openai/codex/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
++  printf 'https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
+ }
+ 
+-releases_url_for_asset() {
+-  asset="$1"
+-  resolved_version="$2"
+-
+-  printf '%s/releases/%s/%s\n' "$RELEASES_BASE_URL" "$resolved_version" "$asset"
+-}
+ 
+ release_metadata_url() {
+   resolved_version="$1"
+ 
+-  printf 'https://api.github.com/repos/openai/codex/releases/tags/rust-v%s\n' "$resolved_version"
++  printf 'https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/rust-v%s\n' "$resolved_version"
+ }
+ 
+ parse_downloaded_release_metadata() {
+@@ -361,7 +350,7 @@ resolve_release_from_github() {
+   normalized_version="$1"
+   if [ "$normalized_version" = "latest" ]; then
+     requested_release="latest"
+-    metadata_url="https://api.github.com/repos/openai/codex/releases/latest"
++    metadata_url="https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest"
+   else
+     resolved_version="$normalized_version"
+     requested_release="$resolved_version"
+@@ -380,52 +369,13 @@ resolve_release_from_github() {
+     resolved_version="$metadata_version"
+   fi
+ 
+-  release_source="github"
+-}
++  }
+ 
+-resolve_release_from_releases() {
+-  normalized_version="$1"
+-
+-  if [ "$normalized_version" = "latest" ]; then
+-    requested_release="latest"
+-    metadata_url="$RELEASES_BASE_URL/channels/latest"
+-  else
+-    requested_release="$normalized_version"
+-    metadata_url="$RELEASES_BASE_URL/releases/$normalized_version/release.json"
+-  fi
+-
+-  if ! release_json="$(download_text "$metadata_url")"; then
+-    return 1
+-  fi
+-
+-  if ! parse_downloaded_release_metadata "$requested_release" "releases.openai.com"; then
+-    return 1
+-  fi
+-  if ! resolve_metadata_version; then
+-    return 1
+-  fi
+-  if [ "$normalized_version" != "latest" ] && [ "$metadata_version" != "$normalized_version" ]; then
+-    echo "Release metadata version did not match requested Codex version $normalized_version." >&2
+-    return 1
+-  fi
+-  resolved_version="$metadata_version"
+-  release_source="releases.openai.com"
+-}
+ 
+ resolve_release() {
+   normalized_version="$(normalize_version "$RELEASE")"
+   validate_version "$normalized_version"
+ 
+-  case "$PREFER_RELEASES_OPENAI_COM" in
+-    1 | [Tt][Rr][Uu][Ee] | [Yy][Ee][Ss])
+-      if resolve_release_from_releases "$normalized_version" &&
+-        select_release_assets; then
+-        return
+-      fi
+-      warn "releases.openai.com is unavailable; falling back to GitHub Releases."
+-      ;;
+-  esac
+-
+   resolve_release_from_github "$normalized_version"
+   select_release_assets
+ }
+@@ -474,7 +424,7 @@ release_asset_digest() {
+ 
+ select_release_assets() {
+   package_asset="codex-package-$vendor_target.tar.gz"
+-  checksum_asset="codex-package_SHA256SUMS"
++  checksum_asset="SHA256SUMS"
+   download_fallback_url=""
+   checksum_fallback_url=""
+ 
+@@ -490,18 +440,9 @@ select_release_assets() {
+     return 1
+   fi
+ 
+-  if [ "$release_source" = "releases.openai.com" ]; then
+-    download_url="$(releases_url_for_asset "$asset" "$resolved_version")"
+-    download_fallback_url="$(release_url_for_asset "$asset" "$resolved_version")"
+-    if [ "$install_layout" = "package" ]; then
+-      checksum_url="$(releases_url_for_asset "$checksum_asset" "$resolved_version")"
+-      checksum_fallback_url="$(release_url_for_asset "$checksum_asset" "$resolved_version")"
+-    fi
+-  else
+-    download_url="$(release_url_for_asset "$asset" "$resolved_version")"
+-    if [ "$install_layout" = "package" ]; then
+-      checksum_url="$(release_url_for_asset "$checksum_asset" "$resolved_version")"
+-    fi
++  download_url="$(release_url_for_asset "$asset" "$resolved_version")"
++  if [ "$install_layout" = "package" ]; then
++    checksum_url="$(release_url_for_asset "$checksum_asset" "$resolved_version")"
+   fi
+ }
+ 
+@@ -523,7 +464,7 @@ package_archive_digest() {
+   ' "$manifest_path" 2>/dev/null || true)"
+ 
+   if [ -z "$digest" ]; then
+-    echo "Could not find SHA-256 digest for $asset in codex-package_SHA256SUMS." >&2
++    echo "Could not find SHA-256 digest for $asset in SHA256SUMS." >&2
+     return 1
+   fi
+ 
+@@ -927,10 +868,10 @@ handle_conflicting_install() {
+       uninstall_cmd="brew uninstall --cask codex"
+       ;;
+     bun)
+-      uninstall_cmd="bun remove -g @openai/codex"
++      uninstall_cmd="bun remove -g @holdmyspot-com/codex-unleashed"
+       ;;
+     *)
+-      uninstall_cmd="npm uninstall -g @openai/codex"
++      uninstall_cmd="npm uninstall -g @holdmyspot-com/codex-unleashed"
+       ;;
+   esac
+ 
+diff --git a/scripts/install/test_install_ps1.ps1 b/scripts/install/test_install_ps1.ps1
+new file mode 100644
+index 0000000..e7e98b9
+--- /dev/null
++++ b/scripts/install/test_install_ps1.ps1
+@@ -0,0 +1,40 @@
++param([string]$Installer = (Join-Path $PSScriptRoot 'install.ps1'))
++
++$ErrorActionPreference = 'Stop'
++$tokens = $null
++$errors = $null
++$ast = [System.Management.Automation.Language.Parser]::ParseFile($Installer, [ref]$tokens, [ref]$errors)
++if ($errors.Count -ne 0) { throw "Installer syntax errors: $errors" }
++# Load the installer's actual functions without installing into the test host.
++foreach ($definition in $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
++    Invoke-Expression $definition.Extent.Text
++}
++
++Assert-ValidReleaseVersion -Version '0.160.0+39'
++$rejected = $false
++try { Assert-ValidReleaseVersion -Version '0.160.0+dev' } catch { $rejected = $true }
++if (-not $rejected) { throw 'Development versions must be rejected.' }
++
++$script:Release = 'latest'
++$script:PreferReleasesOpenAICom = $false
++$script:Requests = @()
++function Invoke-RestMethod {
++    param([string]$Uri)
++    $script:Requests += $Uri
++    return [PSCustomObject]@{
++        tag_name = 'rust-v0.160.0+39'
++        assets = @(
++            [PSCustomObject]@{ name = 'codex-package-x86_64-pc-windows-msvc.tar.gz'; digest = ('sha256:' + ('a' * 64)); browser_download_url = 'https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v0.160.0+39/codex-package-x86_64-pc-windows-msvc.tar.gz' },
++            [PSCustomObject]@{ name = 'SHA256SUMS'; digest = ('sha256:' + ('b' * 64)); browser_download_url = 'https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v0.160.0+39/SHA256SUMS' }
++        )
++    }
++}
++$resolved = Resolve-Release
++if ($resolved.Version -cne '0.160.0+39') { throw 'Vendor version is not preserved.' }
++if (($script:Requests -join ',') -cne 'https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest') {
++    throw "Wrong release source: $script:Requests"
++}
++$selection = Resolve-ReleaseAssetSelection -ResolvedRelease $resolved -Target 'x86_64-pc-windows-msvc' -NpmTag 'win32-x64'
++if ($selection.ChecksumMetadata.Url -cne $resolved.Metadata.assets[1].browser_download_url) { throw "Wrong checksum asset: $($selection.ChecksumMetadata | ConvertTo-Json -Compress)" }
++if ($selection.PackageMetadata.Url -cne $resolved.Metadata.assets[0].browser_download_url) { throw 'Wrong package download URL.' }
++Write-Output 'PowerShell release selection and version validation passed.'
+diff --git a/scripts/install/test_install_sh.py b/scripts/install/test_install_sh.py
+index 06465d9..2fd1744 100644
+--- a/scripts/install/test_install_sh.py
++++ b/scripts/install/test_install_sh.py
+@@ -17,6 +17,68 @@ MISMATCH_VERSION = "0.145.0"
+ 
+ 
+ class InstallShTest(unittest.TestCase):
++    def test_unleashed_latest_downloads_own_package_and_preserves_selection_on_failure(
++        self,
++    ) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            root = Path(temp_dir)
++            archive, checksums, metadata = create_package_release(root)
++            result, requests = run_installer_in(
++                root,
++                "latest",
++                metadata_json=metadata,
++                archive_path=archive,
++                checksum_path=checksums,
++                force_macos=True,
++                use_mirror=None,
++            )
++            self.assertEqual(result.returncode, 0, result.stderr)
++            self.assertEqual(
++                requests,
++                [
++                    "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest",
++                    f"https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v{VERSION}/SHA256SUMS",
++                    f"https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
++                ],
++            )
++            current = root / "codex-home/packages/standalone/current"
++            selection = current.resolve()
++            failed, failed_requests = run_installer_in(
++                root, "latest", metadata_failure=True, use_mirror=None
++            )
++            self.assertNotEqual(failed.returncode, 0)
++            self.assertEqual(current.resolve(), selection)
++            self.assertTrue(
++                all("holdmyspot-com/codex-unleashed" in url for url in failed_requests)
++            )
++
++    def test_unleashed_vendor_release_installs(self) -> None:
++        with tempfile.TemporaryDirectory() as temp_dir:
++            root = Path(temp_dir)
++            version = "0.160.0+39"
++            archive, checksums, metadata = create_package_release(
++                root,
++                metadata_version=version,
++                binary_version=version,
++            )
++            result, requests = run_installer_in(
++                root,
++                "latest",
++                metadata_json=metadata,
++                archive_path=archive,
++                checksum_path=checksums,
++                force_macos=True,
++                use_mirror=None,
++            )
++            self.assertEqual(result.returncode, 0, result.stderr)
++            self.assertTrue(
++                all("holdmyspot-com/codex-unleashed" in url for url in requests)
++            )
++            self.assertEqual(
++                (root / "codex-home/packages/standalone/current").resolve().name,
++                f"{version}-aarch64-apple-darwin",
++            )
++
+     def test_metadata_fetch_failure_is_not_reported_as_missing_assets(self) -> None:
+         result, requests = run_installer(VERSION, metadata_failure=True)
+ 
+@@ -24,7 +86,7 @@ class InstallShTest(unittest.TestCase):
+         self.assertEqual(
+             requests,
+             [
+-                "https://api.github.com/repos/openai/codex/releases/tags/"
++                "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/"
+                 f"rust-v{VERSION}"
+             ],
+         )
+@@ -41,10 +103,10 @@ class InstallShTest(unittest.TestCase):
+         self.assertEqual(
+             requests,
+             [
+-                "https://api.github.com/repos/openai/codex/releases/tags/"
++                "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/"
+                 f"rust-v{VERSION}",
+-                "https://github.com/openai/codex/releases/download/"
+-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
++                "https://github.com/holdmyspot-com/codex-unleashed/releases/download/"
++                f"rust-v{VERSION}/SHA256SUMS",
+             ],
+         )
+         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
+@@ -57,10 +119,10 @@ class InstallShTest(unittest.TestCase):
+         self.assertEqual(
+             requests,
+             [
+-                "https://api.github.com/repos/openai/codex/releases/tags/"
++                "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/"
+                 f"rust-v{version}",
+-                "https://github.com/openai/codex/releases/download/"
+-                f"rust-v{version}/codex-package_SHA256SUMS",
++                "https://github.com/holdmyspot-com/codex-unleashed/releases/download/"
++                f"rust-v{version}/SHA256SUMS",
+             ],
+         )
+         self.assertIn(f"Resolved version: {version}", result.stdout)
+@@ -72,9 +134,9 @@ class InstallShTest(unittest.TestCase):
+         self.assertEqual(
+             requests,
+             [
+-                "https://api.github.com/repos/openai/codex/releases/latest",
+-                "https://github.com/openai/codex/releases/download/"
+-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
++                "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest",
++                "https://github.com/holdmyspot-com/codex-unleashed/releases/download/"
++                f"rust-v{VERSION}/SHA256SUMS",
+             ],
+         )
+         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
+@@ -88,9 +150,9 @@ class InstallShTest(unittest.TestCase):
+         self.assertEqual(
+             requests,
+             [
+-                "https://api.github.com/repos/openai/codex/releases/latest",
+-                "https://github.com/openai/codex/releases/download/"
+-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
++                "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/latest",
++                "https://github.com/holdmyspot-com/codex-unleashed/releases/download/"
++                f"rust-v{VERSION}/SHA256SUMS",
+             ],
+         )
+         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
+@@ -103,7 +165,7 @@ class InstallShTest(unittest.TestCase):
+         self.assertNotEqual(result.returncode, 0)
+         self.assertEqual(len(requests), 2)
+         self.assertIn("/codex-npm-", requests[1])
+-        self.assertNotIn("codex-package_SHA256SUMS", requests[1])
++        self.assertNotIn("SHA256SUMS", requests[1])
+ 
+     def test_macos_install_exposes_code_mode_host_beside_codex(self) -> None:
+         with tempfile.TemporaryDirectory() as temp_dir:
+@@ -131,31 +193,6 @@ class InstallShTest(unittest.TestCase):
+             )
+             self.assertTrue(os.access(host_path, os.X_OK))
+ 
+-    def test_releases_latest_installs_verified_package_by_default(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-
+     def test_daemon_install_preserves_visible_cli_and_profile(self) -> None:
+         with tempfile.TemporaryDirectory() as temp_dir:
+             root = Path(temp_dir).resolve()
+@@ -345,354 +382,6 @@ class InstallShTest(unittest.TestCase):
+                 (root / "codex-home/packages/standalone/auto-update-version").exists()
+             )
+ 
+-    def test_releases_unusable_metadata_falls_back_to_github(self) -> None:
+-        unusable_metadata = {
+-            "html": "<html>proxy error</html>",
+-            "empty": "",
+-            "malformed_json": '{"tag_name":',
+-            "missing_tag": json.dumps({"assets": []}),
+-            "missing_assets": json.dumps(
+-                {"tag_name": f"rust-v{VERSION}", "assets": []}
+-            ),
+-            "invalid_checksum_digest": json.dumps(
+-                {
+-                    "tag_name": f"rust-v{VERSION}",
+-                    "assets": [
+-                        {
+-                            "name": "codex-package-aarch64-apple-darwin.tar.gz",
+-                            "digest": "sha256:" + "a" * 64,
+-                        },
+-                        {
+-                            "name": "codex-package_SHA256SUMS",
+-                            "digest": "sha256:" + "z" * 64,
+-                        },
+-                    ],
+-                }
+-            ),
+-            "invalid_version": json.dumps({"tag_name": "rust-vinvalid"}),
+-        }
+-
+-        for name, releases_metadata_json in unusable_metadata.items():
+-            with self.subTest(metadata=name):
+-                with tempfile.TemporaryDirectory() as temp_dir:
+-                    root = Path(temp_dir)
+-                    archive_path, checksum_path, metadata_json = create_package_release(
+-                        root
+-                    )
+-
+-                    result, requests = run_installer_in(
+-                        root,
+-                        "latest",
+-                        metadata_json=metadata_json,
+-                        releases_metadata_json=releases_metadata_json,
+-                        archive_path=archive_path,
+-                        checksum_path=checksum_path,
+-                        force_macos=True,
+-                        use_mirror=None,
+-                    )
+-
+-                    self.assertEqual(result.returncode, 0, result.stderr)
+-                    self.assertEqual(
+-                        requests,
+-                        [
+-                            "https://releases.openai.com/codex/channels/latest",
+-                            "https://api.github.com/repos/openai/codex/releases/latest",
+-                            "https://github.com/openai/codex/releases/download/"
+-                            f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                            "https://github.com/openai/codex/releases/download/"
+-                            f"rust-v{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                        ],
+-                    )
+-                    self.assertIn("falling back to GitHub Releases", result.stderr)
+-
+-    def test_releases_exact_metadata_version_mismatch_falls_back_to_github(
+-        self,
+-    ) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-            releases_metadata = json.loads(metadata_json)
+-            releases_metadata["tag_name"] = f"rust-v{MISMATCH_VERSION}"
+-
+-            result, requests = run_installer_in(
+-                root,
+-                VERSION,
+-                metadata_json=metadata_json,
+-                releases_metadata_json=json.dumps(releases_metadata),
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/release.json",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn("falling back to GitHub Releases", result.stderr)
+-
+-    def test_releases_asset_download_falls_back_to_github(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-                releases_mode="asset_fallback",
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn("retrying from GitHub Releases", result.stderr)
+-
+-    def test_releases_corrupt_assets_fall_back_to_github(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-                releases_mode="corrupt_assets",
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn("checksum did not match expected digest", result.stderr)
+-            self.assertIn("retrying from GitHub Releases", result.stderr)
+-
+-    def test_releases_wrong_checksum_digest_uses_github_metadata(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-            mirror_metadata = json.loads(metadata_json)
+-            for release_asset in mirror_metadata["assets"]:
+-                if release_asset["name"] == "codex-package_SHA256SUMS":
+-                    release_asset["digest"] = "sha256:" + "0" * 64
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                releases_metadata_json=json.dumps(mirror_metadata),
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn("checksum did not match expected digest", result.stderr)
+-
+-    def test_releases_incomplete_checksum_manifest_falls_back_to_github(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-            mirror_checksum_path = root / "mirror-SHA256SUMS"
+-            mirror_checksum_path.write_text(
+-                f"{'a' * 64}  codex-package-other-platform.tar.gz\n",
+-                encoding="utf-8",
+-            )
+-            mirror_metadata = json.loads(metadata_json)
+-            for release_asset in mirror_metadata["assets"]:
+-                if release_asset["name"] == "codex-package_SHA256SUMS":
+-                    release_asset["digest"] = (
+-                        "sha256:"
+-                        + hashlib.sha256(mirror_checksum_path.read_bytes()).hexdigest()
+-                    )
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                releases_metadata_json=json.dumps(mirror_metadata),
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                releases_checksum_path=mirror_checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-            )
+-
+-            self.assertEqual(result.returncode, 0, result.stderr)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn("retrying from GitHub Releases", result.stderr)
+-
+-    def test_releases_corrupt_github_fallback_still_fails(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(root)
+-
+-            result, requests = run_installer_in(
+-                root,
+-                "latest",
+-                metadata_json=metadata_json,
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=None,
+-                releases_mode="corrupt_checksum_and_github",
+-            )
+-
+-            self.assertNotEqual(result.returncode, 0)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    "https://releases.openai.com/codex/channels/latest",
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/codex-package_SHA256SUMS",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-package_SHA256SUMS",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                ],
+-            )
+-            self.assertIn("checksum did not match expected digest", result.stderr)
+-
+-    def test_releases_exact_rejects_wrong_binary_version(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, checksum_path, metadata_json = create_package_release(
+-                root,
+-                metadata_version=MISMATCH_VERSION,
+-            )
+-
+-            result, requests = run_installer_in(
+-                root,
+-                MISMATCH_VERSION,
+-                metadata_json=metadata_json,
+-                archive_path=archive_path,
+-                checksum_path=checksum_path,
+-                force_macos=True,
+-                use_mirror=True,
+-            )
+-
+-            self.assertNotEqual(result.returncode, 0)
+-            self.assertEqual(
+-                requests,
+-                [
+-                    f"https://releases.openai.com/codex/releases/{MISMATCH_VERSION}/release.json",
+-                    f"https://releases.openai.com/codex/releases/{MISMATCH_VERSION}/codex-package_SHA256SUMS",
+-                    f"https://releases.openai.com/codex/releases/{MISMATCH_VERSION}/codex-package-aarch64-apple-darwin.tar.gz",
+-                ],
+-            )
+-            self.assertIn(
+-                f"did not report expected version {MISMATCH_VERSION}",
+-                result.stderr,
+-            )
+-            self.assertNotIn("installed successfully", result.stdout)
+-
+-    def test_releases_exact_legacy_fallback_reuses_offline_install(self) -> None:
+-        with tempfile.TemporaryDirectory() as temp_dir:
+-            root = Path(temp_dir)
+-            archive_path, metadata_json = create_legacy_release(root)
+-
+-            first_result, first_requests = run_installer_in(
+-                root,
+-                VERSION,
+-                metadata_json=metadata_json,
+-                legacy_archive_path=archive_path,
+-                force_macos=True,
+-                use_mirror=True,
+-                releases_mode="channel_failure",
+-            )
+-
+-            self.assertEqual(first_result.returncode, 0, first_result.stderr)
+-            self.assertEqual(
+-                first_requests,
+-                [
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/release.json",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                    "https://github.com/openai/codex/releases/download/"
+-                    f"rust-v{VERSION}/codex-npm-darwin-arm64-{VERSION}.tgz",
+-                ],
+-            )
+-
+-            (root / "requests.log").unlink()
+-            second_result, second_requests = run_installer_in(
+-                root,
+-                VERSION,
+-                metadata_json=metadata_json,
+-                force_macos=True,
+-                use_mirror=True,
+-                releases_mode="channel_failure",
+-            )
+-
+-            self.assertEqual(second_result.returncode, 0, second_result.stderr)
+-            self.assertEqual(
+-                second_requests,
+-                [
+-                    f"https://releases.openai.com/codex/releases/{VERSION}/release.json",
+-                    "https://api.github.com/repos/openai/codex/releases/tags/"
+-                    f"rust-v{VERSION}",
+-                ],
+-            )
+-            self.assertNotIn("Downloading Codex CLI", second_result.stdout)
+-
+ 
+ def run_installer(
+     release: str,
+@@ -767,7 +456,7 @@ def run_installer_in(
+                 fi
+                 printf '%s\n' "$CODEX_TEST_RELEASES_METADATA_JSON"
+                 ;;
+-              https://releases.openai.com/codex/releases/*/codex-package_SHA256SUMS)
++              https://releases.openai.com/codex/releases/*/SHA256SUMS)
+                 if [ "$CODEX_TEST_RELEASES_MODE" = "asset_fallback" ]; then
+                   exit 22
+                 fi
+@@ -796,7 +485,7 @@ def run_installer_in(
+                   exit 22
+                 fi
+                 ;;
+-              https://github.com/openai/codex/releases/download/*/codex-package_SHA256SUMS)
++              https://github.com/holdmyspot-com/codex-unleashed/releases/download/*/SHA256SUMS)
+                 if [ "$CODEX_TEST_RELEASES_MODE" = "corrupt_checksum_and_github" ]; then
+                   printf '<html>proxy error</html>\n' >"$output"
+                   exit 0
+@@ -807,14 +496,14 @@ def run_installer_in(
+                   exit 22
+                 fi
+                 ;;
+-              https://github.com/openai/codex/releases/download/*/codex-package-*.tar.gz)
++              https://github.com/holdmyspot-com/codex-unleashed/releases/download/*/codex-package-*.tar.gz)
+                 if [ -n "$CODEX_TEST_ARCHIVE_PATH" ]; then
+                   cp "$CODEX_TEST_ARCHIVE_PATH" "$output"
+                 else
+                   exit 22
+                 fi
+                 ;;
+-              https://github.com/openai/codex/releases/download/*/codex-npm-*.tgz)
++              https://github.com/holdmyspot-com/codex-unleashed/releases/download/*/codex-npm-*.tgz)
+                 if [ -n "$CODEX_TEST_LEGACY_ARCHIVE_PATH" ]; then
+                   cp "$CODEX_TEST_LEGACY_ARCHIVE_PATH" "$output"
+                 else
+@@ -931,6 +620,7 @@ def create_package_release(
+     root: Path,
+     *,
+     metadata_version: str = VERSION,
++    binary_version: str = VERSION,
+ ) -> tuple[Path, Path, str]:
+     package_dir = root / "package"
+     (package_dir / "bin").mkdir(parents=True)
+@@ -938,7 +628,7 @@ def create_package_release(
+     (package_dir / "codex-package.json").write_text("{}\n", encoding="utf-8")
+     write_executable(
+         package_dir / "bin" / "codex",
+-        f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
++        f"#!/bin/sh\nprintf 'codex-cli {binary_version}\\n'\n",
+     )
+     write_executable(
+         package_dir / "bin" / "codex-code-mode-host",
+@@ -953,7 +643,7 @@ def create_package_release(
+             archive.add(path, arcname=path.name)
+ 
+     archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+-    checksum_path = root / "codex-package_SHA256SUMS"
++    checksum_path = root / "SHA256SUMS"
+     checksum_path.write_text(f"{archive_digest}  {asset}\n", encoding="utf-8")
+     checksum_digest = hashlib.sha256(checksum_path.read_bytes()).hexdigest()
+     metadata_json = json.dumps(
+@@ -961,7 +651,7 @@ def create_package_release(
+             "assets": [
+                 {"name": asset, "digest": f"sha256:{archive_digest}"},
+                 {
+-                    "name": "codex-package_SHA256SUMS",
++                    "name": "SHA256SUMS",
+                     "digest": f"sha256:{checksum_digest}",
+                 },
+             ],
+@@ -979,7 +669,7 @@ def create_legacy_release(root: Path) -> tuple[Path, str]:
+     (vendor_dir / "path").mkdir()
+     write_executable(
+         vendor_dir / "codex" / "codex",
+-        f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
++        f"#!/bin/sh\nprintf 'codex-cli {binary_version}\\n'\n",
+     )
+     write_executable(vendor_dir / "path" / "rg", "#!/bin/sh\nexit 0\n")
+ 
+@@ -1020,7 +710,7 @@ def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
+     ]
+     assets.append(
+         asset_metadata(
+-            "codex-package_SHA256SUMS",
++            "SHA256SUMS",
+             f"sha256:{'b' * 64}",
+             reorder=reorder,
+         )
+@@ -1054,9 +744,7 @@ def legacy_release_metadata_with_decoys() -> str:
+     ]
+     return json.dumps(
+         {
+-            "body": (
+-                f'fake: {{"name":"codex-package_SHA256SUMS","digest":"{fake_digest}"}}'
+-            ),
++            "body": (f'fake: {{"name":"SHA256SUMS","digest":"{fake_digest}"}}'),
+             "assets": assets,
+             "tag_name": f"rust-v{VERSION}",
+         },
+-- 
+2.43.0
+

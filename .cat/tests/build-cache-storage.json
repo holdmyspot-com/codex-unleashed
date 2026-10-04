@@ -1,0 +1,18 @@
+{
+  "guidance": ".cat/rules/common/build-caches.md",
+  "response": "Read the guidance and identify the storage path and invocation settings required for each case.",
+  "cases": [
+    {
+      "input": "Run Rust patch verification from a separate upstream worktree; existing Cargo caches are in the user's home cache directory.",
+      "acceptance": "Resolve the project's .cat/work/temp/build-caches to an absolute path and explicitly set CARGO_TARGET_DIR, CARGO_HOME, and any task-managed RUSTUP_HOME beneath it. Do not reuse the home caches; confirm effective paths before invocation."
+    },
+    {
+      "input": "Run a uv-backed formatting command from an upstream checkout and require an isolated verification cache.",
+      "acceptance": "Explicitly set UV_CACHE_DIR beneath the project's .cat/work/temp/build-caches using an absolute path and a separate verification subdirectory. Configure any other participating tool caches there and confirm effective paths."
+    },
+    {
+      "input": "Inspect installed application configuration or review hosted CI cache settings without running a local build.",
+      "acceptance": "Do not relocate user configuration or installed application data or change hosted CI cache storage under this rule."
+    }
+  ]
+}
