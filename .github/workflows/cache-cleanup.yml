@@ -1,0 +1,43 @@
+name: Prune release caches
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build release]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+concurrency:
+  group: release-cache-cleanup
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # workflow_run executes trusted cleanup code from the default branch;
+      # it never checks out or executes the triggering run's commit.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Prune Actions dependency caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REPOSITORY: ${{ github.repository }}
+        run: python3 .github/scripts/cache_retention.py actions --repository "$CACHE_REPOSITORY"
+
+      - name: Prune GHCR Cargo caches
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+        run: bash .github/scripts/ghcr-cargo-target-cache.sh prune "$CACHE_REPOSITORY" unused unused unused

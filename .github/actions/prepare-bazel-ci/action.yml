@@ -41,12 +41,13 @@ runs:
       id: cache_bazel_repository_key
       shell: bash
       env:
+        CACHE_UPSTREAM_PREFIX: ${{ env.CACHE_UPSTREAM_PREFIX }}
         CACHE_SCOPE: ${{ inputs.cache-scope }}
         TARGET: ${{ inputs.target }}
         CACHE_HASH: ${{ hashFiles('upstream/MODULE.bazel', 'upstream/MODULE.bazel.lock', 'upstream/codex-rs/Cargo.lock', 'upstream/codex-rs/Cargo.toml', 'patches/**/*.patch') }}
       run: |
-        echo "repository-cache-key=bazel-cache-${CACHE_SCOPE}-${TARGET}-${CACHE_HASH}" >> "${GITHUB_OUTPUT}"
-        echo "repository-cache-restore-key=bazel-cache-${CACHE_SCOPE}-${TARGET}-" >> "${GITHUB_OUTPUT}"
+        echo "repository-cache-key=${CACHE_UPSTREAM_PREFIX}bazel-cache-${CACHE_SCOPE}-${TARGET}-${CACHE_HASH}" >> "${GITHUB_OUTPUT}"
+        echo "repository-cache-restore-key=${CACHE_UPSTREAM_PREFIX}bazel-cache-${CACHE_SCOPE}-${TARGET}-" >> "${GITHUB_OUTPUT}"
 
     # Restore the Bazel repository cache explicitly so external dependencies
     # do not need to be re-downloaded on every CI run. Keep restore failures

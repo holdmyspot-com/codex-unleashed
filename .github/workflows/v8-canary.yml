@@ -335,9 +335,9 @@ jobs:
           path: |
             upstream-rusty-v8/target/sccache
             upstream-rusty-v8/target/${{ matrix.target }}/release/gn_out
-          key: rusty-v8-source-${{ matrix.target }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt') }}
+          key: ${{ env.CACHE_UPSTREAM_PREFIX }}rusty-v8-source-${{ matrix.target }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt') }}
           restore-keys: |
-            rusty-v8-source-${{ matrix.target }}-sandbox-
+            ${{ env.CACHE_UPSTREAM_PREFIX }}rusty-v8-source-${{ matrix.target }}-sandbox-
 
       - name: Install and start sccache
         shell: pwsh

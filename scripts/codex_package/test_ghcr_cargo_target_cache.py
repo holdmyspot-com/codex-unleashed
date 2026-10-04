@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -74,7 +76,7 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             gnu_tar_available=True,
         )
 
-    def test_prune_preserves_compatible_caches_for_other_targets(self) -> None:
+    def test_prune_keeps_only_latest_two_stable_release_caches(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codex-ghcr-cache-prune-") as directory:
             root = Path(directory)
             stub_dir = root / "bin"
@@ -87,12 +89,17 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
                 "if '--method' in sys.argv:\n"
                 "    with Path(os.environ['CACHE_TEST_DELETIONS']).open('a') as output:\n"
                 "        output.write(sys.argv[-1].rsplit('/', 1)[-1] + '\\n')\n"
+                "elif any('repos/openai/codex/releases' in arg for arg in sys.argv):\n"
+                "    print('rust-v0.99.0\\nrust-v0.158.0\\nrust-v0.160.0\\nrust-v0.159.1')\n"
                 "else:\n"
-                "    print('1\tcargo-v2-x86_64-apple-darwin-off-' + 'a' * 64)\n"
-                "    print('2\tcargo-v2-aarch64-apple-darwin-off-' + 'b' * 64)\n"
+                "    print('1\tcargo-v2-x86_64-apple-darwin-off-' + 'a' * 64 + ',cargo-release-' + 'a' * 64 + '-rust-v0.160.0,cargo-x86_64-apple-darwin-rust-v0.158.0')\n"
+                "    print('2\tcargo-release-' + 'b' * 64 + '-rust-v0.159.1')\n"
                 "    print('3\tcargo-x86_64-apple-darwin-rust-v0.159.1')\n"
                 "    print('4\tcargo-x86_64-apple-darwin-rust-v0.158.0')\n"
-                "    print('5\t')\n",
+                "    print('5\t')\n"
+                "    print('6\tcargo-release-' + 'c' * 64 + '-rust-v0.158.0')\n"
+                "    print('7\tcargo-v2-x86_64-pc-windows-msvc-off-' + 'd' * 64)\n"
+                "    print('8\tunrelated-tag')\n",
                 encoding="utf-8",
             )
             gh.chmod(0o755)
@@ -106,7 +113,36 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
                 str(root / "target"), "rust-v0.159.1",
             ], check=True, env=environment, capture_output=True, text=True)
 
-            self.assertEqual(deletions.read_text().splitlines(), ["4", "5"])
+            self.assertEqual(deletions.read_text().splitlines(), ["4", "5", "6", "7"])
+
+    def test_prune_refuses_deletion_when_release_lookup_is_empty_or_fails(self) -> None:
+        for lookup_exit in (0, 1):
+            with self.subTest(lookup_exit=lookup_exit), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                gh = root / "gh"
+                marker = root / "deleted"
+                gh.write_text(
+                    f"#!{sys.executable}\n"
+                    "import sys\n"
+                    "from pathlib import Path\n"
+                    "if any('repos/openai/codex/releases' in arg for arg in sys.argv):\n"
+                    f"    sys.exit({lookup_exit})\n"
+                    "if '--method' in sys.argv:\n"
+                    f"    Path({str(marker)!r}).touch()\n"
+                    "else:\n"
+                    "    print('1\\tcargo-old-rust-v0.1.0')\n",
+                    encoding="utf-8",
+                )
+                gh.chmod(0o755)
+                environment = os.environ.copy()
+                environment["PATH"] = f"{root}:{environment['PATH']}"
+                result = subprocess.run(
+                    ["bash", str(CACHE_SCRIPT), "prune", "ghcr.io/example/cargo-cache",
+                     "cargo-v2-target-off-" + "a" * 64, str(root / "target"), "rust-v0.160.0"],
+                    env=environment, capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(marker.exists())
 
     def test_push_and_pull_round_trip_with_drive_letter_temp_path(self) -> None:
         # A relative D: directory reproduces GNU tar's remote-host parsing on
@@ -125,19 +161,27 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             oras = stub_dir / "oras"
             oras.write_text(
                 f"#!{sys.executable}\n"
-                "import os, shutil, sys\n"
+                "import json, os, shutil, sys\n"
                 "from pathlib import Path\n"
                 "remote = Path(os.environ['CACHE_TEST_REMOTE'])\n"
+                "with remote.with_suffix('.commands').open('a') as output:\n"
+                "    output.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                 "if sys.argv[1] == 'push':\n"
                 "    shutil.copyfile('cargo-target.tar.zst', remote)\n"
-                "else:\n"
+                "elif sys.argv[1] == 'pull':\n"
                 "    destination = Path(sys.argv[sys.argv.index('--output') + 1])\n"
                 "    shutil.copyfile(remote, destination / 'cargo-target.tar.zst')\n",
                 encoding="utf-8",
             )
             oras.chmod(0o755)
             gh = stub_dir / "gh"
-            gh.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+            gh.write_text(
+                f"#!{sys.executable}\n"
+                "import sys\n"
+                "if any('repos/openai/codex/releases' in arg for arg in sys.argv):\n"
+                "    print('rust-v0.160.0\\nrust-v0.159.1')\n",
+                encoding="utf-8",
+            )
             gh.chmod(0o755)
             environment = os.environ.copy()
             environment.update(
@@ -157,6 +201,13 @@ class GhcrCargoTargetCacheTest(unittest.TestCase):
             self.assertEqual(
                 (target / dependency.relative_to(source)).read_bytes(), b"compiled dependency",
             )
+            commands = [json.loads(line) for line in
+                        (root / "registry-archive.commands").read_text().splitlines()]
+            cache_tag = "cargo-v2-x86_64-pc-windows-msvc-off-" + "a" * 64
+            cache_identity = hashlib.sha256(cache_tag.encode()).hexdigest()
+            release_reference = f"ghcr.io/example/cargo-cache:cargo-release-{cache_identity}-rust-v0.160.0"
+            self.assertEqual(commands[0][:2], ["push", release_reference])
+            self.assertEqual(commands[1], ["tag", release_reference, cache_tag])
             self.assertEqual(list((root / "D:").iterdir()), [])
 
     def restore_dependencies(self, cache_tag: str, upstream_tag: str, stable_cache_missing: bool = False,

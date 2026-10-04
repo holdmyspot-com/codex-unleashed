@@ -532,24 +532,25 @@ jobs:
         shell: bash
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          version: "0.11.3"
-
       - uses: ./.github/actions/prepare-patched-upstream
         with:
           upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
           expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.3"
+          cache-suffix: ${{ env.CACHE_UPSTREAM_PREFIX }}
 
       - name: Cache pnpm store
         id: pnpm_cache
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.pnpm_store.outputs.path }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
           restore-keys: |
-            pnpm-${{ runner.os }}-
+            upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-
 
       - name: Install upstream dependencies
         shell: bash
@@ -703,7 +704,7 @@ jobs:
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: /var/cache/apt
-          key: apt-${{ runner.os }}-${{ matrix.target }}-v1
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-apt-${{ runner.os }}-${{ matrix.target }}-v1
 
       - name: Install Linux build dependencies
         if: ${{ runner.os == 'Linux' }}
@@ -810,14 +811,15 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ steps.pnpm_store.outputs.path }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
           restore-keys: |
-            pnpm-${{ runner.os }}-
+            upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-
 
       - name: Cache Cargo dependencies
         id: cargo_cache
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: upstream-${{ needs.prepare.outputs.upstream_tag }}-
           workspaces: |
             upstream/codex-rs -> target
           # Cargo target directories belong exclusively to the GHCR overflow
@@ -828,8 +830,8 @@ jobs:
           # cache key: this cache contains source downloads, while compiled
           # outputs have a separate compiler identity in GHCR.
           add-rust-environment-hash-key: false
-          # Dependency downloads do not depend on the patch set, source
-          # timestamps, or upstream release. Compiled outputs live in GHCR.
+          # Namespace dependency downloads by upstream release for retention.
+          # Their content identity remains independent of the patch set.
           shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
           cache-workspace-crates: false
           # Cargo's installed binaries are setup tools, not release outputs;
@@ -885,7 +887,7 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .cache/rusty_v8
-          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-${{ steps.rust_compiler.outputs.rusty_v8_key }}
 
       - name: Configure rusty_v8 artifact overrides and verify checksums
         uses: ./.github/actions/setup-rusty-v8
@@ -1023,6 +1025,7 @@ jobs:
         with:
           name: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}
           path: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json
+          retention-days: 30
           if-no-files-found: error
 
       - name: Upload Cargo timings
@@ -1052,6 +1055,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz
+          retention-days: 7
           if-no-files-found: error
 
       - name: Prune and audit Cargo cache contents
@@ -1183,7 +1187,7 @@ jobs:
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: /var/cache/apt
-          key: apt-${{ runner.os }}-${{ matrix.target }}-v1
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-apt-${{ runner.os }}-${{ matrix.target }}-v1
 
   build-windows-binaries:
     needs:
@@ -1257,6 +1261,7 @@ jobs:
         with:
           name: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}
           path: source-provenance-${{ matrix.target }}-${{ matrix.bundle }}.json
+          retention-days: 30
           if-no-files-found: error
 
       - name: Print runner specs (Windows)
@@ -1323,7 +1328,7 @@ jobs:
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .cache/rusty_v8
-          key: ${{ steps.rust_compiler.outputs.rusty_v8_key }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-${{ steps.rust_compiler.outputs.rusty_v8_key }}
 
       - name: Configure rusty_v8 artifact overrides and verify checksums
         uses: ./.github/actions/setup-rusty-v8
@@ -1334,6 +1339,7 @@ jobs:
         id: cargo_cache
         uses: Swatinem/rust-cache@v2
         with:
+          prefix-key: upstream-${{ needs.prepare.outputs.upstream_tag }}-
           workspaces: |
             upstream/codex-rs -> target
           # Keep dependency-download identity stable across hosted runners.
@@ -1342,8 +1348,8 @@ jobs:
           # cache below. Do not list CARGO_TARGET_DIR as an additional cache
           # directory, or the two backends would own the same outputs.
           cache-targets: false
-          # Share dependency downloads across upstream releases and patch
-          # sets. Compiled dependencies use the compiler-scoped GHCR cache.
+          # Dependency downloads share an identity across patch sets within
+          # each retained release. Compiled dependencies remain shared in GHCR.
           shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
           cache-workspace-crates: false
           cache-bin: false
@@ -1488,6 +1494,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: windows-binaries-${{ matrix.target }}-${{ matrix.bundle }}
+          retention-days: 7
           path: |
             ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/staged-${{ matrix.bundle }}/*
 
@@ -1674,6 +1681,7 @@ jobs:
         with:
           name: ${{ matrix.target }}
           path: dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz
+          retention-days: 7
           if-no-files-found: error
 
   publish:

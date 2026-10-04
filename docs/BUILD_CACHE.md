@@ -27,3 +27,44 @@ Release binaries rebuild to embed the current release metadata.
 Source snapshots advance only after successful compilation. A failed or
 interrupted build keeps the previous snapshot for retry. Caches without a source
 snapshot rebuild workspace crates once while retaining external dependencies.
+
+## Retention
+
+The `Prune release caches` workflow runs daily, after release builds, and on
+manual dispatch. It retains caches associated with the two highest stable
+upstream versions, excluding draft and prerelease releases. Both GHCR and
+Actions cleanup use the same stable-version selection. If discovery fails,
+cleanup deletes nothing and reports failure.
+
+GHCR manifests carry release-qualified aliases alongside their shared compiler
+compatibility tags. A shared manifest remains available while either retained
+version references it. Older caches, untagged manifests, and compatibility
+caches without a release association are deleted. Release builds also prune
+GHCR after cache publication.
+
+Managed Actions dependency caches include Cargo downloads, pnpm, APT, Bazel
+repository caches, rusty_v8, uv dependencies, and Zig build caches.
+Their keys include the resolved upstream version. Older managed entries and
+legacy dependency caches without a release association are deleted on all Git
+refs. Development refs use an `upstream-unreleased-` namespace that cleanup does
+not retain. Installer caches without a configurable release association, such
+as Zig compiler tarballs, and unrelated caches such as CodeQL databases remain
+under their providers' retention policies.
+
+BuildBuddy remains under its server-side eviction policy. Its documented
+[cache API](https://www.buildbuddy.io/docs/enterprise-api/#deletefile) deletes
+individual entries by URI; it does not provide the complete release-associated
+inventory needed to remove older versions while preserving shared data used by
+either retained version. This workflow does not delete BuildBuddy entries.
+
+Large GitHub Actions build artifacts (package archives and staged Windows
+binaries) expire after 7 days. Release metadata, source provenance, and failure
+markers remain for 30 days. Retrying publication with `artifact_run_id` requires
+the original build artifacts to remain available; after expiry, rebuild the
+release. Published GitHub Release assets do not expire under this policy.
+
+Preview Actions cleanup without deleting caches:
+
+```sh
+python3 .github/scripts/cache_retention.py actions --repository OWNER/REPO --dry-run
+```

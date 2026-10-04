@@ -57,6 +57,7 @@ runs:
           :
         elif [[ "${FALLBACK_TO_DEFAULT_BRANCH}" == "true" ]]; then
           echo "Falling back to the upstream default branch because ${UPSTREAM_REF} could not be fetched."
+          UPSTREAM_REF=unreleased
           rm -rf "${CHECKOUT_PATH}"
           git -c core.autocrlf=false clone --depth 1 "${repo_url}" "${CHECKOUT_PATH}"
         else
@@ -71,6 +72,9 @@ runs:
           echo "ERROR: ${UPSTREAM_REF} resolved to ${actual_commit}, expected ${EXPECTED_UPSTREAM_COMMIT}." >&2
           exit 1
         fi
+
+        cache_prefix="$(python3 "${GITHUB_WORKSPACE}/.github/scripts/cache_retention.py" cache-prefix --upstream-ref "$UPSTREAM_REF")"
+        echo "CACHE_UPSTREAM_PREFIX=$cache_prefix" >> "$GITHUB_ENV"
 
     - name: Apply local patches
       if: ${{ inputs.apply-patches == 'true' }}

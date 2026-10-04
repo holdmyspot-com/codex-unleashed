@@ -87,8 +87,19 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: upstream/pnpm-lock.yaml
+
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: ${{ env.CACHE_UPSTREAM_PREFIX }}pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ env.CACHE_UPSTREAM_PREFIX }}pnpm-${{ runner.os }}-
 
       - name: Install Linux build dependencies
         shell: bash

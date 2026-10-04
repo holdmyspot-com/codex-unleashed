@@ -23,12 +23,9 @@ if command -v gtar >/dev/null 2>&1; then
 fi
 
 prune_old_tags() {
-  # Compatible compiler/target caches span upstream releases. Preserve all
-  # tagged v2 caches and the current legacy release during migration; remove
-  # orphaned manifests and obsolete legacy entries.
-  # GHCR does not implement the OCI manifest-delete operation. Delete the
-  # corresponding GitHub Packages version instead; this removes its tags and
-  # works for private as well as public cache packages.
+  # Release-qualified aliases associate shared compiler caches with the
+  # upstream versions that use them. Deleting a package version removes all
+  # its tags, so preserve a manifest if either retained release references it.
   command -v gh >/dev/null || {
     echo "GitHub CLI is required to prune GHCR package versions" >&2
     return 1
@@ -38,12 +35,15 @@ prune_old_tags() {
   package_name="${repository_path#*/}"
   package_endpoint="${GITHUB_API_URL:-https://api.github.com}/orgs/${package_owner}/packages/container/${package_name}/versions"
 
+  retained_releases="$(python3 "$(dirname "$0")/cache_retention.py" stable-releases)"
+
   stale_version_ids="$(
     gh api --paginate "$package_endpoint" --jq '
       .[]
       | [.id, ((.metadata.container.tags // []) | join(","))]
       | @tsv
-    ' | awk -F '\t' -v current_suffix="-$upstream_tag" '
+    ' | awk -F '\t' -v retained_releases="$retained_releases" '
+      BEGIN { release_count = split(retained_releases, releases, "\n") }
       {
         has_cargo = 0
         has_current = 0
@@ -51,16 +51,18 @@ prune_old_tags() {
         for (tag_index = 1; tag_index <= tag_count; tag_index++) {
           if (tags[tag_index] ~ /^cargo-/) {
             has_cargo = 1
-            if (tags[tag_index] ~ /^cargo-v2-/) has_current = 1
-            if (length(tags[tag_index]) >= length(current_suffix) &&
-                substr(tags[tag_index], length(tags[tag_index]) - length(current_suffix) + 1) == current_suffix) {
-              has_current = 1
+            for (release_index = 1; release_index <= release_count; release_index++) {
+              retained_suffix = "-" releases[release_index]
+              if (length(tags[tag_index]) >= length(retained_suffix) &&
+                  substr(tags[tag_index], length(tags[tag_index]) - length(retained_suffix) + 1) == retained_suffix) {
+                has_current = 1
+              }
             }
           }
         }
         # A package version may carry several tags when two pushes have the
         # same manifest. Never delete such a version if it also carries a
-        # current-release tag; deleting a package version deletes all its tags.
+        # retained-release tag; deleting a package version deletes all its tags.
         # Oras can leave an untagged package version behind when a tag is
         # moved to a newer manifest. This cache repository has no useful
         # untagged content, so remove those orphaned versions as well.
@@ -133,10 +135,15 @@ case "$operation" in
     "$archive_tar" --zstd -cf - -C "$target_directory" . > "$archive"
     (
       cd "$archive_directory"
-      oras push "$reference" \
+      # Publish the release association first so concurrent pruning cannot
+      # mistake a new shared cache for an obsolete, unassociated manifest.
+      cache_identity="$(printf '%s' "$tag" | sha256sum | cut -d ' ' -f 1)"
+      release_reference="${repository}:cargo-release-${cache_identity}-${upstream_tag}"
+      oras push "$release_reference" \
         --disable-path-validation \
         --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
         "cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd"
+      oras tag "$release_reference" "$tag"
     )
 
     prune_old_tags
