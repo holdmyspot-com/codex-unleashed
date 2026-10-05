@@ -54,6 +54,59 @@ respective outputs. Run the CLI tests without
 Run `cargo fmt --package codex-cli --package codex-tui -- --check` from
 `codex-rs/`.
 
+## Package and executable version agreement
+
+[match-package-and-executable-version.patch](match-package-and-executable-version.patch)
+applies independently to upstream `rust-v0.160.0`, commit
+`a956835d020762cb2b570053af06f643a11c0ecc`. Use it with the branding patch in
+this directory so the executable and package metadata identify the same build.
+
+### Intent
+
+Packages record the full Unleashed executable version, including the numeric
+build suffix or `+dev`. This lets the CLI install its own package as the daemon
+without a package/executable version mismatch. Explicit `--package-version`
+overrides retain their meaning. A version-query script lets this repository’s
+release packager use the same version policy.
+
+### Feature configuration
+
+This packaging fix is always active and has no feature flag or project-specific
+`config.toml` properties. `CODEX_UNLEASHED_BUILD_NUMBER` supplies the build number
+for compilation and packaging; without it, both use `dev`.
+
+### Reproduction
+
+Build a branded executable with `CODEX_UNLEASHED_BUILD_NUMBER=41`, then assemble
+its package with the same environment variable. The manifest version and
+executable version both identify `0.160.0+41` at this upstream base.
+
+### Verification
+
+Run from the patched upstream checkout root:
+
+```sh
+CODEX_REPO_ROOT="$PWD" python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
+just fmt-check
+```
+
+The checks cover branded defaults, the development fallback, explicit version
+overrides, the version-query script, and the existing package layout and
+archive behavior. Run this repository's entry-point checks separately:
+
+```sh
+python3 -m unittest discover -s scripts/codex_package -p test_upstream_package_version.py
+```
+
+This repository’s packager queries the version helper in
+`CODEX_PACKAGE_WORKSPACE_ROOT` and retains its own license bundling and archive
+timestamp handling.
+The Windows packaging job supplies the same build number as compilation.
+
+### Upstream status
+
+This is a distribution-specific change for Codex Unleashed branding.
+
 ## Public daemon releases
 
 [daemon-public-releases.patch](daemon-public-releases.patch) applies independently
@@ -119,9 +172,11 @@ OpenAI's public release channel.
 `a956835d020762cb2b570053af06f643a11c0ecc`. The branding patch in this directory
 supplies the client vendor version and precedes this patch in the queue.
 
-A Codex Unleashed CLI connected to a server with an upstream version warns that
-its app-server identifies itself as OpenAI Codex and needs a Codex Unleashed
-app-server to use Unleashed server features. The warning covers local daemons
+A numeric Codex Unleashed build connected to a server without build metadata
+at the same or an older release warns that its app-server identifies itself
+as OpenAI Codex and needs a Codex Unleashed app-server to use Unleashed server
+features. Development builds retain their distribution warning for unmarked
+servers. The warning covers local daemons
 and explicit remote connections. Local daemon notices offer `/daemon`; remote
 servers need updating on their host. The existing
 `tui.show_server_version_notice` setting controls the notice, and reconnecting
@@ -133,7 +188,10 @@ show a version warning. Unknown or malformed versions do not produce a provider
 warning. Older unmarked forks cannot be distinguished conclusively from upstream;
 the notice describes the identity the server reports, rather than authenticating
 its publisher. Older servers with numeric vendor metadata keep the ordinary
-version notice.
+version notice. Numeric Unleashed clients compare release precedence first, then
+the numeric build number. At the same release, a missing build suffix is older
+than a numeric Unleashed build. A higher server release is newer even without a
+build suffix and receives a newer-version notice without upgrade guidance.
 
 ### Feature configuration
 
@@ -147,7 +205,7 @@ Run from the patched upstream checkout root:
 ```sh
 just test -p codex-app-server -p codex-login -p codex-app-server-client -p codex-tui \
   --lib --test all \
-  -E '(package(codex-app-server) & test(initialize_uses_client_info_name_as_originator)) | (package(codex-login) & test(default_client)) | (package(codex-app-server-client) & test(remote_)) | (package(codex-tui) & (test(status::remote_connection) | test(server_version) | test(unleashed_)))'
+  -E '(package(codex-app-server) & test(initialize_uses_client_info_name_as_originator)) | (package(codex-login) & test(default_client)) | (package(codex-app-server-client) & test(remote_)) | (package(codex-tui) & (test(update_versions) | test(status::remote_connection) | test(server_version) | test(unleashed_)))'
 just fmt-check
 ```
 

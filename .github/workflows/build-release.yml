@@ -1613,6 +1613,7 @@ jobs:
           - aarch64-pc-windows-msvc
     env:
       WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner"
+      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_mtime }}
       CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_gzip_mtime }}
       CODEX_PACKAGE_MEMBER_MTIMES_PRIMARY: ${{ toJSON(fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].member_mtimes) }}

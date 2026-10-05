@@ -16,7 +16,7 @@ from .targets import PackageInputs
 from .targets import default_target
 from .targets import resolve_input_path
 from .zsh import resolve_zsh_bin
-from .version import read_workspace_version
+from .version import read_package_version
 
 
 def parse_args() -> argparse.Namespace:
@@ -185,7 +185,7 @@ def main() -> int:
             "--codex-windows-sandbox-setup-bin",
         ),
     )
-    version = read_workspace_version()
+    version = read_package_version()
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,
         code_mode_host_bin=source_outputs.code_mode_host_bin,
