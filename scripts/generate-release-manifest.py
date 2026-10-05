@@ -64,7 +64,7 @@ def main() -> int:
         )
 
     patches = []
-    for patch in sorted(patch_repo.rglob("*.patch")):
+    for patch in sorted((patch_repo / "patches").rglob("*.patch")):
         patches.append(
             {
                 "path": patch.relative_to(patch_repo).as_posix(),
