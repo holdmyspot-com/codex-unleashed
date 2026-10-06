@@ -1,0 +1,295 @@
+From 49c20701bf6fa91e1fc81d7a6f7f931b28b03625 Mon Sep 17 00:00:00 2001
+From: Codex Patch Verification <codex@example.invalid>
+Date: Tue, 6 Oct 2026 14:41:01 -0400
+Subject: [PATCH] Replace stale updater workers before manual daemon updates
+
+Manual updates compare the running updater's executable identity with the
+requesting CLI before connecting to its socket. Unknown legacy identities
+and different executables launch the requesting CLI's updater. Matching
+workers remain running. Publish updater launch identities and preserve the
+complete ownership record during Windows successor handoff.
+
+Fixes holdmyspot-com/codex-unleashed#54.
+
+TDD: maintained just test, package codex-app-server-daemon, handoff filter:
+red exit 100, old updater returned upstream instead of unleashed; matching
+control passed. Patched package suite: 71 passed, one fixture skipped.
+Execution records: .cat/work/temp/daemon-updater-handoff-m1Fw4L.
+---
+ .../src/backend/pid_start.rs                  |   7 +-
+ .../src/backend/pid_windows.rs                |  11 +-
+ .../app-server-daemon/src/manual_update.rs    |  24 ++-
+ .../src/manual_update_tests.rs                | 158 ++++++++++++++++++
+ .../src/update_loop_tests.rs                  |   4 +
+ 5 files changed, 190 insertions(+), 14 deletions(-)
+ create mode 100644 codex-rs/app-server-daemon/src/manual_update_tests.rs
+
+diff --git a/codex-rs/app-server-daemon/src/backend/pid_start.rs b/codex-rs/app-server-daemon/src/backend/pid_start.rs
+index 1c286a8..e8b7727 100644
+--- a/codex-rs/app-server-daemon/src/backend/pid_start.rs
++++ b/codex-rs/app-server-daemon/src/backend/pid_start.rs
+@@ -72,12 +72,7 @@ impl PidBackend {
+         let codex_bin = fs::canonicalize(&self.codex_bin)
+             .await
+             .unwrap_or_else(|_| self.codex_bin.clone());
+-        let launched_identity =
+-            if matches!(self.command_kind, super::PidCommandKind::AppServer { .. }) {
+-                executable_identity(&codex_bin).await.ok()
+-            } else {
+-                None
+-            };
++        let launched_identity = executable_identity(&codex_bin).await.ok();
+         let mut command = Command::new(&codex_bin);
+         let stderr_log = match self.open_stderr_log().await {
+             Ok(stderr_log) => stderr_log,
+diff --git a/codex-rs/app-server-daemon/src/backend/pid_windows.rs b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
+index 8487fa2..cb1fb64 100644
+--- a/codex-rs/app-server-daemon/src/backend/pid_windows.rs
++++ b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
+@@ -8,7 +8,6 @@ use super::PidRecord;
+ use super::START_TIMEOUT;
+ use super::STOP_POLL_INTERVAL;
+ use super::process_matches_record;
+-use super::read_process_start_time;
+ use anyhow::Context;
+ use anyhow::Result;
+ use anyhow::bail;
+@@ -39,12 +38,12 @@ impl PidBackend {
+     }
+ 
+     pub(crate) async fn replace_current_updater(&self) -> Result<()> {
+-        let record = PidRecord {
+-            pid: std::process::id(),
+-            process_start_time: read_process_start_time(std::process::id()).await?,
+-            process_identity: None,
+-            executable_identity: None,
++        let PidFileState::Running(record) = self.read_pid_file_state().await? else {
++            bail!("updater ownership changed before handoff");
+         };
++        if record.pid != std::process::id() || !self.record_is_active(&record).await? {
++            bail!("updater ownership changed before handoff");
++        }
+         self.start_inner(Some(record)).await?;
+         Ok(())
+     }
+diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
+index 640c5bc..3850bc5 100644
+--- a/codex-rs/app-server-daemon/src/manual_update.rs
++++ b/codex-rs/app-server-daemon/src/manual_update.rs
+@@ -24,6 +24,27 @@ use crate::managed_install::executable_identity;
+ use crate::managed_install::managed_codex_version;
+ 
+ pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
++    request_with_executable(daemon, &std::env::current_exe()?).await
++}
++
++pub(super) async fn request_with_executable(
++    daemon: &Daemon,
++    current_exe: &std::path::Path,
++) -> Result<UpdateOutput> {
++    {
++        let _operation_lock = daemon.acquire_operation_lock().await?;
++        let settings = daemon.load_settings().await?;
++        let worker = crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings));
++        // An older updater can report its own release channel as current. Stop it
++        // before connecting so the existing startup path launches this CLI instead.
++        if supported(daemon)?
++            && worker.is_starting_or_running().await?
++            && worker.running_executable_identity().await?.as_ref()
++                != Some(&executable_identity(current_exe).await?)
++        {
++            worker.stop().await?;
++        }
++    }
+     let socket_path = daemon.manual_update_socket_path();
+     let mut replacement_deadline = None;
+     'request: loop {
+@@ -69,8 +90,7 @@ pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
+                         crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings))
+                             .stop()
+                             .await?;
+-                        let current_exe = std::env::current_exe()?;
+-                        let paths = daemon.backend_paths_with_bin(&settings, &current_exe);
++                        let paths = daemon.backend_paths_with_bin(&settings, current_exe);
+                         let restore_release = if daemon.is_stable_standalone_release()? {
+                             None
+                         } else {
+diff --git a/codex-rs/app-server-daemon/src/manual_update_tests.rs b/codex-rs/app-server-daemon/src/manual_update_tests.rs
+new file mode 100644
+index 0000000..620f42c
+--- /dev/null
++++ b/codex-rs/app-server-daemon/src/manual_update_tests.rs
+@@ -0,0 +1,158 @@
++use super::super::manual_update;
++use super::Daemon;
++use super::Duration;
++use super::TempDir;
++use super::UpdateOutput;
++use super::UpdateStatus;
++use super::manual_update_daemon;
++use pretty_assertions::assert_eq;
++
++#[cfg(unix)]
++#[tokio::test]
++async fn manual_request_replaces_a_different_updater() {
++    let mut replies = Vec::new();
++    for legacy_record in [false, true] {
++        let home = TempDir::new().expect("home");
++        let (daemon, _) = manual_update_daemon(&home);
++        let old_exe = write_handoff_updater(&home, &daemon, "upstream");
++        let current_exe = write_handoff_updater(&home, &daemon, "unleashed");
++        let settings = daemon.load_settings().await.expect("settings");
++        let worker = crate::backend::pid_update_loop_backend(
++            daemon.backend_paths_with_bin(&settings, &old_exe),
++        );
++        worker.start().await.expect("old updater");
++        wait_for_handoff_updater(&daemon).await;
++        if legacy_record {
++            let mut record: serde_json::Value = serde_json::from_slice(
++                &std::fs::read(&daemon.update_pid_file).expect("PID record"),
++            )
++            .expect("parse PID record");
++            record.as_object_mut().unwrap().remove("executableIdentity");
++            std::fs::write(
++                &daemon.update_pid_file,
++                serde_json::to_vec(&record).unwrap(),
++            )
++            .expect("legacy PID record");
++        }
++        let result = tokio::time::timeout(
++            Duration::from_secs(5),
++            manual_update::request_with_executable(&daemon, &current_exe),
++        )
++        .await;
++        worker.stop().await.expect("stop fixture updater");
++        replies.push((
++            result
++                .expect("manual request timeout")
++                .expect("manual request"),
++            handoff_updater_reply(&daemon.manual_update_socket_path(), "unleashed"),
++        ));
++    }
++    for (reply, expected) in replies {
++        assert_eq!(reply, expected);
++    }
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn manual_request_reuses_a_matching_updater() {
++    let home = TempDir::new().expect("home");
++    let (daemon, _) = manual_update_daemon(&home);
++    let current_exe = write_handoff_updater(&home, &daemon, "unleashed");
++    let settings = daemon.load_settings().await.expect("settings");
++    let worker = crate::backend::pid_update_loop_backend(
++        daemon.backend_paths_with_bin(&settings, &current_exe),
++    );
++    worker.start().await.expect("current updater");
++    wait_for_handoff_updater(&daemon).await;
++    let initial_record = std::fs::read(&daemon.update_pid_file).expect("initial PID record");
++    let result = manual_update::request_with_executable(&daemon, &current_exe).await;
++    let final_record = std::fs::read(&daemon.update_pid_file).expect("final PID record");
++    worker.stop().await.expect("stop fixture updater");
++    assert_eq!(
++        result.expect("manual request"),
++        handoff_updater_reply(&daemon.manual_update_socket_path(), "unleashed")
++    );
++    assert_eq!(initial_record, final_record);
++}
++
++#[cfg(unix)]
++fn write_handoff_updater(home: &TempDir, daemon: &Daemon, message: &str) -> std::path::PathBuf {
++    use std::os::unix::fs::PermissionsExt;
++
++    let executable = home.path().join(message);
++    let test_binary = std::env::current_exe().expect("test executable");
++    let socket = daemon.manual_update_socket_path();
++    // The shell launches the Rust fixture; the fixture owns the socket and response.
++    std::fs::write(
++        &executable,
++        format!(
++            "#!/bin/sh\nexport CODEX_TEST_UPDATER_SOCKET='{}'\nexport CODEX_TEST_UPDATER_MESSAGE='{message}'\nexec '{}' --ignored --exact update_loop::tests::manual_update_tests::updater_handoff_process --nocapture\n",
++            socket.display().to_string().replace('\'', "'\\''"),
++            test_binary.display().to_string().replace('\'', "'\\''"),
++        ),
++    )
++    .expect("fixture executable");
++    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
++        .expect("executable fixture");
++    executable
++}
++
++#[cfg(unix)]
++async fn wait_for_handoff_updater(daemon: &Daemon) {
++    tokio::time::timeout(Duration::from_secs(5), async {
++        while codex_uds::UnixStream::connect(&daemon.manual_update_socket_path())
++            .await
++            .is_err()
++        {
++            tokio::task::yield_now().await;
++        }
++    })
++    .await
++    .expect("fixture socket ready");
++}
++
++#[cfg(unix)]
++fn handoff_updater_reply(socket: &std::path::Path, message: &str) -> UpdateOutput {
++    UpdateOutput {
++        status: UpdateStatus::NoUpdate,
++        managed_codex_path: socket.to_owned(),
++        installed_version: None,
++        running_version: None,
++        message: message.to_owned(),
++    }
++}
++
++#[cfg(unix)]
++#[tokio::test]
++#[ignore = "fixture subprocess launched only by the updater handoff tests"]
++async fn updater_handoff_process() {
++    use tokio::io::AsyncReadExt;
++    use tokio::io::AsyncWriteExt;
++
++    let socket = std::path::PathBuf::from(std::env::var("CODEX_TEST_UPDATER_SOCKET").unwrap());
++    let message = std::env::var("CODEX_TEST_UPDATER_MESSAGE").unwrap();
++    codex_uds::prepare_private_socket_directory(socket.parent().unwrap())
++        .await
++        .unwrap();
++    if socket.exists() {
++        std::fs::remove_file(&socket).unwrap();
++    }
++    let mut listener = codex_uds::UnixListener::bind(&socket).await.unwrap();
++    // Bound the child lifetime even if its parent's assertion or cleanup fails.
++    let _ = tokio::time::timeout(Duration::from_secs(15), async {
++        loop {
++            let mut connection = listener.accept().await.unwrap();
++            let mut request = [0; 7];
++            if connection.read_exact(&mut request).await.is_err() {
++                continue;
++            }
++            assert_eq!(&request, b"update\n");
++            let reply = handoff_updater_reply(&socket, &message);
++            connection
++                .write_all(&serde_json::to_vec(&Ok::<_, String>(reply)).unwrap())
++                .await
++                .unwrap();
++        }
++    })
++    .await;
++}
+diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+index d932742..ce0e286 100644
+--- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
++++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+@@ -1034,3 +1034,7 @@ printf '%s' '{release}' > '{marker}'
+         );
+     }
+ }
++
++#[cfg(unix)]
++#[path = "manual_update_tests.rs"]
++mod manual_update_tests;
+-- 
+2.43.0
+

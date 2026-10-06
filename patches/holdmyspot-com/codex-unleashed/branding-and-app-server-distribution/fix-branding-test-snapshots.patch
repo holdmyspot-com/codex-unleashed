@@ -1,17 +1,66 @@
-From 7ab6b32c2d54e588408d20792ff0570dde96bb0f Mon Sep 17 00:00:00 2001
+From a59b76430134b0867f41943ad4fad8fc818b3c9a Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
-Date: Wed, 30 Sep 2026 15:07:35 -0400
-Subject: [PATCH] Update branding welcome-screen and status snapshot
- expectations
+Date: Mon, 5 Oct 2026 23:30:03 -0400
+Subject: [PATCH] Adapt released branding test fixtures to rust-v0.160.0
 
+Retain the existing Unleashed welcome, status and connected-server warning
+expectations. Include startup, voice-caption, status-copy and update fixtures.
+Keep terminal colors consistent with the declared upstream base, reserve room
+for the branded welcome header and address the directory row explicitly.
+
+Account for branded root CLI argument ordering in exec-server help. Daemon
+fixtures use a non-placeholder stable release and record the full branded
+executable version in their package manifest. No production changes or new
+daemon-updater feature work are included.
+
+RED: maintained affected-package and workspace checks report the relevant
+branding, version and startup-fixture failures; see final-emitted-packages.log
+and fixture-final-workspace.log (exit100).
+GREEN: existing focused compatibility gate passes 41/41 cases. The maintained
+UI gate passes 196/197 with its one remaining stale accent expectation;
+branding-halfwidth-green.log passes that corrected case (exit0). Additional
+status-copy, remote-status, startup, ANSI, socket and native-audio checks pass
+13/13 in branding-and-environment-additional.log (exit0). The other 196 checked
+inputs remain unchanged. Maintained fmt-check passes (exit0).
+
+Scope: test sources and terminal snapshots only. Snapshots intentionally
+preserve rendered column padding; source whitespace checks exclude *.snap.
 ---
+ ..._server_help_documents_remote_options.snap | 12 +--
+ codex-rs/cli/tests/app_server_daemon.rs       |  5 +-
+ ..._menu__tests__daemon_cli_confirmation.snap |  4 +-
+ ..._animation_tests__fresh_thread_header.snap | 12 +--
+ ...s_previous_transcript_before_replay-2.snap |  5 +-
+ ...e_reconnect__unavailable_conversation.snap |  4 +-
+ ...daemon_command_center_vanished_rename.snap |  2 +-
+ ...e_buffered_replay_reconciles_captions.snap |  5 +-
+ ...__voice_completed_after_thread_switch.snap |  5 +-
+ ...partial_completed_after_thread_switch.snap |  5 +-
+ ...e_replay_reconciles_matching_captions.snap |  5 +-
+ ...rame_tests__startup_tip_in_transcript.snap | 16 ++--
  .../tui/src/chatwidget/rendering_tests.rs     |  6 +-
  ...__catalog_model_session_header_resume.snap |  5 +-
  ..._catalog_model_session_header_startup.snap |  6 +-
  ...og_model_session_header_unknown_model.snap |  5 +-
+ ...idget__tests__slash_copy_whole_status.snap |  2 +
+ ...pdate_available_history_cell_snapshot.snap |  2 +-
  ...session_header_clamps_to_narrow_width.snap |  7 +-
- ...s__session_header_halfwidth_directory.snap | 79 ++++++++++---------
+ ...s__session_header_halfwidth_directory.snap | 78 ++++++++++---------
  ...s__session_header_indicates_yolo_mode.snap |  7 +-
+ ...nfo_availability_nux_tooltip_snapshot.snap |  5 +-
+ ...pdate_available_history_cell_snapshot.snap |  2 +-
+ ...pdate_available_history_cell_snapshot.snap |  2 +-
+ ...pdate_available_history_cell_snapshot.snap |  2 +-
+ ...ter_long_transcript_fresh_header_only.snap |  5 +-
+ ...__layout__tests__owned_startup_layout.snap |  6 +-
+ ...artup_draft_fresh_session_transitions.snap | 30 ++++---
+ ...aft__tests__startup_draft_full_frames.snap | 29 ++++---
+ ...__startup_draft_onboarding_transition.snap |  5 +-
+ ...raft__tests__terminal_app_ssh_startup.snap | 11 +--
+ ...__tests__update_picker_selected_28x12.snap |  4 +-
+ ...te_prompt__tests__update_prompt_modal.snap |  2 +-
+ .../tui/src/startup_draft_layout_tests.rs     |  2 +-
+ codex-rs/tui/src/startup_draft_tests.rs       |  4 +-
  ...ests__status_server_auth_not_required.snap |  4 +-
  ...s__tests__status_server_auth_required.snap |  4 +-
  ...ched_limits_hide_credits_without_flag.snap |  4 +-
@@ -21,6 +70,7 @@ Subject: [PATCH] Update branding welcome-screen and status snapshot
  ...tatus_snapshot_includes_monthly_limit.snap |  4 +-
  ...s_snapshot_includes_reasoning_details.snap |  4 +-
  ...atus_snapshot_local_background_server.snap |  4 +-
+ ..._tests__status_snapshot_remote_server.snap |  4 +-
  ...hot_shows_active_user_defined_profile.snap |  4 +-
  ...napshot_shows_auto_review_permissions.snap |  4 +-
  ...shot_shows_chatgpt_plan_without_email.snap |  4 +-
@@ -35,8 +85,276 @@ Subject: [PATCH] Update branding welcome-screen and status snapshot
  ..._limit_labels_for_unsupported_windows.snap |  4 +-
  ...hly_credit_details_in_narrow_terminal.snap |  4 +-
  ...ipt_overlay_status_rate_limit_refresh.snap | 12 +--
- 30 files changed, 138 insertions(+), 78 deletions(-)
+ 59 files changed, 250 insertions(+), 162 deletions(-)
 
+diff --git a/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap b/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
+index 2010b1e..a79121c 100644
+--- a/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
++++ b/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
+@@ -21,16 +21,12 @@ Options:
+           'sandbox_permissions=["disk-full-read-access"]'` - `-c
+           shell_environment_policy.inherit=all`
+ 
+-      --enable <FEATURE>
+-          Enable a feature (repeatable). Equivalent to `-c features.<name>=true`
+-
+       --strict-config
+           Error out when config.toml contains fields that are not recognized by
+           this version of Codex
+ 
+-      --disable <FEATURE>
+-          Disable a feature (repeatable). Equivalent to `-c
+-          features.<name>=false`
++      --enable <FEATURE>
++          Enable a feature (repeatable). Equivalent to `-c features.<name>=true`
+ 
+       --linux-sandbox-pid-namespace <MODE>
+           Linux PID namespace: isolate (default) or inherit. Inherit allows
+@@ -39,6 +35,10 @@ Options:
+ 
+           [default: isolate]
+ 
++      --disable <FEATURE>
++          Disable a feature (repeatable). Equivalent to `-c
++          features.<name>=false`
++
+       --proxy-private-ips-via-upstream
+           Allow permitted private IP destinations to use the configured upstream
+           proxy. If no valid upstream proxy applies to the request protocol,
+diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
+index 002012a..8b0acf5 100644
+--- a/codex-rs/cli/tests/app_server_daemon.rs
++++ b/codex-rs/cli/tests/app_server_daemon.rs
+@@ -32,7 +32,7 @@ impl TestDaemon {
+             format!("{}-unknown-linux-musl", std::env::consts::ARCH)
+         };
+         let standalone = home.path().join("packages/standalone");
+-        let release_name = format!("0.0.0-{target}");
++        let release_name = format!("1.0.0-{target}");
+         let managed = standalone
+             .join("releases")
+             .join(&release_name)
+@@ -525,7 +525,8 @@ fn packaged_daemon_launch(action: &str, initial: InitialDaemon) -> Result<()> {
+     std::fs::write(
+         package.join("codex-package.json"),
+         serde_json::to_vec(&serde_json::json!({
+-            "version": env!("CARGO_PKG_VERSION"), "target": target, "entrypoint": "bin/codex"
++            "version": format!("{}+{}", env!("CARGO_PKG_VERSION"), option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")),
++            "target": target, "entrypoint": "bin/codex"
+         }))?,
+     )?;
+     if action == "start" && initial == InitialDaemon::Missing {
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
+index 4de9db0..868ca50 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
+@@ -3,8 +3,8 @@ source: tui/src/app/daemon_menu_tests.rs
+ expression: "render_bottom_popup(&app.chat_widget,\nwidth).replace(r\"C:\\cli-build\\bin\\codex\", \"/x/cli-build/bin/codex\")"
+ ---
+   Update daemon and exit Codex?
+-  Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the complete package and pin it
+-  against automatic updates.
++  Use this CLI package v0.160.0+dev from /x/cli-build/bin/codex. Copy the complete package and pin
++  it against automatic updates.
+   This may restart the daemon and interrupt active or queued work.
+   Codex exits to update in this terminal. Relaunch it afterward.
+ 
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
+index 1261499..cb5aff7 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
+@@ -3,8 +3,9 @@ source: tui/src/app/empty_state_animation_tests.rs
+ expression: "format!(\"enabled:\\n{}\\n---\\ndisabled:\\n{}\", text(after), text(&before))"
+ ---
+ enabled:
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   Pull up a prompt.
+@@ -15,7 +16,6 @@ enabled:
+ 
+ 
+ 
+-
+                                                        ⣀⣤⣤⣤⣀⣀
+                                                     ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀
+                                                   ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄
+@@ -49,8 +49,9 @@ enabled:
+   ? for shortcuts                                                                              ⚠ 1 warning · f2 to view
+ ---
+ disabled:
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   Pull up a prompt.
+@@ -86,7 +87,6 @@ disabled:
+ 
+ 
+ 
+-
+ 
+ 
+ › Ask Codex to do anything
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
+index 8aa1bca..1f23589 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
+@@ -3,8 +3,9 @@ source: tui/src/app/tests.rs
+ assertion_line: 6513
+ expression: rendered
+ ---
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      <thread cwd>
+ 
+ 
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+index 335071a..04dc152 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+@@ -3,8 +3,8 @@ source: tui/src/app/tests/active_reconnect_tests.rs
+ expression: "format!(\"{history}\\n{}\",\nrender_bottom_popup(&app.chat_widget,\n80)).replace(&test_path_buf(\"/tmp/project\").display().to_string(),\n\"/tmp/project\")"
+ ---
+ • This conversation is unavailable. Its cached transcript and draft remain here; input is paused. Open the agent picker or return to the parent to continue.
+-⚠ A background Codex service is running v2.0.0, different from your Codex CLI
+-  v0.0.0.
++⚠ The connected app-server identifies itself as OpenAI Codex v2.0.0. Update it
++  to a Codex Unleashed app-server to use Codex Unleashed server features.
+ › unavailable draft
+ 
+   gpt-test default · /tmp/project
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
+index 9ccef21..faf17f8 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
+@@ -25,4 +25,4 @@ expression: "render_bottom_popup(&app.chat_widget, 100)"
+                                                           │
+                                                           │
+                                                           │
+-  Service v2.0.0 ≠ Codex CLI v0.0.0 · /daemon
++  Service v2.0.0 ≠ Codex CLI v0.160.0+dev · /daemon
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
+index ab3a8c8..5110c44 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
+@@ -3,8 +3,9 @@ source: tui/src/app/tests/realtime_requests.rs
+ assertion_line: 889
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   To get started, describe a task or try one of these commands:
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
+index 2ecde20..18fa67f 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
+@@ -3,8 +3,9 @@ source: tui/src/app/tests/realtime_requests.rs
+ assertion_line: 1093
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   To get started, describe a task or try one of these commands:
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
+index 5c3a9d2..3eb177c 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
+@@ -14,8 +14,9 @@ Restored owner:
+ › Ask Codex to do anything
+ 
+   gpt-test default · /tmp/project
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   To get started, describe a task or try one of these commands:
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
+index 0dfd733..7d9e7ca 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
+@@ -3,8 +3,9 @@ source: tui/src/app/tests/realtime_requests.rs
+ assertion_line: 716
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   To get started, describe a task or try one of these commands:
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
+index 8ed7c18..acf992b 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
+@@ -4,8 +4,9 @@ assertion_line: 72
+ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.join(\"\\n\\n\")))"
+ ---
+ 80 columns
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   Pull up a prompt.
+@@ -19,15 +20,17 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
+ 
+ 
+ 
+-
+ › Ask Codex to do anything
+ 
+   GPT-5.6-Sol default · /tmp/project
+   ? for shortcuts
+ 
+ 32 columns
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+…
++     Unofficial fork of OpenAI
++     Codex
++     https://holdmyspot.com/code
++     x-unleashed/
+      /tmp/project
+ 
+   Pull up a prompt.
+@@ -39,9 +42,6 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
+ 
+ 
+ 
+-
+-
+-
+ › Ask Codex to do anything
+ 
+   GPT-5.6-Sol default · /tmp/pr…
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 index 624d587..3b05347 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
@@ -111,6 +429,32 @@ index 147a544..d9e4662 100644
 +     https://holdmyspot.com/codex-unleashed/
  model: us.openai.gpt-5.6-luna high
  directory: /tmp/thread-settings
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
+index 1da4b4a..58c6b6d 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
+@@ -3,6 +3,8 @@ source: tui/src/chatwidget/tests/slash_commands.rs
+ expression: "whole_status.replace(&directory,\n\"[[workspace]]\").replace(crate::version::CODEX_CLI_VERSION, \"VERSION\")"
+ ---
+ >_ OpenAI Codex (vVERSION)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+ 
+   Visit https://chatgpt.com/codex/settings/usage for up-to-date
+   information on rate limits and credits
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
+index a9dd9ca..f86946a 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
+@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ ╭─────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0 -> 9.9.9             │
++│ ✨ Update available! 0.160.0+dev -> 9.9.9       │
+ │ Run pnpm add -g @openai/codex to update.        │
+ │                                                 │
+ │ See full release notes:                         │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 index 13e70b5..3842c99 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
@@ -130,10 +474,10 @@ index 13e70b5..3842c99 100644
       project
    permissions: YOLO mode
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-index fa464a0..9de8db3 100644
+index fa464a0..3ffd7e3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-@@ -1,48 +1,55 @@
+@@ -1,48 +1,54 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 1903
@@ -186,7 +530,6 @@ index fa464a0..9de8db3 100644
 -        x: 32, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 -        x: 33, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
 -        x: 34, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-+        x: 2, y: 0, fg: Rgb(99, 168, 248), bg: Reset, underline: Reset, modifier: NONE,
 +        x: 5, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
 +        x: 20, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 +        x: 28, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
@@ -243,6 +586,355 @@ index ab195e3..98baae3 100644
 +     https://holdmyspot.com/codex-unleashed/
       /tmp/project
    permissions: YOLO mode
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
+index e5cc9a0..e3768be 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
+@@ -3,8 +3,9 @@ source: tui/src/history_cell/tests.rs
+ assertion_line: 778
+ expression: rendered
+ ---
+-
+-  >_ OpenAI Codex (v0.0.0)
++  >_ Codex Unleashed (v0.160.0+dev)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+ 
+   Tip: Model just became available
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
+index c8f352d..459ee6d 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
+@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ ╭─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0 -> 9.9.9                                                                 │
++│ ✨ Update available! 0.160.0+dev -> 9.9.9                                                           │
+ │ Run sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' to update. │
+ │                                                                                                     │
+ │ See full release notes:                                                                             │
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
+index fb15a05..a69efbd 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
+@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0 -> 9.9.9                                                                        │
++│ ✨ Update available! 0.160.0+dev -> 9.9.9                                                                  │
+ │ Run powershell -ExecutionPolicy Bypass -c '$env:CODEX_NON_INTERACTIVE=1; irm                               │
+ │ https://chatgpt.com/codex/install.ps1 | iex' to update.                                                    │
+ │                                                                                                            │
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__vite_plus_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__vite_plus_update_available_history_cell_snapshot.snap
+index 1a2df82..ccfb445 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__vite_plus_update_available_history_cell_snapshot.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__vite_plus_update_available_history_cell_snapshot.snap
+@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ ╭─────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0 -> 9.9.9             │
++│ ✨ Update available! 0.160.0+dev -> 9.9.9       │
+ │ Run vp install -g @openai/codex to update.      │
+ │                                                 │
+ │ See full release notes:                         │
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
+index b11e54d..206a9c1 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
+@@ -3,6 +3,7 @@ source: tui/src/app/tests.rs
+ assertion_line: 5874
+ expression: rendered
+ ---
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      /tmp/project
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
+index 957e753..2accdf2 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
+@@ -3,8 +3,9 @@ source: tui/src/startup_draft_layout_tests.rs
+ expression: "format!(\"cursor={:?}\\n{frame}\",\nlayout.cursor_pos(area)).replace(crate::version::CODEX_CLI_VERSION,\n\"<VERSION>\")"
+ ---
+ cursor=Some((13, 12))
+-                                                
+-  >_ OpenAI Codex (v<VERSION>)                      
++  >_ Codex Unleashed (v<VERSION>)             
++     Unofficial fork of OpenAI Codex            
++     https://holdmyspot.com/codex-unleashed/    
+      loading                                    
+                                                 
+   Pull up a prompt.                             
+@@ -13,7 +14,6 @@ cursor=Some((13, 12))
+                                                 
+                                                 
+                                                 
+-                                                
+ › first line                                    
+   second line                                   
+                                                 
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
+index fb019c0..f4f34b6 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
+@@ -5,8 +5,9 @@ expression: "snapshots.join(\"\\n---\\n\")"
+ ---
+ resume lookup fallback:
+ before:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -16,8 +17,9 @@ before:
+ 
+ 
+ after:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -29,8 +31,9 @@ after:
+ ---
+ fork lookup fallback:
+ before:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -40,8 +43,9 @@ before:
+ 
+ 
+ after:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -55,8 +59,9 @@ resume picker cancellation:
+ before:
+ hidden while picker owns input
+ after:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -70,8 +75,9 @@ fork picker cancellation:
+ before:
+ hidden while picker owns input
+ after:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
+index 13af775..ca03581 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
+@@ -4,8 +4,9 @@ assertion_line: 154
+ expression: "snapshots.join(\"\\n---\\n\")"
+ ---
+ empty (48 columns):
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -16,8 +17,9 @@ empty (48 columns):
+   ? for shortcuts
+ ---
+ resuming (48 columns):
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+   Resuming session…
+ 
+@@ -26,8 +28,9 @@ resuming (48 columns):
+   ? for shortcuts
+ ---
+ forking (48 columns):
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+   Forking session…
+ 
+@@ -36,8 +39,9 @@ forking (48 columns):
+ 
+ ---
+ multiline (48 columns):
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -49,8 +53,13 @@ multiline (48 columns):
+ 
+ ---
+ narrow (18 columns):
+-
+-  >_ OpenAI Codex…
++  >_ Codex Unleas…
++     Unofficial
++     fork of
++     OpenAI Codex
++     https://holdm
++     yspot.com/cod
++     ex-unleashed/
+      loading
+ 
+   Pull up a promp…
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
+index 681cfd8..63f9968 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
+@@ -6,8 +6,9 @@ expression: frames
+ before onboarding: hidden (0x0 viewport)
+ ---
+ after onboarding:
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
+index 2ec0e1e..f7bf75c 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
+@@ -4,8 +4,9 @@ assertion_line: 194
+ expression: "frames.join(\"\\n---\\n\").replace(crate::version::CODEX_CLI_VERSION, \"<VERSION>\")"
+ ---
+ terminal_app_over_ssh=false, owned=true
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+@@ -16,14 +17,14 @@ terminal_app_over_ssh=false, owned=true
+ 
+ 
+ 
+-
+ › Ask Codex to do anything
+ 
+   ? for shortcuts
+ ---
+ terminal_app_over_ssh=true, owned=false
+-
+-  >_ OpenAI Codex (v<VERSION>)
++  >_ Codex Unleashed (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+      loading
+ 
+   Pull up a prompt.
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+index 53c8053..d6daf76 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+@@ -3,8 +3,8 @@ source: tui/src/update_prompt.rs
+ expression: rendered
+ ---
+ 
+-  Update available · 0.0.0
+-  → 9.9.9
++  Update available ·
++  0.160.0 → 9.9.9
+   Release notes:
+   https://github.com/opena
+   i/codex/releases/latest
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+index b547642..ec29245 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+@@ -3,7 +3,7 @@ source: tui/src/update_prompt.rs
+ expression: terminal.backend()
+ ---
+ 
+-  Update available · 0.0.0 → 9.9.9
++  Update available · 0.160.0 → 9.9.9
+   Release notes: https://github.com/openai/codex/releases/latest
+ 
+ › 1. Update now (runs `npm install -g @openai/codex`)                           
+diff --git a/codex-rs/tui/src/startup_draft_layout_tests.rs b/codex-rs/tui/src/startup_draft_layout_tests.rs
+index 1644ad3..a078327 100644
+--- a/codex-rs/tui/src/startup_draft_layout_tests.rs
++++ b/codex-rs/tui/src/startup_draft_layout_tests.rs
+@@ -37,7 +37,7 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
+ fn new_startup_decoration_tracks_draft_and_session_action() {
+     let mut pump = crate::startup_draft::tests::quiet_startup_test_pump();
+     let area = Rect::new(
+-        /*x*/ 0, /*y*/ 0, /*width*/ 80, /*height*/ 32,
++        /*x*/ 0, /*y*/ 0, /*width*/ 80, /*height*/ 44,
+     );
+     let mut blossom_visible = Vec::new();
+     for (draft, action, pending) in [
+diff --git a/codex-rs/tui/src/startup_draft_tests.rs b/codex-rs/tui/src/startup_draft_tests.rs
+index baaa0eb..31c4ab4 100644
+--- a/codex-rs/tui/src/startup_draft_tests.rs
++++ b/codex-rs/tui/src/startup_draft_tests.rs
+@@ -314,14 +314,14 @@ async fn startup_draft_hydrates_its_header_without_moving_the_composer() {
+         startup_draft_renderable(&pump.header, &pump.bottom_pane, pump.session_action)
+             .desired_height(width);
+ 
+-    assert_eq!(pump.header.raw_lines()[2].to_string().trim(), "loading");
++    assert_eq!(pump.header.raw_lines()[3].to_string().trim(), "loading");
+     pump.apply_config(&config);
+     let expected_directory = crate::history_cell::SessionHeaderHistoryCell::format_directory_inner(
+         config.cwd.as_path(),
+         /*max_width*/ None,
+     );
+     assert_eq!(
+-        pump.header.raw_lines()[2].to_string().trim(),
++        pump.header.raw_lines()[3].to_string().trim(),
+         expected_directory
+     );
+     assert_eq!(
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_server_auth_not_required.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_server_auth_not_required.snap
 index a00c3ae..fa8730b 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_server_auth_not_required.snap
@@ -364,9 +1056,24 @@ index 06866b5..66d3ae7 100644
    Visit https://chatgpt.com/codex/settings/usage for up-to-date
    information on rate limits and credits
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_local_background_server.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_local_background_server.snap
-index 163ee98..addc499 100644
+index 6cc0ff0..64ce9e2 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_local_background_server.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_local_background_server.snap
+@@ -4,7 +4,9 @@ expression: sanitized
+ ---
+ /status
+ 
+-  >_ OpenAI Codex (v0.0.0)
++  >_ OpenAI Codex (v<VERSION>)
++     Unofficial fork of OpenAI Codex
++     https://holdmyspot.com/codex-unleashed/
+ 
+   Visit https://chatgpt.com/codex/settings/usage for up-to-date
+   information on rate limits and credits
+diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap
+index 8478305..fbb3fe8 100644
+--- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap
++++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_remote_server.snap
 @@ -4,7 +4,9 @@ expression: sanitized
  ---
  /status
@@ -530,7 +1237,7 @@ index ac59138..1d0c734 100644
    Visit https://chatgpt.com/codex/settings/usage for up-to-date
    information on rate limits and credits
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
-index 03e8010..f84ebbe 100644
+index bf5bb86..27198f5 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 @@ -4,7 +4,9 @@ expression: sanitized

@@ -1,0 +1,98 @@
+From fd3a486efb8857a209a61adac737b281830ddd8a Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Use a mountable procfs denial to test snapshot descriptor
+ fallback
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/49.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ codex-rs/exec-server/tests/common/mod.rs      |  7 ++++++
+ .../tests/exec_process/shell_snapshot.rs      | 22 ++++++++++++++++---
+ 2 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
+index 0d7661c..4fcd01d 100644
+--- a/codex-rs/exec-server/tests/common/mod.rs
++++ b/codex-rs/exec-server/tests/common/mod.rs
+@@ -28,6 +28,7 @@ pub(crate) const DELAYED_OUTPUT_AFTER_EXIT_PARENT_ARG: &str =
+ pub(crate) const SYSTEM_PROXY_REQUEST_URL_ENV: &str =
+     "CODEX_EXEC_SERVER_TEST_SYSTEM_PROXY_REQUEST_URL";
+ pub(crate) const SYSTEM_PROXY_URL_ENV: &str = "CODEX_EXEC_SERVER_TEST_SYSTEM_PROXY_URL";
++pub(crate) const INHERIT_PID_NAMESPACE_ENV: &str = "CODEX_EXEC_SERVER_TEST_INHERIT_PID_NAMESPACE";
+ 
+ const CODEX_WINDOWS_SANDBOX_ARG1: &str = "--run-as-windows-sandbox";
+ const DELAYED_OUTPUT_AFTER_EXIT_CHILD_ARG: &str = "--codex-test-delayed-output-after-exit-child";
+@@ -224,6 +225,12 @@ fn maybe_run_exec_server_from_test_binary(guard: Option<&TestBinaryDispatchGuard
+             std::process::exit(1);
+         }
+     };
++    let runtime_paths = if env::var(INHERIT_PID_NAMESPACE_ENV).as_deref() == Ok("1") {
++        runtime_paths
++            .with_linux_sandbox_pid_namespace(codex_sandboxing::LinuxSandboxPidNamespace::Inherit)
++    } else {
++        runtime_paths
++    };
+     let runtime = match tokio::runtime::Builder::new_multi_thread()
+         .enable_all()
+         .build()
+diff --git a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
+index e836fef..0141f84 100644
+--- a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
++++ b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
+@@ -49,6 +49,17 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+             backend: environment.get_exec_backend(),
+             _server: None,
+         }
++    } else if deny_fd_path && cfg!(target_os = "linux") {
++        let server = common::exec_server::exec_server_with_env(
++            [(common::INHERIT_PID_NAMESPACE_ENV, "1")],
++            &[],
++        )
++        .await?;
++        let environment = Environment::create_for_tests(Some(server.websocket_url().to_string()))?;
++        ProcessContext {
++            backend: environment.get_exec_backend(),
++            _server: Some(server),
++        }
+     } else {
+         create_process_context(deny_fd_path).await?
+     };
+@@ -64,7 +75,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+         "${(%):-%x}"
+     };
+     let source_check = if deny_fd_path {
+-        String::new()
++        format!("case \"{source}\" in /dev/fd/*) return 42 ;; esac; ")
+     } else {
+         format!("case \"{source}\" in /dev/fd/*) ;; *) return 42 ;; esac; ")
+     };
+@@ -103,7 +114,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+         ));
+         if deny_fd_path {
+             policy.entries.push(FileSystemSandboxEntry::new(
+-                PathUri::from_host_native_path("/dev/fd")?.into(),
++                PathUri::from_host_native_path(if cfg!(target_os = "linux") {
++                    "/proc"
++                } else {
++                    "/dev/fd"
++                })?
++                .into(),
+                 FileSystemAccessMode::Deny,
+             ));
+         } else {
+@@ -172,7 +188,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+                 collect_process_output_from_events(started.process).await?;
+             assert!(
+                 output.ends_with(&format!("restored:input-{index}")),
+-                "{output:?}"
++                "stdout={output:?}, stderr={errors:?}, exit_code={status:?}, closed={closed}"
+             );
+             if shell == "zsh" {
+                 assert!(
+-- 
+2.43.0
+

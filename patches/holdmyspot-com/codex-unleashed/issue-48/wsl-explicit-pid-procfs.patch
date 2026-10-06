@@ -1,0 +1,138 @@
+From 99083f5a81873145e226b028d460dbef8e90abfc Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Preserve procfs for explicit sandbox PID inheritance on WSL
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/48.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ .../tests/exec_server/pid_namespace_tests.rs  |  5 ++-
+ codex-rs/linux-sandbox/src/bwrap.rs           | 38 +++++++++++++++++--
+ .../tests/suite/managed_proxy.rs              | 14 ++++++-
+ 3 files changed, 51 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs b/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
+index 6129e7f..c1b2eb4 100644
+--- a/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
++++ b/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
+@@ -118,6 +118,7 @@ fi
+             // Notifications may precede the process/start response, so consume both.
+             let mut started = false;
+             let mut exit_code = None;
++            let mut process_events = Vec::new();
+             while !started || exit_code.is_none() {
+                 let mut line = String::new();
+                 anyhow::ensure!(stdout.read_line(&mut line).await? > 0, "executor closed");
+@@ -129,8 +130,10 @@ fi
+                 if message["method"] == "process/exited" {
+                     exit_code = message["params"]["exitCode"].as_i64();
+                 }
++                process_events.push(message);
+             }
+-            assert_eq!(exit_code, Some(if inherit { 0 } else { 1 }));
++            assert_eq!(exit_code, Some(if inherit { 0 } else { 1 }),
++                "inherit={inherit}, minimal={minimal}, events={process_events:?}");
+             send_json_line(&mut stdin, &serde_json::json!({
+                 "id": 3, "method": "fs/readFile", "params": {"path": file_uri, "sandbox": sandbox}
+             })).await?;
+diff --git a/codex-rs/linux-sandbox/src/bwrap.rs b/codex-rs/linux-sandbox/src/bwrap.rs
+index 319b6af..de17ad6 100644
+--- a/codex-rs/linux-sandbox/src/bwrap.rs
++++ b/codex-rs/linux-sandbox/src/bwrap.rs
+@@ -362,9 +362,13 @@ fn create_bwrap_flags(
+         args.push("--tmpfs".to_string());
+         args.push(WSL_INTEROP_DIR.to_string());
+     }
+-    if (options.mask_wsl_interop || options.mask_wslg_distro) && !options.mount_proc {
+-        // Without a fresh procfs, the root bind retains the host procfs.
+-        // Hide it so host process roots cannot restore the masked WSL views.
++    if (options.mask_wsl_interop || options.mask_wslg_distro)
++        && !options.mount_proc
++        && !options.inherit_pid_namespace
++    {
++        // Legacy fallback hides inherited procfs so foreign process roots cannot
++        // restore masked WSL views. Explicit PID inheritance retains procfs;
++        // its user namespace still blocks foreign root/cwd/fd links.
+         args.push("--tmpfs".to_string());
+         args.push("/proc".to_string());
+     }
+@@ -1538,6 +1542,34 @@ mod tests {
+         assert_pid_namespace_args(&FileSystemSandboxPolicy::unrestricted());
+     }
+ 
++    #[test]
++    fn wsl_masks_preserve_proc_only_with_explicit_pid_inheritance() {
++        for (mask_wsl_interop, mask_wslg_distro) in [(true, false), (false, true)] {
++            for inherit_pid_namespace in [false, true] {
++                let args = create_bwrap_command_args(
++                    vec!["/bin/true".to_string()],
++                    &PermissionProfile::read_only().file_system_sandbox_policy(),
++                    Path::new("/"),
++                    Path::new("/"),
++                    BwrapOptions {
++                        mount_proc: false,
++                        inherit_pid_namespace,
++                        mask_wsl_interop,
++                        mask_wslg_distro,
++                        ..Default::default()
++                    },
++                )
++                .expect("create bwrap args")
++                .args;
++
++                assert_eq!(
++                    args.windows(2).any(|args| args == ["--tmpfs", "/proc"]),
++                    !inherit_pid_namespace
++                );
++            }
++        }
++    }
++
+     fn assert_pid_namespace_args(policy: &FileSystemSandboxPolicy) {
+         for (mount_proc, inherit_pid_namespace) in [(true, false), (false, false), (false, true)] {
+             let args = create_bwrap_command_args(
+diff --git a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+index 7fd6851..7ae5b2f 100644
+--- a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
++++ b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+@@ -356,6 +356,10 @@ if (printf changed > "$CODEX_TEST_PROTECTED_FILE") 2>/dev/null; then exit 1; fi
+ test "$(readlink /proc/self/ns/user)" != "$CODEX_TEST_USER_NAMESPACE"
+ test "$(readlink /proc/self/ns/ipc)" != "$CODEX_TEST_IPC_NAMESPACE"
+ test "$(readlink /proc/self/ns/net)" != "$CODEX_TEST_NET_NAMESPACE"
++test -e "/proc/$CODEX_TEST_CALLER_PID/status"
++for link in root cwd fd/0; do
++    if readlink "/proc/$CODEX_TEST_CALLER_PID/$link"; then exit 1; fi
++done
+ while read -r key value rest; do
+     case "$key" in
+         CapEff:) test "$value" = 0000000000000000 ;;
+@@ -369,8 +373,10 @@ printf 'consistent PIDs; restrictions preserved\n'
+     let legacy_probe = r#"
+ set -eu
+ printf 'command started\n'
+-IFS=' ' read -r proc_pid rest < /proc/self/stat
+-test "$$" != "$proc_pid"
++if test -e /proc/self/stat; then
++    IFS=' ' read -r proc_pid rest < /proc/self/stat
++    test "$$" != "$proc_pid"
++fi
+ printf 'legacy proc fallback\n'
+ "#;
+ 
+@@ -392,6 +398,10 @@ printf 'legacy proc fallback\n'
+             "CODEX_TEST_PID_NAMESPACE".to_string(),
+             pid_namespace.display().to_string(),
+         );
++        env.insert(
++            "CODEX_TEST_CALLER_PID".to_string(),
++            std::process::id().to_string(),
++        );
+         env.insert(
+             "CODEX_TEST_PROTECTED_FILE".to_string(),
+             protected_file.display().to_string(),
+-- 
+2.43.0
+

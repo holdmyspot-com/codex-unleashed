@@ -1,0 +1,425 @@
+From 0e0df1e1a6335180f123dcc331d7f8e1d2156e08 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 5 Oct 2026 16:27:06 -0400
+Subject: [PATCH] bugfix: Keep active-goal parents available while children run
+
+Red: just test -p codex-app-server -E test(app_server_resumes_parent_after_background_child_finishes) starts an unsolicited active-goal parent turn before child completion; the ordinary control passes.
+Green: both public JSON-RPC parent scenarios pass. The goal remains Active during waiting, the parent answers an unrelated prompt while the child runs, and completion resumes the parent to complete its goal. Existing no-child goal continuation also passes.
+
+Scope: live-process best-effort delivery; no restart replay, task UI, or Monitor support.
+---
+ .../suite/v2/background_subagent_tests.rs     | 293 ++++++++++++++++++
+ .../app-server/tests/suite/v2/turn_start.rs   |   3 +
+ codex-rs/core/src/codex_thread.rs             |  34 ++
+ .../tests/suite/background_subagent_tests.rs  |   6 +
+ codex-rs/ext/goal/src/runtime.rs              |   8 +
+ 5 files changed, 344 insertions(+)
+ create mode 100644 codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
+
+diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
+new file mode 100644
+index 0000000..311b07f
+--- /dev/null
++++ b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
+@@ -0,0 +1,293 @@
++use super::*;
++use pretty_assertions::assert_eq;
++use std::time::Duration;
++
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum GoalScenario {
++    NoGoal,
++    ActiveGoal,
++}
++
++#[test_case::test_case(GoalScenario::NoGoal; "ordinary")]
++#[test_case::test_case(GoalScenario::ActiveGoal; "active_goal")]
++#[tokio::test]
++async fn app_server_resumes_parent_after_background_child_finishes(
++    goal: GoalScenario,
++) -> Result<()> {
++    let server = responses::start_mock_server().await;
++    let spawn_args = serde_json::to_string(&json!({
++        "message": "complete the background task",
++        "task_name": "worker",
++        "fork_turns": "none",
++    }))?;
++    let mut spawn_events = vec![responses::ev_response_created("spawn")];
++    if goal == GoalScenario::ActiveGoal {
++        spawn_events.push(responses::ev_function_call(
++            "background-create-goal",
++            "create_goal",
++            r#"{"objective":"Complete the delegated work after the worker finishes"}"#,
++        ));
++    }
++    spawn_events.extend([
++        responses::ev_function_call_with_namespace(
++            "background-spawn",
++            MULTI_AGENT_V2_NAMESPACE,
++            "spawn_agent",
++            &spawn_args,
++        ),
++        responses::ev_completed("spawn"),
++    ]);
++    responses::mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "delegate and remain available")
++                && !body_contains(req, "background-spawn")
++        },
++        responses::sse(spawn_events),
++    )
++    .await;
++    let child = responses::mount_response_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "complete the background task")
++                && !body_contains(req, "background-spawn")
++        },
++        responses::sse_response(responses::sse(vec![
++            responses::ev_response_created("child"),
++            responses::ev_assistant_message("child-message", "background task finished"),
++            responses::ev_completed("child"),
++        ]))
++        .set_delay(Duration::from_secs(5)),
++    )
++    .await;
++    responses::mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "background-spawn")
++                && !body_contains(req, "answer an unrelated question")
++                && !body_contains(req, "Message Type: FINAL_ANSWER")
++        },
++        responses::sse(vec![
++            responses::ev_response_created("yield"),
++            responses::ev_assistant_message("yield-message", "The worker is running."),
++            responses::ev_completed("yield"),
++        ]),
++    )
++    .await;
++    responses::mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "answer an unrelated question")
++                && !body_contains(req, "Message Type: FINAL_ANSWER")
++        },
++        responses::sse(vec![
++            responses::ev_response_created("aside"),
++            responses::ev_assistant_message("aside-message", "The unrelated answer."),
++            responses::ev_completed("aside"),
++        ]),
++    )
++    .await;
++    let resume_events = if goal == GoalScenario::ActiveGoal {
++        responses::mount_sse_once_match(
++            &server,
++            |req: &wiremock::Request| body_contains(req, "background-complete-goal"),
++            responses::sse(vec![
++                responses::ev_response_created("goal-complete"),
++                responses::ev_assistant_message(
++                    "resume-message",
++                    "The delegated task is complete.",
++                ),
++                responses::ev_completed("goal-complete"),
++            ]),
++        )
++        .await;
++        vec![
++            responses::ev_response_created("resume"),
++            responses::ev_function_call(
++                "background-complete-goal",
++                "update_goal",
++                r#"{"status":"complete"}"#,
++            ),
++            responses::ev_completed("resume"),
++        ]
++    } else {
++        vec![
++            responses::ev_response_created("resume"),
++            responses::ev_assistant_message("resume-message", "The delegated task is complete."),
++            responses::ev_completed("resume"),
++        ]
++    };
++    let result = responses::mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "Message Type: FINAL_ANSWER")
++                && !body_contains(req, "background-complete-goal")
++        },
++        responses::sse(resume_events),
++    )
++    .await;
++    let codex_home = TempDir::new()?;
++    MockResponsesConfig::new(&server.uri())
++        .enable_feature(Feature::Collab)
++        .enable_feature(Feature::MultiAgentV2)
++        .enable_feature(Feature::Goals)
++        .disable_feature(Feature::EnableRequestCompression)
++        .write(codex_home.path())?;
++    write_models_cache(codex_home.path()).await?;
++    let mut app = TestAppServer::builder()
++        .with_codex_home(codex_home.path())
++        .build_initialized()
++        .await?;
++    let root = app
++        .start_thread(ThreadStartParams {
++            model: Some("gpt-5.4".to_string()),
++            history_mode: Some(ThreadHistoryMode::Legacy),
++            ..Default::default()
++        })
++        .await?
++        .thread;
++
++    let first = app
++        .start_turn_and_wait_for_completion(TurnStartParams {
++            thread_id: root.id.clone(),
++            input: vec![V2UserInput::Text {
++                text: if goal == GoalScenario::ActiveGoal {
++                    "Create a formal goal, then delegate and remain available".to_string()
++                } else {
++                    "delegate and remain available".to_string()
++                },
++                text_elements: Vec::new(),
++            }],
++            ..Default::default()
++        })
++        .await?;
++    assert_eq!(first.turn.status, TurnStatus::Completed);
++    let unsolicited = timeout(
++        Duration::from_millis(300),
++        app.read_stream_until_matching_notification(
++            "premature parent continuation",
++            |notification| {
++                notification.method == "turn/started"
++                    && notification.params.as_ref().is_some_and(|params| {
++                        params["threadId"] == root.id && params["turn"]["id"] != first.turn.id
++                    })
++            },
++        ),
++    )
++    .await;
++    assert!(
++        unsolicited.is_err(),
++        "parent must stay idle until the child reports completion"
++    );
++    if goal == GoalScenario::ActiveGoal {
++        let state: codex_app_server_protocol::ThreadGoalGetResponse = app
++            .request(|request_id| ClientRequest::ThreadGoalGet {
++                request_id,
++                params: codex_app_server_protocol::ThreadGoalGetParams {
++                    thread_id: root.id.clone(),
++                },
++            })
++            .await?;
++        assert_eq!(
++            state.goal.context("created goal")?.status,
++            codex_app_server_protocol::ThreadGoalStatus::Active
++        );
++    }
++    let aside = app
++        .start_turn_and_wait_for_completion(TurnStartParams {
++            thread_id: root.id.clone(),
++            input: vec![V2UserInput::Text {
++                text: "answer an unrelated question".to_string(),
++                text_elements: Vec::new(),
++            }],
++            ..Default::default()
++        })
++        .await?;
++    assert_eq!(aside.turn.status, TurnStatus::Completed);
++    assert!(aside.turn.items.iter().any(|item| {
++        matches!(item, ThreadItem::AgentMessage { text, .. } if text == "The unrelated answer.")
++    }));
++    let child_requests: Vec<_> = child
++        .requests()
++        .into_iter()
++        .filter(|request| request.body_json()["client_metadata"]["thread_id"] != root.id)
++        .collect();
++    assert_eq!(child_requests.len(), 1);
++    let child_id = child_requests[0].body_json()["client_metadata"]["thread_id"]
++        .as_str()
++        .context("child thread ID")?
++        .to_string();
++    let child_state: codex_app_server_protocol::ThreadReadResponse = app
++        .request(|request_id| ClientRequest::ThreadRead {
++            request_id,
++            params: codex_app_server_protocol::ThreadReadParams {
++                thread_id: child_id,
++                include_turns: false,
++            },
++        })
++        .await?;
++    assert!(matches!(
++        child_state.thread.status,
++        codex_app_server_protocol::ThreadStatus::Active { .. }
++    ));
++    assert!(result.requests().iter().all(|request| {
++        request
++            .inputs_of_type("agent_message")
++            .iter()
++            .all(|message| message["author"] != "/root/worker")
++    }));
++
++    let notification = timeout(
++        DEFAULT_READ_TIMEOUT,
++        app.read_stream_until_matching_notification("automatic parent turn", |notification| {
++            notification.method == "turn/started"
++                && notification.params.as_ref().is_some_and(|params| {
++                    params["threadId"] == root.id
++                        && params["turn"]["id"] != first.turn.id
++                        && params["turn"]["id"] != aside.turn.id
++                })
++        }),
++    )
++    .await??;
++    let started: TurnStartedNotification =
++        serde_json::from_value(notification.params.context("turn params")?)?;
++    let notification = timeout(
++        DEFAULT_READ_TIMEOUT,
++        app.read_stream_until_matching_notification(
++            "automatic parent completion",
++            |notification| {
++                notification.method == "turn/completed"
++                    && notification.params.as_ref().is_some_and(|params| {
++                        params["threadId"] == root.id && params["turn"]["id"] == started.turn.id
++                    })
++            },
++        ),
++    )
++    .await??;
++    let completed: TurnCompletedNotification =
++        serde_json::from_value(notification.params.context("turn params")?)?;
++    assert_eq!(completed.turn.status, TurnStatus::Completed);
++    assert!(completed.turn.items.iter().any(|item| {
++        matches!(item, ThreadItem::AgentMessage { text, .. } if text == "The delegated task is complete.")
++    }));
++    let result_requests: Vec<_> = result
++        .requests()
++        .into_iter()
++        .filter(|request| {
++            !request
++                .body_json()
++                .to_string()
++                .contains("background-complete-goal")
++                && request
++                    .inputs_of_type("agent_message")
++                    .iter()
++                    .any(|message| message["author"] == "/root/worker")
++        })
++        .collect();
++    assert_eq!(result_requests.len(), 1);
++    assert_eq!(
++        result_requests[0].inputs_of_type("agent_message")[0]["author"],
++        "/root/worker"
++    );
++    Ok(())
++}
+diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
+index da6605b..b98ddcf 100644
+--- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
++++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
+@@ -121,6 +121,9 @@ use super::analytics::mount_analytics_capture;
+ use super::analytics::wait_for_analytics_event;
+ use super::analytics::wait_for_matching_analytics_event;
+ 
++#[path = "background_subagent_tests.rs"]
++mod background_subagents;
++
+ #[cfg(windows)]
+ const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
+ #[cfg(not(windows))]
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index 316af05..e29db2e 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -961,6 +961,40 @@ impl CodexThread {
+         self.session.multi_agent_version()
+     }
+ 
++    /// Reports whether a direct V2 child is running or starting with automatic
++    /// completion delivery enabled. Idle goal continuation can defer to that
++    /// child's result without blocking user input or loading historical children.
++    pub async fn has_running_background_subagents(&self) -> CodexResult<bool> {
++        if self.multi_agent_version() != Some(MultiAgentVersion::V2)
++            || !self
++                .session
++                .get_config()
++                .await
++                .features
++                .enabled(Feature::UnleashedBackgroundSubagents)
++        {
++            return Ok(false);
++        }
++
++        let control = &self.session.services.agent_control;
++        let children = control.child_agent_paths(self.session.thread_id).await;
++        if children.is_empty() {
++            return Ok(false);
++        }
++        let agents = control
++            .list(self.session.thread_id, None, &self.session_source, None)
++            .await?;
++        Ok(agents.into_iter().any(|agent| {
++            matches!(
++                agent.status,
++                AgentStatus::PendingInit | AgentStatus::Running
++            ) && agent
++                .metadata
++                .agent_path
++                .is_some_and(|path| children.contains(&path))
++        }))
++    }
++
+     /// Shares an immutable view of the live parent model context and retained host facts.
+     pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
+         self.session.conversation_history_snapshot().await
+diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
+index 210f3e5..9c894f7 100644
+--- a/codex-rs/core/tests/suite/background_subagent_tests.rs
++++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
+@@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
+         .build_with_auto_env(&server)
+         .await?;
+ 
++    assert!(!test.codex.has_running_background_subagents().await?);
+     test.submit_turn("Inspect the available tools.").await?;
+     let request = response.single_request();
+     let tools = request.body_json()["tools"].clone();
+@@ -380,6 +381,10 @@ async fn background_subagent_completion_coordinates_parent_turns(
+     let child_id = ThreadId::from_string(&wait_for_spawned_thread_id(&test).await?)?;
+     let child = test.thread_manager.get_thread(child_id).await?;
+     assert_eq!(child.agent_status().await, AgentStatus::Running,);
++    assert_eq!(
++        test.codex.has_running_background_subagents().await?,
++        !matches!(parent_state, BackgroundScenario::AutoResumeDisabled)
++    );
+     if matches!(
+         parent_state,
+         BackgroundScenario::Answering | BackgroundScenario::ParentInterrupted
+@@ -696,5 +701,6 @@ async fn background_subagent_simultaneous_results_serialize_parent_turns() -> Re
+         }
+     })
+     .await?;
++    assert!(!test.codex.has_running_background_subagents().await?);
+     Ok(())
+ }
+diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
+index 7d826ac..e3a24e8 100644
+--- a/codex-rs/ext/goal/src/runtime.rs
++++ b/codex-rs/ext/goal/src/runtime.rs
+@@ -466,6 +466,14 @@ impl GoalRuntimeHandle {
+             self.inner.accounting_state.clear_active_goal();
+             return Ok(());
+         }
++        if thread
++            .has_running_background_subagents()
++            .await
++            .map_err(|err| err.to_string())?
++        {
++            return Ok(());
++        }
++
+         let start_options = thread
+             .thread_extension_data()
+             .get::<TurnStartOptions>()

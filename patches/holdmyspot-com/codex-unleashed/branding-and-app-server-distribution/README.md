@@ -1,6 +1,6 @@
 # Codex Unleashed branding and build information
 
-- Branding patch applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Branding patch applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
 
 ## Intent
 
@@ -35,24 +35,28 @@ Source builds without a release build number show `dev` as the build number.
 
 The CLI tests check `--version` and `--build-info`. The TUI tests check the
 session header and `/status` header, including the full URL at narrow widths
-and the raw transcript. Run them from `codex-rs/` with a fixed build number as
-the test input:
+and the raw transcript. Run the maintained checks from the patched checkout root:
 
 ```sh
-export RUST_MIN_STACK=16777216
-CODEX_UNLEASHED_BUILD_NUMBER=15 cargo test -p codex-cli --test build_info
-CODEX_UNLEASHED_BUILD_NUMBER=15 cargo test -p codex-tui --lib session_header_
-CODEX_UNLEASHED_BUILD_NUMBER=15 cargo test -p codex-tui --lib status::tests::
+CODEX_UNLEASHED_BUILD_NUMBER=15 just test -p codex-cli -p codex-tui \
+  -E 'test(version_identifies_codex_unleashed_build) | test(build_info_reports_upstream_and_provider) | test(session_header_) | test(status::tests::) | test(exec_server_help_documents_remote_options) | binary(app_server_daemon)'
+just fmt-check
 ```
 
 The checks expect the build number, provider, and fork identity in their
-respective outputs. Run the CLI tests without
+respective outputs. Run the CLI build-information checks without
 `CODEX_UNLEASHED_BUILD_NUMBER` to check the `+dev` fallback.
+The daemon fixtures use a stable installer release and package metadata that
+matches the branded executable, including its build suffix.
+Startup, voice-caption, status-copy, and update fixtures also include the branded
+header and version. Their snapshots use the default `dev` build number. Run these
+checks without inherited terminal color overrides:
 
-## Formatting
-
-Run `cargo fmt --package codex-cli --package codex-tui -- --check` from
-`codex-rs/`.
+```sh
+env -u CODEX_UNLEASHED_BUILD_NUMBER -u WT_SESSION -u NO_COLOR \
+  just test -p codex-tui \
+  -E 'test(startup_draft::) | test(startup_frame_tests::) | test(realtime_requests::) | test(history_cell::tests::) | test(update_prompt::tests::) | test(slash_copy_picker_copies_status_fields_and_preserves_source_after_copying) | test(status_snapshot_uses_default_reasoning_when_config_empty)'
+```
 
 ## Package and executable version agreement
 

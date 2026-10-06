@@ -46,4 +46,5 @@ jobs:
         with:
           name: python-runtime-wheels
           path: dist/python-runtime/*
+          retention-days: 1
           if-no-files-found: error

@@ -1,10 +1,9 @@
-From f22216b667e1cf66436387063a473c6c7253f2e9 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@holdmyspot.com>
-Date: Wed, 30 Sep 2026 19:25:09 -0400
-Subject: [PATCH] config: publish the canonical schema after runtime feature
- patches
+From 61b822ca3bb67b91cfd50786048b7b07a4e1298c Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Mon, 5 Oct 2026 16:38:56 -0400
+Subject: [PATCH] build: Publish the canonical combined configuration schema
 
-Base: openai/codex rust-v0.159.2 ff6aec96948b70d94983af2641a6b67c94faeff5
+Base: openai/codex rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc
 Prerequisite: complete runtime patch queue, including base-configuration,
 collapsed-tool-activity, and issue-47390. Apply this generated artifact last.
 
@@ -30,6 +29,8 @@ TDD receipts (Rust 1.95.0):
   empty-state snapshot). Terminal palette variables are unset for regressions.
 
 No runtime behavior or additional feature flags are introduced here.
+
+Prerequisite: issue35 runtime series and all preceding release feature patches. Rebase regenerates the existing fixture with just write-config-schema; it introduces no unrelated feature behavior. Fresh complete-queue verification is required.
 ---
  codex-rs/config-schema/Cargo.toml             |  4 ++
  .../config-schema/tests/codex_unleashed.rs    | 48 +++++++++++++++++++
@@ -104,10 +105,10 @@ index 0000000..38c7a42
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index a662516..abfdac7 100644
+index f66f010..a849ca7 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -602,6 +602,21 @@
+@@ -612,6 +612,21 @@
        },
        "type": "object"
      },
@@ -129,8 +130,8 @@ index a662516..abfdac7 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -1160,13 +1175,13 @@
-             "unleashed_agent_fast_switching": {
+@@ -1179,13 +1194,13 @@
+             "unleashed_background_subagents": {
                "type": "boolean"
              },
 -            "unleashed_expanded_diff_previews": {
@@ -146,7 +147,7 @@ index a662516..abfdac7 100644
                "type": "boolean"
              },
              "use_legacy_landlock": {
-@@ -6667,6 +6682,14 @@
+@@ -6686,6 +6701,14 @@
        ],
        "description": "Cloud-owned feature settings."
      },
@@ -161,8 +162,8 @@ index a662516..abfdac7 100644
      "compact_prompt": {
        "description": "Compact prompt used for history compaction.",
        "type": "string"
-@@ -7199,13 +7222,13 @@
-         "unleashed_agent_fast_switching": {
+@@ -7227,13 +7250,13 @@
+         "unleashed_background_subagents": {
            "type": "boolean"
          },
 -        "unleashed_expanded_diff_previews": {
@@ -178,6 +179,3 @@ index a662516..abfdac7 100644
            "type": "boolean"
          },
          "use_legacy_landlock": {
--- 
-2.43.0
-

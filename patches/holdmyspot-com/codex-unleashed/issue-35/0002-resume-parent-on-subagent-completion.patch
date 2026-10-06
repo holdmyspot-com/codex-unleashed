@@ -1,0 +1,1468 @@
+From 1f19c02ba66479dfe8149bd3058166f581c88f4c Mon Sep 17 00:00:00 2001
+From: Codex Patch Verification <codex@example.invalid>
+Date: Tue, 6 Oct 2026 00:06:06 -0400
+Subject: [PATCH] feature: Resume available parents when V2 subagents finish
+
+Red: just test -p codex-app-server -E test(app_server_resumes_parent_after_background_child_finishes) on rust-v0.160.0 does not start the parent when its child completes.
+Green: production core requests verify idle resumption, ordinary conversation, active-turn delivery, failure, child/parent interruption, missing parent, opt-out, multiple children and follow-up identity. The combined maintained gate passes all 29 cases.
+
+Scope: live-process best-effort delivery; no restart replay, task UI, or Monitor support.
+
+Schema prerequisite: issue-34776/avoid-slow-agent-switching-and-resume.patch and preceding release-queue patches. Runtime behavior is unchanged by this schema-context rebase.
+
+Catalog compatibility red: full maintained just test fails scenario catalog snapshots after completion guidance changes, and board-only scenarios observe independent automatic child completion.
+Catalog compatibility green: just test -E "package(codex-core) & test(suite::scenarios::)" passes with catalog fingerprints regenerated for the new guidance and board/guardian explicit-turn fixtures explicitly disabling independent child completion. Snapshot updates preserve all content except catalog hashes and retain existing metadata.
+
+Additional rust-v0.160.0 explicit-turn fixture compatibility:
+The residency test uses explicit parent turns. The authorization fixture
+injects parent history after waiting for child completion. Disable independent
+completion callbacks in those fixtures so their existing contracts remain
+isolated from the background-parent feature. Production behavior is unchanged.
+
+RED: maintained affected-package run reports the residency timeout and
+authorization ordering failures (final-emitted-packages.log, exit100).
+GREEN: maintained focused compatibility run, 41/41 passed, exit0; includes
+four residency variants, authorization variants, daemon and help fixtures.
+
+Additional explicit-turn fixture isolation: access-program inheritance, role
+service tiers, cold-root resume and model-specific tool descriptions disable
+independent background callbacks in their sequence-only mocks. Dedicated
+background-parent tests retain default-on behavior. No runtime change.
+
+RED: fixture-final-workspace.log records seven affected failures (exit100).
+GREEN: maintained just test focused callback-fixture-focused.log passes 7/7
+cases, exit0, using the same emitted release queue with these fixture controls.
+
+Attribution fixture red: the final emitted full suite records three starts
+rather than two in child_turn_start_preserves_root_attribution. This
+two-turn attribution control opts out of independent completion, while
+dedicated background-parent checks retain the enabled feature.
+GREEN: maintained just test -p codex-core -p codex-code-mode-host
+-p codex-rmcp-client -E "test(child_turn_start_preserves_root_attribution) |
+test(background_subagent_)" passes 18/18, exit0. Maintained repository
+checks including just fmt-check also pass. Fresh emitted verification is pending.
+---
+ codex-rs/core/config.schema.json              |   6 +
+ codex-rs/core/src/agent/control/completion.rs |  25 +-
+ .../src/tools/handlers/multi_agents_tests.rs  |  12 +-
+ codex-rs/core/src/tools/spec_plan.rs          |  18 +-
+ codex-rs/core/tests/suite/agent_execution.rs  |   8 +
+ .../tests/suite/background_subagent_tests.rs  | 700 ++++++++++++++++++
+ .../core/tests/suite/cyber_access_program.rs  |   4 +
+ .../core/tests/suite/guardian_root_handoff.rs |   5 +
+ .../suite/guardian_subagent_authorization.rs  |   4 +
+ .../core/tests/suite/multi_agent_resume.rs    |   4 +
+ .../suite/scenarios_agent_message_board.rs    |   5 +
+ ...s__astra_active_environment_selection.snap |   4 +-
+ ...rios__astra_async_question_and_answer.snap |   4 +-
+ ...cenarios__astra_code_mode_call_timing.snap |   4 +-
+ ...arios__astra_disabled_executor_skills.snap |   4 +-
+ ...rios__astra_input_interrupts_response.snap |   4 +-
+ ...os__astra_input_yields_code_mode_cell.snap |   4 +-
+ ...tra_kickoff_remote_compaction_windows.snap |   8 +-
+ ...uite__scenarios__astra_plugin_refresh.snap |   8 +-
+ ...ra_settings_release_check_tool_shapes.snap |   4 +-
+ ...scenarios__code_mode_catalog_messages.snap |   4 +-
+ ...__catalog_indirect_namespace_prefixes.snap |   8 +-
+ ...ource_messages__mcp_resource_messages.snap |   4 +-
+ ...arios__multi_agent_catalog_parameters.snap |   4 +-
+ ...catalog_dedup__dedup_before_budgeting.snap |   4 +-
+ codex-rs/core/tests/suite/step_settings.rs    |   4 +
+ .../tests/suite/subagent_notifications.rs     |   8 +
+ .../core/tests/suite/subagent_service_tier.rs |   4 +
+ codex-rs/features/src/lib.rs                  |   8 +
+ 29 files changed, 839 insertions(+), 44 deletions(-)
+ create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
+
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index a635247..9a3b42d 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -1176,6 +1176,9 @@
+             "unleashed_agent_fast_switching": {
+               "type": "boolean"
+             },
++            "unleashed_background_subagents": {
++              "type": "boolean"
++            },
+             "use_agent_identity": {
+               "type": "boolean"
+             },
+@@ -7218,6 +7221,9 @@
+         "unleashed_agent_fast_switching": {
+           "type": "boolean"
+         },
++        "unleashed_background_subagents": {
++          "type": "boolean"
++        },
+         "use_agent_identity": {
+           "type": "boolean"
+         },
+diff --git a/codex-rs/core/src/agent/control/completion.rs b/codex-rs/core/src/agent/control/completion.rs
+index 0f09257..c24bead 100644
+--- a/codex-rs/core/src/agent/control/completion.rs
++++ b/codex-rs/core/src/agent/control/completion.rs
+@@ -1,6 +1,6 @@
+ //! Delivers terminal child results and completion activity to the agent tree.
+ //!
+-//! Sessions capture terminal state; the controller owns routing and queue-only delivery.
++//! Sessions capture terminal state; the controller owns routing and parent wakeup policy.
+ //! Delivery remains best effort, with tracing recorded only after the parent accepts it.
+ 
+ use super::LocalAgentControl;
+@@ -9,6 +9,7 @@ use crate::agent::api::AgentTurnOutcome;
+ use crate::agent_communication::AgentCommunicationContext;
+ use crate::agent_communication::AgentCommunicationKind;
+ use crate::session_prefix::format_inter_agent_completion_message;
++use codex_features::Feature;
+ use codex_protocol::AgentPath;
+ use codex_protocol::items::SubAgentActivityItem;
+ use codex_protocol::protocol::AgentStatus;
+@@ -92,16 +93,34 @@ impl LocalAgentControl {
+         ) else {
+             return;
+         };
++        let parent = async { self.runtime.upgrade()?.get_thread(parent_thread_id).await }.await;
++        let parent = match parent {
++            Ok(parent) => parent,
++            Err(err) => {
++                debug!("failed to resolve result recipient {parent_thread_id}: {err}");
++                return;
++            }
++        };
++        let trigger_turn = matches!(status, AgentStatus::Completed(_) | AgentStatus::Errored(_))
++            && parent
++                .config()
++                .await
++                .features
++                .enabled(Feature::UnleashedBackgroundSubagents);
++
+         // `communication` owns the message. Keep a second copy only when the
+         // recorder will actually need it after parent delivery succeeds.
+         let trace_message = trace.is_enabled().then(|| message.clone());
+-        let communication = InterAgentCommunication::new(
++        let mut communication = InterAgentCommunication::new(
+             child_agent_path.clone(),
+             parent_agent_path,
+             Vec::new(),
+             message,
+-            /*trigger_turn*/ false,
++            trigger_turn,
+         );
++        if trigger_turn {
++            communication.wake_policy = codex_protocol::MailboxWakePolicy::UnlessInterrupted;
++        }
+         let context =
+             AgentCommunicationContext::new(AgentCommunicationKind::Result, outcome.thread_id);
+         if let Err(err) = self
+diff --git a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
+index e7c0f2d..a7dd4bf 100644
+--- a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
++++ b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
+@@ -1928,12 +1928,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
+     )));
+ }
+ 
++#[test_case::test_case(true; "automatic")]
++#[test_case::test_case(false; "queue_only")]
+ #[tokio::test]
+-async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn() {
++async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn(automatic: bool) {
+     let (mut session, mut turn) = make_session_and_context().await;
+     let manager = thread_manager();
+     let mut config = turn.config.as_ref().clone();
+     let _ = config.features.enable(Feature::MultiAgentV2);
++    if !automatic {
++        config
++            .features
++            .disable(Feature::UnleashedBackgroundSubagents)
++            .unwrap();
++    }
+     set_turn_config(&mut turn, config);
+     let root = manager
+         .start_thread(StartThreadOptions::new((*turn.config).clone()))
+@@ -2056,7 +2064,7 @@ async fn multi_agent_v2_followup_task_completion_notifies_parent_on_every_turn()
+                                 if communication.author == worker_path
+                                     && communication.recipient == AgentPath::root()
+                                     && communication.other_recipients.is_empty()
+-                                    && !communication.trigger_turn =>
++                                    && communication.trigger_turn == automatic =>
+                             {
+                                 Some(communication.content)
+                             }
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index bb1474f..d67317f 100644
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -1315,6 +1315,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+                 agent_type_description(turn_context, context.default_agent_type_description);
+             let hide_spawn_agent_metadata =
+                 turn_context.config.multi_agent_v2.hide_spawn_agent_metadata;
++            let mut usage_hint_text = turn_context.config.multi_agent_v2.usage_hint_text.clone();
++            if turn_context
++                .config
++                .features
++                .enabled(Feature::UnleashedBackgroundSubagents)
++            {
++                let background_guidance = "You may finish your current turn while delegated work is still running. Keep ownership of the delegated task and tell the user which work remains pending; do not report it complete. A child turn's completion or failure automatically resumes an idle parent. During an active user turn, its result is delivered at a supported input boundary. Use wait_agent only when you need a result for your next step. A child turn's completion does not establish completion of background shells it still owns.";
++                usage_hint_text = Some(match usage_hint_text {
++                    Some(hint) => format!("{background_guidance}\n{hint}"),
++                    None => background_guidance.to_string(),
++                });
++            }
+             registry.register_trusted_with_exposure(
+                 multi_agent_v2_handler(
+                     SpawnAgentHandlerV2::new(
+@@ -1328,11 +1340,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+                                 .multi_agent_v2
+                                 .expose_spawn_agent_model_overrides,
+                             multi_agent_version: turn_context.multi_agent_version,
+-                            usage_hint_text: turn_context
+-                                .config
+-                                .multi_agent_v2
+-                                .usage_hint_text
+-                                .clone(),
++                            usage_hint_text,
+                         },
+                         spawn_agent_description.map(str::to_owned),
+                     ),
+diff --git a/codex-rs/core/tests/suite/agent_execution.rs b/codex-rs/core/tests/suite/agent_execution.rs
+index 480b5bb..99523d6 100644
+--- a/codex-rs/core/tests/suite/agent_execution.rs
++++ b/codex-rs/core/tests/suite/agent_execution.rs
+@@ -236,6 +236,10 @@ async fn child_turn_start_preserves_root_attribution() -> Result<()> {
+             };
+             config.features.enable(Feature::Collab).unwrap();
+             config.features.enable(Feature::MultiAgentV2).unwrap();
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .unwrap();
+         })
+         .build_with_auto_env(&server)
+         .await?;
+@@ -369,6 +373,10 @@ async fn v2_residency_reload_preserves_inherited_environment_and_tools(
+         .with_model("gpt-5.6-sol")
+         .with_exec_server_url("none")
+         .with_config(|config| {
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("residency fixture uses explicit parent turns");
+             for feature in [Feature::Collab, Feature::MultiAgentV2] {
+                 config
+                     .features
+diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
+new file mode 100644
+index 0000000..210f3e5
+--- /dev/null
++++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
+@@ -0,0 +1,700 @@
++use super::*;
++use codex_protocol::protocol::MultiAgentVersion;
++use pretty_assertions::assert_eq;
++use test_case::test_case;
++
++#[derive(Clone, Copy)]
++enum BackgroundScenario {
++    Idle,
++    Answering,
++    AutoResumeDisabled,
++    ChildInterrupted,
++    ParentInterrupted,
++    ParentRemoved,
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn background_subagent_results_preserve_multiple_children_and_followup_identity() -> Result<()>
++{
++    let server = start_mock_server().await;
++    let test = test_codex()
++        .with_model("koffing")
++        .with_config(|config| {
++            config
++                .features
++                .enable(Feature::Collab)
++                .expect("enable Collab");
++            config
++                .features
++                .enable(Feature::MultiAgentV2)
++                .expect("enable MultiAgentV2");
++            config.model_provider.supports_websockets = false;
++            config.model_provider.request_max_retries = Some(0);
++            config.model_provider.stream_max_retries = Some(0);
++        })
++        .build(&server)
++        .await?;
++
++    let mut identities = std::collections::HashMap::new();
++    for (index, (name, is_followup)) in [("first", false), ("second", false), ("first", true)]
++        .into_iter()
++        .enumerate()
++    {
++        let prompt = format!("delegate task {index}");
++        let call_id = format!("background-call-{index}");
++        let task = format!("child task {index}");
++        let result = format!("child result {index}");
++        let parent_answer = format!("handled result {index}");
++        let args = if is_followup {
++            json!({ "target": format!("/root/{name}"), "message": task })
++        } else {
++            json!({ "task_name": name, "message": task, "fork_turns": "none" })
++        };
++        let request_prompt = prompt.clone();
++        let request_call = call_id.clone();
++        mount_sse_once_match(
++            &server,
++            move |request: &wiremock::Request| {
++                body_contains(request, &request_prompt) && !body_contains(request, &request_call)
++            },
++            sse(vec![
++                ev_response_created(&format!("delegate-{index}")),
++                ev_function_call_with_namespace(
++                    &call_id,
++                    MULTI_AGENT_V2_NAMESPACE,
++                    if is_followup {
++                        "followup_task"
++                    } else {
++                        "spawn_agent"
++                    },
++                    &serde_json::to_string(&args)?,
++                ),
++                ev_completed(&format!("delegate-{index}")),
++            ]),
++        )
++        .await;
++        let request_task = task.clone();
++        let request_call = call_id.clone();
++        let child_response = mount_response_once_match(
++            &server,
++            move |request: &wiremock::Request| {
++                body_contains(request, &request_task) && !body_contains(request, &request_call)
++            },
++            sse_response(sse(vec![
++                ev_response_created(&format!("child-{index}")),
++                ev_assistant_message(&format!("child-message-{index}"), &result),
++                ev_completed(&format!("child-{index}")),
++            ]))
++            .set_delay(Duration::from_secs(1)),
++        )
++        .await;
++        let request_call = call_id.clone();
++        let request_result = result.clone();
++        mount_sse_once_match(
++            &server,
++            move |request: &wiremock::Request| {
++                body_contains(request, &request_call) && !body_contains(request, &request_result)
++            },
++            sse(vec![
++                ev_response_created(&format!("yield-{index}")),
++                ev_assistant_message(&format!("yield-message-{index}"), "The child is running."),
++                ev_completed(&format!("yield-{index}")),
++            ]),
++        )
++        .await;
++        let request_result = result.clone();
++        let resumed = mount_sse_once_match(
++            &server,
++            move |request: &wiremock::Request| body_contains(request, &request_result),
++            sse(vec![
++                ev_response_created(&format!("resume-{index}")),
++                ev_assistant_message(&format!("resume-message-{index}"), &parent_answer),
++                ev_completed(&format!("resume-{index}")),
++            ]),
++        )
++        .await;
++
++        test.submit_turn(&prompt).await?;
++        timeout(
++            Duration::from_secs(6),
++            wait_for_event(&test.codex, |event| {
++                matches!(event, EventMsg::TurnComplete(event)
++                if event.last_agent_message.as_deref() == Some(parent_answer.as_str()))
++            }),
++        )
++        .await?;
++        let root_id = test.session_configured.thread_id.to_string();
++        let child_requests: Vec<_> = child_response
++            .requests()
++            .into_iter()
++            .filter(|request| {
++                let body = request.body_json();
++                body["client_metadata"]["thread_id"] != root_id
++                    && serde_json::to_string(&body["input"])
++                        .expect("serialize request input")
++                        .contains(&task)
++            })
++            .collect();
++        assert_eq!(child_requests.len(), 1);
++        let child_id = child_requests[0].body_json()["client_metadata"]["thread_id"]
++            .as_str()
++            .expect("child thread ID")
++            .to_string();
++        if is_followup {
++            assert_eq!(identities.get(name), Some(&child_id));
++        } else {
++            identities.insert(name, child_id);
++        }
++        let parent_requests: Vec<_> = resumed
++            .requests()
++            .into_iter()
++            .filter(|request| {
++                request.body_json()["client_metadata"]["thread_id"] == root_id
++                    && request
++                        .inputs_of_type("agent_message")
++                        .iter()
++                        .any(|message| message["content"].to_string().contains(&result))
++            })
++            .collect();
++        assert_eq!(parent_requests.len(), 1);
++        let messages = parent_requests[0].inputs_of_type("agent_message");
++        let matching: Vec<_> = messages
++            .iter()
++            .filter(|message| message["content"].to_string().contains(&result))
++            .collect();
++        assert_eq!(matching.len(), 1);
++        assert_eq!(matching[0]["author"], format!("/root/{name}"));
++        assert_eq!(matching[0]["recipient"], "/root");
++    }
++    assert_ne!(identities["first"], identities["second"]);
++    Ok(())
++}
++
++#[test_case(MultiAgentVersion::V2, BackgroundScenario::Idle; "enabled")]
++#[test_case(MultiAgentVersion::V2, BackgroundScenario::AutoResumeDisabled; "disabled")]
++#[test_case(MultiAgentVersion::V1, BackgroundScenario::Idle; "legacy")]
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
++    version: MultiAgentVersion,
++    scenario: BackgroundScenario,
++) -> Result<()> {
++    let server = start_mock_server().await;
++    let response = core_test_support::responses::mount_sse_once(
++        &server,
++        sse(vec![
++            ev_response_created("inspect"),
++            ev_completed("inspect"),
++        ]),
++    )
++    .await;
++    let test = test_codex()
++        .with_model_info_override("gpt-5.2", move |model| {
++            model.multi_agent_version = Some(version);
++        })
++        .with_config(move |config| {
++            config
++                .features
++                .enable(Feature::Collab)
++                .expect("enable Collab");
++            if version == MultiAgentVersion::V2 {
++                config
++                    .features
++                    .enable(Feature::MultiAgentV2)
++                    .expect("enable MultiAgentV2");
++            } else {
++                config
++                    .features
++                    .disable(Feature::MultiAgentV2)
++                    .expect("disable MultiAgentV2");
++            }
++            if matches!(scenario, BackgroundScenario::AutoResumeDisabled) {
++                config
++                    .features
++                    .disable(Feature::UnleashedBackgroundSubagents)
++                    .expect("disable UnleashedBackgroundSubagents");
++            }
++            config.multi_agent_v2.tool_namespace = None;
++        })
++        .build_with_auto_env(&server)
++        .await?;
++
++    test.submit_turn("Inspect the available tools.").await?;
++    let request = response.single_request();
++    let tools = request.body_json()["tools"].clone();
++    let guidance_is_present = tools
++        .to_string()
++        .contains("You may finish your current turn while delegated work is still running.");
++    assert_eq!(
++        guidance_is_present,
++        version == MultiAgentVersion::V2
++            && !matches!(scenario, BackgroundScenario::AutoResumeDisabled)
++    );
++    Ok(())
++}
++
++#[test_case(CompletionScenario::Completed, BackgroundScenario::Idle; "completed")]
++#[test_case(CompletionScenario::TerminalError, BackgroundScenario::Idle; "failed")]
++#[test_case(CompletionScenario::Completed, BackgroundScenario::Answering; "answering")]
++#[test_case(CompletionScenario::Completed, BackgroundScenario::AutoResumeDisabled; "disabled")]
++#[test_case(CompletionScenario::Completed, BackgroundScenario::ChildInterrupted; "interrupted")]
++#[test_case(CompletionScenario::Completed, BackgroundScenario::ParentInterrupted; "parent_interrupted")]
++#[test_case(CompletionScenario::Completed, BackgroundScenario::ParentRemoved; "parent_removed")]
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn background_subagent_completion_coordinates_parent_turns(
++    scenario: CompletionScenario,
++    parent_state: BackgroundScenario,
++) -> Result<()> {
++    let server = start_mock_server().await;
++    let spawn_args = serde_json::to_string(&json!({
++        "message": "background work",
++        "task_name": "worker",
++    }))?;
++    mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "delegate background work") && !body_contains(req, SPAWN_CALL_ID)
++        },
++        sse(vec![
++            ev_response_created("spawn"),
++            ev_function_call_with_namespace(
++                SPAWN_CALL_ID,
++                MULTI_AGENT_V2_NAMESPACE,
++                "spawn_agent",
++                &spawn_args,
++            ),
++            ev_completed("spawn"),
++        ]),
++    )
++    .await;
++    let mut child_events = vec![ev_response_created("child")];
++    if matches!(scenario, CompletionScenario::Completed) {
++        child_events.extend([
++            ev_assistant_message("child-result", "background result"),
++            ev_completed("child"),
++        ]);
++    }
++    mount_response_once_match(
++        &server,
++        |req: &wiremock::Request| request_has_input_type(req, "agent_message"),
++        sse_response(sse(child_events)).set_delay(Duration::from_secs(2)),
++    )
++    .await;
++    mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, SPAWN_CALL_ID)
++                && !request_has_input_type(req, "agent_message")
++                && !body_contains(req, "unrelated question")
++        },
++        sse(vec![
++            ev_response_created("parent-yield"),
++            ev_assistant_message("parent-yield-message", "The worker is running."),
++            ev_completed("parent-yield"),
++        ]),
++    )
++    .await;
++    mount_response_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "unrelated question")
++                && !request_has_input_type(req, "agent_message")
++                && !body_contains(req, "summarize the background result")
++        },
++        sse_response(sse(vec![
++            ev_response_created("aside"),
++            ev_assistant_message("aside-message", "Here is the unrelated answer."),
++            ev_completed("aside"),
++        ]))
++        .set_delay(
++            if matches!(
++                parent_state,
++                BackgroundScenario::Answering | BackgroundScenario::ParentInterrupted
++            ) {
++                Duration::from_secs(3)
++            } else {
++                Duration::ZERO
++            },
++        ),
++    )
++    .await;
++    // Queue-only mail is consumed at a continuation boundary after the fresh user input.
++    mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "summarize the background result")
++                && !body_contains(req, "Message Type: FINAL_ANSWER")
++        },
++        sse(vec![
++            ev_response_created("manual-continuation"),
++            ev_function_call_with_namespace(
++                "manual-wait",
++                MULTI_AGENT_V2_NAMESPACE,
++                "wait_agent",
++                "{}",
++            ),
++            ev_completed("manual-continuation"),
++        ]),
++    )
++    .await;
++    let resumed = mount_sse_once_match(
++        &server,
++        |req: &wiremock::Request| {
++            body_contains(req, "Message Type: FINAL_ANSWER")
++                && body_contains(req, "Sender: /root/worker")
++        },
++        sse(vec![
++            ev_response_created("parent-resumed"),
++            ev_assistant_message(
++                "parent-resumed-message",
++                "I incorporated the background result.",
++            ),
++            ev_completed("parent-resumed"),
++        ]),
++    )
++    .await;
++    let test = test_codex()
++        .with_model("koffing")
++        .with_config(move |config| {
++            config
++                .features
++                .enable(Feature::Collab)
++                .expect("enable Collab");
++            config
++                .features
++                .enable(Feature::MultiAgentV2)
++                .expect("enable MultiAgentV2");
++            if matches!(parent_state, BackgroundScenario::AutoResumeDisabled) {
++                config
++                    .features
++                    .disable(Feature::UnleashedBackgroundSubagents)
++                    .expect("disable UnleashedBackgroundSubagents");
++            }
++            config.model_provider.supports_websockets = false;
++            config.model_provider.request_max_retries = Some(0);
++            config.model_provider.stream_max_retries = Some(0);
++        })
++        .build(&server)
++        .await?;
++
++    test.submit_turn("delegate background work").await?;
++    let child_id = ThreadId::from_string(&wait_for_spawned_thread_id(&test).await?)?;
++    let child = test.thread_manager.get_thread(child_id).await?;
++    assert_eq!(child.agent_status().await, AgentStatus::Running,);
++    if matches!(
++        parent_state,
++        BackgroundScenario::Answering | BackgroundScenario::ParentInterrupted
++    ) {
++        test.codex
++            .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++                text: "unrelated question".to_string(),
++                text_elements: Vec::new(),
++            }]))
++            .await?;
++        if matches!(parent_state, BackgroundScenario::ParentInterrupted) {
++            wait_for_event(&test.codex, |event| {
++                matches!(event, EventMsg::TurnStarted(_))
++            })
++            .await;
++            test.codex.submit(Op::Interrupt).await?;
++            wait_for_event(&test.codex, |event| {
++                matches!(event, EventMsg::TurnAborted(_))
++            })
++            .await;
++            assert_eq!(test.codex.agent_status().await, AgentStatus::Interrupted);
++        } else {
++            wait_for_event(&test.codex, |event| {
++                matches!(event, EventMsg::AgentMessage(event)
++                    if event.message == "Here is the unrelated answer.")
++            })
++            .await;
++        }
++    } else {
++        test.submit_turn("unrelated question").await?;
++        assert_eq!(
++            test.codex.agent_status().await,
++            AgentStatus::Completed(Some("Here is the unrelated answer.".to_string())),
++        );
++        assert_eq!(child.agent_status().await, AgentStatus::Running);
++    }
++
++    if matches!(parent_state, BackgroundScenario::ChildInterrupted) {
++        child.submit(Op::Interrupt).await?;
++        wait_for_event(&child, |event| matches!(event, EventMsg::TurnAborted(_))).await;
++        assert_eq!(child.agent_status().await, AgentStatus::Interrupted);
++    }
++    if matches!(parent_state, BackgroundScenario::ParentRemoved) {
++        assert!(
++            test.thread_manager
++                .remove_thread(&test.session_configured.thread_id)
++                .await
++                .is_some()
++        );
++    }
++    if matches!(
++        parent_state,
++        BackgroundScenario::AutoResumeDisabled
++            | BackgroundScenario::ChildInterrupted
++            | BackgroundScenario::ParentInterrupted
++            | BackgroundScenario::ParentRemoved
++    ) {
++        if matches!(
++            parent_state,
++            BackgroundScenario::AutoResumeDisabled
++                | BackgroundScenario::ParentInterrupted
++                | BackgroundScenario::ParentRemoved
++        ) {
++            wait_for_event(&child, |event| matches!(event, EventMsg::TurnComplete(_))).await;
++        }
++        assert!(
++            timeout(Duration::from_millis(300), async {
++                wait_for_event(&test.codex, |event| {
++                    matches!(event, EventMsg::TurnStarted(_))
++                })
++                .await;
++            })
++            .await
++            .is_err(),
++            "an opted-out parent or interrupted child must not start an automatic parent turn"
++        );
++        assert!(resumed.requests().is_empty());
++        if matches!(parent_state, BackgroundScenario::ParentRemoved) {
++            assert!(
++                test.thread_manager
++                    .get_thread(test.session_configured.thread_id)
++                    .await
++                    .is_err(),
++                "child completion must not recreate the removed parent"
++            );
++            return Ok(());
++        }
++        if matches!(parent_state, BackgroundScenario::ChildInterrupted) {
++            return Ok(());
++        }
++        let submitted = test
++            .codex
++            .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++                text: "summarize the background result".to_string(),
++                text_elements: Vec::new(),
++            }]))
++            .await?;
++        assert!(
++            matches!(submitted, codex_core::TurnInputSubmission::Started { .. }),
++            "manual turn admission: {submitted:?}"
++        );
++    }
++
++    let completed = timeout(Duration::from_secs(6), async {
++        wait_for_event(&test.codex, |event| {
++            matches!(event, EventMsg::TurnComplete(event)
++                if event.last_agent_message.as_deref() == Some("I incorporated the background result."))
++        })
++        .await;
++    })
++    .await;
++    if completed.is_err() {
++        for req in server.received_requests().await.unwrap_or_default() {
++            if req.url.path().ends_with("/responses") {
++                eprintln!(
++                    "request: notification={}, aside={}, manual={}",
++                    body_contains(&req, "Message Type: FINAL_ANSWER"),
++                    body_contains(&req, "unrelated question"),
++                    body_contains(&req, "summarize the background result")
++                );
++            }
++        }
++        eprintln!("parent status: {:?}", test.codex.agent_status().await);
++    }
++    completed.expect("child result must be delivered automatically when enabled, or on the next user turn when disabled");
++    let request = resumed.single_request();
++    let messages = request.inputs_of_type("agent_message");
++    assert_eq!(messages.len(), 1);
++    assert_eq!(messages[0]["author"], "/root/worker");
++    assert_eq!(messages[0]["recipient"], "/root");
++    let history = serde_json::to_string(&request.input())?;
++    assert!(history.contains("unrelated question"));
++    if !matches!(parent_state, BackgroundScenario::ParentInterrupted) {
++        assert!(history.contains("Here is the unrelated answer."));
++    }
++    let expected_payload = match scenario {
++        CompletionScenario::Completed => "background result",
++        CompletionScenario::TerminalError => "Agent errored:",
++    };
++    assert!(
++        messages[0]["content"]
++            .to_string()
++            .contains(expected_payload)
++    );
++    Ok(())
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn background_subagent_simultaneous_results_serialize_parent_turns() -> Result<()> {
++    let server = start_mock_server().await;
++    let test = test_codex()
++        .with_model("koffing")
++        .with_config(|config| {
++            config
++                .features
++                .enable(Feature::Collab)
++                .expect("enable Collab");
++            config
++                .features
++                .enable(Feature::MultiAgentV2)
++                .expect("enable MultiAgentV2");
++            config.model_provider.supports_websockets = false;
++            config.model_provider.request_max_retries = Some(0);
++            config.model_provider.stream_max_retries = Some(0);
++        })
++        .build(&server)
++        .await?;
++    let mut spawn_events = vec![ev_response_created("spawn-both")];
++    for name in ["first", "second"] {
++        spawn_events.push(ev_function_call_with_namespace(
++            &format!("spawn-{name}"),
++            MULTI_AGENT_V2_NAMESPACE,
++            "spawn_agent",
++            &serde_json::to_string(&json!({
++                "task_name": name,
++                "message": format!("simultaneous child {name}"),
++                "fork_turns": "none",
++            }))?,
++        ));
++        let child_prompt = format!("simultaneous child {name}");
++        mount_response_once_match(
++            &server,
++            move |request: &wiremock::Request| {
++                body_contains(request, &child_prompt)
++                    && !body_contains(request, "spawn-first")
++                    && !body_contains(request, "spawn-second")
++            },
++            sse_response(sse(vec![
++                ev_response_created(&format!("child-{name}")),
++                ev_assistant_message(
++                    &format!("result-{name}"),
++                    &format!("simultaneous result {name}"),
++                ),
++                ev_completed(&format!("child-{name}")),
++            ]))
++            .set_delay(Duration::from_secs(3)),
++        )
++        .await;
++    }
++    spawn_events.push(ev_completed("spawn-both"));
++    mount_sse_once_match(
++        &server,
++        |request: &wiremock::Request| {
++            body_contains(request, "delegate simultaneous work")
++                && !body_contains(request, "spawn-first")
++        },
++        sse(spawn_events),
++    )
++    .await;
++    mount_sse_once_match(
++        &server,
++        |request: &wiremock::Request| {
++            body_contains(request, "spawn-first")
++                && !body_contains(request, "Message Type: FINAL_ANSWER")
++        },
++        sse(vec![
++            ev_response_created("yield-both"),
++            ev_assistant_message("yield-both-message", "Both children are running."),
++            ev_completed("yield-both"),
++        ]),
++    )
++    .await;
++
++    // The first notification can arrive before the second, or both can be
++    // consumed together. Either path must preserve both authors and serialize turns.
++    wiremock::Mock::given(wiremock::matchers::method("POST"))
++        .and(|request: &wiremock::Request| body_contains(request, "Message Type: FINAL_ANSWER"))
++        .respond_with(|request: &wiremock::Request| {
++            let answer = if body_contains(request, "simultaneous result first")
++                && body_contains(request, "simultaneous result second")
++            {
++                "Handled both child results."
++            } else {
++                "Handled one child result."
++            };
++            sse_response(sse(vec![
++                ev_response_created("coordinate-results"),
++                ev_assistant_message("coordinate-results-message", answer),
++                ev_completed("coordinate-results"),
++            ]))
++            .set_delay(Duration::from_secs(1))
++        })
++        .mount(&server)
++        .await;
++    test.submit_turn("delegate simultaneous work").await?;
++    let mut running_children = 0;
++    for id in test.thread_manager.list_thread_ids().await {
++        if id != test.session_configured.thread_id {
++            let child = test.thread_manager.get_thread(id).await?;
++            assert_eq!(child.agent_status().await, AgentStatus::Running);
++            running_children += 1;
++        }
++    }
++    assert_eq!(running_children, 2);
++
++    let root_id = test.session_configured.thread_id.to_string();
++    timeout(Duration::from_secs(8), async {
++        let mut active_turn = None;
++        loop {
++            let event = test.codex.next_event().await.expect("parent event");
++            match event.msg {
++                EventMsg::TurnStarted(event) => {
++                    assert!(
++                        active_turn.replace(event.turn_id).is_none(),
++                        "parent turns must not overlap"
++                    );
++                }
++                EventMsg::TurnComplete(event) => {
++                    assert_eq!(active_turn.take().as_deref(), Some(event.turn_id.as_str()));
++                    let requests =
++                        core_test_support::responses::received_responses_requests(&server).await;
++                    let handled = requests
++                        .into_iter()
++                        .filter(|request| {
++                            request.body_json()["client_metadata"]["thread_id"] == root_id
++                        })
++                        .flat_map(|request| {
++                            let messages = request.inputs_of_type("agent_message");
++                            for name in ["first", "second"] {
++                                assert!(
++                                    messages
++                                        .iter()
++                                        .filter(|message| {
++                                            message["author"] == format!("/root/{name}")
++                                                && message["content"].to_string().contains(
++                                                    &format!("simultaneous result {name}"),
++                                                )
++                                        })
++                                        .count()
++                                        <= 1,
++                                    "a child result must not be duplicated in a model request"
++                                );
++                            }
++                            messages
++                        })
++                        .collect::<Vec<_>>();
++                    if event.last_agent_message.as_deref() == Some("Handled both child results.")
++                        && ["first", "second"].into_iter().all(|name| {
++                            handled.iter().any(|message| {
++                                message["author"] == format!("/root/{name}")
++                                    && message["recipient"] == "/root"
++                                    && message["content"]
++                                        .to_string()
++                                        .contains(&format!("simultaneous result {name}"))
++                            })
++                        })
++                    {
++                        break;
++                    }
++                }
++                EventMsg::Error(error) => panic!("parent error: {error:?}"),
++                _ => {}
++            }
++        }
++    })
++    .await?;
++    Ok(())
++}
+diff --git a/codex-rs/core/tests/suite/cyber_access_program.rs b/codex-rs/core/tests/suite/cyber_access_program.rs
+index e5021c0..5cbb019 100644
+--- a/codex-rs/core/tests/suite/cyber_access_program.rs
++++ b/codex-rs/core/tests/suite/cyber_access_program.rs
+@@ -288,6 +288,10 @@ async fn cyber_access_program_is_inherited_by_child_turns() -> Result<()> {
+             .with_auth(CodexAuth::create_dummy_chatgpt_auth_for_testing())
+             .with_model(if is_v2 { "gpt-5.6-sol" } else { "gpt-5.1" })
+             .with_config(move |config| {
++                config
++                    .features
++                    .disable(Feature::UnleashedBackgroundSubagents)
++                    .expect("access-program fixture uses explicit user turns");
+                 config
+                     .features
+                     .enable(Feature::Collab)
+diff --git a/codex-rs/core/tests/suite/guardian_root_handoff.rs b/codex-rs/core/tests/suite/guardian_root_handoff.rs
+index 310f950..321a106 100644
+--- a/codex-rs/core/tests/suite/guardian_root_handoff.rs
++++ b/codex-rs/core/tests/suite/guardian_root_handoff.rs
+@@ -61,6 +61,11 @@ pub(crate) async fn handoff_scenario() -> Result<Vec<ResponsesRequest>> {
+         })
+         .with_extensions(Arc::new(extensions.build()))
+         .with_config(|config| {
++            // Root-context handoff uses explicit turns rather than completion callbacks.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("disable automatic child completion");
+             for feature in [
+                 Feature::Collab,
+                 Feature::MultiAgentV2,
+diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
+index b06ee02..471036c 100644
+--- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
++++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
+@@ -734,6 +734,10 @@ async fn run_guardian_subagent_review(
+                 .expect("write messaging rewrite hook");
+         })
+         .with_config(move |config| {
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("authorization fixture injects explicit parent history");
+             if block_post_hook {
+                 config.model_provider.name = "Local compaction test provider".to_owned();
+                 config
+diff --git a/codex-rs/core/tests/suite/multi_agent_resume.rs b/codex-rs/core/tests/suite/multi_agent_resume.rs
+index d9de811..bd29013 100644
+--- a/codex-rs/core/tests/suite/multi_agent_resume.rs
++++ b/codex-rs/core/tests/suite/multi_agent_resume.rs
+@@ -139,6 +139,10 @@ fn configure_multi_agent_v2_with_role(
+     config: &mut codex_core::config::Config,
+     model_provider_base_url: &str,
+ ) {
++    config
++        .features
++        .disable(Feature::UnleashedBackgroundSubagents)
++        .expect("resume fixture uses explicit parent turns");
+     config
+         .features
+         .enable(Feature::Collab)
+diff --git a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
+index a0fcbfa..532ae19 100644
+--- a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
++++ b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
+@@ -72,6 +72,11 @@ fn done() -> String {
+ 
+ fn configure(config: &mut codex_core::config::Config) {
+     super::configure_scenario_catalog(config);
++    // Isolate board notices from independent child-completion notifications.
++    config
++        .features
++        .disable(Feature::UnleashedBackgroundSubagents)
++        .expect("disable automatic child completion");
+     config
+         .features
+         .enable(Feature::AgentMessageBoard)
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
+index edf6968..5286ba3 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
+@@ -6,7 +6,7 @@ Scenario: Astra starts in one workspace, switches for the next step of the activ
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a54e67018899e049):
++00:additional_tools/developer (3; hash=be6fa0a5b9c9a9ab):
+         - namespace/functions; hash=dead25325ac79c67
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra starts in one workspace, switches for the next step of the activ
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
+index a336413..ab0f1e7 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
+@@ -7,7 +7,7 @@ Scenario: Astra uses the catalog question schema to ask who a launch update is f
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=ae153e78f6722d2b):
++00:additional_tools/developer (3; hash=8a2ee6ab0496c119):
+         - namespace/functions; hash=f1de44f63c977f3d
+           - custom/exec
+           - function/wait
+@@ -15,7 +15,7 @@ Scenario: Astra uses the catalog question schema to ask who a launch update is f
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
+index 8da8c8e..d89fcea 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
+@@ -6,7 +6,7 @@ Scenario: Astra receives host and handler timings on completed and failed code-m
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a1bfbfab4176467b):
++00:additional_tools/developer (3; hash=6575810eb90ae689):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra receives host and handler timings on completed and failed code-m
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
+index ef38825..64c8cac 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_disabled_executor_skills.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=e33e09a2c1478914):
++00:additional_tools/developer (3; hash=136ccbb1d0465bb2):
+         - namespace/functions; hash=99a630cff25563aa
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
+index 19d62b4..fb4caff 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
+@@ -6,7 +6,7 @@ Scenario: Astra receives new user input after its unfinished response is interru
+ 
+ ## Window 1
+ -- request 1 (request) --
+-00:additional_tools/developer (3; hash=a1bfbfab4176467b):
++00:additional_tools/developer (3; hash=6575810eb90ae689):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra receives new user input after its unfinished response is interru
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
+index 8e905c2..5e12d1d 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
+@@ -6,7 +6,7 @@ Scenario: Astra continues after new user input yields a running code cell, then
+ 
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=b035de0e31ab087e):
++00:additional_tools/developer (3; hash=c70b3c08c63a20c8):
+         - namespace/functions; hash=a0b6a7ae1ecf9f28
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Astra continues after new user input yields a running code cell, then
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
+index e13d31a..2f60482 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_kickoff_remote_compaction_windows.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a1bfbfab4176467b):
++00:additional_tools/developer (3; hash=6575810eb90ae689):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -187,7 +187,7 @@ Settings:
+ ## Window 2 (after request 3: input diverged at item 02)
+ Settings: same as window 1
+ -- request 4 (turn) --
+-00:additional_tools/developer (3; hash=a1bfbfab4176467b):
++00:additional_tools/developer (3; hash=6575810eb90ae689):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -195,7 +195,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh.snap
+index f807b10..45ad2b3 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_plugin_refresh.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=a1bfbfab4176467b):
++00:additional_tools/developer (3; hash=6575810eb90ae689):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -110,7 +110,7 @@ Settings:
+ ## Window 2 (after request 2: input diverged at item 00)
+ Settings: same as window 1
+ -- request 3 (turn) --
+-00:additional_tools/developer (3; hash=7810769c6e12d379):
++00:additional_tools/developer (3; hash=9e6e195544171dbb):
+         - namespace/functions; hash=8c17932a39355f2d
+           - custom/exec
+           - function/wait
+@@ -118,7 +118,7 @@ Settings: same as window 1
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
+index 438f1ef..ec1170a 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_settings_release_check_tool_shapes.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=7810769c6e12d379):
++00:additional_tools/developer (3; hash=9e6e195544171dbb):
+         - namespace/functions; hash=8c17932a39355f2d
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
+index b3a706e..a452378 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_catalog_messages.snap
+@@ -32,14 +32,14 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=7a45a45148e7ea6a):
++  tools (7; hash=7497a214c123db28):
+     - custom/exec: Catalog exec instructions. Default yield: 1234 ms. `image(imageUrlOrItem: string | { image_url: s...; hash=a49b91fd82908e18
+     - function/wait: Catalog wait instructions: resume the yielded cell.; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=67bc0f04da3505b3
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - function/request_user_input_async: Ask the user one or more questions during ongoing work. Use this tool only to request missing inf...; args=[questions]; hash=d6d74f33db330162
+     - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+       - function/sleep
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
+index 47b71fd..cb95d89 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
+@@ -16,8 +16,8 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (4; hash=045ecf3b2d3b6af5):
+-    - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=e9cdd499ac568220
++  tools (4; hash=57bdc4dfdbc4c725):
++    - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=a9cd66a391528e90
+     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - web_search; hash=e214d4db1bc49e89
+@@ -48,8 +48,8 @@ Settings:
+ ## Window 2 (after request 2)
+ Settings: relative to window 1
+   model: "prefixes-cleared"
+-  tools (4; hash=dec6fdcb7bf3fec7):
+-    ~ custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=39e1eedcbc703718
++  tools (4; hash=b6acb9edc18f5ab7):
++    ~ custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=32648ccaecef4348
+ -- request 3 (turn) --
+ 00:message/developer:
+     <PERMISSIONS_INSTRUCTIONS>
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
+index 3a7c7f3..9d8f21d 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__mcp_resource_messages__mcp_resource_messages.snap
+@@ -32,14 +32,14 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (7; hash=4a2648ce3a65d327):
++  tools (7; hash=44d088172829a025):
+     - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=50ea9b7f60e145b5
+     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - function/request_user_input_async: Ask the user one or more questions during ongoing work. Use this tool only to request missing inf...; args=[questions]; hash=d6d74f33db330162
+     - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+       - function/sleep
+-    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++    - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+       - function/followup_task
+       - function/interrupt_agent
+       - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
+index d676a39..45c7fbb 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__multi_agent_catalog_parameters.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=78c6350cb8fdad81):
++00:additional_tools/developer (3; hash=a81930a970668a73):
+         - namespace/functions; hash=e7db0a45c4ec3157
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=170baa4086bfe3cb
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=e938954a908243d1
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
+index cee93d1..6d6c25b 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__skill_catalog_dedup__dedup_before_budgeting.snap
+@@ -16,7 +16,7 @@ Settings:
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=853a5788ad239c35):
++00:additional_tools/developer (3; hash=2ee33993ffac49cf):
+         - namespace/functions; hash=48b2ce07cd26a39b
+           - custom/exec
+           - function/wait
+@@ -24,7 +24,7 @@ Settings:
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=b263e3c84ad07c37
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=a3abf0cadd3b3be5
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/step_settings.rs b/codex-rs/core/tests/suite/step_settings.rs
+index c532200..e4d6cdd 100644
+--- a/codex-rs/core/tests/suite/step_settings.rs
++++ b/codex-rs/core/tests/suite/step_settings.rs
+@@ -2298,6 +2298,10 @@ async fn tool_messages_follow_mid_turn_model_changes() -> Result<()> {
+     .await;
+     let test = step_settings_test()
+         .with_config(move |config| {
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("tool-message fixture compares configured model descriptions");
+             config
+                 .features
+                 .enable(Feature::MultiAgentV2)
+diff --git a/codex-rs/core/tests/suite/subagent_notifications.rs b/codex-rs/core/tests/suite/subagent_notifications.rs
+index ccd44bb..4dbcee8 100644
+--- a/codex-rs/core/tests/suite/subagent_notifications.rs
++++ b/codex-rs/core/tests/suite/subagent_notifications.rs
+@@ -80,6 +80,9 @@ use super::direct_tool_metadata::tool_call_metadata;
+ #[path = "spawn_settings_tests.rs"]
+ mod spawn_settings_tests;
+ 
++#[path = "background_subagent_tests.rs"]
++mod background_subagent_tests;
++
+ const SPAWN_CALL_ID: &str = "spawn-call-1";
+ const MULTI_AGENT_V1_NAMESPACE: &str = "multi_agent_v1";
+ const MULTI_AGENT_V2_NAMESPACE: &str = "collaboration";
+@@ -2809,6 +2812,11 @@ async fn multi_agent_v2_peer_followup_completion_notifies_initiating_turn() -> R
+     let mut builder = test_codex()
+         .with_model("gpt-5.6-sol")
+         .with_config(|config| {
++            // This fixture starts each parent turn explicitly to check composer metadata.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("retain queue-only completion delivery");
+             for feature in [Feature::Collab, Feature::MultiAgentV2] {
+                 config
+                     .features
+diff --git a/codex-rs/core/tests/suite/subagent_service_tier.rs b/codex-rs/core/tests/suite/subagent_service_tier.rs
+index 74d5592..4da8c11 100644
+--- a/codex-rs/core/tests/suite/subagent_service_tier.rs
++++ b/codex-rs/core/tests/suite/subagent_service_tier.rs
+@@ -63,6 +63,10 @@ fn assert_request_service_tier(request: &ResponseMock, expected: Option<&str>) {
+ }
+ 
+ fn configure_priority_role(config: &mut Config) {
++    config
++        .features
++        .disable(Feature::UnleashedBackgroundSubagents)
++        .expect("service-tier fixture counts explicit parent requests");
+     for feature in [Feature::Collab, Feature::MultiAgentV2] {
+         config
+             .features
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index 51abee0..f3d9724 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -210,6 +210,8 @@ pub enum Feature {
+     Collab,
+     /// Enable task-path-based multi-agent routing.
+     MultiAgentV2,
++    /// Resume an idle parent when a background V2 subagent completes its turn.
++    UnleashedBackgroundSubagents,
+     /// Keep sampling through reasoning and commentary boundaries when agent mail arrives.
+     /// Pending mail is delivered at the next normal input boundary instead.
+     DeferMailboxPreemption,
+@@ -1361,6 +1363,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+         stage: Stage::UnderDevelopment,
+         default_enabled: false,
+     },
++    FeatureSpec {
++        id: Feature::UnleashedBackgroundSubagents,
++        key: "unleashed_background_subagents",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+         id: Feature::AgentMessageBoard,
+         key: "agent_message_board",
+-- 
+2.43.0
+

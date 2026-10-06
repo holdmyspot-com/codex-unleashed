@@ -108,6 +108,7 @@ jobs:
         with:
           name: repo-checks-ubuntu-latest
           path: upstream/codex-rs/target/**/cargo-timings/cargo-timing.html
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Write job summary

@@ -1,0 +1,75 @@
+From 1f84da0508c5283d7c8be420c1688e7605730d0d Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
+ over SSH
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/47.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ codex-rs/exec-server/src/shell_snapshot.rs       | 7 +++++++
+ codex-rs/exec-server/src/shell_snapshot_tests.rs | 4 ++--
+ codex-rs/exec-server/tests/exec_process.rs       | 4 ++++
+ 3 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
+index b0003f6..6054a5b 100644
+--- a/codex-rs/exec-server/src/shell_snapshot.rs
++++ b/codex-rs/exec-server/src/shell_snapshot.rs
+@@ -291,6 +291,13 @@ impl ShellSnapshotCache {
+             "{startup}if ! {restore} >/dev/null; then printf 'failed to restore shell snapshot\\n' >&2; fi\n{}",
+             params.argv[2]
+         );
++        if shell_type == ShellType::Bash {
++            // Remote noninteractive Bash can source .bashrc even with -p.
++            // Replay the captured startup state without running that file again.
++            prepared
++                .command
++                .insert(shell_start + 1, "--norc".to_string());
++        }
+ 
+         Ok(reader)
+     }
+diff --git a/codex-rs/exec-server/src/shell_snapshot_tests.rs b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+index c79eb72..3edd745 100644
+--- a/codex-rs/exec-server/src/shell_snapshot_tests.rs
++++ b/codex-rs/exec-server/src/shell_snapshot_tests.rs
+@@ -133,8 +133,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
+         for (prepared, reader) in [(&mut prepared, first), (&mut concurrent, second)] {
+             if let Some(reader) = reader {
+                 let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
+-                prepared.command[2] =
+-                    prepared.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
++                let script = prepared.command.last_mut().expect("shell command script");
++                *script = script.replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");
+             }
+         }
+         assert_eq!(
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index a075122..bfacbde 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -271,6 +271,9 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+         "HOME".to_string(),
+         home.path().to_string_lossy().into_owned(),
+     )]);
++    if use_sandbox {
++        configured_environment.insert("SSH_CLIENT".to_string(), "127.0.0.1 12345 22".to_string());
++    }
+     if posix_shell {
+         configured_environment.insert(
+             "ENV".to_string(),
+@@ -305,6 +308,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+             "HOME".to_string(),
+             "PATH".to_string(),
+             "PROFILE_*".to_string(),
++            "SSH_CLIENT".to_string(),
+         ],
+     };
+     let (command_prefix, expected_prefix) = if shell_name == "sh" {
+-- 
+2.43.0
+

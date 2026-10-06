@@ -112,6 +112,7 @@ jobs:
         with:
           name: cargo-timings-rust-ci-nextest-${{ inputs.artifact_id }}
           path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
+          retention-days: 1
           if-no-files-found: warn
 
       - name: Upload nextest archive
@@ -256,6 +257,7 @@ jobs:
         with:
           name: nextest-junit-rust-ci-${{ inputs.artifact_id }}-shard-${{ matrix.shard }}
           path: ${{ env.CARGO_TARGET_DIR }}/nextest/default/junit.xml
+          retention-days: 1
           if-no-files-found: warn
 
       - name: Check for a clean worktree

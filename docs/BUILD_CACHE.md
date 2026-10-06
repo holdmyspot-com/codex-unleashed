@@ -57,9 +57,8 @@ individual entries by URI; it does not provide the complete release-associated
 inventory needed to remove older versions while preserving shared data used by
 either retained version. This workflow does not delete BuildBuddy entries.
 
-Large GitHub Actions build artifacts (package archives and staged Windows
-binaries) expire after 7 days. Release metadata, source provenance, and failure
-markers remain for 30 days. Retrying publication with `artifact_run_id` requires
+GitHub Actions build artifacts, reports, logs, and metadata, including source
+provenance and failure markers, expire after 1 day. Retrying publication with `artifact_run_id` requires
 the original build artifacts to remain available; after expiry, rebuild the
 release. Published GitHub Release assets do not expire under this policy.
 

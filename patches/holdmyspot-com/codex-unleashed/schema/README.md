@@ -1,6 +1,6 @@
 # Codex Unleashed configuration schema
 
-- Applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
 
 ## Intent
 
@@ -19,6 +19,7 @@ None. Each feature patch registers and documents its own properties:
 
 - [Expanded diff previews README.md](../issue-47390/README.md)
 - [Collapsed tool activity README.md](../collapsed-tool-activity/README.md)
+- [Background subagent completion README.md](../issue-35/README.md)
 
 ## Dependencies and application order
 
@@ -35,11 +36,11 @@ with the output of `codex-write-config-schema`.
 
 ## Verification
 
-Run from `codex-rs/`:
+Run from the patched upstream checkout root:
 
 ```sh
-cargo test -p codex-config-schema --test codex_unleashed
-cargo test -p codex-core --lib config_schema_matches_fixture
+just test -p codex-config-schema --test codex_unleashed
+just test -p codex-core --lib -E 'test(config_schema_matches_fixture)'
 ```
 
 Both checks expect the generated schema to match the published fixture,
@@ -49,13 +50,13 @@ endings to match upstream's fixture comparison.
 
 ## Formatting
 
-Run from `codex-rs/`:
+Run from the patched upstream checkout root:
 
 ```sh
-cargo fmt --package codex-config-schema -- --check
+just fmt-check
 ```
 
 ## Upstream status
 
 This is generated metadata for downstream settings. Its base is
-[upstream 0.159.2](https://github.com/openai/codex/releases/tag/rust-v0.159.2).
+[upstream 0.160.0](https://github.com/openai/codex/releases/tag/rust-v0.160.0).

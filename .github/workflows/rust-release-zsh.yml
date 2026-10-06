@@ -89,6 +89,7 @@ jobs:
         with:
           name: codex-zsh-${{ matrix.target }}
           path: dist/zsh/${{ matrix.target }}/*
+          retention-days: 1
 
   darwin:
     name: Build zsh (macOS) - ${{ matrix.target }}
@@ -130,6 +131,7 @@ jobs:
         with:
           name: codex-zsh-${{ matrix.target }}
           path: dist/zsh/${{ matrix.target }}/*
+          retention-days: 1
 
   publish-release:
     needs:

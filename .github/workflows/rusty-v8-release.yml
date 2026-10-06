@@ -278,6 +278,7 @@ jobs:
         with:
           name: rusty-v8-${{ needs.metadata.outputs.v8_version }}-${{ matrix.variant }}-${{ matrix.target }}
           path: upstream/dist/${{ matrix.target }}/*
+          retention-days: 1
 
       - name: Save Bazel repository cache
         if: always()
@@ -425,6 +426,7 @@ jobs:
         with:
           name: rusty-v8-${{ needs.metadata.outputs.v8_version }}-ptrcomp-sandbox-${{ matrix.target }}
           path: dist/${{ matrix.target }}/*
+          retention-days: 1
 
   publish-release:
     needs:

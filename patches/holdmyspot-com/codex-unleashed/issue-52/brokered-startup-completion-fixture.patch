@@ -1,0 +1,153 @@
+From 5bee99a2d5fac39f63a5556fd1c789af9b77b204 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Follow exec sessions to completion in POSIX credential-broker
+ tests
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/52.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ codex-rs/core/tests/suite/approvals.rs | 106 ++++++++++++++++++++-----
+ 1 file changed, 85 insertions(+), 21 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/approvals.rs b/codex-rs/core/tests/suite/approvals.rs
+index fd229e3..569de91 100644
+--- a/codex-rs/core/tests/suite/approvals.rs
++++ b/codex-rs/core/tests/suite/approvals.rs
+@@ -3333,10 +3333,15 @@ GH_TOKEN = "{REAL_GITHUB_TOKEN}"
+ }
+ 
+ #[cfg(unix)]
+-#[test_case(true; "credential_startup")]
+-#[test_case(false; "ordinary_application_env")]
++#[test_case(true, 5_000; "credential_startup")]
++#[test_case(false, 5_000; "ordinary_application_env")]
++#[test_case(true, 250; "credential_startup_early_yield")]
++#[test_case(false, 250; "ordinary_application_env_early_yield")]
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+-async fn brokered_posix_startup_preserves_application_env(credential_startup: bool) -> Result<()> {
++async fn brokered_posix_startup_preserves_application_env(
++    credential_startup: bool,
++    yield_time_ms: u64,
++) -> Result<()> {
+     skip_if_no_network!(Ok(()));
+     const REAL_TOKEN: &str = "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+     let Some(shell) = codex_core::shell::get_shell(codex_core::shell::ShellType::Sh) else {
+@@ -3395,26 +3400,70 @@ ENV = "{}"
+         shlex::try_join([shell_path.as_str(), "-i", "-c", script])?
+     );
+     let call_id = "brokered-posix-startup";
+-    let responses = mount_sse_sequence(
++    let _ = mount_sse_once(
+         &server,
+-        vec![
+-            sse(vec![
+-                ev_response_created("posix-startup-1"),
+-                shell_event(
+-                    call_id,
+-                    &command,
+-                    /*timeout_ms*/ 5_000,
+-                    SandboxPermissions::UseDefault,
+-                )?,
+-                ev_completed("posix-startup-1"),
+-            ]),
+-            sse(vec![
+-                ev_assistant_message("posix-startup-done", "done"),
+-                ev_completed("posix-startup-2"),
+-            ]),
+-        ],
++        sse(vec![
++            ev_response_created("posix-startup-1"),
++            shell_event(
++                call_id,
++                &command,
++                yield_time_ms,
++                SandboxPermissions::UseDefault,
++            )?,
++            ev_completed("posix-startup-1"),
++        ]),
+     )
+     .await;
++    // An exec yield can precede startup completion; collect every output chunk.
++    let (output_tx, output_rx) = std::sync::mpsc::channel();
++    let responses = Mock::given(method("POST"))
++        .and(path("/v1/responses"))
++        .and(move |request: &Request| body_contains(request, call_id))
++        .respond_with(move |request: &Request| {
++            let body = if request
++                .headers
++                .get("content-encoding")
++                .is_some_and(|value| value == "zstd")
++            {
++                zstd::stream::decode_all(std::io::Cursor::new(&request.body))
++                    .expect("decode response request")
++            } else {
++                request.body.clone()
++            };
++            let body: Value = serde_json::from_slice(&body).expect("response request");
++            let input = body["input"].as_array().expect("response input");
++            let output = input
++                .iter()
++                .rev()
++                .find(|item| item["type"] == "function_call_output")
++                .expect("command or poll output");
++            output_tx
++                .send(output.clone())
++                .expect("record command output");
++            let response_id = format!("posix-startup-{}", input.len());
++            let event = if let Some(session_id) = output["output"]
++                .as_str()
++                .expect("tool output")
++                .lines()
++                .find_map(|line| line.strip_prefix("Process running with session ID "))
++            {
++                ev_function_call(
++                    &response_id,
++                    "write_stdin",
++                    &json!({
++                        "session_id": session_id.parse::<i32>().expect("session ID"),
++                        "chars": "",
++                        "yield_time_ms": 1_000,
++                    })
++                    .to_string(),
++                )
++            } else {
++                ev_assistant_message(&response_id, "done")
++            };
++            core_test_support::responses::sse_response(sse(vec![event, ev_completed(&response_id)]))
++        })
++        .mount_as_scoped(&server)
++        .await;
+     submit_turn_preserving_active_permission_profile(
+         &test,
+         "show the POSIX startup environment",
+@@ -3422,7 +3471,22 @@ ENV = "{}"
+     )
+     .await?;
+     wait_for_completion_without_approval(&test).await;
+-    let result = parse_result(&responses.requests()[1].function_call_output(call_id));
++    let mut outputs = output_rx.try_iter().collect::<Vec<_>>();
++    let final_output = outputs.pop().expect("final command output");
++    let mut result = parse_result(&final_output);
++    let mut stdout = String::new();
++    for output in outputs {
++        let output = output["output"].as_str().expect("partial command output");
++        stdout.push_str(
++            output
++                .split_once("Output:\n")
++                .expect("partial output marker")
++                .1,
++        );
++    }
++    stdout.push_str(&result.stdout);
++    result.stdout = stdout;
++    drop(responses);
+     assert_eq!(result.exit_code, Some(0), "command failed: {result:?}");
+     assert!(!result.stdout.contains(REAL_TOKEN));
+     let values = result.stdout.lines().collect::<Vec<_>>();
+-- 
+2.43.0
+

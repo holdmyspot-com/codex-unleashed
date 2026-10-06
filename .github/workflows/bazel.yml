@@ -129,6 +129,7 @@ jobs:
         with:
           name: bazel-execution-logs-test-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
@@ -221,6 +222,7 @@ jobs:
         with:
           name: bazel-execution-logs-test-x86_64-pc-windows-gnullvm-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
@@ -306,6 +308,7 @@ jobs:
         with:
           name: bazel-execution-logs-test-windows-native-x86_64-pc-windows-gnullvm
           path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
@@ -410,6 +413,7 @@ jobs:
         with:
           name: bazel-execution-logs-clippy-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
@@ -511,6 +515,7 @@ jobs:
         with:
           name: bazel-execution-logs-verify-release-${{ matrix.target }}
           path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache

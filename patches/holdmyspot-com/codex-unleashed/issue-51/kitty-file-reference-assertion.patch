@@ -1,0 +1,54 @@
+From 3a1468d48270cb91e52c3b23d20eb07044977f82 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Verify Kitty local-file references without substring false
+ positives
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/51.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ codex-rs/tui/src/pets/mod.rs | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/tui/src/pets/mod.rs b/codex-rs/tui/src/pets/mod.rs
+index f12313f..a38af85 100644
+--- a/codex-rs/tui/src/pets/mod.rs
++++ b/codex-rs/tui/src/pets/mod.rs
+@@ -346,9 +346,12 @@ mod tests {
+ 
+     #[test]
+     fn kitty_local_file_pet_image_uses_file_reference_without_inline_payload() {
++        use base64::Engine as _;
++
+         let dir = tempfile::tempdir().unwrap();
+         let frame = dir.path().join("frame.png");
+         std::fs::write(&frame, b"png").unwrap();
++        let expected_path = frame.canonicalize().unwrap();
+         let request = AmbientPetDraw {
+             frame,
+             protocol: ImageProtocol::KittyLocalFile,
+@@ -368,8 +371,16 @@ mod tests {
+         let output = String::from_utf8(output).unwrap();
+         assert!(output.contains("a=d,d=I,i=49374,q=2;"));
+         assert!(output.contains("\x1b[4;3H"));
+-        assert!(output.contains("a=T,t=f,f=100,c=4,r=2,q=2,i=49374;"));
+-        assert!(!output.contains("cG5n"));
++        let (_, payload) = output
++            .split_once("a=T,t=f,f=100,c=4,r=2,q=2,i=49374;")
++            .expect("transmits a local file reference");
++        let (payload, _) = payload
++            .split_once("\x1b\\")
++            .expect("terminates the image command");
++        let decoded = base64::engine::general_purpose::STANDARD
++            .decode(payload)
++            .expect("encodes the file reference as base64");
++        assert_eq!(decoded, expected_path.to_string_lossy().as_bytes());
+         assert!(output.contains("\x1b8"));
+     }
+ 
+-- 
+2.43.0
+

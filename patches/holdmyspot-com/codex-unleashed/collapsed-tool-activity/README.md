@@ -1,6 +1,6 @@
 # Collapsed tool activity
 
-- Applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
 
 ## Intent
 
@@ -84,15 +84,14 @@ the completed summary reopens its retained output.
 
 ## Verification
 
-Run the focused checks from `codex-rs/`:
+Run the focused checks from the patched upstream checkout root:
 
 ```sh
-export RUST_MIN_STACK=16777216
-cargo test -p codex-features --lib unleashed_collapsed_tool_activity
-cargo test -p codex-core --lib project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled
-cargo test -p codex-core --lib strict_config_rejects_unknown_codex_unleashed_settings
-cargo test -p codex-config-schema --test codex_unleashed
-cargo test -p codex-tui --lib unleashed_collapsed_tool_activity
+just test -p codex-features --lib -E 'test(unleashed_collapsed_tool_activity)'
+just test -p codex-core --lib -E 'test(project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled) | test(strict_config_rejects_unknown_codex_unleashed_settings)'
+just test -p codex-config-schema --test codex_unleashed
+just test -p codex-tui --lib -E 'test(unleashed_collapsed_tool_activity)'
+just test -p codex-thread-manager-sample
 ```
 
 The checks cover the default off state, explicit project opt-in, disabled
@@ -101,6 +100,8 @@ updates, narrow failure summaries, mouse hover and clicks, turn completion,
 resumed history, and retained output. Each check expects all selected tests
 to pass. The schema check runs on the complete patch queue and verifies that the
 published configuration schema matches the generated schema.
+The sample check verifies that its direct configuration initialization builds
+with the project's default setting.
 
 ## Formatting
 
@@ -119,4 +120,4 @@ the declared base with its documented prerequisite applied.
 
 This is a downstream presentation feature. The patch uses upstream's
 full-screen transcript and tool-disclosure controls. Its base is
-[upstream 0.159.2](https://github.com/openai/codex/releases/tag/rust-v0.159.2).
+[upstream 0.160.0](https://github.com/openai/codex/releases/tag/rust-v0.160.0).

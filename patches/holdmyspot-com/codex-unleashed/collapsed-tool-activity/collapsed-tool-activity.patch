@@ -1,102 +1,9 @@
-From 32b5bdaf08881e369dec52b02004da7a6b21d451 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@holdmyspot.com>
-Date: Wed, 30 Sep 2026 19:15:02 -0400
-Subject: [PATCH] feat(tui): collapse tool activity only with project opt-in
+From f4dde57748e7739a8817898f71c78eee23aca7ff Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:17:33 -0400
+Subject: [PATCH] Group tool activity with expandable retained output
 
-Require [codex_unleashed] collapsed_tool_activity = true (default false)
-and the stable default-on unleashed_collapsed_tool_activity feature flag.
-Use one Config gate for live command notifications and resumed history.
-Register the boolean setting even while the feature is disabled, retaining
-normal unknown-key warnings for undeclared fields and rejecting non-booleans.
-
-Prerequisite: base-configuration/codex-unleashed-configuration.patch
-
-Configuration TDD receipts (Rust 1.95.0, RUST_MIN_STACK=16777216):
-- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity_requires_project_opt_in
-  RED: default configuration groups 2 calls instead of 1.
-- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity
-  RED: 9 passed, 2 failed; default live and resumed grouping bypass opt-in.
-  GREEN: 11 passed, covering absent/false/true, feature-off, invalid boolean,
-  retained resumed commands/output/failures, and existing mouse/lifecycle behavior.
-- cargo test -p codex-core --lib project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled
-  RED: trusted project warns about codex_unleashed.collapsed_tool_activity.
-  GREEN: no startup warnings with feature disabled.
-- cargo test -p codex-core --lib codex_unleashed: all selected tests pass,
-  including strict rejection of undeclared fields and expanded-preview settings.
-
-Original presentation TDD and regression receipts:
-Group adjacent agent file reads and shell calls, keep full retained output
-available, highlight collapsed summaries on hover, and make whole section
-clicks toggle a gray expanded surface. Collapse this turn's sections at
-completion. Preserve upstream presentation when the new stable, default-on
-unleashed_collapsed_tool_activity flag is disabled.
-
-Base: openai/codex rust-v0.159.2
-ff6aec96948b70d94983af2641a6b67c94faeff5
-
-TDD receipts (commands run from codex-rs):
-- cargo test -p codex-features --lib unleashed_collapsed_tool_activity
-  RED: feature lookup missing; GREEN: 1 passed.
-- cargo test -p codex-tui --lib unleashed_collapsed_tool_activity
-  Behavioral RED gates before each production slice: missing shell grouping
-  (1 vs 4 calls); unhandled hover; header padding click did not expand;
-  live expanded section persisted after turn completion; auxiliary output
-  painted gray; output summary used "1 lines"; elapsed transcript tick was
-  None instead of Some(12); live unclassified unified shell had no activity.
-  GREEN: 9 passed, including feature-off and completed timer behavior.
-- cargo test -p codex-config-schema --test collapsed_tool_activity
-  RED: generated feature schema differs from maintained fixture;
-  GREEN: 1 passed, using the real schema CLI.
-- cargo test -p codex-features --lib: 43 passed.
-- cargo test -p codex-tui --lib exec_cell: 22 passed.
-- cargo test -p codex-tui --lib chatwidget::tests::exec_flow: 60 passed.
-- cargo test -p codex-tui --lib thread_transcript: 12 passed.
-- cargo fmt --package codex-features --package codex-config-schema
-  --package codex-tui -- --check: passed.
-
-Checks use upstream Rust 1.95.0 and RUST_MIN_STACK=16777216. The unmodified
-upstream base on local Rust 1.98 fails in codex-chatgpt's compiler query
-depth; the same source compiles with upstream's pin. No unmodified source
-or unrelated snapshots are changed to resolve that environmental failure.
-
-Additional regression evidence:
-- With inherited Windows Terminal color variables, pristine rust-v0.159.2
-  reproduces the same three pre-existing transcript-view failures as the
-  patched tree (follow_control, activity_focus footer, diff_source).
-- env -u WT_SESSION -u TERM -u COLORTERM <compiled codex-tui test binary>
-  transcript_view --test-threads=1: 197 passed on the patched tree.
-- The release tag's unmodified empty-state header snapshot expects v0.0.0
-  while its Cargo package is v0.159.2; the pristine release reproduces this
-  failure. No unrelated snapshot changes are included in this patch.
-- With the same terminal-variable cleanup, app::owned_transcript excluding
-  that pre-existing empty-state version snapshot: 42 passed.
-- All six downstream patches apply together to the declared upstream base.
-
-The configuration fixture keeps the new flag outside the existing downstream
-flags' insertion contexts so this patch applies independently and in the
-queue. JSON property order does not change the schema; the real schema CLI
-integration compares the complete schema as JSON values.
-
-Final combined-queue gates on the latest stable base:
-- cargo +1.95.0 test -p codex-tui --lib unleashed_collapsed_tool_activity:
-  9 passed; codex-config-schema integration: 1 passed.
-- codex-features --lib: 43 passed.
-- TUI related regression filters: exec_cell 23 passed, transcript_view 197
-  passed, exec_flow 60 passed, thread_transcript 12 passed, owned_transcript
-  43 passed (excluding the independently reproduced upstream empty-state
-  release-version snapshot).
-- The background-terminal patch owns the two updated completed-command
-  snapshots needed by the combined exec_flow gate; this feature patch does
-  not contain unrelated snapshot or background-hint changes.
-- Combined feature, schema, and TUI formatting check: passed.
-
-Formatting correction verification (local Rust 1.98.0 / rustfmt 1.9.0):
-- On rust-v0.159.2 with the documented prerequisite and this feature patch,
-  just fmt-check RED: exit 1, four grouped-import differences; other groups pass.
-- After splitting those imports, just fmt-check GREEN: exit 0, all groups pass.
-- The plain cargo fmt receipts above do not establish upstream's formatting
-  gate: stable rustfmt ignores the unstable TOML setting but honors the CLI
-  override supplied by upstream's formatter wrapper.
+Use the direct Config method reference to satisfy the maintained Clippy redundant-closure lint.
 ---
  codex-rs/config/src/config_toml.rs            |   2 +
  codex-rs/core/config.schema.json              |   6 +
@@ -104,6 +11,7 @@ Formatting correction verification (local Rust 1.98.0 / rustfmt 1.9.0):
  codex-rs/core/src/config/mod.rs               |  14 ++
  codex-rs/features/src/lib.rs                  |   8 +
  codex-rs/features/src/tests.rs                |  13 ++
+ codex-rs/thread-manager-sample/src/main.rs    |   1 +
  codex-rs/tui/src/app/history_ui.rs            |   3 +
  codex-rs/tui/src/app/owned_transcript.rs      |   1 +
  .../tui/src/app/owned_transcript_tests.rs     | 106 ++++++++++
@@ -128,40 +36,54 @@ Formatting correction verification (local Rust 1.98.0 / rustfmt 1.9.0):
  codex-rs/tui/src/transcript_view/text.rs      |   4 +
  .../tui/src/transcript_view/tool_activity.rs  | 113 +++++++++++
  codex-rs/tui/src/transcript_view_tests.rs     | 190 ++++++++++++++++++
- 30 files changed, 1078 insertions(+), 36 deletions(-)
+ 31 files changed, 1079 insertions(+), 36 deletions(-)
  create mode 100644 codex-rs/tui/src/exec_cell/tool_activity.rs
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 5634e8d..f1e3215 100644
+index 5ec7a2f..45960d2 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -166,2 +166,4 @@ pub struct CodexUnleashedToml {
+@@ -165,6 +165,8 @@ pub struct FeatureToggleToml {
+ #[schemars(deny_unknown_fields)]
+ pub struct CodexUnleashedToml {
      // Fields are registered by their owning feature patches.
 +    /// Group adjacent file reads and shell commands when the matching feature is enabled.
 +    pub collapsed_tool_activity: Option<bool>,
  }
+ 
+ /// Base config deserialized from ~/.codex/config.toml.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index af8f05e..e49ecaf 100644
+index ac6171c..facad95 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1162,2 +1162,5 @@
+@@ -1176,6 +1176,9 @@
+             "use_agent_identity": {
+               "type": "boolean"
              },
 +            "unleashed_collapsed_tool_activity": {
 +              "type": "boolean"
 +            },
              "use_legacy_landlock": {
-@@ -7192,2 +7195,5 @@
+               "type": "boolean"
+             },
+@@ -7212,6 +7215,9 @@
+         "use_agent_identity": {
+           "type": "boolean"
          },
 +        "unleashed_collapsed_tool_activity": {
 +          "type": "boolean"
 +        },
          "use_legacy_landlock": {
+           "type": "boolean"
+         },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
 index a2c6abd..05d78f1 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -144,2 +144,62 @@ command = "{command}"
+@@ -142,6 +142,66 @@ command = "{command}"
+     .await
+ }
  
 +#[tokio::test]
 +async fn project_codex_unleashed_collapsed_tool_activity_is_silent_when_feature_disabled()
@@ -224,17 +146,25 @@ index a2c6abd..05d78f1 100644
 +}
 +
  #[tokio::test]
+ async fn cli_overrides_resolve_relative_paths_against_cwd() -> std::io::Result<()> {
+     let codex_home = tempdir().expect("tempdir");
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 571fc2d..93d9318 100644
+index 60c6f65..ab5a9a3 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -795,2 +795,5 @@ pub struct Config {
+@@ -801,6 +801,9 @@ pub struct Config {
+     /// Override the terminal-specific default for copying transcript mouse selections.
+     pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
 +    /// Group adjacent file reads and shell commands when enabled.
 +    pub unleashed_collapsed_tool_activity: bool,
 +
      /// Right-click text paste fallback for the fullscreen TUI.
-@@ -1563,2 +1566,8 @@ impl ConfigBuilder {
+     pub tui_right_click_paste: codex_config::types::RightClickPaste,
+ 
+@@ -1569,6 +1572,12 @@ impl ConfigBuilder {
+ }
+ 
  impl Config {
 +    pub fn collapsed_tool_activity_enabled(&self) -> bool {
 +        self.features
@@ -243,7 +173,11 @@ index 571fc2d..93d9318 100644
 +    }
 +
      pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
-@@ -4508,2 +4517,7 @@ impl Config {
+         &self.sqlite
+     }
+@@ -4525,6 +4534,11 @@ impl Config {
+                 .as_ref()
+                 .map(|tui| tui.copy_on_select)
                  .unwrap_or_default(),
 +            unleashed_collapsed_tool_activity: cfg
 +                .codex_unleashed
@@ -251,16 +185,24 @@ index 571fc2d..93d9318 100644
 +                .and_then(|settings| settings.collapsed_tool_activity)
 +                .unwrap_or(false),
              tui_right_click_paste: cfg
+                 .tui
+                 .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index ebd6d89..bd686f5 100644
+index 4b05bdb..c091125 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -106,2 +106,4 @@ pub enum Feature {
+@@ -104,6 +104,8 @@ pub enum Feature {
+     ViewImage,
+     /// Allow registration of the built-in sleep tool.
      SleepTool,
 +    /// Group adjacent tool activity into collapsible transcript sections.
 +    UnleashedCollapsedToolActivity,
      /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
-@@ -1219,2 +1221,8 @@ pub const FEATURES: &[FeatureSpec] = &[
+     CodexHooks,
+     /// Store CLI auth in the encrypted local secrets backend when keyring storage is selected.
+@@ -1215,6 +1217,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+         stage: Stage::UnderDevelopment,
+         default_enabled: false,
      },
 +    FeatureSpec {
 +        id: Feature::UnleashedCollapsedToolActivity,
@@ -269,11 +211,15 @@ index ebd6d89..bd686f5 100644
 +        default_enabled: true,
 +    },
      FeatureSpec {
+         id: Feature::WriteStdinApproval,
+         key: "write_stdin_approval",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
 index e11d777..bbd33bc 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -881 +881,14 @@ code_mode = true
+@@ -879,3 +879,16 @@ code_mode = true
+         message
+     );
  }
 +
 +#[test]
@@ -288,29 +234,51 @@ index e11d777..bbd33bc 100644
 +    )]));
 +    assert!(!features.enabled(feature));
 +}
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index b137e6b..fa246cc 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -282,6 +282,7 @@ async fn new_config(
+         notify: None,
+         tui_notifications: TuiNotificationSettings::default(),
+         animations: true,
++        unleashed_collapsed_tool_activity: false,
+         tui_effects: Default::default(),
+         tui_rendering: Default::default(),
+         show_tooltips: true,
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
 index 52e7e02..5346ef6 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
-@@ -52,2 +52,5 @@ impl App {
+@@ -50,6 +50,9 @@ impl App {
+             self.merge_startup_warnings(tui, warnings);
+             return;
          }
 +        self.transcript_view
 +            .sync_tool_activity_turn(&self.transcript_cells, self.chat_widget.is_task_running());
 +        self.transcript_view.track_turn_tool_activity(cell.as_ref());
          let is_session_header = cell.as_any().is::<history_cell::SessionInfoCell>();
+         let cell: Arc<dyn HistoryCell> = cell.into();
+         if let Some(Overlay::Transcript(t)) = &mut self.overlay {
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index 2e07262..64d6761 100644
+index 23d40da..5f48381 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -50,2 +50,3 @@ impl App {
+@@ -49,6 +49,7 @@ impl App {
+         view.set_keymap_bindings(&self.keymap);
+         view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
 +        view.sync_tool_activity_turn(&self.transcript_cells, chat_widget.is_task_running());
          let detailed = view.is_detailed();
+         let active_ids = chat_widget.active_activity_ids();
+         let expanded = view.sync_live_activity(&self.transcript_cells, active_ids)
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
 index 46c0da6..010ec97 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -1514 +1514,107 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
+@@ -1512,3 +1512,109 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
+     tui.set_owned_screen(/*owned*/ false)?;
+     Ok(())
  }
 +
 +#[tokio::test]
@@ -419,10 +387,12 @@ index 46c0da6..010ec97 100644
 +    assert!(buffer_text(&buffer).contains("completion output"));
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index eb9c9cd..575e68f 100644
+index 7fafd6d..c173e14 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1707,5 +1707,9 @@ impl ChatWidget {
+@@ -1719,9 +1719,13 @@ impl ChatWidget {
+         self.bottom_pane.composer_is_empty() && !self.bottom_pane.is_in_paste_burst()
+     }
  
 +    pub(crate) fn is_task_running(&self) -> bool {
 +        self.bottom_pane.is_task_running()
@@ -433,27 +403,39 @@ index eb9c9cd..575e68f 100644
 -        self.bottom_pane.is_task_running()
 +        self.is_task_running()
      }
+ 
+     pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
 diff --git a/codex-rs/tui/src/chatwidget/activity_groups.rs b/codex-rs/tui/src/chatwidget/activity_groups.rs
 index 232d6c0..3584dfa 100644
 --- a/codex-rs/tui/src/chatwidget/activity_groups.rs
 +++ b/codex-rs/tui/src/chatwidget/activity_groups.rs
-@@ -33,3 +33,3 @@ impl ChatWidget {
+@@ -31,7 +31,7 @@ impl ChatWidget {
+             return Ok(());
+         }
          if let Some(exploration) = active.as_any_mut().downcast_mut::<ExecCell>()
 -            && exploration.is_exploring_cell()
 +            && exploration.is_groupable_cell()
          {
+             exploration.group.push_detail(Arc::from(cell));
+             self.bump_active_cell_revision();
 diff --git a/codex-rs/tui/src/chatwidget/command_lifecycle.rs b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
 index a0533b3..069c12f 100644
 --- a/codex-rs/tui/src/chatwidget/command_lifecycle.rs
 +++ b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
-@@ -43,3 +43,5 @@ impl ChatWidget {
+@@ -41,7 +41,9 @@ impl ChatWidget {
+             }
+             // Unified exec may be parsed as Unknown; keep the working indicator visible regardless.
              self.bottom_pane.ensure_status_indicator();
 -            if !is_standard_tool_call(&parsed_cmd) {
 +            let show_shell_activity = *source == ExecCommandSource::UnifiedExecStartup
 +                && self.config.collapsed_tool_activity_enabled();
 +            if !is_standard_tool_call(&parsed_cmd) && !show_shell_activity {
                  return;
-@@ -299,10 +301,13 @@ impl ChatWidget {
+             }
+         }
+@@ -297,14 +299,17 @@ impl ChatWidget {
+         } else {
+             self.flush_active_cell();
  
 -            self.transcript.active_cell = Some(Box::new(new_active_exec_command(
 -                id,
@@ -475,30 +457,46 @@ index a0533b3..069c12f 100644
 +                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled()),
 +            ));
              self.bump_active_cell_revision();
-@@ -444,3 +449,4 @@ impl ChatWidget {
+         }
+ 
+@@ -442,7 +447,8 @@ impl ChatWidget {
+                     source,
+                     /*interaction_input*/ None,
                      self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
 -                );
 +                )
 +                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
                  let completed = orphan.complete_call(&id, output, duration);
-@@ -459,3 +465,4 @@ impl ChatWidget {
+                 debug_assert!(completed, "new orphan exec cell should contain {id}");
+                 self.app_event_tx
+@@ -457,7 +463,8 @@ impl ChatWidget {
+                     source,
+                     /*interaction_input*/ None,
                      self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
 -                );
 +                )
 +                .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
                  let completed = cell.complete_call(&id, output, duration);
-@@ -468,4 +475,4 @@ impl ChatWidget {
+                 debug_assert!(completed, "new exec cell should contain {id}");
+                 if let Some(active) = self
+@@ -466,8 +473,8 @@ impl ChatWidget {
+                     .as_mut()
+                     .and_then(|cell| cell.as_any_mut().downcast_mut::<ExecCell>())
                      && !active.is_active()
 -                    && active.is_exploring_cell()
 -                    && cell.is_exploring_cell()
 +                    && active.is_groupable_cell()
 +                    && cell.is_groupable_cell()
                  {
+                     // Replayed commands have completion events without matching starts.
+                     active.group.calls.extend(cell.group.calls);
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 index 9e6c59c..3b6a28d 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-@@ -2250 +2250,171 @@ async fn apply_patch_request_omits_diff_summary_from_modal() -> anyhow::Result<(
+@@ -2248,3 +2248,173 @@ async fn apply_patch_request_omits_diff_summary_from_modal() -> anyhow::Result<(
+ 
+     Ok(())
  }
 +
 +#[tokio::test]
@@ -674,7 +672,9 @@ diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/cha
 index 6565e1e..aa65b62 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-@@ -221,2 +221,7 @@ pub(super) async fn make_chatwidget_manual_with_auth(
+@@ -219,6 +219,11 @@ pub(super) async fn make_chatwidget_manual_with_auth(
+     let app_event_tx = AppEventSender::new(tx_raw);
+     let (op_tx, op_rx) = unbounded_channel::<Op>();
      let (codex_home, mut cfg) = test_config().await;
 +    // Fixtures opt into the project setting; feature-specific tests enable the flag.
 +    cfg.unleashed_collapsed_tool_activity = true;
@@ -682,33 +682,42 @@ index 6565e1e..aa65b62 100644
 +        .set_enabled(Feature::UnleashedCollapsedToolActivity, false)
 +        .unwrap();
      let resolved_model = model_override
+         .map(str::to_owned)
+         .unwrap_or_else(|| get_model_offline_for_tests(cfg.model.as_deref()));
 diff --git a/codex-rs/tui/src/exec_cell/mod.rs b/codex-rs/tui/src/exec_cell/mod.rs
 index aaa32e1..5c93f90 100644
 --- a/codex-rs/tui/src/exec_cell/mod.rs
 +++ b/codex-rs/tui/src/exec_cell/mod.rs
-@@ -4,2 +4,3 @@ mod model;
+@@ -2,6 +2,7 @@ mod compact;
+ mod live_output;
+ mod model;
  mod render;
 +mod tool_activity;
  mod transcript;
+ 
+ pub(crate) use model::CommandOutput;
 diff --git a/codex-rs/tui/src/exec_cell/model.rs b/codex-rs/tui/src/exec_cell/model.rs
 index a99ea49..47c0b38 100644
 --- a/codex-rs/tui/src/exec_cell/model.rs
 +++ b/codex-rs/tui/src/exec_cell/model.rs
-@@ -81,2 +81,4 @@ pub(crate) struct ExecCell {
+@@ -79,16 +79,38 @@ pub(crate) struct ExecCall {
+ pub(crate) struct ExecCell {
+     pub(crate) group: ActivityGroup<ExecCall>,
      animations_enabled: bool,
 +    pub(super) collapsed_tool_activity: bool,
 +    pub(super) activity_started_at: Instant,
  }
-@@ -85,2 +87,3 @@ impl ExecCell {
+ 
+ impl ExecCell {
      pub(crate) fn new(call: ExecCall, animations_enabled: bool) -> Self {
 +        let activity_started_at = call.start_time.unwrap_or_else(Instant::now);
          Self {
-@@ -88,2 +91,4 @@ impl ExecCell {
+             group: ActivityGroup::new(vec![call]),
              animations_enabled,
 +            collapsed_tool_activity: false,
 +            activity_started_at,
          }
-@@ -91,2 +96,19 @@ impl ExecCell {
+     }
  
 +    pub(crate) fn with_collapsed_tool_activity(mut self, enabled: bool) -> Self {
 +        self.collapsed_tool_activity =
@@ -728,7 +737,11 @@ index a99ea49..47c0b38 100644
 +    }
 +
      pub(crate) fn add_call(
-@@ -109,3 +131,8 @@ impl ExecCell {
+         &mut self,
+         call_id: String,
+@@ -107,7 +129,12 @@ impl ExecCell {
+             duration: None,
+             interaction_input,
          };
 -        if self.is_exploring_cell() && Self::is_exploring_call(&call) {
 +        if self.is_groupable_cell()
@@ -738,7 +751,11 @@ index a99ea49..47c0b38 100644
 +                    && !call.is_unified_exec_interaction()))
 +        {
              self.group.calls.push(call);
-@@ -119,3 +146,7 @@ impl ExecCell {
+             true
+         } else {
+@@ -117,7 +144,11 @@ impl ExecCell {
+ 
+     /// Historical grouping uses the same compatibility and failure boundary as live calls.
      pub(crate) fn append_completed(&mut self, mut newer: Self) -> Result<(), Self> {
 -        if !self.is_exploring_cell() || self.should_flush() || !newer.is_exploring_cell() {
 +        if !self.is_groupable_cell()
@@ -747,16 +764,24 @@ index a99ea49..47c0b38 100644
 +            || self.collapsed_tool_activity != newer.collapsed_tool_activity
 +        {
              return Err(newer);
-@@ -164,3 +195,3 @@ impl ExecCell {
+         }
+         newer.group.details.prepend(
+@@ -162,7 +193,7 @@ impl ExecCell {
+ 
+     pub(crate) fn should_flush(&self) -> bool {
          // Exploration stays open for adjacent calls, including after a failed read/list/search.
 -        !self.is_exploring_cell() && self.group.calls.iter().all(|c| c.duration.is_some())
 +        !self.is_groupable_cell() && self.group.calls.iter().all(|c| c.duration.is_some())
      }
+ 
+     pub(crate) fn mark_failed(&mut self) {
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
 index d8b326d..a81648a 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
-@@ -212,4 +212,9 @@ fn activity_marker(start_time: Option<Instant>, animations_enabled: bool) -> Spa
+@@ -210,8 +210,13 @@ fn activity_marker(start_time: Option<Instant>, animations_enabled: bool) -> Spa
+ }
+ 
  impl HistoryCell for ExecCell {
 +    fn transcript_animation_tick(&self) -> Option<u64> {
 +        (self.collapsed_tool_activity && self.is_active())
@@ -767,24 +792,38 @@ index d8b326d..a81648a 100644
 -        if self.is_exploring_cell() {
 +        if self.is_groupable_cell() {
              self.group.push_detail(std::sync::Arc::from(cell));
-@@ -222,2 +227,5 @@ impl HistoryCell for ExecCell {
+             Ok(())
+         } else {
+@@ -220,6 +225,9 @@ impl HistoryCell for ExecCell {
+     }
+ 
      fn activity_disclosure(&self, width: u16) -> Option<ActivityDisclosure> {
 +        if self.collapsed_tool_activity {
 +            return Some(ActivityDisclosure::ToolActivity);
 +        }
          if self.is_exploring_cell() {
-@@ -237,2 +245,5 @@ impl HistoryCell for ExecCell {
+             return Some(ActivityDisclosure::Generic);
+         }
+@@ -235,6 +243,9 @@ impl HistoryCell for ExecCell {
+     }
+ 
      fn compact_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
 +        if self.collapsed_tool_activity {
 +            return self.tool_activity_lines(width);
 +        }
          if self.group.calls.iter().any(ExecCall::is_user_shell_command) {
-@@ -274,2 +285,5 @@ impl HistoryCell for ExecCell {
+             return self.display_hyperlink_lines(width);
+         }
+@@ -272,6 +283,9 @@ impl HistoryCell for ExecCell {
+     }
+ 
      fn display_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
 +        if self.collapsed_tool_activity {
 +            return self.tool_activity_lines(width);
 +        }
          if self.is_exploring_cell() {
+             self.exploring_display_lines(width)
+         } else {
 diff --git a/codex-rs/tui/src/exec_cell/tool_activity.rs b/codex-rs/tui/src/exec_cell/tool_activity.rs
 new file mode 100644
 index 0000000..ed89db9
@@ -947,31 +986,45 @@ diff --git a/codex-rs/tui/src/history_cell/activity_preview.rs b/codex-rs/tui/sr
 index 0a8ade1..8cadf54 100644
 --- a/codex-rs/tui/src/history_cell/activity_preview.rs
 +++ b/codex-rs/tui/src/history_cell/activity_preview.rs
-@@ -11,2 +11,3 @@ pub(crate) const DETAIL_PREVIEW_LINES: usize = 3;
+@@ -9,6 +9,7 @@ pub(crate) const DETAIL_PREVIEW_LINES: usize = 3;
+ /// Details an activity can reveal without materializing its expanded transcript.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
  pub(crate) enum ActivityDisclosure {
 +    ToolActivity,
      Generic,
+     /// Retained output lines not fully visible in the preview, excluding storage omissions.
+     OutputLines(usize),
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index babf331..f4937cf 100644
+index babf331..22e156c 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
-@@ -186,3 +186,5 @@ pub(crate) fn thread_items_to_transcript_cells(
+@@ -184,7 +184,9 @@ pub(crate) fn thread_items_to_transcript_cells(
+                     PendingActivity::flush(&mut pending, &mut cells);
+                 }
                  if let Some(command) = tools::CommandHistory::from_item(item) {
 -                    let newer = command.into_cell();
 +                    let newer = command.into_cell().with_collapsed_tool_activity(
-+                        config.is_some_and(|config| config.collapsed_tool_activity_enabled()),
++                        config.is_some_and(Config::collapsed_tool_activity_enabled),
 +                    );
                      if let Some(PendingActivity::Exploration(group)) = &mut pending {
+                         if let Err(newer) = group.append_completed(newer) {
+                             PendingActivity::flush(&mut pending, &mut cells);
 diff --git a/codex-rs/tui/src/thread_transcript/activity_pages.rs b/codex-rs/tui/src/thread_transcript/activity_pages.rs
 index 2f44848..2c25212 100644
 --- a/codex-rs/tui/src/thread_transcript/activity_pages.rs
 +++ b/codex-rs/tui/src/thread_transcript/activity_pages.rs
-@@ -31,3 +31,3 @@ pub(crate) fn fold_trailing_activity_details(
+@@ -29,7 +29,7 @@ pub(crate) fn fold_trailing_activity_details(
+             (group.call_ids().collect::<Vec<_>>(), &group.group.details)
+         } else {
              let group = older.as_any().downcast_ref::<ExecCell>()?;
 -            if !group.is_exploring_cell() || group.should_flush() {
 +            if !group.is_groupable_cell() || group.should_flush() {
                  return None;
-@@ -60,3 +60,9 @@ pub(crate) fn fold_trailing_activity_details(
+             }
+             (
+@@ -58,7 +58,13 @@ pub(crate) fn fold_trailing_activity_details(
+         group.group.details = retained;
+         Some(Arc::new(group))
      } else {
 -        let mut group = super::exploration_groups::completed_group(items)?;
 +        let mut group = super::exploration_groups::completed_group(
@@ -982,26 +1035,42 @@ index 2f44848..2c25212 100644
 +                .uses_collapsed_tool_activity(),
 +        )?;
          group.group.details = retained;
+         Some(Arc::new(group))
+     }
 diff --git a/codex-rs/tui/src/thread_transcript/exploration_groups.rs b/codex-rs/tui/src/thread_transcript/exploration_groups.rs
 index 5b6194e..b7d3f98 100644
 --- a/codex-rs/tui/src/thread_transcript/exploration_groups.rs
 +++ b/codex-rs/tui/src/thread_transcript/exploration_groups.rs
-@@ -17,3 +17,3 @@ pub(crate) fn join_exploration_groups(
+@@ -15,7 +15,7 @@ pub(crate) fn join_exploration_groups(
+     let older = older.as_any().downcast_ref::<ExecCell>()?;
+     let newer = newer.as_any().downcast_ref::<ExecCell>()?;
      let items = adjacent_items(older, newer, turns)?;
 -    let mut group = completed_group(items)?;
 +    let mut group = completed_group(items, newer.uses_collapsed_tool_activity())?;
      group.group.details = newer.group.details.clone();
-@@ -39,3 +39,3 @@ pub(crate) fn older_exploration_group(
+     group
+         .group
+@@ -37,7 +37,7 @@ pub(crate) fn older_exploration_group(
+         .take(older.group.calls.len())
+         .cloned()
          .collect::<Vec<_>>();
 -    let mut group = completed_group(&older_items)?;
 +    let mut group = completed_group(&older_items, newer.uses_collapsed_tool_activity())?;
      group.group.details = older.group.details.clone();
-@@ -49,3 +49,3 @@ fn adjacent_items<'a>(
+     Some(group)
+ }
+@@ -47,7 +47,7 @@ fn adjacent_items<'a>(
+     newer: &ExecCell,
+     turns: &'a [Turn],
  ) -> Option<&'a [ThreadItem]> {
 -    if !older.is_exploring_cell() || older.should_flush() || !newer.is_exploring_cell() {
 +    if !older.is_groupable_cell() || older.should_flush() || !newer.is_groupable_cell() {
          return None;
-@@ -60,3 +60,6 @@ fn adjacent_items<'a>(
+     }
+     let ids = older
+@@ -58,14 +58,19 @@ fn adjacent_items<'a>(
+     super::computer_groups::adjacent_activity_items(&ids, turns)
+ }
  
 -pub(super) fn completed_group(items: &[ThreadItem]) -> Option<ExecCell> {
 +pub(super) fn completed_group(
@@ -1009,7 +1078,9 @@ index 5b6194e..b7d3f98 100644
 +    collapsed_tool_activity: bool,
 +) -> Option<ExecCell> {
      let mut group: Option<ExecCell> = None;
-@@ -66,4 +69,6 @@ pub(super) fn completed_group(items: &[ThreadItem]) -> Option<ExecCell> {
+     for item in items {
+         if matches!(item, ThreadItem::Reasoning { .. }) {
+             continue;
          }
 -        let call = CommandHistory::from_item(item.clone())?.into_cell();
 -        if !call.is_exploring_cell() {
@@ -1018,11 +1089,15 @@ index 5b6194e..b7d3f98 100644
 +            .with_collapsed_tool_activity(collapsed_tool_activity);
 +        if !call.is_groupable_cell() {
              return None;
+         }
+         if let Some(group) = &mut group {
 diff --git a/codex-rs/tui/src/thread_transcript/tools_tests.rs b/codex-rs/tui/src/thread_transcript/tools_tests.rs
 index 267168c..0c4c5c4 100644
 --- a/codex-rs/tui/src/thread_transcript/tools_tests.rs
 +++ b/codex-rs/tui/src/thread_transcript/tools_tests.rs
-@@ -339 +339,68 @@ fn agent_tool_fallbacks_preserve_status_without_duplicating_v2_activity() {
+@@ -337,3 +337,70 @@ fn agent_tool_fallbacks_preserve_status_without_duplicating_v2_activity() {
+     }
+     insta::assert_snapshot!(snapshots.join("\n"));
  }
 +
 +#[tokio::test]
@@ -1092,18 +1167,28 @@ index 267168c..0c4c5c4 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 548f63c..54385a7 100644
+index f565f3a..fa36379 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
-@@ -21,2 +21,3 @@ mod snapshot;
+@@ -19,6 +19,7 @@ mod search;
+ mod selection;
+ mod snapshot;
  mod text;
 +mod tool_activity;
  mod turn_tip;
-@@ -264,2 +265,3 @@ impl TranscriptView {
+ 
+ use std::sync::Arc;
+@@ -264,6 +265,7 @@ impl TranscriptView {
+         if self.tail_visible {
+             self.unseen_activity = false;
          }
 +        self.render_tool_activity(buf);
          self.render_selection(buf);
-@@ -293,5 +295,16 @@ impl TranscriptView {
+         if self.history == TranscriptHistoryState::LoadingBeginning && self.is_following() {
+             self.scroll(current_cells, /*rows*/ 0);
+@@ -293,9 +295,20 @@ impl TranscriptView {
+             .disclosure
+             .keymap
              .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
 -        self.sync_live_layout(width, key, |width| {
 +        let changed = self.sync_live_layout(width, key, |width| {
@@ -1122,29 +1207,45 @@ index 548f63c..54385a7 100644
 +        }
 +        changed
      }
+ 
+     fn sync_live_layout(
 diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
 index ccbc373..90e8d82 100644
 --- a/codex-rs/tui/src/transcript_view/disclosure.rs
 +++ b/codex-rs/tui/src/transcript_view/disclosure.rs
-@@ -18,2 +18,5 @@ pub(super) struct Disclosure {
+@@ -16,6 +16,9 @@ use super::*;
+ 
+ pub(super) struct Disclosure {
      pub(super) expanded: HashSet<String>,
 +    pub(super) pointer: Option<(u16, u16)>,
 +    pub(super) turn_running: bool,
 +    pub(super) turn_tool_ids: HashSet<String>,
      pub(super) focused: Option<Vec<String>>,
-@@ -27,2 +30,5 @@ impl Default for Disclosure {
+     pub(super) live_ids: Vec<String>,
+     pub(super) keymap: RuntimeKeymap,
+@@ -25,6 +28,9 @@ impl Default for Disclosure {
+     fn default() -> Self {
+         Self {
              expanded: HashSet::new(),
 +            pointer: None,
 +            turn_running: false,
 +            turn_tool_ids: HashSet::new(),
              focused: None,
-@@ -108,2 +114,5 @@ impl TranscriptView {
+             live_ids: Vec::new(),
+             keymap: RuntimeKeymap::defaults(),
+@@ -106,6 +112,9 @@ impl TranscriptView {
+         area: Rect,
+         buf: &mut Buffer,
      ) {
 +        if layout.tool_activity.is_some() {
 +            return;
 +        }
          let focused = self
-@@ -150,6 +159,14 @@ impl TranscriptView {
+             .disclosure
+             .focused
+@@ -148,10 +157,18 @@ impl TranscriptView {
+         else {
+             return false;
          };
 -        if visible.layout.disclosure_row() != Some(visible.row)
 -            || column
@@ -1163,11 +1264,15 @@ index ccbc373..90e8d82 100644
 +                    .checked_sub(self.area.x)
 +                    .is_none_or(|column| !visible.layout.disclosure_columns().contains(&column)))
          {
+             return false;
+         }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index 83c7cc0..50ec5ad 100644
+index 0ced5d9..f4520d2 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -193,2 +193,14 @@ impl TranscriptView {
+@@ -192,9 +192,24 @@ impl TranscriptView {
+         event: MouseEvent,
+         cells: &[Arc<dyn HistoryCell>],
      ) -> Option<ViewAction> {
 +        let pointer_changed = if event.kind == MouseEventKind::Moved {
 +            let point = (event.column, event.row);
@@ -1182,17 +1287,21 @@ index 83c7cc0..50ec5ad 100644
 +            false
 +        };
          if let Some(action) = self.handle_follow_control_mouse(event) {
-@@ -196,2 +208,5 @@ impl TranscriptView {
+             return Some(action);
          }
 +        if event.kind == MouseEventKind::Moved {
 +            return pointer_changed.then_some(ViewAction::Changed);
 +        }
          if event.kind == MouseEventKind::Down(MouseButton::Left)
+             && event
+                 .modifiers
 diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
 index bac11e7..8acfd6f 100644
 --- a/codex-rs/tui/src/transcript_view/layout.rs
 +++ b/codex-rs/tui/src/transcript_view/layout.rs
-@@ -33,3 +33,13 @@ pub(super) fn activity_layout(
+@@ -31,7 +31,17 @@ pub(super) fn activity_layout(
+     let source_offset = (!lines.auxiliary.is_empty())
+         .then(|| TextLayout::new(lines.activity.clone(), width).text().len());
      lines.activity.extend(lines.auxiliary);
 -    let layout = TextLayout::new(lines.activity, width);
 +    let mut layout = TextLayout::new(lines.activity, width);
@@ -1207,30 +1316,48 @@ index bac11e7..8acfd6f 100644
 +        return layout;
 +    }
      if !has_details {
-@@ -51,3 +61,5 @@ pub(super) fn activity_layout(
+         return layout;
+     }
+@@ -49,7 +59,9 @@ pub(super) fn activity_layout(
+             }
+             label
          }
 -        (false, Some(ActivityDisclosure::Generic) | None) => "+ Show details".to_owned(),
 +        (false, Some(ActivityDisclosure::Generic | ActivityDisclosure::ToolActivity) | None) => {
 +            "+ Show details".to_owned()
 +        }
      };
+     match source_offset {
+         Some(offset) => layout.with_disclosure_control_at(label, offset),
 diff --git a/codex-rs/tui/src/transcript_view/text.rs b/codex-rs/tui/src/transcript_view/text.rs
 index 4487755..6486d28 100644
 --- a/codex-rs/tui/src/transcript_view/text.rs
 +++ b/codex-rs/tui/src/transcript_view/text.rs
-@@ -50,2 +50,3 @@ pub(super) struct TextLayout {
+@@ -48,6 +48,7 @@ pub(super) struct TextLayout {
+     width: u16,
+     pub(super) separated: bool,
      pub(super) disclosure: bool,
 +    pub(super) tool_activity: Option<super::tool_activity::ToolActivityPresentation>,
      disclosure_control: Option<DisclosureControl>,
-@@ -79,2 +80,4 @@ impl TextLayout {
+ }
+ 
+@@ -77,6 +78,8 @@ impl TextLayout {
+     /// Reflow the same displayed content revision, retaining styles, links and disclosure label.
+     pub(super) fn rewrap(&self, width: u16) -> Self {
          let mut layout = Self::from_logical(self.logical.clone(), width);
 +        layout.tool_activity = self.tool_activity;
 +        layout.disclosure = self.disclosure;
          if let Some(control) = &self.disclosure_control {
-@@ -400,2 +403,3 @@ impl TextLayout {
+             layout =
+                 layout.with_disclosure_control_at(control.label.clone(), control.source_offset);
+@@ -398,6 +401,7 @@ impl TextLayout {
+             width,
+             separated: false,
              disclosure: false,
 +            tool_activity: None,
              disclosure_control: None,
+         }
+     }
 diff --git a/codex-rs/tui/src/transcript_view/tool_activity.rs b/codex-rs/tui/src/transcript_view/tool_activity.rs
 new file mode 100644
 index 0000000..52be250
@@ -1354,7 +1481,9 @@ diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transc
 index 8492e22..c8762ff 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
-@@ -1094 +1094,191 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
+@@ -1092,3 +1092,193 @@ fn history_prefetch_counts_rows_in_preceding_entries() {
+         assert!(view.near_start(&cells));
+     }
  }
 +
 +#[test]

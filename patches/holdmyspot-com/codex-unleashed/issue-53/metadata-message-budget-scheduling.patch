@@ -1,0 +1,42 @@
+From ebb0428c895bbb86d8d1e86fb70d12a974dc7db9 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 11:54:07 -0400
+Subject: [PATCH] Reserve Nextest execution resources for expensive budget
+ tests
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/53.
+
+The scoped package run times out twice in both added unit cases at 60 seconds.
+Identical standalone controls pass in 41.289 and 42.996 seconds.
+Reserve execution resources while retaining inputs, assertions, deadline and retries.
+The original metadata red/green receipts and these controls remain in the task execution record.
+---
+ codex-rs/.config/nextest.toml | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index 6d87360..1cb6699 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -10,6 +10,18 @@ retries = 1
+ filter = 'package(codex-cli) & binary(daemon_startup) & test(requires_confirmation_to_disable_)'
+ slow-timeout = { period = "1m", terminate-after = 2 }
+ 
++[[profile.default.overrides]]
++# These cases repeatedly process large images or serialize budget-sized histories.
++# Run them without other tests competing for the pool.
++filter = '''
++package(codex-core) & (
++    test(message_budget_sheds_inventory_without_changing_tool_results_or_history) |
++    test(=image_preparation::tests::detail_policies_apply_the_expected_budgets) |
++    test(=tools::executed_tool_calls::request_metadata::tests::executed_tool_call_recorder_bounds_retained_history_and_keeps_latest_calls)
++)
++'''
++threads-required = "num-test-threads"
++
+ [[profile.default.overrides]]
+ # This case validates and copies both the initial and replacement debug package.
+ filter = 'package(codex-cli) & binary(app_server_daemon) & test(=packaged_daemon_start_and_explicit_replacement)'
+-- 
+2.43.0
+

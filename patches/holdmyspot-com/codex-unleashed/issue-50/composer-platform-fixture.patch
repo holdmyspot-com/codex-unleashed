@@ -1,0 +1,85 @@
+From 641cfeb415cfdd7d265c981f9a624ea82e6de5e9 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 10:19:15 -0400
+Subject: [PATCH] Make composer shortcut snapshots independent of host WSL
+ status
+
+Tracks https://github.com/holdmyspot-com/codex-unleashed/issues/50.
+
+Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
+Red and green reproductions are retained in the task-owned baseline repair execution record.
+The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
+---
+ codex-rs/tui/src/bottom_pane/chat_composer.rs | 29 +++++++++++++++++--
+ 1 file changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
+index 7272255..c9dd674 100644
+--- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
++++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
+@@ -599,6 +599,8 @@ impl ChatComposerConfig {
+ }
+ 
+ pub(crate) struct ChatComposer {
++    #[cfg(test)]
++    is_wsl: bool,
+     draft: DraftState,
+     popups: PopupState,
+     app_event_tx: AppEventSender,
+@@ -730,6 +732,8 @@ impl ChatComposer {
+         let default_vim_normal_keymap = default_keymap.vim_normal.clone();
+ 
+         let mut this = Self {
++            #[cfg(test)]
++            is_wsl: false,
+             draft: DraftState::new(),
+             popups: PopupState::default(),
+             app_event_tx,
+@@ -3844,14 +3848,18 @@ impl ChatComposer {
+     fn footer_props(&self) -> FooterProps {
+         let mode = self.footer_mode();
+         let is_wsl = {
+-            #[cfg(target_os = "linux")]
++            #[cfg(all(target_os = "linux", not(test)))]
+             {
+                 mode == FooterMode::ShortcutOverlay && crate::clipboard_paste::is_probably_wsl()
+             }
+-            #[cfg(not(target_os = "linux"))]
++            #[cfg(all(not(target_os = "linux"), not(test)))]
+             {
+                 false
+             }
++            #[cfg(test)]
++            {
++                mode == FooterMode::ShortcutOverlay && self.is_wsl
++            }
+         };
+ 
+         FooterProps {
+@@ -5106,6 +5114,23 @@ mod tests {
+         )
+     }
+ 
++    #[test]
++    fn shortcut_overlay_paste_hint_uses_fixture_platform() {
++        let (mut composer, _rx) = new_test_composer();
++        composer.footer.mode = FooterMode::ShortcutOverlay;
++
++        for (is_wsl, expected_hint) in [(false, "ctrl+v"), (true, "ctrl+⌥v")] {
++            composer.is_wsl = is_wsl;
++            let lines = crate::bottom_pane::shortcut_overlay::lines(&composer.footer_props(), 120);
++            let paste_line = lines
++                .iter()
++                .map(ToString::to_string)
++                .find(|line| line.contains("Paste image"))
++                .expect("shows the paste image shortcut");
++            assert!(paste_line.contains(expected_hint), "{paste_line}");
++        }
++    }
++
+     #[test]
+     fn parent_owned_thread_placeholder_snapshot() {
+         snapshot_composer_state(
+-- 
+2.43.0
+

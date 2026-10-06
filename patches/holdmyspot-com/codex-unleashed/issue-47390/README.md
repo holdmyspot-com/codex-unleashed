@@ -1,7 +1,7 @@
 # Expanded diff previews in the full-screen transcript
 
 - Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
 
 ## Intent
 
@@ -74,23 +74,25 @@ complete patch appears while long patch-failure diagnostics remain compact.
 
 ## Verification
 
-Run the focused configuration checks from `codex-rs/`:
+Run the focused configuration checks from the patched upstream checkout root:
 
 ```sh
-cargo test -p codex-config --lib config_toml_preserves_codex_unleashed_expanded_diff_previews
-cargo test -p codex-core --lib codex_unleashed_expanded_diff_previews
-cargo test -p codex-core --lib strict_config_rejects_unknown_codex_unleashed_settings
+just test -p codex-config --lib -E 'test(config_toml_preserves_codex_unleashed_expanded_diff_previews)'
+just test -p codex-core --lib -E 'test(codex_unleashed_expanded_diff_previews) | test(strict_config_rejects_unknown_codex_unleashed_settings)'
+just test -p codex-thread-manager-sample
 ```
 
 The checks expect the setting to survive TOML parsing, resolve to the requested
 runtime value, load from a trusted project without a warning when the feature
 is disabled, and reject unknown keys in strict mode.
 The runtime and project checks cover absent, `true`, and `false` values.
+The sample check verifies that its direct configuration initialization builds
+with the project's default setting.
 
-On the complete patch queue, run `cargo test -p codex-core --lib
-config_schema_matches_fixture` to verify the shared published schema.
+On the complete patch queue, run `just test -p codex-core --lib -E
+'test(config_schema_matches_fixture)'` to verify the shared published schema.
 
-Run the focused TUI check from `codex-rs/`:
+Run the focused TUI check from the patched upstream checkout root:
 
 ```sh
 just test -p codex-tui -E 'test(expanded_diff_previews_are_configurable_for_owned_transcript)'
@@ -101,5 +103,5 @@ expects patch-failure diagnostics to stay compact.
 
 ## Formatting
 
-Run `cargo fmt --package codex-config --package codex-core -- --check` from
-`codex-rs/`.
+Run `just fmt-check` from the patched upstream checkout root. All upstream
+formatter groups must pass.
