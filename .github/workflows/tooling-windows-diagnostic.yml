@@ -1,0 +1,28 @@
+name: tooling-windows-diagnostic
+
+# Temporary native launcher reproduction; the complete tooling-ci matrix remains the acceptance gate.
+on:
+  push:
+    branches: [verify/jdk27-maven-migration]
+    paths:
+      - tooling/**
+      - .github/workflows/tooling-windows-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  launcher:
+    name: Focused Windows standalone launcher verification
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '27'
+      - name: Verify standalone launcher boundaries
+        shell: bash
+        run: tooling/mvnw -pl distribution -am -Dtest=DistributionMainTest -Dsurefire.failIfNoSpecifiedTests=false verify
