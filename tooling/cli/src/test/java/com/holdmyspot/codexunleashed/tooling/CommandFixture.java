@@ -47,7 +47,7 @@ public final class CommandFixture
 			}
 			case "capture" ->
 			{
-				System.out.print(System.getProperty("user.dir") + "\n" + args[1]);
+				System.out.print(System.getProperty("user.dir") + "\n" + args[1] + " λ");
 				System.err.print("diagnostic".repeat(20_000));
 				System.exit(7);
 			}

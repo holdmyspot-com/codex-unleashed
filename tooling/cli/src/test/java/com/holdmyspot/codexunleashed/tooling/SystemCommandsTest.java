@@ -14,7 +14,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 /**
- * Verifies external-command execution with a portable Java child process.
+ * Verifies external-command execution with portable child processes.
  */
 public final class SystemCommandsTest
 {
@@ -36,6 +36,10 @@ public final class SystemCommandsTest
 	{
 		for (String payload : List.of("spaces $literal; `literal` \"quoted\"", "\"quoted\"", "", "a\\", "a\\\"b"))
 			assertEquals(SystemCommands.run(fixtureCommand("echo", payload)), payload);
+
+		String unicodePayload = "literal λ \"quoted\"";
+		assertEquals(SystemCommands.run(List.of("node", "-e", "process.stdout.write(process.argv[1])", unicodePayload)).
+			codePoints().toArray(), unicodePayload.codePoints().toArray());
 	}
 
 	/**
@@ -51,11 +55,12 @@ public final class SystemCommandsTest
 		try
 		{
 			Path temporaryDirectory = Files.createDirectory(root.resolve("captures"));
-			String payload = "literal λ $quoted";
+			String payload = "literal $quoted";
 			SystemCommands.Result result = SystemCommands.capture(fixtureCommand("capture", payload), root,
 				temporaryDirectory);
 			assertEquals(result.status(), 7);
-			assertEquals(result.stdout().codePoints().toArray(), (root.toRealPath() + "\n" + payload).codePoints().toArray());
+			assertEquals(result.stdout().codePoints().toArray(), (root.toRealPath() + "\n" + payload + " λ").
+				codePoints().toArray());
 			assertEquals(result.stderr(), "diagnostic".repeat(20_000));
 			List<String> malformed = fixtureCommand("invalid-utf8", "");
 			expectThrows(IOException.class, () -> SystemCommands.capture(malformed, root, temporaryDirectory));
