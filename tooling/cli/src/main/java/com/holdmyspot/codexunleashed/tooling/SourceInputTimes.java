@@ -34,7 +34,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Preserves access and modification timestamps through the Unix JDK conversion defect.
+	 * Preserves access and modification timestamps through native JDK conversion defects.
 	 *
 	 * @param path the file or directory
 	 * @param time the required timestamp
@@ -50,12 +50,14 @@ final class SourceInputTimes
 			nanos.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0;
 		if (unix && (negativeFraction || outsideLong))
 			UnixFileTimes.set(path, instant);
+		else if (isWindows(path) && (negativeFraction || outsideLong))
+			WindowsFileTimes.set(path, instant);
 		else
 			Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(time, time, null);
 	}
 
 	/**
-	 * Reads exact modification time through the Unix JDK overflow conversion defect.
+	 * Reads exact modification time through native JDK overflow conversion defects.
 	 *
 	 * @param path the source or ancestor directory
 	 * @return its precise native timestamp
@@ -66,9 +68,13 @@ final class SourceInputTimes
 		Instant result = Files.getLastModifiedTime(path).toInstant();
 		long seconds = result.getEpochSecond();
 		// Include boundary seconds because JDK microsecond rounding can cross the signed-long nanosecond boundary.
-		if (isUnix(path) && (seconds <= Long.MIN_VALUE / NANOS_PER_SECOND ||
-			seconds >= Long.MAX_VALUE / NANOS_PER_SECOND))
-			return UnixFileMetadata.lastModified(path);
+		if (seconds <= Long.MIN_VALUE / NANOS_PER_SECOND || seconds >= Long.MAX_VALUE / NANOS_PER_SECOND)
+		{
+			if (isUnix(path))
+				return UnixFileMetadata.lastModified(path);
+			if (isWindows(path))
+				return WindowsFileTimes.lastModified(path);
+		}
 		return result;
 	}
 
@@ -82,6 +88,18 @@ final class SourceInputTimes
 	{
 		return path.getFileSystem().provider().getScheme().equals("file") &&
 			path.getFileSystem().getSeparator().equals("/");
+	}
+
+	/**
+	 * Recognizes local Windows paths without applying native operations to another provider.
+	 *
+	 * @param path the filesystem path
+	 * @return whether the provider uses native Windows paths
+	 */
+	private static boolean isWindows(Path path)
+	{
+		return path.getFileSystem().provider().getScheme().equals("file") &&
+			path.getFileSystem().getSeparator().equals("\\");
 	}
 
 	/**

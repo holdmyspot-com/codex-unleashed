@@ -50,11 +50,14 @@ public final class SourceInputChangesTest
 			Set<String> result = SourceInputChanges.apply(fixture.current(Map.of("src/unchanged.rs", "same",
 				"src/changed.rs", "new")), previous, Optional.empty(), CLOCK);
 			assertEquals(result, Set.of("src/changed.rs", "src/deleted.rs"));
-			assertEquals(Files.getLastModifiedTime(unchanged).toInstant(), BEFORE);
-			assertEquals(Files.readAttributes(unchanged, BasicFileAttributes.class).lastAccessTime().toInstant(), BEFORE);
-			assertEquals(Files.getLastModifiedTime(changed).toInstant(), NOW);
-			assertEquals(Files.getLastModifiedTime(changed.getParent()).toInstant(), NOW);
-			assertEquals(Files.getLastModifiedTime(fixture.root).toInstant(), NOW);
+			Instant expectedBefore = NativeTimestampRange.expected(fixture.root, BEFORE);
+			Instant expectedNow = NativeTimestampRange.expected(fixture.root, NOW);
+			assertEquals(Files.getLastModifiedTime(unchanged).toInstant(), expectedBefore);
+			assertEquals(Files.readAttributes(unchanged, BasicFileAttributes.class).lastAccessTime().toInstant(),
+				expectedBefore);
+			assertEquals(Files.getLastModifiedTime(changed).toInstant(), expectedNow);
+			assertEquals(Files.getLastModifiedTime(changed.getParent()).toInstant(), expectedNow);
+			assertEquals(Files.getLastModifiedTime(fixture.root).toInstant(), expectedNow);
 		}
 	}
 
@@ -73,7 +76,7 @@ public final class SourceInputChangesTest
 			JsonNode interrupted = fixture.previous(Map.of("source.rs", "partially-built"), Map.of());
 			assertEquals(SourceInputChanges.apply(fixture.current(Map.of("source.rs", "successful")), previous,
 				Optional.of(interrupted), CLOCK), Set.of("source.rs"));
-			assertEquals(Files.getLastModifiedTime(source).toInstant(), NOW);
+			assertEquals(Files.getLastModifiedTime(source).toInstant(), NativeTimestampRange.expected(fixture.root, NOW));
 		}
 	}
 
@@ -166,7 +169,8 @@ public final class SourceInputChangesTest
 					expected = Instant.ofEpochSecond(-1, 999_999_999);
 				else if (value.equals("true"))
 					expected = Instant.ofEpochSecond(0, 1);
-				assertEquals(Files.getLastModifiedTime(source).toInstant(), expected);
+				assertEquals(Files.getLastModifiedTime(source).toInstant(),
+					NativeTimestampRange.expected(fixture.root, expected));
 			}
 		}
 	}

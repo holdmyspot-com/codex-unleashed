@@ -335,7 +335,7 @@ public final class NpmArchiveExtractorTest
 			NpmArchiveExtractor.extract(archive, output, root.resolve("spool"));
 			assertEquals(Files.readAllBytes(output.resolve(name)), payload);
 			assertEquals(Files.readAllBytes(output.resolve("alias")), payload);
-			assertEquals(Files.readSymbolicLink(output.resolve("alias")).toString(), name);
+			assertEquals(Files.readSymbolicLink(output.resolve("alias")), output.getFileSystem().getPath(name));
 			Path invalid = write(root, List.of(regular("safe", payload),
 				regular(root.resolve("outside").toString(), payload)), TarArchiveOutputStream.LONGFILE_GNU);
 			Path rejected = root.resolve("rejected");

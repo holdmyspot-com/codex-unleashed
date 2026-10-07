@@ -5,16 +5,17 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
+import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -180,7 +181,7 @@ public final class SourceInputCacheTest
 			fixture.prepare(Set.of("side-demo"));
 			String output = fixture.build();
 			assertTrue(fixture.libraryFresh(output, "side_demo"));
-			assertTrue(fixture.artifactFresh(output, "side_demo", "bin"));
+			assertTrue(fixture.artifactFresh(output, fixture.siblingBinary, "bin"));
 			assertFalse(fixture.artifactFresh(output, "side-demo", "bin"));
 			assertTrue(fixture.artifactFresh(output, "cache-demo", "bin"));
 		}
@@ -309,6 +310,7 @@ public final class SourceInputCacheTest
 		private final Path temporary;
 		private final Map<String, String> environment;
 		private String target;
+		private String siblingBinary = "side_demo";
 
 		/**
 		 * Defines paths before any operation that can fail after allocation.
@@ -318,6 +320,8 @@ public final class SourceInputCacheTest
 		private Fixture(Path base)
 		{
 			this.base = base;
+			if (base.getFileSystem().getSeparator().equals("\\"))
+				siblingBinary = "side_companion";
 			workspace = base.resolve("workspace");
 			temporary = base.resolve("captures");
 			environment = new HashMap<>(System.getenv());
@@ -382,7 +386,7 @@ public final class SourceInputCacheTest
 			Files.writeString(workspace.resolve("side/src/lib.rs"), "pub fn value() -> u8 { 3 }\n");
 			String main = "fn main() { println!(\"{}\", side_demo::value()); }\n";
 			Files.writeString(workspace.resolve("side/src/main.rs"), main);
-			Files.writeString(workspace.resolve("side/src/bin/side_demo.rs"), main);
+			Files.writeString(workspace.resolve("side/src/bin/" + siblingBinary + ".rs"), main);
 			Files.writeString(workspace.resolve("Cargo.toml"), """
 				[package]
 				name = "cache-demo"
@@ -587,11 +591,8 @@ public final class SourceInputCacheTest
 		@Override
 		public void close() throws IOException
 		{
-			try (Stream<Path> paths = Files.walk(base))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			PathUtils.deleteDirectory(base, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
+				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}
 	}
 }

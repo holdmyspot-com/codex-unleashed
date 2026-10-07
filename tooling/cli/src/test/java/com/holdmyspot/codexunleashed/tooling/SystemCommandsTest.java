@@ -55,7 +55,7 @@ public final class SystemCommandsTest
 			SystemCommands.Result result = SystemCommands.capture(fixtureCommand("capture", payload), root,
 				temporaryDirectory);
 			assertEquals(result.status(), 7);
-			assertEquals(result.stdout(), root.toRealPath() + "\n" + payload);
+			assertEquals(result.stdout(), root.toRealPath() + System.lineSeparator() + payload);
 			assertEquals(result.stderr(), "diagnostic".repeat(20_000));
 			List<String> malformed = fixtureCommand("invalid-utf8", "");
 			expectThrows(IOException.class, () -> SystemCommands.capture(malformed, root, temporaryDirectory));

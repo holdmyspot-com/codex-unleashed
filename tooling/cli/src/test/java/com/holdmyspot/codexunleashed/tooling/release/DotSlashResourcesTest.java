@@ -39,7 +39,7 @@ public final class DotSlashResourcesTest
 		{
 			fixture.writeArchive("zip");
 			fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "zip",
-				"tool", "linux-x86_64");
+				"tool", fixture.target.dotslashPlatform());
 			Path output = DotSlashResources.fetch(fixture.request(false)).orElseThrow();
 			assertEquals(Files.readAllBytes(output), fixture.payload);
 			if (Files.getFileAttributeView(output, PosixFileAttributeView.class) != null)
@@ -64,7 +64,7 @@ public final class DotSlashResourcesTest
 		{
 			fixture.writeArchive("tar.gz");
 			fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "tar.gz",
-				"tool", "linux-x86_64");
+				"tool", fixture.target.dotslashPlatform());
 			assertEquals(Files.readAllBytes(DotSlashResources.fetch(fixture.request(false)).orElseThrow()), fixture.payload);
 		}
 	}
@@ -84,7 +84,7 @@ public final class DotSlashResourcesTest
 				"\u000b", "\f"))
 			{
 				fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "zip",
-					"tool", "linux-x86_64");
+					"tool", fixture.target.dotslashPlatform());
 				Files.writeString(fixture.manifest, Files.readString(fixture.manifest).replace("\n", newline));
 				assertEquals(Files.readAllBytes(DotSlashResources.fetch(fixture.request(false)).orElseThrow()),
 					fixture.payload);
@@ -108,7 +108,7 @@ public final class DotSlashResourcesTest
 			assertFalse(Files.exists(fixture.cache));
 			fixture.writeArchive("zip");
 			fixture.writeManifest("SHA256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "zip",
-				"tool", "linux-x86_64");
+				"tool", fixture.target.dotslashPlatform());
 			expectThrows(IOException.class, () -> DotSlashResources.fetch(fixture.request(true)));
 			assertFalse(Files.exists(fixture.cache));
 		}
@@ -125,7 +125,8 @@ public final class DotSlashResourcesTest
 		try (Fixture fixture = Fixture.create())
 		{
 			fixture.writeArchive("zip");
-			fixture.writeManifest("sha256", "0".repeat(64), Files.size(fixture.archive), "zip", "tool", "linux-x86_64");
+			fixture.writeManifest("sha256", "0".repeat(64), Files.size(fixture.archive), "zip", "tool",
+				fixture.target.dotslashPlatform());
 			Path cached = fixture.cache.resolve("target-rg/archive.zip");
 			Files.createDirectories(cached.getParent());
 			Files.writeString(cached, "corrupt old archive");
@@ -134,7 +135,7 @@ public final class DotSlashResourcesTest
 			assertFalse(Files.exists(cached.resolveSibling("archive.zip.tmp")));
 			assertFalse(Files.exists(fixture.cache.resolve("target-rg/rg")));
 			fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive) + 1, "zip",
-				"tool", "linux-x86_64");
+				"tool", fixture.target.dotslashPlatform());
 			expectThrows(IOException.class, () -> DotSlashResources.fetch(fixture.request(false)));
 			assertFalse(Files.exists(cached));
 		}
@@ -152,7 +153,7 @@ public final class DotSlashResourcesTest
 		{
 			fixture.writeArchive("zip");
 			fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "zip",
-				"missing-member", "linux-x86_64");
+				"missing-member", fixture.target.dotslashPlatform());
 			Path output = fixture.cache.resolve("target-rg/rg");
 			Files.createDirectories(output.getParent());
 			Files.writeString(output, "old executable");
@@ -170,6 +171,7 @@ public final class DotSlashResourcesTest
 		private final Path input;
 		private final Path manifest;
 		private final Path cache;
+		private final PackageTarget target;
 		private Path archive;
 		private final byte[] payload = {0, (byte) 255, 1};
 
@@ -182,6 +184,10 @@ public final class DotSlashResourcesTest
 		private Fixture(Path root) throws IOException
 		{
 			this.root = root;
+			PackageTarget selected = PackageTarget.LINUX_X86_MUSL;
+			if (root.getFileSystem().getSeparator().equals("\\"))
+				selected = PackageTarget.WINDOWS_X86;
+			target = selected;
 			input = Files.createDirectory(root.resolve("input"));
 			Files.write(input.resolve("tool"), payload);
 			manifest = root.resolve("manifest");
@@ -256,7 +262,7 @@ public final class DotSlashResourcesTest
 		 */
 		private DotSlashResources.Request request(boolean missingOk)
 		{
-			return new DotSlashResources.Request(PackageTarget.LINUX_X86_MUSL, manifest, "ripgrep", "target-rg",
+			return new DotSlashResources.Request(target, manifest, "ripgrep", "target-rg",
 				"rg", missingOk, cache);
 		}
 

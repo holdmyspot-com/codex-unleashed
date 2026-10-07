@@ -171,7 +171,8 @@ public final class NpmPublishCommand
 	private static void executeNpm(Path directory, List<String> arguments, Path npmrc, String registry,
 		Map<String, String> environment) throws IOException
 	{
-		List<String> command = new ArrayList<>(List.of("npm"));
+		List<String> command = new ArrayList<>(NpmCommands.command(directory,
+			Path.of(environment.get("NPM_CONFIG_CACHE")), environment));
 		command.addAll(arguments);
 		if (npmrc != null)
 			command.addAll(List.of("--userconfig", npmrc.toString()));

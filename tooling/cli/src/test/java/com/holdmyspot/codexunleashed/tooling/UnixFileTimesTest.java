@@ -38,15 +38,16 @@ public final class UnixFileTimesTest
 		{
 			Instant[] values = {Instant.ofEpochSecond(-1, 999_999_999), Instant.ofEpochSecond(0, 1),
 				Instant.parse("2300-01-01T00:00:00.123456789Z")};
-			String[] expected = {"-1", "1", "10413792000123456789"};
-			for (int index = 0; index < values.length; index += 1)
+			for (Instant value : values)
 			{
-				SourceInputTimes.setTimes(fixture.file, FileTime.from(values[index]));
+				Instant expected = NativeTimestampRange.expected(fixture.root, value);
+				String expectedNanos = SourceInputTimes.nanos(expected).toString();
+				SourceInputTimes.setTimes(fixture.file, FileTime.from(value));
 				SystemCommands.Result inspection = SystemCommands.capture(List.of("node", "-e", INSPECT,
 					fixture.file.toString()), fixture.root, fixture.temporary, Map.of());
 				assertEquals(inspection.status(), 0, inspection.stderr());
-				assertEquals(inspection.stdout(), expected[index] + "\n" + expected[index] + "\n");
-				assertEquals(SourceInputTimes.lastModified(fixture.file), values[index]);
+				assertEquals(inspection.stdout(), expectedNanos + "\n" + expectedNanos + "\n");
+				assertEquals(SourceInputTimes.lastModified(fixture.file), expected);
 			}
 		}
 	}
@@ -62,13 +63,23 @@ public final class UnixFileTimesTest
 		try (Fixture fixture = new Fixture())
 		{
 			Path missing = fixture.root.resolve("absent");
+			boolean windows = fixture.root.getFileSystem().getSeparator().equals("\\");
 			IOException write = expectThrows(IOException.class,
-				() -> UnixFileTimes.set(missing, Instant.ofEpochSecond(-1, 999_999_999)));
+				() -> SourceInputTimes.setTimes(missing, FileTime.from(Instant.ofEpochSecond(-1, 999_999_999))));
 			assertTrue(write.getMessage().contains(missing.toString()));
-			assertTrue(write.getMessage().contains("errno="));
-			IOException read = expectThrows(IOException.class, () -> UnixFileMetadata.lastModified(missing));
+			String errorKey = "errno=";
+			if (windows)
+				errorKey = "GetLastError=";
+			assertTrue(write.getMessage().contains(errorKey));
+			IOException read = expectThrows(IOException.class, () ->
+			{
+				if (windows)
+					WindowsFileTimes.lastModified(missing);
+				else
+					UnixFileMetadata.lastModified(missing);
+			});
 			assertTrue(read.getMessage().contains(missing.toString()));
-			assertTrue(read.getMessage().contains("errno="));
+			assertTrue(read.getMessage().contains(errorKey));
 		}
 	}
 

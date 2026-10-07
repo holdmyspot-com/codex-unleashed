@@ -6,13 +6,14 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
+import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -44,9 +45,9 @@ public final class V8CanaryCommandTest
 					throw new AssertionError("Forced dispatch must not read Git");
 				}), 0);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), "canary_required=true\n" +
+		assertEquals(output.toString(StandardCharsets.UTF_8), ("canary_required=true\n" +
 			"canary_reason=manual workflow dispatch\nwindows_source_required=true\n" +
-			"windows_source_reason=manual workflow dispatch\n");
+			"windows_source_reason=manual workflow dispatch\n").replace("\n", System.lineSeparator()));
 	}
 
 	/**
@@ -66,7 +67,8 @@ public final class V8CanaryCommandTest
 					throw new AssertionError("Missing ranges must not read Git");
 				}), 1);
 			}
-			assertEquals(output.toString(StandardCharsets.UTF_8), "--base and --head are required unless --force is set\n");
+			assertEquals(output.toString(StandardCharsets.UTF_8),
+				"--base and --head are required unless --force is set" + System.lineSeparator());
 		}
 	}
 
@@ -105,17 +107,14 @@ public final class V8CanaryCommandTest
 				assertEquals(Main.run(new String[]{"v8-canary-changes", checkout.toString(), "--base", base,
 					"--head", head}, new ByteArrayInputStream(new byte[0]), stream, stream, runner), 0);
 			}
-			assertEquals(output.toString(StandardCharsets.UTF_8), "canary_required=false\n" +
+			assertEquals(output.toString(StandardCharsets.UTF_8), ("canary_required=false\n" +
 				"canary_reason=no relevant changes\nwindows_source_required=false\n" +
-				"windows_source_reason=no relevant changes\n");
+				"windows_source_reason=no relevant changes\n").replace("\n", System.lineSeparator()));
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			PathUtils.deleteDirectory(root, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
+				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}
 	}
 

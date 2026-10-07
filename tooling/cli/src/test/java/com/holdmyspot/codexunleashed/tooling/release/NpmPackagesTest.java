@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -233,8 +234,10 @@ public final class NpmPackagesTest
 			Set<Path> packed = new HashSet<>();
 			for (NpmPackages.Directory directory : packages)
 			{
-				SystemCommands.Result result = capture(List.of("npm", "pack", "--json", "--pack-destination",
-					output.toString(), "--registry", "http://127.0.0.1:4873"), directory.path(), root,
+				List<String> command = new ArrayList<>(NpmCommands.command(directory.path(), root, System.getenv()));
+				command.addAll(List.of("pack", "--json", "--pack-destination",
+					output.toString(), "--registry", "http://127.0.0.1:4873"));
+				SystemCommands.Result result = capture(command, directory.path(), root,
 					Map.of("NPM_CONFIG_CACHE", npmCache.toString(), "XDG_CACHE_HOME", npmCache.toString()));
 				assertEquals(result.status(), 0, result.stderr());
 				Path archive;

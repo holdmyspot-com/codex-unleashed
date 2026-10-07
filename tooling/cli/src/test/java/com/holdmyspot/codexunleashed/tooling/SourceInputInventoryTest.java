@@ -1,16 +1,16 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
-import java.math.BigInteger;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
+import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -41,7 +41,8 @@ public final class SourceInputInventoryTest
 			SystemCommands.run(java.util.List.of("git", "-C", fixture.root.toString(), "add", ".gitignore", "workspace"));
 			byte[] payload = {0, (byte) 255, 13, 10};
 			Files.write(source, payload);
-			Files.setLastModifiedTime(source, FileTime.from(Instant.ofEpochSecond(1_000_000_000L, 123_456_789)));
+			Instant timestamp = Instant.ofEpochSecond(1_000_000_000L, 123_456_789);
+			Files.setLastModifiedTime(source, FileTime.from(timestamp));
 			Files.writeString(fixture.root.resolve("included.rs"), "untracked input");
 			Files.writeString(fixture.root.resolve("ignored"), "ignored input");
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(source.getParent(), fixture.target,
@@ -49,7 +50,8 @@ public final class SourceInputInventoryTest
 			assertEquals(snapshot.root(), fixture.root.toRealPath());
 			assertEquals(snapshot.files().keySet(), Set.of(".gitignore", "workspace/src/lib.rs", "included.rs"));
 			assertEquals(snapshot.files().get("workspace/src/lib.rs"), Sha256.digest(source));
-			assertEquals(snapshot.mtimes().get("workspace/src/lib.rs"), new BigInteger("1000000000123456789"));
+			assertEquals(snapshot.mtimes().get("workspace/src/lib.rs"),
+				SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, timestamp)));
 			assertTrue(snapshot.mtimes().containsKey("."));
 			assertTrue(snapshot.mtimes().containsKey("workspace/src"));
 			assertFalse(snapshot.files().containsKey("target/output"));
@@ -113,7 +115,8 @@ public final class SourceInputInventoryTest
 			SourceInputTimes.setTimes(source, FileTime.from(required));
 			SourceInputInventory.Snapshot snapshot = SourceInputInventory.read(fixture.root, fixture.target,
 				Optional.of(fixture.cargo), fixture.temporary, fixture.environment());
-			assertEquals(snapshot.mtimes().get("source.rs"), SourceInputTimes.nanos(required));
+			assertEquals(snapshot.mtimes().get("source.rs"),
+				SourceInputTimes.nanos(NativeTimestampRange.expected(fixture.root, required)));
 		}
 	}
 
@@ -150,11 +153,8 @@ public final class SourceInputInventoryTest
 		@Override
 		public void close() throws IOException
 		{
-			try (Stream<Path> files = Files.walk(base))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			PathUtils.deleteDirectory(base, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
+				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}
 	}
 }

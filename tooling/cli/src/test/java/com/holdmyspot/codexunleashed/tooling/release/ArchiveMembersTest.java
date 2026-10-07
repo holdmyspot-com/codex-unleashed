@@ -10,6 +10,7 @@ import java.util.zip.GZIPOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarConstants;
+import org.apache.commons.compress.archivers.tar.TarUtils;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
 import org.testng.annotations.Test;
@@ -135,7 +136,7 @@ public final class ArchiveMembersTest
 	 */
 	private static Member regular(String name, byte[] payload)
 	{
-		TarArchiveEntry entry = new TarArchiveEntry(name);
+		TarArchiveEntry entry = rawEntry(name, TarConstants.LF_NORMAL);
 		entry.setSize(payload.length);
 		return new Member(entry, payload);
 	}
@@ -150,9 +151,24 @@ public final class ArchiveMembersTest
 	 */
 	private static Member link(String name, String target, byte type)
 	{
-		TarArchiveEntry entry = new TarArchiveEntry(name, type);
+		TarArchiveEntry entry = rawEntry(name, type);
 		entry.setLinkName(target);
 		return new Member(entry, new byte[0]);
+	}
+
+	/**
+	 * Creates literal tar names through header parsing, avoiding the name constructor's host separator conversion.
+	 *
+	 * @param name the literal archive name
+	 * @param type the entry type
+	 * @return the entry with its unmodified archive name
+	 */
+	private static TarArchiveEntry rawEntry(String name, byte type)
+	{
+		byte[] header = new byte[TarConstants.DEFAULT_RCDSIZE];
+		new TarArchiveEntry(name, type).writeEntryHeader(header);
+		TarUtils.formatNameBytes(name, header, 0, TarConstants.NAMELEN);
+		return new TarArchiveEntry(header);
 	}
 
 	/**

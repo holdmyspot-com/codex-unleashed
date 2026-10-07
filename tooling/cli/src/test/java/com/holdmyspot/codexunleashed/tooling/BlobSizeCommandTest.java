@@ -5,11 +5,12 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
+import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -104,7 +105,8 @@ public final class BlobSizeCommandTest
 			assertEquals(BlobSizeCommand.run(new String[]{"--repo", fixture.repository.toString(), "--base", head,
 				"--head", head, "--allowlist", allowlist.toString()}, out, out,
 				Map.of("GITHUB_STEP_SUMMARY", summary.toString())), 0);
-			assertEquals(output.toString(StandardCharsets.UTF_8), "No changed files were detected.\n");
+			assertEquals(output.toString(StandardCharsets.UTF_8),
+				"No changed files were detected." + System.lineSeparator());
 			assertTrue(Files.readString(summary).contains("Default max: `512000` bytes (500.0 KiB)"));
 			assertTrue(Files.readString(summary).endsWith("No changed files were detected.\n"));
 		}
@@ -196,11 +198,8 @@ public final class BlobSizeCommandTest
 		@Override
 		public void close() throws IOException
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			PathUtils.deleteDirectory(root, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
+				StandardDeleteOption.OVERRIDE_READ_ONLY);
 		}
 	}
 }

@@ -39,29 +39,40 @@ public final class PackageLayoutTest
 	{
 		try (Fixture fixture = Fixture.create())
 		{
-			PackageLayout.Request request = fixture.request(PackageTarget.LINUX_X86_MUSL, PackageVariant.APP_SERVER,
-				fixture.inputs(Optional.of(fixture.binary), Optional.of(fixture.binary)));
+			PackageTarget target = PackageTarget.LINUX_X86_MUSL;
+			PackageInputs inputs = fixture.inputs(Optional.of(fixture.binary), Optional.of(fixture.binary));
+			if (fixture.root.getFileSystem().getSeparator().equals("\\"))
+			{
+				target = PackageTarget.WINDOWS_X86;
+				inputs = new PackageInputs(fixture.binary, fixture.binary, fixture.binary, Optional.empty(), Optional.empty(),
+					Optional.of(fixture.binary), Optional.of(fixture.binary));
+			}
+			PackageLayout.Request request = fixture.request(target, PackageVariant.APP_SERVER, inputs);
 			PackageLayout.prepare(fixture.output, false);
 			PackageLayout.build(request, command ->
 			{
 				throw new AssertionError("No workspace metadata is required");
 			});
 			PackageLayout.validate(fixture.output, request.variant(), request.target(), true);
-			for (String name : List.of("bin/codex-app-server", "bin/codex-code-mode-host", "codex-path/rg",
-				"codex-resources/zsh/bin/zsh", "codex-resources/bwrap"))
+			List<String> payloads = List.of("bin/codex-app-server", "bin/codex-code-mode-host", "codex-path/rg",
+				"codex-resources/zsh/bin/zsh", "codex-resources/bwrap");
+			if (target.isWindows())
+				payloads = List.of("bin/codex-app-server.exe", "bin/codex-code-mode-host.exe", "codex-path/rg.exe",
+					"codex-resources/codex-command-runner.exe", "codex-resources/codex-windows-sandbox-setup.exe");
+			for (String name : payloads)
 				assertEquals(Files.readAllBytes(fixture.output.resolve(name)), Files.readAllBytes(fixture.binary));
 			assertEquals(Files.readString(fixture.output.resolve("codex-package.json")), """
 				{
 				  "layoutVersion": 1,
 				  "version": "1.2.3",
-				  "target": "x86_64-unknown-linux-musl",
+				  "target": "%s",
 				  "variant": "codex-app-server",
-				  "entrypoint": "bin/codex-app-server",
+				  "entrypoint": "bin/codex-app-server%s",
 				  "resourcesDir": "codex-resources",
 				  "pathDir": "codex-path"
 				}
-				""");
-			Path entrypoint = fixture.output.resolve("bin/codex-app-server");
+				""".formatted(target.triple(), target.executableSuffix()));
+			Path entrypoint = fixture.output.resolve("bin/codex-app-server" + target.executableSuffix());
 			if (Files.getFileAttributeView(entrypoint, PosixFileAttributeView.class) != null)
 			{
 				Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(entrypoint);
@@ -134,7 +145,7 @@ public final class PackageLayoutTest
 	}
 
 	/**
-	 * Rejects incorrect metadata and missing Linux resources after assembly.
+	 * Rejects incorrect metadata and missing target resources after assembly.
 	 *
 	 * @throws IOException if fixture access or building fails
 	 */
@@ -143,7 +154,14 @@ public final class PackageLayoutTest
 	{
 		try (Fixture fixture = Fixture.create())
 		{
-			PackageLayout.Request request = fixture.request(PackageTarget.LINUX_ARM_GNU, PackageVariant.CODEX,
+			PackageTarget target = PackageTarget.LINUX_ARM_GNU;
+			String missingResource = "codex-resources/bwrap";
+			if (fixture.root.getFileSystem().getSeparator().equals("\\"))
+			{
+				target = PackageTarget.WINDOWS_X86;
+				missingResource = "codex-resources/codex-command-runner.exe";
+			}
+			PackageLayout.Request request = fixture.request(target, PackageVariant.CODEX,
 				fixture.inputs(Optional.empty(), Optional.empty()));
 			PackageLayout.prepare(fixture.output, false);
 			PackageLayout.build(request, command ->
@@ -152,7 +170,7 @@ public final class PackageLayoutTest
 			});
 			IOException missing = expectThrows(IOException.class, () -> PackageLayout.validate(fixture.output,
 				request.variant(), request.target(), false));
-			assertTrue(missing.getMessage().contains("codex-resources/bwrap"));
+			assertTrue(missing.getMessage().contains(missingResource));
 			Files.writeString(fixture.output.resolve("codex-package.json"), "{}");
 			IOException metadata = expectThrows(IOException.class, () -> PackageLayout.validate(fixture.output,
 				request.variant(), request.target(), false));

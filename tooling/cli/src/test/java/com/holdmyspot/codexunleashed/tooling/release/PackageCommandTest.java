@@ -62,24 +62,30 @@ public final class PackageCommandTest
 				"--archive-output", tar.toString()));
 			assertEquals(PackageCommand.run(arguments.toArray(String[]::new), output, errors,
 				fixture.environment(), CLOCK), 0);
-			assertEquals(Files.readAllBytes(directory.resolve("bin/codex-app-server")), fixture.payload);
-			assertEquals(Files.readAllBytes(directory.resolve("codex-path/rg")), fixture.payload);
-			assertEquals(Files.readAllBytes(directory.resolve("codex-resources/bwrap")), fixture.payload);
+			String entrypoint = "bin/codex-app-server" + fixture.target.executableSuffix();
+			assertEquals(Files.readAllBytes(directory.resolve(entrypoint)), fixture.payload);
+			assertEquals(Files.readAllBytes(directory.resolve("codex-path/" + fixture.target.ripgrepName())),
+				fixture.payload);
+			String resource = "codex-resources/bwrap";
+			if (fixture.target.isWindows())
+				resource = "codex-resources/codex-command-runner.exe";
+			assertEquals(Files.readAllBytes(directory.resolve(resource)), fixture.payload);
 			assertFalse(Files.exists(directory.resolve("codex-resources/zsh")));
 			assertTrue(Files.isRegularFile(directory.resolve("licenses/rust/THIRD_PARTY_NOTICES.md")));
 			JsonNode metadata = JsonMapper.builder().build().readTree(
 				Files.readString(directory.resolve("codex-package.json")));
 			assertEquals(metadata.get("version").stringValue(), "0.160.0+41");
 			assertEquals(metadata.get("variant").stringValue(), "codex-app-server");
-			assertEquals(metadata.get("target").stringValue(), "x86_64-unknown-linux-gnu");
+			assertEquals(metadata.get("target").stringValue(), fixture.target.triple());
 			try (ZipFile archive = ZipFile.builder().setPath(zip).get(); InputStream input =
-				archive.getInputStream(archive.getEntry("bin/codex-app-server")))
+				archive.getInputStream(archive.getEntry(entrypoint)))
 			{
 				assertEquals(input.readAllBytes(), fixture.payload);
 			}
 			assertTrue(Files.size(tar) > 0);
-			assertEquals(fixture.output.toString(StandardCharsets.UTF_8), "Built Codex package archive at " + zip +
-				"\nBuilt Codex package archive at " + tar + "\nBuilt Codex package directory at " + directory + "\n");
+			assertEquals(fixture.output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+				"Built Codex package archive at " + zip, "Built Codex package archive at " + tar,
+				"Built Codex package directory at " + directory, ""));
 			assertEquals(fixture.errors.size(), 0);
 			Files.writeString(directory.resolve("obsolete"), "previous package");
 			expectThrows(IOException.class, () -> PackageCommand.run(arguments.toArray(String[]::new), output, errors,
@@ -164,6 +170,7 @@ public final class PackageCommandTest
 		private final Path rgManifest;
 		private final Path zshManifest;
 		private final Path licenses;
+		private final PackageTarget target;
 		private final byte[] payload = {0, (byte) 255, 1};
 		private final ByteArrayOutputStream output = new ByteArrayOutputStream();
 		private final ByteArrayOutputStream errors = new ByteArrayOutputStream();
@@ -177,6 +184,10 @@ public final class PackageCommandTest
 		private Fixture(Path root) throws IOException
 		{
 			this.root = root;
+			PackageTarget selected = PackageTarget.LINUX_X86_GNU;
+			if (root.getFileSystem().getSeparator().equals("\\"))
+				selected = PackageTarget.WINDOWS_X86;
+			target = selected;
 			repository = Files.createDirectory(root.resolve("repository"));
 			workspace = Files.createDirectory(root.resolve("workspace"));
 			cache = root.resolve("cache");
@@ -193,13 +204,15 @@ public final class PackageCommandTest
 			if (Files.getFileAttributeView(binary, PosixFileAttributeView.class) != null)
 				Files.setPosixFilePermissions(binary, PosixFilePermissions.fromString("rw---x---"));
 			Path rgSource = Files.createDirectory(root.resolve("ripgrep-source"));
-			Files.write(rgSource.resolve("rg"), payload);
+			Files.write(rgSource.resolve(target.ripgrepName()), payload);
 			Path archive = root.resolve("ripgrep.zip");
 			PackageArchives.write(new PackageArchives.Request(rgSource, archive, false, root.resolve("archive-temp"),
 				ArchiveOptions.defaults(), List.of()), CLOCK, command -> "");
-			rgManifest = Files.writeString(root.resolve("rg-manifest"), "{\"platforms\":{\"linux-x86_64\":{\"size\":" +
+			rgManifest = Files.writeString(root.resolve("rg-manifest"), "{\"platforms\":{\"" +
+				target.dotslashPlatform() + "\":{\"size\":" +
 				Files.size(archive) + ",\"hash\":\"sha256\",\"digest\":\"" + Sha256.digest(archive) +
-				"\",\"format\":\"zip\",\"path\":\"rg\",\"providers\":[{\"url\":\"" + archive.toUri() + "\"}]}}}");
+				"\",\"format\":\"zip\",\"path\":\"" + target.ripgrepName() +
+				"\",\"providers\":[{\"url\":\"" + archive.toUri() + "\"}]}}}");
 			zshManifest = Files.writeString(root.resolve("zsh-manifest"), "{\"platforms\":{}}");
 			licenses = Files.createDirectory(root.resolve("licenses"));
 			Files.writeString(licenses.resolve("THIRD_PARTY_NOTICES.md"), "prepared notices\n");
@@ -239,10 +252,15 @@ public final class PackageCommandTest
 		 */
 		private List<String> arguments()
 		{
-			return List.of("--repo", repository.toString(), "--workspace", workspace.toString(), "--cache-root",
-				cache.toString(), "--target", "x86_64-unknown-linux-gnu", "--variant", "codex-app-server",
+			List<String> arguments = new ArrayList<>(List.of("--repo", repository.toString(), "--workspace",
+				workspace.toString(), "--cache-root", cache.toString(), "--target", target.triple(),
+				"--variant", "codex-app-server",
 				"--entrypoint-bin", binary.toString(), "--code-mode-host-bin", binary.toString(), "--bwrap-bin",
-				binary.toString(), "--rg-manifest", rgManifest.toString(), "--zsh-manifest", zshManifest.toString());
+				binary.toString(), "--rg-manifest", rgManifest.toString(), "--zsh-manifest", zshManifest.toString()));
+			if (target.isWindows())
+				arguments.addAll(List.of("--codex-command-runner-bin", binary.toString(),
+					"--codex-windows-sandbox-setup-bin", binary.toString()));
+			return arguments;
 		}
 
 		/**

@@ -6,3 +6,6 @@
 *.py text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Preserve the npm selector's executable shebang in packaged resources.
+tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/tooling/release/npm-launcher.js text eol=lf

@@ -85,13 +85,17 @@ public final class TuiBoundaryPolicyTest
 			fixture.source("nested/a.rs", "// codex_core::still_checked\nuse codex_core; codex_core::also_checked();\n");
 			assertEquals(fixture.check(), 1);
 			String output = fixture.output();
-			assertTrue(output.startsWith("codex-tui must not depend on or import codex-core directly.\n"));
+			assertTrue(output.startsWith("codex-tui must not depend on or import codex-core directly." +
+				System.lineSeparator()));
 			for (String section : new String[]{"dependencies", "dev-dependencies", "build-dependencies",
 				"target.cfg(unix).dependencies"})
 				assertTrue(output.contains("declares `codex-core` in `[" + section + "]`"));
-			String first = "codex-rs/tui/nested/a.rs:1 imports `codex_core`";
-			String second = "codex-rs/tui/nested/a.rs:2 imports `codex_core`";
-			String last = "codex-rs/tui/z.rs:1 imports `codex_core`";
+			String first = Path.of("codex-rs/tui/nested/a.rs") + ":1 imports `codex_core`";
+			String second = Path.of("codex-rs/tui/nested/a.rs") + ":2 imports `codex_core`";
+			String last = Path.of("codex-rs/tui/z.rs") + ":1 imports `codex_core`";
+			assertTrue(output.contains(first));
+			assertTrue(output.contains(second));
+			assertTrue(output.contains(last));
 			assertTrue(output.indexOf(first) < output.indexOf(second));
 			assertTrue(output.indexOf(second) < output.indexOf(last));
 			assertEquals(output.split("imports `codex_core`", -1).length - 1, 3);

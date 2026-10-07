@@ -77,8 +77,8 @@ public final class ReleaseTagCommandTest
 				assertEquals(ReleaseTagCommand.run(new String[]{"--repository", "owner/repo", "--tag", "rust-v0.159.1+23",
 					"--artifact-run-id", "+0007", "--api-base", base.toString()}, stream, stream, "fixture-token"), 0);
 			}
-			assertEquals(output.toString(StandardCharsets.UTF_8), "source_sha=" + sha +
-				"\nsource_ref=refs/heads/release/topic\nsource_run_attempt=3\n");
+			assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+				"source_sha=" + sha, "source_ref=refs/heads/release/topic", "source_run_attempt=3", ""));
 			assertEquals(requests, List.of("GET /repos/owner/repo/actions/runs/7",
 				"GET /repos/owner/repo/git/ref/tags/rust-v0.159.1+23", "POST /repos/owner/repo/git/refs"));
 		}

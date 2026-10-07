@@ -143,10 +143,13 @@ public final class DotSlashResources
 		String path = url.getRawPath();
 		if (path == null)
 			path = url.getRawSchemeSpecificPart();
-		Path filename = Path.of(path).getFileName();
-		if (filename == null || filename.toString().isEmpty())
+		int end = path.length();
+		while (end > 0 && path.charAt(end - 1) == '/')
+			end -= 1;
+		String filename = path.substring(path.lastIndexOf('/', end - 1) + 1, end);
+		if (filename.isEmpty())
 			throw new IOException("Unable to determine archive filename from " + url);
-		return filename.toString();
+		return filename;
 	}
 
 	/**
