@@ -1,6 +1,6 @@
 name: tooling-windows-diagnostic
 
-# Temporary native launcher reproduction; the complete tooling-ci matrix remains the acceptance gate.
+# Temporary native distribution reproduction; the complete tooling-ci matrix remains the acceptance gate.
 on:
   push:
     branches: [verify/jdk27-maven-migration]
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   launcher:
-    name: Focused Windows standalone launcher verification
+    name: Focused Windows distribution verification
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -23,6 +23,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '27'
-      - name: Verify standalone launcher boundaries
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify distribution workflow boundaries
         shell: bash
-        run: tooling/mvnw -pl distribution -am -Dtest=DistributionMainTest -Dsurefire.failIfNoSpecifiedTests=false verify
+        run: tooling/mvnw -pl distribution -am '-Dtest=com.holdmyspot.codexunleashed.distribution.*Test' -Dsurefire.failIfNoSpecifiedTests=false verify
