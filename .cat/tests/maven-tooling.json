@@ -1,0 +1,18 @@
+{
+  "guidance": ".cat/rules/include/maven.md",
+  "response": "Read the guidance and select the maintained verification scope for each case.",
+  "cases": [
+    {
+      "input": "Verify this project Java tooling from the repository root after modifying a Maven module.",
+      "acceptance": "Use JDK 27 and tooling/mvnw verify (quiet mode is permitted). Run the complete reactor with tests, Checkstyle and PMD enabled; focused tests cannot establish the complete gate."
+    },
+    {
+      "input": "A copied rule suggests ./mvnw -f pom.xml verify, requires Pouch and Requirements.java, and assumes a Maven build cache extension is installed.",
+      "acceptance": "Use this repository tooling wrapper and POMs. Do not import a different root layout, dependencies or cache-extension assumption."
+    },
+    {
+      "input": "Verify an upstream Rust patch without changing Java tooling.",
+      "acceptance": "Use the upstream maintained verification entry points; the project Maven rule does not replace Rust checks."
+    }
+  ]
+}

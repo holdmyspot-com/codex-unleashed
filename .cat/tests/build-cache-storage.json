@@ -1,6 +1,6 @@
 {
   "guidance": ".cat/rules/common/build-caches.md",
-  "response": "Read the guidance and identify the storage path and invocation settings required for each case.",
+  "response": "Read the guidance and identify the storage path, invocation settings, and artifact cleanup required for each case.",
   "cases": [
     {
       "input": "Run Rust patch verification from a separate upstream worktree; existing Cargo caches are in the user's home cache directory.",
@@ -9,6 +9,18 @@
     {
       "input": "Run a uv-backed formatting command from an upstream checkout and require an isolated verification cache.",
       "acceptance": "Explicitly set UV_CACHE_DIR beneath the project's .cat/work/temp/build-caches using an absolute path and a separate verification subdirectory. Configure any other participating tool caches there and confirm effective paths."
+    },
+    {
+      "input": "A local Rust build and its emitted-patch verification finish successfully. No process or follow-up needs the task's target directory, downloaded tools, or dependency cache.",
+      "acceptance": "Remove the task-owned build outputs, downloads, extractions, and caches in terminal cleanup and verify their absence. Do not retain them for hypothetical future reuse."
+    },
+    {
+      "input": "A Maven packaging build fails or is cancelled. Its processes exit, but a recorded recovery consumer still needs the failure log; its intermediate outputs have no remaining consumer.",
+      "acceptance": "Run terminal cleanup despite failure or cancellation. Delete unneeded intermediate outputs and caches, retain the log with its cleanup owner until recovery finishes, and report any cleanup failure with its paths and owner."
+    },
+    {
+      "input": "One verification command finishes while another active build uses the shared cache and a release artifact still awaits delivery.",
+      "acceptance": "Preserve the shared cache for its named active consumer and the release artifact until delivery finishes. Remove each only after its last required consumer and processes finish."
     },
     {
       "input": "Inspect installed application configuration or review hosted CI cache settings without running a local build.",

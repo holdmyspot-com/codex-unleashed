@@ -22,6 +22,11 @@ registers its own properties, defaults, and feature controls:
 - [Expanded diff previews README.md](../issue-47390/README.md)
 - [Collapsed tool activity README.md](../collapsed-tool-activity/README.md)
 
+Property keys use snake_case. Codex-Unleashed-owned fixed-vocabulary string
+values use lowercase kebab-case, with hyphens between words. Boolean values
+retain TOML's `true` and `false` spellings. Upstream Codex values and free-form
+content retain their existing spellings.
+
 ## Dependencies and application order
 
 Apply this patch before either feature patch. Each feature's runtime behavior

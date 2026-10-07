@@ -1,0 +1,38 @@
+{
+  "guidance": ".cat/rules/include/dates-and-times.md",
+  "response": "Read the guidance and select the representation, conversion and verification required by each case.",
+  "cases": [
+    {
+      "input": "Write a new project-owned receipt instant, with no prescribed consumer format, at 2026-10-05T15:58:05.123456789Z.",
+      "acceptance": "Use an explicit UTC ISO 8601 instant retaining all required fractional precision; do not reduce it to whole seconds or milliseconds."
+    },
+    {
+      "input": "Create a new UTC timestamp filename where colons are prohibited and no other spelling is required.",
+      "acceptance": "Use the ISO 8601 basic UTC form with T and Z, preserving any required precision. Do not rename existing supported identifiers."
+    },
+    {
+      "input": "A Cargo source-cache manifest requires epoch nanoseconds, and an archive consumer prescribes numeric timestamps.",
+      "acceptance": "Keep the numeric formats and required units. Verify exact values, precision and supported range rather than imposing ISO text on the consumer."
+    },
+    {
+      "input": "Display the instant 2026-10-06T01:30:00Z to a user whose configured timezone is America/Toronto.",
+      "acceptance": "Write 2026-10-05T21:30:00-04:00 or an equivalent EDT rendering. Convert the calendar date as well as the clock time."
+    },
+    {
+      "input": "Store the calendar date 2026-10-05 and an elapsed duration of 90 seconds.",
+      "acceptance": "Keep the date date-only without adding midnight or a timezone; keep the duration as an elapsed amount in its required representation and units."
+    },
+    {
+      "input": "Convert a local date-time during a daylight-saving overlap into an instant, but the contract supplies no zone or ambiguity resolution.",
+      "acceptance": "Do not invent an offset or silently choose one occurrence. Obtain the required zone and resolution from the contract or supplied context before conversion."
+    },
+    {
+      "input": "A user requests UTC timestamps in a report; its machine-readable receipt already uses UTC.",
+      "acceptance": "Honor the request for the report and preserve UTC machine records. The normal local-time rule does not override an explicit user request."
+    },
+    {
+      "input": "An external tool requires its timestamp grammar and existing Git refs already contain tool-owned date identifiers.",
+      "acceptance": "Preserve those consumer formats and existing identifiers. The rule does not authorize protocol changes or identifier renames."
+    }
+  ]
+}

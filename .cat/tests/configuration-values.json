@@ -1,0 +1,14 @@
+{
+  "guidance": ".cat/rules/include/codex-configuration-values.md",
+  "response": "Read the guidance and choose the spelling for each case without changing unrelated contracts.",
+  "cases": [
+    {
+      "input": "Add a downstream background_tasks_mode value with two words: dedicated terminal.",
+      "acceptance": "Keep the snake_case key and use dedicated-terminal in declarations, serialization, examples and documentation."
+    },
+    {
+      "input": "Document an upstream enum value containing underscores, a user model name, a path and a boolean.",
+      "acceptance": "Preserve upstream spellings, model names, paths and TOML booleans. Do not apply the downstream string-value convention."
+    }
+  ]
+}
