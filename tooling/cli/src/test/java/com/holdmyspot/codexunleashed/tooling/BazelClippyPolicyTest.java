@@ -35,7 +35,7 @@ public final class BazelClippyPolicyTest
 			fixture.bazel("--allow=clippy::a\n-Wclippy::b\n--deny=clippy::c\n-Fclippy::d\n-Dwarnings\n--warn=rustc_lint\n");
 			assertEquals(fixture.check(), 0);
 			assertEquals(fixture.output.toString(StandardCharsets.UTF_8),
-				"Bazel clippy flags in .bazelrc match codex-rs/Cargo.toml [workspace.lints.clippy].\n");
+				"Bazel clippy flags in .bazelrc match codex-rs/Cargo.toml [workspace.lints.clippy]." + System.lineSeparator());
 			assertEquals(fixture.errors.size(), 0);
 		}
 	}

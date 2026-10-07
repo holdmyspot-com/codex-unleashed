@@ -1,24 +1,18 @@
 package com.holdmyspot.codexunleashed.tooling.release;
 
-import com.holdmyspot.codexunleashed.tooling.SystemCommands;
-import com.holdmyspot.codexunleashed.tooling.Sha256;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.Comparator;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -53,37 +47,22 @@ public final class NpmArchiveExtractorTest
 		Path root = Files.createTempDirectory("npm-extractor-sparse-");
 		try
 		{
-			Path source = Files.createDirectory(root.resolve("source"));
 			String name = "bin/" + "é".repeat(90) + "-codex";
-			Path binary = source.resolve(name);
-			Files.createDirectories(binary.getParent());
-			try (FileChannel channel = FileChannel.open(binary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))
-			{
-				for (int index = 0; index < 7; ++index)
-				{
-					channel.position(index * 8192L);
-					channel.write(ByteBuffer.wrap(new byte[]{(byte) 255}));
-				}
-				channel.force(true);
-			}
-			byte[] expected = Files.readAllBytes(binary);
-			for (List<String> format : List.of(List.of("--format=gnu"),
-				List.of("--format=posix", "--sparse-version=0.0"), List.of("--format=posix", "--sparse-version=0.1"),
-				List.of("--format=posix", "--sparse-version=1.0")))
+			byte[] expected = new byte[6 * 8192 + 1];
+			for (int index = 0; index < 7; ++index)
+				expected[index * 8192] = (byte) 255;
+			for (String format : List.of("gnu", "pax-0.0", "pax-0.1", "pax-1.0"))
 			{
 				Path archive = root.resolve("sparse.tar.gz");
-				List<String> command = new ArrayList<>(List.of("tar", "--sparse"));
-				command.addAll(format);
-				command.addAll(List.of("-czf", archive.toString(), "-C", source.toString(), name));
-				SystemCommands.Result generated = SystemCommands.capture(command, root, root);
-				assertEquals(generated.status(), 0, generated.stderr());
-				SystemCommands.DigestResult nativeResult = SystemCommands.digest(
-					List.of("tar", "-xOf", archive.toString(), name), root, root, Map.of());
-				assertEquals(nativeResult.status(), 0, nativeResult.stderr());
-				assertEquals(nativeResult.stdoutSha256(), Sha256.digest(binary), format.toString());
+				try (InputStream resource = NpmArchiveExtractorTest.class.getResourceAsStream("/sparse/" + format + ".tar.gz"))
+				{
+					if (resource == null)
+						throw new IOException("Missing GNU tar reference archive: " + format);
+					Files.copy(resource, archive, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				}
 				Path destination = Files.createTempDirectory(root, "package-");
 				NpmArchiveExtractor.extract(archive, destination, root.resolve("spool"));
-				assertEquals(Files.readAllBytes(destination.resolve(name)), expected, format.toString());
+				assertEquals(Files.readAllBytes(destination.resolve(name)), expected, format);
 				assertEmpty(root.resolve("spool"));
 			}
 		}

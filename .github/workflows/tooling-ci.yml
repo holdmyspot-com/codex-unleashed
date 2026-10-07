@@ -23,6 +23,7 @@ jobs:
     name: Maven verification (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
@@ -33,4 +34,25 @@ jobs:
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+      - name: Inspect native timestamp range
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const cp = require('node:child_process');
+          fs.mkdirSync('.cat/work/temp', {recursive: true});
+          const root = fs.mkdtempSync('.cat/work/temp/timestamp-probe-');
+          try {
+            const file = root + '/source';
+            fs.writeFileSync(file, 'source');
+            fs.utimesSync(file, 10413792000, 10413792000);
+            console.log('Node native writer / reader:', fs.statSync(file, {bigint: true}).mtimeNs.toString());
+            console.log('BSD stat:', cp.execFileSync('stat', ['-f', '%m', file], {encoding: 'utf8'}));
+            cp.execFileSync('touch', ['-t', '230001010000', file]);
+            console.log('BSD touch / stat:', cp.execFileSync('stat', ['-f', '%m', file], {encoding: 'utf8'}));
+          } finally {
+            fs.rmSync(root, {recursive: true});
+          }
+          NODE
       - uses: ./.github/actions/setup-tooling

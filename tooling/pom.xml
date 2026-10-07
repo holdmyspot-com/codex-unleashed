@@ -79,7 +79,7 @@
 					<configuration>
 						<parallel>methods</parallel>
 						<threadCount>4</threadCount>
-						<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" ${tooling.test.jvm.options}</argLine>
+						<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" -Djdk.lang.Process.allowAmbiguousCommands=false ${tooling.test.jvm.options}</argLine>
 						<properties>
 							<property>
 								<name>usedefaultlisteners</name>
