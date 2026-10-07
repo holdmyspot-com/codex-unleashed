@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,8 @@ public final class CargoManifestCheapWorkflowTest
 			Path stderr = root.resolve("stderr");
 			Path marker = root.resolve("success");
 			Map<String, String> environment = Map.of("upstream_checkout", upstream.toString(),
-				"WHITESPACE_SUCCESS_MARKER", marker.toString(), "GIT_CONFIG_GLOBAL", "/dev/null",
+				"WHITESPACE_SUCCESS_MARKER", marker.toString(), "GIT_CONFIG_GLOBAL",
+				Files.writeString(root.resolve("gitconfig"), "").toString(),
 				"GIT_CONFIG_NOSYSTEM", "1");
 			assertEquals(run("git init -q --initial-branch=main\ngit add .\n" +
 				"git -c user.name=Fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false " +
@@ -77,11 +77,7 @@ public final class CargoManifestCheapWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -138,11 +134,7 @@ public final class CargoManifestCheapWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -231,11 +223,7 @@ public final class CargoManifestCheapWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -254,7 +242,7 @@ public final class CargoManifestCheapWorkflowTest
 	private static int run(String stage, Path working, Map<String, String> environment, Path stdout, Path stderr)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", stage).directory(working.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", stage).directory(working.toFile()).
 			redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())

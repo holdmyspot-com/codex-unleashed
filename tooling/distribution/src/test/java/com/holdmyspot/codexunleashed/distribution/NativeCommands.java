@@ -71,7 +71,7 @@ final class NativeCommands
 	 * @return the interpreter executable
 	 * @throws IOException if Windows has no explicitly selected native Bash executable
 	 */
-	private static String bashExecutable() throws IOException
+	static String bashExecutable() throws IOException
 	{
 		String configured = System.getProperty("tooling.native.bash", "bash");
 		if (File.separatorChar != '\\')

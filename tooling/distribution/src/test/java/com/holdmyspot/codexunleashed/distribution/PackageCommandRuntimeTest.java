@@ -9,7 +9,6 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -105,13 +104,14 @@ public final class PackageCommandRuntimeTest
 			for (List<String> selection : List.of(List.of("app-server", "x86_64-unknown-linux-gnu"),
 				List.of("primary", "x86_64-unknown-linux-gnu"), List.of("primary", "x86_64-pc-windows-msvc")))
 			{
-				List<String> command = new ArrayList<>(List.of("bash",
+				List<String> command = new ArrayList<>(List.of(
 					repository.resolve(".github/scripts/build-codex-package-archive.sh").toString(), "--target", selection.get(1),
 					"--bundle", selection.get(0), "--entrypoint-dir", binaries.toString(), "--archive-dir", archives.toString(),
 					"--rg-manifest", rg.toString(), "--zsh-manifest", zsh.toString()));
 				if (selection.getFirst().equals("primary"))
 					command.add("--target-suffixed-entrypoint");
-				assertEquals(run(command, root, environment, stdout, stderr), 0, Files.readString(stderr));
+				assertEquals(runScript(command, root, environment, stdout, stderr), 0,
+					Files.readString(stdout) + Files.readString(stderr));
 				String stem = "codex-app-server-package";
 				String binary = "codex-app-server";
 				if (selection.getFirst().equals("primary"))
@@ -126,9 +126,9 @@ public final class PackageCommandRuntimeTest
 					Path archive = archives.resolve(stem + "-" + selection.get(1) + "." + suffix);
 					List<String> consumer;
 					if (suffix.equals("tar.zst"))
-						consumer = List.of("tar", "--zstd", "-xOf", archive.toString(), "bin/" + binary);
+						consumer = List.of(NativeUtilities.tarExecutable(), "--zstd", "-xOf", archive.toString(), "bin/" + binary);
 					else
-						consumer = List.of("tar", "-xOzf", archive.toString(), "bin/" + binary);
+						consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/" + binary);
 					assertEquals(run(consumer, root, environment, stdout, stderr), 0, Files.readString(stderr));
 					assertEquals(Files.readAllBytes(stdout), payload);
 				}
@@ -137,7 +137,7 @@ public final class PackageCommandRuntimeTest
 					assertEquals(paths.count(), 0L, "Release staging remains after success");
 				}
 				Files.delete(notices);
-				assertEquals(run(command, root, environment, stdout, stderr), 1);
+				assertEquals(runScript(command, root, environment, stdout, stderr), 1);
 				try (Stream<Path> paths = Files.list(temporary))
 				{
 					assertEquals(paths.count(), 0L, "Release staging remains after failure");
@@ -148,11 +148,7 @@ public final class PackageCommandRuntimeTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -212,7 +208,8 @@ public final class PackageCommandRuntimeTest
 			}
 			Path stdout = root.resolve("stdout");
 			Path stderr = root.resolve("stderr");
-			assertEquals(run(command, root, environment, stdout, stderr), 0, Files.readString(stderr));
+			assertEquals(runScript(command, root, environment, stdout, stderr), 0,
+				Files.readString(stdout) + Files.readString(stderr));
 			assertTrue(Files.readString(directory.resolve("codex-package.json")).contains("\"version\": \"0.160.0+42\""));
 			assertEquals(Files.readAllBytes(directory.resolve("bin/codex-app-server")), payload);
 			assertTrue(Files.isRegularFile(directory.resolve("licenses/rust/THIRD_PARTY_NOTICES.md")));
@@ -225,9 +222,10 @@ public final class PackageCommandRuntimeTest
 				if (name.endsWith(".zip"))
 					consumer = List.of("unzip", "-p", archive.toString(), "bin/codex-app-server");
 				else if (name.endsWith(".tar.zst"))
-					consumer = List.of("tar", "--zstd", "-xOf", archive.toString(), "bin/codex-app-server");
+					consumer = List.of(NativeUtilities.tarExecutable(), "--zstd", "-xOf", archive.toString(),
+						"bin/codex-app-server");
 				else
-					consumer = List.of("tar", "-xOzf", archive.toString(), "bin/codex-app-server");
+					consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/codex-app-server");
 				assertEquals(run(consumer, root, environment, stdout, stderr), 0, Files.readString(stderr));
 				assertEquals(Files.readAllBytes(stdout), payload);
 			}
@@ -242,11 +240,7 @@ public final class PackageCommandRuntimeTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -265,7 +259,44 @@ public final class PackageCommandRuntimeTest
 	private static int run(List<String> command, Path working, Map<String, String> environment, Path stdout, Path stderr)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectOutput(stdout.toFile()).
+		return run(NativeCommands.createBuilder(command), working, environment, stdout, stderr);
+	}
+
+	/**
+	 * Runs a maintained POSIX launcher through the explicitly selected native Bash.
+	 *
+	 * @param command the script filename and its literal arguments
+	 * @param working the selected working directory
+	 * @param environment the explicit storage and command-path overrides
+	 * @param stdout the raw standard-output capture
+	 * @param stderr the diagnostic capture
+	 * @return the ordinary exit status
+	 * @throws IOException if process startup fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static int runScript(List<String> command, Path working, Map<String, String> environment,
+		Path stdout, Path stderr) throws IOException, InterruptedException
+	{
+		return run(NativeCommands.scriptBuilder(Path.of(command.getFirst()),
+			command.subList(1, command.size()).toArray(String[]::new)), working, environment, stdout, stderr);
+	}
+
+	/**
+	 * Executes a prepared native process with owned captures and explicit cache overrides.
+	 *
+	 * @param command the prepared native process
+	 * @param working the selected working directory
+	 * @param environment the explicit storage and command-path overrides
+	 * @param stdout the raw standard-output capture
+	 * @param stderr the diagnostic capture
+	 * @return the ordinary exit status
+	 * @throws IOException if process startup fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static int run(ProcessBuilder command, Path working, Map<String, String> environment,
+		Path stdout, Path stderr) throws IOException, InterruptedException
+	{
+		ProcessBuilder builder = command.directory(working.toFile()).redirectOutput(stdout.toFile()).
 			redirectError(stderr.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())

@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,7 +90,7 @@ public final class CargoManifestWorkflowTest
 			environment.put("TMPDIR", temporary.toString());
 			environment.put("XDG_CACHE_HOME", root.resolve("xdg").toString());
 			Path project = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
-			List<String> command = List.of("bash", project.resolve("scripts/run-upstream-repo-checks.sh").toString(),
+			ProcessBuilder command = NativeCommands.scriptBuilder(project.resolve("scripts/run-upstream-repo-checks.sh"),
 				upstream.toString());
 			assertEquals(run(command, root, environment, stdout, stderr), 0, Files.readString(stderr));
 			List<String> expected = List.of(
@@ -127,7 +127,9 @@ public final class CargoManifestWorkflowTest
 			environment.remove("CODEX_UNLEASHED_TOOLING");
 			environment.put("FRESH_TOOLING", runtime.resolve("bin/codex-tooling").toString());
 			environment.put("FALLBACK_CALLS", fallbackCalls.toString());
-			assertEquals(run(List.of("bash", "scripts/run-upstream-repo-checks.sh", upstream.toString()),
+			ProcessBuilder fallbackCommand = NativeCommands.scriptBuilder(Path.of("scripts/run-upstream-repo-checks.sh"),
+				upstream.toString());
+			assertEquals(run(fallbackCommand,
 				projectFixture, environment, stdout, stderr), 0, Files.readString(stderr));
 			assertEquals(Files.readAllLines(fallbackCalls), List.of("verify-cargo-workspace-manifests", upstream.toString(),
 				"--upstream", "verify-tui-core-boundary", upstream.toString(), "verify-bazel-clippy-lints",
@@ -141,11 +143,7 @@ public final class CargoManifestWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -159,13 +157,14 @@ public final class CargoManifestWorkflowTest
 	private static void writeCommand(Path path, String text) throws IOException
 	{
 		Files.writeString(path, text);
-		Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rwx------"));
+		if (Files.getFileAttributeView(path, PosixFileAttributeView.class) != null)
+			Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rwx------"));
 	}
 
 	/**
 	 * Captures all process descriptors with an independent EOF input stream.
 	 *
-	 * @param command the literal command arguments
+	 * @param builder the selected native script command
 	 * @param working the process cwd
 	 * @param environment the explicit environment overrides
 	 * @param stdout the output capture
@@ -174,10 +173,11 @@ public final class CargoManifestWorkflowTest
 	 * @throws IOException if startup or input closing fails
 	 * @throws InterruptedException if waiting is interrupted
 	 */
-	private static int run(List<String> command, Path working, Map<String, String> environment, Path stdout, Path stderr)
+	private static int run(ProcessBuilder builder, Path working, Map<String, String> environment, Path stdout,
+		Path stderr)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectOutput(stdout.toFile()).
+		builder.directory(working.toFile()).redirectOutput(stdout.toFile()).
 			redirectError(stderr.toFile());
 		builder.environment().remove("CODEX_UNLEASHED_TOOLING");
 		builder.environment().putAll(environment);

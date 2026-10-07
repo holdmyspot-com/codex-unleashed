@@ -183,7 +183,8 @@ public final class ReleaseTagWorkflowTest
 	 */
 	private static String provenance()
 	{
-		return "source_sha=" + SOURCE_SHA + "\nsource_ref=refs/heads/release/topic\nsource_run_attempt=3\n";
+		return ("source_sha=" + SOURCE_SHA + "\nsource_ref=refs/heads/release/topic\nsource_run_attempt=3\n").
+			replace("\n", System.lineSeparator());
 	}
 
 	/**

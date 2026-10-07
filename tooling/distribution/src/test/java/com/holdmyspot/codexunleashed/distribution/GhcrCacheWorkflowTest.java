@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -110,8 +109,12 @@ public final class GhcrCacheWorkflowTest
 		try
 		{
 			Map<String, String> environment = environment(root);
-			Files.createDirectory(root.resolve("D:"));
-			environment.put("RUNNER_TEMP", "D:");
+			String temporaryName = "D:";
+			if (File.separatorChar == '\\')
+				temporaryName = "colon-drive-temporary";
+			Path temporary = Files.createDirectory(root.resolve(temporaryName));
+			assertTrue(temporary.toString().contains(":"), "The fixture requires a colon-bearing path");
+			environment.put("RUNNER_TEMP", temporary.toString());
 			Path source = Files.createDirectory(root.resolve("source"));
 			Path relative = Path.of("x86_64-pc-windows-msvc/release/deps/example.rlib");
 			Files.createDirectories(source.resolve(relative).getParent());
@@ -127,7 +130,7 @@ public final class GhcrCacheWorkflowTest
 			String reference = "ghcr.io/example/cargo-cache:cargo-release-" + identity + "-rust-v0.160.0";
 			assertEquals(calls.getFirst().subList(0, 2), List.of("push", reference));
 			assertEquals(calls.get(1), List.of("tag", reference, tag));
-			try (Stream<Path> entries = Files.list(root.resolve("D:")))
+			try (Stream<Path> entries = Files.list(temporary))
 			{
 				assertEquals(entries.count(), 0L);
 			}
@@ -260,7 +263,7 @@ public final class GhcrCacheWorkflowTest
 	{
 		Path script = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().
 			resolve("scripts/ghcr-cargo-target-cache.sh");
-		run(root, environment, List.of("bash", script.toString(), operation, "ghcr.io/example/cargo-cache", tag,
+		run(root, environment, NativeCommands.scriptBuilder(script, operation, "ghcr.io/example/cargo-cache", tag,
 			target.toString(), version), status);
 	}
 
@@ -302,10 +305,27 @@ public final class GhcrCacheWorkflowTest
 	private static String run(Path root, Map<String, String> environment, List<String> command, int status)
 		throws IOException, InterruptedException
 	{
+		return run(root, environment, NativeCommands.createBuilder(command), status);
+	}
+
+	/**
+	 * Executes a prepared native command with independent captures and bounded termination.
+	 *
+	 * @param root process directory
+	 * @param environment complete environment
+	 * @param command the prepared native command
+	 * @param status expected exit status
+	 * @return standard output
+	 * @throws IOException if process or capture access fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static String run(Path root, Map<String, String> environment, ProcessBuilder command, int status)
+		throws IOException, InterruptedException
+	{
 		Path output = root.resolve("stdout");
 		Path error = root.resolve("stderr");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectInput(input.toFile()).
+		ProcessBuilder builder = command.directory(root.toFile()).redirectInput(input.toFile()).
 			redirectOutput(output.toFile()).redirectError(error.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
@@ -313,8 +333,8 @@ public final class GhcrCacheWorkflowTest
 		{
 			try
 			{
-				assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Cache process timed out: " + command);
-				assertEquals(process.exitValue(), status, command + "\n" + Files.readString(error));
+				assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Cache process timed out: " + command.command());
+				assertEquals(process.exitValue(), status, command.command() + "\n" + Files.readString(error));
 				return Files.readString(output);
 			}
 			finally
@@ -333,10 +353,6 @@ public final class GhcrCacheWorkflowTest
 	 */
 	private static void delete(Path root) throws IOException
 	{
-		try (Stream<Path> paths = Files.walk(root))
-		{
-			for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-				Files.delete(path);
-		}
+		FixtureDirectories.deleteTree(root);
 	}
 }

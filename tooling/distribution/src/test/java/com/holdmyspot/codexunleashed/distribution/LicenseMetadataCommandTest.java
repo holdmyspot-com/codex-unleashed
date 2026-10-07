@@ -108,8 +108,12 @@ public final class LicenseMetadataCommandTest
 					"codex-package-rust-licenses-fixture-target-fixture-bundle/external-crate-1.2.3/LICENSE-MIT")), payload);
 			}
 			String handoff = Files.readString(workflowEnvironment);
-			assertEquals(handoff, "CODEX_PACKAGE_RUST_LICENSES_DIR=" +
-				runnerTemp.resolve("codex-package-rust-licenses-fixture-target-fixture-bundle") + "\n");
+			List<String> handoffLines = Files.readAllLines(workflowEnvironment);
+			assertEquals(handoffLines.size(), 1);
+			String directoryKey = "CODEX_PACKAGE_RUST_LICENSES_DIR=";
+			assertTrue(handoffLines.getFirst().startsWith(directoryKey), handoff);
+			assertEquals(Path.of(handoffLines.getFirst().substring(directoryKey.length())),
+				runnerTemp.resolve("codex-package-rust-licenses-fixture-target-fixture-bundle"), handoff);
 			assertEquals(runScript(List.of(launcher.toString(), "collect-third-party-licenses", "--help"), workspace,
 				environment, log), 0, Files.readString(log));
 			List<String> explicitFlag = new ArrayList<>(command.subList(0, command.size() - 1));

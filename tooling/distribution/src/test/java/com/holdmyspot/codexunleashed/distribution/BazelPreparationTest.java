@@ -3,12 +3,10 @@ package com.holdmyspot.codexunleashed.distribution;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -67,11 +65,7 @@ public final class BazelPreparationTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -130,7 +124,8 @@ public final class BazelPreparationTest
 		Path output = root.resolve("stdout");
 		Path error = root.resolve("stderr");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectInput(input.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(command).directory(root.toFile()).
+			redirectInput(input.toFile()).
 			redirectOutput(output.toFile()).redirectError(error.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);

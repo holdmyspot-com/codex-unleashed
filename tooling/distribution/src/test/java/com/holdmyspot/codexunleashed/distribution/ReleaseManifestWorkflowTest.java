@@ -5,10 +5,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -69,9 +66,10 @@ public final class ReleaseManifestWorkflowTest
 				"GITHUB_REPOSITORY", "holdmyspot-com/codex-unleashed");
 			String command = bindPublication(WorkflowCommands.readStepCommand("publish", "Add reproducibility materials"));
 			Path log = root.resolve("process.log");
-			assertEquals(run(List.of("bash", "-eu", "-c", command), builder, environment, log), 0, Files.readString(log));
+			assertEquals(run(NativeCommands.createBuilder("bash", "-eu", "-c", command), builder, environment, log),
+				0, Files.readString(log));
 			assertManifest(release, "github-actions");
-			assertEquals(run(List.of("bash", scripts.resolve("verify-release.sh").toString(), release.toString(),
+			assertEquals(run(NativeCommands.scriptBuilder(scripts.resolve("verify-release.sh"), release.toString(),
 				"--patch-repo", consumer.toString()), consumer, environment, log), 0, Files.readString(log));
 			assertTrue(Files.readString(log).contains("Release verification succeeded"));
 
@@ -99,18 +97,15 @@ public final class ReleaseManifestWorkflowTest
 			localEnvironment.put("build_date", "2026-10-06T12:34:56Z");
 			localEnvironment.put("build_target", "fixture-target");
 			String local = script.substring(start, end);
-			assertEquals(run(List.of("bash", "-eu", "-c", local), builder, localEnvironment, log), 0, Files.readString(log));
+			assertEquals(run(NativeCommands.createBuilder("bash", "-eu", "-c", local), builder, localEnvironment, log),
+				0, Files.readString(log));
 			assertManifest(release, "local-script");
-			assertEquals(run(List.of("bash", scripts.resolve("verify-release.sh").toString(), release.toString(),
+			assertEquals(run(NativeCommands.scriptBuilder(scripts.resolve("verify-release.sh"), release.toString(),
 				"--patch-repo", consumer.toString()), consumer, environment, log), 0, Files.readString(log));
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -168,10 +163,10 @@ public final class ReleaseManifestWorkflowTest
 	 * @throws IOException if process creation fails
 	 * @throws InterruptedException if execution is interrupted
 	 */
-	private static int run(List<String> command, Path working, Map<String, String> environment, Path log)
+	private static int run(ProcessBuilder command, Path working, Map<String, String> environment, Path log)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).
+		ProcessBuilder builder = command.directory(working.toFile()).
 			redirectErrorStream(true).redirectOutput(log.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())

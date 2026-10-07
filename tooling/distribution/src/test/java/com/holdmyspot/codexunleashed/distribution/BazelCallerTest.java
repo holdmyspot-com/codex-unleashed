@@ -46,6 +46,8 @@ public final class BazelCallerTest
 			Path image = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
 			Map<String, String> environment = new HashMap<>(System.getenv());
+			if (File.separatorChar == '\\')
+				environment.put("MSYS2_ARG_CONV_EXCL", "*");
 			for (String key : List.of("BAZEL_DISK_CACHE", "BAZEL_OUTPUT_USER_ROOT", "GITHUB_ACTIONS",
 				"BUILDBUDDY_API_KEY", "CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR", "NODE_OPTIONS"))
 				environment.remove(key);

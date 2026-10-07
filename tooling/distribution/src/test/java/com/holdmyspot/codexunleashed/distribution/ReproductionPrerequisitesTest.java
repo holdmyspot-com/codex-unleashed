@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +38,12 @@ public final class ReproductionPrerequisitesTest
 		{
 			Path commands = Files.createDirectory(root.resolve("commands"));
 			for (String name : List.of("bash", "dirname", "basename", "mkdir", "mktemp", "rm", "jq"))
-				Files.createSymbolicLink(commands.resolve(name), executable(name));
+			{
+				String filename = name;
+				if (File.separatorChar == '\\')
+					filename = name + ".exe";
+				Files.createSymbolicLink(commands.resolve(filename), executable(name));
+			}
 			JavaCommandFixtures.writeLauncher(commands.resolve("git"), ReproductionGitFixture.class);
 			assertFalse(Files.exists(commands.resolve("python3")));
 			Path manifest = Files.writeString(root.resolve("release-manifest.json"), """
@@ -54,8 +58,8 @@ public final class ReproductionPrerequisitesTest
 			Path temporary = Files.createDirectory(root.resolve("temporary"));
 			Path console = root.resolve("console");
 			Path input = Files.writeString(root.resolve("stdin"), "");
-			ProcessBuilder builder = new ProcessBuilder(commands.resolve("bash").toString(),
-				project.resolve("scripts/reproduce-release.sh").toString(), manifest.toString(), "--output-dir",
+			ProcessBuilder builder = NativeCommands.scriptBuilder(
+				project.resolve("scripts/reproduce-release.sh"), manifest.toString(), "--output-dir",
 				root.resolve("output").toString()).directory(root.toFile()).redirectInput(input.toFile()).
 				redirectErrorStream(true).redirectOutput(console.toFile());
 			builder.environment().clear();
@@ -82,11 +86,7 @@ public final class ReproductionPrerequisitesTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -99,9 +99,15 @@ public final class ReproductionPrerequisitesTest
 	 */
 	private static Path executable(String name) throws IOException
 	{
+		if (File.separatorChar == '\\' && name.equals("bash"))
+			return Path.of(NativeCommands.bashExecutable()).toRealPath();
+
 		for (String directory : System.getenv("PATH").split(Pattern.quote(File.pathSeparator)))
 		{
-			Path candidate = Path.of(directory).resolve(name);
+			String filename = name;
+			if (File.separatorChar == '\\')
+				filename = name + ".exe";
+			Path candidate = Path.of(directory).resolve(filename);
 			if (Files.isExecutable(candidate) && !Files.isDirectory(candidate))
 				return candidate.toRealPath();
 		}

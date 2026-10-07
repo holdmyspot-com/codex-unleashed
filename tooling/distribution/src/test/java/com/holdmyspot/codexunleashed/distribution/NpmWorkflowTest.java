@@ -48,6 +48,7 @@ public final class NpmWorkflowTest
 			Path archives = Files.createDirectory(root.resolve("release-stage"));
 			Path stdout = root.resolve("stdout");
 			Path stderr = root.resolve("stderr");
+			String tar = NativeUtilities.tarExecutable();
 			for (String target : TARGETS)
 			{
 				Path source = Files.createDirectory(root.resolve(target));
@@ -58,7 +59,7 @@ public final class NpmWorkflowTest
 					Files.createDirectories(file.getParent());
 					Files.write(file, new byte[]{0, (byte) 255, 1});
 				}
-				assertEquals(run(List.of("tar", "-czf", archives.resolve("codex-package-" + target + ".tar.gz").toString(),
+				assertEquals(run(List.of(tar, "-czf", archives.resolve("codex-package-" + target + ".tar.gz").toString(),
 					"-C", source.toString(), "."), root, Map.of(), stdout, stderr), 0, Files.readString(stderr));
 			}
 			Path runtime = root.resolve("runtime with spaces");
@@ -74,6 +75,7 @@ public final class NpmWorkflowTest
 			environment.put("CODEX_UNLEASHED_TOOLING", runtime.resolve("bin/codex-tooling").toString());
 			environment.put("GITHUB_REPOSITORY", "holdmyspot-com/codex-unleashed");
 			environment.put("NPM_CALLS", calls.toString());
+			environment.put("NPM_FIXTURE_TAR", tar);
 			environment.put("TMPDIR", temporary.toString());
 			environment.put("XDG_CACHE_HOME", root.resolve("xdg").toString());
 			String command = WorkflowCommands.readStepCommand("publish", "Publish npm packages").
@@ -126,7 +128,7 @@ public final class NpmWorkflowTest
 			if (args[0] === 'pack') {
 			  const family = path.basename(path.dirname(cwd));
 			  const archive = path.join(args[2], family + '-' + path.basename(cwd) + '.tgz');
-			  const result = spawnSync('tar', ['-czf', archive, '-C', cwd, '.'], {stdio: 'inherit'});
+			  const result = spawnSync(process.env.NPM_FIXTURE_TAR, ['-czf', archive, '-C', cwd, '.'], {stdio: 'inherit'});
 			  if (result.error) throw result.error;
 			  process.exit(result.status === null ? 1 : result.status);
 			}
