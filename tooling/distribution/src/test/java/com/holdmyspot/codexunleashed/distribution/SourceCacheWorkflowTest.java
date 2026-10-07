@@ -181,7 +181,8 @@ public final class SourceCacheWorkflowTest
 			}
 
 			Files.delete(snapshot);
-			run(root, environment, List.of("touch", "--date=@10413792000.123456789", source.toString()));
+			run(root, environment, List.of("touch", "-d", "2300-01-01T00:00:00.123456789Z", source.toString()));
+			String futureNanos = timestamp(root, environment, source);
 			String prepare = command("build-unix", "Rebuild release binaries from cached dependencies", target);
 			String record = command("build-unix", "Record successfully compiled source inputs", target);
 			run(root, environment, List.of("bash", "-eu", "-c", prepare));
@@ -189,7 +190,7 @@ public final class SourceCacheWorkflowTest
 			run(root, environment, List.of("bash", "-eu", "-c", record));
 			Files.setLastModifiedTime(source, FileTime.from(Instant.ofEpochSecond(1)));
 			run(root, environment, List.of("bash", "-eu", "-c", prepare));
-			assertEquals(timestamp(root, environment, source), "10413792000123456789");
+			assertEquals(timestamp(root, environment, source), futureNanos);
 		}
 		finally
 		{

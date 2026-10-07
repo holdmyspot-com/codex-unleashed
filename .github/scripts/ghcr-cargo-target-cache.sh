@@ -54,8 +54,8 @@ prune_old_tags() {
       .[]
       | [.id, ((.metadata.container.tags // []) | join(","))]
       | @tsv
-    ' | awk -F '\t' -v retained_releases="$retained_releases" '
-      BEGIN { release_count = split(retained_releases, releases, "\n") }
+    ' | CODEX_CACHE_RETAINED_RELEASES="$retained_releases" awk -F '\t' '
+      BEGIN { release_count = split(ENVIRON["CODEX_CACHE_RETAINED_RELEASES"], releases, "\n") }
       {
         has_cargo = 0
         has_current = 0

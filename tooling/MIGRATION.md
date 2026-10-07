@@ -20,6 +20,7 @@ The TypeScript SDK, Rust CLI, app-server, patch queue, release identities, and i
 - [x] Maintained CI step bodies and upstream-checkout callers invoke the compiled tooling distribution locally.
 - [x] Maven outputs, repositories, wrapper downloads, and test fixtures stay under `.cat/work/temp`.
 - [x] Final source/caller audit finds no project-owned Python implementations or invocation routes.
+- [ ] Native Linux, macOS, and Windows tooling CI passes the complete Maven and assembled-launcher checks.
 
 ## Implementation order
 
@@ -41,7 +42,7 @@ behavioral equivalence. Existing Python tests remain available until their corre
 
 The Maven reactor runs behavior tests, Checkstyle, and PMD through `tooling/mvnw verify`.
 Its distribution includes the CLI and its complete dependency module set in a bundled Java runtime.
-Local migration acceptance includes 321 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
+Local migration acceptance includes 325 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
 families, independent archive and release-manifest consumers, the live upstream-release checker, and completed-output
 cleanup. Hosted workflows and native Windows/macOS execution remain separate integration gates.
 
@@ -313,7 +314,9 @@ sources, and invalidates only the requested executable units in library-owning p
 receive sorted Cargo cleanup selectors. Successful recording requires unchanged prepared inputs, permits generated
 Cargo lockfile changes, atomically writes the snapshot, and removes pending state. Failed cleanup or compilation
 leaves pending state available for recovery without recording success. Native Unix timestamp adapters retain negative
-fractional and large epoch nanoseconds beyond the installed JDK's filesystem conversion range. Native macOS and
+fractional and large epoch nanoseconds beyond the installed JDK's filesystem conversion range. The Windows adapter
+uses native FILETIME values for affected timestamps, preserving the filesystem's 100-nanosecond precision and range,
+capturing native error codes, and closing each file handle after the operation. Native macOS and
 Windows execution and complete hosted release execution remain integration gates. The Python cache helper and its
 tests are retired.
 
@@ -355,7 +358,8 @@ upstream helper suite on the declared base. The project-owned Python
 helpers are retired. Real Bazel compilation and native macOS and Windows behavior remain separate integration gates.
 Python required by external Chromium and upstream V8 builds remains a dependency.
 
-GHCR cache release discovery uses the bundled Java `stable-releases` command. Its fresh-runtime tests execute real
+GHCR cache release discovery uses the bundled Java `stable-releases` command. Retained release lines reach awk through
+its environment input so GNU and BSD implementations preserve the same inventory. Its fresh-runtime tests execute real
 Bash and tar while native fixtures supply only registry transport, release inventory, and package inventory. The
 checks cover tag refusal before transport, legacy and stable restore identities, reuse across upstream versions,
 legacy fallback, GNU tar preference, hard-linked dependencies, release executable and symbol removal, retained
