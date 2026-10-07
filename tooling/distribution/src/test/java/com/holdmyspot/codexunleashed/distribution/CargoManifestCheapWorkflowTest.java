@@ -209,7 +209,8 @@ public final class CargoManifestCheapWorkflowTest
 			Files.writeString(manifest, definition);
 			Files.writeString(source, "// codex_core::forbidden\n");
 			assertEquals(run(stage, upstream, environment, stdout, stderr), 1);
-			assertTrue(Files.readString(stdout).contains("codex-rs/tui/src/lib.rs:1 imports `codex_core`"));
+			assertTrue(Files.readString(stdout).contains(Path.of("codex-rs/tui/src/lib.rs") +
+				":1 imports `codex_core`"), Files.readString(stdout));
 			assertFalse(Files.exists(calls));
 			Files.writeString(source, "use codex_app_server_client::legacy_core;\n");
 			Files.writeString(bazel, flag + "--deny=clippy::a\n");

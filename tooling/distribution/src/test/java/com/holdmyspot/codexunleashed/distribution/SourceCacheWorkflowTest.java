@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.distribution;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -177,6 +178,12 @@ public final class SourceCacheWorkflowTest
 			Files.delete(snapshot);
 			run(root, environment, List.of("touch", "-d", "2300-01-01T00:00:00.123456789Z", source.toString()));
 			String futureNanos = timestamp(root, environment, source);
+			if (source.getFileSystem().getSeparator().equals("\\"))
+			{
+				Instant future = Instant.parse("2300-01-01T00:00:00.123456700Z");
+				assertEquals(futureNanos, BigInteger.valueOf(future.getEpochSecond()).
+					multiply(BigInteger.valueOf(1_000_000_000L)).add(BigInteger.valueOf(future.getNano())).toString());
+			}
 			String prepare = command("build-unix", "Rebuild release binaries from cached dependencies", target);
 			String record = command("build-unix", "Record successfully compiled source inputs", target);
 			run(root, environment, List.of("bash", "-eu", "-c", prepare));
@@ -193,7 +200,7 @@ public final class SourceCacheWorkflowTest
 	}
 
 	/**
-	 * Reads nanoseconds using an independent native Node filesystem consumer.
+	 * Reads native nanoseconds through .NET on Windows and Node on Unix.
 	 *
 	 * @param root the process directory
 	 * @param environment explicit cache paths
@@ -205,6 +212,14 @@ public final class SourceCacheWorkflowTest
 	private static String timestamp(Path root, Map<String, String> environment, Path source)
 		throws IOException, InterruptedException
 	{
+		if (source.getFileSystem().getSeparator().equals("\\"))
+		{
+			Map<String, String> readerEnvironment = new HashMap<>(environment);
+			readerEnvironment.put("TIMESTAMP_FILE", source.toString());
+			return run(root, readerEnvironment, List.of("pwsh", "-NoProfile", "-NonInteractive", "-Command",
+				"$item=Get-Item -LiteralPath $env:TIMESTAMP_FILE;" +
+				"[Console]::WriteLine(([bigint]$item.LastWriteTimeUtc.Ticks-621355968000000000)*100);")).strip();
+		}
 		return run(root, environment, List.of("node", "-e",
 			"console.log(require('node:fs').statSync(process.argv[1], {bigint:true}).mtimeNs.toString())",
 			source.toString())).strip();

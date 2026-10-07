@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.distribution;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -43,6 +44,14 @@ public final class ReproductionPrerequisitesTest
 				if (File.separatorChar == '\\')
 					filename = name + ".exe";
 				Files.createSymbolicLink(commands.resolve(filename), executable(name));
+			}
+			if (File.separatorChar == '\\')
+			{
+				try (DirectoryStream<Path> libraries = Files.newDirectoryStream(executable("bash").getParent(), "*.dll"))
+				{
+					for (Path library : libraries)
+						Files.copy(library, commands.resolve(library.getFileName()));
+				}
 			}
 			JavaCommandFixtures.writeLauncher(commands.resolve("git"), ReproductionGitFixture.class);
 			assertFalse(Files.exists(commands.resolve("python3")));
