@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for command in git jq python3; do
+for command in git jq; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "ERROR: required command is not installed: $command" >&2
     exit 1

@@ -65,5 +65,5 @@ release. Published GitHub Release assets do not expire under this policy.
 Preview Actions cleanup without deleting caches:
 
 ```sh
-python3 .github/scripts/cache_retention.py actions --repository OWNER/REPO --dry-run
+tooling/bin/codex-tooling prune-actions-caches --repository OWNER/REPO --dry-run
 ```

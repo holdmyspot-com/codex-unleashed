@@ -64,7 +64,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Java tooling
+        uses: ./.github/actions/setup-tooling
+
       - name: Require successful dependencies
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python3 .github/scripts/check_ci_results.py
+        run: '"$CODEX_UNLEASHED_TOOLING" check-ci-results "$NEEDS"'

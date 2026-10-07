@@ -1,0 +1,36 @@
+name: tooling-ci
+
+on:
+  push:
+    paths:
+      - tooling/**
+      - scripts/**
+      - .github/actions/setup-tooling/**
+      - .github/workflows/tooling-ci.yml
+  pull_request:
+    paths:
+      - tooling/**
+      - scripts/**
+      - .github/actions/setup-tooling/**
+      - .github/workflows/tooling-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Maven verification (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-tooling

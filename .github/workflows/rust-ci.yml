@@ -124,7 +124,7 @@ jobs:
           cd upstream
           pnpm install --frozen-lockfile
       - name: cargo shear
-        run: python3 .github/scripts/check-cargo-shear.py upstream
+        run: '"$CODEX_UNLEASHED_TOOLING" check-cargo-shear upstream .github/scripts/cargo-shear-baseline.json'
 
   results:
     name: rust-ci results

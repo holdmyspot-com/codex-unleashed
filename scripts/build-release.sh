@@ -116,7 +116,7 @@ configure_rusty_v8_overrides() {
     exit 1
   fi
 
-  version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+  version="$("${repo_root}/tooling/bin/codex-tooling" resolved-v8-crate-version "${target_dir}")"
   release_tag="rusty-v8-v${version}"
   base_url="https://github.com/openai/codex/releases/download/${release_tag}"
   binding_dir="${RUSTY_V8_CACHE_DIR:-${TMPDIR:-/tmp}/rusty_v8}/${target}"
@@ -403,7 +403,7 @@ else
   exit 1
 fi
 
-python3 "${repo_root}/scripts/generate-release-manifest.py" \
+"${repo_root}/tooling/bin/codex-tooling" generate-release-manifest \
   --release-dir "${output_dir}" \
   --output "${output_dir}/release-manifest.json" \
   --patch-repo "${repo_root}" \

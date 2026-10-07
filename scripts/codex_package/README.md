@@ -1,8 +1,9 @@
 # Codex package builder
 
-This package contains the implementation behind `scripts/build_codex_package.py`.
-The top-level script is the stable executable entry point; these modules keep the
-package-building logic split by responsibility.
+The JDK 27/Maven tooling provides `tooling/bin/codex-tooling build-codex-package`.
+Pass `--repo` with this repository's path. `--workspace` selects the upstream
+Cargo workspace; its default is `CODEX_PACKAGE_WORKSPACE_ROOT` or the repository.
+The manifests in this directory supply the packaged ripgrep and zsh resources.
 
 The builder creates a canonical Codex package directory:
 
@@ -32,9 +33,10 @@ prints its path after the package is built.
 
 The `--variant` flag selects the package entrypoint. Supported variants are
 `codex` and `codex-app-server`. The `version` field in `codex-package.json` is
-queried from the patched upstream helper in `CODEX_PACKAGE_WORKSPACE_ROOT`.
-See [the package version patch](../../patches/holdmyspot-com/codex-unleashed/branding-and-app-server-distribution/README.md#package-and-executable-version-agreement)
-for its version policy.
+read from the upstream `codex-rs/Cargo.toml` workspace package version, with
+`+` and the exact `CODEX_UNLEASHED_BUILD_NUMBER` appended. An absent build number
+defaults to `dev`; an explicitly empty build number remains empty. Missing or
+malformed workspace versions fail without an unbranded fallback.
 
 ## Source-built artifacts
 
@@ -70,16 +72,27 @@ build. Windows targets keep Cargo's release-build MSVC artifact path. Explicit
 overrides remain authoritative when both variables are already set. Set
 `V8_FROM_SOURCE=1` to leave the build with the `v8` crate source-build path.
 
+`--cache-root` selects package resource and default Cargo output storage. Its
+default is `codex-package` below the Java temporary directory. An explicit
+`CARGO_TARGET_DIR` remains authoritative. Local builds use the managed cache
+paths described in [BUILD_CACHE.md](../../docs/BUILD_CACHE.md).
+
 `rg` is not built from this repository, so the builder fetches it from the
 DotSlash manifest at `scripts/codex_package/rg`. Downloaded archives are cached
-under `$TMPDIR/codex-package/<target>-rg` and are reused only after the recorded
+under `<cache-root>/<target>-rg` and are reused only after the recorded
 size and SHA-256 digest have been verified. Pass `--rg-bin` to use a local
 ripgrep executable instead.
 
 The patched zsh fork used by `shell_zsh_fork` is fetched from the DotSlash
 manifest at `scripts/codex_package/codex-zsh` when the selected target has a
 matching prebuilt artifact. Downloaded archives are cached under
-`$TMPDIR/codex-package/<target>-zsh` and installed at
+`<cache-root>/<target>-zsh` and installed at
 `codex-resources/zsh/bin/zsh`. Pass `--zsh-manifest` to use a different
 DotSlash manifest, such as the manifest published with a standalone zsh
 artifact release.
+
+The release archive wrapper produces both tar.gz and tar.zst outputs with the
+maintained artifact filenames. It owns a unique staging directory beneath
+`RUNNER_TEMP` or `TMPDIR` and removes that directory and its temporary resource
+cache after success or failure. Direct package-command invocations retain a
+successful package directory; failed implicit output is removed.

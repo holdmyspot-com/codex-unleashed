@@ -83,7 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           cd upstream
-          python3 .github/scripts/rusty_v8_bazel.py check-module-bazel
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-module-bazel
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-consumer-selectors
           just test-github-scripts
 
       - name: Check MODULE.bazel.lock is up to date
@@ -110,7 +111,7 @@ jobs:
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
             bazel_resource_args+=(--jobs=2)
           fi
-          ./.github/scripts/run-bazel-ci.sh \
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             --print-failed-test-logs \
             -- \
@@ -191,7 +192,7 @@ jobs:
           cd upstream
           bazel_test_query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
           mapfile -t bazel_targets < <(
-            ./.github/scripts/run-bazel-query-ci.sh --output=label -- "${bazel_test_query}" | LC_ALL=C sort
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-query-ci.sh" --output=label -- "${bazel_test_query}" | LC_ALL=C sort
           )
           selected_targets=()
           for bazel_target in "${bazel_targets[@]}"; do
@@ -202,7 +203,7 @@ jobs:
               selected_targets+=("${bazel_target}")
             fi
           done
-          ./.github/scripts/run-bazel-ci.sh \
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             --print-failed-test-logs \
             --windows-cross-compile \
@@ -292,7 +293,7 @@ jobs:
             --build_metadata=COMMIT_SHA=${GITHUB_SHA}
             --build_metadata=TAG_windows_native_main=true
           )
-          ./.github/scripts/run-bazel-ci.sh \
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             --print-failed-test-logs \
             --windows-msvc-host-platform \
@@ -386,7 +387,7 @@ jobs:
             bazel_resource_args+=(--jobs=2)
           fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            ./.github/scripts/run-bazel-ci.sh \
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               --windows-cross-compile \
               -- \
@@ -396,7 +397,7 @@ jobs:
               -- \
               "${bazel_targets[@]}"
           else
-            ./.github/scripts/run-bazel-ci.sh \
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               -- \
               build \
@@ -487,7 +488,7 @@ jobs:
             bazel_resource_args+=(--jobs=2)
           fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            ./.github/scripts/run-bazel-ci.sh \
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               --windows-cross-compile \
               --remote-download-toplevel \
@@ -498,7 +499,7 @@ jobs:
               -- \
               "${bazel_targets[@]}"
           else
-            ./.github/scripts/run-bazel-ci.sh \
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               -- \
               build \

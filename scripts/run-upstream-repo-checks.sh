@@ -26,55 +26,14 @@ if [[ ! -d "${target_dir}/.git" ]]; then
   exit 1
 fi
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tooling="${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}"
+
 pushd "${target_dir}" >/dev/null
 export CODEX_REPO_ROOT="${target_dir}"
-if [[ "${ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION:-0}" == "1" ]]; then
-  # The upstream tag can contain the historical exception even after the
-  # corresponding feature has disappeared. Filter only that one diagnostic;
-  # the exception remains active, so it is still validated if the feature
-  # returns. All other manifest checks remain enabled and still fail normally.
-  python3 - <<'PY'
-import runpy
-
-verifier = runpy.run_path(".github/scripts/verify_cargo_workspace_manifests.py")
-add_unused_exception_errors = verifier["add_unused_exception_errors"]
-
-
-def add_unused_exception_errors_without_stale_code_mode(
-    failures_by_path,
-    used_manifest_feature_exceptions,
-    used_optional_dependency_exceptions,
-    used_internal_dependency_feature_exceptions,
-):
-    add_unused_exception_errors(
-        failures_by_path,
-        used_manifest_feature_exceptions,
-        used_optional_dependency_exceptions,
-        used_internal_dependency_feature_exceptions,
-    )
-    path = "codex-rs/code-mode/Cargo.toml"
-    error = (
-        "remove the stale `[features]` exception from "
-        "`MANIFEST_FEATURE_EXCEPTIONS`"
-    )
-    errors = failures_by_path.get(path)
-    if errors is None:
-        return
-    errors[:] = [candidate for candidate in errors if candidate != error]
-    if not errors:
-        del failures_by_path[path]
-
-
-verifier["main"].__globals__["add_unused_exception_errors"] = (
-    add_unused_exception_errors_without_stale_code_mode
-)
-raise SystemExit(verifier["main"]())
-PY
-else
-  python3 .github/scripts/verify_cargo_workspace_manifests.py
-fi
-python3 .github/scripts/verify_tui_core_boundary.py
-python3 .github/scripts/verify_bazel_clippy_lints.py
+"${tooling}" verify-cargo-workspace-manifests "${target_dir}" --upstream
+"${tooling}" verify-tui-core-boundary "${target_dir}"
+"${tooling}" verify-bazel-clippy-lints "${target_dir}"
 python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 if [[ -d scripts/install ]]; then
   python3 -m unittest discover -s scripts/install -p 'test_*.py'

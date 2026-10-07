@@ -60,56 +60,28 @@ env -u CODEX_UNLEASHED_BUILD_NUMBER -u WT_SESSION -u NO_COLOR \
 
 ## Package and executable version agreement
 
-[match-package-and-executable-version.patch](match-package-and-executable-version.patch)
-applies independently to upstream `rust-v0.160.0`, commit
-`a956835d020762cb2b570053af06f643a11c0ecc`. Use it with the branding patch in
-this directory so the executable and package metadata identify the same build.
+The JDK 27 release tooling records the full Unleashed executable version,
+including the numeric build suffix or `+dev`. Package assembly and the
+`get-codex-package-version <checkout>` command share the same version provider.
+Explicit `--package-version` overrides retain their meaning.
 
-### Intent
+`CODEX_UNLEASHED_BUILD_NUMBER` supplies the build number for compilation and
+packaging. When absent, both use `dev`; an explicitly empty value remains empty.
+The Windows packaging job supplies the same build number as compilation. The
+packager reads the workspace selected by `CODEX_PACKAGE_WORKSPACE_ROOT` and
+retains license bundling and archive timestamp handling.
 
-Packages record the full Unleashed executable version, including the numeric
-build suffix or `+dev`. This lets the CLI install its own package as the daemon
-without a package/executable version mismatch. Explicit `--package-version`
-overrides retain their meaning. A version-query script lets this repository’s
-release packager use the same version policy.
-
-### Feature configuration
-
-This packaging fix is always active and has no feature flag or project-specific
-`config.toml` properties. `CODEX_UNLEASHED_BUILD_NUMBER` supplies the build number
-for compilation and packaging; without it, both use `dev`.
-
-### Reproduction
-
-Build a branded executable with `CODEX_UNLEASHED_BUILD_NUMBER=41`, then assemble
-its package with the same environment variable. The manifest version and
-executable version both identify `0.160.0+41` at this upstream base.
-
-### Verification
-
-Run from the patched upstream checkout root:
+Run the maintained checks from this repository root with JDK 27:
 
 ```sh
-CODEX_REPO_ROOT="$PWD" python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
-just fmt-check
+tooling/mvnw verify -Dtest=PackageVersionCommandTest,PackageVersionsTest,PackageCommandTest,PackageCommandRuntimeTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 The checks cover branded defaults, the development fallback, explicit version
-overrides, the version-query script, and the existing package layout and
-archive behavior. Run this repository's entry-point checks separately:
-
-```sh
-python3 -m unittest discover -s scripts/codex_package -p test_upstream_package_version.py
-```
-
-This repository’s packager queries the version helper in
-`CODEX_PACKAGE_WORKSPACE_ROOT` and retains its own license bundling and archive
-timestamp handling.
-The Windows packaging job supplies the same build number as compilation.
-
-### Upstream status
-
-This is a distribution-specific change for Codex Unleashed branding.
+overrides, the package-version query, and actual package assembly through a
+fresh bundled runtime. The branding patch supplies the executable's matching
+version; the package policy resides in this repository's Java tooling.
 
 ## Public daemon releases
 
@@ -158,8 +130,7 @@ restart, and update recovery.
 Run the release packaging checks from this repository root:
 
 ```sh
-python3 -m unittest discover -s scripts/codex_package -p test_release_installers.py
-python3 -m unittest discover -s scripts/codex_package -p test_release_workflow.py
+tooling/mvnw verify
 ```
 
 These checks execute installer staging, compare the staged bytes, and verify

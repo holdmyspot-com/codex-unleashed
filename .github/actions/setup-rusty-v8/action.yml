@@ -15,7 +15,7 @@ runs:
       run: |
         set -euo pipefail
 
-        version="$(python3 "${GITHUB_WORKSPACE}/.github/scripts/rusty_v8_bazel.py" resolved-v8-crate-version)"
+        version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version "${GITHUB_WORKSPACE}")"
         release_tag="rusty-v8-v${version}"
         base_url="https://github.com/openai/codex/releases/download/${release_tag}"
         # Cargo records these override paths in the v8 build-script

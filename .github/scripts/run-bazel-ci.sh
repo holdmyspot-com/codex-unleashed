@@ -53,11 +53,11 @@ fi
 
 run_bazel() {
   if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
-    MSYS2_ARG_CONV_EXCL='*' "$(dirname "${BASH_SOURCE[0]}")/run_bazel_with_buildbuddy.py" "$@"
+    MSYS2_ARG_CONV_EXCL='*' "$(dirname "${BASH_SOURCE[0]}")/run-bazel-with-buildbuddy.sh" "$@"
     return
   fi
 
-  "$(dirname "${BASH_SOURCE[0]}")/run_bazel_with_buildbuddy.py" "$@"
+  "$(dirname "${BASH_SOURCE[0]}")/run-bazel-with-buildbuddy.sh" "$@"
 }
 
 run_bazel_with_startup_args() {

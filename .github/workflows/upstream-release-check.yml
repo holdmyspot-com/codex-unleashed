@@ -23,11 +23,12 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-tooling
       - id: detect
         name: Compare release tags (no compilation)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/detect-upstream-release.py
+        run: '"$CODEX_UNLEASHED_TOOLING" detect-upstream-release "$GITHUB_REPOSITORY" "$GITHUB_OUTPUT" "$GITHUB_STEP_SUMMARY"'
 
   request-build:
     needs: detect

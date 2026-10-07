@@ -1,0 +1,21 @@
+name: setup-tooling
+description: Build the Java tooling and make its bundled runtime available to subsequent steps.
+
+outputs:
+  launcher:
+    description: Absolute path to the project tooling launcher.
+    value: ${{ steps.build.outputs.launcher }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up JDK 27
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '27'
+
+    - name: Build tooling runtime
+      id: build
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/setup.sh"

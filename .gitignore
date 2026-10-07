@@ -1,6 +1,7 @@
 .DS_Store
 .idea/
 .cache/
+.cat/work/
 __pycache__/
 dist/
 release-artifacts/

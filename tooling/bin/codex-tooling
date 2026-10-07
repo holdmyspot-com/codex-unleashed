@@ -1,0 +1,19 @@
+#!/bin/sh
+# Runs the bundled tooling and builds its runtime when the runtime is absent.
+set -eu
+
+project_root="$(CDPATH= cd -- "${0%/*}/../.." && pwd)"
+runtime_directory="$project_root/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+runtime="$runtime_directory/bin/codex-tooling"
+export TMPDIR="$project_root/.cat/work/temp/build-caches/tooling/tmp"
+export XDG_CACHE_HOME="$project_root/.cat/work/temp/build-caches/tooling/xdg"
+mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+
+if [ ! -f "$runtime_directory/.complete" ] || [ ! -x "$runtime" ]; then
+  "$project_root/tooling/mvnw" -q verify </dev/null >&2
+fi
+if [ ! -f "$runtime_directory/.complete" ] || [ ! -x "$runtime" ]; then
+  echo "ERROR: Maven did not produce the tooling launcher: $runtime" >&2
+  exit 1
+fi
+exec "$runtime" "$@"

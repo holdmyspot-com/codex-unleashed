@@ -22,6 +22,17 @@ if command -v gtar >/dev/null 2>&1; then
   archive_tar=gtar
 fi
 
+# Prunes obsolete and untagged package versions while preserving retained release aliases.
+# Environment:
+#   CODEX_UNLEASHED_TOOLING: Java tooling launcher, required for stable release discovery.
+#   GH_TOKEN: Authentication used by the GitHub CLI.
+#   GITHUB_API_URL: GitHub API base URL; defaults to https://api.github.com.
+# Output:
+#   Deletion progress on stdout and command failures on stderr.
+# Effects:
+#   Deletes obsolete GHCR package versions identified by the configured repository.
+# Exit:
+#   Zero on success; nonzero when release discovery, inventory lookup, or deletion fails.
 prune_old_tags() {
   # Release-qualified aliases associate shared compiler caches with the
   # upstream versions that use them. Deleting a package version removes all
@@ -35,7 +46,8 @@ prune_old_tags() {
   package_name="${repository_path#*/}"
   package_endpoint="${GITHUB_API_URL:-https://api.github.com}/orgs/${package_owner}/packages/container/${package_name}/versions"
 
-  retained_releases="$(python3 "$(dirname "$0")/cache_retention.py" stable-releases)"
+  : "${CODEX_UNLEASHED_TOOLING:?CODEX_UNLEASHED_TOOLING is required; run setup-tooling first}"
+  retained_releases="$("$CODEX_UNLEASHED_TOOLING" stable-releases)"
 
   stale_version_ids="$(
     gh api --paginate "$package_endpoint" --jq '

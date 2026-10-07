@@ -2,4 +2,3 @@
 # Keep this list short and limited to intentional large checked-in assets.
 
 MODULE.bazel.lock
-sdk/python/notebooks/sdk_walkthrough.ipynb

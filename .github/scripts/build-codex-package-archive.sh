@@ -167,24 +167,23 @@ if [[ -n "$workspace_root" ]]; then
   export CODEX_PACKAGE_WORKSPACE_ROOT="$workspace_root"
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  python_bin="python3"
-else
-  python_bin="python"
-fi
+tooling="${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}"
 
 if ! command -v zstd >/dev/null 2>&1 && [[ -x "${repo_root}/.github/workflows/zstd" ]]; then
   export PATH="${repo_root}/.github/workflows:${PATH}"
 fi
 
 mkdir -p "$archive_dir"
-package_dir="${RUNNER_TEMP:-/tmp}/${archive_stem}-${target}"
+package_work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/${archive_stem}.XXXXXX")"
+trap 'rm -rf -- "$package_work" || exit 1' EXIT
+package_dir="${package_work}/package"
 gzip_archive_path="${archive_dir}/${archive_stem}-${target}.tar.gz"
 zstd_archive_path="${archive_dir}/${archive_stem}-${target}.tar.zst"
-rm -rf "$package_dir"
 
-python_args=(
-  "${repo_root}/scripts/build_codex_package.py"
+package_args=(
+  build-codex-package
+  --repo "$repo_root"
+  --cache-root "${package_work}/cache"
   --target "$target"
   --variant "$variant"
   --entrypoint-bin "${entrypoint_dir%/}/${entrypoint_name}${exe_suffix}"
@@ -194,8 +193,8 @@ python_args=(
   --archive-output "$zstd_archive_path"
 )
 if ((${#resource_args[@]} > 0)); then
-  python_args+=("${resource_args[@]}")
+  package_args+=("${resource_args[@]}")
 fi
-python_args+=(--force)
+package_args+=(--force)
 
-"$python_bin" "${python_args[@]}"
+"$tooling" "${package_args[@]}"

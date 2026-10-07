@@ -30,16 +30,12 @@ jobs:
         with:
           upstream-ref: ${{ inputs.upstream_ref }}
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - id: v8_version
         shell: bash
         run: |
           set -euo pipefail
           cd upstream
-          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version .)"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - id: release_tag
@@ -206,7 +202,7 @@ jobs:
           if [[ "${SANDBOX}" != "true" ]]; then
             bazel_args+=(--config=v8-release-compat)
           fi
-          ./.github/scripts/run_bazel_with_buildbuddy.py \
+          "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy \
             --noexperimental_remote_repo_contents_cache \
             "${bazel_args[@]}" \
             "--config=${{ matrix.bazel_config }}"
@@ -236,7 +232,7 @@ jobs:
           else
             stage_args+=(--bazel-config v8-release-compat)
           fi
-          python3 .github/scripts/rusty_v8_bazel.py stage-release-pair "${stage_args[@]}"
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . stage-release-pair "${stage_args[@]}"
 
       - name: Smoke test staged artifact with Cargo
         env:
@@ -396,7 +392,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 upstream/.github/scripts/rusty_v8_bazel.py stage-upstream-release-pair \
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel upstream stage-upstream-release-pair \
             --target-dir upstream-rusty-v8/target \
             --target "${TARGET}" \
             --output-dir "dist/${TARGET}" \

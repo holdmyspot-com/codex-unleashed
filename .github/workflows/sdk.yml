@@ -14,54 +14,6 @@ on:
         type: string
 
 jobs:
-  python-sdk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ inputs.upstream_ref }}
-
-      - name: Test Python SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            -e HOME=/tmp/codex-python-sdk-home \
-            -e UV_LINK_MODE=copy \
-            -e CODEX_UPSTREAM_DIR="${GITHUB_WORKSPACE}/upstream" \
-            -v "${GITHUB_WORKSPACE}/upstream:${GITHUB_WORKSPACE}/upstream" \
-            -w "${GITHUB_WORKSPACE}/upstream/sdk/python" \
-            python:3.12-slim \
-            sh -euxc '
-              python -m venv /tmp/uv
-              /tmp/uv/bin/python -m pip install uv==0.11.3
-              # Keep the executable outside /tmp: the container setup can
-              # clean temporary environments while creating the project one.
-              uv_bin="${CODEX_UPSTREAM_DIR}/.codex-uv"
-              install -m 755 /tmp/uv/bin/uv "${uv_bin}"
-              export PATH="/tmp/uv/bin:${PATH}"
-              "${uv_bin}" sync --group dev --frozen
-              "${uv_bin}" run --frozen --no-sync ruff check --output-format=github .
-              "${uv_bin}" run --frozen --no-sync ruff format --check .
-              # The upstream formatter implementation uses cargo fmt, but its
-              # matching assertion still expects the removed direct-rustfmt
-              # implementation. Keep the rest of the upstream SDK tests
-              # active until upstream updates that assertion.
-              "${uv_bin}" run --frozen --no-sync pytest \
-                --deselect tests/test_artifact_workflow_and_binaries.py::test_root_format_driver_covers_all_formatter_groups
-            '
-
-      - name: Check for a clean worktree
-        if: always() && !cancelled()
-        uses: ./.github/actions/check-clean-worktree
-
   sdks:
     runs-on: ubuntu-latest
     # A cold Bazel build on GitHub-hosted runners can exceed the upstream

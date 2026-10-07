@@ -21,56 +21,20 @@ git -c protocol.version=2 clone --filter=blob:none --no-checkout --depth 1 \
   --branch "${upstream_tag}" "https://github.com/${upstream_repo}.git" "${upstream_checkout}"
 git -C "${upstream_checkout}" checkout --detach "${upstream_tag}" >/dev/null
 "${repo_root}/scripts/apply-patches.sh" "${upstream_checkout}"
-git -C "${upstream_checkout}" diff --check
+padded_snapshot="codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap"
+git -C "${upstream_checkout}" diff --check -- . ":(exclude)${padded_snapshot}"
+# The generated terminal frame retains line padding; its other whitespace checks remain enabled.
+git -C "${upstream_checkout}" -c core.whitespace=-blank-at-eol diff --check -- "${padded_snapshot}"
 
 pushd "${upstream_checkout}" >/dev/null
 export CODEX_REPO_ROOT="${upstream_checkout}"
-ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1 python3 - "${repo_root}" "${upstream_checkout}" <<'PY'
-import runpy
-import sys
-from pathlib import Path
-
-repo_root = Path(sys.argv[1])
-upstream_root = Path(sys.argv[2])
-
-
-def run_check(relative_path, replacements):
-    namespace = runpy.run_path(str(repo_root / relative_path))
-    namespace["main"].__globals__.update(replacements)
-    original_argv = sys.argv
-    sys.argv = [relative_path]
-    try:
-        return namespace["main"]()
-    finally:
-        sys.argv = original_argv
-
-
-checks = (
-    (
-        ".github/scripts/verify_cargo_workspace_manifests.py",
-        {"ROOT": upstream_root, "CARGO_RS_ROOT": upstream_root / "codex-rs"},
-    ),
-    (
-        ".github/scripts/verify_tui_core_boundary.py",
-        {
-            "ROOT": upstream_root,
-            "TUI_ROOT": upstream_root / "codex-rs" / "tui",
-            "TUI_MANIFEST": upstream_root / "codex-rs" / "tui" / "Cargo.toml",
-        },
-    ),
-    (
-        ".github/scripts/verify_bazel_clippy_lints.py",
-        {
-            "ROOT": upstream_root,
-            "DEFAULT_CARGO_TOML": upstream_root / "codex-rs" / "Cargo.toml",
-            "DEFAULT_BAZELRC": upstream_root / ".bazelrc",
-        },
-    ),
-)
-for path, replacements in checks:
-    if run_check(path, replacements):
-        raise SystemExit(1)
-PY
+ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1 \
+  "${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}" \
+  verify-cargo-workspace-manifests "${upstream_checkout}"
+"${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}" \
+  verify-tui-core-boundary "${upstream_checkout}"
+"${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}" \
+  verify-bazel-clippy-lints "${upstream_checkout}"
 popd >/dev/null
 
 expected_assets=()
@@ -100,6 +64,9 @@ check_resource_manifest() {
   local release_tag="$3"
   local release_json
   release_json="$(gh api "repos/${release_repo}/releases/tags/${release_tag}")"
+  local manifest_assets
+  manifest_assets="$("${CODEX_UNLEASHED_TOOLING:-${repo_root}/tooling/bin/codex-tooling}" \
+    resource-manifest-assets "${repo_root}/${manifest}")"
 
   while IFS=$'\t' read -r name size digest; do
     [[ -n "${name}" ]] || continue
@@ -112,25 +79,7 @@ check_resource_manifest() {
       echo "       upstream: size=${actual_size} digest=${actual_digest}" >&2
       exit 1
     fi
-  done < <(python3 - "${repo_root}/${manifest}" <<'PY'
-import json
-import sys
-from pathlib import Path
-from urllib.parse import urlparse
-
-data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8").split("\n", 1)[1])
-for platform in data["platforms"].values():
-    provider = next(
-        item for item in platform["providers"]
-        if item.get("type") == "github-release" or "url" in item
-    )
-    if "url" in provider:
-        name = Path(urlparse(provider["url"]).path).name
-    else:
-        name = provider["name"]
-    print(name, platform["size"], platform["digest"], sep="\t")
-PY
-  )
+  done <<< "$manifest_assets"
 }
 
 check_resource_manifest scripts/codex_package/codex-zsh openai/codex codex-zsh-v0.1.0
