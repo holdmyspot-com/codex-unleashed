@@ -48,6 +48,24 @@ final class NativeCommands
 	}
 
 	/**
+	 * Creates a builder that runs a POSIX script through the selected native Bash interpreter.
+	 *
+	 * @param script the script path
+	 * @param arguments the script's literal arguments
+	 * @return the configured builder
+	 * @throws IOException if the native command boundary is unavailable
+	 */
+	static ProcessBuilder scriptBuilder(Path script, String... arguments) throws IOException
+	{
+		String filename = script.toString();
+		if (File.separatorChar == '\\')
+			filename = filename.replace('\\', '/');
+		List<String> command = new ArrayList<>(List.of("bash", filename));
+		command.addAll(List.of(arguments));
+		return createBuilder(command);
+	}
+
+	/**
 	 * Selects the Bash executable supplied by the maintained Maven wrapper.
 	 *
 	 * @return the interpreter executable

@@ -94,7 +94,7 @@ public final class CargoCacheManifestWorkflowTest
 	{
 		Path output = root.resolve("console");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command).directory(root.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command).directory(root.toFile()).
 			redirectInput(input.toFile()).redirectErrorStream(true).redirectOutput(output.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);

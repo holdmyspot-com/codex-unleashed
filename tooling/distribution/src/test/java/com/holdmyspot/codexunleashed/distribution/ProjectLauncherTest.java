@@ -184,7 +184,7 @@ public final class ProjectLauncherTest
 			Files.createDirectories(launcher.getParent());
 			Files.copy(Path.of(System.getProperty("tooling.launcher")), launcher, StandardCopyOption.REPLACE_EXISTING);
 			Path log = root.resolve("launcher.log");
-			var builder = new ProcessBuilder("sh", launcher.toString(), "command", "argument with spaces");
+			ProcessBuilder builder = NativeCommands.scriptBuilder(launcher, "command", "argument with spaces");
 			builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 			try (Process process = builder.start())
 			{

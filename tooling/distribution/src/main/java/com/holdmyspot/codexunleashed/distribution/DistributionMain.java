@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.distribution;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,13 +60,17 @@ public final class DistributionMain
 			throw new IOException("Interrupted while waiting for jlink", failure);
 		}
 
+		String normalizeLauncher = "";
+		if (File.separatorChar == '\\')
+			normalizeLauncher = "LAUNCHER=${LAUNCHER//\\\\//}\n";
 		String launcher = """
 			#!/bin/sh
 			set -eu
-			DIR=$(CDPATH= cd -- "${0%%/*}" && pwd)
+			LAUNCHER=$0
+			%sDIR=$(CDPATH= cd -- "${LAUNCHER%%/*}" && pwd)
 			exec "$DIR/java" "-Djava.io.tmpdir=${TMPDIR:-/tmp}" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
 				-Djdk.lang.Process.allowAmbiguousCommands=true --enable-native-access=%s -m %s/%s "$@"
-			""".formatted(TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
+			""".formatted(normalizeLauncher, TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
 		Files.createFile(output.resolve(".complete"));
 	}

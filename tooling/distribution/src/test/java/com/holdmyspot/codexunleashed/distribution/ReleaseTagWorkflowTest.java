@@ -67,7 +67,7 @@ public final class ReleaseTagWorkflowTest
 					server.getAddress().getPort(), "/", null, null);
 				Path output = root.resolve("workflow output");
 				Path log = root.resolve("workflow.log");
-				ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command);
+				ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 				builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 				builder.environment().put("PATH", adapters.toString());
 				builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
