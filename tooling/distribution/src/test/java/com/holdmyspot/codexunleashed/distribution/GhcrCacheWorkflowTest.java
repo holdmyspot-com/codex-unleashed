@@ -198,7 +198,11 @@ public final class GhcrCacheWorkflowTest
 		{
 			Path adapters = Files.createDirectory(root.resolve("adapters"));
 			String tar = run(root, environment, List.of("bash", "-c", "command -v gtar || command -v tar"), 0).strip();
-			Files.createSymbolicLink(adapters.resolve("gtar"), Path.of(tar));
+			Path gtar = Files.writeString(adapters.resolve("gtar"),
+				"#!/bin/bash\nexec \"$CACHE_TEST_GNU_TAR\" \"$@\"\n");
+			if (Files.getFileAttributeView(gtar, PosixFileAttributeView.class) != null)
+				Files.setPosixFilePermissions(gtar, PosixFilePermissions.fromString("rwx------"));
+			environment.put("CACHE_TEST_GNU_TAR", tar);
 			JavaCommandFixtures.writeLauncher(adapters.resolve("tar"), RejectedCommandFixture.class);
 			environment.put("PATH", adapters + File.pathSeparator + environment.get("PATH"));
 		}

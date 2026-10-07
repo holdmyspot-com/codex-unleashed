@@ -89,6 +89,7 @@ fi
 )
 
 while IFS=$'\t' read -r relative_path expected_hash; do
+  expected_hash="${expected_hash%$'\r'}"
   artifact_path="${release_dir}/${relative_path}"
   if [[ ! -f "${artifact_path}" ]]; then
     echo "ERROR: manifest artifact missing: ${relative_path}" >&2
@@ -103,6 +104,7 @@ while IFS=$'\t' read -r relative_path expected_hash; do
 done < <(jq -r '.artifacts[] | [.path, .sha256] | @tsv' "${manifest_path}")
 
 while IFS=$'\t' read -r relative_path expected_hash; do
+  expected_hash="${expected_hash%$'\r'}"
   patch_path="${patch_repo}/${relative_path}"
   if [[ ! -f "${patch_path}" ]]; then
     echo "ERROR: patch missing from repository: ${relative_path}" >&2

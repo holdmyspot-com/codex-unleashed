@@ -5,6 +5,8 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -61,17 +63,45 @@ public final class ReleaseManifestWorkflowTest
 			Path temporary = Files.createDirectory(root.resolve("temporary"));
 			Path runtime = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), runtime.toString()});
-			Map<String, String> environment = Map.of("PATH", bin + java.io.File.pathSeparator + System.getenv("PATH"),
+			Map<String, String> environment = new java.util.HashMap<>(Map.of(
+				"PATH", bin + java.io.File.pathSeparator + System.getenv("PATH"),
 				"TMPDIR", temporary.toString(), "CODEX_UNLEASHED_TOOLING", runtime.resolve("bin/codex-tooling").toString(),
-				"GITHUB_REPOSITORY", "holdmyspot-com/codex-unleashed");
+				"GITHUB_REPOSITORY", "holdmyspot-com/codex-unleashed"));
 			String command = bindPublication(WorkflowCommands.readStepCommand("publish", "Add reproducibility materials"));
 			Path log = root.resolve("process.log");
+			if (!root.getFileSystem().getSeparator().equals("\\"))
+			{
+				assertEquals(run(NativeCommands.createBuilder("bash", "-c", "command -v jq"), builder, environment, log), 0,
+					Files.readString(log));
+				environment.put("MANIFEST_TEST_JQ", Files.readString(log).strip());
+				Path jq = Files.writeString(bin.resolve("jq"), """
+					#!/bin/bash
+					set -euo pipefail
+					if [[ "${2:-}" == *'@tsv'* ]]; then
+					  "$MANIFEST_TEST_JQ" "$@" | awk '{sub(/\\r$/, ""); printf "%s\\r\\n", $0}'
+					else
+					  exec "$MANIFEST_TEST_JQ" "$@"
+					fi
+					""");
+				if (Files.getFileAttributeView(jq, PosixFileAttributeView.class) != null)
+					Files.setPosixFilePermissions(jq, PosixFilePermissions.fromString("rwx------"));
+			}
 			assertEquals(run(NativeCommands.createBuilder("bash", "-eu", "-c", command), builder, environment, log),
 				0, Files.readString(log));
 			assertManifest(release, "github-actions");
 			assertEquals(run(NativeCommands.scriptBuilder(scripts.resolve("verify-release.sh"), release.toString(),
 				"--patch-repo", consumer.toString()), consumer, environment, log), 0, Files.readString(log));
 			assertTrue(Files.readString(log).contains("Release verification succeeded"));
+			Path manifest = release.resolve("release-manifest.json");
+			String originalManifest = Files.readString(manifest);
+			String artifactHash = JsonMapper.builder().build().readTree(originalManifest).
+				get("artifacts").get(0).get("sha256").stringValue();
+			Files.writeString(manifest, originalManifest.replace(artifactHash, "0".repeat(64)));
+			assertEquals(run(NativeCommands.scriptBuilder(scripts.resolve("verify-release.sh"), release.toString(),
+				"--patch-repo", consumer.toString()), consumer, environment, log), 1, Files.readString(log));
+			assertTrue(Files.readString(log).contains("Expected hash: " + "0".repeat(64)), Files.readString(log));
+			assertTrue(Files.readString(log).contains("Actual hash: " + artifactHash), Files.readString(log));
+			Files.writeString(manifest, originalManifest);
 
 			Path launcher = Files.createDirectories(builder.resolve("tooling/bin")).resolve("codex-tooling");
 			Files.copy(project.resolve("tooling/bin/codex-tooling"), launcher, StandardCopyOption.COPY_ATTRIBUTES);

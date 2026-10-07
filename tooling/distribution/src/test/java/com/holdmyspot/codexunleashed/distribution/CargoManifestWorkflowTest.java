@@ -132,9 +132,11 @@ public final class CargoManifestWorkflowTest
 				upstream.toString());
 			assertEquals(run(fallbackCommand,
 				projectFixture, environment, stdout, stderr), 0, Files.readString(stderr));
-			assertEquals(Files.readAllLines(fallbackCalls), List.of("verify-cargo-workspace-manifests", upstream.toString(),
-				"--upstream", "verify-tui-core-boundary", upstream.toString(), "verify-bazel-clippy-lints",
-				upstream.toString()));
+			assertEquals(run(NativeCommands.createBuilder("bash", "-c", "cd \"$1\" && pwd", "bash", upstream.toString()),
+				root, environment, stdout, stderr), 0, Files.readString(stderr));
+			String canonicalUpstream = Files.readString(stdout).strip();
+			assertEquals(Files.readAllLines(fallbackCalls), List.of("verify-cargo-workspace-manifests", canonicalUpstream,
+				"--upstream", "verify-tui-core-boundary", canonicalUpstream, "verify-bazel-clippy-lints", canonicalUpstream));
 			List<String> finalCalls = Files.readAllLines(calls);
 			assertEquals(finalCalls.subList(expected.size(), finalCalls.size()), expected);
 			try (Stream<Path> files = Files.list(temporary))

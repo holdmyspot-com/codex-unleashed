@@ -3,9 +3,11 @@ package com.holdmyspot.codexunleashed.distribution;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -40,18 +42,10 @@ public final class ReproductionPrerequisitesTest
 			Path commands = Files.createDirectory(root.resolve("commands"));
 			for (String name : List.of("bash", "dirname", "basename", "mkdir", "mktemp", "rm", "jq"))
 			{
-				String filename = name;
-				if (File.separatorChar == '\\')
-					filename = name + ".exe";
-				Files.createSymbolicLink(commands.resolve(filename), executable(name));
-			}
-			if (File.separatorChar == '\\')
-			{
-				try (DirectoryStream<Path> libraries = Files.newDirectoryStream(executable("bash").getParent(), "*.dll"))
-				{
-					for (Path library : libraries)
-						Files.copy(library, commands.resolve(library.getFileName()));
-				}
+				Path wrapper = Files.writeString(commands.resolve(name), "#!/bin/bash\nexec '" +
+					executable(name).toString().replace("'", "'\"'\"'") + "' \"$@\"\n");
+				if (Files.getFileAttributeView(wrapper, PosixFileAttributeView.class) != null)
+					Files.setPosixFilePermissions(wrapper, PosixFilePermissions.fromString("rwx------"));
 			}
 			JavaCommandFixtures.writeLauncher(commands.resolve("git"), ReproductionGitFixture.class);
 			assertFalse(Files.exists(commands.resolve("python3")));
@@ -71,6 +65,9 @@ public final class ReproductionPrerequisitesTest
 				project.resolve("scripts/reproduce-release.sh"), manifest.toString(), "--output-dir",
 				root.resolve("output").toString()).directory(root.toFile()).redirectInput(input.toFile()).
 				redirectErrorStream(true).redirectOutput(console.toFile());
+			List<String> tracedCommand = new ArrayList<>(builder.command());
+			tracedCommand.add(1, "-x");
+			builder.command(tracedCommand);
 			builder.environment().clear();
 			builder.environment().putAll(Map.of("PATH", commands.toString(), "TMPDIR", temporary.toString(),
 				"REPRODUCTION_GIT_MARKER", marker.toString(), "XDG_CACHE_HOME", root.resolve("xdg").toString()));
