@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -80,6 +82,15 @@ public final class GhcrCacheWorkflowTest
 			Path deleted = root.resolve("deleted");
 			assertEquals(Files.readAllLines(deleted), List.of("4", "5", "6", "7"));
 			Files.delete(deleted);
+			Path crlfInventory = Files.writeString(root.resolve("crlf-inventory"),
+				"#!/bin/bash\nprintf 'rust-v0.160.0\\r\\nrust-v0.159.1\\r\\n'\n");
+			if (Files.getFileAttributeView(crlfInventory, PosixFileAttributeView.class) != null)
+				Files.setPosixFilePermissions(crlfInventory, PosixFilePermissions.fromString("rwx------"));
+			String launcher = environment.put("CODEX_UNLEASHED_TOOLING", crlfInventory.toString());
+			cache(root, environment, "prune", tag, root.resolve("target"), "rust-v0.159.1", 0);
+			assertEquals(Files.readAllLines(deleted), List.of("4", "5", "6", "7"));
+			Files.delete(deleted);
+			environment.put("CODEX_UNLEASHED_TOOLING", launcher);
 			for (String status : List.of("0", "1"))
 			{
 				environment.put("CACHE_TEST_LOOKUP", status);
