@@ -85,6 +85,10 @@ public final class CargoShearTest
 			Path captures = Files.createDirectory(root.resolve("captures"));
 			String finding = "{\"severity\":\"warning\",\"message\":\"known orphan\"}";
 			String report = "{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[" + finding + "]}\n";
+			SystemCommands.Result fixture = SystemCommands.capture(
+				JavaFixtures.command(CommandFixture.class, "echo", report), root, captures);
+			assertEquals(fixture.status(), 0, fixture.stdout() + fixture.stderr());
+			assertEquals(fixture.stdout(), report, fixture.stderr());
 			Path baseline = root.resolve("baseline.json");
 			Files.writeString(baseline, "{\"source_sha\":\"" + "a".repeat(40) + "\",\"findings\":[" + finding +
 				"],\"source_paths\":[\"codex-rs/source.txt\"]}");

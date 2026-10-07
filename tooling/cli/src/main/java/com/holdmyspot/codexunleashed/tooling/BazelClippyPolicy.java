@@ -159,7 +159,7 @@ public final class BazelClippyPolicy
 					continue;
 				JsonNode inherited = parse(file).path("lints").path("workspace");
 				if (inherited.isBoolean() && inherited.booleanValue())
-					return root.relativize(file).toString();
+					return ArtifactPaths.relativeName(root, file);
 			}
 		}
 		return "";
@@ -263,7 +263,7 @@ public final class BazelClippyPolicy
 	private static String display(Path root, Path path)
 	{
 		if (path.startsWith(root))
-			return root.relativize(path).toString();
+			return ArtifactPaths.relativeName(root, path);
 		return path.toString();
 	}
 }

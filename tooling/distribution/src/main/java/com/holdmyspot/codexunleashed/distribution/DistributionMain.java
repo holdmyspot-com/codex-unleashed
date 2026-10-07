@@ -1,11 +1,8 @@
 package com.holdmyspot.codexunleashed.distribution;
 
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.spi.ToolProvider;
 
 /**
  * Assembles the tooling module and its dependencies into a bundled Java runtime.
@@ -14,7 +11,6 @@ public final class DistributionMain
 {
 	private static final String TOOLING_MODULE = "com.holdmyspot.codexunleashed.tooling";
 	private static final String TOOLING_MAIN = TOOLING_MODULE + ".Main";
-	private static final Object JLINK_LOCK = new Object();
 
 	/**
 	 * Prevents construction.
@@ -38,23 +34,30 @@ public final class DistributionMain
 		Path output = Path.of(args[1]).toAbsolutePath();
 		if (Files.exists(output))
 			throw new IllegalArgumentException("Runtime output already exists: " + output);
-		ToolProvider jlink = ToolProvider.findFirst("jlink").
-			orElseThrow(() -> new IllegalStateException("The JDK does not provide jlink"));
-		var diagnostics = new StringWriter();
-		int result;
-		try (var writer = new PrintWriter(diagnostics))
+		Path jlink = Path.of(System.getProperty("java.home"), "bin", "jlink");
+		if (!Files.isRegularFile(jlink))
+			jlink = jlink.resolveSibling("jlink.exe");
+		try (var diagnostics = new JlinkDiagnostics(Files.createTempFile("jlink-", ".log")))
 		{
-			// WORKAROUND: https://bugs.openjdk.org/browse/JDK-8390505
-			// Serializes jlink's shared option/plugin state until the JDK includes the fix.
-			synchronized (JLINK_LOCK)
+			ProcessBuilder builder = new ProcessBuilder(jlink.toString(),
+				"-J-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
+				"--module-path", modules.toString(), "--add-modules", TOOLING_MODULE,
+				"--launcher", "codex-tooling=" + TOOLING_MODULE + "/" + TOOLING_MAIN, "--output", output.toString(),
+				"--strip-debug", "--no-header-files", "--no-man-pages");
+			builder.redirectErrorStream(true).redirectOutput(diagnostics.path().toFile());
+			try (Process process = builder.start())
 			{
-				result = jlink.run(writer, writer, "--module-path", modules.toString(), "--add-modules", TOOLING_MODULE,
-					"--launcher", "codex-tooling=" + TOOLING_MODULE + "/" + TOOLING_MAIN, "--output", output.toString(),
-					"--strip-debug", "--no-header-files", "--no-man-pages");
+				int result = process.waitFor();
+				if (result != 0)
+					throw new IOException("jlink failed with status " + result + ": " +
+						Files.readString(diagnostics.path()).strip());
 			}
 		}
-		if (result != 0)
-			throw new IOException("jlink failed with status " + result + ": " + diagnostics.toString().strip());
+		catch (InterruptedException failure)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for jlink", failure);
+		}
 
 		String launcher = """
 			#!/bin/sh
@@ -65,5 +68,24 @@ public final class DistributionMain
 			""".formatted(TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
 		Files.createFile(output.resolve(".complete"));
+	}
+
+	/**
+	 * Owns the linker's captured output until the process result is consumed.
+	 *
+	 * @param path the owned temporary diagnostics file
+	 */
+	private record JlinkDiagnostics(Path path) implements AutoCloseable
+	{
+		/**
+		 * Deletes captured output while preserving any primary linking failure.
+		 *
+		 * @throws IOException if the diagnostics file cannot be removed
+		 */
+		@Override
+		public void close() throws IOException
+		{
+			Files.delete(path);
+		}
 	}
 }
