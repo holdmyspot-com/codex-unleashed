@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -81,7 +80,7 @@ public final class CargoShearWorkflowTest
 					expectedStatus = 1;
 				}
 				Path log = root.resolve("workflow.log");
-				ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command);
+				ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 				builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 				builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
 				builder.environment().put("PATH", adapters + File.pathSeparator +
@@ -102,11 +101,7 @@ public final class CargoShearWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -127,7 +122,7 @@ public final class CargoShearWorkflowTest
 		List<String> command = new ArrayList<>(List.of("git"));
 		command.addAll(Arrays.asList(arguments));
 		Path log = root.resolve("git.log");
-		ProcessBuilder builder = new ProcessBuilder(command);
+		ProcessBuilder builder = NativeCommands.createBuilder(command);
 		builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 		isolateGit(builder, configuration, template);
 		assertEquals(run(builder, log), 0, Files.readString(log));

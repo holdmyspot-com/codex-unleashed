@@ -3,7 +3,6 @@ package com.holdmyspot.codexunleashed.distribution;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,11 +112,7 @@ public final class CiUpstreamTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -166,7 +161,8 @@ public final class CiUpstreamTest
 	{
 		Path log = root.resolve("console.log");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectInput(input.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(command).directory(root.toFile()).
+			redirectInput(input.toFile()).
 			redirectErrorStream(true).redirectOutput(log.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);

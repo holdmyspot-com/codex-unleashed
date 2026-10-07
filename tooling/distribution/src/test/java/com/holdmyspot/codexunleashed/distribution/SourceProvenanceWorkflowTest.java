@@ -6,7 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -120,11 +119,7 @@ public final class SourceProvenanceWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -145,7 +140,7 @@ public final class SourceProvenanceWorkflowTest
 	private static int runWorkflow(String command, Path working, Path temporary, Path bin, Path runtime,
 		Map<String, String> gitEnvironment, Path log) throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command).directory(working.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command).directory(working.toFile()).
 			redirectErrorStream(true).redirectOutput(log.toFile());
 		Map<String, String> environment = builder.environment();
 		environment.putAll(gitEnvironment);
@@ -195,7 +190,8 @@ public final class SourceProvenanceWorkflowTest
 		List<String> command = new ArrayList<>(List.of("git", "-C", checkout.toString()));
 		command.addAll(Arrays.asList(arguments));
 		Path log = checkout.getParent().resolve("git.log");
-		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile());
+		ProcessBuilder builder = NativeCommands.createBuilder(command).redirectErrorStream(true).
+			redirectOutput(log.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())
 		{

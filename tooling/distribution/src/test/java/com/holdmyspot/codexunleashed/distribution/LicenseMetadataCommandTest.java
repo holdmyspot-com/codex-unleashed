@@ -79,7 +79,7 @@ public final class LicenseMetadataCommandTest
 			Path output = root.resolve("licenses");
 			List<String> command = List.of(launcher.toString(), "collect-third-party-licenses", "--manifest=Cargo.toml",
 				"--output", output.toString(), "--require-license-evidence");
-			assertEquals(run(command, workspace, environment, log), 0, Files.readString(log));
+			assertEquals(runScript(command, workspace, environment, log), 0, Files.readString(log));
 			assertEquals(Files.readAllBytes(output.resolve("external-crate-1.2.3/LICENSE-MIT")), payload);
 			assertFalse(Files.exists(output.resolve("workspace-app-0.1.0")));
 			String notices = Files.readString(output.resolve("THIRD_PARTY_NOTICES.md"));
@@ -110,27 +110,27 @@ public final class LicenseMetadataCommandTest
 			String handoff = Files.readString(workflowEnvironment);
 			assertEquals(handoff, "CODEX_PACKAGE_RUST_LICENSES_DIR=" +
 				runnerTemp.resolve("codex-package-rust-licenses-fixture-target-fixture-bundle") + "\n");
-			assertEquals(run(List.of(launcher.toString(), "collect-third-party-licenses", "--help"), workspace,
+			assertEquals(runScript(List.of(launcher.toString(), "collect-third-party-licenses", "--help"), workspace,
 				environment, log), 0, Files.readString(log));
 			List<String> explicitFlag = new ArrayList<>(command.subList(0, command.size() - 1));
 			explicitFlag.add("--require-license-evidence=false");
-			assertEquals(run(explicitFlag, workspace, environment, log), 2, Files.readString(log));
+			assertEquals(runScript(explicitFlag, workspace, environment, log), 2, Files.readString(log));
 
 			Files.writeString(dependency.resolve("Cargo.toml"), dependencyManifest.replace("1.2.3", "1.2.4"));
 			Path failedOutput = root.resolve("failed-cargo-output");
 			List<String> failedCommand = new ArrayList<>(command);
 			failedCommand.set(4, failedOutput.toString());
-			assertEquals(run(failedCommand, workspace, environment, log), 1, Files.readString(log));
+			assertEquals(runScript(failedCommand, workspace, environment, log), 1, Files.readString(log));
 			assertTrue(Files.readString(log).contains("--locked"), Files.readString(log));
 			assertFalse(Files.exists(failedOutput));
 
 			Files.writeString(dependency.resolve("Cargo.toml"), dependencyManifest.replace("license = \"MIT\"\n", ""));
 			Files.delete(dependency.resolve("LICENSE-MIT"));
-			assertEquals(run(command, workspace, environment, log), 1, Files.readString(log));
+			assertEquals(runScript(command, workspace, environment, log), 1, Files.readString(log));
 			assertTrue(Files.readString(log).contains("Missing license evidence for: external-crate 1.2.3"));
 			assertTrue(Files.readString(output.resolve("THIRD_PARTY_NOTICES.md")).
 				contains("No license payload file was present"));
-			assertEquals(run(command.subList(0, command.size() - 1), workspace, environment, log), 0,
+			assertEquals(runScript(command.subList(0, command.size() - 1), workspace, environment, log), 0,
 				Files.readString(log));
 			for (String job : jobs)
 			{
@@ -169,8 +169,42 @@ public final class LicenseMetadataCommandTest
 	private static int run(List<String> command, Path working, Map<String, String> environment, Path log)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).
-			redirectErrorStream(true).redirectOutput(log.toFile());
+		return run(NativeCommands.createBuilder(command), working, environment, log);
+	}
+
+	/**
+	 * Selects the native Bash interpreter for the bundled POSIX launcher.
+	 *
+	 * @param command the launcher path and literal arguments
+	 * @param working the working directory
+	 * @param environment the storage and offline overrides
+	 * @param log the output capture
+	 * @return the process status
+	 * @throws IOException if command preparation or capture fails
+	 * @throws InterruptedException if execution is interrupted
+	 */
+	private static int runScript(List<String> command, Path working, Map<String, String> environment, Path log)
+		throws IOException, InterruptedException
+	{
+		return run(NativeCommands.scriptBuilder(Path.of(command.getFirst()),
+			command.subList(1, command.size()).toArray(String[]::new)), working, environment, log);
+	}
+
+	/**
+	 * Captures a selected native process with fixture-owned storage.
+	 *
+	 * @param builder the selected native command
+	 * @param working the working directory
+	 * @param environment the storage and offline overrides
+	 * @param log the output capture
+	 * @return the process status
+	 * @throws IOException if process creation fails
+	 * @throws InterruptedException if execution is interrupted
+	 */
+	private static int run(ProcessBuilder builder, Path working, Map<String, String> environment, Path log)
+		throws IOException, InterruptedException
+	{
+		builder.directory(working.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())
 		{

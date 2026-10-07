@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
@@ -125,11 +124,7 @@ public final class V8WorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -259,7 +254,8 @@ public final class V8WorkflowTest
 	{
 		Path output = root.resolve("console.log");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectInput(input.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(command).directory(root.toFile()).
+			redirectInput(input.toFile()).
 			redirectErrorStream(true).redirectOutput(output.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);

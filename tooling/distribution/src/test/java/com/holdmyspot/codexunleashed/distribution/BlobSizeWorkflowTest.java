@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +80,7 @@ public final class BlobSizeWorkflowTest
 			environment.put("BASE_SHA", head);
 			assertEquals(run(List.of("bash", "-c", command), repository, environment, stdout, stderr), 0,
 				Files.readString(stderr));
-			assertEquals(Files.readString(stdout), "No changed files were detected.\n");
+			assertEquals(Files.readString(stdout), "No changed files were detected." + System.lineSeparator());
 			assertTrue(Files.readString(summary).endsWith("No changed files were detected.\n"));
 			assertEquals(run(List.of("git", "status", "--porcelain"), repository, environment, stdout, stderr), 0);
 			assertEquals(Files.readString(stdout), "");
@@ -92,11 +91,7 @@ public final class BlobSizeWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -135,7 +130,8 @@ public final class BlobSizeWorkflowTest
 	private static int run(List<String> command, Path working, Map<String, String> environment, Path stdout, Path stderr)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectOutput(stdout.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(command).directory(working.toFile()).
+			redirectOutput(stdout.toFile()).
 			redirectError(stderr.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())

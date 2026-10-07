@@ -68,7 +68,7 @@ public final class BazelCallerTest
 				{
 					environment.put("BUILDBUDDY_API_KEY", credential);
 					environment.put("BAZEL_FIXTURE_STATUS", "0");
-					assertEquals(run(root, environment, List.of("bash", scripts.resolve("run-bazel-query-ci.sh").toString(),
+					assertEquals(run(root, environment, NativeCommands.scriptBuilder(scripts.resolve("run-bazel-query-ci.sh"),
 						"--output=label", "--", expression)), 0);
 					List<String> query = arguments(root);
 					assertEquals(query.getFirst(), "query");
@@ -77,7 +77,7 @@ public final class BazelCallerTest
 					assertFalse(query.contains("--config=ci-linux"));
 					assertFalse(query.contains("--remote_local_fallback"));
 					environment.put("BAZEL_FIXTURE_STATUS", "37");
-					assertEquals(run(root, environment, List.of("bash", scripts.resolve("run-bazel-ci.sh").toString(),
+					assertEquals(run(root, environment, NativeCommands.scriptBuilder(scripts.resolve("run-bazel-ci.sh"),
 						"--", "test", "--", "//fixture:test")), 37);
 					List<String> test = arguments(root);
 					assertTrue(test.contains("test"));
@@ -119,25 +119,25 @@ public final class BazelCallerTest
 	 *
 	 * @param root the owned process directory
 	 * @param environment explicit caller configuration
-	 * @param arguments literal process arguments
+	 * @param builder the selected native script command
 	 * @return the actual exit status
 	 * @throws IOException if process or file operations fail
 	 * @throws InterruptedException if waiting is interrupted
 	 */
-	private static int run(Path root, Map<String, String> environment, List<String> arguments)
+	private static int run(Path root, Map<String, String> environment, ProcessBuilder builder)
 		throws IOException, InterruptedException
 	{
 		Path log = root.resolve("console.log");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = NativeCommands.createBuilder(arguments).directory(root.toFile()).
-			redirectInput(input.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+		builder.directory(root.toFile()).redirectInput(input.toFile()).redirectErrorStream(true).
+			redirectOutput(log.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())
 		{
 			try
 			{
-				assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Wrapper timed out: " + arguments);
+				assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Wrapper timed out: " + builder.command());
 				int status = process.exitValue();
 				assertTrue(Files.readString(log).contains("fixture bazel output"), Files.readString(log));
 				return status;

@@ -5,12 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -62,13 +60,13 @@ public final class SourceCacheWorkflowTest
 			Path image = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
 			String launcher = image.resolve("bin/codex-tooling").toString();
-			run(root, environment, List.of(launcher, "clean-cached-release-binaries", workspace.toString(), target,
+			runScript(root, environment, List.of(launcher, "clean-cached-release-binaries", workspace.toString(), target,
 				"codex-windows-sandbox"));
 			run(root, environment, List.of("cargo", "build", "--offline", "--release", "--target", target,
 				"--manifest-path", workspace.resolve("Cargo.toml").toString()));
-			run(root, environment, List.of(launcher, "clean-cached-release-binaries", "--record-source-inputs",
+			runScript(root, environment, List.of(launcher, "clean-cached-release-binaries", "--record-source-inputs",
 				workspace.toString(), target));
-			run(root, environment, List.of(launcher, "clean-cached-release-binaries", workspace.toString(), target,
+			runScript(root, environment, List.of(launcher, "clean-cached-release-binaries", workspace.toString(), target,
 				"codex-windows-sandbox"));
 			String command = WorkflowCommands.readStepCommand("build-windows-binaries",
 				"Build Windows sandbox helper binaries").
@@ -103,11 +101,7 @@ public final class SourceCacheWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -194,11 +188,7 @@ public final class SourceCacheWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> paths = Files.walk(root))
-			{
-				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
@@ -269,19 +259,53 @@ public final class SourceCacheWorkflowTest
 	private static String run(Path root, Map<String, String> environment, List<String> arguments)
 		throws IOException, InterruptedException
 	{
+		return run(root, environment, NativeCommands.createBuilder(arguments));
+	}
+
+	/**
+	 * Runs the bundled POSIX launcher through the wrapper-selected native Bash interpreter.
+	 *
+	 * @param root the fixture directory
+	 * @param environment its effective environment
+	 * @param arguments the launcher path and literal arguments
+	 * @return standard output
+	 * @throws IOException if command preparation or capture fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static String runScript(Path root, Map<String, String> environment, List<String> arguments)
+		throws IOException, InterruptedException
+	{
+		return run(root, environment, NativeCommands.scriptBuilder(Path.of(arguments.getFirst()),
+			arguments.subList(1, arguments.size()).toArray(String[]::new)));
+	}
+
+	/**
+	 * Captures an explicitly selected native command with fixture-owned files and independent EOF input.
+	 *
+	 * @param root the fixture directory
+	 * @param environment its effective environment
+	 * @param builder the selected native command
+	 * @return standard output
+	 * @throws IOException if process or file access fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private static String run(Path root, Map<String, String> environment, ProcessBuilder builder)
+		throws IOException, InterruptedException
+	{
 		Path output = root.resolve("process.stdout");
 		Path errors = root.resolve("process.stderr");
 		Path input = Files.writeString(root.resolve("process.stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(arguments).directory(root.toFile()).
-			redirectInput(input.toFile()).redirectOutput(output.toFile()).redirectError(errors.toFile());
+		builder.directory(root.toFile()).redirectInput(input.toFile()).redirectOutput(output.toFile()).
+			redirectError(errors.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())
 		{
 			try
 			{
-				assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Process timed out: " + arguments);
-				assertEquals(process.exitValue(), 0, arguments + "\n" + Files.readString(output) + Files.readString(errors));
+				assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Process timed out: " + builder.command());
+				assertEquals(process.exitValue(), 0, builder.command() + "\n" + Files.readString(output) +
+					Files.readString(errors));
 			}
 			finally
 			{
