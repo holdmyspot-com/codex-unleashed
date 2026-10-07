@@ -97,6 +97,7 @@ while IFS=$'\t' read -r relative_path expected_hash; do
   actual_hash="$(sha256sum "${artifact_path}" | awk '{print $1}')"
   if [[ "${actual_hash}" != "${expected_hash}" ]]; then
     echo "ERROR: manifest hash mismatch for ${relative_path}" >&2
+    printf 'Expected hash: %q\nActual hash: %q\n' "${expected_hash}" "${actual_hash}" >&2
     exit 1
   fi
 done < <(jq -r '.artifacts[] | [.path, .sha256] | @tsv' "${manifest_path}")
@@ -110,6 +111,7 @@ while IFS=$'\t' read -r relative_path expected_hash; do
   actual_hash="$(sha256sum "${patch_path}" | awk '{print $1}')"
   if [[ "${actual_hash}" != "${expected_hash}" ]]; then
     echo "ERROR: patch hash mismatch for ${relative_path}" >&2
+    printf 'Expected hash: %q\nActual hash: %q\n' "${expected_hash}" "${actual_hash}" >&2
     exit 1
   fi
 done < <(jq -r '.patches[] | [.path, .sha256] | @tsv' "${manifest_path}")

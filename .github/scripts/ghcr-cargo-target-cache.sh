@@ -16,6 +16,12 @@ target_directory="$4"
 upstream_tag="$5"
 reference="${repository}:${tag}"
 
+case "$OSTYPE" in
+  msys*|cygwin*)
+    target_directory="$(cygpath -u -- "$target_directory")"
+    ;;
+esac
+
 # Match the GNU tar used by dependency-cache restore on macOS.
 archive_tar=tar
 if command -v gtar >/dev/null 2>&1; then

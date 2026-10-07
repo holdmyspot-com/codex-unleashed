@@ -53,7 +53,8 @@ public final class PackageCommandRuntimeTest
 			Files.writeString(workspace.resolve("codex-rs/Cargo.toml"), "[workspace.package]\nversion = \"0.160.0\"\n");
 			byte[] payload = {0, (byte) 255, 1};
 			Path binaries = Files.createDirectory(root.resolve("binaries"));
-			for (String name : List.of("codex-app-server", "codex-x86_64-unknown-linux-gnu", "codex-code-mode-host", "bwrap",
+			for (String name : List.of("codex-app-server", "codex-app-server.exe", "codex-x86_64-unknown-linux-gnu",
+				"codex-code-mode-host", "bwrap",
 				"codex-x86_64-pc-windows-msvc.exe", "codex-code-mode-host.exe", "codex-command-runner.exe",
 				"codex-windows-sandbox-setup.exe"))
 			{
@@ -101,8 +102,14 @@ public final class PackageCommandRuntimeTest
 			Path archives = Files.createDirectory(root.resolve("archives"));
 			Path stdout = root.resolve("stdout");
 			Path stderr = root.resolve("stderr");
-			for (List<String> selection : List.of(List.of("app-server", "x86_64-unknown-linux-gnu"),
-				List.of("primary", "x86_64-unknown-linux-gnu"), List.of("primary", "x86_64-pc-windows-msvc")))
+			String hostTarget = "x86_64-unknown-linux-gnu";
+			if (root.getFileSystem().getSeparator().equals("\\"))
+				hostTarget = "x86_64-pc-windows-msvc";
+			List<List<String>> selections = new ArrayList<>(List.of(List.of("app-server", hostTarget),
+				List.of("primary", hostTarget)));
+			if (!hostTarget.equals("x86_64-pc-windows-msvc"))
+				selections.add(List.of("primary", "x86_64-pc-windows-msvc"));
+			for (List<String> selection : selections)
 			{
 				List<String> command = new ArrayList<>(List.of(
 					repository.resolve(".github/scripts/build-codex-package-archive.sh").toString(), "--target", selection.get(1),
@@ -193,12 +200,24 @@ public final class PackageCommandRuntimeTest
 			Path directory = root.resolve("package");
 			Path workflow = Path.of(System.getProperty("tooling.release.workflow"));
 			Path repository = workflow.getParent().getParent().getParent();
+			String hostTarget = "x86_64-unknown-linux-gnu";
+			String entrypoint = "codex-app-server";
+			if (root.getFileSystem().getSeparator().equals("\\"))
+			{
+				hostTarget = "x86_64-pc-windows-msvc";
+				entrypoint += ".exe";
+			}
 			List<String> command = new ArrayList<>(List.of(runtime.resolve("bin/codex-tooling").toString(),
 				"build-codex-package", "--repo", repository.toString(), "--workspace", workspace.toString(),
-				"--cache-root", cache.toString(), "--target", "x86_64-unknown-linux-gnu", "--variant", "codex-app-server",
-				"--entrypoint-bin", binary.toString(), "--code-mode-host-bin", binary.toString(), "--bwrap-bin",
-				binary.toString(), "--rg-bin", binary.toString(), "--zsh-manifest", zsh.toString(), "--package-dir",
+				"--cache-root", cache.toString(), "--target", hostTarget, "--variant", "codex-app-server",
+				"--entrypoint-bin", binary.toString(), "--code-mode-host-bin", binary.toString(),
+				"--rg-bin", binary.toString(), "--zsh-manifest", zsh.toString(), "--package-dir",
 				directory.toString()));
+			if (hostTarget.equals("x86_64-pc-windows-msvc"))
+				command.addAll(List.of("--codex-command-runner-bin", binary.toString(),
+					"--codex-windows-sandbox-setup-bin", binary.toString()));
+			else
+				command.addAll(List.of("--bwrap-bin", binary.toString()));
 			List<Path> archives = new ArrayList<>();
 			for (String suffix : List.of("tar.gz", "tgz", "tar.zst", "zip"))
 			{
@@ -211,7 +230,7 @@ public final class PackageCommandRuntimeTest
 			assertEquals(runScript(command, root, environment, stdout, stderr), 0,
 				Files.readString(stdout) + Files.readString(stderr));
 			assertTrue(Files.readString(directory.resolve("codex-package.json")).contains("\"version\": \"0.160.0+42\""));
-			assertEquals(Files.readAllBytes(directory.resolve("bin/codex-app-server")), payload);
+			assertEquals(Files.readAllBytes(directory.resolve("bin").resolve(entrypoint)), payload);
 			assertTrue(Files.isRegularFile(directory.resolve("licenses/rust/THIRD_PARTY_NOTICES.md")));
 			assertFalse(Files.exists(workspace.resolve("scripts/get_codex_package_version.py")));
 			assertFalse(Files.exists(root.resolve("cargo-home")));
@@ -220,12 +239,12 @@ public final class PackageCommandRuntimeTest
 				List<String> consumer;
 				String name = archive.getFileName().toString();
 				if (name.endsWith(".zip"))
-					consumer = List.of("unzip", "-p", archive.toString(), "bin/codex-app-server");
+					consumer = List.of("unzip", "-p", archive.toString(), "bin/" + entrypoint);
 				else if (name.endsWith(".tar.zst"))
 					consumer = List.of(NativeUtilities.tarExecutable(), "--zstd", "-xOf", archive.toString(),
-						"bin/codex-app-server");
+						"bin/" + entrypoint);
 				else
-					consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/codex-app-server");
+					consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/" + entrypoint);
 				assertEquals(run(consumer, root, environment, stdout, stderr), 0, Files.readString(stderr));
 				assertEquals(Files.readAllBytes(stdout), payload);
 			}
