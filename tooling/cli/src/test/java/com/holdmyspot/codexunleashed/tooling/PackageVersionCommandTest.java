@@ -23,9 +23,10 @@ public final class PackageVersionCommandTest
 	 * Retains numeric, absent and explicitly empty build suffixes and refuses invalid arity before reading inputs.
 	 *
 	 * @throws IOException if fixture, process or cleanup operations fail
+	 * @throws InterruptedException if waiting for the query is interrupted
 	 */
 	@Test
-	public void queriesExactPackageVersion() throws IOException
+	public void queriesExactPackageVersion() throws IOException, InterruptedException
 	{
 		Path root = Files.createTempDirectory("package-version-query-");
 		try
@@ -69,14 +70,25 @@ public final class PackageVersionCommandTest
 	 * @param arguments query arguments
 	 * @return completed child outcome
 	 * @throws IOException if child handling fails
+	 * @throws InterruptedException if waiting for the query is interrupted
 	 */
 	private static SystemCommands.Result cli(Path root, Map<String, String> environment, List<String> arguments)
-		throws IOException
+		throws IOException, InterruptedException
 	{
 		var command = new java.util.ArrayList<>(List.of(Path.of(System.getProperty("java.home"), "bin/java").toString(),
 			"-Djava.io.tmpdir=" + root, "--module-path", System.getProperty("jdk.module.path"), "--module",
 			"com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.tooling.Main", "get-codex-package-version"));
 		command.addAll(arguments);
-		return SystemCommands.capture(command, root, root, environment);
+		Path stdout = root.resolve("stdout");
+		Path stderr = root.resolve("stderr");
+		ProcessBuilder builder = SystemCommands.createBuilder(command).directory(root.toFile()).
+			redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
+		builder.environment().clear();
+		builder.environment().putAll(environment);
+		try (Process process = builder.start())
+		{
+			int status = process.waitFor();
+			return new SystemCommands.Result(status, Files.readString(stdout), Files.readString(stderr));
+		}
 	}
 }
