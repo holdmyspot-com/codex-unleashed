@@ -36,7 +36,7 @@ public final class BazelCommandTest
 			Map<String, String> environment = new HashMap<>(System.getenv());
 			for (String key : List.of("BAZEL_OUTPUT_USER_ROOT", "BUILDBUDDY_API_KEY", "GITHUB_ACTIONS",
 				"BAZEL_REPO_CONTENTS_CACHE", "BAZEL_REPOSITORY_CACHE", "BAZEL_DISK_CACHE", "NODE_OPTIONS"))
-				environment.remove(key);
+				environment.put(key, "");
 			String node = SystemCommands.capture(List.of("node", "-p", "process.execPath"), root, root, environment).
 				stdout().strip();
 			String spaced = "--test_env=PATH=C:\\Program Files\\PowerShell\\7;C:\\Program Files\\Git\\bin";
