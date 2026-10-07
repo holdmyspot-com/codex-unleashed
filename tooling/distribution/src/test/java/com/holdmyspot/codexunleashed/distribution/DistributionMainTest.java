@@ -52,7 +52,7 @@ public final class DistributionMainTest
 			if (!Files.isRegularFile(java))
 				java = java.resolveSibling("java.exe");
 			Path moduleLog = fixture.root.resolve("runtime-modules.log");
-			ProcessBuilder moduleBuilder = new ProcessBuilder(java.toString(),
+			ProcessBuilder moduleBuilder = NativeCommands.createBuilder(java.toString(),
 				"-Djava.io.tmpdir=" + fixture.root, "--list-modules");
 			moduleBuilder.redirectErrorStream(true).redirectOutput(moduleLog.toFile());
 			try (Process process = moduleBuilder.start())
@@ -70,7 +70,7 @@ public final class DistributionMainTest
 			Files.writeString(source.resolve("install.ps1"), installer);
 			Path log = fixture.root.resolve("launcher.log");
 			String command = WorkflowCommands.readStepCommand("publish", "Stage patched release installers");
-			var builder = new ProcessBuilder("bash", "-eu", "-c", command);
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 			builder.directory(fixture.root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 			builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
 			builder.environment().put("PATH", fixture.root.resolve("empty-search-path").toString());
@@ -113,7 +113,7 @@ public final class DistributionMainTest
 			Path checkout = Files.createDirectories(fixture.root.resolve("workspace-λ/codex-rs"));
 			Files.writeString(checkout.resolve("Cargo.toml"), "[workspace.package]\nversion='0.160.0'\n");
 			Path log = fixture.root.resolve("unicode-checkout.log");
-			ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c",
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c",
 				"\"$CODEX_UNLEASHED_TOOLING\" get-codex-package-version \"$CODEX_WORKSPACE\"");
 			builder.directory(fixture.root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 			builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
@@ -149,7 +149,7 @@ public final class DistributionMainTest
 			Path log = fixture.root.resolve("canary.log");
 			Path workflow = Path.of(System.getProperty("tooling.release.workflow")).resolveSibling("v8-canary.yml");
 			String command = WorkflowCommands.readStepCommand(workflow, "metadata", "Resolve exact v8 crate version");
-			ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command);
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 			builder.directory(fixture.root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 			builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
 			builder.environment().put("GITHUB_OUTPUT", outputs.toString());
@@ -186,7 +186,7 @@ public final class DistributionMainTest
 			Path image = fixture.root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
 			Path log = fixture.root.resolve("canary.log");
-			ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c",
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c",
 				"\"$CODEX_UNLEASHED_TOOLING\" v8-canary-changes . --force");
 			builder.directory(fixture.root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 			builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
@@ -226,7 +226,7 @@ public final class DistributionMainTest
 				Files.setLastModifiedTime(source, FileTime.from(100, TimeUnit.SECONDS));
 				Path log = fixture.root.resolve(job + ".log");
 				String command = WorkflowCommands.readStepCommand(job, "Normalize patched source timestamps");
-				ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command);
+				ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 				builder.directory(fixture.root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 				builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
 				builder.environment().put("SOURCE_DATE_EPOCH", "1600000000");

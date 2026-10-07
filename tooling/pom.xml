@@ -23,6 +23,7 @@
 		<tooling.config.directory>${maven.multiModuleProjectDirectory}/config</tooling.config.directory>
 		<tooling.build.root>${maven.multiModuleProjectDirectory}/../.cat/work/temp/build-caches/maven/target</tooling.build.root>
 		<tooling.test.jvm.options/>
+		<tooling.native.bash>bash</tooling.native.bash>
 		<maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
 		<maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
 		<maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
@@ -80,6 +81,9 @@
 						<parallel>methods</parallel>
 						<threadCount>4</threadCount>
 						<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" -Djdk.lang.Process.allowAmbiguousCommands=false ${tooling.test.jvm.options}</argLine>
+						<systemPropertyVariables>
+							<tooling.native.bash>${tooling.native.bash}</tooling.native.bash>
+						</systemPropertyVariables>
 						<properties>
 							<property>
 								<name>usedefaultlisteners</name>

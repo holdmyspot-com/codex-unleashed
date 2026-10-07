@@ -50,6 +50,7 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
+					<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" -Djdk.lang.Process.allowAmbiguousCommands=true ${tooling.test.jvm.options}</argLine>
 					<systemPropertyVariables>
 							<tooling.cli.jar>${tooling.build.root}/tooling-cli/tooling-cli-${project.version}.jar</tooling.cli.jar>
 							<tooling.runtime.modules>${project.build.directory}/modules</tooling.runtime.modules>

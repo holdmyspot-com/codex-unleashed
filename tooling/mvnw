@@ -48,10 +48,12 @@ fi
 
 # OS specific support.
 native_path() { printf %s\\n "$1"; }
+tooling_native_bash=bash
 case "$(uname)" in
 CYGWIN* | MINGW*)
   [ -z "${JAVA_HOME-}" ] || JAVA_HOME="$(cygpath --unix "$JAVA_HOME")"
   native_path() { cygpath --path --windows "$1"; }
+  tooling_native_bash="$(command -v bash)"
   ;;
 esac
 
@@ -164,7 +166,8 @@ exec_maven() {
   exec "$MAVEN_HOME/bin/$MVN_CMD" -f "$scriptDir/pom.xml" "$@" \
     "-Dmaven.repo.local=$(native_path "$tooling_cache_root/repository")" \
     "-Dtooling.build.root=$(native_path "$tooling_cache_root/target")" \
-    "-Djava.io.tmpdir=$(native_path "$TMPDIR")" || die "cannot exec $MAVEN_HOME/bin/$MVN_CMD"
+    "-Djava.io.tmpdir=$(native_path "$TMPDIR")" \
+    "-Dtooling.native.bash=$(native_path "$tooling_native_bash")" || die "cannot exec $MAVEN_HOME/bin/$MVN_CMD"
 }
 
 if [ -d "$MAVEN_HOME" ]; then
