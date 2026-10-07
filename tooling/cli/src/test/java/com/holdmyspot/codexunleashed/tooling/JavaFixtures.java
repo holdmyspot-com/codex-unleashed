@@ -34,6 +34,7 @@ final class JavaFixtures
 			java = java.resolveSibling("java.exe");
 		Path classes = Path.of(fixture.getProtectionDomain().getCodeSource().getLocation().toURI());
 		List<String> command = new ArrayList<>(List.of(java.toString(),
+			"-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
 			"-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"), "-cp", classes.toString(), fixture.getName()));
 		command.addAll(Arrays.asList(arguments));
 		return List.copyOf(command);

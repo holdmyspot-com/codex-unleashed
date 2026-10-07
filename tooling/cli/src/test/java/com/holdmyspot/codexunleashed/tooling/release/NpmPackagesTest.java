@@ -303,7 +303,8 @@ public final class NpmPackagesTest
 		{
 			Path stdout = capture.resolve("stdout");
 			Path stderr = capture.resolve("stderr");
-			ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectOutput(stdout.toFile()).
+			ProcessBuilder builder = SystemCommands.createBuilder(command).directory(working.toFile()).
+				redirectOutput(stdout.toFile()).
 				redirectError(stderr.toFile());
 			builder.environment().putAll(environment);
 			try (Process process = builder.start())

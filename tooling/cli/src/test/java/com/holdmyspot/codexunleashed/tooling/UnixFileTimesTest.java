@@ -7,20 +7,15 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-/** Checks actual native timestamps against an independent Node filesystem reader. */
+/** Checks actual native timestamps against an independent filesystem reader. */
 public final class UnixFileTimesTest
 {
-	private static final String INSPECT = "const fs=require('node:fs');" +
-		"const value=fs.statSync(process.argv[1],{bigint:true});" +
-		"process.stdout.write(value.mtimeNs+'\\n'+value.atimeNs+'\\n');";
-
 	/** Creates native timestamp tests. */
 	public UnixFileTimesTest()
 	{
@@ -43,10 +38,8 @@ public final class UnixFileTimesTest
 				Instant expected = NativeTimestampRange.expected(fixture.root, value);
 				String expectedNanos = SourceInputTimes.nanos(expected).toString();
 				SourceInputTimes.setTimes(fixture.file, FileTime.from(value));
-				SystemCommands.Result inspection = SystemCommands.capture(List.of("node", "-e", INSPECT,
-					fixture.file.toString()), fixture.root, fixture.temporary, Map.of());
-				assertEquals(inspection.status(), 0, inspection.stderr());
-				assertEquals(inspection.stdout(), expectedNanos + "\n" + expectedNanos + "\n");
+				assertEquals(NativeTimestampRange.inspect(fixture.file, fixture.temporary),
+					List.of(expectedNanos, expectedNanos));
 				assertEquals(SourceInputTimes.lastModified(fixture.file), expected);
 			}
 		}

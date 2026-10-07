@@ -34,8 +34,8 @@ public final class SystemCommandsTest
 	@Test
 	public void preservesArguments() throws IOException, URISyntaxException
 	{
-		String payload = "spaces $literal; `literal` \"quoted\"";
-		assertEquals(SystemCommands.run(fixtureCommand("echo", payload)), payload);
+		for (String payload : List.of("spaces $literal; `literal` \"quoted\"", "\"quoted\"", "", "a\\", "a\\\"b"))
+			assertEquals(SystemCommands.run(fixtureCommand("echo", payload)), payload);
 	}
 
 	/**

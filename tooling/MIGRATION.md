@@ -42,7 +42,7 @@ behavioral equivalence. Existing Python tests remain available until their corre
 
 The Maven reactor runs behavior tests, Checkstyle, and PMD through `tooling/mvnw verify`.
 Its distribution includes the CLI and its complete dependency module set in a bundled Java runtime.
-Local migration acceptance includes 325 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
+Local migration acceptance includes 326 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
 families, independent archive and release-manifest consumers, the live upstream-release checker, and completed-output
 cleanup. Hosted workflows and native Windows/macOS execution remain separate integration gates.
 
@@ -217,6 +217,12 @@ environment and working directory, and returns the ordinary exit status to its c
 waiting and interruption cleanup. Cargo source builds select only missing executable targets, retain supplied
 prebuilt inputs, and use the managed package cache as the default Cargo target directory. Real offline Cargo fixtures
 cover complete and helper-only builds, caller-selected target directories, and ordinary compiler failure.
+
+Windows command execution explicitly encodes each literal argument using Microsoft C runtime quote and backslash
+rules, including empty arguments and values surrounded by literal quotes. The bundled launcher and CLI tests select
+the JDK's legacy command-line emission so it preserves that encoding. The command boundary rejects conflicting JDK
+quoting and batch-file executables; npm runs through its installed Node entrypoint. Native Windows timestamp tests
+use the independent .NET filesystem reader to retain negative seconds and far-future FILETIME values.
 
 The package command requires `--repo` for repository legal documents and resource manifests. `--workspace` selects
 the upstream checkout root containing `codex-rs`; without it, the command uses `CODEX_PACKAGE_WORKSPACE_ROOT` or the

@@ -24,6 +24,23 @@ public final class SystemCommands
 	}
 
 	/**
+	 * Creates a process builder with literal arguments on Unix and explicit C runtime argument encoding on Windows.
+	 *
+	 * @param command the executable followed by literal arguments
+	 * @return the builder with platform-specific argument encoding
+	 * @throws NullPointerException if the command or an element is null
+	 * @throws IllegalArgumentException if the command is empty
+	 * @throws IOException if the Windows executable or JDK quoting policy is incompatible with direct execution
+	 */
+	public static ProcessBuilder createBuilder(List<String> command) throws IOException
+	{
+		List<String> arguments = List.copyOf(command);
+		if (arguments.isEmpty())
+			throw new IllegalArgumentException("An external command requires an executable");
+		return new ProcessBuilder(WindowsArguments.prepare(arguments));
+	}
+
+	/**
 	 * Executes a command with inherited streams and only the supplied environment variables.
 	 *
 	 * @param command the executable followed by its arguments
@@ -42,7 +59,7 @@ public final class SystemCommands
 		Map<String, String> variables = Map.copyOf(environment);
 		if (arguments.isEmpty())
 			throw new IllegalArgumentException("An external command requires an executable");
-		ProcessBuilder builder = new ProcessBuilder(arguments).directory(workingDirectory.toFile()).inheritIO();
+		ProcessBuilder builder = createBuilder(arguments).directory(workingDirectory.toFile()).inheritIO();
 		builder.environment().clear();
 		builder.environment().putAll(variables);
 		try (Process process = builder.start())
@@ -186,7 +203,7 @@ public final class SystemCommands
 			throw new IllegalArgumentException("An external command requires an executable");
 		try (CaptureFiles files = new CaptureFiles(Files.createTempDirectory(temporaryDirectory, "command-capture-")))
 		{
-			ProcessBuilder builder = new ProcessBuilder(arguments).directory(workingDirectory.toFile()).
+			ProcessBuilder builder = createBuilder(arguments).directory(workingDirectory.toFile()).
 				redirectInput(ProcessBuilder.Redirect.INHERIT).redirectOutput(files.stdout.toFile()).
 				redirectError(files.stderr.toFile());
 			builder.environment().putAll(overrides);
@@ -239,7 +256,7 @@ public final class SystemCommands
 		List<String> arguments = List.copyOf(command);
 		if (arguments.isEmpty())
 			throw new IllegalArgumentException("An external command requires an executable");
-		Process process = new ProcessBuilder(arguments).redirectInput(ProcessBuilder.Redirect.INHERIT).
+		Process process = createBuilder(arguments).redirectInput(ProcessBuilder.Redirect.INHERIT).
 			redirectError(ProcessBuilder.Redirect.INHERIT).start();
 		try
 		{

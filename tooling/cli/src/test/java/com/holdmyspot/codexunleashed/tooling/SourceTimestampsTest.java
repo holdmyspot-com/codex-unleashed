@@ -131,7 +131,8 @@ public final class SourceTimestampsTest
 	{
 		Path output = root.resolve("cargo-output");
 		Path errors = root.resolve("cargo-errors");
-		ProcessBuilder builder = new ProcessBuilder("cargo", "build", "--offline", "--release", "--message-format=json");
+		ProcessBuilder builder = SystemCommands.createBuilder(
+			List.of("cargo", "build", "--offline", "--release", "--message-format=json"));
 		builder.directory(root.toFile()).redirectOutput(output.toFile()).redirectError(errors.toFile());
 		builder.environment().put("CARGO_HOME", root.resolve("cargo-home").toString());
 		builder.environment().put("CARGO_TARGET_DIR", root.resolve("target").toString());

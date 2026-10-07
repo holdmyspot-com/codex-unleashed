@@ -53,7 +53,7 @@ public final class PackageLayoutTest
 			{
 				throw new AssertionError("No workspace metadata is required");
 			});
-			PackageLayout.validate(fixture.output, request.variant(), request.target(), true);
+			PackageLayout.validate(fixture.output, request.variant(), request.target(), !target.isWindows());
 			List<String> payloads = List.of("bin/codex-app-server", "bin/codex-code-mode-host", "codex-path/rg",
 				"codex-resources/zsh/bin/zsh", "codex-resources/bwrap");
 			if (target.isWindows())
@@ -170,7 +170,7 @@ public final class PackageLayoutTest
 			});
 			IOException missing = expectThrows(IOException.class, () -> PackageLayout.validate(fixture.output,
 				request.variant(), request.target(), false));
-			assertTrue(missing.getMessage().contains(missingResource));
+			assertTrue(missing.getMessage().contains(fixture.output.resolve(missingResource).toString()));
 			Files.writeString(fixture.output.resolve("codex-package.json"), "{}");
 			IOException metadata = expectThrows(IOException.class, () -> PackageLayout.validate(fixture.output,
 				request.variant(), request.target(), false));

@@ -255,8 +255,10 @@ public final class PackageCommandTest
 			List<String> arguments = new ArrayList<>(List.of("--repo", repository.toString(), "--workspace",
 				workspace.toString(), "--cache-root", cache.toString(), "--target", target.triple(),
 				"--variant", "codex-app-server",
-				"--entrypoint-bin", binary.toString(), "--code-mode-host-bin", binary.toString(), "--bwrap-bin",
-				binary.toString(), "--rg-manifest", rgManifest.toString(), "--zsh-manifest", zshManifest.toString()));
+				"--entrypoint-bin", binary.toString(), "--code-mode-host-bin", binary.toString(),
+				"--rg-manifest", rgManifest.toString(), "--zsh-manifest", zshManifest.toString()));
+			if (target.isLinux())
+				arguments.addAll(List.of("--bwrap-bin", binary.toString()));
 			if (target.isWindows())
 				arguments.addAll(List.of("--codex-command-runner-bin", binary.toString(),
 					"--codex-windows-sandbox-setup-bin", binary.toString()));

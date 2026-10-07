@@ -162,7 +162,7 @@ public final class V8CanaryCommandTest
 	private static String runGit(List<String> command, Path root, Path configuration, Path template) throws IOException
 	{
 		Path log = root.resolve("git.log");
-		ProcessBuilder builder = new ProcessBuilder(command);
+		ProcessBuilder builder = SystemCommands.createBuilder(command);
 		builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 		builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
 		builder.environment().put("GIT_CONFIG_GLOBAL", configuration.toString());

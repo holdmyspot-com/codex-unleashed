@@ -341,7 +341,7 @@ public final class NpmPublishCommandTest
 	{
 		Path stdout = root.resolve("publisher.stdout");
 		Path stderr = root.resolve("publisher.stderr");
-		ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).
+		ProcessBuilder builder = SystemCommands.createBuilder(command).directory(root.toFile()).
 			redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
 		try (Process process = builder.start())
 		{

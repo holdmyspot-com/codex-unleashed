@@ -64,7 +64,7 @@ public final class DistributionMain
 			set -eu
 			DIR=$(CDPATH= cd -- "${0%%/*}" && pwd)
 			exec "$DIR/java" "-Djava.io.tmpdir=${TMPDIR:-/tmp}" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
-				-Djdk.lang.Process.allowAmbiguousCommands=false --enable-native-access=%s -m %s/%s "$@"
+				-Djdk.lang.Process.allowAmbiguousCommands=true --enable-native-access=%s -m %s/%s "$@"
 			""".formatted(TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
 		Files.createFile(output.resolve(".complete"));
