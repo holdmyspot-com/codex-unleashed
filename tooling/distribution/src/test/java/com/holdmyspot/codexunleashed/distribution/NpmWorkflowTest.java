@@ -1,9 +1,11 @@
 package com.holdmyspot.codexunleashed.distribution;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -64,23 +66,11 @@ public final class NpmWorkflowTest
 			Path commands = Files.createDirectory(root.resolve("commands"));
 			for (String name : List.of("java", "python", "python3", "codex"))
 				JavaCommandFixtures.writeLauncher(commands.resolve(name), RejectedCommandFixture.class);
-			Path npm = commands.resolve("npm");
-			Files.writeString(npm, """
-				#!/bin/bash
-				set -euo pipefail
-				printf '%s\\n' "$PWD" "$@" >> "$NPM_CALLS"
-				if [[ "${NPM_FAIL_OP:-}" == "$1" ]]; then exit 7; fi
-				if [[ "$1" == pack ]]; then
-				  family="${PWD%/*}"
-				  family="${family##*/}"
-				  tar -czf "$3/${family}-${PWD##*/}.tgz" -C "$PWD" .
-				fi
-				""");
-			Files.setPosixFilePermissions(npm, PosixFilePermissions.fromString("rwx------"));
+			writeNpmFixture(commands);
 			Path temporary = Files.createDirectory(root.resolve("temporary"));
 			Path calls = root.resolve("npm-calls");
 			Map<String, String> environment = new HashMap<>();
-			environment.put("PATH", commands + java.io.File.pathSeparator + System.getenv("PATH"));
+			environment.put("PATH", commands + File.pathSeparator + System.getenv("PATH"));
 			environment.put("CODEX_UNLEASHED_TOOLING", runtime.resolve("bin/codex-tooling").toString());
 			environment.put("GITHUB_REPOSITORY", "holdmyspot-com/codex-unleashed");
 			environment.put("NPM_CALLS", calls.toString());
@@ -112,6 +102,43 @@ public final class NpmWorkflowTest
 				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
 					Files.delete(file);
 			}
+		}
+	}
+
+	/**
+	 * Supplies npm's platform launcher and a controlled Node entry point with native tar packaging.
+	 *
+	 * @param commands the fixture command directory
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static void writeNpmFixture(Path commands) throws IOException
+	{
+		Path bin = Files.createDirectories(commands.resolve("node_modules/npm/bin"));
+		Files.writeString(bin.resolve("npm-prefix.js"), "");
+		Files.writeString(bin.resolve("npm-cli.js"), """
+			const fs = require('node:fs');
+			const path = require('node:path');
+			const {spawnSync} = require('node:child_process');
+			const args = process.argv.slice(2);
+			const cwd = process.cwd();
+			fs.appendFileSync(process.env.NPM_CALLS, [cwd, ...args].join('\\n') + '\\n');
+			if (process.env.NPM_FAIL_OP === args[0]) process.exit(7);
+			if (args[0] === 'pack') {
+			  const family = path.basename(path.dirname(cwd));
+			  const archive = path.join(args[2], family + '-' + path.basename(cwd) + '.tgz');
+			  const result = spawnSync('tar', ['-czf', archive, '-C', cwd, '.'], {stdio: 'inherit'});
+			  if (result.error) throw result.error;
+			  process.exit(result.status === null ? 1 : result.status);
+			}
+			""");
+		if (File.separatorChar == '\\')
+			Files.writeString(commands.resolve("npm.cmd"), "");
+		else
+		{
+			Path npm = commands.resolve("npm");
+			Files.writeString(npm, "#!/bin/sh\nexec node \"${0%/*}/node_modules/npm/bin/npm-cli.js\" \"$@\"\n");
+			if (Files.getFileAttributeView(npm, PosixFileAttributeView.class) != null)
+				Files.setPosixFilePermissions(npm, PosixFilePermissions.fromString("rwx------"));
 		}
 	}
 
@@ -177,7 +204,8 @@ public final class NpmWorkflowTest
 	private static int run(List<String> command, Path working, Map<String, String> environment, Path stdout, Path stderr)
 		throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectOutput(stdout.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(command).directory(working.toFile()).
+			redirectOutput(stdout.toFile()).
 			redirectError(stderr.toFile());
 		builder.environment().putAll(environment);
 		try (Process process = builder.start())

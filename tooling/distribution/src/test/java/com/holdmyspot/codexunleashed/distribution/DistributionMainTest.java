@@ -83,8 +83,12 @@ public final class DistributionMainTest
 				{
 					assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Bundled launcher timed out");
 					assertEquals(process.exitValue(), 0, Files.readString(log));
-					assertTrue(Files.readString(log).contains("java.io.tmpdir = " + temporaryDirectory),
-						Files.readString(log));
+					String settings = Files.readString(log);
+					Path reportedTemporary = settings.lines().map(String::strip).
+						filter(line -> line.startsWith("java.io.tmpdir = ")).
+						map(line -> Path.of(line.substring("java.io.tmpdir = ".length()))).findFirst().
+						orElseThrow(() -> new AssertionError("Runtime temporary directory is missing: " + settings));
+					assertEquals(reportedTemporary, temporaryDirectory, settings);
 				}
 				finally
 				{
@@ -197,8 +201,9 @@ public final class DistributionMainTest
 				assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Canary selection timed out");
 				assertEquals(process.exitValue(), 0, Files.readString(log));
 			}
-			assertEquals(Files.readString(log), "canary_required=true\ncanary_reason=manual workflow dispatch\n" +
-				"windows_source_required=true\nwindows_source_reason=manual workflow dispatch\n");
+			assertEquals(Files.readString(log), ("canary_required=true\ncanary_reason=manual workflow dispatch\n" +
+				"windows_source_required=true\nwindows_source_reason=manual workflow dispatch\n").
+					replace("\n", System.lineSeparator()));
 		}
 	}
 
