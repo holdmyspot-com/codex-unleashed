@@ -32,11 +32,11 @@ public final class ArchiveMembers
 	}
 
 	/**
-	 * Selects the last named member and copies its bytes, resolving tar links within archive metadata.
+	 * Copies a raw gzip executable or the last named archive member, resolving tar links within archive metadata.
 	 *
 	 * @param archive the verified archive file
-	 * @param format the declared tar.gz or ZIP format
-	 * @param member the exact requested member name
+	 * @param format the declared gz, tar.gz, or ZIP format
+	 * @param member the exact requested member name, unused for raw gzip
 	 * @param destination the executable destination
 	 * @param label the resource name used in failures
 	 * @throws IOException if member selection, decoding, copying, or temporary cleanup fails
@@ -54,6 +54,14 @@ public final class ArchiveMembers
 		PayloadFiles.delete(output);
 		switch (format)
 		{
+			case "gz" ->
+			{
+				try (InputStream input = new GZIPInputStream(Files.newInputStream(archive));
+					OutputStream destinationStream = Files.newOutputStream(output))
+				{
+					input.transferTo(destinationStream);
+				}
+			}
 			case "tar.gz" -> copyTar(archive, member, output, label);
 			case "zip" -> copyZip(archive, member, output, label);
 			default -> throw new IOException("Unsupported " + label + " archive format: " + format);

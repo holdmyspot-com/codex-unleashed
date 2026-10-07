@@ -15,7 +15,38 @@ runs:
         distribution: temurin
         java-version: '27'
 
+    - name: Resolve Maven cache directories
+      id: cache-directories
+      shell: bash
+      run: |
+        project_root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd -P)"
+        cache_root="$project_root/.cat/work/temp/build-caches/maven"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          cache_root="$(cygpath -m "$cache_root")"
+        fi
+        printf 'repository=%s/repository\nwrapper=%s/home/wrapper\n' \
+          "$cache_root" "$cache_root" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Maven dependencies and wrapper
+      id: dependencies
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          ${{ steps.cache-directories.outputs.repository }}
+          ${{ steps.cache-directories.outputs.wrapper }}
+        key: tooling-maven-${{ runner.os }}-${{ runner.arch }}-jdk27-${{ hashFiles('**/tooling/**/pom.xml', '**/tooling/.mvn/wrapper/maven-wrapper.properties') }}
+        restore-keys: |
+          tooling-maven-${{ runner.os }}-${{ runner.arch }}-jdk27-
+
     - name: Build tooling runtime
       id: build
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/setup.sh"
+
+    - name: Report Maven dependency cache
+      if: always()
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.dependencies.outputs.cache-hit }}
+      run: |
+        printf '\nMaven dependency cache exact match: %s\n' "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"

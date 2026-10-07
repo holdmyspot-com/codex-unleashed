@@ -6,6 +6,7 @@ import com.holdmyspot.codexunleashed.tooling.cache.CachePruner;
 import com.holdmyspot.codexunleashed.tooling.cache.ReleaseCacheKeysCommand;
 import com.holdmyspot.codexunleashed.tooling.release.ReleaseBuildNumbers;
 import com.holdmyspot.codexunleashed.tooling.release.ReleaseTagCommand;
+import com.holdmyspot.codexunleashed.tooling.release.ReleaseLatestCommand;
 import com.holdmyspot.codexunleashed.tooling.release.ReleaseManifestCommand;
 import com.holdmyspot.codexunleashed.tooling.release.LicensePayloadsCommand;
 import com.holdmyspot.codexunleashed.tooling.release.PackageCommand;
@@ -209,6 +210,7 @@ public final class Main
 				case "v8-canary-changes" -> V8CanaryCommand.run(Arrays.copyOfRange(args, 1, args.length), out, err,
 					runner);
 				case "ensure-release-tag" -> ReleaseTagCommand.run(Arrays.copyOfRange(args, 1, args.length), out, err);
+				case "release-is-latest" -> ReleaseLatestCommand.run(Arrays.copyOfRange(args, 1, args.length), out, err);
 				case "generate-source-provenance" -> SourceProvenanceCommand.run(
 					Arrays.copyOfRange(args, 1, args.length), out, err);
 				case "generate-release-manifest" -> ReleaseManifestCommand.run(
@@ -228,6 +230,8 @@ public final class Main
 					yield CargoManifestPolicy.check(Path.of(args[1]), out, System.getenv());
 				}
 				case BazelClippyCommand.NAME -> BazelClippyCommand.run(Arrays.copyOfRange(args, 1, args.length), out, err);
+				case "select-windows-bazel-targets" -> WindowsBazelShards.run(
+					Arrays.copyOfRange(args, 1, args.length), in, out, err);
 				case BazelCommand.NAME -> BazelCommand.run(Arrays.copyOfRange(args, 1, args.length), err);
 				case V8Command.NAME -> V8Command.run(Arrays.copyOfRange(args, 1, args.length), out, err);
 				case "verify-tui-core-boundary" ->
@@ -271,8 +275,9 @@ public final class Main
 		err.println("  detect-upstream-release <owner/name> <github-output> <step-summary>");
 		err.println("  v8-canary-changes <checkout> [--base <ref> --head <ref>] [--force]");
 		err.println("  release-cache-keys --target <target> --compiler-fingerprint <sha256> --v8-version <version>");
-		err.println("  ensure-release-tag --repository <owner/name> --tag <vendor-tag> " +
-			"--artifact-run-id <id> [--api-base <url>]");
+			err.println("  ensure-release-tag --repository <owner/name> --tag <vendor-tag> " +
+				"--artifact-run-id <id> [--api-base <url>]");
+			err.println("  release-is-latest --repository <owner/name> --tag <vendor-tag> [--api-base <url>]");
 		err.println("  generate-source-provenance --upstream-checkout <checkout> --patch-repo <repository> " +
 			"--output <report> [--upstream-ref <ref> --workflow-path <path> --workflow-sha <sha> --workflow-run-id <id>]");
 		err.println("  generate-release-manifest --release-dir <release> --patch-repo <repository> " +
@@ -286,6 +291,7 @@ public final class Main
 			err.println("  verify-tui-core-boundary <repository>");
 		err.println("  " + BazelClippyCommand.NAME + " <repository> [--cargo-toml <manifest>] [--bazelrc <configuration>]");
 			err.println("  " + BazelCommand.NAME + " [startup options] <Bazel command> [arguments]");
+			err.println("  select-windows-bazel-targets --shard <number> --shard-count <count> --durations <file>");
 			err.println("  " + V8Command.NAME + " <checkout> <operation> [options]");
 		return 2;
 	}

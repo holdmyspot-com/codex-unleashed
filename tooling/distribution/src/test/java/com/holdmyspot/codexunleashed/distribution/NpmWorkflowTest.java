@@ -124,7 +124,11 @@ public final class NpmWorkflowTest
 			const args = process.argv.slice(2);
 			const cwd = process.cwd();
 			fs.appendFileSync(process.env.NPM_CALLS, [cwd, ...args].join('\\n') + '\\n');
-			if (process.env.NPM_FAIL_OP === args[0]) process.exit(7);
+				if (process.env.NPM_FAIL_OP === args[0]) process.exit(7);
+				if (args[0] === 'view') {
+				  console.log(JSON.stringify({latest: '0.160.0-33'}));
+				  process.exit(0);
+				}
 			if (args[0] === 'pack') {
 			  const family = path.basename(path.dirname(cwd));
 			  const archive = path.join(args[2], family + '-' + path.basename(cwd) + '.tgz');
@@ -156,8 +160,23 @@ public final class NpmWorkflowTest
 		for (String operation : List.of("pack", "publish"))
 			for (String family : List.of("public", "ea"))
 				for (String platform : PLATFORMS)
-				{
-					assertEquals(calls.get(offset), output.resolve("packages").resolve(family).resolve(platform).toString());
+					{
+						if (operation.equals("publish"))
+						{
+							assertEquals(calls.get(offset),
+								output.resolve("packages").resolve(family).resolve(platform).toString());
+							offset += 1;
+							StringBuilder name = new StringBuilder("@holdmyspot/codex-unleashed");
+							if (family.equals("ea"))
+								name.append("-ea");
+								if (!platform.equals("main"))
+								name.append('-').append(platform);
+							List<String> lookup = List.of("view", name.toString(), "dist-tags", "--json", "--prefer-online",
+								"--registry", "https://registry.npmjs.org");
+							assertEquals(calls.subList(offset, offset + lookup.size()), lookup);
+							offset += lookup.size();
+						}
+						assertEquals(calls.get(offset), output.resolve("packages").resolve(family).resolve(platform).toString());
 					offset += 1;
 					List<String> expected;
 					if (operation.equals("pack"))

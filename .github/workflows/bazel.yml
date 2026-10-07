@@ -191,18 +191,17 @@ jobs:
           set -euo pipefail
           cd upstream
           bazel_test_query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
-          mapfile -t bazel_targets < <(
-            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-query-ci.sh" --output=label -- "${bazel_test_query}" | LC_ALL=C sort
-          )
-          selected_targets=()
-          for bazel_target in "${bazel_targets[@]}"; do
-            target_bucket="$(
-              printf '%s\n' "${bazel_target}" | cksum | awk -v shard_count="${BAZEL_TEST_SHARD_COUNT}" '{ print ($1 % shard_count) + 1 }'
-            )"
-            if [[ "${target_bucket}" == "${BAZEL_TEST_SHARD}" ]]; then
-              selected_targets+=("${bazel_target}")
-            fi
-          done
+          targets_file="$(mktemp)"
+          selected_file="$(mktemp)"
+          trap 'rm -f "$targets_file" "$selected_file"' EXIT
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-query-ci.sh" --output=label -- "${bazel_test_query}" |
+            LC_ALL=C sort > "$targets_file"
+          "$CODEX_UNLEASHED_TOOLING" select-windows-bazel-targets \
+            --shard "$BAZEL_TEST_SHARD" \
+            --shard-count "$BAZEL_TEST_SHARD_COUNT" \
+            --durations "${GITHUB_WORKSPACE}/.github/scripts/windows_bazel_test_durations.tsv" \
+            < "$targets_file" > "$selected_file"
+          mapfile -t selected_targets < "$selected_file"
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             --print-failed-test-logs \

@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import picocli.CommandLine;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Model.OptionSpec;
@@ -110,14 +112,73 @@ public final class NpmPublishCommand
 						npmrc, registry, environment);
 				if (options.matchedOptionValue("--publish", false))
 					for (NpmPackages.Directory directory : packages)
-						executeNpm(directory.path(), List.of("publish", "--access", directory.access(), "--tag", "latest"),
+					{
+						String publicationTag = publicationTag(directory.path(), version, npmrc, registry, environment);
+						executeNpm(directory.path(), List.of("publish", "--access", directory.access(), "--tag", publicationTag),
 							npmrc, registry, environment);
+					}
 			}
 			out.println("Created " + packages.size() + " npm packages in " + output.path);
 			if (!options.matchedOptionValue("--publish", false))
 				out.println("Packages were not published; pass --publish to publish to the configured registry.");
 			output.retain();
 			return 0;
+		}
+	}
+
+	/**
+	 * Chooses latest only for a strictly newer version, using a version-specific tag for older or equal builds.
+	 *
+	 * @param directory the assembled package whose own name identifies the registry lookup
+	 * @param version the candidate npm vendor version
+	 * @param npmrc the optional authentication configuration
+	 * @param registry the selected registry
+	 * @param environment the child environment with managed cache storage
+	 * @return latest or the isolated release tag
+	 * @throws IOException if registry lookup or metadata validation fails
+	 */
+	private static String publicationTag(Path directory, String version, Path npmrc, String registry,
+		Map<String, String> environment) throws IOException
+	{
+		JsonMapper mapper = JsonMapper.builder().build();
+		String name = mapper.readTree(Files.readString(directory.resolve("package.json"))).path("name").stringValue();
+		List<String> command = new ArrayList<>(NpmCommands.command(directory,
+			Path.of(environment.get("NPM_CONFIG_CACHE")), environment));
+		command.addAll(List.of("view", name, "dist-tags", "--json", "--prefer-online", "--registry", registry));
+		if (npmrc != null)
+			command.addAll(List.of("--userconfig", npmrc.toString()));
+		SystemCommands.Result result = SystemCommands.capture(command, directory,
+			Path.of(environment.get("NPM_CONFIG_CACHE")), environment);
+		JsonNode tags = mapper.readTree(result.stdout());
+		if (result.status() != 0)
+		{
+			String summary = "";
+			if (tags != null)
+				summary = tags.path("error").path("summary").asString("");
+			if (tags != null && "E404".equals(tags.path("error").path("code").asString("")) &&
+				(summary.startsWith("Not Found - GET ") || summary.startsWith("404 Not Found - GET ")))
+				return "latest";
+			throw new IOException("Cannot read npm dist-tags for " + name + ": status " + result.status() +
+				"; " + result.stderr());
+		}
+		if (tags != null && tags.isArray() && tags.size() == 1)
+			tags = tags.get(0);
+		if (tags == null || !tags.isObject())
+			throw new IOException("npm dist-tags for " + name + " must be a JSON object");
+		JsonNode latest = tags.get("latest");
+		if (latest == null)
+			return "latest";
+		if (!latest.isString())
+			throw new IOException("npm latest tag for " + name + " must be a stable vendor version string");
+		try
+		{
+			if (ReleaseOrder.compareVersions(version.replace('-', '+'), latest.stringValue().replace('-', '+')) > 0)
+				return "latest";
+			return "release-" + version;
+		}
+		catch (IllegalArgumentException failure)
+		{
+			throw new IOException("Cannot compare npm latest tag for " + name + ": " + latest.stringValue(), failure);
 		}
 	}
 

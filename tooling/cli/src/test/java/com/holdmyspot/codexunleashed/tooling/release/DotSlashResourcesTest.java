@@ -9,6 +9,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
+import java.util.zip.GZIPOutputStream;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -25,6 +26,31 @@ public final class DotSlashResourcesTest
 	 */
 	public DotSlashResourcesTest()
 	{
+	}
+
+	/**
+	 * Creates a verified raw gzip cache and reuses it after the provider disappears.
+	 *
+	 * @throws IOException if fixture access, extraction, or cleanup fails
+	 */
+	@Test
+	public void extractsAndReusesVerifiedGzip() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.archive = fixture.root.resolve("archive.gz");
+			try (GZIPOutputStream output = new GZIPOutputStream(Files.newOutputStream(fixture.archive)))
+			{
+				output.write(fixture.payload);
+			}
+			fixture.writeManifest("sha256", Sha256.digest(fixture.archive), Files.size(fixture.archive), "gz",
+				"tool", fixture.target.dotslashPlatform());
+			Path executable = DotSlashResources.fetch(fixture.request(false)).orElseThrow();
+			assertEquals(Files.readAllBytes(executable), fixture.payload);
+			Files.delete(fixture.archive);
+			Files.writeString(executable, "damaged extracted executable");
+			assertEquals(Files.readAllBytes(DotSlashResources.fetch(fixture.request(false)).orElseThrow()), fixture.payload);
+		}
 	}
 
 	/**

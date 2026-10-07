@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import org.testng.annotations.DataProvider;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import static org.testng.Assert.assertEquals;
@@ -121,11 +122,15 @@ public final class NpmPublishCommandTest
 	/**
 	 * Publishes real npm tarballs to a local registry with exact access, version, tag, auth, and family order.
 	 *
+	 * @param latest the registry's existing latest version, or empty when the package is absent
+	 * @param expectedTag the tag that publication may update
+	 * @param missingVersion whether the registry advertises latest without supplying its version metadata
 	 * @throws IOException if fixture, HTTP, process, archive, or cleanup access fails
 	 * @throws URISyntaxException if the local registry address cannot be represented
 	 */
-	@Test
-	public void publishesBothFamiliesLocally() throws IOException, URISyntaxException
+	@Test(dataProvider = "latestVersions")
+	public void publishesBothFamiliesLocally(String latest, String expectedTag, boolean missingVersion)
+		throws IOException, URISyntaxException
 	{
 		Path root = Files.createTempDirectory("npm-publish-registry-");
 		HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -145,6 +150,16 @@ public final class NpmPublishCommandTest
 					status = 201;
 				}
 				byte[] bytes = "{}".getBytes(StandardCharsets.UTF_8);
+				if (exchange.getRequestMethod().equals("GET") && !latest.isEmpty())
+				{
+					status = 200;
+					String name = exchange.getRequestURI().getPath().substring(1);
+					Map<String, Object> versions = Map.of();
+					if (!missingVersion)
+						versions = Map.of(latest, Map.of("name", name, "version", latest));
+					bytes = JsonMapper.builder().build().writeValueAsBytes(Map.of("name", name,
+						"dist-tags", Map.of("latest", latest), "versions", versions));
+				}
 				exchange.getResponseHeaders().set("Content-Type", "application/json");
 				exchange.sendResponseHeaders(status, bytes.length);
 				exchange.getResponseBody().write(bytes);
@@ -160,6 +175,13 @@ public final class NpmPublishCommandTest
 			SystemCommands.Result result = executePublisher(command(root, List.of("--tag", "rust-v0.160.0+34",
 				"--archive-dir", archives.toString(), "--output-dir", output.toString(), "--registry", registry.toString(),
 				"--npmrc", npmrc.toString(), "--publish")), root);
+			if (missingVersion)
+			{
+				assertEquals(result.status(), 1, result.stderr());
+				assertTrue(result.stderr().contains("Cannot read npm dist-tags"), result.stderr());
+				assertEquals(published.size(), 0);
+				return;
+			}
 			assertEquals(result.status(), 0, result.stderr());
 			assertEquals(published.size(), 14);
 			assertFalse(result.stdout().contains("Packages were not published"));
@@ -179,7 +201,10 @@ public final class NpmPublishCommandTest
 				JsonNode metadata = published.get(index);
 				assertEquals(metadata.get("name").stringValue(), expected);
 				assertEquals(metadata.get("access").stringValue(), access);
-				assertEquals(metadata.get("dist-tags").get("latest").stringValue(), "0.160.0-34");
+				assertTrue(metadata.get("dist-tags").has(expectedTag), metadata.toString());
+				assertEquals(metadata.get("dist-tags").get(expectedTag).stringValue(), "0.160.0-34");
+				if (!expectedTag.equals("latest"))
+					assertFalse(metadata.get("dist-tags").has("latest"));
 				assertEquals(metadata.get("versions").get("0.160.0-34").get("name").stringValue(), expected);
 				assertEquals(credentials.get(index), "Bearer fixture");
 				JsonNode attachments = metadata.get("_attachments");
@@ -199,6 +224,19 @@ public final class NpmPublishCommandTest
 			server.stop(0);
 			delete(root);
 		}
+	}
+
+	/**
+	 * Supplies registry states that distinguish a new package, a newer vendor build, and a newer upstream release.
+	 *
+	 * @return the registry latest version and expected publication tag
+	 */
+	@DataProvider
+	public Object[][] latestVersions()
+	{
+		return new Object[][] {{"", "latest", false}, {"0.160.0-9", "latest", false},
+			{"0.160.0-40", "release-0.160.0-34", false}, {"0.161.0-1", "release-0.160.0-34", false},
+			{"0.160.0-40", "", true}};
 	}
 
 	/**

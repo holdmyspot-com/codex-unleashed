@@ -118,10 +118,9 @@ concurrency:
       inputs.focus_target || 'all-targets'
     }}-${{ inputs.focus_bundle || 'all-bundles' }}-${{
       inputs.reproducibility_mode || 'off'
-    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}
-  # A newer commit supersedes an in-progress release check. Keeping the old
-  # run alive only wastes hosted-runner time and can publish stale artifacts.
-  cancel-in-progress: true
+    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}-${{ inputs.build_number }}
+  queue: max
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -187,33 +186,6 @@ jobs:
           focused_comparison=false
           if [[ -n "${INPUT_FOCUS_TARGET}" || -n "${INPUT_FOCUS_BUNDLE}" ]]; then
             focused_comparison=true
-          fi
-
-          active_run_ids="$(
-            gh api \
-              "repos/${GITHUB_REPOSITORY}/actions/runs" \
-              --paginate \
-              -f status=in_progress \
-              -q '.workflow_runs[]
-                | select(.name == env.GITHUB_WORKFLOW)
-                | .id' \
-              2>/dev/null | grep -E '^[0-9]+$' || true
-          )"
-          if [[ -z "${INPUT_ARTIFACT_RUN_ID}" && -n "${active_run_ids}" ]]; then
-            oldest_active_run_id="$(printf '%s\n' "${active_run_ids}" | sort -n | head -n1)"
-            if [[ -n "${oldest_active_run_id}" && "${oldest_active_run_id}" != "${GITHUB_RUN_ID}" ]]; then
-              echo "Another ${GITHUB_WORKFLOW} run is already active (${oldest_active_run_id}); skipping duplicate run ${GITHUB_RUN_ID}."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=" >> "${GITHUB_OUTPUT}"
-              echo "release_name=" >> "${GITHUB_OUTPUT}"
-              echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
-              exit 0
-            fi
           fi
 
           patch_hash="$(find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')"
@@ -1653,6 +1625,12 @@ jobs:
           if-no-files-found: error
 
   publish:
+    # Read and update GitHub/npm release pointers under the same repository-wide lock.
+    # Build jobs keep their independent concurrency and cache creation paths.
+    concurrency:
+      group: release-publication
+      queue: max
+      cancel-in-progress: false
     needs:
       - prepare
       - verify
@@ -1898,9 +1876,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          make_latest="$("$CODEX_UNLEASHED_TOOLING" release-is-latest \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "${{ needs.prepare.outputs.patched_tag }}")"
           gh release create "${{ needs.prepare.outputs.patched_tag }}" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --latest="$make_latest" \
             --title "${{ needs.prepare.outputs.release_name }}" \
             --notes-file RELEASE_NOTES.md \
             release-stage/*
