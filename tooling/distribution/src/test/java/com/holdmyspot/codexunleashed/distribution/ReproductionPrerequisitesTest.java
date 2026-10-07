@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -65,9 +64,6 @@ public final class ReproductionPrerequisitesTest
 				project.resolve("scripts/reproduce-release.sh"), manifest.toString(), "--output-dir",
 				root.resolve("output").toString()).directory(root.toFile()).redirectInput(input.toFile()).
 				redirectErrorStream(true).redirectOutput(console.toFile());
-			List<String> tracedCommand = new ArrayList<>(builder.command());
-			tracedCommand.add(1, "-x");
-			builder.command(tracedCommand);
 			builder.environment().clear();
 			builder.environment().putAll(Map.of("PATH", commands.toString(), "TMPDIR", temporary.toString(),
 				"REPRODUCTION_GIT_MARKER", marker.toString(), "XDG_CACHE_HOME", root.resolve("xdg").toString()));

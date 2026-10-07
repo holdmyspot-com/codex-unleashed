@@ -10,17 +10,17 @@ The TypeScript SDK, Rust CLI, app-server, patch queue, release identities, and i
 
 ## Acceptance gates
 
-- [x] JDK 27 Maven reactor passes `tooling/mvnw verify`, including tests and static checks.
-- [x] Bundled runtime executes the CLI without Python or a separately installed Java runtime.
-- [x] All 58 inventoried project tooling Python source/test files have replacements or explicit retirement coverage.
-- [x] Embedded Python in shell scripts and GitHub workflows has Java replacements.
-- [x] Python SDK/runtime sources, notebook, release workflows, and SDK CI routes are retired.
-- [x] Retained TypeScript SDK build, lint, and native test commands remain executable locally.
-- [x] Local release staging, manifest verification, native package assembly, and local npm publication retain compatible artifacts.
-- [x] Maintained CI step bodies and upstream-checkout callers invoke the compiled tooling distribution locally.
-- [x] Maven outputs, repositories, wrapper downloads, and test fixtures stay under `.cat/work/temp`.
-- [x] Final source/caller audit finds no project-owned Python implementations or invocation routes.
-- [ ] Native Linux, macOS, and Windows tooling CI passes the complete Maven and assembled-launcher checks.
+- JDK 27 Maven reactor passes `tooling/mvnw verify`, including tests and static checks.
+- Bundled runtime executes the CLI without Python or a separately installed Java runtime.
+- All 58 inventoried project tooling Python source/test files have replacements or explicit retirement coverage.
+- Embedded Python in shell scripts and GitHub workflows has Java replacements.
+- Python SDK/runtime sources, notebook, release workflows, and SDK CI routes are retired.
+- Retained TypeScript SDK build, lint, and native test commands remain executable locally.
+- Local release staging, manifest verification, native package assembly, and local npm publication retain compatible artifacts.
+- Maintained CI step bodies and upstream-checkout callers invoke the compiled tooling distribution locally.
+- Maven outputs, repositories, wrapper downloads, and test fixtures stay under `.cat/work/temp`.
+- Final source/caller audit finds no project-owned Python implementations or invocation routes.
+- Native Linux, macOS, and Windows tooling CI passes the complete Maven and assembled-launcher checks.
 
 ## Implementation order
 
@@ -42,9 +42,10 @@ behavioral equivalence. Existing Python tests remain available until their corre
 
 The Maven reactor runs behavior tests, Checkstyle, and PMD through `tooling/mvnw verify`.
 Its distribution includes the CLI and its complete dependency module set in a bundled Java runtime.
-Local migration acceptance includes 326 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
+Local migration acceptance includes 327 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
 families, independent archive and release-manifest consumers, the live upstream-release checker, and completed-output
-cleanup. Hosted workflows and native Windows/macOS execution remain separate integration gates.
+cleanup. Native Linux, macOS, and Windows tooling CI runs the complete Maven and assembled-launcher checks, including
+a Unicode checkout path. Hosted release workflows remain separate integration gates.
 
 The CLI provides these commands:
 
@@ -149,7 +150,8 @@ sources in separate temporary Git indexes, including ignored additions introduce
 source edits, preserves the user's index, and removes audit indexes and command captures on success or failure.
 The report preserves raw binary-diff SHA-256, ASCII JSON, lowercase Unicode escapes, literal slashes, sorted keys,
 and two-space indentation for objects and arrays. The Python producer is retired. Local integration tests execute
-both maintained job commands with a fresh bundled runtime; native Windows and hosted CI execution remain unrun.
+both maintained job commands with a fresh bundled runtime on native Linux, macOS, and Windows.
+Hosted source-provenance delivery remains a separate integration gate.
 
 Release-manifest generation uses Java in publishing and the local release script. The manifest includes recursive
 artifact hashes and byte sizes, excludes its own output, and includes only the repository's active patch queue.
@@ -236,10 +238,11 @@ rejected on PATH.
 The maintained release archive wrapper invokes the compiled tooling and supplies repository and workspace context.
 It preserves the primary/app-server bundle selection, target-suffixed input names, Windows helper names, and fixed
 tar.gz/tar.zst release filenames. Its unique staging directory includes temporary package resources and is removed
-after success or failure. Integration tests consume both archive formats for Linux and Windows package layouts on
-Linux. Real Codex and app-server binaries also pass the maintained archive wrapper's gzip and zstd paths; independent
-GNU tar extraction preserves payload bytes, links, and permissions. Its staging directories close after delivery.
-Native Windows and hosted release-workflow execution remain unrun. The replaced Python package modules,
+after success or failure. Integration tests consume both archive formats for Windows package layouts on Windows
+and for Linux and Windows layouts on Unix. Real Codex and app-server binaries also pass the maintained archive wrapper's
+gzip and zstd paths. Independent GNU tar extraction preserves payload bytes, links, and permissions.
+Its staging directories close after delivery.
+Hosted release-workflow execution remains a separate integration gate. The replaced Python package modules,
 entrypoint, license collector, and their tests are retired. The Java version query replaces the Python-only patch;
 the retained queue applies to its declared upstream base.
 
@@ -322,8 +325,9 @@ Cargo lockfile changes, atomically writes the snapshot, and removes pending stat
 leaves pending state available for recovery without recording success. Native Unix timestamp adapters retain negative
 fractional and large epoch nanoseconds beyond the installed JDK's filesystem conversion range. The Windows adapter
 uses native FILETIME values for affected timestamps, preserving the filesystem's 100-nanosecond precision and range,
-capturing native error codes, and closing each file handle after the operation. Native macOS and
-Windows execution and complete hosted release execution remain integration gates. The Python cache helper and its
+capturing native error codes, and closing each file handle after the operation. Native Windows tests use the
+independent .NET filesystem reader to verify negative and far-future epoch nanoseconds at native precision.
+Complete hosted release execution remains a separate integration gate. The Python cache helper and its
 tests are retired.
 
 The npm archive reader retains raw PAX naming values until it selects the authoritative filename. GNU sparse archives
@@ -337,8 +341,8 @@ Other authenticated runs use the generic tenant. Missing credentials remove remo
 before the program-argument separator. Explicit startup and cache choices remain effective; configured disk caches
 retain their bounded size and age settings. The CI and query Bash wrappers invoke the compiled command through a
 shared shell launcher. Bazel workflow callers select the maintained project wrappers while executing in the upstream
-checkout. The project-owned Python wrapper is retired. Native Windows execution and complete Bazel workflow delivery
-remain integration gates.
+checkout. The project-owned Python wrapper is retired. Complete Bazel workflow delivery remains a separate
+integration gate.
 
 The `rusty-v8-bazel` command takes a checkout, an operation, and the operation's options. Bazel staging builds and
 materializes the requested configuration before querying output paths, including when `--skip-build` is supplied.
@@ -361,7 +365,7 @@ checksum step runs the Java module and consumer-selector checks against the upst
 both Java checks and verifies that a missing selector prevents delivery to the retained upstream check boundary.
 The boundary fixture records recipe invocation. The actual checksum step invokes both Java checks and the maintained
 upstream helper suite on the declared base. The project-owned Python
-helpers are retired. Real Bazel compilation and native macOS and Windows behavior remain separate integration gates.
+helpers are retired. Real Bazel compilation remains a separate integration gate.
 Python required by external Chromium and upstream V8 builds remains a dependency.
 
 GHCR cache release discovery uses the bundled Java `stable-releases` command. Retained release lines reach awk through
@@ -370,8 +374,8 @@ Bash and tar while native fixtures supply only registry transport, release inven
 checks cover tag refusal before transport, legacy and stable restore identities, reuse across upstream versions,
 legacy fallback, GNU tar preference, hard-linked dependencies, release executable and symbol removal, retained
 release aliases, and refusal to delete when release discovery is empty or fails. A colon-bearing local temporary
-path checks archive streaming and release-alias publication order; native Windows drive-letter execution remains
-a separate gate. Owned temporary archive directories are empty after each completed operation.
+path checks archive streaming and release-alias publication order, including native Windows drive-letter paths.
+Owned temporary archive directories are empty after each completed operation.
 
 Both release jobs write complete Cargo cache manifests through the bundled Java launcher. The writer preserves
 target, registry archive, and Git root order, sorts descendants with platform path semantics, and records raw file
