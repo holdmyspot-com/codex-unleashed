@@ -37,7 +37,7 @@ public final class UpstreamReleaseWorkflowTest
 		try
 		{
 			Path adapters = Files.createDirectory(root.resolve("adapters"));
-			JavaCommandFixtures.writeLauncher(adapters.resolve("gh"), UpstreamReleaseGitHubFixture.class);
+			JavaCommandFixtures.writeNativeLauncher(adapters.resolve("gh"), UpstreamReleaseGitHubFixture.class);
 			JavaCommandFixtures.writeLauncher(adapters.resolve("python3"), RejectedCommandFixture.class);
 			Path image = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
@@ -51,7 +51,7 @@ public final class UpstreamReleaseWorkflowTest
 			{
 				Files.writeString(output, "existing output\n");
 				Files.writeString(summary, "existing summary\n");
-				ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command);
+				ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 				builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 				builder.environment().put("PATH", adapters.toString());
 				builder.environment().put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());

@@ -52,7 +52,7 @@ public final class ReleaseBuildNumberWorkflowTest
 				Path output = root.resolve("output");
 				Files.writeString(output, "");
 				Path log = root.resolve("process.log");
-				ProcessBuilder builder = new ProcessBuilder("bash", "-eu", "-c", command).
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command).
 					redirectErrorStream(true).redirectOutput(log.toFile());
 				Path workflow = Path.of(System.getProperty("tooling.release.workflow"));
 				builder.directory(root.toFile());

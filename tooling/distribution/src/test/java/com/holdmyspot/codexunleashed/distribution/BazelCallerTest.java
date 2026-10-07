@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -130,7 +129,7 @@ public final class BazelCallerTest
 	{
 		Path log = root.resolve("console.log");
 		Path input = Files.writeString(root.resolve("stdin"), "");
-		ProcessBuilder builder = new ProcessBuilder(new ArrayList<>(arguments)).directory(root.toFile()).
+		ProcessBuilder builder = NativeCommands.createBuilder(arguments).directory(root.toFile()).
 			redirectInput(input.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
