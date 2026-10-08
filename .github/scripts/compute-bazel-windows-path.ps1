@@ -13,6 +13,8 @@ publishes the result via `GITHUB_ENV` as `CODEX_BAZEL_WINDOWS_PATH` so later
 steps can pass that explicit PATH to Bazel.
 #>
 
+param([Parameter(Mandatory = $true)][string]$Target)
+
 $stablePathEntries = New-Object System.Collections.Generic.List[string]
 $seenEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 $windowsAppsPath = if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
@@ -51,7 +53,9 @@ foreach ($pathEntry in ($env:PATH -split ';')) {
     $pathEntry -like '*Microsoft SDKs*' -or
     $pathEntry -eq 'C:\mingw64\bin' -or
     $pathEntry -like 'C:\msys64\*\bin' -or
-    $pathEntry -like 'C:\Program Files\Git\*' -or
+    ($pathEntry -like 'C:\Program Files\Git\*' -and
+      ($Target -notlike '*-pc-windows-msvc' -or
+        $pathEntry -notmatch '\\(ucrt64|mingw64)\\bin\\?$')) -or
     $pathEntry -like 'C:\Program Files\PowerShell\*' -or
     $pathEntry -like 'C:\hostedtoolcache\windows\node\*' -or
     $pathEntry -like 'C:\hostedtoolcache\windows\Python\*' -or

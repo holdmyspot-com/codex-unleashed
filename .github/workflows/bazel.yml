@@ -273,6 +273,10 @@ jobs:
           target: x86_64-pc-windows-msvc
           cache-scope: bazel-test-windows-native-main
 
+      - name: Check Windows Bazel PATH stability
+        shell: pwsh
+        run: ./.github/scripts/test-compute-bazel-windows-path.ps1 -WorkDirectory '${{ runner.temp }}/windows-path-check'
+
       - name: bazel test //...
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
