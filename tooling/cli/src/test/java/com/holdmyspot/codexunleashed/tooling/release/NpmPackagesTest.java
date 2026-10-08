@@ -217,6 +217,61 @@ public final class NpmPackagesTest
 	}
 
 	/**
+	 * Keeps the selector alive between child exit and closure of its native resources.
+	 *
+	 * @throws IOException if fixture access, Node execution, or cleanup fails
+	 */
+	@Test
+	public void waitsForChildClosure() throws IOException
+	{
+		Path root = Files.createTempDirectory("npm-child-closure-");
+		try
+		{
+			SystemCommands.Result host = capture(List.of("node", "-p",
+				"JSON.stringify({os:process.platform,cpu:process.arch})"), root, root, Map.of());
+			assertEquals(host.status(), 0, host.stderr());
+			JsonNode information = JsonMapper.builder().build().readTree(host.stdout());
+			String suffix = information.get("os").stringValue() + "-" + information.get("cpu").stringValue();
+			String target = TARGETS.stream().filter(entry -> entry.getValue().equals(suffix)).findFirst().
+				orElseThrow().getKey();
+			Path packages = root.resolve("packages");
+			NpmPackages.assemble(new NpmPackages.Request(sources(root), packages,
+				"@holdmyspot", "0.160.0-34", "local"));
+			Path main = packages.resolve("public/main");
+			Path bin = Files.createDirectories(main.resolve("vendor").resolve(target).resolve("bin"));
+			String executable = "codex";
+			if (information.get("os").stringValue().equals("win32"))
+				executable = "codex.exe";
+			Files.writeString(bin.resolve(executable), "");
+			Path preload = root.resolve("child-lifecycle.mjs");
+			Files.writeString(preload, """
+				import { createRequire, syncBuiltinESMExports } from 'node:module';
+				import { EventEmitter } from 'node:events';
+				import { writeSync } from 'node:fs';
+				const childProcess = createRequire(import.meta.url)('node:child_process');
+				childProcess.spawn = () => {
+				  const child = new EventEmitter();
+				  setImmediate(() => {
+				    child.emit('exit', 7, null);
+				    writeSync(1, 'child resources closed\\n');
+				    child.emit('close', 7, null);
+				  });
+				  return child;
+				};
+				syncBuiltinESMExports();
+				""");
+			SystemCommands.Result result = capture(List.of("node", "--import", preload.toUri().toString(),
+				main.resolve("bin/codex.js").toString()), root, root, Map.of());
+			assertEquals(result.status(), 7, result.stderr());
+			assertEquals(result.stdout(), "child resources closed\n");
+		}
+		finally
+		{
+			delete(root);
+		}
+	}
+
+	/**
 	 * Packs all fourteen assembled packages through npm into a directory independent of each package's cwd.
 	 *
 	 * @throws IOException if npm, archive reading, fixture access, or cleanup fails

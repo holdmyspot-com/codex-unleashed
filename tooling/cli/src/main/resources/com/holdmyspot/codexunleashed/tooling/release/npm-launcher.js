@@ -31,7 +31,7 @@ try {
 const executable = path.join(platformRoot, "vendor", target, "bin", process.platform === "win32" ? "codex.exe" : "codex");
 if (!existsSync(executable)) throw new Error(`Missing Codex binary for ${target}`);
 const child = spawn(executable, process.argv.slice(2), { stdio: "inherit" });
-child.on("exit", (code, signal) => {
+child.on("close", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
   else process.exit(code ?? 1);
 });
