@@ -24,6 +24,23 @@ public final class CachePrunerTest
 	}
 
 	/**
+	 * Discovers retention from lightweight release metadata when full release listings time out.
+	 *
+	 * @throws IOException if release discovery fails
+	 */
+	@Test
+	public void discoversCompactReleaseMetadata() throws IOException
+	{
+		List<String> retained = CachePruner.discoverRetainedReleases(List.of("rust-v0.159.0"), command ->
+		{
+			if (!command.contains("graphql") || !command.contains("--paginate"))
+				throw new IOException("Full release listing times out with HTTP 504");
+			return "rust-v0.159.1\nrust-v0.161.0\nrust-v0.160.1\n";
+		});
+		assertEquals(retained, List.of("rust-v0.161.0", "rust-v0.160.1", "rust-v0.159.0"));
+	}
+
+	/**
 	 * Deletes obsolete managed caches in inventory order and preserves unrelated caches.
 	 *
 	 * @throws IOException if the controlled command fails unexpectedly

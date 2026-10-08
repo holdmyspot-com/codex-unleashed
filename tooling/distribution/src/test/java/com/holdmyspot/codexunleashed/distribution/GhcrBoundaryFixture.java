@@ -71,7 +71,7 @@ public final class GhcrBoundaryFixture
 				StandardOpenOption.APPEND);
 			return 0;
 		}
-		if (command.stream().anyMatch(argument -> argument.contains("repos/openai/codex/releases")))
+		if (command.contains("graphql"))
 		{
 			String failure = System.getenv("CACHE_TEST_LOOKUP");
 			if (failure != null)

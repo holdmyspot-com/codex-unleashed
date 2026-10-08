@@ -18,8 +18,18 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CachePruner
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	private static final String RELEASE_METADATA_QUERY = """
+		query($endCursor: String) {
+		  repository(owner: "openai", name: "codex") {
+		    releases(first: 100, after: $endCursor) {
+		      nodes { tagName isDraft isPrerelease }
+		      pageInfo { hasNextPage endCursor }
+		    }
+		  }
+		}
+		""";
 	private static final String STABLE_RELEASE_QUERY =
-		".[] | select(.draft == false and .prerelease == false) | .tag_name " +
+		".data.repository.releases.nodes[] | select(.isDraft == false and .isPrerelease == false) | .tagName " +
 			"| select(test(\"^rust-v[0-9]+\\\\.[0-9]+\\\\.[0-9]+$\"))";
 
 	/**
@@ -60,8 +70,8 @@ public final class CachePruner
 		List<String> validatedRefs = List.copyOf(protectedRefs);
 		for (String ref : validatedRefs)
 			CacheRetention.retainedStableTags(List.of(ref));
-		String tags = runner.run(List.of("gh", "api", "--paginate", "repos/openai/codex/releases?per_page=100",
-			"--jq", STABLE_RELEASE_QUERY));
+		String tags = runner.run(List.of("gh", "api", "--paginate", "graphql", "-f",
+			"query=" + RELEASE_METADATA_QUERY, "--jq", STABLE_RELEASE_QUERY));
 		var retained = new LinkedHashSet<>(CacheRetention.retainedStableTags(tags.lines().toList()));
 		retained.addAll(validatedRefs);
 		return List.copyOf(retained);
