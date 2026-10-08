@@ -191,7 +191,7 @@ jobs:
 
       - name: Stage release pair
         env:
-          BUILDBUDDY_API_KEY: ""
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           BAZEL_CONFIG: ${{ matrix.bazel_config }}
           PLATFORM: ${{ matrix.platform }}
           SANDBOX: ${{ matrix.sandbox }}
