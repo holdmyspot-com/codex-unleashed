@@ -68,8 +68,8 @@ automatic-resumption guidance. It does not stop running children.
 
 ## Upstream base
 
-- Tag: `rust-v0.160.0`
-- Commit: `a956835d020762cb2b570053af06f643a11c0ecc`
+- Tag: `rust-v0.161.0`
+- Commit: `979011409de0a60b52f179721948e65531d26144`
 - Upstream status: downstream feature; no upstream adoption is assumed.
 
 ## Patch order
@@ -85,6 +85,12 @@ neighboring feature in the shared configuration schema. Then apply this series:
    notifications and adds guidance for yielding the parent turn.
 3. `0003-defer-goal-continuation-to-live-children.patch` keeps an active-goal
    parent available while its child runs and verifies the public app-server flow.
+4. `0004-observe-child-startup-in-completion-fixture.patch` observes each child's
+   turn-start event before checking that it is running. Spawn registration
+   does not imply that the child's first turn has started.
+5. `0005-keep-guardian-fixture-turns-explicit.patch` selects queued child-result
+   delivery for the Guardian fixture that drives root turns explicitly. Its
+   model responses and authorization assertions use that controlled sequence.
 
 Later patches depend on all preceding patches. The shared
 `schema/refresh-config-schema.patch` applies after the runtime patches and

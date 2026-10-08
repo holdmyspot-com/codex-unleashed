@@ -1,11 +1,11 @@
 # Use a mountable procfs denial to test snapshot descriptor fallback
 
 - Issue: [https://github.com/holdmyspot-com/codex-unleashed/issues/49](https://github.com/holdmyspot-com/codex-unleashed/issues/49)
-- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
+- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
 
 ## Intent
 
-The Linux snapshot fallback fixture denies /dev/fd, a procfs magic symlink that Bubblewrap cannot use as a directory mount target. The fixture masks the stable /proc directory under explicit PID inheritance, then verifies actual environment replay, independent readers, and preserved stdin.
+The Linux snapshot fallback fixture masks the stable /proc directory under explicit PID inheritance, then verifies actual environment replay, independent readers, and preserved stdin. On macOS, the fallback fixture accepts an unset Bash source path during environment replay while still rejecting descriptor paths. Both fixtures retain nounset shell behavior and the protected transport checks.
 
 ## Scope and reproduction
 
@@ -27,4 +27,4 @@ All selected checks expect to pass. The sandbox feature matches the Linux V8 bui
 
 ## Upstream status
 
-The issue tracks this downstream baseline repair against [upstream 0.160.0](https://github.com/openai/codex/releases/tag/rust-v0.160.0).
+The issue tracks this downstream baseline repair against [upstream 0.161.0](https://github.com/openai/codex/releases/tag/rust-v0.161.0).

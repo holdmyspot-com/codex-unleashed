@@ -1,7 +1,7 @@
 # Verify Kitty local-file references without substring false positives
 
 - Issue: [https://github.com/holdmyspot-com/codex-unleashed/issues/51](https://github.com/holdmyspot-com/codex-unleashed/issues/51)
-- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
+- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
 
 ## Intent
 
@@ -27,4 +27,4 @@ All selected checks expect to pass. The sandbox feature matches the Linux V8 bui
 
 ## Upstream status
 
-The issue tracks this downstream baseline repair against [upstream 0.160.0](https://github.com/openai/codex/releases/tag/rust-v0.160.0).
+The issue tracks this downstream baseline repair against [upstream 0.161.0](https://github.com/openai/codex/releases/tag/rust-v0.161.0).

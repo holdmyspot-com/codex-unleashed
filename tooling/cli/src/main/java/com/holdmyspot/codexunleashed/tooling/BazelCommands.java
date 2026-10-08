@@ -117,7 +117,39 @@ public final class BazelCommands
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPO_CONTENTS_CACHE",
 			"--repo_contents_cache=");
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPOSITORY_CACHE", "--repository_cache=");
-		addCache(command, configured, configuredSeparator, environment, "BAZEL_DISK_CACHE", "--disk_cache=");
+		addDiskCache(command, configured, configuredSeparator, environment, config.isPresent());
+		command.addAll(configured.subList(configuredSeparator, configured.size()));
+		return new Invocation(command, config, openai);
+	}
+
+	/**
+	 * Preserves explicit cache choices and disables the default combined disk cache on hosted Windows.
+	 *
+	 * @param command assembled direct argv
+	 * @param configured caller and remote arguments
+	 * @param separator the program-argument boundary
+	 * @param environment explicit settings
+	 * @param remoteCache whether the invocation selects a BuildBuddy cache
+	 */
+	private static void addDiskCache(List<String> command, List<String> configured, int separator,
+		Map<String, String> environment, boolean remoteCache)
+	{
+		String option = "--disk_cache=";
+		boolean explicitDiskCache = configured.subList(0, separator).stream().anyMatch(argument ->
+			argument.equals("--disk_cache") || argument.startsWith(option));
+		boolean hostedWindows = environment.getOrDefault("GITHUB_ACTIONS", "").equals("true") &&
+			environment.getOrDefault("RUNNER_OS", "").equals("Windows");
+		if (hostedWindows && remoteCache && !explicitDiskCache)
+		{
+			// Bazel 9.0 races when replacing disk-cache blobs on Windows; upstream CI disables this cache.
+			// Remove this workaround when the upstream pin includes the fix for
+			// https://github.com/bazelbuild/bazel/issues/28408.
+			command.add(option);
+			return;
+		}
+
+		if (!explicitDiskCache)
+			addCache(command, configured, separator, environment, "BAZEL_DISK_CACHE", option);
 		if (present(environment.get("BAZEL_DISK_CACHE")))
 		{
 			command.add("--experimental_disk_cache_gc_max_size=" +
@@ -125,8 +157,6 @@ public final class BazelCommands
 			command.add("--experimental_disk_cache_gc_max_age=" +
 				environment.getOrDefault("BAZEL_DISK_CACHE_MAX_AGE", "14d"));
 		}
-		command.addAll(configured.subList(configuredSeparator, configured.size()));
-		return new Invocation(command, config, openai);
 	}
 
 	/**

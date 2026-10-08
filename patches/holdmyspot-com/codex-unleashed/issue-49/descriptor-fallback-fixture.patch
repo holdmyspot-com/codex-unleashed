@@ -1,4 +1,4 @@
-From fd3a486efb8857a209a61adac737b281830ddd8a Mon Sep 17 00:00:00 2001
+From 65dcb0b2fc07d3e790b75f1bb7f0dc22e7463bf0 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Use a mountable procfs denial to test snapshot descriptor
@@ -11,8 +11,8 @@ Red and green reproductions are retained in the task-owned baseline repair execu
 The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
 ---
  codex-rs/exec-server/tests/common/mod.rs      |  7 ++++++
- .../tests/exec_process/shell_snapshot.rs      | 22 ++++++++++++++++---
- 2 files changed, 26 insertions(+), 3 deletions(-)
+ .../tests/exec_process/shell_snapshot.rs      | 24 +++++++++++++++----
+ 2 files changed, 27 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
 index 0d7661c..4fcd01d 100644
@@ -40,10 +40,10 @@ index 0d7661c..4fcd01d 100644
          .enable_all()
          .build()
 diff --git a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
-index e836fef..0141f84 100644
+index 56bb200..f9c9964 100644
 --- a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
 +++ b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
-@@ -49,6 +49,17 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -127,6 +127,17 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
              backend: environment.get_exec_backend(),
              _server: None,
          }
@@ -61,7 +61,13 @@ index e836fef..0141f84 100644
      } else {
          create_process_context(deny_fd_path).await?
      };
-@@ -64,7 +75,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -137,12 +148,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+     let payload_len = if deny_fd_path { 1 } else { 480 * 1024 };
+     let payload = "x".repeat(payload_len);
+     let source = if shell == "bash" {
+-        "${BASH_SOURCE[0]}"
++        "${BASH_SOURCE[0]-}"
+     } else {
          "${(%):-%x}"
      };
      let source_check = if deny_fd_path {
@@ -70,7 +76,7 @@ index e836fef..0141f84 100644
      } else {
          format!("case \"{source}\" in /dev/fd/*) ;; *) return 42 ;; esac; ")
      };
-@@ -103,7 +114,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -181,7 +192,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
          ));
          if deny_fd_path {
              policy.entries.push(FileSystemSandboxEntry::new(
@@ -84,7 +90,7 @@ index e836fef..0141f84 100644
                  FileSystemAccessMode::Deny,
              ));
          } else {
-@@ -172,7 +188,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -250,7 +266,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
                  collect_process_output_from_events(started.process).await?;
              assert!(
                  output.ends_with(&format!("restored:input-{index}")),

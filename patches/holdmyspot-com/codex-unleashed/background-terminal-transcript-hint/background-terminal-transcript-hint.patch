@@ -1,4 +1,4 @@
-From 522d5ce35c87e9821ba4739f5b5de458a308ca6d Mon Sep 17 00:00:00 2001
+From fc3d89e9d547fbf9fcb90fd8047c7e17f91e0ac9 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Wed, 30 Sep 2026 17:17:25 -0400
 Subject: [PATCH] Show background terminal transcript hints
@@ -39,7 +39,7 @@ and COLORTERM for the upstream noninteractive snapshot environment.
  12 files changed, 68 insertions(+), 8 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
-index 85259b0..78ec5c3 100644
+index 85259b0..3b64049 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
 @@ -1,10 +1,12 @@
@@ -52,12 +52,12 @@ index 85259b0..78ec5c3 100644
  History:
  • Ran echo repro-marker
    └ repro-marker
-+(ctrl+t to view transcript)
++(⌃t to view transcript)
  
  Active:
  • Exploring
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 9e6c59c..176fc15 100644
+index a8111d3..4eaca64 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -47,7 +47,7 @@ async fn external_writer_snapshot_freezes_active_command_and_mcp_rows() {
@@ -74,12 +74,12 @@ index 9e6c59c..176fc15 100644
      assert_eq!(
          history,
 -        vec!["• Ran cat replay\n  └ (no output)\n".to_string()]
-+        vec!["• Ran cat replay\n  └ (no output)\n(ctrl+t to view transcript)\n".to_string()]
++        vec!["• Ran cat replay\n  └ (no output)\n(⌃t to view transcript)\n".to_string()]
      );
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
-index d4e4fe5..7180468 100644
+index d4e4fe5..5fdea50 100644
 --- a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
 +++ b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
 @@ -1,5 +1,6 @@
@@ -93,12 +93,12 @@ index d4e4fe5..7180468 100644
  
  • Ran echo boundary
    └ run output
-+(ctrl+t to view transcript)
++(⌃t to view transcript)
  
  • Explored
    └ Read later.txt
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index d8b326d..dde04f0 100644
+index bae014e..36e186b 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -448,7 +448,14 @@ impl ExecCell {
@@ -111,7 +111,7 @@ index d8b326d..dde04f0 100644
 +            && call.source == ExecCommandSource::UnifiedExecStartup
 +            && call.duration.is_some()
 +        {
-+            lines.push(Line::from(format!("({TRANSCRIPT_HINT})").dim()).into());
++            lines.push(Line::from(format!("({})", transcript_hint()).dim()).into());
 +        }
 +        lines
      }
@@ -142,7 +142,7 @@ index d8b326d..dde04f0 100644
 +            .map(render_line_text)
 +            .join("\n");
 +
-+        assert!(rendered.contains(TRANSCRIPT_HINT));
++        assert!(rendered.contains(&transcript_hint()));
 +    }
 +
      #[test]
@@ -261,7 +261,7 @@ index 609bafd..69b027b 100644
    • echo hello↵and then some extra text
      ↳ hello
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 03c953f..2a5d8ce 100644
+index c45fefd..71781b6 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -732,9 +732,21 @@ fn final_message_separator_includes_worked_label_after_one_minute() {

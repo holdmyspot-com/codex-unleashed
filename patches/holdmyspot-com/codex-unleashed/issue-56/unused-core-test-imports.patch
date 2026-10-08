@@ -1,0 +1,38 @@
+From 1646b915ea6ddfecae4b473a458eb20d7eaa25b0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 7 Oct 2026 23:07:19 -0400
+Subject: [PATCH] Remove unused core test imports under strict Clippy
+
+Base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc). Red: maintained Bazel Clippy job 113098824907 reports these two unused imports under -D warnings. The strict maintained check remains enabled. Focused hosted verification is recorded by the CI repair workflow.
+---
+ codex-rs/core/tests/suite/openai_file_mcp.rs | 1 -
+ codex-rs/core/tests/suite/scenarios.rs       | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/openai_file_mcp.rs b/codex-rs/core/tests/suite/openai_file_mcp.rs
+index db3d52b..f99daca 100644
+--- a/codex-rs/core/tests/suite/openai_file_mcp.rs
++++ b/codex-rs/core/tests/suite/openai_file_mcp.rs
+@@ -44,7 +44,6 @@ use serde_json::json;
+ use wiremock::Mock;
+ use wiremock::MockServer;
+ use wiremock::ResponseTemplate;
+-use wiremock::matchers::body_json;
+ use wiremock::matchers::body_partial_json;
+ use wiremock::matchers::header;
+ use wiremock::matchers::method;
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index 6c143ee..bffa60e 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -39,7 +39,6 @@ use codex_protocol::items::TurnItem;
+ use codex_protocol::models::ImageReference;
+ use codex_protocol::models::ResponseItem;
+ use codex_protocol::openai_models::CodeModeToolMessages;
+-use codex_protocol::openai_models::ReasoningEffort;
+ use codex_protocol::openai_models::ToolMessage;
+ use codex_protocol::openai_models::ToolMode;
+ use codex_protocol::protocol::EnvironmentConfigState;
+-- 
+2.43.0
+

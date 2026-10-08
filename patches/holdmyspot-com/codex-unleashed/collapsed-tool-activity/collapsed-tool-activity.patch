@@ -1,4 +1,4 @@
-From f4dde57748e7739a8817898f71c78eee23aca7ff Mon Sep 17 00:00:00 2001
+From a5a87479ce85d4335b81a807a2b770178e1d46ae Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:17:33 -0400
 Subject: [PATCH] Group tool activity with expandable retained output
@@ -41,7 +41,7 @@ Use the direct Config method reference to satisfy the maintained Clippy redundan
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 5ec7a2f..45960d2 100644
+index fa623c0..f165d69 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -165,6 +165,8 @@ pub struct FeatureToggleToml {
@@ -54,10 +54,10 @@ index 5ec7a2f..45960d2 100644
  
  /// Base config deserialized from ~/.codex/config.toml.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ac6171c..facad95 100644
+index fb42dd5..432b49b 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1176,6 +1176,9 @@
+@@ -1202,6 +1202,9 @@
              "use_agent_identity": {
                "type": "boolean"
              },
@@ -67,7 +67,7 @@ index ac6171c..facad95 100644
              "use_legacy_landlock": {
                "type": "boolean"
              },
-@@ -7212,6 +7215,9 @@
+@@ -7298,6 +7301,9 @@
          "use_agent_identity": {
            "type": "boolean"
          },
@@ -78,7 +78,7 @@ index ac6171c..facad95 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index a2c6abd..05d78f1 100644
+index 419a6b7..ca1bc11 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
 @@ -142,6 +142,66 @@ command = "{command}"
@@ -149,10 +149,10 @@ index a2c6abd..05d78f1 100644
  async fn cli_overrides_resolve_relative_paths_against_cwd() -> std::io::Result<()> {
      let codex_home = tempdir().expect("tempdir");
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 60c6f65..ab5a9a3 100644
+index fe06279..9a966c0 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -801,6 +801,9 @@ pub struct Config {
+@@ -806,6 +806,9 @@ pub struct Config {
      /// Override the terminal-specific default for copying transcript mouse selections.
      pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
@@ -162,7 +162,7 @@ index 60c6f65..ab5a9a3 100644
      /// Right-click text paste fallback for the fullscreen TUI.
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
  
-@@ -1569,6 +1572,12 @@ impl ConfigBuilder {
+@@ -1578,6 +1581,12 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
  }
  
  impl Config {
@@ -175,7 +175,7 @@ index 60c6f65..ab5a9a3 100644
      pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
          &self.sqlite
      }
-@@ -4525,6 +4534,11 @@ impl Config {
+@@ -4538,6 +4547,11 @@ impl Config {
                  .as_ref()
                  .map(|tui| tui.copy_on_select)
                  .unwrap_or_default(),
@@ -188,10 +188,10 @@ index 60c6f65..ab5a9a3 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 4b05bdb..c091125 100644
+index 4ff27c2..0ccd96a 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -104,6 +104,8 @@ pub enum Feature {
+@@ -109,6 +109,8 @@ pub enum Feature {
      ViewImage,
      /// Allow registration of the built-in sleep tool.
      SleepTool,
@@ -200,7 +200,7 @@ index 4b05bdb..c091125 100644
      /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
      CodexHooks,
      /// Store CLI auth in the encrypted local secrets backend when keyring storage is selected.
-@@ -1215,6 +1217,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1244,6 +1246,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -214,10 +214,10 @@ index 4b05bdb..c091125 100644
          id: Feature::WriteStdinApproval,
          key: "write_stdin_approval",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index e11d777..bbd33bc 100644
+index f9b235d..c8b17e3 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -879,3 +879,16 @@ code_mode = true
+@@ -884,3 +884,16 @@ code_mode = true
          message
      );
  }
@@ -235,10 +235,10 @@ index e11d777..bbd33bc 100644
 +    assert!(!features.enabled(feature));
 +}
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index b137e6b..fa246cc 100644
+index 1259a62..bc2b721 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -282,6 +282,7 @@ async fn new_config(
+@@ -283,6 +283,7 @@ async fn new_config(
          notify: None,
          tui_notifications: TuiNotificationSettings::default(),
          animations: true,
@@ -247,7 +247,7 @@ index b137e6b..fa246cc 100644
          tui_rendering: Default::default(),
          show_tooltips: true,
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index 52e7e02..5346ef6 100644
+index dcacf8d..554f948 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -50,6 +50,9 @@ impl App {
@@ -273,7 +273,7 @@ index 23d40da..5f48381 100644
          let active_ids = chat_widget.active_activity_ids();
          let expanded = view.sync_live_activity(&self.transcript_cells, active_ids)
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 46c0da6..010ec97 100644
+index a8793e5..c5367ad 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
 @@ -1512,3 +1512,109 @@ async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
@@ -387,7 +387,7 @@ index 46c0da6..010ec97 100644
 +    assert!(buffer_text(&buffer).contains("completion output"));
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 7fafd6d..c173e14 100644
+index 15dac97..8cf2b12 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -1719,9 +1719,13 @@ impl ChatWidget {
@@ -491,7 +491,7 @@ index a0533b3..069c12f 100644
                      // Replayed commands have completion events without matching starts.
                      active.group.calls.extend(cell.group.calls);
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 9e6c59c..3b6a28d 100644
+index 4eaca64..96ed501 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -2248,3 +2248,173 @@ async fn apply_patch_request_omits_diff_summary_from_modal() -> anyhow::Result<(
@@ -776,7 +776,7 @@ index a99ea49..47c0b38 100644
  
      pub(crate) fn mark_failed(&mut self) {
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index d8b326d..a81648a 100644
+index 36e186b..de7524d 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -210,8 +210,13 @@ fn activity_marker(start_time: Option<Instant>, animations_enabled: bool) -> Spa
@@ -1478,7 +1478,7 @@ index 0000000..52be250
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
-index 8492e22..c8762ff 100644
+index 54dbe15..920c012 100644
 --- a/codex-rs/tui/src/transcript_view_tests.rs
 +++ b/codex-rs/tui/src/transcript_view_tests.rs
 @@ -1092,3 +1092,193 @@ fn history_prefetch_counts_rows_in_preceding_entries() {

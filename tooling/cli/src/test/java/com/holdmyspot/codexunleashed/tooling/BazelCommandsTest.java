@@ -235,6 +235,65 @@ public final class BazelCommandsTest
 	}
 
 	/**
+	 * Keeps remote and repository caching on hosted Windows without the default disk-cache write race.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void hostedWindowsRetainsRemoteCaches() throws IOException
+	{
+		Map<String, String> environment = Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", "Windows",
+			"BUILDBUDDY_API_KEY", "token", "BAZEL_DISK_CACHE", "managed/disk",
+			"BAZEL_REPOSITORY_CACHE", "managed/repository");
+		assertEquals(command(List.of("run", "--config=ci-windows-cross", "//cli:codex", "--",
+			"--disk_cache=payload"), environment), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
+				"run", "--config=buildbuddy-generic-rbe", "--remote_header=x-buildbuddy-api-key=token",
+				"--remote_local_fallback", "--config=ci-windows-cross", "//cli:codex",
+				"--repository_cache=managed/repository", "--disk_cache=", "--", "--disk_cache=payload"));
+	}
+
+	/**
+	 * Preserves caller-selected disk-cache settings on hosted Windows.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void hostedWindowsPreservesExplicitDiskCache() throws IOException
+	{
+		Map<String, String> environment = Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", "Windows",
+			"BUILDBUDDY_API_KEY", "token", "BAZEL_DISK_CACHE", "managed/disk");
+		for (String choice : List.of("", "explicit/disk"))
+			assertEquals(command(List.of("build", "--disk_cache=" + choice), environment), List.of("bazel",
+				"--noexperimental_remote_repo_contents_cache", "build", "--config=buildbuddy-generic",
+				"--remote_header=x-buildbuddy-api-key=token", "--disk_cache=" + choice,
+				"--experimental_disk_cache_gc_max_size=768M", "--experimental_disk_cache_gc_max_age=14d"));
+		assertEquals(command(List.of("build", "--disk_cache", "explicit/disk"), environment), List.of("bazel",
+			"--noexperimental_remote_repo_contents_cache", "build", "--config=buildbuddy-generic",
+			"--remote_header=x-buildbuddy-api-key=token", "--disk_cache", "explicit/disk",
+			"--experimental_disk_cache_gc_max_size=768M", "--experimental_disk_cache_gc_max_age=14d"));
+	}
+
+	/**
+	 * Retains configured disk caches on Unix runners and Windows invocations without remote credentials.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void otherHostsRetainDefaultDiskCache() throws IOException
+	{
+		for (String operatingSystem : List.of("Linux", "macOS"))
+			assertEquals(command(List.of("build"), Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", operatingSystem,
+				"BUILDBUDDY_API_KEY", "token", "BAZEL_DISK_CACHE", "managed/disk")), List.of("bazel",
+					"--noexperimental_remote_repo_contents_cache", "build", "--config=buildbuddy-generic",
+					"--remote_header=x-buildbuddy-api-key=token", "--disk_cache=managed/disk",
+					"--experimental_disk_cache_gc_max_size=768M", "--experimental_disk_cache_gc_max_age=14d"));
+		assertEquals(command(List.of("build"), Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", "Windows",
+			"BAZEL_DISK_CACHE", "managed/disk")), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
+				"build", "--disk_cache=managed/disk", "--experimental_disk_cache_gc_max_size=768M",
+				"--experimental_disk_cache_gc_max_age=14d"));
+	}
+
+	/**
 	 * Selects an invocation from explicit arguments and environment.
 	 *
 	 * @param arguments Bazel arguments

@@ -1,4 +1,4 @@
-From 49c20701bf6fa91e1fc81d7a6f7f931b28b03625 Mon Sep 17 00:00:00 2001
+From d4c4d86e28e6fd661dc10f3f7da3e651f2b78ed2 Mon Sep 17 00:00:00 2001
 From: Codex Patch Verification <codex@example.invalid>
 Date: Tue, 6 Oct 2026 14:41:01 -0400
 Subject: [PATCH] Replace stale updater workers before manual daemon updates
@@ -25,10 +25,10 @@ Execution records: .cat/work/temp/daemon-updater-handoff-m1Fw4L.
  create mode 100644 codex-rs/app-server-daemon/src/manual_update_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_start.rs b/codex-rs/app-server-daemon/src/backend/pid_start.rs
-index 1c286a8..e8b7727 100644
+index 2c091ab..eec8317 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_start.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_start.rs
-@@ -72,12 +72,7 @@ impl PidBackend {
+@@ -89,12 +89,7 @@ impl PidBackend {
          let codex_bin = fs::canonicalize(&self.codex_bin)
              .await
              .unwrap_or_else(|_| self.codex_bin.clone());
@@ -279,10 +279,10 @@ index 0000000..620f42c
 +    .await;
 +}
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index d932742..ce0e286 100644
+index efdaa01..28a33a0 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1034,3 +1034,7 @@ printf '%s' '{release}' > '{marker}'
+@@ -1179,3 +1179,7 @@ printf '%s' '{release}' > '{marker}'
          );
      }
  }

@@ -135,6 +135,61 @@ public final class DistributionMainTest
 	}
 
 	/**
+	 * Keeps hosted temporary paths available to child processes while confining local temporary storage.
+	 *
+	 * @throws IOException if fixture access or runtime assembly fails
+	 * @throws InterruptedException if the launcher wait is interrupted
+	 */
+	@Test
+	public void preservesHostedTemporaryDirectory() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path checkout = Files.createDirectories(fixture.root.resolve("checkout"));
+			Files.writeString(Files.createDirectory(checkout.resolve("codex-rs")).resolve("Cargo.toml"),
+				"[workspace.package]\nversion='0.160.0'\n");
+			Path launcher = Files.createDirectories(checkout.resolve("tooling/bin")).resolve("codex-tooling");
+			Path project = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
+			Files.copy(project.resolve("tooling/bin/codex-tooling"), launcher);
+			Path image = checkout.resolve(".cat/work/temp/build-caches/maven/target/tooling-distribution/runtime");
+			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
+			Path hostedTemporary = Files.createDirectory(fixture.root.resolve("hosted-temp"));
+			for (String hosted : new String[]{"true", "false"})
+			{
+				Path log = fixture.root.resolve("temporary-" + hosted + ".log");
+				ProcessBuilder builder = NativeCommands.createBuilder("bash", launcher.toString().replace('\\', '/'),
+					"get-codex-package-version", checkout.toString());
+				builder.redirectErrorStream(true).redirectOutput(log.toFile());
+				builder.environment().put("GITHUB_ACTIONS", hosted);
+				builder.environment().put("TMPDIR", hostedTemporary.toString());
+				builder.environment().put("JDK_JAVA_OPTIONS", "-XshowSettings:properties");
+				try (Process process = builder.start())
+				{
+					try
+					{
+						assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Checkout launcher timed out");
+						String settings = Files.readString(log);
+						assertEquals(process.exitValue(), 0, settings);
+						Path actual = settings.lines().map(String::strip).
+							filter(line -> line.startsWith("java.io.tmpdir = ")).
+							map(line -> Path.of(line.substring("java.io.tmpdir = ".length()))).findFirst().
+							orElseThrow(() -> new AssertionError("Missing temporary directory: " + settings));
+						Path expected = checkout.resolve(".cat/work/temp/build-caches/tooling/tmp");
+						if (hosted.equals("true"))
+							expected = hostedTemporary;
+						assertEquals(actual, expected, settings);
+					}
+					finally
+					{
+						if (process.isAlive())
+							process.destroyForcibly().waitFor();
+					}
+				}
+			}
+		}
+	}
+
+	/**
 	 * Executes V8 canary metadata selection without Python or Java on the search path.
 	 *
 	 * @throws IOException if runtime assembly or fixture access fails

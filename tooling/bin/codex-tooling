@@ -5,7 +5,11 @@ set -eu
 project_root="$(CDPATH= cd -- "${0%/*}/../.." && pwd)"
 runtime_directory="$project_root/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
 runtime="$runtime_directory/bin/codex-tooling"
-export TMPDIR="$project_root/.cat/work/temp/build-caches/tooling/tmp"
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  export TMPDIR="${TMPDIR:-${RUNNER_TEMP:?RUNNER_TEMP is required when hosted TMPDIR is unset}}"
+else
+  export TMPDIR="$project_root/.cat/work/temp/build-caches/tooling/tmp"
+fi
 export XDG_CACHE_HOME="$project_root/.cat/work/temp/build-caches/tooling/xdg"
 mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
 

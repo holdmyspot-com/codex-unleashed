@@ -1,4 +1,4 @@
-From 46cb676514fe4f6c8144e927d9339979c212cd7d Mon Sep 17 00:00:00 2001
+From d3ed9a7af17b77e3d449b2650d65b5d4eb13edd8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 2 Oct 2026 23:48:56 -0400
 Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
@@ -30,10 +30,10 @@ Root just fmt-check passes. Evidence: .cat/work/reports/resume-attribution.
  6 files changed, 178 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 8b29753..d6aa3bc 100644
+index 69f2aeb..03b82a4 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
-@@ -227,7 +227,9 @@ impl App {
+@@ -255,7 +255,9 @@ impl App {
      pub(super) fn refresh_startup_skills(&mut self, app_server: &AppServerSession) {
          let request_handle = app_server.request_handle();
          let app_event_tx = self.app_event_tx.clone();
@@ -45,10 +45,10 @@ index 8b29753..d6aa3bc 100644
              let result = fetch_skills_list(request_handle, cwd.clone())
                  .await
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 37add4b..f266c61 100644
+index 9ff641e..f96a3ba 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -907,6 +907,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -946,6 +946,7 @@ See the Codex keymap documentation for supported actions and examples."
              app.chat_widget.open_hooks_browser(entry);
          }
          app.update_visible_history_rows(tui.terminal.last_known_screen_size);
@@ -56,7 +56,7 @@ index 37add4b..f266c61 100644
          let initial_session_started_at = Instant::now();
          if let Some(started) = initial_started_thread {
              let thread_id = started.session.thread_id;
-@@ -1014,7 +1015,6 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1053,7 +1054,6 @@ See the Codex keymap documentation for supported actions and examples."
              event_stream_ms = %event_stream_started_at.elapsed().as_millis(),
              "tui startup initial frame scheduled"
          );
@@ -65,10 +65,10 @@ index 37add4b..f266c61 100644
          // already has data and available reset credits can be surfaced, without
          // delaying the initial frame render.
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index c836d54..206175d 100644
+index c65cc64..008150e 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-@@ -214,3 +214,162 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
+@@ -209,3 +209,162 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
      assert!(frame_text(&tui).contains("inline startup draft"));
      Ok(())
  }
@@ -232,7 +232,7 @@ index c836d54..206175d 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 7fafd6d..233da09 100644
+index 8cf2b12..eebfe42 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -600,6 +600,7 @@ pub(crate) struct ChatWidget {
@@ -243,7 +243,7 @@ index 7fafd6d..233da09 100644
      skills_initial_state: Option<HashMap<AbsolutePathBuf, bool>>,
      last_unified_wait: Option<UnifiedExecWaitState>,
      unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
-@@ -1804,6 +1805,11 @@ impl ChatWidget {
+@@ -1808,6 +1809,11 @@ impl ChatWidget {
          self.external_writer_view
      }
  
@@ -256,10 +256,10 @@ index 7fafd6d..233da09 100644
          self.submit_op(AppCommand::list_skills(
              vec![self.config.cwd.to_path_buf()],
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index 755da1e..3db8597 100644
+index cf78ed0..8baf412 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -119,6 +119,7 @@ impl ChatWidget {
+@@ -118,6 +118,7 @@ impl ChatWidget {
              local_settings,
              effective_service_tier,
              skills_all: Vec::new(),
@@ -268,7 +268,7 @@ index 755da1e..3db8597 100644
              current_collaboration_mode,
              active_collaboration_mask,
 diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
-index e03b2d5..7b84a63 100644
+index 7a06295..8161499 100644
 --- a/codex-rs/tui/src/chatwidget/session_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/session_flow.rs
 @@ -65,7 +65,11 @@ impl ChatWidget {
@@ -284,7 +284,7 @@ index e03b2d5..7b84a63 100644
          self.session_network_proxy = session.network_proxy.clone();
          let previous_thread_id = self.thread_id;
          let connector_scope_changed = previous_thread_id != Some(session.thread_id)
-@@ -226,7 +230,9 @@ impl ChatWidget {
+@@ -228,7 +232,9 @@ impl ChatWidget {
              self.bump_active_cell_revision();
          }
          self.transcript.saw_copy_source_this_turn = false;

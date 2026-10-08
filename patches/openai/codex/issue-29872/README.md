@@ -1,8 +1,8 @@
 # Release build warnings
 
 - Issue: https://github.com/openai/codex/issues/29872
-- Applies to: `openai/codex` `rust-v0.160.0`, commit
-  `a956835d020762cb2b570053af06f643a11c0ecc`
+- Applies to: `openai/codex` `rust-v0.161.0`, commit
+  `979011409de0a60b52f179721948e65531d26144`
 
 ## Intent
 

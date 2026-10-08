@@ -1,4 +1,4 @@
-From e5ae5f22a62d56bcca16d93234ea7967a57dc00e Mon Sep 17 00:00:00 2001
+From 4d144d63646a6f61307a94cd1441423236e5ea0d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 2 Oct 2026 22:54:16 -0400
 Subject: [PATCH] Defer implicit skill index construction until first use

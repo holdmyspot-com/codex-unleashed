@@ -1,4 +1,4 @@
-From 0e0df1e1a6335180f123dcc331d7f8e1d2156e08 Mon Sep 17 00:00:00 2001
+From 911452b28855b08e4fad9c1b9faaba3a9e8da68e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 5 Oct 2026 16:27:06 -0400
 Subject: [PATCH] bugfix: Keep active-goal parents available while children run
@@ -330,10 +330,10 @@ index da6605b..b98ddcf 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 316af05..e29db2e 100644
+index c0483af..5380ee1 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -961,6 +961,40 @@ impl CodexThread {
+@@ -1012,6 +1012,40 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
  
@@ -423,3 +423,6 @@ index 7d826ac..e3a24e8 100644
          let start_options = thread
              .thread_extension_data()
              .get::<TurnStartOptions>()
+-- 
+2.43.0
+

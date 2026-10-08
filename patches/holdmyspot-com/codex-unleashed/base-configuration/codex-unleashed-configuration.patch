@@ -1,4 +1,4 @@
-From 15c2b8bad3dd3739f0a54edd005d227be44339c6 Mon Sep 17 00:00:00 2001
+From ff4c82e65edf087a21387abf710ce7f7d4b49167 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Wed, 30 Sep 2026 18:48:00 -0400
 Subject: [PATCH] config: share the Codex Unleashed configuration table
@@ -25,10 +25,10 @@ and owns the real CLI exact-output check after all runtime patches are applied.
  3 files changed, 49 insertions(+)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 84b5321..5634e8d 100644
+index 3e5cc07..fa623c0 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -159,10 +159,20 @@ pub struct FeatureToggleToml {
+@@ -160,10 +160,20 @@ pub struct FeatureToggleToml {
      pub enabled: Option<bool>,
  }
  
@@ -48,7 +48,7 @@ index 84b5321..5634e8d 100644
 +
      /// Optional override of model selection.
      pub model: Option<String>,
-     /// Review model override used by the `/review` feature.
+     /// Default Daybreak preference for new threads and non-interactive turns.
 diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
 index ab383ca..3c58873 100644
 --- a/codex-rs/config/src/types_tests.rs
@@ -74,10 +74,10 @@ index ab383ca..3c58873 100644
  fn deserialize_skill_config_with_name_selector() {
      let cfg: SkillConfig = toml::from_str(
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index d50816a..a2c6abd 100644
+index 39df96b..419a6b7 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -3970,6 +3970,32 @@ wire_api = "responses"
+@@ -3971,6 +3971,32 @@ wire_api = "responses"
      Ok(())
  }
  

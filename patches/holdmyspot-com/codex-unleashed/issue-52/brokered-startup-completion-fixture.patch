@@ -1,4 +1,4 @@
-From 5bee99a2d5fac39f63a5556fd1c789af9b77b204 Mon Sep 17 00:00:00 2001
+From bb6f797b73328f4f5e59307d7be014f0eb625374 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Follow exec sessions to completion in POSIX credential-broker
@@ -14,7 +14,7 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  1 file changed, 85 insertions(+), 21 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/approvals.rs b/codex-rs/core/tests/suite/approvals.rs
-index fd229e3..569de91 100644
+index 8d3668f..447cda2 100644
 --- a/codex-rs/core/tests/suite/approvals.rs
 +++ b/codex-rs/core/tests/suite/approvals.rs
 @@ -3333,10 +3333,15 @@ GH_TOKEN = "{REAL_GITHUB_TOKEN}"

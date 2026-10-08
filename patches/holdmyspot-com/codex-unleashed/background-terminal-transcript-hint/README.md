@@ -1,7 +1,7 @@
 # Background-terminal transcript hint
 
 - Issue: [holdmyspot-com/codex-unleashed#3](https://github.com/holdmyspot-com/codex-unleashed/issues/3)
-- Applies to: upstream `openai/codex` `rust-v0.159.2` at commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Applies to: upstream `openai/codex` `rust-v0.161.0` at commit `979011409de0a60b52f179721948e65531d26144`
 - Related upstream requests: [openai/codex#13858](https://github.com/openai/codex/issues/13858), [openai/codex#14928](https://github.com/openai/codex/issues/14928), [openai/codex#16935](https://github.com/openai/codex/issues/16935)
 
 ## Intent
@@ -46,8 +46,7 @@ just test -p codex-tui -E 'test(ps_output_explains_when_running_transcript_is_av
 Completed command hints also remain visible next to exploration groups:
 
 ```sh
-cargo test -p codex-tui --lib adjacent_exploration_groups_across_reasoning_live_and_replayed
-cargo test -p codex-tui --lib unified_exec_unknown_end_with_active_exploring_cell_snapshot
+just test -p codex-tui --lib -E 'test(adjacent_exploration_groups_across_reasoning_live_and_replayed) | test(unified_exec_unknown_end_with_active_exploring_cell_snapshot)'
 ```
 
 The checks expect the running hint only while a background terminal is active
@@ -55,4 +54,4 @@ and the `Ctrl+T` hint on completed entries, including replayed entries.
 
 ## Formatting
 
-Run `python3 ../scripts/format.py --check` from `codex-rs/`.
+Run `just fmt-check` from the patched checkout root.

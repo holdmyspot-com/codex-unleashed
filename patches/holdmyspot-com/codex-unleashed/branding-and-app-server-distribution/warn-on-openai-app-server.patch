@@ -1,4 +1,4 @@
-From 2b6c086123bb32cfc47795370a86ebcd47f5a3b4 Mon Sep 17 00:00:00 2001
+From 8b821b72097cdf0fa517751f9d77300fc6dfc5bd Mon Sep 17 00:00:00 2001
 From: Codex <codex@openai.com>
 Date: Mon, 5 Oct 2026 14:13:10 -0400
 Subject: [PATCH] bugfix: identify server distribution and order Unleashed
@@ -19,13 +19,13 @@ Green: just test -p codex-tui --lib -E 'test(update_versions) | test(status::rem
  codex-rs/app-server-client/src/lib.rs         |  11 +-
  .../app-server/tests/suite/v2/initialize.rs   |  15 +++
  codex-rs/login/src/auth/default_client.rs     |   5 +-
- .../login/src/auth/default_client_tests.rs    |  15 +++
+ .../login/src/auth/default_client_tests.rs    |  22 +++-
  codex-rs/tui/src/app/server_version_notice.rs |   1 +
  ...eashed_openai_server_warning_snapshot.snap |   8 ++
  codex-rs/tui/src/history_cell/tests.rs        |  29 +++++
  codex-rs/tui/src/status/remote_connection.rs  | 117 +++++++++++++++++-
  codex-rs/tui/src/update_versions.rs           |  63 +++++++++-
- 9 files changed, 259 insertions(+), 5 deletions(-)
+ 9 files changed, 265 insertions(+), 6 deletions(-)
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
@@ -104,10 +104,22 @@ index 28a952e..c8c1d65 100644
      let originator = originator();
      let prefix = format!(
 diff --git a/codex-rs/login/src/auth/default_client_tests.rs b/codex-rs/login/src/auth/default_client_tests.rs
-index 92d9bf2..6abd108 100644
+index 92d9bf2..aa09c6c 100644
 --- a/codex-rs/login/src/auth/default_client_tests.rs
 +++ b/codex-rs/login/src/auth/default_client_tests.rs
-@@ -359,3 +359,18 @@ fn test_macos() {
+@@ -353,9 +353,29 @@ fn test_macos() {
+     use regex_lite::Regex;
+     let user_agent = get_codex_user_agent();
+     let originator = regex_lite::escape(originator().value.as_str());
++    let version = regex_lite::escape(&format!(
++        "{}+{}",
++        env!("CARGO_PKG_VERSION"),
++        option_env!("CODEX_UNLEASHED_BUILD_NUMBER").unwrap_or("dev")
++    ));
+     let re = Regex::new(&format!(
+-        r"^{originator}/\d+\.\d+\.\d+ \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
++        r"^{originator}/{version} \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$"
+     ))
      .unwrap();
      assert!(re.is_match(&user_agent));
  }
@@ -153,7 +165,7 @@ index 0000000..b5da90f
 +  Use /daemon to manage the local background server.
 +  Updating may interrupt active or queued work.
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index cf638d7..019f85f 100644
+index aaf2443..9549a41 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {

@@ -1,0 +1,62 @@
+From a245f39760eb73fefe1922ada70fe6535955580a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 7 Oct 2026 23:03:35 -0400
+Subject: [PATCH] Expose the published schema to Bazel regression tests
+
+Base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc), with the maintained downstream queue. Red: Bazel Linux test job 113098824932 cannot read the published schema fixture. Verification records and focused hosted results are retained by the CI repair task.
+---
+ codex-rs/config-schema/BUILD.bazel               |  4 ++++
+ codex-rs/config-schema/tests/published_schema.rs | 12 ++++++++++++
+ codex-rs/core/BUILD.bazel                        |  5 +++++
+ 3 files changed, 21 insertions(+)
+ create mode 100644 codex-rs/config-schema/tests/published_schema.rs
+
+diff --git a/codex-rs/config-schema/BUILD.bazel b/codex-rs/config-schema/BUILD.bazel
+index 26058bc..90829cb 100644
+--- a/codex-rs/config-schema/BUILD.bazel
++++ b/codex-rs/config-schema/BUILD.bazel
+@@ -3,4 +3,8 @@ load("//:defs.bzl", "codex_rust_crate")
+ codex_rust_crate(
+     name = "config-schema",
+     crate_name = "codex_config_schema",
++    rustc_env = {
++        "CARGO_MANIFEST_DIR": "codex-rs/config-schema",
++    },
++    test_data_extra = ["//codex-rs/core:config.schema.json"],
+ )
+diff --git a/codex-rs/config-schema/tests/published_schema.rs b/codex-rs/config-schema/tests/published_schema.rs
+new file mode 100644
+index 0000000..d14ac6a
+--- /dev/null
++++ b/codex-rs/config-schema/tests/published_schema.rs
+@@ -0,0 +1,12 @@
++use std::path::Path;
++
++#[test]
++fn published_schema_fixture_is_available() {
++    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config.schema.json");
++    let bytes = std::fs::read(&fixture)
++        .unwrap_or_else(|error| panic!("cannot read published schema {fixture:?}: {error}"));
++    assert!(
++        !bytes.is_empty(),
++        "published schema fixture must contain data"
++    );
++}
+diff --git a/codex-rs/core/BUILD.bazel b/codex-rs/core/BUILD.bazel
+index 662d643..9ff5852 100644
+--- a/codex-rs/core/BUILD.bazel
++++ b/codex-rs/core/BUILD.bazel
+@@ -1,5 +1,10 @@
+ load("//:defs.bzl", "codex_rust_crate")
+ 
++exports_files(
++    ["config.schema.json"],
++    visibility = ["//codex-rs/config-schema:__pkg__"],
++)
++
+ codex_rust_crate(
+     name = "core",
+     compile_data = glob(["assets/**"]),
+-- 
+2.43.0
+

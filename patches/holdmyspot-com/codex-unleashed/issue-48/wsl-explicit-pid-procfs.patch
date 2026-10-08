@@ -1,4 +1,4 @@
-From 99083f5a81873145e226b028d460dbef8e90abfc Mon Sep 17 00:00:00 2001
+From b531e9ebdc95b2d81b0746f0dd4a0bef077d463b Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Preserve procfs for explicit sandbox PID inheritance on WSL

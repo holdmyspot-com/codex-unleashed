@@ -5,7 +5,7 @@ inputs:
     description: Target triple used for setup and cache namespacing.
     required: true
   cache-scope:
-    description: Logical namespace used to keep concurrent Bazel jobs from reserving the same repository cache key.
+    description: Legacy job namespace used to restore existing repository caches.
     required: true
 outputs:
   repository-cache-path:
@@ -44,11 +44,15 @@ runs:
         CACHE_UPSTREAM_PREFIX: ${{ env.CACHE_UPSTREAM_PREFIX }}
         CACHE_SCOPE: ${{ inputs.cache-scope }}
         TARGET: ${{ inputs.target }}
-        CACHE_HASH: ${{ hashFiles('upstream/MODULE.bazel', 'upstream/MODULE.bazel.lock', 'upstream/codex-rs/Cargo.lock', 'upstream/codex-rs/Cargo.toml', 'patches/**/*.patch') }}
+        CACHE_HASH: ${{ hashFiles('upstream/MODULE.bazel', 'upstream/MODULE.bazel.lock', 'upstream/codex-rs/Cargo.lock', 'upstream/codex-rs/Cargo.toml', 'upstream/.bazelversion') }}
       run: |
-        echo "repository-cache-key=${CACHE_UPSTREAM_PREFIX}bazel-cache-${CACHE_SCOPE}-${TARGET}-${CACHE_HASH}" >> "${GITHUB_OUTPUT}"
-        echo "repository-cache-restore-key=${CACHE_UPSTREAM_PREFIX}bazel-cache-${CACHE_SCOPE}-${TARGET}-" >> "${GITHUB_OUTPUT}"
+        echo "repository-cache-key=${CACHE_UPSTREAM_PREFIX}bazel-repository-${TARGET}-${CACHE_HASH}" >> "${GITHUB_OUTPUT}"
+        echo "repository-cache-restore-key=${CACHE_UPSTREAM_PREFIX}bazel-repository-${TARGET}-" >> "${GITHUB_OUTPUT}"
+        echo "repository-cache-legacy-restore-key=${CACHE_UPSTREAM_PREFIX}bazel-cache-${CACHE_SCOPE}-${TARGET}-" >> "${GITHUB_OUTPUT}"
 
+    # Repository archives are addressed by download checksums. Jobs for the
+    # same target share them; source-only patches do not invalidate dependencies.
+    # The legacy fallback retains existing archives while the shared key warms.
     # Restore the Bazel repository cache explicitly so external dependencies
     # do not need to be re-downloaded on every CI run. Keep restore failures
     # non-fatal so transient cache-service errors degrade to a cold build
@@ -62,6 +66,7 @@ runs:
         key: ${{ steps.cache_bazel_repository_key.outputs.repository-cache-key }}
         restore-keys: |
           ${{ steps.cache_bazel_repository_key.outputs.repository-cache-restore-key }}
+          ${{ steps.cache_bazel_repository_key.outputs.repository-cache-legacy-restore-key }}
 
     - name: Set up Bazel execution logs
       shell: bash

@@ -89,6 +89,8 @@ public final class BazelCallerTest
 					assertEquals(test.contains("--remote_header=x-buildbuddy-api-key=fixture-token"), !credential.isEmpty());
 					if (operatingSystem.equals("Windows") && !credential.isEmpty())
 					{
+						environment.put("GITHUB_ACTIONS", "true");
+						environment.put("BAZEL_DISK_CACHE", root.resolve("disk cache").toString());
 						assertEquals(run(root, environment, NativeCommands.scriptBuilder(scripts.resolve("run-bazel-ci.sh"),
 							"--windows-cross-compile", "--", "build", "--", "//fixture:test")), 37);
 						List<String> crossBuild = arguments(root);
@@ -97,6 +99,11 @@ public final class BazelCallerTest
 							"Linux remote actions must never fall back to the Windows host");
 						assertTrue(crossBuild.contains("--config=ci-windows-cross"));
 						assertTrue(crossBuild.contains("--remote_header=x-buildbuddy-api-key=fixture-token"));
+						assertTrue(crossBuild.contains("--disk_cache="));
+						assertTrue(crossBuild.contains("--repository_cache=" + environment.get("BAZEL_REPOSITORY_CACHE")));
+						assertFalse(crossBuild.stream().anyMatch(argument -> argument.startsWith("--experimental_disk_cache_gc_")));
+						environment.remove("GITHUB_ACTIONS");
+						environment.remove("BAZEL_DISK_CACHE");
 					}
 				}
 			}

@@ -1,0 +1,73 @@
+From 8ce31033b83c1dfb92ac81fbba81e2a83c8af0bc Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 8 Oct 2026 03:39:47 -0400
+Subject: [PATCH] Apply
+ patches/holdmyspot-com/codex-unleashed/issue-58/seatbelt-metadata-order-fixtures.patch
+
+Align the two Seatbelt fixtures with the protected metadata parameter order
+emitted by the declared release. Keep exact parameter mappings, command
+arguments, actual sandbox denial checks, and sibling write checks.
+
+Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/58
+Base: rust-v0.161.0, 979011409de0a60b52f179721948e65531d26144
+TDD red: pristine hosted run 37743443794, job 113199279340, maintained
+run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs --
+test --jobs=2 --test_tag_filters=-argument-comment-lint
+--test_verbose_timeout_warnings --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+-- //codex-rs/sandboxing:sandboxing-unit-tests -//third_party/v8:all
+-//codex-rs/v8-poc:v8-poc-unit-tests. 111 pass; both old index assertions fail.
+Green acceptance remains recorded in the owning task execution ledger.
+---
+ codex-rs/sandboxing/src/seatbelt_tests.rs | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/codex-rs/sandboxing/src/seatbelt_tests.rs b/codex-rs/sandboxing/src/seatbelt_tests.rs
+index 88ae9b9..9466175 100644
+--- a/codex-rs/sandboxing/src/seatbelt_tests.rs
++++ b/codex-rs/sandboxing/src/seatbelt_tests.rs
+@@ -1963,21 +1963,21 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+             "-DWRITABLE_ROOT_0_EXCLUDED_0={}",
+             cwd.canonicalize()
+                 .expect("canonicalize cwd")
+-                .join(".codex")
++                .join(".git")
+                 .display()
+         ),
+         format!(
+             "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
+             cwd.canonicalize()
+                 .expect("canonicalize cwd")
+-                .join(".git")
++                .join(".agents")
+                 .display()
+         ),
+         format!(
+             "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
+             cwd.canonicalize()
+                 .expect("canonicalize cwd")
+-                .join(".agents")
++                .join(".codex")
+                 .display()
+         ),
+         format!(
+@@ -2993,7 +2993,7 @@ fn create_seatbelt_args_for_cwd_as_git_repo() {
+         "missing {expected_dot_git}: {args:#?}"
+     );
+     let expected_dot_codex = format!(
+-        "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
++        "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
+         dot_codex_canonical.to_string_lossy()
+     );
+     assert!(
+@@ -3001,7 +3001,7 @@ fn create_seatbelt_args_for_cwd_as_git_repo() {
+         "missing {expected_dot_codex}: {args:#?}"
+     );
+     let expected_dot_agents = format!(
+-        "-DWRITABLE_ROOT_0_EXCLUDED_2={}",
++        "-DWRITABLE_ROOT_0_EXCLUDED_1={}",
+         dot_agents_canonical.to_string_lossy()
+     );
+     assert!(
+-- 
+2.43.0
+

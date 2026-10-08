@@ -1,0 +1,38 @@
+From cb662f5dfa13b08be541d4af52b2b2cd933fc389 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 8 Oct 2026 05:29:01 +0000
+Subject: [PATCH] Return the app-server time provider directly
+
+Inline the existing provider expression to satisfy strict Clippy initialization checks.
+
+Base: rust-v0.161.0 (979011409de0a60b52f179721948e65531d26144).
+Hosted same-base comparison uses Rust 1.95.0 and the maintained Bazel Clippy configuration: pristine job 113160631294 fails with let_and_return; corrected job 113160631142 passes. Run 37731252215.
+
+Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/57
+---
+ codex-rs/app-server/src/message_processor.rs | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
+index 8c88337..ce5600e 100644
+--- a/codex-rs/app-server/src/message_processor.rs
++++ b/codex-rs/app-server/src/message_processor.rs
+@@ -366,11 +366,10 @@ impl MessageProcessor {
+                     outgoing.clone(),
+                     thread_state_manager.clone(),
+                 )),
+-                Some({
+-                    let time_provider =
+-                        app_server_time_provider(outgoing.clone(), thread_state_manager.clone());
+-                    time_provider
+-                }),
++                Some(app_server_time_provider(
++                    outgoing.clone(),
++                    thread_state_manager.clone(),
++                )),
+             );
+             match code_mode_session_provider {
+                 Some(provider) => manager.with_code_mode_session_provider(provider),
+-- 
+2.43.0
+

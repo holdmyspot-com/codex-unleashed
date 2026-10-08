@@ -1,4 +1,4 @@
-From 641cfeb415cfdd7d265c981f9a624ea82e6de5e9 Mon Sep 17 00:00:00 2001
+From 0b0880c4631d6ec0f6d75ca641bd8f6861ece140 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Make composer shortcut snapshots independent of host WSL
@@ -14,10 +14,10 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  1 file changed, 27 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 7272255..c9dd674 100644
+index 8921eaa..255819c 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -599,6 +599,8 @@ impl ChatComposerConfig {
+@@ -592,6 +592,8 @@ impl ChatComposerConfig {
  }
  
  pub(crate) struct ChatComposer {
@@ -26,7 +26,7 @@ index 7272255..c9dd674 100644
      draft: DraftState,
      popups: PopupState,
      app_event_tx: AppEventSender,
-@@ -730,6 +732,8 @@ impl ChatComposer {
+@@ -723,6 +725,8 @@ impl ChatComposer {
          let default_vim_normal_keymap = default_keymap.vim_normal.clone();
  
          let mut this = Self {
@@ -35,7 +35,7 @@ index 7272255..c9dd674 100644
              draft: DraftState::new(),
              popups: PopupState::default(),
              app_event_tx,
-@@ -3844,14 +3848,18 @@ impl ChatComposer {
+@@ -3839,14 +3843,18 @@ impl ChatComposer {
      fn footer_props(&self) -> FooterProps {
          let mode = self.footer_mode();
          let is_wsl = {
@@ -56,7 +56,7 @@ index 7272255..c9dd674 100644
          };
  
          FooterProps {
-@@ -5106,6 +5114,23 @@ mod tests {
+@@ -5105,6 +5113,23 @@ mod tests {
          )
      }
  
@@ -65,7 +65,7 @@ index 7272255..c9dd674 100644
 +        let (mut composer, _rx) = new_test_composer();
 +        composer.footer.mode = FooterMode::ShortcutOverlay;
 +
-+        for (is_wsl, expected_hint) in [(false, "ctrl+v"), (true, "ctrl+⌥v")] {
++        for (is_wsl, expected_hint) in [(false, "⌃v"), (true, "⌃⌥v")] {
 +            composer.is_wsl = is_wsl;
 +            let lines = crate::bottom_pane::shortcut_overlay::lines(&composer.footer_props(), 120);
 +            let paste_line = lines

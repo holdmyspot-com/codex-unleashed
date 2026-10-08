@@ -1,4 +1,4 @@
-From af8b767e1bd21b9dde15c22a263a53b30ccd49d2 Mon Sep 17 00:00:00 2001
+From 7d407db71fa2418f81b8d166ae56b69393e2206d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 5 Oct 2026 20:14:48 -0400
 Subject: [PATCH] Expand patch diff previews when configured
@@ -33,7 +33,7 @@ Release-base compatibility: the rust-v0.160.0 thread-manager sample initializes 
  12 files changed, 214 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 45960d2..bc94b64 100644
+index f165d69..24bb70e 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -164,6 +164,8 @@ pub struct FeatureToggleToml {
@@ -66,10 +66,10 @@ index 3c58873..5062573 100644
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 9a3b42d..f66f010 100644
+index 9ee4aaa..4f1208b 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1179,6 +1179,9 @@
+@@ -1205,6 +1205,9 @@
              "unleashed_background_subagents": {
                "type": "boolean"
              },
@@ -79,7 +79,7 @@ index 9a3b42d..f66f010 100644
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -7224,6 +7227,9 @@
+@@ -7310,6 +7313,9 @@
          "unleashed_background_subagents": {
            "type": "boolean"
          },
@@ -90,10 +90,10 @@ index 9a3b42d..f66f010 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 05d78f1..33833bb 100644
+index ca1bc11..bf9a90c 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -4030,6 +4030,66 @@ wire_api = "responses"
+@@ -4031,6 +4031,66 @@ wire_api = "responses"
      Ok(())
  }
  
@@ -161,7 +161,7 @@ index 05d78f1..33833bb 100644
  async fn strict_config_rejects_unknown_codex_unleashed_settings() {
      for (contents, expected) in [
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b2a2dc4..d44bb87 100644
+index 79ab58e..d93baf0 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -1374,6 +1374,29 @@ async fn runtime_config_uses_tui_raw_output_mode() {
@@ -195,10 +195,10 @@ index b2a2dc4..d44bb87 100644
  async fn tui_auto_recap_defaults_and_cli_overrides() -> anyhow::Result<()> {
      for (toml, override_value, expected) in [
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index ab5a9a3..b9a3b2d 100644
+index 9a966c0..d197378 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -798,6 +798,9 @@ pub struct Config {
+@@ -803,6 +803,9 @@ pub struct Config {
      /// Own the fullscreen transcript when the alternate screen is enabled.
      pub tui_fullscreen_transcript: bool,
  
@@ -208,7 +208,7 @@ index ab5a9a3..b9a3b2d 100644
      /// Override the terminal-specific default for copying transcript mouse selections.
      pub tui_copy_on_select: codex_config::types::CopyOnSelect,
  
-@@ -4529,6 +4532,11 @@ impl Config {
+@@ -4542,6 +4545,11 @@ impl Config {
                  .tui
                  .as_ref()
                  .is_none_or(|tui| tui.fullscreen_transcript),
@@ -221,10 +221,10 @@ index ab5a9a3..b9a3b2d 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index f3d9724..52d36d4 100644
+index aa6cb4d..53e27cd 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -91,6 +91,8 @@ impl Stage {
+@@ -92,6 +92,8 @@ impl Stage {
  /// Unique features toggled via configuration.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
  pub enum Feature {
@@ -233,7 +233,7 @@ index f3d9724..52d36d4 100644
      /// Preview consumer five-hour and weekly allowance history.
      AnalyticsPlanHistory,
      /// Discover model catalogs for OpenAI API-key authentication.
-@@ -940,6 +942,12 @@ pub struct FeatureSpec {
+@@ -959,6 +961,12 @@ pub struct FeatureSpec {
  }
  
  pub const FEATURES: &[FeatureSpec] = &[
@@ -247,10 +247,10 @@ index f3d9724..52d36d4 100644
          id: Feature::AnalyticsPlanHistory,
          key: "analytics_plan_history",
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index fa246cc..96644bb 100644
+index bc2b721..a2ede5a 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -282,6 +282,7 @@ async fn new_config(
+@@ -283,6 +283,7 @@ async fn new_config(
          notify: None,
          tui_notifications: TuiNotificationSettings::default(),
          animations: true,
@@ -283,7 +283,7 @@ index 5f48381..bbb45f4 100644
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 010ec97..b3c1717 100644
+index c5367ad..a9f8527 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
 @@ -74,6 +74,71 @@ pub(in crate::app) fn buffer_text(buffer: &Buffer) -> String {

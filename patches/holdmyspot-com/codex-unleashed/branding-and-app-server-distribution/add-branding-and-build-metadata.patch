@@ -1,4 +1,4 @@
-From b2dc128264a937e260cf07b3de7989a168580bdd Mon Sep 17 00:00:00 2001
+From f1ac24cb38209a60b26e83b43bd19d2a892fb895 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Wed, 30 Sep 2026 14:46:10 -0400
 Subject: [PATCH] Add Codex Unleashed branding and build metadata
@@ -57,10 +57,10 @@ index abccc48..567262e 100644
          println!("cargo:rustc-link-arg=-ObjC");
      }
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index bdd7771..8c698d4 100644
+index ac06a66..1d5b729 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -110,10 +110,17 @@ use codex_terminal_detection::TerminalName;
+@@ -113,10 +113,17 @@ use codex_terminal_detection::TerminalName;
  /// Codex CLI
  ///
  /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -79,7 +79,7 @@ index bdd7771..8c698d4 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -123,6 +130,10 @@ use codex_terminal_detection::TerminalName;
+@@ -126,6 +133,10 @@ use codex_terminal_detection::TerminalName;
      override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
  )]
  struct MultitoolCli {
@@ -90,7 +90,7 @@ index bdd7771..8c698d4 100644
      #[clap(flatten)]
      pub config_overrides: CliConfigOverrides,
  
-@@ -1025,12 +1036,18 @@ async fn cli_main(
+@@ -1028,12 +1039,18 @@ async fn cli_main(
      remote_control_disabled: bool,
  ) -> anyhow::Result<()> {
      let MultitoolCli {
@@ -109,7 +109,7 @@ index bdd7771..8c698d4 100644
      // Retain the launch target through TUI exit, even if a launcher changes selection.
      let daemon_cli_executable = arg0_paths
          .codex_self_exe
-@@ -1858,6 +1875,24 @@ async fn cli_main(
+@@ -1861,6 +1878,24 @@ async fn cli_main(
      Ok(())
  }
  
@@ -134,7 +134,7 @@ index bdd7771..8c698d4 100644
  fn profile_v2_for_subcommand<'a>(
      interactive: &'a TuiCli,
      subcommand: &Subcommand,
-@@ -2857,6 +2892,7 @@ mod tests {
+@@ -2860,6 +2895,7 @@ mod tests {
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -142,7 +142,7 @@ index bdd7771..8c698d4 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -2894,6 +2930,7 @@ mod tests {
+@@ -2897,6 +2933,7 @@ mod tests {
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -150,7 +150,7 @@ index bdd7771..8c698d4 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -2938,6 +2975,7 @@ mod tests {
+@@ -2941,6 +2978,7 @@ mod tests {
              interactive,
              config_overrides: root_overrides,
              subcommand,
@@ -238,10 +238,10 @@ index 0000000..529d11c
 +    println!("cargo:rerun-if-env-changed=CODEX_UNLEASHED_BUILD_NUMBER");
 +}
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 32d2f0d..17fcf4e 100644
+index 48295d4..6db841a 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
-@@ -8,6 +8,7 @@ use crate::empty_state_animation::Greeting;
+@@ -4,6 +4,7 @@ use super::*;
  use crate::line_truncation::line_width;
  use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
  use crate::style::accent_color;
@@ -249,7 +249,7 @@ index 32d2f0d..17fcf4e 100644
  use crate::width::display_width;
  
  /// Render `lines` inside a border whose inner width is at least `inner_width`.
-@@ -44,15 +45,42 @@ pub(crate) fn with_border_with_inner_width(
+@@ -40,15 +41,42 @@ pub(crate) fn with_border_with_inner_width(
      out
  }
  
@@ -294,7 +294,7 @@ index 32d2f0d..17fcf4e 100644
  #[derive(Debug)]
  struct TooltipHistoryCell {
      tip: String,
-@@ -358,16 +386,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -338,16 +366,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          let width = usize::from(width);
          let mut title = vec!["  ".into()];
@@ -319,9 +319,9 @@ index 32d2f0d..17fcf4e 100644
          if self.yolo_mode {
              lines.push(Line::from(vec![
                  "  permissions: ".dim(),
-@@ -396,7 +422,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
-                 .collect();
-         }
+@@ -362,7 +388,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
+ 
+     fn raw_lines(&self) -> Vec<Line<'static>> {
          let mut lines = vec![
 -            Line::from(format!("OpenAI Codex (v{})", self.version)),
 +            Line::from(format!("Codex Unleashed (v{})", self.version)),
@@ -331,10 +331,10 @@ index 32d2f0d..17fcf4e 100644
                  "model: {}{}",
                  self.model,
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 03c953f..0257a97 100644
+index 71781b6..aaf2443 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1867,6 +1867,74 @@ fn session_header_clamps_to_narrow_width() {
+@@ -1882,6 +1882,74 @@ fn session_header_clamps_to_narrow_width() {
      insta::assert_snapshot!(render_lines(&lines).join("\n"));
  }
  
@@ -410,10 +410,10 @@ index 03c953f..0257a97 100644
  #[cfg_attr(
      target_os = "windows",
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 60300d0..56109d8 100644
+index 6b7f56b..beb79bc 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -879,6 +879,10 @@ impl StatusHistoryCell {
+@@ -881,6 +881,10 @@ impl StatusHistoryCell {
              [Line::from(title)],
              RtOptions::new(available_width).subsequent_indent(indent.into()),
          );
@@ -425,7 +425,7 @@ index 60300d0..56109d8 100644
          // Providers such as Bedrock manage limits and billing elsewhere.
          if self.show_chatgpt_usage_link {
 diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
-index f501402..412e1d0 100644
+index 029ef13..d288db8 100644
 --- a/codex-rs/tui/src/status/tests.rs
 +++ b/codex-rs/tui/src/status/tests.rs
 @@ -189,6 +189,7 @@ fn sanitize_directory(lines: Vec<String>) -> Vec<String> {

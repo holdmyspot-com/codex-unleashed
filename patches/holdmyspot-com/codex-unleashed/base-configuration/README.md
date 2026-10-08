@@ -1,6 +1,6 @@
 # Codex Unleashed configuration section
 
-- Applies to: upstream `openai/codex` `rust-v0.159.2`, commit `ff6aec96948b70d94983af2641a6b67c94faeff5`
+- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
 
 ## Intent
 
@@ -46,8 +46,8 @@ unknown-key warning.
 Run from `codex-rs/`:
 
 ```sh
-cargo test -p codex-config --lib codex_unleashed_table_schema_rejects_undeclared_properties
-cargo test -p codex-core --lib strict_config_rejects_unknown_codex_unleashed_settings
+just test -p codex-config --lib -E 'test(codex_unleashed_table_schema_rejects_undeclared_properties)'
+just test -p codex-core --lib -E 'test(strict_config_rejects_unknown_codex_unleashed_settings)'
 ```
 
 The first check expects the table to appear in the runtime configuration
@@ -56,13 +56,13 @@ strict mode to reject undeclared properties.
 
 ## Formatting
 
-Run from `codex-rs/`:
+Run from the patched checkout root:
 
 ```sh
-cargo fmt --package codex-config --package codex-core -- --check
+just fmt-check
 ```
 
 ## Upstream status
 
 This is a shared prerequisite for downstream settings. Its base is
-[upstream 0.159.2](https://github.com/openai/codex/releases/tag/rust-v0.159.2).
+[upstream 0.161.0](https://github.com/openai/codex/releases/tag/rust-v0.161.0).

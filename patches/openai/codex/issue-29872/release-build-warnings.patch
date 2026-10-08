@@ -1,4 +1,4 @@
-From c9158e481d43af4f6459546a7840dff1a391e36f Mon Sep 17 00:00:00 2001
+From deff14f412224b5393521c934e936cf85fbbeb99 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 1 Oct 2026 22:48:17 -0400
 Subject: [PATCH] Remove unused imports and bindings from release builds
@@ -23,17 +23,18 @@ The focused gate uses --no-deps to lint only the three affected libraries.
 Green: the focused release command also passes with the complete downstream
 nine-patch queue applied to the declared base.
 ---
- codex-rs/app-server/src/lib.rs      | 5 ++++-
- codex-rs/cloud-tasks/src/lib.rs     | 2 ++
- codex-rs/core/src/tools/registry.rs | 1 -
- justfile                            | 4 ++++
- 4 files changed, 10 insertions(+), 2 deletions(-)
+ codex-rs/app-server/src/lib.rs  | 5 ++++-
+ codex-rs/cloud-tasks/src/lib.rs | 2 ++
+ justfile                        | 4 ++++
+ 3 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index d1a622c..3669fbf 100644
+index bf1bb93..eaf2a96 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1501,5 +1501,8 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1500,9 +1500,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+ }
+ 
  fn loader_overrides_with_test_user_config_file(
 -    mut loader_overrides: LoaderOverrides,
 +    loader_overrides: LoaderOverrides,
@@ -43,35 +44,37 @@ index d1a622c..3669fbf 100644
 +    let mut loader_overrides = loader_overrides;
 +
      #[cfg(debug_assertions)]
+     if let Some(path) = test_user_config_file {
+         let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
 index 6643684..1c3dea7 100644
 --- a/codex-rs/cloud-tasks/src/lib.rs
 +++ b/codex-rs/cloud-tasks/src/lib.rs
-@@ -15,3 +15,5 @@ use codex_git_utils::default_branch_name;
+@@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
+ use codex_git_utils::current_branch_name;
+ use codex_git_utils::default_branch_name;
  use codex_http_client::ClientRouteClass;
 +#[cfg(debug_assertions)]
  use codex_http_client::HttpClientFactory;
 +#[cfg(debug_assertions)]
  use codex_http_client::OutboundProxyPolicy;
-diff --git a/codex-rs/core/src/tools/registry.rs b/codex-rs/core/src/tools/registry.rs
-index 7d88650..9ac7b76 100644
---- a/codex-rs/core/src/tools/registry.rs
-+++ b/codex-rs/core/src/tools/registry.rs
-@@ -15,3 +15,2 @@ use crate::session::turn_context::TurnContext;
- use crate::tools::context::FunctionToolOutput;
--use crate::tools::context::ToolCallSource;
- use crate::tools::context::ToolCallState;
+ use codex_http_client::RouteAwareClientPool;
+ use codex_login::default_client::get_codex_user_agent;
 diff --git a/justfile b/justfile
 index 3614939..6fe4962 100644
 --- a/justfile
 +++ b/justfile
-@@ -62,2 +62,6 @@ clippy *args:
+@@ -60,6 +60,10 @@ fix *args:
+ clippy *args:
+     cargo clippy --tests {args}
  
 +# Check unused imports and mutable bindings in release builds.
 +check-release-warnings:
 +    cargo clippy --release --lib -p codex-core -p codex-app-server -p codex-cloud-tasks -- --no-deps -D unused_imports -D unused_mut
 +
  [unix]
+ install:
+     rustup show active-toolchain
 -- 
 2.43.0
 

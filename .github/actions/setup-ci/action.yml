@@ -57,7 +57,7 @@ runs:
         if [[ -z "$cargo_target_dir" ]]; then
           cargo_target_dir="$CI_BUILD_ROOT/cargo-target"
         fi
-        tmp="$CI_BUILD_ROOT/tmp"
+        tmp="${RUNNER_TEMP:?RUNNER_TEMP is required for hosted temporary storage}"
 
         build_dirs=(
           "$bazel_output_base"
@@ -81,6 +81,7 @@ runs:
           echo "BAZEL_DISK_CACHE_MAX_AGE=14d"
           echo "BAZEL_REPO_CONTENTS_CACHE=$bazel_repo_contents_cache"
           echo "CARGO_TARGET_DIR=$cargo_target_dir"
+          echo "TMPDIR=$tmp"
           echo "TEMP=$tmp"
           echo "TMP=$tmp"
         } >> "$GITHUB_ENV"

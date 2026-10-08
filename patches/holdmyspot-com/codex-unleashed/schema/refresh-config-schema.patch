@@ -1,4 +1,4 @@
-From 61b822ca3bb67b91cfd50786048b7b07a4e1298c Mon Sep 17 00:00:00 2001
+From ee1f6528ee3edaae6e21928baae84905d8f593e9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 5 Oct 2026 16:38:56 -0400
 Subject: [PATCH] build: Publish the canonical combined configuration schema
@@ -105,10 +105,10 @@ index 0000000..38c7a42
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index f66f010..a849ca7 100644
+index 4f1208b..fab445b 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -612,6 +612,21 @@
+@@ -620,6 +620,21 @@
        },
        "type": "object"
      },
@@ -130,7 +130,7 @@ index f66f010..a849ca7 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -1179,13 +1194,13 @@
+@@ -1205,13 +1220,13 @@
              "unleashed_background_subagents": {
                "type": "boolean"
              },
@@ -147,7 +147,7 @@ index f66f010..a849ca7 100644
                "type": "boolean"
              },
              "use_legacy_landlock": {
-@@ -6686,6 +6701,14 @@
+@@ -6750,6 +6765,14 @@
        ],
        "description": "Cloud-owned feature settings."
      },
@@ -162,7 +162,7 @@ index f66f010..a849ca7 100644
      "compact_prompt": {
        "description": "Compact prompt used for history compaction.",
        "type": "string"
-@@ -7227,13 +7250,13 @@
+@@ -7313,13 +7336,13 @@
          "unleashed_background_subagents": {
            "type": "boolean"
          },
@@ -179,3 +179,6 @@ index f66f010..a849ca7 100644
            "type": "boolean"
          },
          "use_legacy_landlock": {
+-- 
+2.43.0
+

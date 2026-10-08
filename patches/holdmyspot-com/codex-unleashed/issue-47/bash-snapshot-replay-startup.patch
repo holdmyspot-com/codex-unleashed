@@ -1,4 +1,4 @@
-From 1f84da0508c5283d7c8be420c1688e7605730d0d Mon Sep 17 00:00:00 2001
+From 2d6a4be7cd77d884f160e6de550aa74a3b4a55d1 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
@@ -16,10 +16,10 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
-index b0003f6..6054a5b 100644
+index 5d399e2..fc72782 100644
 --- a/codex-rs/exec-server/src/shell_snapshot.rs
 +++ b/codex-rs/exec-server/src/shell_snapshot.rs
-@@ -291,6 +291,13 @@ impl ShellSnapshotCache {
+@@ -292,6 +292,13 @@ impl ShellSnapshotCache {
              "{startup}if ! {restore} >/dev/null; then printf 'failed to restore shell snapshot\\n' >&2; fi\n{}",
              params.argv[2]
          );
@@ -49,7 +49,7 @@ index c79eb72..3edd745 100644
          }
          assert_eq!(
 diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
-index a075122..bfacbde 100644
+index e9caa90..ca7b99f 100644
 --- a/codex-rs/exec-server/tests/exec_process.rs
 +++ b/codex-rs/exec-server/tests/exec_process.rs
 @@ -271,6 +271,9 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(

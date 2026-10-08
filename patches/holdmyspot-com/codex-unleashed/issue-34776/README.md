@@ -1,10 +1,10 @@
 # Responsive history replay and `/subagents` switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies to upstream `rust-v0.159.1`, commit `8e68a98ef03cdde76d2e6800791ebdf1b3b95b24`.
-- [defer-implicit-skill-index.patch](defer-implicit-skill-index.patch) applies independently to upstream `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`. It requires no other downstream patch.
-- [avoid-duplicate-startup-skills-refresh.patch](avoid-duplicate-startup-skills-refresh.patch) applies independently to the same `rust-v0.160.0` base. It requires no other downstream patch.
-- [background-session-skill-warmup.patch](background-session-skill-warmup.patch) applies independently to the same `rust-v0.160.0` base. It requires no other downstream patch.
+- [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies to upstream `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`.
+- [defer-implicit-skill-index.patch](defer-implicit-skill-index.patch) applies independently to upstream `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`. It requires no other downstream patch.
+- [avoid-duplicate-startup-skills-refresh.patch](avoid-duplicate-startup-skills-refresh.patch) applies independently to the same `rust-v0.161.0` base. It requires no other downstream patch.
+- [background-session-skill-warmup.patch](background-session-skill-warmup.patch) applies independently to the same `rust-v0.161.0` base. It requires no other downstream patch.
 
 ## Intent
 
@@ -67,11 +67,6 @@ Run the TUI suite from `codex-rs/`:
 just test -p codex-tui
 ```
 
-The declared release-tag base contains snapshots expecting `v0.0.0`, while
-its manifests report `v0.159.1`. Full-suite checks in this environment contain
-73 baseline snapshot failures; an untouched checkout reproduces the same
-failure list. The focused checks and formatting pass independently.
-
 For the skill-index patch, run the skill suites from the checkout root:
 
 ```sh
@@ -87,8 +82,6 @@ just test -p codex-tui -E 'test(startup_skills_refresh_) | test(startup_skill_lo
 ```
 
 The checks expect one background startup refresh and no duplicate blocking request for the first session in the same directory. Later session configurations, different directories, and explicit user refreshes still request fresh metadata. A background failure reaches the normal error display. Skill mentions remain available whether metadata arrives before or after session configuration. The full `just test -p codex-tui` command above covers retained history, startup input, warning aggregation, thread switching, and directory changes.
-
-For the `rust-v0.160.0` base, the full TUI suite in this managed environment includes 75 baseline snapshot and fixture failures. The startup patch retains that exact failure list; the focused startup checks pass. No unrelated snapshot expectations or fixture behavior change.
 
 For the background warmup patch, run its focused checks from the checkout root:
 
@@ -121,13 +114,6 @@ The integration suites require the standalone `codex-code-mode-host` and
 `codex-linux-sandbox` binaries in the Cargo target directory, as in the upstream
 workspace test build. The public thread start/fork checks also verify that
 background watch registration preserves response ordering.
-
-In this managed environment, the affected suites include 311 failures also
-reproduced on untouched upstream. The tool-history retention stress check
-exceeds the local profile's 60-second deadline during the concurrent suite;
-isolated runs pass on upstream and the patched test binary. The focused resume
-and watch checks pass. Static checks report the same three unused imports as
-upstream, in `tools/registry.rs`, `openai_file_mcp.rs`, and `scenarios.rs`.
 
 Run the affected static checks from the checkout root:
 

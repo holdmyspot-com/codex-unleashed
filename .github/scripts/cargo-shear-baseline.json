@@ -1,21 +1,13 @@
 {
-  "source_sha": "a956835d020762cb2b570053af06f643a11c0ecc",
+  "source_sha": "979011409de0a60b52f179721948e65531d26144",
   "source_paths": [
-    "codex-rs/core/tests/suite/scenarios_read_only_mcp.rs",
-    "codex-rs/login/src/internal_identity.rs"
+    "codex-rs/core/tests/suite/scenarios_read_only_mcp.rs"
   ],
   "findings": [
     {
       "code": "shear/unlinked_files",
       "severity": "warning",
       "message": "1 unlinked file in `codex-core`\ntests/suite/scenarios_read_only_mcp.rs",
-      "help": "delete this file",
-      "fixable": false
-    },
-    {
-      "code": "shear/unlinked_files",
-      "severity": "warning",
-      "message": "1 unlinked file in `codex-login`\nsrc/internal_identity.rs",
       "help": "delete this file",
       "fixable": false
     }

@@ -1,6 +1,6 @@
 # Codex Unleashed configuration schema
 
-- Applies to: upstream `openai/codex` `rust-v0.160.0`, commit `a956835d020762cb2b570053af06f643a11c0ecc`
+- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
 
 ## Intent
 
@@ -59,4 +59,4 @@ just fmt-check
 ## Upstream status
 
 This is generated metadata for downstream settings. Its base is
-[upstream 0.160.0](https://github.com/openai/codex/releases/tag/rust-v0.160.0).
+[upstream 0.161.0](https://github.com/openai/codex/releases/tag/rust-v0.161.0).

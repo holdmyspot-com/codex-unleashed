@@ -1,0 +1,40 @@
+From 253760932cd626de2f59e25bdc2d55db22d9d999 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 7 Oct 2026 22:48:57 -0400
+Subject: [PATCH] Keep CLI version identity independent of build metadata
+
+Base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc), with the downstream branding prerequisites. Red: Bazel run37704873399, cli-build_info-test expects codex-cli but receives codex. Green acceptance: rerun the same regression target on the emitted patch in a fresh prepared checkout.
+---
+ codex-rs/cli/src/main.rs         | 1 +
+ codex-rs/cli/tests/build_info.rs | 3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
+index 1d5b729..70060ad 100644
+--- a/codex-rs/cli/src/main.rs
++++ b/codex-rs/cli/src/main.rs
+@@ -123,6 +123,7 @@ const CLI_VERSION: &str = concat!(
+ #[derive(Debug, Parser)]
+ #[clap(
+     author,
++    name = "codex-cli",
+     version = CLI_VERSION,
+     // If a sub‑command is given, ignore requirements of the default args.
+     subcommand_negates_reqs = true,
+diff --git a/codex-rs/cli/tests/build_info.rs b/codex-rs/cli/tests/build_info.rs
+index 780528f..721910c 100644
+--- a/codex-rs/cli/tests/build_info.rs
++++ b/codex-rs/cli/tests/build_info.rs
+@@ -15,7 +15,8 @@ fn version_identifies_codex_unleashed_build() {
+         format!(
+             "codex-cli {}+{build_number}\n(See --build-info for more information)\n",
+             env!("CARGO_PKG_VERSION")
+-        )
++        ),
++        "CLI version identity must be independent of the build system"
+     );
+ }
+ 
+-- 
+2.43.0
+

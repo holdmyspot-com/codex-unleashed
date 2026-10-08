@@ -1,4 +1,4 @@
-From 3a1468d48270cb91e52c3b23d20eb07044977f82 Mon Sep 17 00:00:00 2001
+From 12d30813ae150a737c9d826f6b72b0f2367505df Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Verify Kitty local-file references without substring false

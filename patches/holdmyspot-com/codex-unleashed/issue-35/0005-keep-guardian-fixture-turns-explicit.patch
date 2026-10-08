@@ -1,0 +1,27 @@
+From 690dee50a0e3fa1d57e640adaebfcfb2915802d9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 7 Oct 2026 23:43:50 -0400
+Subject: [PATCH] Keep Guardian authorization fixture root turns explicit
+
+Base: rust-v0.160.0 with the issue-35 series. Red: matched hosted run 37722183793 passes pristine upstream and fails the patched worker-root-restriction case. Its mock dispatches root follow-up by request ordinal and expects manually submitted root turns; automatic child completion introduces an earlier follow-up before revocation. Select queue-only completion for this controlled fixture, preserving all current-authorization, stale-review and risk-score assertions. Issue-35 automatic-delivery tests exercise the enabled mode separately. Focused hosted validation is retained by the CI repair task.
+---
+ codex-rs/app-server/tests/suite/v2/guardian_v2.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
+index 9902b14..d3f632d 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
+@@ -923,7 +923,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
+     if lifecycle.uses_root_worker() {
+         mock_config = mock_config
+             .enable_feature(Feature::Collab)
+-            .enable_feature(Feature::MultiAgentV2);
++            .enable_feature(Feature::MultiAgentV2)
++            .disable_feature(Feature::UnleashedBackgroundSubagents);
+     }
+     if matches!(lifecycle, ThreadLifecycle::RootUserInputCompaction) {
+         mock_config = mock_config
+-- 
+2.43.0
+
