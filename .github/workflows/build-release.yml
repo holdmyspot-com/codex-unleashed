@@ -1670,10 +1670,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: release-tooling
-          sparse-checkout: |
-            .github/actions/setup-tooling
-            .github/workflows
-            tooling
           persist-credentials: false
 
       - name: Set up Java tooling
