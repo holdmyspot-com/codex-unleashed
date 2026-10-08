@@ -1155,6 +1155,7 @@ jobs:
         !cancelled() &&
         needs.prepare.outputs.should_release == 'true' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
+        needs.prepare.outputs.windows_matrix != '[]' &&
         (inputs.focus_target == '' || contains(inputs.focus_target, 'windows'))
       }}
     name: Build Windows binaries - ${{ matrix.target }} - ${{ matrix.bundle }}
@@ -1913,6 +1914,7 @@ jobs:
       ${{
         always() &&
         needs.prepare.outputs.should_release == 'true' &&
+        (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == '' &&
         !cancelled() &&
         needs.publish.result != 'success'
