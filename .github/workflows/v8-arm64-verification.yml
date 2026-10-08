@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           cd upstream
-          version="$('$CODEX_UNLEASHED_TOOLING' resolved-v8-crate-version .)"
+          version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version .)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Configure git for upstream checkout
