@@ -294,6 +294,7 @@ jobs:
             --platforms=//:windows_x86_64_msvc
             # LLVM 0.8.11 supplies MinGW tools; native MSVC uses the installed compiler.
             --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
             --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows
             --test_tag_filters=-argument-comment-lint
             --test_verbose_timeout_warnings
