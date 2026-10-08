@@ -87,6 +87,17 @@ public final class BazelCallerTest
 					if (operatingSystem.equals("Windows"))
 						assertTrue(test.contains("--test_env=PATH=" + windowsPath));
 					assertEquals(test.contains("--remote_header=x-buildbuddy-api-key=fixture-token"), !credential.isEmpty());
+					if (operatingSystem.equals("Windows") && !credential.isEmpty())
+					{
+						assertEquals(run(root, environment, NativeCommands.scriptBuilder(scripts.resolve("run-bazel-ci.sh"),
+							"--windows-cross-compile", "--", "build", "--", "//fixture:test")), 37);
+						List<String> crossBuild = arguments(root);
+						assertTrue(crossBuild.indexOf("--noremote_local_fallback") >
+							crossBuild.indexOf("--remote_local_fallback"),
+							"Linux remote actions must never fall back to the Windows host");
+						assertTrue(crossBuild.contains("--config=ci-windows-cross"));
+						assertTrue(crossBuild.contains("--remote_header=x-buildbuddy-api-key=fixture-token"));
+					}
 				}
 			}
 			try (Stream<Path> paths = Files.list(temporary))

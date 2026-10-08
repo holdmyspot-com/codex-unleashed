@@ -206,7 +206,6 @@ jobs:
             --print-failed-action-summary \
             --print-failed-test-logs \
             --windows-cross-compile \
-            --remote-download-toplevel \
             -- \
             build \
             --skip_incompatible_explicit_targets \
@@ -475,7 +474,7 @@ jobs:
           )
           bazel_wrapper_args=()
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            bazel_wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
+            bazel_wrapper_args+=(--windows-cross-compile)
           fi
           bazel_target_lines="$(bash ./scripts/list-bazel-release-targets.sh)"
           bazel_targets=()
@@ -490,7 +489,6 @@ jobs:
             "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               --windows-cross-compile \
-              --remote-download-toplevel \
               -- \
               build \
               "${bazel_resource_args[@]}" \

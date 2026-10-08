@@ -306,7 +306,8 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUI
   # Bazel also derives the default genrule shell from the client host. Without
   # an explicit shell executable, remote Linux actions can be asked to run
   # `C:\Program Files\Git\usr\bin\bash.exe`.
-  post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash)
+  # Linux execution tools cannot fall back to the Windows client when RBE fails.
+  post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback)
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
