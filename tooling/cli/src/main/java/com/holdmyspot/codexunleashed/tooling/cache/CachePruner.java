@@ -6,13 +6,14 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Prunes GitHub dependency caches outside the two newest stable upstream releases.
+ * Prunes GitHub dependency caches outside the newest stable and explicitly retained releases.
  */
 public final class CachePruner
 {
@@ -39,10 +40,31 @@ public final class CachePruner
 	 */
 	public static List<String> discoverRetainedReleases(CommandRunner runner) throws IOException
 	{
+		return discoverRetainedReleases(List.of(), runner);
+	}
+
+	/**
+	 * Includes active stable references alongside the two newest upstream releases.
+	 *
+	 * @param protectedRefs the stable upstream references to preserve
+	 * @param runner the external-command boundary
+	 * @return the newest releases followed by distinct active references
+	 * @throws NullPointerException if an argument or reference is null
+	 * @throws IllegalArgumentException if a reference is invalid or no stable release is found
+	 * @throws IOException if release discovery fails
+	 */
+	public static List<String> discoverRetainedReleases(List<String> protectedRefs, CommandRunner runner)
+		throws IOException
+	{
 		Objects.requireNonNull(runner, "runner");
+		List<String> validatedRefs = List.copyOf(protectedRefs);
+		for (String ref : validatedRefs)
+			CacheRetention.retainedStableTags(List.of(ref));
 		String tags = runner.run(List.of("gh", "api", "--paginate", "repos/openai/codex/releases?per_page=100",
 			"--jq", STABLE_RELEASE_QUERY));
-		return CacheRetention.retainedStableTags(tags.lines().toList());
+		var retained = new LinkedHashSet<>(CacheRetention.retainedStableTags(tags.lines().toList()));
+		retained.addAll(validatedRefs);
+		return List.copyOf(retained);
 	}
 
 	/**
@@ -59,11 +81,29 @@ public final class CachePruner
 	 */
 	public static Result prune(String repository, boolean dryRun, CommandRunner runner) throws IOException
 	{
+		return prune(repository, dryRun, List.of(), runner);
+	}
+
+	/**
+	 * Prunes obsolete caches while preserving explicitly retained stable references.
+	 *
+	 * @param repository the repository in owner/name form
+	 * @param dryRun whether to report without deleting
+	 * @param protectedRefs the stable upstream references to preserve
+	 * @param runner the external-command boundary
+	 * @return the retention and deletion result
+	 * @throws NullPointerException if an argument or reference is null
+	 * @throws IllegalArgumentException if a repository or reference is invalid or no stable release is found
+	 * @throws IOException if discovery, inventory validation, or deletion fails
+	 */
+	public static Result prune(String repository, boolean dryRun, List<String> protectedRefs, CommandRunner runner)
+		throws IOException
+	{
 		Objects.requireNonNull(repository, "repository");
 		Objects.requireNonNull(runner, "runner");
 		GitHubRepositories.validate(repository);
 
-		List<String> retained = discoverRetainedReleases(runner);
+		List<String> retained = discoverRetainedReleases(protectedRefs, runner);
 		String inventory = runner.run(List.of("gh", "api", "--paginate",
 			"repos/" + repository + "/actions/caches?per_page=100", "--jq", ".actions_caches[] | tojson"));
 		List<BigInteger> obsolete = obsoleteIdentifiers(inventory, retained);

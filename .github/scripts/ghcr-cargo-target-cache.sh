@@ -15,6 +15,7 @@ tag="$3"
 target_directory="$4"
 upstream_tag="$5"
 reference="${repository}:${tag}"
+patch_repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 case "$OSTYPE" in
   msys*|cygwin*)
@@ -53,7 +54,11 @@ prune_old_tags() {
   package_endpoint="${GITHUB_API_URL:-https://api.github.com}/orgs/${package_owner}/packages/container/${package_name}/versions"
 
   : "${CODEX_UNLEASHED_TOOLING:?CODEX_UNLEASHED_TOOLING is required; run setup-tooling first}"
-  retained_releases="$("$CODEX_UNLEASHED_TOOLING" stable-releases)"
+  retention_options=(--retain-upstream-ref "$(tr -d '\r\n' < "$patch_repository_root/.github/upstream-ref")")
+  if [[ "$operation" == push ]]; then
+    retention_options+=(--retain-upstream-ref "$upstream_tag")
+  fi
+  retained_releases="$("$CODEX_UNLEASHED_TOOLING" stable-releases "${retention_options[@]}")"
 
   stale_version_ids="$(
     gh api --paginate "$package_endpoint" --jq '

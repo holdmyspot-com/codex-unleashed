@@ -32,15 +32,17 @@ snapshot rebuild workspace crates once while retaining external dependencies.
 
 The `Prune release caches` workflow runs daily, after release builds, and on
 manual dispatch. It retains caches associated with the two highest stable
-upstream versions, excluding draft and prerelease releases. Both GHCR and
-Actions cleanup use the same stable-version selection. If discovery fails,
-cleanup deletes nothing and reports failure.
+upstream versions, excluding draft and prerelease releases, and the stable
+version pinned in `.github/upstream-ref`. Both GHCR and Actions cleanup use the
+same stable-version selection. If discovery fails, cleanup deletes nothing and
+reports failure.
 
 GHCR manifests carry release-qualified aliases alongside their shared compiler
 compatibility tags. A shared manifest remains available while either retained
 version references it. Older caches, untagged manifests, and compatibility
 caches without a release association are deleted. Release builds also prune
-GHCR after cache publication.
+GHCR after cache publication, preserving the version built by that publication
+in addition to the pinned and newest versions.
 
 Managed Actions dependency caches include Cargo downloads, pnpm, APT, Bazel
 repository caches, rusty_v8, uv dependencies, and Zig build caches.
@@ -65,5 +67,6 @@ release. Published GitHub Release assets do not expire under this policy.
 Preview Actions cleanup without deleting caches:
 
 ```sh
-tooling/bin/codex-tooling prune-actions-caches --repository OWNER/REPO --dry-run
+tooling/bin/codex-tooling prune-actions-caches --repository OWNER/REPO \
+  --retain-upstream-ref "$(tr -d '\r\n' < .github/upstream-ref)" --dry-run
 ```

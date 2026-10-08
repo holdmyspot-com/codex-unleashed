@@ -2,7 +2,7 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import com.holdmyspot.codexunleashed.tooling.release.Installers;
 import com.holdmyspot.codexunleashed.tooling.cache.CacheRetention;
-import com.holdmyspot.codexunleashed.tooling.cache.CachePruner;
+import com.holdmyspot.codexunleashed.tooling.cache.CacheRetentionCommand;
 import com.holdmyspot.codexunleashed.tooling.cache.ReleaseCacheKeysCommand;
 import com.holdmyspot.codexunleashed.tooling.release.ReleaseBuildNumbers;
 import com.holdmyspot.codexunleashed.tooling.release.ReleaseTagCommand;
@@ -24,9 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Objects;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the project's build, release, and repository policy commands.
@@ -122,25 +120,7 @@ public final class Main
 					out.println(CacheRetention.prefix(args[2]));
 					yield 0;
 				}
-				case "stable-releases" ->
-				{
-					if (args.length != 1)
-						yield usage(err);
-					for (String tag : CachePruner.discoverRetainedReleases(runner))
-						out.println(tag);
-					yield 0;
-				}
-				case "prune-actions-caches" ->
-				{
-					if ((args.length != 3 && args.length != 4) || !"--repository".equals(args[1]) ||
-						(args.length == 4 && !"--dry-run".equals(args[3])))
-						yield usage(err);
-					CachePruner.Result result = CachePruner.prune(args[2], args.length == 4, runner);
-					out.println(JsonMapper.builder().build().writeValueAsString(Map.of(
-						"retained_releases", result.retainedReleases(), "obsolete_cache_ids", result.obsoleteCacheIds(),
-						"dry_run", result.dryRun())));
-					yield 0;
-				}
+				case "stable-releases", "prune-actions-caches" -> CacheRetentionCommand.run(args, out, err, runner);
 				case "check-ci-results" ->
 				{
 					if (args.length != 2)
@@ -262,8 +242,9 @@ public final class Main
 		err.println("  stage-release-installers <upstream-checkout> <release-directory>");
 		err.println("  next-release-build-number <upstream-tag> (tag inventory on standard input)");
 		err.println("  cache-prefix --upstream-ref <upstream-reference>");
-		err.println("  stable-releases");
-		err.println("  prune-actions-caches --repository <owner/name> [--dry-run]");
+		err.println("  stable-releases [--retain-upstream-ref <stable-tag> ...]");
+		err.println("  prune-actions-caches --repository <owner/name> " +
+			"[--retain-upstream-ref <stable-tag> ...] [--dry-run]");
 		err.println("  check-ci-results <needs-json>");
 			err.println("  resolved-v8-crate-version <checkout>");
 			err.println("  get-codex-package-version <checkout>");

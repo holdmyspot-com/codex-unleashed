@@ -36,7 +36,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CACHE_REPOSITORY: ${{ github.repository }}
-        run: '"$CODEX_UNLEASHED_TOOLING" prune-actions-caches --repository "$CACHE_REPOSITORY"'
+        run: >-
+          "$CODEX_UNLEASHED_TOOLING" prune-actions-caches --repository "$CACHE_REPOSITORY"
+          --retain-upstream-ref "$(tr -d '\r\n' < .github/upstream-ref)"
 
       - name: Prune GHCR Cargo caches
         if: ${{ !cancelled() }}

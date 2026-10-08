@@ -198,6 +198,79 @@ public final class MainTest
 	}
 
 	/**
+	 * Includes pinned and building releases beyond the newest two stable upstream releases.
+	 */
+	@Test
+	public void retainsPinnedAndBuildingReleases()
+	{
+		var output = new ByteArrayOutputStream();
+		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
+		{
+			assertEquals(Main.run(new String[]{"stable-releases", "--retain-upstream-ref", "rust-v0.160.0",
+				"--retain-upstream-ref", "rust-v0.159.0"}, InputStream.nullInputStream(), stream, stream,
+				_ -> "rust-v0.161.0\nrust-v0.160.1\nrust-v0.160.0\n"), 0);
+		}
+		assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+			"rust-v0.161.0", "rust-v0.160.1", "rust-v0.160.0", "rust-v0.159.0", ""));
+	}
+
+	/**
+	 * Deletes older caches while preserving the configured upstream release outside the newest two.
+	 */
+	@Test
+	public void preservesPinnedCacheDuringPruning()
+	{
+		var output = new ByteArrayOutputStream();
+		AtomicInteger index = new AtomicInteger();
+		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
+		{
+			assertEquals(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
+				"--retain-upstream-ref", "rust-v0.160.0"}, InputStream.nullInputStream(), stream, stream,
+				command -> switch (index.getAndIncrement())
+				{
+					case 0 -> "rust-v0.161.0\nrust-v0.160.1\nrust-v0.160.0\n";
+					case 1 -> "{\"id\":1,\"key\":\"upstream-rust-v0.160.0-bazel-cache-test\"}\n" +
+						"{\"id\":2,\"key\":\"upstream-rust-v0.159.0-pnpm-linux\"}\n";
+					case 2 ->
+					{
+						assertEquals(command, List.of("gh", "api", "--method", "DELETE",
+							"repos/owner/repo/actions/caches/2"));
+						yield "";
+					}
+					default -> throw new AssertionError("Unexpected cache deletion");
+				}), 0);
+		}
+		assertEquals(index.get(), 3);
+		JsonNode json = JsonMapper.builder().build().readTree(output.toString(StandardCharsets.UTF_8));
+		assertEquals(json.get("obsolete_cache_ids").size(), 1);
+		assertEquals(json.get("obsolete_cache_ids").get(0).asInt(), 2);
+	}
+
+	/**
+	 * Rejects invalid retained references before discovery or deletion can contact GitHub.
+	 */
+	@Test
+	public void rejectsInvalidRetainedReferences()
+	{
+		for (String ref : List.of("main", "rust-v0.160.0\n", "rust-v0.160.0-alpha.1"))
+		{
+			var output = new ByteArrayOutputStream();
+			var errors = new ByteArrayOutputStream();
+			try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
+				var err = new PrintStream(errors, true, StandardCharsets.UTF_8))
+			{
+				assertEquals(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
+					"--retain-upstream-ref", ref}, InputStream.nullInputStream(), out, err, _ ->
+					{
+						throw new AssertionError("Invalid retention must not contact GitHub");
+					}), 1);
+			}
+			assertEquals(output.size(), 0);
+			assertTrue(errors.toString(StandardCharsets.UTF_8).startsWith("ERROR:"));
+		}
+	}
+
+	/**
 	 * Preserves the cache cleanup JSON fields and integral identifiers in dry-run mode.
 	 */
 	@Test
