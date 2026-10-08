@@ -1,5 +1,5 @@
 {
-  "source_sha": "ff6aec96948b70d94983af2641a6b67c94faeff5",
+  "source_sha": "a956835d020762cb2b570053af06f643a11c0ecc",
   "source_paths": [
     "codex-rs/core/tests/suite/scenarios_read_only_mcp.rs",
     "codex-rs/login/src/internal_identity.rs"
