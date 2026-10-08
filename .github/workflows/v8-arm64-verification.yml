@@ -1,0 +1,157 @@
+name: Windows ARM64 V8 source verification
+on:
+  push:
+    branches:
+      - ci-verify-v8-arm64-XeqjpNMI
+concurrency:
+  group: v8-arm64-verification-${{ github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  build-windows-source:
+    name: Build ptrcomp-sandbox ${{ matrix.target }} from source
+    runs-on: windows-2022
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref }}
+
+      - name: Resolve pinned V8 version
+        id: v8_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          version="$('$CODEX_UNLEASHED_TOOLING' resolved-v8-crate-version .)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git for upstream checkout
+        shell: bash
+        run: git config --global core.symlinks true
+
+      - name: Check out upstream rusty_v8
+        uses: actions/checkout@v6
+        with:
+          repository: denoland/rusty_v8
+          ref: v${{ steps.v8_version.outputs.version }}
+          path: upstream-rusty-v8
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install rusty_v8 Rust toolchain
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.91.0 --profile minimal --no-self-update
+          rustup target add --toolchain 1.91.0 "${TARGET}"
+
+      - name: Write upstream submodule status
+        shell: bash
+        working-directory: upstream-rusty-v8
+        run: git submodule status --recursive > git_submodule_status.txt
+
+      - name: Restore upstream source-build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            upstream-rusty-v8/target/sccache
+            upstream-rusty-v8/target/${{ matrix.target }}/release/gn_out
+          key: ${{ env.CACHE_UPSTREAM_PREFIX }}rusty-v8-source-${{ matrix.target }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt') }}
+          restore-keys: |
+            ${{ env.CACHE_UPSTREAM_PREFIX }}rusty-v8-source-${{ matrix.target }}-sandbox-
+
+      - name: Install and start sccache
+        shell: pwsh
+        env:
+          SCCACHE_CACHE_SIZE: 256M
+          SCCACHE_DIR: ${{ github.workspace }}/upstream-rusty-v8/target/sccache
+          SCCACHE_IDLE_TIMEOUT: 0
+        run: |
+          $version = "v0.8.2"
+          $platform = "x86_64-pc-windows-msvc"
+          $basename = "sccache-$version-$platform"
+          $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
+          cd ~
+          curl -LO $url
+          tar -xzvf "$basename.tar.gz"
+          . $basename/sccache --start-server
+          echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Chromium clang for ARM64 MSVC cross build
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        shell: bash
+        working-directory: upstream-rusty-v8
+        run: python3 tools/clang/scripts/update.py
+
+      - name: Build upstream rusty_v8 sandbox release pair
+        env:
+          SCCACHE_IDLE_TIMEOUT: 0
+          CARGO_TARGET_DIR: ${{ github.workspace }}/upstream-rusty-v8/target
+          TARGET: ${{ matrix.target }}
+          V8_FROM_SOURCE: "1"
+        shell: bash
+        working-directory: upstream-rusty-v8
+        run: cargo +1.91.0 build -vv --locked --release --target "${TARGET}" --features v8_enable_sandbox
+
+      - name: Report source compiler cache statistics
+        shell: pwsh
+        run: sccache --show-stats
+
+      - name: Stage upstream sandbox release pair
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel upstream stage-upstream-release-pair \
+            --target-dir upstream-rusty-v8/target \
+            --target "${TARGET}" \
+            --output-dir "dist/${TARGET}" \
+            --sandbox
+
+      - name: Smoke link staged artifact with Cargo
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find "dist/${TARGET}" -maxdepth 1 -type f -name 'rusty_v8_*.lib.gz' -print -quit)"
+          binding="$(find "dist/${TARGET}" -maxdepth 1 -type f -name 'src_binding_*.rs' -print -quit)"
+          if [[ -z "${archive}" || -z "${binding}" ]]; then
+            echo "Missing staged archive or binding for ${TARGET}." >&2
+            exit 1
+          fi
+          (
+            cd upstream/codex-rs
+            RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/${archive}" \
+            RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/${binding}" \
+            cargo +stable test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
+          )
+
+      - name: Upload staged artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: v8-canary-source-verification-ptrcomp-sandbox-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/*
+          retention-days: 1
