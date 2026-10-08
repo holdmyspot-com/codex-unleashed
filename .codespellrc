@@ -1,0 +1,5 @@
+[codespell]
+# Git hunk headers can end in the middle of a source word.
+ignore-regex = ^@@ .*@@.*$
+# Encoded Git binary deltas are data; textual patch changes remain checked.
+ignore-multiline-regex = (?m)^GIT binary patch\n.*?(?=^diff --git |\Z)
