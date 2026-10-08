@@ -123,7 +123,7 @@ public final class ReleaseWorkflowPolicyTest
 	}
 
 	/**
-	 * Keeps one release entry point, tag-triggered npm publication and both deterministic-mode setup steps.
+	 * Keeps one release entry point, optional npm publication and both deterministic-mode setup steps.
 	 *
 	 * @throws IOException if workflow or referenced policy access fails
 	 */
@@ -139,11 +139,13 @@ public final class ReleaseWorkflowPolicyTest
 		assertEquals(triggers.path("push").path("tags").get(0).asString(), "rust-v*.*.*");
 		assertTrue(triggers.has("workflow_dispatch"));
 		assertTrue(triggers.has("workflow_call"));
+		for (String trigger : List.of("workflow_dispatch", "workflow_call"))
+			assertFalse(triggers.path(trigger).path("inputs").path("publish_npm").path("default").booleanValue());
 		assertTrue(Files.readString(workflow().resolveSibling("upstream-release-check.yml")).
 			contains("gh workflow run build-release.yml"));
 		String source = Files.readString(workflow());
 		assertEquals(source.split(java.util.regex.Pattern.quote(
-			"if: ${{ github.event_name == 'push' || inputs.publish_npm }}"), -1).length - 1, 2);
+			"if: ${{ inputs.publish_npm }}"), -1).length - 1, 2);
 		assertFalse(source.contains("RUSTFLAGS: ${{ (inputs.reproducibility_mode || 'off') == " +
 			"'deterministic' && '-Ccodegen-units=1 -Zno-parallel-backend' || '' }}"));
 		assertFalse(source.contains("RUSTC_BOOTSTRAP: ${{ (inputs.reproducibility_mode || 'off') == " +

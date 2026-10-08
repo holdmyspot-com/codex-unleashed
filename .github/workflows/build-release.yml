@@ -49,7 +49,7 @@ on:
       publish_npm:
         description: "Publish the npm packages associated with the release."
         required: false
-        default: true
+        default: false
         type: boolean
   workflow_dispatch:
     inputs:
@@ -102,7 +102,7 @@ on:
       publish_npm:
         description: "Publish the npm packages associated with the release."
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -1676,7 +1676,7 @@ jobs:
         uses: ./release-tooling/.github/actions/setup-tooling
 
       - name: Configure npm registry
-        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
+        if: ${{ inputs.publish_npm }}
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: 24
@@ -1885,7 +1885,7 @@ jobs:
             release-stage/*
 
       - name: Publish npm packages
-        if: ${{ github.event_name == 'push' || inputs.publish_npm }}
+        if: ${{ inputs.publish_npm }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
