@@ -51,7 +51,7 @@ jobs:
 
   required:
     name: CI required
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     needs:
       - cargo-deny
       - codespell

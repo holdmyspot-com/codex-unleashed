@@ -132,7 +132,7 @@ jobs:
       - changed
       - general
       - cargo_shear
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful dependencies
