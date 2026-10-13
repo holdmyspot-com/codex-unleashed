@@ -144,6 +144,10 @@ jobs:
                 server_pid="$(cat "$BAZEL_OUTPUT_BASE/server/server.pid.txt")"
                 kill -QUIT "$server_pid"
                 "$JAVA_HOME/bin/jcmd" "$server_pid" Thread.print -l || true
+                "$JAVA_HOME/bin/jcmd" "$server_pid" Thread.dump_to_file -format=json "$RUNNER_TEMP/bazel-all-threads.json" || true
+                if [[ -f "$RUNNER_TEMP/bazel-all-threads.json" ]]; then
+                  node -e 'const fs=require("fs"); const dump=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); for (const container of dump.threadDump.threadContainers) for (const thread of container.threads) if (/remote|download|CombinedFuture|AsyncTask|ByteStream|DiskCache|OutputService/.test(JSON.stringify(thread))) console.log(JSON.stringify(thread,null,2));' "$RUNNER_TEMP/bazel-all-threads.json"
+                fi
                 tail -n 2500 "$BAZEL_OUTPUT_BASE/server/jvm.out" || true
               fi
               date -u
