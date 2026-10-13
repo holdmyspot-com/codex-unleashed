@@ -1,4 +1,4 @@
-name: macOS V8 staging diagnosis
+name: macOS V8 staging diagnosis with Bazel 9.2.0
 
 on:
   workflow_call:
@@ -16,6 +16,9 @@ on:
 concurrency:
   group: v8-macos-diagnosis-${{ github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+env:
+  USE_BAZEL_VERSION: 9.2.0
 
 jobs:
   metadata:
