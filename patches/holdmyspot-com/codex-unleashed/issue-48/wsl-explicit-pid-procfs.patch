@@ -1,4 +1,4 @@
-From b531e9ebdc95b2d81b0746f0dd4a0bef077d463b Mon Sep 17 00:00:00 2001
+From 2e6eff1ba3ff823bd1d46f8a6de6ada45d80b7eb Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Preserve procfs for explicit sandbox PID inheritance on WSL
@@ -15,10 +15,10 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  3 files changed, 51 insertions(+), 6 deletions(-)
 
 diff --git a/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs b/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
-index 6129e7f..c1b2eb4 100644
+index 0139c7f6b..41b50fb21 100644
 --- a/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
 +++ b/codex-rs/cli/tests/exec_server/pid_namespace_tests.rs
-@@ -118,6 +118,7 @@ fi
+@@ -119,6 +119,7 @@ fi
              // Notifications may precede the process/start response, so consume both.
              let mut started = false;
              let mut exit_code = None;
@@ -26,7 +26,7 @@ index 6129e7f..c1b2eb4 100644
              while !started || exit_code.is_none() {
                  let mut line = String::new();
                  anyhow::ensure!(stdout.read_line(&mut line).await? > 0, "executor closed");
-@@ -129,8 +130,10 @@ fi
+@@ -130,8 +131,10 @@ fi
                  if message["method"] == "process/exited" {
                      exit_code = message["params"]["exitCode"].as_i64();
                  }
@@ -39,10 +39,10 @@ index 6129e7f..c1b2eb4 100644
                  "id": 3, "method": "fs/readFile", "params": {"path": file_uri, "sandbox": sandbox}
              })).await?;
 diff --git a/codex-rs/linux-sandbox/src/bwrap.rs b/codex-rs/linux-sandbox/src/bwrap.rs
-index 319b6af..de17ad6 100644
+index f4a428b20..8d55faaa6 100644
 --- a/codex-rs/linux-sandbox/src/bwrap.rs
 +++ b/codex-rs/linux-sandbox/src/bwrap.rs
-@@ -362,9 +362,13 @@ fn create_bwrap_flags(
+@@ -363,9 +363,13 @@ fn create_bwrap_flags(
          args.push("--tmpfs".to_string());
          args.push(WSL_INTEROP_DIR.to_string());
      }
@@ -59,7 +59,7 @@ index 319b6af..de17ad6 100644
          args.push("--tmpfs".to_string());
          args.push("/proc".to_string());
      }
-@@ -1538,6 +1542,34 @@ mod tests {
+@@ -1549,6 +1553,34 @@ mod tests {
          assert_pid_namespace_args(&FileSystemSandboxPolicy::unrestricted());
      }
  
@@ -95,7 +95,7 @@ index 319b6af..de17ad6 100644
          for (mount_proc, inherit_pid_namespace) in [(true, false), (false, false), (false, true)] {
              let args = create_bwrap_command_args(
 diff --git a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
-index 7fd6851..7ae5b2f 100644
+index 49f47f342..def499d6c 100644
 --- a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
 +++ b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
 @@ -356,6 +356,10 @@ if (printf changed > "$CODEX_TEST_PROTECTED_FILE") 2>/dev/null; then exit 1; fi

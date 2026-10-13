@@ -1,0 +1,43 @@
+From a79e2b1865b5ba04f81bfc1dbfd2f04caaf24c43 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 11:06:46 -0400
+Subject: [PATCH] Backport native MSVC SDK environment and toolchain selection
+
+Backport the ci-windows-msvc configuration and toolchain selection from upstream #53443. Native hosted acceptance remains required.
+---
+ .bazelrc | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/.bazelrc b/.bazelrc
+index ea06d4408..9d3e8caa7 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -225,5 +225,25 @@ common:v8-target-arm64 --@v8//bazel/config:v8_target_cpu=arm64
+ # the matching runtime objects.
+ common:rusty-v8-upstream-libcxx --@v8//:v8_use_rusty_v8_custom_libcxx=True
+ 
++# Native MSVC actions inherit the installed compiler and Windows SDK environment.
++build:ci-windows-msvc --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
++build:ci-windows-msvc --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows
++build:ci-windows-msvc --action_env=PATH
++build:ci-windows-msvc --host_action_env=PATH
++build:ci-windows-msvc --action_env=INCLUDE
++build:ci-windows-msvc --host_action_env=INCLUDE
++build:ci-windows-msvc --action_env=LIB
++build:ci-windows-msvc --host_action_env=LIB
++build:ci-windows-msvc --action_env=LIBPATH
++build:ci-windows-msvc --host_action_env=LIBPATH
++build:ci-windows-msvc --action_env=SystemRoot
++build:ci-windows-msvc --host_action_env=SystemRoot
++build:ci-windows-msvc --action_env=PROCESSOR_ARCHITECTURE
++build:ci-windows-msvc --host_action_env=PROCESSOR_ARCHITECTURE
++build:ci-windows-msvc --action_env=WindowsSdkDir
++build:ci-windows-msvc --host_action_env=WindowsSdkDir
++build:ci-windows-msvc --action_env=VCINSTALLDIR
++build:ci-windows-msvc --host_action_env=VCINSTALLDIR
++
+ # Optional per-user local overrides.
+ try-import %workspace%/user.bazelrc
+-- 
+2.43.0
+

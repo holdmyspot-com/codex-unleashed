@@ -1,4 +1,4 @@
-From 65dcb0b2fc07d3e790b75f1bb7f0dc22e7463bf0 Mon Sep 17 00:00:00 2001
+From 3608cbcfae0d58b375ddfd92c4ed13d9f5eeec22 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Use a mountable procfs denial to test snapshot descriptor
@@ -15,7 +15,7 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  2 files changed, 27 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/exec-server/tests/common/mod.rs b/codex-rs/exec-server/tests/common/mod.rs
-index 0d7661c..4fcd01d 100644
+index d9affe4fd..cfb81b4b3 100644
 --- a/codex-rs/exec-server/tests/common/mod.rs
 +++ b/codex-rs/exec-server/tests/common/mod.rs
 @@ -28,6 +28,7 @@ pub(crate) const DELAYED_OUTPUT_AFTER_EXIT_PARENT_ARG: &str =
@@ -26,10 +26,10 @@ index 0d7661c..4fcd01d 100644
  
  const CODEX_WINDOWS_SANDBOX_ARG1: &str = "--run-as-windows-sandbox";
  const DELAYED_OUTPUT_AFTER_EXIT_CHILD_ARG: &str = "--codex-test-delayed-output-after-exit-child";
-@@ -224,6 +225,12 @@ fn maybe_run_exec_server_from_test_binary(guard: Option<&TestBinaryDispatchGuard
-             std::process::exit(1);
-         }
-     };
+@@ -232,6 +233,12 @@ fn maybe_run_exec_server_from_test_binary(guard: Option<&TestBinaryDispatchGuard
+                 std::process::exit(1);
+             })
+         });
 +    let runtime_paths = if env::var(INHERIT_PID_NAMESPACE_ENV).as_deref() == Ok("1") {
 +        runtime_paths
 +            .with_linux_sandbox_pid_namespace(codex_sandboxing::LinuxSandboxPidNamespace::Inherit)
@@ -40,10 +40,10 @@ index 0d7661c..4fcd01d 100644
          .enable_all()
          .build()
 diff --git a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
-index 56bb200..f9c9964 100644
+index 7d022116b..b6966fb73 100644
 --- a/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
 +++ b/codex-rs/exec-server/tests/exec_process/shell_snapshot.rs
-@@ -127,6 +127,17 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -129,6 +129,17 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
              backend: environment.get_exec_backend(),
              _server: None,
          }
@@ -61,7 +61,7 @@ index 56bb200..f9c9964 100644
      } else {
          create_process_context(deny_fd_path).await?
      };
-@@ -137,12 +148,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -139,12 +150,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
      let payload_len = if deny_fd_path { 1 } else { 480 * 1024 };
      let payload = "x".repeat(payload_len);
      let source = if shell == "bash" {
@@ -76,7 +76,7 @@ index 56bb200..f9c9964 100644
      } else {
          format!("case \"{source}\" in /dev/fd/*) ;; *) return 42 ;; esac; ")
      };
-@@ -181,7 +192,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -183,7 +194,12 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
          ));
          if deny_fd_path {
              policy.entries.push(FileSystemSandboxEntry::new(
@@ -90,7 +90,7 @@ index 56bb200..f9c9964 100644
                  FileSystemAccessMode::Deny,
              ));
          } else {
-@@ -250,7 +266,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
+@@ -252,7 +268,7 @@ async fn shell_snapshot_concurrent_replays_keep_independent_readers(
                  collect_process_output_from_events(started.process).await?;
              assert!(
                  output.ends_with(&format!("restored:input-{index}")),

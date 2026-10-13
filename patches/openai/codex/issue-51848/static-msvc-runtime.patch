@@ -1,0 +1,51 @@
+From ec96c3b3cfdf28a550c5a1535825be881bf9d4a4 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 11:06:46 -0400
+Subject: [PATCH] Align MSVC Bazel target and host dependencies with static CRT
+
+Backport the static CRT fix from upstream #51848 to avoid conflicting V8 allocator and UCRT symbols. Native hosted acceptance remains required.
+---
+ .bazelrc     | 4 ++++
+ MODULE.bazel | 8 ++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/.bazelrc b/.bazelrc
+index 9d3e8caa7..13d6a4222 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -11,6 +11,10 @@ startup --experimental_remote_repo_contents_cache
+ 
+ common --experimental_platform_in_output_dir
+ 
++# Match Cargo's MSVC static CRT policy and V8's allocator linkage.
++build --features=static_link_msvcrt
++build --host_features=static_link_msvcrt
++
+ build --workspace_status_command=./scripts/workspace-status.sh
+ build:windows --workspace_status_command=./scripts/workspace-status.cmd
+ 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 3fd011a3c..b7513be22 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -288,9 +288,17 @@ nightly_rust.repository_set(
+ )
+ use_repo(nightly_rust, "rust_toolchains")
+ 
++# Match Cargo's static CRT policy for Rust target and host dependencies.
++MSVC_RUSTC_FLAGS = {
++    "aarch64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
++    "x86_64-pc-windows-msvc": ["-Ctarget-feature=+crt-static"],
++}
++
+ toolchains = use_extension("@rules_rs//rs/toolchains:module_extension.bzl", "toolchains")
+ toolchains.toolchain(
+     edition = "2024",
++    extra_exec_rustc_flags = MSVC_RUSTC_FLAGS,
++    extra_rustc_flags = MSVC_RUSTC_FLAGS,
+     version = "1.95.0",
+ )
+ use_repo(toolchains, "default_rust_toolchains")
+-- 
+2.43.0
+

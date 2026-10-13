@@ -1,4 +1,4 @@
-From ee1f6528ee3edaae6e21928baae84905d8f593e9 Mon Sep 17 00:00:00 2001
+From bdc7cb3acb933ff189a1f8e1d883867ec6f5b778 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 5 Oct 2026 16:38:56 -0400
 Subject: [PATCH] build: Publish the canonical combined configuration schema
@@ -39,7 +39,7 @@ Prerequisite: issue35 runtime series and all preceding release feature patches. 
  create mode 100644 codex-rs/config-schema/tests/codex_unleashed.rs
 
 diff --git a/codex-rs/config-schema/Cargo.toml b/codex-rs/config-schema/Cargo.toml
-index ec6458b..2330940 100644
+index ec6458bd3..233094088 100644
 --- a/codex-rs/config-schema/Cargo.toml
 +++ b/codex-rs/config-schema/Cargo.toml
 @@ -15,3 +15,7 @@ workspace = true
@@ -52,7 +52,7 @@ index ec6458b..2330940 100644
 +tempfile = { workspace = true }
 diff --git a/codex-rs/config-schema/tests/codex_unleashed.rs b/codex-rs/config-schema/tests/codex_unleashed.rs
 new file mode 100644
-index 0000000..38c7a42
+index 000000000..38c7a42d4
 --- /dev/null
 +++ b/codex-rs/config-schema/tests/codex_unleashed.rs
 @@ -0,0 +1,48 @@
@@ -105,10 +105,10 @@ index 0000000..38c7a42
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 4f1208b..fab445b 100644
+index 607d1948d..a6c69ff10 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -620,6 +620,21 @@
+@@ -629,6 +629,21 @@
        },
        "type": "object"
      },
@@ -130,7 +130,7 @@ index 4f1208b..fab445b 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -1205,13 +1220,13 @@
+@@ -1235,13 +1250,13 @@
              "unleashed_background_subagents": {
                "type": "boolean"
              },
@@ -147,7 +147,7 @@ index 4f1208b..fab445b 100644
                "type": "boolean"
              },
              "use_legacy_landlock": {
-@@ -6750,6 +6765,14 @@
+@@ -6879,6 +6894,14 @@
        ],
        "description": "Cloud-owned feature settings."
      },
@@ -162,7 +162,7 @@ index 4f1208b..fab445b 100644
      "compact_prompt": {
        "description": "Compact prompt used for history compaction.",
        "type": "string"
-@@ -7313,13 +7336,13 @@
+@@ -7463,13 +7486,13 @@
          "unleashed_background_subagents": {
            "type": "boolean"
          },

@@ -1,4 +1,4 @@
-From 12d30813ae150a737c9d826f6b72b0f2367505df Mon Sep 17 00:00:00 2001
+From 6115550ba3e6b63336d1de08cfdf0b74c9c052e0 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Verify Kitty local-file references without substring false
@@ -14,7 +14,7 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  1 file changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/tui/src/pets/mod.rs b/codex-rs/tui/src/pets/mod.rs
-index f12313f..a38af85 100644
+index f12313ff4..a38af8569 100644
 --- a/codex-rs/tui/src/pets/mod.rs
 +++ b/codex-rs/tui/src/pets/mod.rs
 @@ -346,9 +346,12 @@ mod tests {

@@ -1,4 +1,4 @@
-From f1ac24cb38209a60b26e83b43bd19d2a892fb895 Mon Sep 17 00:00:00 2001
+From 24d643344717740fc4d2c1b277934429adc1e2c5 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Wed, 30 Sep 2026 14:46:10 -0400
 Subject: [PATCH] Add Codex Unleashed branding and build metadata
@@ -28,22 +28,22 @@ Rust 1.95 compiles and reaches the expected behavioral failure. The broader
 status suite needs the test-thread stack setting above. No upstream source
 is changed to accommodate either environmental failure.
 ---
- codex-rs/cli/build.rs                    |  5 ++
- codex-rs/cli/src/main.rs                 | 40 +++++++++++++-
- codex-rs/cli/tests/build_info.rs         | 49 +++++++++++++++++
- codex-rs/tui/Cargo.toml                  |  1 +
- codex-rs/tui/build.rs                    |  6 +++
- codex-rs/tui/src/history_cell/session.rs | 54 ++++++++++++++-----
- codex-rs/tui/src/history_cell/tests.rs   | 68 ++++++++++++++++++++++++
- codex-rs/tui/src/status/card.rs          |  4 ++
- codex-rs/tui/src/status/tests.rs         | 12 +++++
- codex-rs/tui/src/version.rs              |  8 ++-
- 10 files changed, 232 insertions(+), 15 deletions(-)
+ codex-rs/cli/build.rs                    |   5 +
+ codex-rs/cli/src/main.rs                 |  40 +++++++-
+ codex-rs/cli/tests/build_info.rs         |  49 ++++++++++
+ codex-rs/tui/Cargo.toml                  |   1 +
+ codex-rs/tui/build.rs                    |   6 ++
+ codex-rs/tui/src/history_cell/session.rs |  71 +++++++++++---
+ codex-rs/tui/src/history_cell/tests.rs   |  68 +++++++++++++
+ codex-rs/tui/src/status/card.rs          | 116 +++++++++++------------
+ codex-rs/tui/src/status/tests.rs         |  12 +++
+ codex-rs/tui/src/version.rs              |   8 +-
+ 10 files changed, 303 insertions(+), 73 deletions(-)
  create mode 100644 codex-rs/cli/tests/build_info.rs
  create mode 100644 codex-rs/tui/build.rs
 
 diff --git a/codex-rs/cli/build.rs b/codex-rs/cli/build.rs
-index abccc48..567262e 100644
+index abccc48bb..567262e70 100644
 --- a/codex-rs/cli/build.rs
 +++ b/codex-rs/cli/build.rs
 @@ -1,4 +1,9 @@
@@ -57,10 +57,10 @@ index abccc48..567262e 100644
          println!("cargo:rustc-link-arg=-ObjC");
      }
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index ac06a66..1d5b729 100644
+index 8d062a239..6cca2dcb0 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -113,10 +113,17 @@ use codex_terminal_detection::TerminalName;
+@@ -114,10 +114,17 @@ use codex_terminal_detection::TerminalName;
  /// Codex CLI
  ///
  /// If no subcommand is specified, options will be forwarded to the interactive CLI.
@@ -79,7 +79,7 @@ index ac06a66..1d5b729 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -126,6 +133,10 @@ use codex_terminal_detection::TerminalName;
+@@ -127,6 +134,10 @@ use codex_terminal_detection::TerminalName;
      override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
  )]
  struct MultitoolCli {
@@ -90,7 +90,7 @@ index ac06a66..1d5b729 100644
      #[clap(flatten)]
      pub config_overrides: CliConfigOverrides,
  
-@@ -1028,12 +1039,18 @@ async fn cli_main(
+@@ -1043,12 +1054,18 @@ async fn cli_main(
      remote_control_disabled: bool,
  ) -> anyhow::Result<()> {
      let MultitoolCli {
@@ -109,7 +109,7 @@ index ac06a66..1d5b729 100644
      // Retain the launch target through TUI exit, even if a launcher changes selection.
      let daemon_cli_executable = arg0_paths
          .codex_self_exe
-@@ -1861,6 +1878,24 @@ async fn cli_main(
+@@ -1883,6 +1900,24 @@ async fn cli_main(
      Ok(())
  }
  
@@ -134,7 +134,7 @@ index ac06a66..1d5b729 100644
  fn profile_v2_for_subcommand<'a>(
      interactive: &'a TuiCli,
      subcommand: &Subcommand,
-@@ -2860,6 +2895,7 @@ mod tests {
+@@ -2882,6 +2917,7 @@ mod tests {
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -142,7 +142,7 @@ index ac06a66..1d5b729 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -2897,6 +2933,7 @@ mod tests {
+@@ -2919,6 +2955,7 @@ mod tests {
              mut interactive,
              config_overrides: mut root_overrides,
              subcommand,
@@ -150,7 +150,7 @@ index ac06a66..1d5b729 100644
              feature_toggles: _,
              remote: _,
          } = cli;
-@@ -2941,6 +2978,7 @@ mod tests {
+@@ -2963,6 +3000,7 @@ mod tests {
              interactive,
              config_overrides: root_overrides,
              subcommand,
@@ -160,7 +160,7 @@ index ac06a66..1d5b729 100644
          } = cli;
 diff --git a/codex-rs/cli/tests/build_info.rs b/codex-rs/cli/tests/build_info.rs
 new file mode 100644
-index 0000000..780528f
+index 000000000..780528fe6
 --- /dev/null
 +++ b/codex-rs/cli/tests/build_info.rs
 @@ -0,0 +1,49 @@
@@ -214,7 +214,7 @@ index 0000000..780528f
 +    );
 +}
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index 9d61157..26fe171 100644
+index 45f586651..3d77e73cf 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
 @@ -4,6 +4,7 @@ version.workspace = true
@@ -227,7 +227,7 @@ index 9d61157..26fe171 100644
  name = "codex-tui"
 diff --git a/codex-rs/tui/build.rs b/codex-rs/tui/build.rs
 new file mode 100644
-index 0000000..529d11c
+index 000000000..529d11c88
 --- /dev/null
 +++ b/codex-rs/tui/build.rs
 @@ -0,0 +1,6 @@
@@ -238,7 +238,7 @@ index 0000000..529d11c
 +    println!("cargo:rerun-if-env-changed=CODEX_UNLEASHED_BUILD_NUMBER");
 +}
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 48295d4..6db841a 100644
+index 48295d4b8..17ba12e57 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -4,6 +4,7 @@ use super::*;
@@ -249,7 +249,7 @@ index 48295d4..6db841a 100644
  use crate::width::display_width;
  
  /// Render `lines` inside a border whose inner width is at least `inner_width`.
-@@ -40,15 +41,42 @@ pub(crate) fn with_border_with_inner_width(
+@@ -40,15 +41,59 @@ pub(crate) fn with_border_with_inner_width(
      out
  }
  
@@ -271,21 +271,38 @@ index 48295d4..6db841a 100644
 +const CODEX_UNLEASHED_FORK_LABEL: &str = "Unofficial fork of OpenAI Codex";
 +
 +pub(crate) fn fork_notice_lines(width: usize, indent: usize) -> Vec<Line<'static>> {
++    visible_lines(fork_notice_hyperlink_lines(width, indent))
++}
++
++pub(crate) fn fork_notice_hyperlink_lines(width: usize, indent: usize) -> Vec<HyperlinkLine> {
 +    let indent = " ".repeat(width.saturating_sub(/*rhs*/ 1).min(indent));
 +    let wrap_options = textwrap::Options::new(width.saturating_sub(indent.len()).max(/*rhs*/ 1))
 +        .word_separator(textwrap::WordSeparator::AsciiSpace)
 +        .word_splitter(textwrap::WordSplitter::NoHyphenation)
 +        .break_words(/*break_words*/ true);
 +    let mut lines = Vec::new();
-+    for (text, style) in [
-+        (CODEX_UNLEASHED_FORK_LABEL, Style::default()),
-+        (CODEX_UNLEASHED_URL, Style::default().cyan().underlined()),
++    for (text, style, destination) in [
++        (CODEX_UNLEASHED_FORK_LABEL, Style::default(), None),
++        (
++            CODEX_UNLEASHED_URL,
++            Style::default().cyan().underlined(),
++            Some(CODEX_UNLEASHED_URL),
++        ),
 +    ] {
 +        for part in textwrap::wrap(text, wrap_options.clone()) {
-+            lines.push(Line::from(vec![
++            let end = indent.len() + display_width(&part);
++            let mut line = HyperlinkLine::new(Line::from(vec![
 +                indent.clone().into(),
 +                Span::styled(part.into_owned(), style),
 +            ]));
++            if let Some(destination) = destination {
++                line.hyperlinks
++                    .push(crate::terminal_hyperlinks::TerminalHyperlink::web(
++                        indent.len()..end,
++                        destination.to_string(),
++                    ));
++            }
++            lines.push(line);
 +        }
 +    }
 +    lines
@@ -294,7 +311,7 @@ index 48295d4..6db841a 100644
  #[derive(Debug)]
  struct TooltipHistoryCell {
      tip: String,
-@@ -338,16 +366,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -338,16 +383,14 @@ impl HistoryCell for SessionHeaderHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          let width = usize::from(width);
          let mut title = vec!["  ".into()];
@@ -319,7 +336,7 @@ index 48295d4..6db841a 100644
          if self.yolo_mode {
              lines.push(Line::from(vec![
                  "  permissions: ".dim(),
-@@ -362,7 +388,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -362,7 +405,9 @@ impl HistoryCell for SessionHeaderHistoryCell {
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
          let mut lines = vec![
@@ -331,10 +348,10 @@ index 48295d4..6db841a 100644
                  "model: {}{}",
                  self.model,
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 71781b6..aaf2443 100644
+index f0adad31e..842543228 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1882,6 +1882,74 @@ fn session_header_clamps_to_narrow_width() {
+@@ -1871,6 +1871,74 @@ fn session_header_clamps_to_narrow_width() {
      insta::assert_snapshot!(render_lines(&lines).join("\n"));
  }
  
@@ -410,22 +427,159 @@ index 71781b6..aaf2443 100644
  #[cfg_attr(
      target_os = "windows",
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 6b7f56b..beb79bc 100644
+index 65ef9f651..1922a916f 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -881,6 +881,10 @@ impl StatusHistoryCell {
+@@ -731,6 +731,13 @@ fn status_approval_label(
+ 
+ impl StatusHistoryCell {
+     fn content_lines(&self, width: u16) -> Vec<Line<'static>> {
++        crate::terminal_hyperlinks::visible_lines(self.content_hyperlink_lines(width))
++    }
++
++    fn content_hyperlink_lines(
++        &self,
++        width: u16,
++    ) -> Vec<crate::terminal_hyperlinks::HyperlinkLine> {
+         let available_width = usize::from(width);
+         if available_width == 0 {
+             return Vec::new();
+@@ -876,31 +883,39 @@ impl StatusHistoryCell {
+         };
+         let mut title = vec![indent.into()];
+         title.extend(crate::history_cell::codex_title(CODEX_CLI_VERSION));
+-        let mut rendered = word_wrap_lines(
++        let mut rendered = crate::terminal_hyperlinks::plain_hyperlink_lines(word_wrap_lines(
              [Line::from(title)],
              RtOptions::new(available_width).subsequent_indent(indent.into()),
-         );
-+        rendered.extend(crate::history_cell::fork_notice_lines(
+-        );
+-        rendered.push(Line::default());
++        ));
++        rendered.extend(crate::history_cell::fork_notice_hyperlink_lines(
 +            available_width,
 +            indent.len() + ">_ ".len(),
 +        ));
-         rendered.push(Line::default());
++        rendered.push(crate::terminal_hyperlinks::HyperlinkLine::default());
          // Providers such as Bedrock manage limits and billing elsewhere.
          if self.show_chatgpt_usage_link {
+-            rendered.extend(word_wrap_lines(
+-                [
+-                    Line::from(vec![
+-                        "Visit ".fg(accent_color()),
+-                        CHATGPT_USAGE_URL.fg(accent_color()).underlined(),
+-                        " for up-to-date".fg(accent_color()),
+-                    ]),
+-                    "information on rate limits and credits"
+-                        .fg(accent_color())
+-                        .into(),
+-                ],
+-                RtOptions::new(available_width)
+-                    .initial_indent(indent.into())
+-                    .subsequent_indent(indent.into())
+-                    .word_separator(textwrap::WordSeparator::AsciiSpace)
+-                    .word_splitter(textwrap::WordSplitter::NoHyphenation),
+-            ));
+-            rendered.push(Line::default());
++            let usage_lines = crate::terminal_hyperlinks::annotate_web_urls(vec![
++                Line::from(vec![
++                    "Visit ".fg(accent_color()),
++                    CHATGPT_USAGE_URL.fg(accent_color()).underlined(),
++                    " for up-to-date".fg(accent_color()),
++                ]),
++                "information on rate limits and credits"
++                    .fg(accent_color())
++                    .into(),
++            ]);
++            let options = RtOptions::new(available_width)
++                .initial_indent(indent.into())
++                .subsequent_indent(indent.into())
++                .word_separator(textwrap::WordSeparator::AsciiSpace)
++                .word_splitter(textwrap::WordSplitter::NoHyphenation);
++            rendered.extend(usage_lines.iter().flat_map(|line| {
++                crate::terminal_hyperlinks::remap_source_wrapped_line(
++                    line,
++                    crate::wrapping::adaptive_wrap_line_to_width(&line.line, options.clone()),
++                )
++            }));
++            rendered.push(crate::terminal_hyperlinks::HyperlinkLine::default());
+         }
+         // Keep every value, including long paths and IDs, aligned beneath its first line.
+         // At widths too small for the label column, use the outer indent instead.
+@@ -912,22 +927,27 @@ impl StatusHistoryCell {
+         let options = RtOptions::new(available_width)
+             .subsequent_indent(continuation)
+             .word_splitter(textwrap::WordSplitter::NoHyphenation);
+-        rendered.extend(lines.into_iter().flat_map(|line| {
+-            let wrapped = word_wrap_lines([line.clone()], options.clone());
+-            if wrapped
+-                .iter()
+-                .any(|line| line_width(line) > available_width)
+-            {
+-                // A wide grapheme may not fit after the continuation indent.
+-                word_wrap_lines(
+-                    [line],
+-                    RtOptions::new(available_width)
+-                        .word_splitter(textwrap::WordSplitter::NoHyphenation),
+-                )
+-            } else {
+-                wrapped
+-            }
+-        }));
++        rendered.extend(crate::terminal_hyperlinks::plain_hyperlink_lines(
++            lines
++                .into_iter()
++                .flat_map(|line| {
++                    let wrapped = word_wrap_lines([line.clone()], options.clone());
++                    if wrapped
++                        .iter()
++                        .any(|line| line_width(line) > available_width)
++                    {
++                        // A wide grapheme may not fit after the continuation indent.
++                        word_wrap_lines(
++                            [line],
++                            RtOptions::new(available_width)
++                                .word_splitter(textwrap::WordSplitter::NoHyphenation),
++                        )
++                    } else {
++                        wrapped
++                    }
++                })
++                .collect(),
++        ));
+ 
+         rendered
+     }
+@@ -946,27 +966,7 @@ impl HistoryCell for Arc<StatusHistoryCell> {
+         &self,
+         width: u16,
+     ) -> Vec<crate::terminal_hyperlinks::HyperlinkLine> {
+-        let mut lines =
+-            crate::terminal_hyperlinks::plain_hyperlink_lines(self.display_lines(width));
+-        // The usage URL has a known destination; wrapping preserves its underlined spans.
+-        // Attach that destination to every fragment instead of searching for the full URL.
+-        if self.show_chatgpt_usage_link {
+-            for line in &mut lines {
+-                let mut column = 0;
+-                for span in &line.line.spans {
+-                    let end = column + span.width();
+-                    if span.style.add_modifier.contains(Modifier::UNDERLINED) {
+-                        line.hyperlinks
+-                            .push(crate::terminal_hyperlinks::TerminalHyperlink::web(
+-                                column..end,
+-                                CHATGPT_USAGE_URL.to_string(),
+-                            ));
+-                    }
+-                    column = end;
+-                }
+-            }
+-        }
+-        lines
++        self.content_hyperlink_lines(width)
+     }
+ 
+     fn transcript_hyperlink_lines(
 diff --git a/codex-rs/tui/src/status/tests.rs b/codex-rs/tui/src/status/tests.rs
-index 029ef13..d288db8 100644
+index c6e33d8fc..313087192 100644
 --- a/codex-rs/tui/src/status/tests.rs
 +++ b/codex-rs/tui/src/status/tests.rs
 @@ -189,6 +189,7 @@ fn sanitize_directory(lines: Vec<String>) -> Vec<String> {
@@ -455,7 +609,7 @@ index 029ef13..d288db8 100644
      assert_snapshot!(sanitized);
  }
 diff --git a/codex-rs/tui/src/version.rs b/codex-rs/tui/src/version.rs
-index 8c8d108..a7f907b 100644
+index 8c8d108dc..a7f907b46 100644
 --- a/codex-rs/tui/src/version.rs
 +++ b/codex-rs/tui/src/version.rs
 @@ -1,2 +1,8 @@

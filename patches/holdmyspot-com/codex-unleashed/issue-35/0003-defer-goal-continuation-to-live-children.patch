@@ -1,4 +1,4 @@
-From 911452b28855b08e4fad9c1b9faaba3a9e8da68e Mon Sep 17 00:00:00 2001
+From 207ac01eb52226e8313791a3d8c6fe0bc8084c9e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Mon, 5 Oct 2026 16:27:06 -0400
 Subject: [PATCH] bugfix: Keep active-goal parents available while children run
@@ -18,7 +18,7 @@ Scope: live-process best-effort delivery; no restart replay, task UI, or Monitor
 
 diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 new file mode 100644
-index 0000000..311b07f
+index 000000000..311b07f9e
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 @@ -0,0 +1,293 @@
@@ -316,10 +316,10 @@ index 0000000..311b07f
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index da6605b..b98ddcf 100644
+index 491207ad7..e35f48051 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-@@ -121,6 +121,9 @@ use super::analytics::mount_analytics_capture;
+@@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
  use super::analytics::wait_for_analytics_event;
  use super::analytics::wait_for_matching_analytics_event;
  
@@ -330,10 +330,10 @@ index da6605b..b98ddcf 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index c0483af..5380ee1 100644
+index 8d2cd8351..1a7ee3d85 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1012,6 +1012,40 @@ impl CodexThread {
+@@ -1031,6 +1031,40 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
  
@@ -375,7 +375,7 @@ index c0483af..5380ee1 100644
      pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
          self.session.conversation_history_snapshot().await
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
-index 210f3e5..9c894f7 100644
+index 210f3e5de..9c894f703 100644
 --- a/codex-rs/core/tests/suite/background_subagent_tests.rs
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
@@ -405,7 +405,7 @@ index 210f3e5..9c894f7 100644
      Ok(())
  }
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 7d826ac..e3a24e8 100644
+index 3e35f9807..128fc9d19 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
 @@ -466,6 +466,14 @@ impl GoalRuntimeHandle {

@@ -1,4 +1,4 @@
-From d4c4d86e28e6fd661dc10f3f7da3e651f2b78ed2 Mon Sep 17 00:00:00 2001
+From 9110595f93df7aa456ee95bf8452792e02a5d600 Mon Sep 17 00:00:00 2001
 From: Codex Patch Verification <codex@example.invalid>
 Date: Tue, 6 Oct 2026 14:41:01 -0400
 Subject: [PATCH] Replace stale updater workers before manual daemon updates
@@ -25,7 +25,7 @@ Execution records: .cat/work/temp/daemon-updater-handoff-m1Fw4L.
  create mode 100644 codex-rs/app-server-daemon/src/manual_update_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_start.rs b/codex-rs/app-server-daemon/src/backend/pid_start.rs
-index 2c091ab..eec8317 100644
+index 2c091aba3..eec83179e 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_start.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_start.rs
 @@ -89,12 +89,7 @@ impl PidBackend {
@@ -43,7 +43,7 @@ index 2c091ab..eec8317 100644
          let stderr_log = match self.open_stderr_log().await {
              Ok(stderr_log) => stderr_log,
 diff --git a/codex-rs/app-server-daemon/src/backend/pid_windows.rs b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
-index 8487fa2..cb1fb64 100644
+index 8487fa2bc..cb1fb6434 100644
 --- a/codex-rs/app-server-daemon/src/backend/pid_windows.rs
 +++ b/codex-rs/app-server-daemon/src/backend/pid_windows.rs
 @@ -8,7 +8,6 @@ use super::PidRecord;
@@ -73,11 +73,11 @@ index 8487fa2..cb1fb64 100644
          Ok(())
      }
 diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
-index 640c5bc..3850bc5 100644
+index c0d8269ba..fea4fb849 100644
 --- a/codex-rs/app-server-daemon/src/manual_update.rs
 +++ b/codex-rs/app-server-daemon/src/manual_update.rs
-@@ -24,6 +24,27 @@ use crate::managed_install::executable_identity;
- use crate::managed_install::managed_codex_version;
+@@ -26,6 +26,27 @@ use crate::managed_install::managed_codex_version;
+ pub(super) const MAX_RESPONSE_BYTES: u64 = 16 * 1024;
  
  pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
 +    request_with_executable(daemon, &std::env::current_exe()?).await
@@ -104,7 +104,7 @@ index 640c5bc..3850bc5 100644
      let socket_path = daemon.manual_update_socket_path();
      let mut replacement_deadline = None;
      'request: loop {
-@@ -69,8 +90,7 @@ pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
+@@ -71,8 +92,7 @@ pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
                          crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings))
                              .stop()
                              .await?;
@@ -116,7 +116,7 @@ index 640c5bc..3850bc5 100644
                          } else {
 diff --git a/codex-rs/app-server-daemon/src/manual_update_tests.rs b/codex-rs/app-server-daemon/src/manual_update_tests.rs
 new file mode 100644
-index 0000000..620f42c
+index 000000000..620f42cb9
 --- /dev/null
 +++ b/codex-rs/app-server-daemon/src/manual_update_tests.rs
 @@ -0,0 +1,158 @@
@@ -279,10 +279,10 @@ index 0000000..620f42c
 +    .await;
 +}
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index efdaa01..28a33a0 100644
+index 9a73f051b..d7585726f 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1179,3 +1179,7 @@ printf '%s' '{release}' > '{marker}'
+@@ -1345,3 +1345,7 @@ printf '%s' '{release}' > '{marker}'
          );
      }
  }

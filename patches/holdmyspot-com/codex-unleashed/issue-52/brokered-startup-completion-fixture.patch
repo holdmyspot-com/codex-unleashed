@@ -1,4 +1,4 @@
-From bb6f797b73328f4f5e59307d7be014f0eb625374 Mon Sep 17 00:00:00 2001
+From 0c8780be2ceaaeb7270028296bef36796c417375 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Follow exec sessions to completion in POSIX credential-broker
@@ -14,10 +14,10 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  1 file changed, 85 insertions(+), 21 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/approvals.rs b/codex-rs/core/tests/suite/approvals.rs
-index 8d3668f..447cda2 100644
+index 99836ced4..6ab9d559a 100644
 --- a/codex-rs/core/tests/suite/approvals.rs
 +++ b/codex-rs/core/tests/suite/approvals.rs
-@@ -3333,10 +3333,15 @@ GH_TOKEN = "{REAL_GITHUB_TOKEN}"
+@@ -3394,10 +3394,15 @@ GH_TOKEN = "{REAL_GITHUB_TOKEN}"
  }
  
  #[cfg(unix)]
@@ -36,7 +36,7 @@ index 8d3668f..447cda2 100644
      skip_if_no_network!(Ok(()));
      const REAL_TOKEN: &str = "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
      let Some(shell) = codex_core::shell::get_shell(codex_core::shell::ShellType::Sh) else {
-@@ -3395,26 +3400,70 @@ ENV = "{}"
+@@ -3456,26 +3461,70 @@ ENV = "{}"
          shlex::try_join([shell_path.as_str(), "-i", "-c", script])?
      );
      let call_id = "brokered-posix-startup";
@@ -124,7 +124,7 @@ index 8d3668f..447cda2 100644
      submit_turn_preserving_active_permission_profile(
          &test,
          "show the POSIX startup environment",
-@@ -3422,7 +3471,22 @@ ENV = "{}"
+@@ -3483,7 +3532,22 @@ ENV = "{}"
      )
      .await?;
      wait_for_completion_without_approval(&test).await;

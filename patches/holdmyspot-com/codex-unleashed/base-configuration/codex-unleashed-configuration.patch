@@ -1,4 +1,4 @@
-From ff4c82e65edf087a21387abf710ce7f7d4b49167 Mon Sep 17 00:00:00 2001
+From 2099799b05b0ba08b31398116de4121e487cfc13 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Wed, 30 Sep 2026 18:48:00 -0400
 Subject: [PATCH] config: share the Codex Unleashed configuration table
@@ -25,7 +25,7 @@ and owns the real CLI exact-output check after all runtime patches are applied.
  3 files changed, 49 insertions(+)
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 3e5cc07..fa623c0 100644
+index 3e5cc07e6..fa623c0b2 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -160,10 +160,20 @@ pub struct FeatureToggleToml {
@@ -50,12 +50,12 @@ index 3e5cc07..fa623c0 100644
      pub model: Option<String>,
      /// Default Daybreak preference for new threads and non-interactive turns.
 diff --git a/codex-rs/config/src/types_tests.rs b/codex-rs/config/src/types_tests.rs
-index ab383ca..3c58873 100644
+index 5a9b3d81d..4dc9380f6 100644
 --- a/codex-rs/config/src/types_tests.rs
 +++ b/codex-rs/config/src/types_tests.rs
-@@ -1,6 +1,19 @@
- use super::*;
- use pretty_assertions::assert_eq;
+@@ -22,6 +22,19 @@ fn mouse_scroll_speed_rejects_nonpositive_and_nonfinite_values() {
+     }
+ }
  
 +#[test]
 +fn codex_unleashed_table_schema_rejects_undeclared_properties() {
@@ -74,7 +74,7 @@ index ab383ca..3c58873 100644
  fn deserialize_skill_config_with_name_selector() {
      let cfg: SkillConfig = toml::from_str(
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 39df96b..419a6b7 100644
+index 39df96b29..419a6b78a 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
 @@ -3971,6 +3971,32 @@ wire_api = "responses"

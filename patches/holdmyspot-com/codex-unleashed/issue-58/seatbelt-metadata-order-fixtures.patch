@@ -1,4 +1,4 @@
-From 8ce31033b83c1dfb92ac81fbba81e2a83c8af0bc Mon Sep 17 00:00:00 2001
+From 79392a45bb590536eaab7722e5bb870e36b227d4 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 8 Oct 2026 03:39:47 -0400
 Subject: [PATCH] Apply
@@ -22,7 +22,7 @@ Green acceptance remains recorded in the owning task execution ledger.
  1 file changed, 5 insertions(+), 5 deletions(-)
 
 diff --git a/codex-rs/sandboxing/src/seatbelt_tests.rs b/codex-rs/sandboxing/src/seatbelt_tests.rs
-index 88ae9b9..9466175 100644
+index 88ae9b97c..9466175b7 100644
 --- a/codex-rs/sandboxing/src/seatbelt_tests.rs
 +++ b/codex-rs/sandboxing/src/seatbelt_tests.rs
 @@ -1963,21 +1963,21 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {

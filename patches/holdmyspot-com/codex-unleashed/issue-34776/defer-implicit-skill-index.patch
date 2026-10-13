@@ -1,4 +1,4 @@
-From 4d144d63646a6f61307a94cd1441423236e5ea0d Mon Sep 17 00:00:00 2001
+From 97303d7a5ec4868501b164ee2e48c56b4a3448a3 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 2 Oct 2026 22:54:16 -0400
 Subject: [PATCH] Defer implicit skill index construction until first use
@@ -19,12 +19,12 @@ canonical document lookup, unchanged clones, and disabled skill isolation.
 Validation receipts: workspace .cat/work/reports/resume-attribution/.
 Author formatting: just fmt-check passes.
 ---
- codex-rs/ext/skills/src/host_outcome.rs       | 61 +++++++++++------
- codex-rs/ext/skills/src/host_service_tests.rs | 65 +++++++++++++++++++
- 2 files changed, 105 insertions(+), 21 deletions(-)
+ codex-rs/ext/skills/src/host_outcome.rs       | 70 ++++++++++++-------
+ codex-rs/ext/skills/src/host_service_tests.rs | 65 +++++++++++++++++
+ 2 files changed, 108 insertions(+), 27 deletions(-)
 
 diff --git a/codex-rs/ext/skills/src/host_outcome.rs b/codex-rs/ext/skills/src/host_outcome.rs
-index 79f4f2b..4ebf864 100644
+index 96d16214d..eb52e19f2 100644
 --- a/codex-rs/ext/skills/src/host_outcome.rs
 +++ b/codex-rs/ext/skills/src/host_outcome.rs
 @@ -3,6 +3,7 @@ use std::collections::HashSet;
@@ -36,11 +36,11 @@ index 79f4f2b..4ebf864 100644
  use codex_exec_server::ExecutorFileSystem;
  use codex_exec_server::LOCAL_FS;
 @@ -22,8 +23,13 @@ pub struct SkillLoadOutcome {
-     pub(crate) skill_discovery_path_by_path: Arc<HashMap<AbsolutePathBuf, AbsolutePathBuf>>,
-     pub(crate) agent_plugin_skill_paths: HashSet<AbsolutePathBuf>,
+     pub(crate) skill_discovery_path_by_path: Arc<HashMap<PathUri, PathUri>>,
+     pub(crate) agent_plugin_skill_paths: HashSet<PathUri>,
      pub(crate) file_systems_by_skill_path: SkillFileSystemsByPath,
--    pub(crate) implicit_skills_by_scripts_dir: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
--    pub(crate) implicit_skills_by_doc_path: Arc<HashMap<AbsolutePathBuf, SkillMetadata>>,
+-    pub(crate) implicit_skills_by_scripts_dir: Arc<HashMap<PathUri, SkillMetadata>>,
+-    pub(crate) implicit_skills_by_doc_path: Arc<HashMap<PathUri, SkillMetadata>>,
 +    implicit_skill_index: Arc<OnceLock<ImplicitSkillIndex>>,
 +}
 +
@@ -51,9 +51,9 @@ index 79f4f2b..4ebf864 100644
  }
  
  impl SkillLoadOutcome {
-@@ -61,26 +67,35 @@ impl SkillLoadOutcome {
+@@ -61,30 +67,38 @@ impl SkillLoadOutcome {
  
-     pub(crate) fn with_disabled_paths(mut self, disabled_paths: HashSet<AbsolutePathBuf>) -> Self {
+     pub(crate) fn with_disabled_paths(mut self, disabled_paths: HashSet<PathUri>) -> Self {
          self.disabled_paths = disabled_paths;
 -        let mut by_scripts_dir = HashMap::new();
 -        let mut by_doc_path = HashMap::new();
@@ -62,12 +62,16 @@ index 79f4f2b..4ebf864 100644
 -            .iter()
 -            .filter(|skill| self.is_skill_enabled(skill))
 -        {
--            let skill_doc_path = canonicalize_if_exists(&skill.path_to_skills_md);
--            by_doc_path.insert(skill_doc_path, skill.clone());
+-            // Implicit command detection probes the host filesystem only.
+-            let Ok(path) = skill.path_to_skills_md.to_abs_path() else {
+-                continue;
+-            };
+-            let skill_doc_path = canonicalize_if_exists(&path);
+-            by_doc_path.insert(PathUri::from_abs_path(&skill_doc_path), skill.clone());
 -
--            if let Some(skill_dir) = skill.path_to_skills_md.parent() {
+-            if let Some(skill_dir) = path.parent() {
 -                let scripts_dir = canonicalize_if_exists(&skill_dir.join("scripts"));
--                by_scripts_dir.insert(scripts_dir, skill.clone());
+-                by_scripts_dir.insert(PathUri::from_abs_path(&scripts_dir), skill.clone());
 -            }
 -        }
 -        self.implicit_skills_by_scripts_dir = Arc::new(by_scripts_dir);
@@ -86,10 +90,13 @@ index 79f4f2b..4ebf864 100644
 +                .iter()
 +                .filter(|skill| self.is_skill_enabled(skill))
 +            {
-+                let skill_doc_path = canonicalize_if_exists(&skill.path_to_skills_md);
++                let Ok(path) = skill.path_to_skills_md.to_abs_path() else {
++                    continue;
++                };
++                let skill_doc_path = canonicalize_if_exists(&path);
 +                by_doc_path.insert(skill_doc_path, skill.clone());
 +
-+                if let Some(skill_dir) = skill.path_to_skills_md.parent() {
++                if let Some(skill_dir) = path.parent() {
 +                    let scripts_dir = canonicalize_if_exists(&skill_dir.join("scripts"));
 +                    by_scripts_dir.insert(scripts_dir, skill.clone());
 +                }
@@ -104,18 +111,20 @@ index 79f4f2b..4ebf864 100644
      pub(crate) fn is_agent_plugin_skill(&self, skill: &SkillMetadata) -> bool {
          self.agent_plugin_skill_paths
              .contains(&skill.path_to_skills_md)
-@@ -125,11 +140,15 @@ impl SkillLoadOutcome {
+@@ -129,13 +143,15 @@ impl SkillLoadOutcome {
  
  impl codex_skills::ImplicitSkillLookup for SkillLoadOutcome {
      fn implicit_skill_for_scripts_dir(&self, path: &AbsolutePathBuf) -> Option<&SkillMetadata> {
--        self.implicit_skills_by_scripts_dir.get(path)
+-        self.implicit_skills_by_scripts_dir
+-            .get(&PathUri::from_abs_path(path))
 +        self.get_or_build_implicit_skill_index()
 +            .by_scripts_dir
 +            .get(path)
      }
  
      fn implicit_skill_for_doc_path(&self, path: &AbsolutePathBuf) -> Option<&SkillMetadata> {
--        self.implicit_skills_by_doc_path.get(path)
+-        self.implicit_skills_by_doc_path
+-            .get(&PathUri::from_abs_path(path))
 +        self.get_or_build_implicit_skill_index()
 +            .by_doc_path
 +            .get(path)
@@ -123,10 +132,10 @@ index 79f4f2b..4ebf864 100644
  }
  
 diff --git a/codex-rs/ext/skills/src/host_service_tests.rs b/codex-rs/ext/skills/src/host_service_tests.rs
-index 0b76742..d85b409 100644
+index fd8d450a5..31bc3f830 100644
 --- a/codex-rs/ext/skills/src/host_service_tests.rs
 +++ b/codex-rs/ext/skills/src/host_service_tests.rs
-@@ -1013,3 +1013,68 @@ async fn skills_for_config_ignores_cwd_cache_when_session_flags_reenable_skill()
+@@ -1012,3 +1012,68 @@ async fn skills_for_config_ignores_cwd_cache_when_session_flags_reenable_skill()
          .expect("demo skill should be discovered");
      assert_eq!(child_outcome.is_skill_enabled(child_skill), true);
  }

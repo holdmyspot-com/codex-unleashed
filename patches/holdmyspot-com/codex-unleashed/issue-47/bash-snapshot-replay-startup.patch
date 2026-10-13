@@ -1,4 +1,4 @@
-From 2d6a4be7cd77d884f160e6de550aa74a3b4a55d1 Mon Sep 17 00:00:00 2001
+From ec5341fd373a2cb7840906d6a95a62c13e4d7e89 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 10:19:15 -0400
 Subject: [PATCH] Avoid repeating Bash startup when replaying shell snapshots
@@ -16,10 +16,10 @@ The full authoring queue passes 21,106 tests; emitted-patch replay gates remain 
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/exec-server/src/shell_snapshot.rs b/codex-rs/exec-server/src/shell_snapshot.rs
-index 5d399e2..fc72782 100644
+index 6619bbb73..8868c2e08 100644
 --- a/codex-rs/exec-server/src/shell_snapshot.rs
 +++ b/codex-rs/exec-server/src/shell_snapshot.rs
-@@ -292,6 +292,13 @@ impl ShellSnapshotCache {
+@@ -324,6 +324,13 @@ impl ShellSnapshotCache {
              "{startup}if ! {restore} >/dev/null; then printf 'failed to restore shell snapshot\\n' >&2; fi\n{}",
              params.argv[2]
          );
@@ -31,13 +31,13 @@ index 5d399e2..fc72782 100644
 +                .insert(shell_start + 1, "--norc".to_string());
 +        }
  
+         telemetry.shell_snapshot_command(wait, availability, "used");
          Ok(reader)
-     }
 diff --git a/codex-rs/exec-server/src/shell_snapshot_tests.rs b/codex-rs/exec-server/src/shell_snapshot_tests.rs
-index c79eb72..3edd745 100644
+index adc0ceb14..564e19a48 100644
 --- a/codex-rs/exec-server/src/shell_snapshot_tests.rs
 +++ b/codex-rs/exec-server/src/shell_snapshot_tests.rs
-@@ -133,8 +133,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
+@@ -136,8 +136,8 @@ async fn snapshot_failure_retries_are_bounded_and_single_flight(
          for (prepared, reader) in [(&mut prepared, first), (&mut concurrent, second)] {
              if let Some(reader) = reader {
                  let fd = std::os::fd::AsRawFd::as_raw_fd(&reader);
@@ -49,10 +49,10 @@ index c79eb72..3edd745 100644
          }
          assert_eq!(
 diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
-index e9caa90..ca7b99f 100644
+index 8cf2a5d76..936836bfe 100644
 --- a/codex-rs/exec-server/tests/exec_process.rs
 +++ b/codex-rs/exec-server/tests/exec_process.rs
-@@ -271,6 +271,9 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+@@ -270,6 +270,9 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
          "HOME".to_string(),
          home.path().to_string_lossy().into_owned(),
      )]);
@@ -62,7 +62,7 @@ index e9caa90..ca7b99f 100644
      if posix_shell {
          configured_environment.insert(
              "ENV".to_string(),
-@@ -305,6 +308,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
+@@ -304,6 +307,7 @@ async fn shell_snapshot_v2_filters_profile_exports_and_stays_in_memory(
              "HOME".to_string(),
              "PATH".to_string(),
              "PROFILE_*".to_string(),

@@ -1,4 +1,4 @@
-From b063d15feb28828908d3d511ca517390caf5fb4c Mon Sep 17 00:00:00 2001
+From 70d121c422da933520d4f760495af13194096aa7 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Sun, 4 Oct 2026 00:20:42 -0400
 Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
@@ -21,7 +21,7 @@ TDD against rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc: Python insta
  create mode 100644 scripts/install/test_install_ps1.ps1
 
 diff --git a/codex-rs/app-server-daemon/src/managed_install.rs b/codex-rs/app-server-daemon/src/managed_install.rs
-index ce3107f..f9c6c49 100644
+index 067ebcaba..17ae90510 100644
 --- a/codex-rs/app-server-daemon/src/managed_install.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install.rs
 @@ -70,6 +70,20 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
@@ -59,11 +59,11 @@ index ce3107f..f9c6c49 100644
              .is_ok_and(|selected| selected == release_name)
          && std::fs::canonicalize(codex_bin).is_ok_and(|bin| bin.starts_with(&release))
 diff --git a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-index b227c7e..b25ae45 100644
+index e076e7f60..c17c2b5d0 100644
 --- a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-@@ -125,3 +125,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
-     std::fs::write(&binary, b"#!/bin/sh\nexit 0\n").expect("newer binary");
+@@ -121,3 +121,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
+     codex_utils_cargo_bin::write_executable(&binary, "#!/bin/sh\nexit 0\n").expect("newer binary");
      assert!(super::supports_daemon_update_loop(&binary).await);
  }
 +
@@ -94,7 +94,7 @@ index b227c7e..b25ae45 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
-index ecf2501..4f9f26e 100644
+index 3b09a604d..f7d0d98a3 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install.rs
 @@ -220,7 +220,7 @@ async fn prepare_from_package(
@@ -106,7 +106,7 @@ index ecf2501..4f9f26e 100644
      let releases = root.join("releases");
      std::fs::create_dir_all(&releases)?;
      let stage = tempfile::Builder::new()
-@@ -416,14 +416,6 @@ fn package_tree(root: &Path, destination: Option<&Path>) -> Result<String> {
+@@ -421,14 +421,6 @@ fn package_tree(root: &Path, destination: Option<&Path>) -> Result<String> {
      Ok(hasher.finalize().to_hex().to_string())
  }
  
@@ -122,10 +122,10 @@ index ecf2501..4f9f26e 100644
      let mut names = vec![
          "codex-package.json",
 diff --git a/codex-rs/app-server-daemon/src/prepare_install_tests.rs b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
-index 810a45b..112bda0 100644
+index eaa89527c..820a6f71a 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install_tests.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
-@@ -384,3 +384,30 @@ async fn broken_selection_is_not_a_missing_installation() {
+@@ -373,3 +373,30 @@ async fn broken_selection_is_not_a_missing_installation() {
          PathBuf::from("missing-release")
      );
  }
@@ -157,12 +157,12 @@ index 810a45b..112bda0 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 499acd1..2ca4a4a 100644
+index 5e28ad885..4429df070 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -63,9 +63,11 @@ pub(crate) async fn request_manual_update(
- const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
- const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+@@ -71,9 +71,11 @@ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+ const INSTALLER_STDERR_TAIL_BYTES: usize = 2 * 1024;
+ const INSTALLER_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
  #[cfg(unix)]
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
 +const INSTALL_URL: &str =
@@ -175,10 +175,10 @@ index 499acd1..2ca4a4a 100644
  pub(crate) async fn run(
      http_client_factory: HttpClientFactory,
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 598222a..efdaa01 100644
+index 8ccfc1680..9a73f051b 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -34,7 +34,14 @@ async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
+@@ -36,7 +36,14 @@ async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
              .expect("installer fetch should succeed"),
          script
      );
@@ -195,7 +195,7 @@ index 598222a..efdaa01 100644
  
  #[tokio::test]
 diff --git a/scripts/install/install.ps1 b/scripts/install/install.ps1
-index cd9c0c7..9eba3dc 100644
+index 05657ee2f..af135d3a6 100644
 --- a/scripts/install/install.ps1
 +++ b/scripts/install/install.ps1
 @@ -12,13 +12,7 @@ if ([string]::IsNullOrWhiteSpace($Release)) {
@@ -254,7 +254,7 @@ index cd9c0c7..9eba3dc 100644
      $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata -Url $packageUrl -FallbackUrl $packageFallbackUrl
      if ($null -eq $packageMetadata) {
          throw "Could not find Codex package or platform npm release assets for Codex $version."
-@@ -234,7 +218,7 @@ function Get-PackageArchiveDigest {
+@@ -248,7 +232,7 @@ function Get-PackageArchiveDigest {
          }
      }
  
@@ -263,7 +263,7 @@ index cd9c0c7..9eba3dc 100644
  }
  
  function Path-Contains {
-@@ -332,11 +316,11 @@ function Resolve-ReleaseFromGitHub {
+@@ -346,11 +330,11 @@ function Resolve-ReleaseFromGitHub {
  
      if ($NormalizedVersion -eq "latest") {
          $requestedRelease = "latest"
@@ -277,7 +277,7 @@ index cd9c0c7..9eba3dc 100644
      }
  
      try {
-@@ -356,47 +340,11 @@ function Resolve-ReleaseFromGitHub {
+@@ -370,47 +354,11 @@ function Resolve-ReleaseFromGitHub {
      }
  }
  
@@ -325,7 +325,7 @@ index cd9c0c7..9eba3dc 100644
      return Resolve-ReleaseFromGitHub -NormalizedVersion $normalizedVersion
  }
  
-@@ -858,9 +806,9 @@ function Maybe-HandleConflictingInstall {
+@@ -872,9 +820,9 @@ function Maybe-HandleConflictingInstall {
      $manager = $Conflict.Manager
  
      $uninstallArgs = if ($manager -eq "bun") {
@@ -337,7 +337,7 @@ index cd9c0c7..9eba3dc 100644
      }
      $uninstallCommand = if ($manager -eq "bun") { "bun" } else { "npm" }
  
-@@ -963,7 +911,7 @@ Write-Step "Resolved version: $resolvedVersion"
+@@ -977,7 +925,7 @@ Write-Step "Resolved version: $resolvedVersion"
  $conflictingInstall = if ($daemonOnly) { $null } else { Get-ConflictingInstall -VisibleBinDir $visibleBinDir }
  $oldStandaloneBackup = $null
  
@@ -347,7 +347,7 @@ index cd9c0c7..9eba3dc 100644
  $packageAsset = $assetSelection.PackageAsset
  $packageMetadata = $assetSelection.PackageMetadata
 diff --git a/scripts/install/install.sh b/scripts/install/install.sh
-index 58815c7..af5ed3a 100755
+index 58815c797..af5ed3af8 100755
 --- a/scripts/install/install.sh
 +++ b/scripts/install/install.sh
 @@ -5,13 +5,10 @@ set -eu
@@ -526,7 +526,7 @@ index 58815c7..af5ed3a 100755
  
 diff --git a/scripts/install/test_install_ps1.ps1 b/scripts/install/test_install_ps1.ps1
 new file mode 100644
-index 0000000..e7e98b9
+index 000000000..e7e98b91b
 --- /dev/null
 +++ b/scripts/install/test_install_ps1.ps1
 @@ -0,0 +1,40 @@
@@ -571,7 +571,7 @@ index 0000000..e7e98b9
 +if ($selection.PackageMetadata.Url -cne $resolved.Metadata.assets[0].browser_download_url) { throw 'Wrong package download URL.' }
 +Write-Output 'PowerShell release selection and version validation passed.'
 diff --git a/scripts/install/test_install_sh.py b/scripts/install/test_install_sh.py
-index 06465d9..2fd1744 100644
+index 06465d937..2fd17441e 100644
 --- a/scripts/install/test_install_sh.py
 +++ b/scripts/install/test_install_sh.py
 @@ -17,6 +17,68 @@ MISMATCH_VERSION = "0.145.0"

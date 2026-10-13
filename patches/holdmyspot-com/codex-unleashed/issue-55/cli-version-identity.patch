@@ -1,4 +1,4 @@
-From 253760932cd626de2f59e25bdc2d55db22d9d999 Mon Sep 17 00:00:00 2001
+From 3e875d4ae611f67557f6c9025726d07165dc6a2f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 7 Oct 2026 22:48:57 -0400
 Subject: [PATCH] Keep CLI version identity independent of build metadata
@@ -10,10 +10,10 @@ Base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc), with the downstr
  2 files changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 1d5b729..70060ad 100644
+index 6cca2dcb0..dbad5a638 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -123,6 +123,7 @@ const CLI_VERSION: &str = concat!(
+@@ -124,6 +124,7 @@ const CLI_VERSION: &str = concat!(
  #[derive(Debug, Parser)]
  #[clap(
      author,
@@ -22,7 +22,7 @@ index 1d5b729..70060ad 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
 diff --git a/codex-rs/cli/tests/build_info.rs b/codex-rs/cli/tests/build_info.rs
-index 780528f..721910c 100644
+index 780528fe6..721910c06 100644
 --- a/codex-rs/cli/tests/build_info.rs
 +++ b/codex-rs/cli/tests/build_info.rs
 @@ -15,7 +15,8 @@ fn version_identifies_codex_unleashed_build() {

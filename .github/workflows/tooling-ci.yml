@@ -1,37 +1,92 @@
-name: tooling-ci
+name: Native Windows complete Bazel acceptance
 
 on:
-  push:
-    paths:
-      - tooling/**
-      - scripts/**
-      - .github/actions/setup-tooling/**
-      - .github/workflows/tooling-ci.yml
-  pull_request:
-    paths:
-      - tooling/**
-      - scripts/**
-      - .github/actions/setup-tooling/**
-      - .github/workflows/tooling-ci.yml
   workflow_dispatch:
+    inputs:
+      upstream_ref:
+        required: false
+        type: string
 
-permissions:
-  contents: read
+concurrency:
+  group: native-windows-acceptance-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Maven verification (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  test-windows-native-main:
+    if: ${{ (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 90
+    runs-on: windows-2022
+    name: Bazel test on windows-2022 for x86_64-pc-windows-msvc (native main)
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+
+      - uses: ./.github/actions/prepare-patched-upstream
         with:
-          node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: ./.github/actions/setup-tooling
+          upstream-ref: ${{ inputs.upstream_ref }}
+
+      - name: Prepare Bazel CI
+        id: prepare_bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+
+      - name: Check Windows Bazel PATH stability
+        shell: pwsh
+        run: ./.github/scripts/test-compute-bazel-windows-path.ps1 -WorkDirectory '${{ runner.temp }}/windows-path-check'
+
+      - name: bazel test //...
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          bazel_targets=(
+            //...
+            -//third_party/v8:all
+            -//codex-rs/v8-poc:v8-poc-unit-tests
+          )
+          bazel_test_args=(
+            test
+            --config=ci-windows-msvc
+            --platforms=//:windows_x86_64_msvc
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+            --test_tag_filters=-argument-comment-lint
+            --test_verbose_timeout_warnings
+            --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+            --build_metadata=TAG_windows_native_main=true
+          )
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --windows-msvc-host-platform \
+            -- \
+            "${bazel_test_args[@]}" \
+            -- \
+            "${bazel_targets[@]}"
+
+      - name: Upload Bazel execution logs
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: bazel-execution-logs-test-windows-native-x86_64-pc-windows-gnullvm
+          path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Save Bazel repository cache
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
+          key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+

@@ -1,4 +1,4 @@
-From 21888dae3811dad8864f004e47b35d11c726448e Mon Sep 17 00:00:00 2001
+From 584754c5b2733b4b3f75e525d000a70a62bbf2c0 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Tue, 6 Oct 2026 11:54:07 -0400
 Subject: [PATCH] Reserve Nextest execution resources for expensive budget
@@ -15,7 +15,7 @@ The original metadata red/green receipts and these controls remain in the task e
  1 file changed, 12 insertions(+)
 
 diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
-index 17decdc..3861a7f 100644
+index 17decdc0b..3861a7f48 100644
 --- a/codex-rs/.config/nextest.toml
 +++ b/codex-rs/.config/nextest.toml
 @@ -10,6 +10,18 @@ retries = 1

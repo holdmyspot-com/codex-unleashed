@@ -1,4 +1,4 @@
-From d60f985815f137e1c6ada02888686e039163bfe1 Mon Sep 17 00:00:00 2001
+From 0089a0453ff3ad00f6403a247c5cb19e2e97067c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sat, 3 Oct 2026 09:02:29 -0400
 Subject: [PATCH] Make resumed conversations available during skill discovery
@@ -38,7 +38,7 @@ This intermediate source snapshot requires final emitted-patch and native gates.
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
-index b0fa49b..b098d86 100644
+index 34fff277d..00d70f8dc 100644
 --- a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
 @@ -1,7 +1,10 @@
@@ -74,7 +74,7 @@ index b0fa49b..b098d86 100644
  ) -> Result<EnsureConversationListenerResult, JSONRPCErrorError> {
      let conversation = match listener_task_context
          .thread_manager
-@@ -175,6 +186,7 @@ pub(super) async fn ensure_conversation_listener(
+@@ -186,6 +197,7 @@ pub(super) async fn ensure_conversation_listener(
          conversation_id,
          conversation,
          thread_state,
@@ -82,7 +82,7 @@ index b0fa49b..b098d86 100644
      )
      .await
      {
-@@ -216,6 +228,7 @@ pub(super) async fn ensure_listener_task_running(
+@@ -227,6 +239,7 @@ pub(super) async fn ensure_listener_task_running(
      conversation_id: ThreadId,
      conversation: Arc<CodexThread>,
      thread_state: Arc<Mutex<ThreadState>>,
@@ -90,7 +90,7 @@ index b0fa49b..b098d86 100644
  ) -> Result<(), JSONRPCErrorError> {
      let (cancel_tx, mut cancel_rx) = oneshot::channel();
      let Some(mut unloading_state) = UnloadingState::new(
-@@ -231,14 +244,20 @@ pub(super) async fn ensure_listener_task_running(
+@@ -242,14 +255,20 @@ pub(super) async fn ensure_listener_task_running(
      };
      let config = conversation.config().await;
      let environments = conversation.environment_selections().await;
@@ -119,7 +119,7 @@ index b0fa49b..b098d86 100644
      let config_snapshot = conversation.config_snapshot().await;
      let thread_settings_baseline = thread_settings_from_config_snapshot(&config_snapshot);
      let (mut listener_command_rx, listener_generation) = {
-@@ -271,10 +290,22 @@ pub(super) async fn ensure_listener_task_running(
+@@ -282,10 +301,22 @@ pub(super) async fn ensure_listener_task_running(
          thread_watch_manager,
          codex_home,
          turn_cost_worker,
@@ -142,7 +142,7 @@ index b0fa49b..b098d86 100644
          loop {
              tokio::select! {
                  biased;
-@@ -282,6 +313,32 @@ pub(super) async fn ensure_listener_task_running(
+@@ -293,6 +324,32 @@ pub(super) async fn ensure_listener_task_running(
                      // Listener was superseded or the thread is being torn down.
                      break;
                  }
@@ -176,7 +176,7 @@ index b0fa49b..b098d86 100644
                      let Some(listener_command) = listener_command else {
                          break;
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index e36ca14..adc8f36 100644
+index 8bdf6bbed..94ad0facb 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
 @@ -1105,6 +1105,7 @@ impl ThreadRequestProcessor {
@@ -230,10 +230,10 @@ index e36ca14..adc8f36 100644
              Err(err) => {
                  let error = match err.details() {
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index ab37525..10e6b0f 100644
+index 67946c8eb..4d2ad0dc8 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
-@@ -1685,6 +1685,7 @@ impl TurnRequestProcessor {
+@@ -1696,6 +1696,7 @@ impl TurnRequestProcessor {
              conversation_id,
              connection_id,
              raw_events_enabled,
@@ -242,7 +242,7 @@ index ab37525..10e6b0f 100644
          .await
      }
 diff --git a/codex-rs/app-server/src/thread_state.rs b/codex-rs/app-server/src/thread_state.rs
-index a19c41b..1bec93f 100644
+index a19c41b19..1bec93f1d 100644
 --- a/codex-rs/app-server/src/thread_state.rs
 +++ b/codex-rs/app-server/src/thread_state.rs
 @@ -143,6 +143,20 @@ impl ThreadState {
@@ -314,7 +314,7 @@ index a19c41b..1bec93f 100644
      fn note_thread_settings_reports_only_effective_changes() {
          let mut state = ThreadState::default();
 diff --git a/codex-rs/app-server/tests/suite/v2/skills_list.rs b/codex-rs/app-server/tests/suite/v2/skills_list.rs
-index 1b3d294..0f80449 100644
+index a72104a0b..d59d1f03f 100644
 --- a/codex-rs/app-server/tests/suite/v2/skills_list.rs
 +++ b/codex-rs/app-server/tests/suite/v2/skills_list.rs
 @@ -26,8 +26,12 @@ use codex_app_server_protocol::SkillsExtraRootsSetParams;
@@ -403,10 +403,10 @@ index 1b3d294..0f80449 100644
      let skill_dir = root.path().join("skills").join(name);
      std::fs::create_dir_all(&skill_dir)?;
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 9caf797..2c4b65f 100644
+index bc086f866..4362707b9 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1593,7 +1593,7 @@ impl Session {
+@@ -1617,7 +1617,7 @@ impl Session {
                  None
              }
              InitialHistory::Resumed(resumed_history) => {
@@ -415,7 +415,7 @@ index 9caf797..2c4b65f 100644
                  let rollout_items = resumed_history.history;
                  if matches!(
                      rollout_items.iter().rev().find_map(|item| match item {
-@@ -1651,7 +1651,7 @@ impl Session {
+@@ -1675,7 +1675,7 @@ impl Session {
                  None
              }
              InitialHistory::Forked(mut rollout_items) => {
@@ -426,7 +426,7 @@ index 9caf797..2c4b65f 100644
                      .await;
 diff --git a/codex-rs/core/src/session/resume_warmup_tests.rs b/codex-rs/core/src/session/resume_warmup_tests.rs
 new file mode 100644
-index 0000000..1f94d1c
+index 000000000..1f94d1cd6
 --- /dev/null
 +++ b/codex-rs/core/src/session/resume_warmup_tests.rs
 @@ -0,0 +1,228 @@
@@ -659,7 +659,7 @@ index 0000000..1f94d1c
 +    assert!(!context.model_info().slug.is_empty());
 +}
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 9452040..3f4894d 100644
+index 263f08f2f..a23d007c2 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
 @@ -48,8 +48,15 @@ use codex_sandboxing::SandboxType;
@@ -677,7 +677,7 @@ index 9452040..3f4894d 100644
 +    Shared<BoxFuture<'static, Result<(), Arc<tokio::task::JoinError>>>>;
  
  type McpToolApprovalMetadataMap =
-     HashMap<(String, String), std::sync::Weak<(Option<McpInvocation>, McpToolApprovalMetadata)>>;
+     HashMap<(String, String), std::sync::Weak<McpToolApprovalContext>>;
 @@ -87,6 +94,8 @@ pub(crate) struct Session {
      pub(super) mcp_prewarm_tx: async_channel::Sender<()>,
      pub(super) mcp_prewarm_shutdown: CancellationToken,
@@ -687,7 +687,7 @@ index 9452040..3f4894d 100644
      pub(crate) conversation: Arc<RealtimeConversationManager>,
      pub(crate) realtime_history: Option<Mutex<crate::realtime_history::RealtimeHistoryState>>,
      pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
-@@ -622,6 +631,11 @@ pub(crate) struct AppServerClientMetadata {
+@@ -625,6 +634,11 @@ pub(crate) struct AppServerClientMetadata {
      pub(crate) client_version: Option<String>,
  }
  
@@ -699,7 +699,7 @@ index 9452040..3f4894d 100644
  async fn warm_plugins_and_skills_for_session_init(
      config: Arc<Config>,
      plugins_manager: Arc<PluginsManager>,
-@@ -1475,18 +1489,6 @@ impl Session {
+@@ -1476,18 +1490,6 @@ impl Session {
              session_configuration.environments = turn_environments.selections();
              let resolved_environments = turn_environments.snapshot().await;
              let agents_md_manager = Arc::new(AgentsMdManager::new(instructions));
@@ -718,7 +718,7 @@ index 9452040..3f4894d 100644
              let thread_name_lookup = async {
                  if config.ephemeral && matches!(&initial_history, InitialHistory::Forked(_)) {
                      None
-@@ -1499,9 +1501,8 @@ impl Session {
+@@ -1500,9 +1502,8 @@ impl Session {
                  "session_init.thread_name_lookup",
                  otel.name = "session_init.thread_name_lookup",
              ));
@@ -729,7 +729,7 @@ index 9452040..3f4894d 100644
                  thread_name_lookup,
              );
              let (agents_md_result, instruction_warnings) = instruction_refresh;
-@@ -1513,13 +1514,6 @@ impl Session {
+@@ -1514,13 +1515,6 @@ impl Session {
                      msg: EventMsg::Warning(WarningEvent { message }),
                  }),
              );
@@ -743,7 +743,7 @@ index 9452040..3f4894d 100644
              session_configuration.thread_name = thread_name.clone();
              let mut state = SessionState::new_with_auto_compact_window_ids(
                  session_configuration.clone(),
-@@ -1810,6 +1804,37 @@ impl Session {
+@@ -1811,6 +1805,37 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
@@ -781,7 +781,7 @@ index 9452040..3f4894d 100644
              let sess = Arc::new(Session {
                  thread_id,
                  installation_id,
-@@ -1829,8 +1854,9 @@ impl Session {
+@@ -1830,8 +1855,9 @@ impl Session {
          mcp_elicitation_reviewer_handle: OnceLock::new(),
                  mcp_elicitation_lifecycle_handle: OnceLock::new(),
                  mcp_prewarm_tx,
@@ -793,10 +793,10 @@ index 9452040..3f4894d 100644
                  realtime_history: (session_configuration.history_mode == ThreadHistoryMode::Paginated
                      && services.live_thread.is_some())
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 4496c9b..dd40e0a 100644
+index 496114a11..86f6cf58c 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -6992,6 +6992,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -7084,6 +7084,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          mcp_prewarm_tx: async_channel::bounded(1).0,
          mcp_prewarm_shutdown: CancellationToken::new(),
          mcp_prewarm_task: std::sync::Mutex::new(None),
@@ -804,7 +804,7 @@ index 4496c9b..dd40e0a 100644
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
-@@ -9258,6 +9259,7 @@ where
+@@ -9352,6 +9353,7 @@ where
          mcp_prewarm_tx: async_channel::bounded(1).0,
          mcp_prewarm_shutdown: CancellationToken::new(),
          mcp_prewarm_task: std::sync::Mutex::new(None),
@@ -812,14 +812,14 @@ index 4496c9b..dd40e0a 100644
          conversation: Arc::new(RealtimeConversationManager::new()),
          realtime_history: None,
          active_turn: Mutex::new(None),
-@@ -13425,3 +13427,5 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+@@ -13555,3 +13557,5 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
          "rejection must not permit same-name ordinary-auth replacement in this session"
      );
  }
 +#[path = "resume_warmup_tests.rs"]
 +mod resume_warmup_tests;
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index 4db2849..b2b52d1 100644
+index f74f5558c..612914e82 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
 @@ -393,6 +393,10 @@ enum TurnContextBuildMode {
@@ -833,7 +833,7 @@ index 4db2849..b2b52d1 100644
      /// Captures recording settings without updating shared model/multi-agent metadata
      /// or discovering skills. Must not initialize context or capture an execution step.
      InjectItems,
-@@ -1315,6 +1319,21 @@ impl Session {
+@@ -1260,6 +1264,21 @@ impl Session {
          build_mode: TurnContextBuildMode,
          git_enrichment_policy: GitEnrichmentPolicy,
      ) -> Arc<TurnContext> {
@@ -855,7 +855,7 @@ index 4db2849..b2b52d1 100644
          let primary_turn_environment = turn_environments.primary();
          // TODO(anp): Migrate per-turn config and legacy TurnContext cwd consumers to PathUri so
          // a foreign primary environment does not fall back to the session's host cwd.
-@@ -1339,8 +1358,8 @@ impl Session {
+@@ -1284,8 +1303,8 @@ impl Session {
              )
              .await;
          let multi_agent_version = match build_mode {
@@ -866,7 +866,7 @@ index 4db2849..b2b52d1 100644
                  self.services
                      .thread_extension_data
                      .insert(model_info.clone());
-@@ -1354,22 +1373,28 @@ impl Session {
+@@ -1299,22 +1318,28 @@ impl Session {
              }
          };
          let plugins_input = per_turn_config.plugins_config_input();
@@ -907,7 +907,7 @@ index 4db2849..b2b52d1 100644
          {
              // Executor and orchestrator catalogs are supplied independently of host skills.
              HostSkillsSnapshot::new(Arc::new(SkillLoadOutcome::default()))
-@@ -1500,6 +1525,13 @@ impl Session {
+@@ -1445,6 +1470,13 @@ impl Session {
          self.new_default_turn_for(TurnContextBuildMode::Full).await
      }
  
@@ -922,10 +922,10 @@ index 4db2849..b2b52d1 100644
      /// This context must not be used to capture or execute a step.
      pub(crate) async fn new_inject_items_context(&self) -> Arc<TurnContext> {
 diff --git a/codex-rs/core/tests/suite/skills_extension.rs b/codex-rs/core/tests/suite/skills_extension.rs
-index a56b0a8..1932f52 100644
+index d3ca22f43..32e11429f 100644
 --- a/codex-rs/core/tests/suite/skills_extension.rs
 +++ b/codex-rs/core/tests/suite/skills_extension.rs
-@@ -67,6 +67,7 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;
+@@ -68,6 +68,7 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;
  use codex_protocol::user_input::UserInput;
  use codex_skills_extension::ExecutorSkillProvider;
  use codex_skills_extension::HostSkillProvider;
@@ -933,7 +933,7 @@ index a56b0a8..1932f52 100644
  use codex_skills_extension::SkillProvider;
  use codex_skills_extension::SkillProviderSource;
  use codex_skills_extension::SkillProviders;
-@@ -2866,6 +2867,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
+@@ -2867,6 +2868,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
          .with_config(configure_catalog_test);
      let test = builder.build_with_auto_env(&server).await?;
  

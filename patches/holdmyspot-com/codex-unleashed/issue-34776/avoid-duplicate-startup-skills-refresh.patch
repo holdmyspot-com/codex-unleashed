@@ -1,4 +1,4 @@
-From d3ed9a7af17b77e3d449b2650d65b5d4eb13edd8 Mon Sep 17 00:00:00 2001
+From 3fb8a12baa805a151a5b178a27e5cab75a2588ea Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 2 Oct 2026 23:48:56 -0400
 Subject: [PATCH] Avoid blocking startup on a duplicate skills refresh
@@ -30,7 +30,7 @@ Root just fmt-check passes. Evidence: .cat/work/reports/resume-attribution.
  6 files changed, 178 insertions(+), 4 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 69f2aeb..03b82a4 100644
+index 69f2aeb45..03b82a4ef 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -255,7 +255,9 @@ impl App {
@@ -45,10 +45,10 @@ index 69f2aeb..03b82a4 100644
              let result = fetch_skills_list(request_handle, cwd.clone())
                  .await
 diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
-index 9ff641e..f96a3ba 100644
+index 69a4ff5f3..d6c2fb72b 100644
 --- a/codex-rs/tui/src/app/startup.rs
 +++ b/codex-rs/tui/src/app/startup.rs
-@@ -946,6 +946,7 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1001,6 +1001,7 @@ See the Codex keymap documentation for supported actions and examples."
              app.chat_widget.open_hooks_browser(entry);
          }
          app.update_visible_history_rows(tui.terminal.last_known_screen_size);
@@ -56,7 +56,7 @@ index 9ff641e..f96a3ba 100644
          let initial_session_started_at = Instant::now();
          if let Some(started) = initial_started_thread {
              let thread_id = started.session.thread_id;
-@@ -1053,7 +1054,6 @@ See the Codex keymap documentation for supported actions and examples."
+@@ -1108,7 +1109,6 @@ See the Codex keymap documentation for supported actions and examples."
              event_stream_ms = %event_stream_started_at.elapsed().as_millis(),
              "tui startup initial frame scheduled"
          );
@@ -65,7 +65,7 @@ index 9ff641e..f96a3ba 100644
          // already has data and available reset credits can be surfaced, without
          // delaying the initial frame render.
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index c65cc64..008150e 100644
+index c65cc64ea..be3b2bbe1 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 @@ -209,3 +209,162 @@ async fn inline_startup_still_renders_with_pending_history() -> Result<()> {
@@ -198,7 +198,7 @@ index c65cc64..008150e 100644
 +                    short_description: None,
 +                    interface: None,
 +                    dependencies: None,
-+                    path: app.config.cwd.join("SKILL.md"),
++                    path: app.config.cwd.join("SKILL.md").into(),
 +                    scope: crate::test_support::skill_scope_user(),
 +                    enabled: true,
 +                    plugin_id: None,
@@ -232,18 +232,18 @@ index c65cc64..008150e 100644
 +    Ok(())
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 8cf2b12..eebfe42 100644
+index 583599517..2f4a05e1c 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -600,6 +600,7 @@ pub(crate) struct ChatWidget {
+@@ -603,6 +603,7 @@ pub(crate) struct ChatWidget {
      pending_collab_spawn_requests: HashMap<String, multi_agents::SpawnRequestSummary>,
      suppressed_exec_calls: HashSet<String>,
      skills_all: Vec<SkillMetadata>,
 +    startup_skills_refresh_cwd: Option<AbsolutePathBuf>,
-     skills_initial_state: Option<HashMap<AbsolutePathBuf, bool>>,
+     skills_initial_state: Option<HashMap<PathUri, bool>>,
      last_unified_wait: Option<UnifiedExecWaitState>,
      unified_exec_wait_streak: Option<UnifiedExecWaitStreak>,
-@@ -1808,6 +1809,11 @@ impl ChatWidget {
+@@ -1815,6 +1816,11 @@ impl ChatWidget {
          self.external_writer_view
      }
  
@@ -256,7 +256,7 @@ index 8cf2b12..eebfe42 100644
          self.submit_op(AppCommand::list_skills(
              vec![self.config.cwd.to_path_buf()],
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index cf78ed0..8baf412 100644
+index dc5adf7b7..e1537fbba 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
 @@ -118,6 +118,7 @@ impl ChatWidget {
@@ -268,10 +268,10 @@ index cf78ed0..8baf412 100644
              current_collaboration_mode,
              active_collaboration_mask,
 diff --git a/codex-rs/tui/src/chatwidget/session_flow.rs b/codex-rs/tui/src/chatwidget/session_flow.rs
-index 7a06295..8161499 100644
+index 97c7de5be..e64005c73 100644
 --- a/codex-rs/tui/src/chatwidget/session_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/session_flow.rs
-@@ -65,7 +65,11 @@ impl ChatWidget {
+@@ -66,7 +66,11 @@ impl ChatWidget {
              history_metadata.log_id,
              history_metadata.entry_count,
          );
@@ -284,7 +284,7 @@ index 7a06295..8161499 100644
          self.session_network_proxy = session.network_proxy.clone();
          let previous_thread_id = self.thread_id;
          let connector_scope_changed = previous_thread_id != Some(session.thread_id)
-@@ -228,7 +232,9 @@ impl ChatWidget {
+@@ -229,7 +233,9 @@ impl ChatWidget {
              self.bump_active_cell_revision();
          }
          self.transcript.saw_copy_source_this_turn = false;
