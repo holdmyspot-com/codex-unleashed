@@ -1,37 +1,204 @@
-name: tooling-ci
+name: macOS V8 staging diagnosis
 
 on:
-  push:
-    paths:
-      - tooling/**
-      - scripts/**
-      - .github/actions/setup-tooling/**
-      - .github/workflows/tooling-ci.yml
-  pull_request:
-    paths:
-      - tooling/**
-      - scripts/**
-      - .github/actions/setup-tooling/**
-      - .github/workflows/tooling-ci.yml
+  workflow_call:
+    inputs:
+      upstream_ref:
+        required: false
+        type: string
   workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
+        required: false
+        type: string
 
-permissions:
-  contents: read
+concurrency:
+  group: v8-macos-diagnosis-${{ github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
-  verify:
-    name: Maven verification (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      v8_version: ${{ steps.v8_version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+
+      - uses: ./.github/actions/prepare-patched-upstream
         with:
-          node-version: 22
+          upstream-ref: ${{ inputs.upstream_ref }}
+
+      - name: Resolve exact v8 crate version
+        id: v8_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version .)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.variant }} ${{ matrix.target }}
+    needs: metadata
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            bazel_config: ci-macos
+            platform: macos_arm64
+            sandbox: false
+            target: aarch64-apple-darwin
+            v8_cpu: arm64
+            variant: release
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref }}
+
+      - name: Prepare Bazel CI
+        id: prepare_bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+          cache-scope: v8-canary-build
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - uses: dtolnay/rust-toolchain@stable
-      - uses: ./.github/actions/setup-tooling
+
+      - name: Build Bazel V8 release pair
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          PLATFORM: ${{ matrix.platform }}
+          SANDBOX: ${{ matrix.sandbox }}
+          TARGET: ${{ matrix.target }}
+          V8_CPU: ${{ matrix.v8_cpu }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          target_suffix="${TARGET//-/_}"
+          pair_kind="release_pair"
+          if [[ "${SANDBOX}" == "true" ]]; then
+            pair_kind="sandbox_release_pair"
+          fi
+          pair_target="//third_party/v8:rusty_v8_${pair_kind}_${target_suffix}"
+          bazel_args=(
+            build
+            --remote_download_toplevel
+            --platforms="@llvm//platforms:${PLATFORM}"
+            --config=rusty-v8-upstream-libcxx
+            "--config=v8-target-${V8_CPU}"
+            "${pair_target}"
+            --build_metadata=COMMIT_SHA=$(git rev-parse HEAD)
+          )
+          if [[ "${SANDBOX}" != "true" ]]; then
+            bazel_args+=(--config=v8-release-compat)
+          fi
+          "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy \
+            --noexperimental_remote_repo_contents_cache \
+            "${bazel_args[@]}" \
+            "--config=${{ matrix.bazel_config }}"
+
+      - name: Stage release pair
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          BAZEL_CONFIG: ${{ matrix.bazel_config }}
+          PLATFORM: ${{ matrix.platform }}
+          SANDBOX: ${{ matrix.sandbox }}
+          TARGET: ${{ matrix.target }}
+          V8_CPU: ${{ matrix.v8_cpu }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          stage_args=(
+            --platform "${PLATFORM}"
+            --target "${TARGET}"
+            --output-dir "dist/${TARGET}"
+            --bazel-config "${BAZEL_CONFIG}"
+            --bazel-config "v8-target-${V8_CPU}"
+          )
+          if [[ "${SANDBOX}" == "true" ]]; then
+            stage_args+=(--sandbox)
+          else
+            stage_args+=(--bazel-config v8-release-compat)
+          fi
+          diagnose() {
+            while true; do
+              date -u
+              ps -axo pid,ppid,etime,command | rg 'bazel|java|codex-tooling' || true
+              find "${TMPDIR:-$RUNNER_TEMP}" -maxdepth 3 -type f -path '*/command-capture-*/stderr' -exec tail -n 60 {} \;
+              sleep 30
+            done
+          }
+          diagnose &
+          monitor=$!
+          trap 'kill "$monitor"; wait "$monitor" || true' EXIT
+          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . stage-release-pair "${stage_args[@]}"
+
+      - name: Smoke test staged artifact with Cargo
+        env:
+          SANDBOX: ${{ matrix.sandbox }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          host_arch="$(uname -m)"
+          case "${TARGET}:${host_arch}" in
+            x86_64-apple-darwin:x86_64|aarch64-apple-darwin:arm64|x86_64-unknown-linux-gnu:x86_64|aarch64-unknown-linux-gnu:aarch64)
+              ;;
+            *)
+              echo "Skipping non-native Cargo smoke for ${TARGET} on ${host_arch}."
+              exit 0
+              ;;
+          esac
+          archive="$(find "dist/${TARGET}" -maxdepth 1 -type f -name 'librusty_v8_*.a.gz' -print -quit)"
+          binding="$(find "dist/${TARGET}" -maxdepth 1 -type f -name 'src_binding_*.rs' -print -quit)"
+          if [[ -z "${archive}" || -z "${binding}" ]]; then
+            echo "Missing staged archive or binding for ${TARGET}." >&2
+            exit 1
+          fi
+          cargo_args=(test -p codex-v8-poc)
+          if [[ "${SANDBOX}" == "true" ]]; then
+            cargo_args+=(--features sandbox)
+          fi
+          (
+            cd codex-rs
+            CARGO_TARGET_DIR="${RUNNER_TEMP}/rusty-v8-cargo-smoke-${TARGET}-${SANDBOX}" \
+            RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/upstream/${archive}" \
+            RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/upstream/${binding}" \
+            cargo "${cargo_args[@]}"
+          )
+
+      - name: Upload staged artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: v8-canary-${{ needs.metadata.outputs.v8_version }}-${{ matrix.variant }}-${{ matrix.target }}
+          path: upstream/dist/${{ matrix.target }}/*
+          retention-days: 1
+
+      - name: Save Bazel repository cache
+        if: ${{ always() && !cancelled() }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
+          key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
