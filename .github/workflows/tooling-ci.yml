@@ -137,9 +137,16 @@ jobs:
             stage_args+=(--bazel-config v8-release-compat)
           fi
           diagnose() {
+            pass=0
             while true; do
+              pass=$((pass + 1))
+              if [[ "$pass" == 5 ]]; then
+                server_pid="$(cat "$BAZEL_OUTPUT_BASE/server/server.pid.txt")"
+                sample "$server_pid" 5 -file "$RUNNER_TEMP/bazel-stage-stack.txt" || true
+                cat "$RUNNER_TEMP/bazel-stage-stack.txt" || true
+              fi
               date -u
-              ps -axo pid,ppid,etime,command | rg 'bazel|java|codex-tooling' || true
+              ps -axo pid,ppid,etime,command | grep -E 'bazel|java|codex-tooling' || true
               find "${TMPDIR:-$RUNNER_TEMP}" -maxdepth 3 -type f -path '*/command-capture-*/stderr' -exec tail -n 60 {} \;
               sleep 30
             done
