@@ -1,4 +1,4 @@
-name: macOS V8 staging diagnosis with Bazel 9.2.0
+name: macOS V8 staging gRPC diagnosis
 
 on:
   workflow_call:
@@ -80,6 +80,15 @@ jobs:
           python-version: "3.12"
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable Bazel remote diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e upstream/user.bazelrc
+          mkdir -p "$RUNNER_TEMP/v8-remote-diagnostics"
+          printf 'build --remote_grpc_log=%s/v8-remote-diagnostics/bazel-remote-grpc.log\nbuild --execution_log_compact_file=%s/v8-remote-diagnostics/execution_log.binpb.zst\n' "$RUNNER_TEMP" "$RUNNER_TEMP" > upstream/user.bazelrc
+          cp upstream/user.bazelrc "$RUNNER_TEMP/v8-remote-diagnostics/owned-user.bazelrc"
 
       - name: Build Bazel V8 release pair
         env:
@@ -213,6 +222,25 @@ jobs:
         with:
           path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
           key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
+
+      - name: Upload remote diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: v8-macos-remote-diagnostics
+          path: ${{ runner.temp }}/v8-remote-diagnostics/
+          retention-days: 1
+
+      - name: Remove owned diagnostic files
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/v8-remote-diagnostics/owned-user.bazelrc" ]]; then
+            cmp upstream/user.bazelrc "$RUNNER_TEMP/v8-remote-diagnostics/owned-user.bazelrc"
+            rm upstream/user.bazelrc
+            rm -rf -- "$RUNNER_TEMP/v8-remote-diagnostics"
+          fi
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
