@@ -1,4 +1,4 @@
-name: macOS V8 staging gRPC diagnosis
+name: macOS V8 staging two-job comparison
 
 on:
   workflow_call:
@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           test ! -e upstream/user.bazelrc
           mkdir -p "$RUNNER_TEMP/v8-remote-diagnostics"
-          printf 'build --remote_grpc_log=%s/v8-remote-diagnostics/bazel-remote-grpc.log\nbuild --execution_log_compact_file=%s/v8-remote-diagnostics/execution_log.binpb.zst\n' "$RUNNER_TEMP" "$RUNNER_TEMP" > upstream/user.bazelrc
+          printf 'build --remote_grpc_log=%s/v8-remote-diagnostics/bazel-remote-grpc.log\nbuild --execution_log_compact_file=%s/v8-remote-diagnostics/execution_log.binpb.zst\nbuild:v8-macos-diagnosis --jobs=2\n' "$RUNNER_TEMP" "$RUNNER_TEMP" > upstream/user.bazelrc
           cp upstream/user.bazelrc "$RUNNER_TEMP/v8-remote-diagnostics/owned-user.bazelrc"
 
       - name: Build Bazel V8 release pair
@@ -122,7 +122,7 @@ jobs:
           "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy \
             --noexperimental_remote_repo_contents_cache \
             "${bazel_args[@]}" \
-            "--config=${{ matrix.bazel_config }}"
+            "--config=${{ matrix.bazel_config }}" --config=v8-macos-diagnosis
 
       - name: Stage release pair
         env:
@@ -142,6 +142,7 @@ jobs:
             --output-dir "dist/${TARGET}"
             --bazel-config "${BAZEL_CONFIG}"
             --bazel-config "v8-target-${V8_CPU}"
+            --bazel-config v8-macos-diagnosis
           )
           if [[ "${SANDBOX}" == "true" ]]; then
             stage_args+=(--sandbox)
@@ -172,6 +173,28 @@ jobs:
           monitor=$!
           trap 'kill "$monitor"; wait "$monitor" || true' EXIT
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . stage-release-pair "${stage_args[@]}"
+
+      - name: Capture Bazel process resources
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          diagnostic_dir="$RUNNER_TEMP/v8-remote-diagnostics"
+          mkdir -p "$diagnostic_dir"
+          {
+            date -u
+            ulimit -a
+            sysctl kern.maxproc kern.maxprocperuid
+            vm_stat
+            if [[ -f "$BAZEL_OUTPUT_BASE/server/server.pid.txt" ]]; then
+              server_pid="$(cat "$BAZEL_OUTPUT_BASE/server/server.pid.txt")"
+              ps -M -p "$server_pid"
+              "$JAVA_HOME/bin/jcmd" "$server_pid" Thread.print -l
+            fi
+          } > "$diagnostic_dir/process-resources.log" 2>&1
+          if [[ -f "$BAZEL_OUTPUT_BASE/server/jvm.out" ]]; then
+            cp "$BAZEL_OUTPUT_BASE/server/jvm.out" "$diagnostic_dir/jvm.out"
+          fi
 
       - name: Smoke test staged artifact with Cargo
         env:
