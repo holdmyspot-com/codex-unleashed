@@ -142,8 +142,9 @@ jobs:
               pass=$((pass + 1))
               if [[ "$pass" == 5 ]]; then
                 server_pid="$(cat "$BAZEL_OUTPUT_BASE/server/server.pid.txt")"
-                sample "$server_pid" 5 -file "$RUNNER_TEMP/bazel-stage-stack.txt" || true
-                cat "$RUNNER_TEMP/bazel-stage-stack.txt" || true
+                kill -QUIT "$server_pid"
+                "$JAVA_HOME/bin/jcmd" "$server_pid" Thread.print -l || true
+                tail -n 2500 "$BAZEL_OUTPUT_BASE/server/jvm.out" || true
               fi
               date -u
               ps -axo pid,ppid,etime,command | grep -E 'bazel|java|codex-tooling' || true
