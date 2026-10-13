@@ -254,6 +254,7 @@ public final class NpmPackagesTest
 				  setImmediate(() => {
 				    child.emit('exit', 7, null);
 				    writeSync(1, 'child resources closed\\n');
+				    queueMicrotask(() => writeSync(1, 'pending cleanup finished\\n'));
 				    child.emit('close', 7, null);
 				  });
 				  return child;
@@ -263,7 +264,7 @@ public final class NpmPackagesTest
 			SystemCommands.Result result = capture(List.of("node", "--import", preload.toUri().toString(),
 				main.resolve("bin/codex.js").toString()), root, root, Map.of());
 			assertEquals(result.status(), 7, result.stderr());
-			assertEquals(result.stdout(), "child resources closed\n");
+			assertEquals(result.stdout(), "child resources closed\npending cleanup finished\n");
 		}
 		finally
 		{
