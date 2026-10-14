@@ -348,6 +348,26 @@ The same probe command compiles C and C++, creates its static archive, links,
 and runs the executable without requiring an archiver on the worker's `PATH`.
 The generated build script and Meson log must identify the declared `llvm-ar`.
 
+## Rust runtime selection on Darwin
+
+`upgrade-native-rust-runtime-selection.patch` removes C++ compiler-runtime
+selection from Rust's explicit-runtime links. Rust supplies its runtime archives
+and disables default libraries; the unused selection otherwise makes LLVM 23
+reject object-only Darwin links. Compiler and linker warnings remain fatal.
+Apply the issue #60 toolchain patch and this issue's LLVM driver fixtures first.
+
+```sh
+bazel build //tools/build-warnings/llvm-driver:linked_macro --platforms=@llvm//platforms:macos_aarch64
+bazel build //tools/build-warnings/llvm-driver:linked_macro --platforms=@llvm//platforms:macos_x86_64
+bazel test //tools/build-warnings/llvm-driver:all
+just fmt-check
+```
+
+Both Darwin cross-links must pass. The runtime test loads the linked procedural
+macro during compilation and checks its expansion when executed. Run it on
+native macOS hosts to establish macOS loading and runtime behavior; a Linux
+execution covers only the Linux branch. The full platform build remains required.
+
 ## Native voice Meson resources
 
 `native-voice-meson-resource-directory.patch` preserves the declared linker

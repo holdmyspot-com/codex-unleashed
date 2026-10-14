@@ -1,0 +1,98 @@
+From 869484093f88ce1e2a9898c4308425c48af41fdc Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 18:23:15 +0000
+Subject: [PATCH] Omit inactive C++ runtime selection from Rust links
+
+Rust disables implicit runtime libraries and supplies its own archives.
+Do not pass the inert compiler-rt selection to Clang object-only links,
+which otherwise fail with unused-command-line-argument on Darwin. Keep
+compiler and linker warning enforcement enabled.
+
+Refs https://github.com/holdmyspot-com/codex-unleashed/issues/61
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+Prerequisites: issue-60 toolchain patch and issue-61 LLVM driver fixtures.
+
+Red: the linked_macro regression and app-server-protocol-noop-macros
+fail cross-linking for macos_aarch64 at -rtlib=compiler-rt under -Werror.
+Green: both targets link, all three Linux driver tests pass, and the
+maintained just fmt-check passes. Emitted and hosted platform verification
+remain separate gates in macos-runtime-verification.json.
+---
+ patches/rules_rust_unwind_driver_selection.patch  |  6 ++++--
+ tools/build-warnings/llvm-driver/BUILD.bazel      | 15 +++++++++++++++
+ tools/build-warnings/llvm-driver/linked_macro.rs  |  6 ++++++
+ .../llvm-driver/proc_macro_link_test.rs           |  4 ++++
+ 4 files changed, 29 insertions(+), 2 deletions(-)
+ create mode 100644 tools/build-warnings/llvm-driver/linked_macro.rs
+ create mode 100644 tools/build-warnings/llvm-driver/proc_macro_link_test.rs
+
+diff --git a/patches/rules_rust_unwind_driver_selection.patch b/patches/rules_rust_unwind_driver_selection.patch
+index 6502f7130..dbe62a77c 100644
+--- a/patches/rules_rust_unwind_driver_selection.patch
++++ b/patches/rules_rust_unwind_driver_selection.patch
+@@ -2,14 +2,16 @@ diff --git a/rust/private/rustc.bzl b/rust/private/rustc.bzl
+ index 57b239f..e1c7f0a 100644
+ --- a/rust/private/rustc.bzl
+ +++ b/rust/private/rustc.bzl
+-@@ -424,6 +424,10 @@ def get_linker_and_args(ctx, crate_type, toolchain, cc_toolchain, feature_config
++@@ -424,6 +424,12 @@ def get_linker_and_args(ctx, crate_type, toolchain, cc_toolchain, feature_config
+              action_name = action_name,
+              variables = link_variables,
+          ))
+ +        # WORKAROUND: https://github.com/hermeticbuild/hermetic-llvm/issues/304
+ +        # Rust disables default libraries and supplies its unwind runtime.
+ +        # C++ unwind selection is inert with -nodefaultlibs and makes Clang warn.
+-+        link_args = [arg for arg in link_args if arg != "--unwindlib=none"]
+++        # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++        # Rust supplies its runtime; -rtlib selection is also unused on Darwin.
+++        link_args = [arg for arg in link_args if arg not in ["--unwindlib=none", "-rtlib=compiler-rt"]]
+          link_env = cc_common.get_environment_variables(
+              feature_configuration = feature_configuration,
+              action_name = action_name,
+diff --git a/tools/build-warnings/llvm-driver/BUILD.bazel b/tools/build-warnings/llvm-driver/BUILD.bazel
+index 260dd6659..736bfb1c1 100644
+--- a/tools/build-warnings/llvm-driver/BUILD.bazel
++++ b/tools/build-warnings/llvm-driver/BUILD.bazel
+@@ -1,5 +1,20 @@
+ load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+ load("@bazel_skylib//rules:write_file.bzl", "write_file")
++load("@rules_rust//rust:defs.bzl", "rust_proc_macro", "rust_test")
++
++rust_proc_macro(
++    name = "linked_macro",
++    srcs = ["linked_macro.rs"],
++    edition = "2024",
++)
++
++rust_test(
++    name = "proc_macro_link_test",
++    size = "small",
++    srcs = ["proc_macro_link_test.rs"],
++    edition = "2024",
++    proc_macro_deps = [":linked_macro"],
++)
+
+ genrule(
+     name = "windows_nolibc_link",
+diff --git a/tools/build-warnings/llvm-driver/linked_macro.rs b/tools/build-warnings/llvm-driver/linked_macro.rs
+new file mode 100644
+index 000000000..d0dff9d6c
+--- /dev/null
++++ b/tools/build-warnings/llvm-driver/linked_macro.rs
+@@ -0,0 +1,6 @@
++use proc_macro::TokenStream;
++
++#[proc_macro]
++pub fn identity(input: TokenStream) -> TokenStream {
++    input
++}
+diff --git a/tools/build-warnings/llvm-driver/proc_macro_link_test.rs b/tools/build-warnings/llvm-driver/proc_macro_link_test.rs
+new file mode 100644
+index 000000000..753f9b328
+--- /dev/null
++++ b/tools/build-warnings/llvm-driver/proc_macro_link_test.rs
+@@ -0,0 +1,4 @@
++#[test]
++fn loads_and_expands_linked_macro() {
++    assert_eq!(linked_macro::identity!(21 * 2), 42);
++}
