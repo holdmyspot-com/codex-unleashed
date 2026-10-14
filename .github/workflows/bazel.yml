@@ -119,7 +119,7 @@ jobs:
             "${bazel_resource_args[@]}" \
             --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings \
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
             -- \
             "${bazel_targets[@]}"
 
@@ -211,8 +211,8 @@ jobs:
             -- \
             build \
             --skip_incompatible_explicit_targets \
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
-            --build_metadata=TAG_windows_test_shard=${BAZEL_TEST_SHARD} \
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+            "--build_metadata=TAG_windows_test_shard=${BAZEL_TEST_SHARD}" \
             -- \
             "${selected_targets[@]}"
 
@@ -296,7 +296,7 @@ jobs:
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
             --test_tag_filters=-argument-comment-lint
             --test_verbose_timeout_warnings
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
             --build_metadata=TAG_windows_native_main=true
           )
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
@@ -369,7 +369,7 @@ jobs:
           cd upstream
           bazel_clippy_args=(
             --config=clippy
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
             --build_metadata=TAG_job=clippy
           )
           bazel_wrapper_args=()
@@ -476,7 +476,7 @@ jobs:
             --compilation_mode=fastbuild
             --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no
             --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no
-            --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
             --build_metadata=TAG_job=verify-release-build
             --build_metadata=TAG_rust_debug_assertions=off
           )

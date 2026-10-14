@@ -228,32 +228,36 @@ jobs:
             fi
             if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
               echo "Patched release ${patched_tag} already exists."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-              echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-              echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-              echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}" >> "${GITHUB_OUTPUT}"
+              {
+                echo "should_release=false"
+                echo "upstream_tag=${upstream_tag}"
+                echo "upstream_sha=${upstream_sha}"
+                echo "patched_tag=${patched_tag}"
+                echo "release_name=${release_name}"
+                echo "build_date=${build_date}"
+                echo "patch_files=${patch_files}"
+                echo "supported_targets=${supported_targets}"
+                echo "patch_hash=${patch_hash}"
+                echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}"
+              } >> "${GITHUB_OUTPUT}"
               exit 0
             fi
 
             echo "Reusing final artifacts from build run ${INPUT_ARTIFACT_RUN_ID} for ${patched_tag}."
-            echo "build_number=${patched_tag##*+}" >> "${GITHUB_OUTPUT}"
-            echo "should_release=true" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-            echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-            echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-            echo "build_metadata=${build_metadata}" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}" >> "${GITHUB_OUTPUT}"
+            {
+              echo "build_number=${patched_tag##*+}"
+              echo "should_release=true"
+              echo "upstream_tag=${upstream_tag}"
+              echo "upstream_sha=${upstream_sha}"
+              echo "patched_tag=${patched_tag}"
+              echo "release_name=${release_name}"
+              echo "build_date=${build_date}"
+              echo "patch_files=${patch_files}"
+              echo "supported_targets=${supported_targets}"
+              echo "patch_hash=${patch_hash}"
+              echo "build_metadata=${build_metadata}"
+              echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}"
+            } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -278,16 +282,18 @@ jobs:
 
           if [[ "${upstream_prerelease}" == "true" ]]; then
             echo "Upstream release ${upstream_tag} is a prerelease or draft; skipping."
-            echo "should_release=false" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "upstream_sha=" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=" >> "${GITHUB_OUTPUT}"
-            echo "release_name=" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=" >> "${GITHUB_OUTPUT}"
-            echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
+            {
+              echo "should_release=false"
+              echo "upstream_tag=${upstream_tag}"
+              echo "upstream_sha="
+              echo "patched_tag="
+              echo "release_name="
+              echo "build_date=${build_date}"
+              echo "patch_files="
+              echo "supported_targets="
+              echo "patch_hash="
+              echo "artifact_run_id="
+            } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -306,13 +312,15 @@ jobs:
 
           if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
             echo "Patched release ${patched_tag} already exists."
-            echo "should_release=false" >> "${GITHUB_OUTPUT}"
-            echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-            echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-            echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-            echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')" >> "${GITHUB_OUTPUT}"
-            echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-            echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
+            {
+              echo "should_release=false"
+              echo "upstream_tag=${upstream_tag}"
+              echo "patched_tag=${patched_tag}"
+              echo "build_date=${build_date}"
+              echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
+              echo "patch_hash=${patch_hash}"
+              echo "artifact_run_id="
+            } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -327,14 +335,16 @@ jobs:
             )"
             if [[ -n "${failure_marker_id}" ]]; then
               echo "A release attempt for ${upstream_tag} and these sources failed within the retained one-day window; skipping automatic retry. Start a manual run with automatic=false to retry."
-              echo "should_release=false" >> "${GITHUB_OUTPUT}"
-              echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-              echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-              echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-              echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')" >> "${GITHUB_OUTPUT}"
-              echo "supported_targets=" >> "${GITHUB_OUTPUT}"
-              echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-              echo "artifact_run_id=" >> "${GITHUB_OUTPUT}"
+              {
+                echo "should_release=false"
+                echo "upstream_tag=${upstream_tag}"
+                echo "patched_tag=${patched_tag}"
+                echo "build_date=${build_date}"
+                echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
+                echo "supported_targets="
+                echo "patch_hash=${patch_hash}"
+                echo "artifact_run_id="
+              } >> "${GITHUB_OUTPUT}"
               exit 0
             fi
           fi
@@ -396,18 +406,20 @@ jobs:
             '{schema_version: 2, artifact_run_id: $artifact_run_id, upstream_tag: $upstream_tag, upstream_sha: $upstream_sha, patched_tag: $patched_tag, release_name: $release_name, build_date: $build_date, patch_files: $patch_files, patch_hash: $patch_hash, supported_targets: $supported_targets, build_metadata: $build_metadata}' \
             > release-metadata.json
 
-          echo "should_release=true" >> "${GITHUB_OUTPUT}"
-          echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
-          echo "build_number=${build_number}" >> "${GITHUB_OUTPUT}"
-          echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
-          echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
-          echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
-          echo "build_date=${build_date}" >> "${GITHUB_OUTPUT}"
-          echo "patch_files=${patch_files}" >> "${GITHUB_OUTPUT}"
-          echo "supported_targets=${supported_targets}" >> "${GITHUB_OUTPUT}"
-          echo "patch_hash=${patch_hash}" >> "${GITHUB_OUTPUT}"
-          echo "build_metadata=${build_metadata}" >> "${GITHUB_OUTPUT}"
-          echo "artifact_run_id=${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "should_release=true"
+            echo "upstream_tag=${upstream_tag}"
+            echo "build_number=${build_number}"
+            echo "upstream_sha=${upstream_sha}"
+            echo "patched_tag=${patched_tag}"
+            echo "release_name=${release_name}"
+            echo "build_date=${build_date}"
+            echo "patch_files=${patch_files}"
+            echo "supported_targets=${supported_targets}"
+            echo "patch_hash=${patch_hash}"
+            echo "build_metadata=${build_metadata}"
+            echo "artifact_run_id=${GITHUB_RUN_ID}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Reserve and verify release source tag
         id: source
@@ -932,16 +944,18 @@ jobs:
       - name: Strip Unix release binaries
         if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'apple-darwin') }}
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          release_dir="${CARGO_TARGET_DIR}/${{ matrix.target }}/release"
+          release_dir="${CARGO_TARGET_DIR}/${TARGET}/release"
           for binary in ${{ matrix.binaries }}; do
             binary_path="${release_dir}/${binary}"
             if [[ ! -f "${binary_path}" ]]; then
               echo "Binary ${binary_path} not found" >&2
               exit 1
             fi
-            if [[ "${{ matrix.target }}" == *linux-musl ]]; then
+            if [[ "${TARGET}" == *linux-musl ]]; then
               # build-release.sh strips bwrap before calculating its embedded
               # digest. The other binaries are stripped here. Do not add a
               # GNU debug link: the release does not publish the referenced
