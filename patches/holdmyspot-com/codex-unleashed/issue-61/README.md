@@ -351,19 +351,23 @@ The generated build script and Meson log must identify the declared `llvm-ar`.
 ## Rust runtime selection on Darwin
 
 `upgrade-native-rust-runtime-selection.patch` removes C++ compiler-runtime
-selection from Rust's explicit-runtime links. Rust supplies its runtime archives
-and disables default libraries; the unused selection otherwise makes LLVM 23
-reject object-only Darwin links. Compiler and linker warnings remain fatal.
+selection from Rust's explicit-runtime links on Darwin. Rust supplies its runtime
+archives and disables default libraries there; the unused selection otherwise
+makes LLVM 23 reject object-only Darwin links. Windows GNU retains compiler-rt
+selection because Rust's `-nolibc` pre-link arguments still require it.
+Compiler and linker warnings remain fatal.
 Apply the issue #60 toolchain patch and this issue's LLVM driver fixtures first.
 
 ```sh
 bazel build //tools/build-warnings/llvm-driver:linked_macro --platforms=@llvm//platforms:macos_aarch64
 bazel build //tools/build-warnings/llvm-driver:linked_macro --platforms=@llvm//platforms:macos_x86_64
+bazel build //tools/build-warnings/llvm-driver:windows_gnullvm_link_probe --platforms=//:windows_x86_64_gnullvm
 bazel test //tools/build-warnings/llvm-driver:all
 just fmt-check
 ```
 
-Both Darwin cross-links must pass. The test loads the procedural macro on the
+Both Darwin cross-links and the Windows GNU Rust binary link must pass.
+The test loads the procedural macro on the
 compiler's execution platform and checks its expansion on the test platform.
 Remote compilation can use Linux even when the target platform is macOS, so
 cross-links and that test do not establish native macOS macro loading. The full
