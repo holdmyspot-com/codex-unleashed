@@ -13,7 +13,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 /**
- * Verifies release-specific build numbering through the maintained prepare workflow command.
+ * Verifies build numbering and automatic retry decisions through release preparation.
  */
 public final class ReleaseBuildNumberWorkflowTest
 {
@@ -25,7 +25,7 @@ public final class ReleaseBuildNumberWorkflowTest
 	}
 
 	/**
-	 * Keeps each upstream version's numbering independent and accepts explicit build overrides.
+	 * Keeps version numbering independent and skips automatic retries for a retained failure marker.
 	 *
 	 * @throws IOException if workflow or fixture access fails
 	 * @throws URISyntaxException if the fixture class location is invalid
@@ -46,8 +46,9 @@ public final class ReleaseBuildNumberWorkflowTest
 			Path runtime = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), runtime.toString()});
 			String command = WorkflowCommands.readStepCommand("prepare", "Determine upstream release");
-			for (String[] scenario : new String[][]{{"rust-v0.161.0", "", "1"}, {"rust-v0.160.0", "", "30"},
-				{"rust-v0.161.0", "7", "7"}})
+			for (String[] scenario : new String[][]{{"rust-v0.161.0", "", "1", "false"},
+				{"rust-v0.160.0", "", "30", "false"}, {"rust-v0.161.0", "7", "7", "false"},
+				{"rust-v0.161.0", "", "1", "true"}})
 			{
 				Path output = root.resolve("output");
 				Files.writeString(output, "");
@@ -62,6 +63,7 @@ public final class ReleaseBuildNumberWorkflowTest
 				environment.put("CODEX_UNLEASHED_TOOLING", runtime.resolve("bin/codex-tooling").toString());
 				environment.put("INPUT_UPSTREAM_TAG", scenario[0]);
 				environment.put("INPUT_BUILD_NUMBER", scenario[1]);
+				environment.put("INPUT_AUTOMATIC", scenario[3]);
 				for (String name : new String[]{"INPUT_ARTIFACT_RUN_ID", "INPUT_FOCUS_TARGET", "INPUT_FOCUS_BUNDLE"})
 					environment.put(name, "");
 				environment.put("GITHUB_EVENT_NAME", "workflow_dispatch");
@@ -76,6 +78,7 @@ public final class ReleaseBuildNumberWorkflowTest
 					assertEquals(process.waitFor(), 0, Files.readString(log) + "\nWorkflow: " + workflow);
 				}
 				assertTrue(Files.readString(output).contains("patched_tag=" + scenario[0] + "+" + scenario[2] + "\n"));
+				assertTrue(Files.readString(output).contains("should_release=false\n"));
 			}
 		}
 		finally

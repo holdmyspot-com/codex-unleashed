@@ -328,8 +328,8 @@ jobs:
             failure_marker_id="$(
               gh api \
                 "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
-                --paginate --slurp \
-                -q '[.[].artifacts[]
+                --paginate --slurp |
+                jq -r '[.[].artifacts[]
                   | select(.expired == false and .name == env.failure_marker_name)
                   | .id] | first // empty'
             )"
