@@ -1,0 +1,26 @@
+From d6dbb24edf64459c3b6acd4f8f43597119fc9343 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 22:38:26 +0000
+Subject: [PATCH] Build the Meson probe helper only for its execution platform
+
+The public probe genrule requests its executable as a tool. Prevent wildcard target expansion from also requesting that helper in the target configuration, which can select unsupported MSVC libc++ dependencies or create a cross-compiled executable that Meson cannot run.
+
+Controlled Windows-target wildcard analysis fails at the directly requested helper before this change and passes with only the two public targets afterward. Explicit Linux probe execution remains required; native Windows and macOS CI acceptance remains pending.
+---
+ tools/build-warnings/meson/BUILD.bazel | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tools/build-warnings/meson/BUILD.bazel b/tools/build-warnings/meson/BUILD.bazel
+index 7526df32d..19d7645c0 100644
+--- a/tools/build-warnings/meson/BUILD.bazel
++++ b/tools/build-warnings/meson/BUILD.bazel
+@@ -30,6 +30,9 @@ foreign_cc_rule_variant(
+     out_static_libs = [],
+     postfix_script = 'mkdir -p "$$INSTALLDIR/bin"; cp "$$BUILD_TMPDIR/resource-probe" "$$INSTALLDIR/bin/resource-probe"',
+     rule = meson,
++    # The genrule builds this executable for its execution platform. Wildcard
++    # target builds would also compile it for the requested target platform.
++    tags = ["manual"],
+     target_args = {"compile": ["resource-probe:executable"]},
+     targets = ["compile"],
+     toolchain = "//third_party/voice:pkg_config_bootstrap_toolchain",

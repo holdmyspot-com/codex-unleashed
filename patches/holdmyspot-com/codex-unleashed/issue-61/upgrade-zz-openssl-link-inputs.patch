@@ -1,0 +1,63 @@
+From e84d2728bc1376d26888ca88dfe7fc83e0add554 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 18:37:41 -0400
+Subject: [PATCH] Declare the OpenSSL installation as a Rust linker input
+
+The openssl-sys build script emits a library search path inside the installation tree. Make that tree available in the probe linker action instead of relying on another action leaving it in an unsandboxed checkout. Add an analysis regression that fails without the declared input.
+
+TDD: rust_install_inputs_test fails before compile_data is added and passes afterward. Darwin ARM64 cross-link and maintained just fmt-check pass locally; native hosted macOS acceptance remains pending.
+---
+ tools/build-warnings/openssl/BUILD.bazel     |  8 ++++++++
+ tools/build-warnings/openssl/inputs_test.bzl | 20 ++++++++++++++++++++
+ 2 files changed, 28 insertions(+)
+ create mode 100644 tools/build-warnings/openssl/inputs_test.bzl
+
+diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
+index 70e504c00..af8b303d0 100644
+--- a/tools/build-warnings/openssl/BUILD.bazel
++++ b/tools/build-warnings/openssl/BUILD.bazel
+@@ -1,10 +1,18 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@rules_rs//rs:rust_test.bzl", "rust_test")
++load(":inputs_test.bzl", "openssl_install_inputs_test")
++
++openssl_install_inputs_test(
++    name = "rust_install_inputs_test",
++    size = "small",
++    target_under_test = ":rust_bindings_test",
++)
+
+ rust_test(
+     name = "rust_bindings_test",
+     size = "small",
+     srcs = ["rust_bindings_test.rs"],
++    compile_data = ["@openssl//:gen_dir"],
+     edition = "2024",
+     deps = ["@crates//:openssl-0.10.81"],
+ )
+diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
+new file mode 100644
+index 000000000..1d2e66334
+--- /dev/null
++++ b/tools/build-warnings/openssl/inputs_test.bzl
+@@ -0,0 +1,20 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _openssl_install_inputs_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    install_files = ctx.attr.install[DefaultInfo].files.to_list()
++    link_actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "Rustc"
++    ]
++    asserts.equals(env, 1, len(link_actions), "The Rust fixture must have one compiler/linker action")
++    for action in link_actions:
++        for install_file in install_files:
++            asserts.true(env, install_file in action.inputs.to_list(), "The linker sandbox must contain the OpenSSL installation tree")
++    return analysistest.end(env)
++
++openssl_install_inputs_test = analysistest.make(
++    _openssl_install_inputs_test_impl,
++    attrs = {"install": attr.label(default = "@openssl//:gen_dir")},
++)

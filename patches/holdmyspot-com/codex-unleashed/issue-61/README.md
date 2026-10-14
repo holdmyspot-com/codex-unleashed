@@ -410,6 +410,43 @@ The Meson probe links and executes its C/C++ fixture. The complete Linux prefix
 builds with fatal diagnostics. Native macOS and Windows checks remain separate
 platform acceptance gates.
 
+## Native probe execution platform
+
+`upgrade-zz-native-probe-execution.patch` keeps the Meson executable helper out
+of wildcard target expansion. The public `resource_directory_probe` still
+builds and runs it as an execution-platform tool. Apply
+`upgrade-z-native-tools.patch` first.
+
+```sh
+bazel build //tools/build-warnings/meson/... --nobuild --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+bazel build //tools/build-warnings/meson:resource_directory_probe
+just fmt-check
+just bazel-lock-check
+```
+
+The Windows-target analysis selects only the public probe and its source group,
+without configuring the helper's LLVM runtime dependencies for MSVC. On Unix,
+the explicit public probe still compiles, links, and runs its C/C++ executable.
+
+## OpenSSL Rust probe linker inputs
+
+`upgrade-zz-openssl-link-inputs.patch` declares the OpenSSL installation tree as
+compile data for the Rust binding probe. The library directory emitted by the
+OpenSSL build script is therefore available in the linker sandbox. Apply
+`upgrade-openssl.patch` and `upgrade-z-native-tools.patch` first.
+
+```sh
+bazel test //tools/build-warnings/openssl:rust_install_inputs_test
+bazel build //tools/build-warnings/openssl:rust_bindings_test --platforms=@llvm//platforms:macos_arm64
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis test requires the installation tree in the Rust compiler/linker
+action's inputs. The cross-build checks Darwin ARM64 linking; execution of the
+resulting test remains a native macOS gate. An unsandboxed link can succeed
+without the declared input and does not establish sandbox correctness.
+
 ## Rust runtime selection on Darwin
 
 `upgrade-native-rust-runtime-selection.patch` removes C++ compiler-runtime
