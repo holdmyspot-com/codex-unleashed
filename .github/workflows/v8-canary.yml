@@ -174,7 +174,6 @@ jobs:
           pair_target="//third_party/v8:rusty_v8_${pair_kind}_${target_suffix}"
           bazel_args=(
             build
-            --remote_download_toplevel
             --platforms="@llvm//platforms:${PLATFORM}"
             --config=rusty-v8-upstream-libcxx
             "--config=v8-target-${V8_CPU}"
@@ -187,7 +186,8 @@ jobs:
           "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy \
             --noexperimental_remote_repo_contents_cache \
             "${bazel_args[@]}" \
-            "--config=${{ matrix.bazel_config }}"
+            "--config=${{ matrix.bazel_config }}" \
+            --remote_download_outputs=toplevel
 
       - name: Stage release pair
         env:

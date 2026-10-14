@@ -85,7 +85,7 @@ public final class V8BazelCommandTest
 				assertEquals(mapper.readTree(call).path("cwd").asString(), checkout.toString());
 			JsonNode build = mapper.readTree(calls.getFirst()).path("args");
 			assertEquals(build.get(0).asString(), "build");
-			assertTrue(build.toString().contains("--remote_download_toplevel"));
+			assertTrue(build.toString().contains("--remote_download_outputs=toplevel"));
 			assertTrue(build.toString().contains("--config=rusty-v8-upstream-libcxx"));
 			assertTrue(build.toString().contains("--config=fixture-config"));
 			assertTrue(build.toString().contains("--config=fixture-second"));

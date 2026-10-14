@@ -61,6 +61,20 @@ Repeated occurrences are suppressed. The same text from another formatter, a dif
 
 The unpatched wrapper discards successful command output and accepts warnings. Its regression tests exercise real child processes that emit warning diagnostics with a zero exit status. The tests also cover clean output, source text containing `warning:`, exact exception matching, mixed diagnostics, and original failure statuses.
 
+### Bazel output downloads
+
+`remote-download-options.patch` uses the canonical `remote_download_outputs`
+option. Local commands download top-level outputs, and CI defaults to minimal
+downloads. Commands that require local artifacts pass
+`--remote_download_outputs=toplevel` after their configuration arguments.
+The download policy and cache reuse remain enabled.
+
+Apply the issue #60 Bazel toolchain patches and
+`native-and-rust-warning-policy.patch` first. Run `just check-build-warnings`
+from the patched checkout. It verifies clean CI option expansion with and
+without the explicit download override, then verifies that native compiler
+warnings fail compilation. Conflicting download aliases fail the check.
+
 ### Rustls Bazel metadata
 
 `rustls-bazel-metadata.patch` refreshes the Rustls crate fact in

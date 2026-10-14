@@ -292,9 +292,9 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
 fi
 
 if [[ $remote_download_toplevel -eq 1 ]]; then
-  # Override the CI config's remote_download_minimal setting when callers need
+  # Override the CI config's remote_download_outputs=minimal setting when callers need
   # the built artifact to exist on disk after the command completes.
-  post_config_bazel_args+=(--remote_download_toplevel)
+  post_config_bazel_args+=(--remote_download_outputs=toplevel)
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then

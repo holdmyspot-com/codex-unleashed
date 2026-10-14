@@ -70,7 +70,7 @@ public final class V8BazelTest
 				assertEquals(commands.getFirst(), List.of("bazel", "build", "--config=buildbuddy-generic-rbe",
 					"--remote_header=x-buildbuddy-api-key=fixture-key", "--remote_local_fallback", "-c", "opt",
 					"--platforms=@llvm//platforms:linux-x86_64", "--config=rusty-v8-upstream-libcxx", "--config=ci-v8",
-					"--remote_download_toplevel", label));
+					"--remote_download_outputs=toplevel", label));
 				assertEquals(commands.get(1).get(1), "cquery");
 				assertEquals(commands.get(1).getLast(), "set(" + label + ")");
 				assertTrue(commands.get(1).contains("--output=files"));

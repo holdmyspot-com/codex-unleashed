@@ -87,7 +87,7 @@ public final class V8Bazel
 			kind = "sandbox_release_pair";
 		String label = "//third_party/v8:rusty_v8_" + kind + "_" + request.target().replace('-', '_');
 		List<String> build = arguments("build", request);
-		build.add("--remote_download_toplevel");
+		build.add("--remote_download_outputs=toplevel");
 		build.add(label);
 		run(build, root, environment, runner);
 

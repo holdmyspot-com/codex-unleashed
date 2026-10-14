@@ -1,0 +1,60 @@
+From bbdedbaeabbac613e660b09e02a0d7f407a38478 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 16:04:15 +0000
+Subject: [PATCH] Use canonical Bazel output download options
+
+Retain the toplevel local default and minimal CI default without conflicting alias expansions. Extend the maintained warning-policy check to analyze both CI defaults and an explicit toplevel override after configuration expansion.
+
+Regression: just check-build-warnings fails on the prior rc file with the conflicting-alias diagnostic and passes with canonical settings. Logs: bazel-download-default-red.log and bazel-download-default-green.log.
+---
+ .bazelrc                      |  4 ++--
+ tools/build-warnings/check.sh | 11 +++++++++++
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index ebd77ea6c..88bb56b13 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -55,7 +55,7 @@ common --test_output=errors
+ common --nobuild_runfile_links
+ # These settings tune BuildBuddy/RBE behavior but do not contact a remote
+ # service unless a `buildbuddy-*` configuration below supplies an endpoint.
+-common --remote_download_toplevel
++common --remote_download_outputs=toplevel
+ common --remote_timeout=3600
+ common --noexperimental_throttle_remote_action_building
+ common --experimental_remote_execution_keepalive
+@@ -105,7 +105,7 @@ common:remote --jobs=800
+ #common:remote --@rules_rust//rust/settings:pipelined_compilation
+ 
+ # GitHub Actions CI configs.
+-common:ci --remote_download_minimal
++common:ci --remote_download_outputs=minimal
+ common:ci --keep_going
+ common:ci --verbose_failures
+ common:ci --build_metadata=REPO_URL=https://github.com/openai/codex.git
+diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
+index 1d8567daa..4e3116372 100644
+--- a/tools/build-warnings/check.sh
++++ b/tools/build-warnings/check.sh
+@@ -6,6 +6,17 @@ cd -- "$repo_root"
+ probe_dir="$(mktemp -d "${TMPDIR:?TMPDIR must identify owned temporary storage}/codex-build-warnings-XXXXXX")"
+ trap 'rm -r -- "$probe_dir"' EXIT
+ 
++bazel build "$@" --nobuild --config=ci-v8 //tools/build-warnings:clean \
++    >"$probe_dir/default-download-options.log" 2>&1
++bazel build "$@" --nobuild --config=ci-v8 --remote_download_outputs=toplevel \
++    //tools/build-warnings:clean >"$probe_dir/download-options.log" 2>&1
++if grep -Eq '^WARNING:|^warning:' "$probe_dir/default-download-options.log" "$probe_dir/download-options.log"; then
++    cat -- "$probe_dir/default-download-options.log"
++    cat -- "$probe_dir/download-options.log"
++    echo "Bazel download options emit warnings." >&2
++    exit 1
++fi
++
+ # A clean build distinguishes policy enforcement from an unavailable compiler.
+ if ! bazel build "$@" //tools/build-warnings:clean >"$probe_dir/clean.log" 2>&1; then
+     cat -- "$probe_dir/clean.log"
+-- 
+2.43.0
+
