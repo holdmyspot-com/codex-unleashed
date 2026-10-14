@@ -1,6 +1,6 @@
-From 1e7b66960c4b526d0b8f573242d306030759c70d Mon Sep 17 00:00:00 2001
+From 5ddc2a368bafc9f41a055daff00ce63c895c1ef2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 22:42:20 +0000
+Date: Wed, 14 Oct 2026 23:02:44 +0000
 Subject: [PATCH] Backport MinGW's scoped LLVM 23 ABI alias compatibility
 
 Backport MinGW commits 6c6368cb4a682b5c8b95a61d088efce453074cf4,
@@ -21,20 +21,22 @@ Logs: mingw-runtime-alias-{red,green}.log and
 mingw-alias-{fmt,lock}-check.log in llvm-toolchain task evidence.
 
 Use two lines of innermost context to avoid copying existing source trailing whitespace into the nested patch. Reconstructed native Git trees are byte-identical before and after this context-only change.
+
+Omit terminal blank context from the LLVM overlay patch; generated native source remains identical.
 ---
  MODULE.bazel                                  |   1 +
- patches/llvm_mingw_attribute_alias.patch      | 412 ++++++++++++++++++
+ patches/llvm_mingw_attribute_alias.patch      | 411 ++++++++++++++++++
  tools/build-warnings/mingw/BUILD.bazel        |   9 +
  .../mingw/attribute_alias_warning.c           |   5 +
  tools/build-warnings/mingw/check.sh           |  20 +
- 5 files changed, 447 insertions(+)
+ 5 files changed, 446 insertions(+)
  create mode 100644 patches/llvm_mingw_attribute_alias.patch
  create mode 100644 tools/build-warnings/mingw/BUILD.bazel
  create mode 100644 tools/build-warnings/mingw/attribute_alias_warning.c
  create mode 100755 tools/build-warnings/mingw/check.sh
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index bdf0882..28f585f 100644
+index ac4d2b3..0f0c023 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -19,6 +19,7 @@ single_version_override(
@@ -47,10 +49,10 @@ index bdf0882..28f585f 100644
      ],
 diff --git a/patches/llvm_mingw_attribute_alias.patch b/patches/llvm_mingw_attribute_alias.patch
 new file mode 100644
-index 0000000..aac49f8
+index 0000000..4203663
 --- /dev/null
 +++ b/patches/llvm_mingw_attribute_alias.patch
-@@ -0,0 +1,412 @@
+@@ -0,0 +1,411 @@
 +diff --git a/runtimes/mingw/BUILD.bazel b/runtimes/mingw/BUILD.bazel
 +index 5bdba63..a120874 100644
 +--- a/runtimes/mingw/BUILD.bazel
@@ -451,7 +453,7 @@ index 0000000..aac49f8
 +index 29a65d1..4601a8c 100644
 +--- a/runtimes/mingw/extension/mingw.bzl
 ++++ b/runtimes/mingw/extension/mingw.bzl
-+@@ -13,7 +13,10 @@ def _mingw_extension_impl(module_ctx):
++@@ -13,6 +13,9 @@ def _mingw_extension_impl(module_ctx):
 +         integrity = "sha256-1xzGRM1aN8M38nGfPgx52J6NjV+54pUqYtP6I2I9wTc=",
 +         strip_prefix = "mingw-w64-14.0.0",
 +         build_file = "//runtimes/mingw:mingw.BUILD.bazel",
@@ -462,7 +464,6 @@ index 0000000..aac49f8
 ++        ],
 +         patch_args = ["-p1"],
 +     )
-+
 diff --git a/tools/build-warnings/mingw/BUILD.bazel b/tools/build-warnings/mingw/BUILD.bazel
 new file mode 100644
 index 0000000..b7fb24f
