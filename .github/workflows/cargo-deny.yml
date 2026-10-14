@@ -54,3 +54,6 @@ jobs:
         with:
           rust-version: stable
           manifest-path: ./upstream/codex-rs/Cargo.toml
+          command: >-
+            check --deny unmatched-source --deny license-not-encountered
+            --deny unused-wrapper --deny advisory-not-detected

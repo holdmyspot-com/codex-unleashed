@@ -1,0 +1,84 @@
+From 0addad76a22bfee7be78498a8fab36e40d22faf4 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 16:34:21 +0000
+Subject: [PATCH] Remove stale dependency-policy exceptions
+
+Remove an unused Git source allowance, unused OpenSSL allowance, two obsolete reqwest wrapper exceptions and the resolved yaml-rust advisory ignore. Keep Cargo audit and deny advisory exceptions synchronized.
+
+Make the corresponding four stale-policy diagnostic codes fatal in the maintained Cargo deny workflow. The same all-features command fails with five stale-policy errors before cleanup and passes after cleanup. Duplicate-version findings remain visible. Logs: cargo-deny-stale-policy-red.log (exit 15) and cargo-deny-stale-policy-green.log (exit 0).
+---
+ .github/workflows/cargo-deny.yml | 3 +++
+ codex-rs/.cargo/audit.toml       | 1 -
+ codex-rs/deny.toml               | 9 +--------
+ 3 files changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
+index 8e1177ad8..54aeb26f2 100644
+--- a/.github/workflows/cargo-deny.yml
++++ b/.github/workflows/cargo-deny.yml
+@@ -25,6 +25,9 @@ jobs:
+         with:
+           rust-version: 1.99.0
+           manifest-path: ./codex-rs/Cargo.toml
++          command: >-
++            check --deny unmatched-source --deny license-not-encountered
++            --deny unused-wrapper --deny advisory-not-detected
+ 
+       - name: Check for a clean worktree
+         if: always() && !cancelled()
+diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
+index f9129fb15..2ef6294be 100644
+--- a/codex-rs/.cargo/audit.toml
++++ b/codex-rs/.cargo/audit.toml
+@@ -5,7 +5,6 @@ ignore = [
+     "RUSTSEC-2025-0057", # fxhash 0.2.1 via starlark_map/bm25; upstream crate is unmaintained
+     "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
+     "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
+-    "RUSTSEC-2024-0320", # yaml-rust via syntect; remove when syntect drops or updates it
+     "RUSTSEC-2025-0141", # bincode via syntect; remove when syntect drops or updates it
+     "RUSTSEC-2026-0118", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
+     "RUSTSEC-2026-0119", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index ea7fdc149..ebf692aa3 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -76,8 +76,7 @@ ignore = [
+     { id = "RUSTSEC-2025-0057", reason = "fxhash is unmaintained; pulled in via starlark_map under starlark v0.14.2 used by execpolicy/cli/core and bm25 used by core; remove when upstream dependencies drop fxhash" },
+     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in via starlark/v8 used by execpolicy/code-mode; no fixed release yet" },
+     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
+-    # TODO(fcoury): remove this exception when syntect drops yaml-rust and bincode, or updates to versions that have fixed the vulnerabilities.
+-    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
++    # TODO(fcoury): remove this exception when syntect drops bincode, or updates to a version that fixes the vulnerability.
+     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
+     { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
+     { id = "RUSTSEC-2026-0119", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; no fixed rama release is available yet; remove when rama updates to hickory 0.26.1 or hickory-net" },
+@@ -131,9 +130,6 @@ allow = [
+     # MPL-2.0 - https://www.mozilla.org/MPL/2.0/
+     # Used by: nucleo-matcher
+     "MPL-2.0",
+-    # OpenSSL - https://spdx.org/licenses/OpenSSL.html
+-    # Used by: aws-lc-sys
+-    "OpenSSL",
+     # Unicode-3.0 - https://opensource.org/license/unicode
+     # Used by: icu_decimal, icu_locale_core, icu_provider
+     "Unicode-3.0",
+@@ -251,8 +247,6 @@ deny = [
+         "opentelemetry-http",
+         "opentelemetry-otlp",
+         "rmcp",
+-        "sentry",
+-        "webrtc-sys-build",
+     ], reason = "new direct reqwest dependencies must use codex-http-client; temporary wrappers track migration debt" },
+ ]
+ 
+@@ -314,7 +308,6 @@ allow-git = [
+     "https://github.com/helix-editor/nucleo.git",
+     # CONNECT request handling needs this pinned H3 revision until released.
+     "https://github.com/hyperium/h3",
+-    "https://github.com/juberti-oai/rust-sdks.git",
+     "https://github.com/microsoft/mxc",
+     "https://github.com/modelcontextprotocol/rust-sdk",
+     "https://github.com/openai-oss-forks/crossterm",
+-- 
+2.43.0
+

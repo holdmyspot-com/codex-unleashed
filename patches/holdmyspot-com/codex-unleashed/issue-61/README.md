@@ -75,6 +75,29 @@ from the patched checkout. It verifies clean CI option expansion with and
 without the explicit download override, then verifies that native compiler
 warnings fail compilation. Conflicting download aliases fail the check.
 
+### Stale dependency policy
+
+`stale-dependency-policy.patch` removes five unused policy entries: a Git source,
+a license allowance, two dependency-wrapper exceptions, and a resolved advisory
+ignore. Cargo audit and Cargo deny use matching advisory exceptions. The Cargo
+deny workflow rejects stale policy entries instead of leaving warning diagnostics.
+Dependency-version duplication warnings remain visible and require separate work.
+
+Apply the security patches, including the maintained YAML parser replacement,
+before verification. From the patched checkout, run:
+
+```sh
+cargo deny --log-level warn --manifest-path codex-rs/Cargo.toml --all-features check \
+  --deny unmatched-source --deny license-not-encountered \
+  --deny unused-wrapper --deny advisory-not-detected
+just fmt-check
+just bazel-lock-check
+```
+
+The dependency check passes without stale-policy findings. Reintroducing an
+unused policy entry fails the corresponding check. Advisory, license, dependency
+ban, and source checks remain enabled.
+
 ### Rustls Bazel metadata
 
 `rustls-bazel-metadata.patch` refreshes the Rustls crate fact in
