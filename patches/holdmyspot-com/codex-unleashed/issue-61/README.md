@@ -105,6 +105,27 @@ The check reports zero warnings and no findings. With the placeholder present,
 it fails with `shear/unlinked_files`. Local execution uses the project's
 `run-local-rust` helper and checkout-specific build storage.
 
+## Native symbol tools
+
+`native-voice-z-symbol-tools.patch` supplies Bazel-declared LLVM `nm` and
+`readelf` to the Unix native voice build. Meson uses these tools to extract
+shared-library symbols without depending on tools installed on a remote worker.
+Warning checks remain enabled. Explicit tool paths preserve spaces and quotes.
+
+Apply the issue #60 toolchain patches and this issue's native voice build
+patches first. From the patched checkout, run:
+
+```sh
+python3 -m unittest discover -s third_party/voice -p 'test_*.py'
+bazel build //third_party/voice:native_prefix_linux_x86_64
+just fmt-check
+just bazel-lock-check
+```
+
+The tests pass with CMake and the LLVM toolchain available on `PATH`; platform
+tests skip outside their supported host. The Linux native prefix builds without
+missing symbol-tool warnings. Hosted remote execution remains a separate gate.
+
 ## V8 legacy callback compatibility
 
 `native-v8-callback-compatibility.patch` keeps the pinned Rust callback ABI while

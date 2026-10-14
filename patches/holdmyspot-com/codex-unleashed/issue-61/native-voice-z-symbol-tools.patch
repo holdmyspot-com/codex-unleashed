@@ -1,0 +1,140 @@
+From a20bed3a86f51d643f707ca164718acb3c08acff Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 16:20:17 +0000
+Subject: [PATCH] Declare LLVM symbol tools for native voice builds
+
+Remote GLib compilation fails because Meson cannot find readelf. Declare LLVM readelf and nm as action tools, carry their paths through the native driver, and supply Meson-compatible environment variables with literal shell quoting.
+
+Regression: the child-process test fails with missing NM on the prerequisite tree and passes with explicit symbol tools. Full native unit discovery passes 98 tests with 19 platform-specific skips after providing the declared local CMake and LLVM tool paths. Logs: native-symbol-tools-red.log, native-symbol-tools-green.log, native-symbol-tools-author-unit-cmake.log.
+---
+ third_party/voice/bazel_native.py      |  2 ++
+ third_party/voice/build_native.py      |  8 ++++----
+ third_party/voice/native.bzl           |  6 ++++++
+ third_party/voice/test_build_native.py | 27 ++++++++++++++++++++++++++
+ 4 files changed, 39 insertions(+), 4 deletions(-)
+
+diff --git a/third_party/voice/bazel_native.py b/third_party/voice/bazel_native.py
+index c51eb058c..584ff7037 100644
+--- a/third_party/voice/bazel_native.py
++++ b/third_party/voice/bazel_native.py
+@@ -35,6 +35,8 @@ def main():
+             "cxx",
+             "ar",
+             "ranlib",
++            "nm",
++            "readelf",
+             "cmake",
+             "make",
+             "pkg_config",
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index dd7ad247a..c24d134db 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -74,7 +74,7 @@ class NativeBuild:
+         }
+         self.toolchain.update(
+             (name, path.absolute())
+-            for name in ("ar", "ranlib")
++            for name in ("ar", "ranlib", "nm", "readelf")
+             if (path := getattr(args, name, None)) is not None
+         )
+         self.quote = subprocess.list2cmdline if self.windows else shlex.join
+@@ -88,7 +88,7 @@ class NativeBuild:
+         }
+         if self.windows and (
+             any(self.flags.values())
+-            or any(name in self.toolchain for name in ("ar", "ranlib"))
++            or any(name in self.toolchain for name in ("ar", "ranlib", "nm", "readelf"))
+         ):
+             raise ValueError("Explicit toolchain overrides require a Unix build host")
+         self.bootstrap_make = (args.bootstrap_make or args.make).absolute()
+@@ -178,7 +178,7 @@ class NativeBuild:
+         )
+         self.environment.update(
+             (name.upper(), self.quote([str(self.toolchain[name])]))
+-            for name in ("ar", "ranlib")
++            for name in ("ar", "ranlib", "nm", "readelf")
+             if name in self.toolchain
+         )
+         if args.target.endswith("apple-darwin"):
+@@ -615,7 +615,7 @@ def main():
+         type=Path,
+         help="Explicit Windows tool and SDK selection; no unrelated PATH fallback",
+     )
+-    for name in ("ar", "ranlib"):
++    for name in ("ar", "ranlib", "nm", "readelf"):
+         parser.add_argument(f"--{name}", type=Path)
+     for name in ("c-flag", "cxx-flag", "link-flag"):
+         parser.add_argument(f"--{name}", action="append", default=[])
+diff --git a/third_party/voice/native.bzl b/third_party/voice/native.bzl
+index b70c6b8cc..96c889648 100644
+--- a/third_party/voice/native.bzl
++++ b/third_party/voice/native.bzl
+@@ -36,6 +36,8 @@ def _native_prefix_impl(ctx):
+         "cxx": tools.cxx,
+         "ar": tools.cxx_linker_static,
+         "ranlib": ctx.executable._ranlib.path,
++        "nm": ctx.executable._nm.path,
++        "readelf": ctx.executable._readelf.path,
+         "ld": ctx.executable._ld.path,
+         "shell": "/bin/bash",
+         "pkg_config": ctx.file._pkg_config.path,
+@@ -72,6 +74,8 @@ def _native_prefix_impl(ctx):
+         ),
+         tools = [
+             ctx.attr._ranlib[DefaultInfo].files_to_run,
++            ctx.attr._nm[DefaultInfo].files_to_run,
++            ctx.attr._readelf[DefaultInfo].files_to_run,
+             ctx.attr._ld[DefaultInfo].files_to_run,
+         ],
+         outputs = [prefix, receipt],
+@@ -97,6 +101,8 @@ native_prefix = rule(
+         "_recipe": attr.label(default = "//third_party/voice:native_recipe"),
+         "_python": attr.label(default = "@python_3_12//:py3_runtime", cfg = "exec"),
+         "_ranlib": attr.label(default = "@llvm//tools:llvm-ranlib", executable = True, allow_files = True, cfg = "exec"),
++        "_nm": attr.label(default = "@llvm//tools:llvm-nm", executable = True, allow_files = True, cfg = "exec"),
++        "_readelf": attr.label(default = "@llvm//tools:llvm-readelf", executable = True, allow_files = True, cfg = "exec"),
+         "_ld": attr.label(default = "//third_party/voice:pkg_config_linker", executable = True, allow_files = True, cfg = "exec"),
+         "_pkg_config": attr.label(default = "//third_party/voice:pkg_config", allow_single_file = True, cfg = "exec"),
+     },
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 7165b8f0e..bbba309fd 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -85,6 +85,33 @@ class NativeBuildTests(unittest.TestCase):
+             NativeBuild(self.args, self.environment)
+         self.assertFalse(self.args.output.exists())
+ 
++    @unittest.skipIf(os.name == "nt", "Exercises Unix symbol-tool commands")
++    def test_child_process_uses_declared_symbol_tools_with_literal_paths(self):
++        for name in ("nm", "readelf"):
++            tool = self.root / f"declared '{name} tool"
++            tool.write_text(f"#!/bin/sh\nprintf '%s\\n' '{name} selected'\n")
++            tool.chmod(0o755)
++            setattr(self.args, name, tool)
++        build = NativeBuild(self.args, self.environment)
++        result = subprocess.run(
++            [
++                sys.executable,
++                "-c",
++                "import os, shlex, subprocess\n"
++                "for name in ('NM', 'READELF'):\n"
++                "    subprocess.run(shlex.split(os.environ[name]), check=True)\n",
++            ],
++            env=build.environment,
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertEqual(
++            result.stdout,
++            "nm selected\nreadelf selected\n",
++        )
++
+     @unittest.skipIf(os.name == "nt", "Exercises the Unix clang++ driver symlink")
+     def test_bootstrap_links_cpp_runtime_through_compiler_symlink(self):
+         tools = {name: shutil.which(name) for name in ("clang", "cmake", "make")}
+-- 
+2.43.0
+
