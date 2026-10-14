@@ -6,29 +6,32 @@
 
 ## Intent
 
-Remove four Rust compiler warnings from release builds while preserving debug
-configuration overrides and the cloud-task mock backend. The change applies
-across platforms and does not alter runtime behavior.
+Compile release libraries, binaries, and tests without unused debug-only
+imports, bindings, constants, or helpers. Debug configuration overrides,
+analytics capture tests, and the cloud-task mock backend remain available in
+debug builds across platforms.
 
 ## Scope and reproduction
 
-Release builds report an unused `ToolCallSource` import in `codex-core`, an
-unnecessary mutable `loader_overrides` parameter in `codex-app-server`, and
-unused `HttpClientFactory` and `OutboundProxyPolicy` imports in
-`codex-cloud-tasks`. The cloud imports and app-server mutation are used only
-with debug assertions enabled. The core import has no uses.
+With debug assertions disabled, the app-server library has an unnecessary
+mutable `loader_overrides` binding, and the cloud-task and analytics tests have
+unused `HttpClientFactory` and `OutboundProxyPolicy` imports. The app-server
+binary also has an unused `PluginStartupTasks` import and two unused managed
+configuration constants. The CLI update test has unused imports and a helper
+because its test runs only with debug assertions enabled.
 
-The patch removes the unused core import, enables the cloud imports only with
-debug assertions, and makes the app-server binding mutable only with debug
-assertions. It adds a focused `just check-release-warnings` regression gate.
-It does not suppress warnings. GitHub Actions deprecations, stable rustfmt's
-unstable-option diagnostics, and dependency or unrelated Clippy warnings are
-outside this source patch's scope.
+The patch applies the same debug condition to those declarations as their
+consumers and makes the app-server binding mutable only in debug builds.
+The focused `just check-release-warnings` regression gate covers libraries,
+binaries, and test targets. The patch adds no lint suppressions. GitHub Actions
+deprecations, rustfmt diagnostics, and dependency warnings remain outside this
+source patch's scope.
 
 ## Dependencies and application order
 
-Apply this patch directly to the declared upstream base. It has no patch
-prerequisites and introduces no feature flag or configuration property.
+Apply `release-build-warnings.patch` directly to the declared upstream base.
+It has no patch prerequisites and introduces no feature flag or configuration
+property.
 
 ## Verification
 
@@ -37,14 +40,13 @@ Run from the patched checkout root:
 ```sh
 just fmt-check
 just check-release-warnings
-cd codex-rs
-cargo clippy --lib -p codex-core -p codex-app-server -p codex-cloud-tasks -- --no-deps -D unused_imports -D unused_mut
+just clippy --all-targets -p codex-core -p codex-app-server -p codex-cloud-tasks -p codex-analytics -p codex-cli -- --no-deps -D unused_imports -D unused_mut -D dead_code
 ```
 
 Formatting and both release and debug checks must pass. The release gate denies
-unused imports and mutable bindings in the three affected libraries without
-linting unrelated workspace dependencies. The debug check compiles their
-debug-only paths.
+unused imports, mutable bindings, and dead code in the five packages' targets
+without linting unrelated workspace dependencies. The debug check compiles
+their debug-only paths.
 
 The existing app-server override test checks the debug behavior:
 
@@ -60,4 +62,4 @@ does not establish that gate.
 ## Upstream status
 
 The issue remains open and the declared release contains the warnings. Remove
-this patch when a stable upstream release includes the fixes.
+this patch when a stable upstream release includes its fixes.
