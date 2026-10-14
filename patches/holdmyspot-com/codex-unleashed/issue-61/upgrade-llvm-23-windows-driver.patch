@@ -1,6 +1,6 @@
-From 363f8d4276cfc1e4ac9e0d7fde0578532278a9e4 Mon Sep 17 00:00:00 2001
+From 9dbdc27abb67e52e8a26e452f265c3174e73bb8c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 01:57:12 -0400
+Date: Wed, 14 Oct 2026 05:57:12 +0000
 Subject: [PATCH] Use LLVM 23 for strict Windows Rust links
 
 Select hermetic LLVM 0.8.24 and align the direct Bazel dependencies selected
@@ -47,17 +47,17 @@ Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/61
  create mode 100644 tools/build-warnings/llvm-driver/entry.c
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index b43195301..1f13ea333 100644
+index 90f189f48..8e1096d57 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -6,7 +6,7 @@ bazel_dep(name = "platforms", version = "1.1.0")
- 
+
  # Expose the public protobuf rules already used transitively by rules_rs.
  bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
 -bazel_dep(name = "llvm", version = "0.8.11")
 +bazel_dep(name = "llvm", version = "0.8.24")
  bazel_dep(name = "windows_support", version = "0.2.0")
- 
+
  # Patch hermetic LLVM for Codex's custom libc++ and Windows gnullvm runtime
 @@ -20,6 +20,7 @@ single_version_override(
          "//patches:llvm_windows_mingw_compat.patch",
@@ -66,38 +66,38 @@ index b43195301..1f13ea333 100644
 +        "//patches:llvm_resource_directory_headers.patch",
      ],
  )
- 
-@@ -142,8 +143,8 @@ osx.frameworks(names = [
+
+@@ -144,8 +145,8 @@ osx.frameworks(names = [
  use_repo(osx, "macos_sdk")
- 
+
  # Needed to disable xcode...
 -bazel_dep(name = "apple_support", version = "2.5.2")
 -bazel_dep(name = "rules_cc", version = "0.2.20")
 +bazel_dep(name = "apple_support", version = "2.8.0")
 +bazel_dep(name = "rules_cc", version = "0.2.25")
- 
+
  # Windows voice jobs explicitly select the installed MSVC C toolchains.
  cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
-@@ -179,7 +180,7 @@ single_version_override(
+@@ -184,7 +185,7 @@ single_version_override(
      version = "0.15.1",
  )
- 
+
 -bazel_dep(name = "rules_python", version = "1.7.0")
 +bazel_dep(name = "rules_python", version = "1.8.0")
- 
+
  voice_python = use_extension("@rules_python//python/extensions:python.bzl", "python")
  voice_python.defaults(python_version = "3.11")
-@@ -368,7 +369,7 @@ crate.from_cargo(
+@@ -366,7 +367,7 @@ crate.from_cargo(
      ],
  )
- 
+
 -bazel_dep(name = "zstd", version = "1.5.7")
 +bazel_dep(name = "zstd", version = "1.5.7.bcr.1")
- 
+
  crate.annotation(
      # Daemon tests repeatedly hash large CLI binaries, even in fastbuild mode.
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 0203c9683..738f91273 100644
+index c3a89a807..b215f1b9f 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -24,7 +24,8 @@
@@ -221,7 +221,7 @@ index 0203c9683..738f91273 100644
          ],
 diff --git a/patches/llvm_resource_directory_headers.patch b/patches/llvm_resource_directory_headers.patch
 new file mode 100644
-index 000000000..d37d0b577
+index 000000000..923b20396
 --- /dev/null
 +++ b/patches/llvm_resource_directory_headers.patch
 @@ -0,0 +1,21 @@
@@ -231,10 +231,10 @@ index 000000000..d37d0b577
 ++++ b/toolchain/merged_resource_directory.bzl
 +@@ -1,6 +1,7 @@
 + """Merge a compiler's include/share directories with explicit resource trees."""
-+ 
++
 + load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory_bin_action")
 ++load("@bazel_skylib//rules/directory:providers.bzl", "DirectoryInfo")
-+ 
++
 + def _workspace_path(file):
 +     path = file.short_path
 +@@ -16,7 +17,7 @@ def _merged_resource_directory_impl(ctx):
@@ -475,7 +475,7 @@ index 0fd33c976..1c9f4d687 100644
 +     data = [
 +         "//runtimes/mingw:mingw_crt_library_search_directory",
 diff --git a/patches/rules_foreign_cc_make_warning_phases.patch b/patches/rules_foreign_cc_make_warning_phases.patch
-index 2e72234dd..eb4dd2575 100644
+index 2e72234dd..af5b53a31 100644
 --- a/patches/rules_foreign_cc_make_warning_phases.patch
 +++ b/patches/rules_foreign_cc_make_warning_phases.patch
 @@ -68,7 +68,7 @@ index e9f2b8b..cb2815a 100644
@@ -516,23 +516,23 @@ index 2e72234dd..eb4dd2575 100644
 ++@@ -47,7 +47,9 @@ struct strcache {
 ++ static struct strcache *strcache = NULL;
 ++ static struct strcache *fullcache = NULL;
-++ 
+++
 +++#ifndef NDEBUG
 ++ static unsigned long total_buffers = 0;
 +++#endif
 ++ static unsigned long total_strings = 0;
 ++ static unsigned long total_size = 0;
-++ 
+++
 ++@@ -67,7 +69,9 @@ new_cache (struct strcache **head, sc_buflen_t buflen)
 ++   new->next = *head;
 ++   *head = new;
-++ 
+++
 +++#ifndef NDEBUG
 ++   ++total_buffers;
 +++#endif
 ++   return new;
 ++ }
-++ 
+++
 diff --git a/tools/build-warnings/llvm-driver/BUILD.bazel b/tools/build-warnings/llvm-driver/BUILD.bazel
 new file mode 100644
 index 000000000..260dd6659
@@ -613,6 +613,3 @@ index 000000000..d69e8c4f6
 +++ b/tools/build-warnings/llvm-driver/entry.c
 @@ -0,0 +1 @@
 +int entry(void) { return 0; }
--- 
-2.43.0
-

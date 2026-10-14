@@ -1,6 +1,6 @@
-From 2842b0b30bdc027b481925a4dcd39101a4c6164d Mon Sep 17 00:00:00 2001
+From 115161b1684e3b917ef72becfa8203e46533a89e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 02:36:04 -0400
+Date: Wed, 14 Oct 2026 06:36:04 +0000
 Subject: [PATCH] Backport OpenSSL unused-global fixes for LLVM 23
 
 Keep compiler warnings fatal while building the pinned OpenSSL 3.5.4.
@@ -34,24 +34,24 @@ Upstream: https://github.com/openssl/openssl/pull/31508
  create mode 100644 tools/build-warnings/openssl/ssl_init_test.c
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 1f13ea333..b41bd706c 100644
+index d34dd0d52..286c0ef48 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -465,6 +465,11 @@ crate.annotation(
+@@ -461,6 +461,11 @@ crate.annotation(
  )
- 
+
  bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
 +single_version_override(
 +    module_name = "openssl",
 +    patch_strip = 1,
 +    patches = ["//patches:openssl_unused_globals.patch"],
 +)
- 
+
  inject_repo(crate, "xz")
- 
+
 diff --git a/patches/openssl_unused_globals.patch b/patches/openssl_unused_globals.patch
 new file mode 100644
-index 000000000..e616661e9
+index 000000000..0adc8340c
 --- /dev/null
 +++ b/patches/openssl_unused_globals.patch
 @@ -0,0 +1,157 @@
@@ -69,7 +69,7 @@ index 000000000..e616661e9
 +-static int bn_limit_num_high = 8; /* (1<<bn_limit_bits_high) */
 + static int bn_limit_bits_mont = 0;
 +-static int bn_limit_num_mont = 8; /* (1<<bn_limit_bits_mont) */
-+ 
++
 + void BN_set_params(int mult, int high, int low, int mont)
 + {
 +     if (mult >= 0) {
@@ -97,13 +97,13 @@ index 000000000..e616661e9
 +-        bn_limit_num_mont = 1 << mont;
 +     }
 + }
-+ 
++
 +diff --git a/ssl/ssl_init.c b/ssl/ssl_init.c
 +--- a/ssl/ssl_init.c
 ++++ b/ssl/ssl_init.c
 +@@ -19,7 +19,6 @@
 + static int stopped;
-+ 
++
 + static CRYPTO_ONCE ssl_base = CRYPTO_ONCE_STATIC_INIT;
 +-static int ssl_base_inited = 0;
 + DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
@@ -116,27 +116,27 @@ index 000000000..e616661e9
 +-    ssl_base_inited = 1;
 +     return 1;
 + }
-+ 
++
 +diff --git a/crypto/init.c b/crypto/init.c
 +--- a/crypto/init.c
 ++++ b/crypto/init.c
 +@@ -178,27 +178,24 @@ DEFINE_RUN_ONCE_STATIC_ALT(ossl_init_no_add_all_digests,
 + }
-+ 
++
 + static CRYPTO_ONCE config = CRYPTO_ONCE_STATIC_INIT;
 +-static int config_inited = 0;
 + static const OPENSSL_INIT_SETTINGS *conf_settings = NULL;
 + DEFINE_RUN_ONCE_STATIC(ossl_init_config)
 + {
 +     int ret = ossl_config_int(NULL);
-+ 
++
 +-    config_inited = 1;
 +     return ret;
 + }
 + DEFINE_RUN_ONCE_STATIC_ALT(ossl_init_config_settings, ossl_init_config)
 + {
 +     int ret = ossl_config_int(conf_settings);
-+ 
++
 +-    config_inited = 1;
 +     return ret;
 + }
@@ -148,14 +148,14 @@ index 000000000..e616661e9
 ++
 +     return 1;
 + }
-+ 
++
 +diff --git a/providers/baseprov.c b/providers/baseprov.c
 +--- a/providers/baseprov.c
 ++++ b/providers/baseprov.c
 +@@ -29,10 +29,6 @@ static OSSL_FUNC_provider_gettable_params_fn base_gettable_params;
 + static OSSL_FUNC_provider_get_params_fn base_get_params;
 + static OSSL_FUNC_provider_query_operation_fn base_query;
-+ 
++
 +-/* Functions provided by the core */
 +-static OSSL_FUNC_core_gettable_params_fn *c_gettable_params = NULL;
 +-static OSSL_FUNC_core_get_params_fn *c_get_params = NULL;
@@ -169,7 +169,7 @@ index 000000000..e616661e9
 +     OSSL_FUNC_core_get_libctx_fn *c_get_libctx = NULL;
 ++    OSSL_FUNC_core_get_params_fn *c_get_params = NULL;
 +     BIO_METHOD *corebiometh;
-+ 
++
 +     if (!ossl_prov_bio_from_dispatch(in))
 +         return 0;
 +     for (; in->function_id != 0; in++) {
@@ -186,7 +186,7 @@ index 000000000..e616661e9
 +@@ -34,10 +34,6 @@ static OSSL_FUNC_provider_query_operation_fn deflt_query;
 + #define ALGC(NAMES, FUNC, CHECK) { { NAMES, "provider=default", FUNC }, CHECK }
 + #define ALG(NAMES, FUNC) ALGC(NAMES, FUNC, NULL)
-+ 
++
 +-/* Functions provided by the core */
 +-static OSSL_FUNC_core_gettable_params_fn *c_gettable_params = NULL;
 +-static OSSL_FUNC_core_get_params_fn *c_get_params = NULL;
@@ -200,7 +200,7 @@ index 000000000..e616661e9
 +     OSSL_FUNC_core_get_libctx_fn *c_get_libctx = NULL;
 ++    OSSL_FUNC_core_get_params_fn *c_get_params = NULL;
 +     BIO_METHOD *corebiometh;
-+ 
++
 +     if (!ossl_prov_bio_from_dispatch(in)
 +             || !ossl_prov_seeding_from_dispatch(in))
 +         return 0;
@@ -261,6 +261,3 @@ index 000000000..ff511526c
 +
 +  return TLS_method() == NULL;
 +}
--- 
-2.43.0
-

@@ -740,7 +740,7 @@ From the patched checkout root:
 
 - `just test-github-scripts` passes, including ten formatter regression tests.
 - `just fmt-check` passes with stable rustfmt.
-- Source whitespace checks pass. Nested patch context retains the space prefix required by Git patch syntax.
+- Source whitespace checks pass. Nested patches use Git's empty-line spelling for empty context. Their hunk counts remain consistent when trailing context is shortened.
 - After Cargo resolves the workspace lockfile versions, `just bazel-lock-check` passes without crate-annotation advisories, including on a cold module-extension evaluation.
 - `just check-build-warnings` passes on Unix: the clean fixture builds and the warning fixture fails at its expected diagnostic.
 - `bazel test //third_party/v8/libcxx_config:config_test` passes with both runtime configuration values explicitly defined as zero.

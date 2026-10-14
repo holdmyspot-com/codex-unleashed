@@ -1,4 +1,4 @@
-From 7ba223853f292cd8bf3a9b6a02892bc3da3c1af7 Mon Sep 17 00:00:00 2001
+From 25b3fa390709a3b59a13666300a3c7fc90af533a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 14 Oct 2026 08:41:13 +0000
 Subject: [PATCH] Skip Windows DLL processing for static-only libraries
@@ -18,12 +18,12 @@ The actual @aws-lc//:thread_test Windows GNU executable cross-links.
 The emitted queue requires independent fresh-checkout acceptance.
 ---
  MODULE.bazel                                  |  1 +
- .../rules_cc_static_library_def_parser.patch  | 12 +++++
+ .../rules_cc_static_library_def_parser.patch  | 11 ++++
  .../windows-exports/BUILD.bazel               | 53 +++++++++++++++++++
  .../build-warnings/windows-exports/consumer.c |  3 ++
  .../build-warnings/windows-exports/exported.c |  3 ++
  .../build-warnings/windows-exports/exported.h |  1 +
- 6 files changed, 73 insertions(+)
+ 6 files changed, 72 insertions(+)
  create mode 100644 patches/rules_cc_static_library_def_parser.patch
  create mode 100644 tools/build-warnings/windows-exports/BUILD.bazel
  create mode 100644 tools/build-warnings/windows-exports/consumer.c
@@ -31,35 +31,34 @@ The emitted queue requires independent fresh-checkout acceptance.
  create mode 100644 tools/build-warnings/windows-exports/exported.h
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 0482599d6..7f495fb1d 100644
+index e3c24618c..6e30e0f95 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -165,6 +165,7 @@ single_version_override(
+@@ -158,6 +158,7 @@ single_version_override(
      patch_strip = 1,
      patches = [
          "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
 +        "//patches:rules_cc_static_library_def_parser.patch",
      ],
  )
- 
+
 diff --git a/patches/rules_cc_static_library_def_parser.patch b/patches/rules_cc_static_library_def_parser.patch
 new file mode 100644
-index 000000000..ef22ae967
+index 000000000..d25b6a3a0
 --- /dev/null
 +++ b/patches/rules_cc_static_library_def_parser.patch
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,11 @@
 +diff --git a/cc/private/rules_impl/cc_library_impl.bzl b/cc/private/rules_impl/cc_library_impl.bzl
++index 0393a2e1c..21ca3f52b 100644
 +--- a/cc/private/rules_impl/cc_library_impl.bzl
 ++++ b/cc/private/rules_impl/cc_library_impl.bzl
-+@@ -136,7 +136,7 @@ def _cc_library_impl(ctx):
-+         additional_inputs = _filter_linker_scripts(ctx.files.deps) + ctx.files.additional_linker_inputs
++@@ -137,5 +137,5 @@ def _cc_library_impl(ctx):
 +         link_variables = {}
 +         is_windows_enabled = cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "targets_windows")
 +-        if is_windows_enabled:
 ++        if is_windows_enabled and create_dynamic_library:
 +             dll_name_suffix = cc_helper.dll_hash_suffix(ctx, feature_configuration, ctx.fragments.cpp)
 +             generated_def_file = None
-+ 
 diff --git a/tools/build-warnings/windows-exports/BUILD.bazel b/tools/build-warnings/windows-exports/BUILD.bazel
 new file mode 100644
 index 000000000..7d8919bcc
@@ -144,6 +143,3 @@ index 000000000..e27e74b4b
 +++ b/tools/build-warnings/windows-exports/exported.h
 @@ -0,0 +1 @@
 +int codex_exported_probe(void);
--- 
-2.43.0
-

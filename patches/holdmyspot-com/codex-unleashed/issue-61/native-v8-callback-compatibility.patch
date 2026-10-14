@@ -1,6 +1,6 @@
-From bf55da3f900bf3e9bd0b17ea2f73bd53902fb823 Mon Sep 17 00:00:00 2001
+From 0369f50f564920efd45ffdeebed9db335d7aec99 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 03:06:15 -0400
+Date: Wed, 14 Oct 2026 07:06:15 +0000
 Subject: [PATCH] Scope V8 legacy callback compatibility diagnostics
 
 Keep the pinned Rust callback ABI while V8's transition constructors invoke
@@ -42,10 +42,10 @@ Upstream migration: https://github.com/denoland/rusty_v8/pull/2037
  create mode 100755 tools/build-warnings/v8/check.sh
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 69fcd3105..0d5cdee65 100644
+index 13c6c6e02..c2d6c9ab6 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -818,6 +818,7 @@ archive_override(
+@@ -807,6 +807,7 @@ archive_override(
          "//patches:v8_bazel_rules.patch",
          "//patches:v8_source_portability.patch",
          "//patches:v8_icu_mutex_annotations.patch",
@@ -55,7 +55,7 @@ index 69fcd3105..0d5cdee65 100644
      strip_prefix = "v8-15.0.245.2",
 diff --git a/patches/v8_callback_compatibility.patch b/patches/v8_callback_compatibility.patch
 new file mode 100644
-index 000000000..e0dcfaab0
+index 000000000..0ae0ea509
 --- /dev/null
 +++ b/patches/v8_callback_compatibility.patch
 @@ -0,0 +1,43 @@
@@ -64,7 +64,7 @@ index 000000000..e0dcfaab0
 ++++ b/mod/v8-15.0.245.2/include/v8-template.h
 +@@ -776,6 +776,10 @@ struct NamedPropertyHandlerConfiguration {
 +   }
-+ 
++
 +  public:
 ++  // WORKAROUND: https://crbug.com/348660658 tracks legacy callback retirement.
 ++  // Remove this guard when the pinned Rust callbacks migrate with V8:
@@ -76,7 +76,7 @@ index 000000000..e0dcfaab0
 +@@ -859,6 +863,8 @@ struct NamedPropertyHandlerConfiguration {
 +         data(data),
 +         flags(flags) {}
-+ 
++
 ++  END_ALLOW_USE_DEPRECATED()
 ++
 +   NamedPropertyGetterCallback getter;
@@ -84,7 +84,7 @@ index 000000000..e0dcfaab0
 +   NamedPropertyQueryCallback query;
 +@@ -907,6 +913,10 @@ struct IndexedPropertyHandlerConfiguration {
 +   }
-+ 
++
 +  public:
 ++  // WORKAROUND: https://crbug.com/348660658 tracks legacy callback retirement.
 ++  // Remove this guard when the pinned Rust callbacks migrate with V8:
@@ -96,7 +96,7 @@ index 000000000..e0dcfaab0
 +@@ -1022,6 +1032,8 @@ struct IndexedPropertyHandlerConfiguration {
 +         data(data),
 +         flags(flags) {}
-+ 
++
 ++  END_ALLOW_USE_DEPRECATED()
 ++
 +   IndexedPropertyGetterCallback getter;
@@ -109,7 +109,7 @@ index 31c110dd4..6125d71fc 100644
 @@ -304,6 +304,14 @@ cc_library(
      }),
  )
- 
+
 +cc_library(
 +    name = "binding_deprecation_boundary_probe",
 +    srcs = ["callback_deprecation_probe.cc"],
@@ -172,6 +172,3 @@ index 000000000..e2a4347e0
 +fi
 +
 +echo "V8 bindings compile and deprecations outside the compatibility boundary remain fatal."
--- 
-2.43.0
-

@@ -1,4 +1,4 @@
-From dc140c0da62c3fecb24e581c7bcb5556439c6485 Mon Sep 17 00:00:00 2001
+From 048f51b981476bf3ec72ee696fd22543334e1e9e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 14 Oct 2026 09:32:22 +0000
 Subject: [PATCH] Build pkg-config with current pkgconf and Meson
@@ -33,7 +33,7 @@ Validation: just fmt-check and just bazel-lock-check pass; actual pkgconf and C/
  create mode 100644 tools/build-warnings/pkg-config/probe.pc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 7f495fb1d..e28b4df1a 100644
+index 1c09523a0..6d4b414a1 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -190,6 +190,7 @@ single_version_override(
@@ -47,7 +47,7 @@ index 7f495fb1d..e28b4df1a 100644
 @@ -205,8 +206,15 @@ use_repo(voice_python, "python_3_12")
  # native voice pkg-config bootstrap, instead of a PATH-provided Make.
  register_toolchains("@rules_foreign_cc//toolchains:built_make_toolchain")
- 
+
 +register_toolchains("@rules_foreign_cc//toolchains:built_meson_toolchain")
 +
  foreign_cc_tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
@@ -58,13 +58,13 @@ index 7f495fb1d..e28b4df1a 100644
 +    foreign_cc_tools,
 +    meson_src = "codex_meson_src",
 +)
- 
+
  single_version_override(
      module_name = "rules_rs",
-@@ -534,6 +542,25 @@ crate.annotation(
- 
+@@ -526,6 +534,25 @@ crate.annotation(
+
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
- 
+
 +http_archive(
 +    name = "codex_meson_src",
 +    build_file_content = """
@@ -89,7 +89,7 @@ index 7f495fb1d..e28b4df1a 100644
      "codex_release_archive",
 diff --git a/patches/rules_foreign_cc_meson_resource_directory.patch b/patches/rules_foreign_cc_meson_resource_directory.patch
 new file mode 100644
-index 000000000..f3f613499
+index 000000000..89e81b39e
 --- /dev/null
 +++ b/patches/rules_foreign_cc_meson_resource_directory.patch
 @@ -0,0 +1,31 @@
@@ -100,7 +100,7 @@ index 000000000..f3f613499
 +@@ -82,8 +82,8 @@ def _create_meson_script(configureParameters):
 +     if " " not in tools.cxx:
 +         script.append("##export_var## CXX {}".format(_absolutize(ctx.workspace_name, tools.cxx)))
-+ 
++
 +-    copts = flags.cc
 +-    cxxopts = flags.cxx
 ++    copts = _with_link_resource_directory(flags.cc, flags.cxx_linker_executable)
@@ -109,7 +109,7 @@ index 000000000..f3f613499
 +         script.append("##export_var## CFLAGS \"{} ${{CFLAGS:-}}\"".format(_join_flags_list(ctx.workspace_name, copts).replace("\"", "'")))
 +     if cxxopts:
 +@@ -300,3 +300,15 @@ def _absolutize(workspace_name, text, force = False):
-+ 
++
 + def _join_flags_list(workspace_name, flags):
 +     return " ".join([_absolutize(workspace_name, flag) for flag in flags])
 ++
@@ -131,7 +131,7 @@ index b3c5f0930..119fc7e28 100644
 @@ -72,45 +72,56 @@ alias(
      }),
  )
- 
+
 -# Keep the pinned pkg-config sources, but explicitly use LLVM archive tools.
 -# The upstream bootstrap otherwise selects host ar/ranlib on macOS.
 +native_tool_toolchain(
@@ -201,7 +201,7 @@ index b3c5f0930..119fc7e28 100644
 +    toolchain = "//third_party/voice:pkg_config_bootstrap_toolchain",
      visibility = ["//visibility:public"],
  )
- 
+
 diff --git a/third_party/voice/pkg_config.bzl b/third_party/voice/pkg_config.bzl
 index 4b87d36a3..df1911e77 100644
 --- a/third_party/voice/pkg_config.bzl
@@ -209,11 +209,11 @@ index 4b87d36a3..df1911e77 100644
 @@ -1,12 +1,14 @@
 -"""Build the pinned pkg-config with native Mac configure checks."""
 +"""Build the pinned pkgconf with native Mac configuration checks."""
- 
+
 -load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make_variant")
 +load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
 +load("@rules_foreign_cc//foreign_cc/private:transitions.bzl", "foreign_cc_rule_variant")
- 
+
  def pkg_config(name, **kwargs):
      """Keep Linux remote builds and select native Mac producers by OS and CPU."""
      tags = kwargs.pop("tags", [])
@@ -386,6 +386,3 @@ index 000000000..637672a6a
 +Requires.private: private
 +Libs: -L${prefix}/lib -lprobe
 +Cflags: -I${prefix}/include -DPROBE_ENABLED=1
--- 
-2.43.0
-

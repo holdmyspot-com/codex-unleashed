@@ -1,4 +1,4 @@
-From 449dbf552e3c3f4d2e518cb4fa2d8ddbeb9a624a Mon Sep 17 00:00:00 2001
+From ab5cb047ec00cdcdbb0af2065a7f38310a5c9387 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 14 Oct 2026 07:27:00 +0000
 Subject: [PATCH] Backport OpenSSL command-line unused-state fixes
@@ -28,7 +28,7 @@ Upstream: https://github.com/openssl/openssl/pull/32821
  2 files changed, 54 insertions(+)
 
 diff --git a/patches/openssl_unused_globals.patch b/patches/openssl_unused_globals.patch
-index e616661e9..dc7a16322 100644
+index 0adc8340c..3a9513fc1 100644
 --- a/patches/openssl_unused_globals.patch
 +++ b/patches/openssl_unused_globals.patch
 @@ -155,3 +155,49 @@ diff --git a/providers/defltprov.c b/providers/defltprov.c
@@ -39,18 +39,18 @@ index e616661e9..dc7a16322 100644
 +--- a/apps/s_server.c
 ++++ b/apps/s_server.c
 +@@ -134,8 +134,10 @@ static int keymatexportlen = 20;
-+ 
++
 + static int async = 0;
-+ 
++
 +-static int use_sendfile = 0;
 +-static int use_zc_sendfile = 0;
 ++#ifndef OPENSSL_NO_KTLS
 ++static int use_sendfile;
 ++static int use_zc_sendfile;
 ++#endif
-+ 
++
 + static const char *session_id_prefix = NULL;
-+ 
++
 +@@ -1778,8 +1780,10 @@ int s_server_main(int argc, char *argv[])
 +     s_quiet = 0;
 +     s_brief = 0;
@@ -59,14 +59,14 @@ index e616661e9..dc7a16322 100644
 +     use_sendfile = 0;
 +     use_zc_sendfile = 0;
 ++#endif
-+ 
++
 +     port = OPENSSL_strdup(PORT);
 +     cctx = SSL_CONF_CTX_new();
 +diff --git a/apps/lib/opt.c b/apps/lib/opt.c
 +--- a/apps/lib/opt.c
 ++++ b/apps/lib/opt.c
 +@@ -37,7 +37,6 @@ const char OPT_PARAM_STR[] = "-P";
-+ 
++
 + /* Our state */
 + static char **argv;
 +-static int argc;
@@ -97,6 +97,3 @@ index 9980c7ba0..fc2f72933 100644
 +          "$(location @openssl//:openssl) s_server -help >> \"$@\" 2>&1",
 +    tools = ["@openssl"],
 +)
--- 
-2.43.0
-

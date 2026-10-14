@@ -1,6 +1,6 @@
-From 767c6c67effc1db4e13fd91601a8535701fae723 Mon Sep 17 00:00:00 2001
+From 1c4e4a7eaff0917f8be44a157d44e4fd68387a29 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 02:50:08 -0400
+Date: Wed, 14 Oct 2026 06:50:08 +0000
 Subject: [PATCH] Backport Abseil lifetime-capture attribute migration
 
 Backport 0784689a65b4ea1329fbc5174b8a57c88ec796a9 to the selected
@@ -34,11 +34,11 @@ Upstream: https://github.com/abseil/abseil-cpp/commit/0784689a65b4ea1329fbc5174b
  create mode 100644 tools/build-warnings/abseil/lifetime_attribute_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index aaf2783fb..69fcd3105 100644
+index ed4948b68..37d13f3d6 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -78,11 +78,13 @@ use_repo(windows_sdk, "windows_sdk")
- 
+@@ -75,11 +75,13 @@ use_repo(windows_sdk, "windows_sdk")
+
  # Abseil picks a MinGW pthread TLS path that does not match our hermetic
  # windows-gnullvm toolchain; force it onto the portable C++11 thread-local path.
 +bazel_dep(name = "abseil-cpp", version = "20250814.1")
@@ -50,10 +50,10 @@ index aaf2783fb..69fcd3105 100644
 +        "//patches:abseil_lifetime_capture_by_this.patch",
      ],
  )
- 
+
 diff --git a/patches/abseil_lifetime_capture_by_this.patch b/patches/abseil_lifetime_capture_by_this.patch
 new file mode 100644
-index 000000000..764a1b801
+index 000000000..3c06341a2
 --- /dev/null
 +++ b/patches/abseil_lifetime_capture_by_this.patch
 @@ -0,0 +1,278 @@
@@ -63,7 +63,7 @@ index 000000000..764a1b801
 +@@ -911,6 +911,23 @@ struct AbslInternal_YouForgotToExplicitlyInitializeAField {
 + #define ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY(Owner)
 + #endif
-+ 
++
 ++// Internal attribute; name and documentation TBD.
 ++//
 ++// See the upstream documentation:
@@ -138,7 +138,7 @@ index 000000000..764a1b801
 ++  mapped_type &operator[](key_arg<K> &&k ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY_THIS) ABSL_ATTRIBUTE_LIFETIME_BOUND {
 +     return this->template operator[]<K, 0>(std::forward<K>(k));
 +   }
-+ 
++
 +diff --git a/absl/container/internal/raw_hash_map.h b/absl/container/internal/raw_hash_map.h
 +--- a/absl/container/internal/raw_hash_map.h
 ++++ b/absl/container/internal/raw_hash_map.h
@@ -263,7 +263,7 @@ index 000000000..764a1b801
 +--- a/absl/synchronization/mutex.h
 ++++ b/absl/synchronization/mutex.h
 +@@ -601,7 +601,7 @@ class ABSL_SCOPED_LOCKABLE MutexLock {
-+ 
++
 +   // Calls `mu.lock()` and returns when that call returns. That is, `mu` is
 +   // guaranteed to be locked when this object is constructed.
 +-  explicit MutexLock(Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY(this))
@@ -292,7 +292,7 @@ index 000000000..764a1b801
 +@@ -652,7 +652,7 @@ class ABSL_SCOPED_LOCKABLE ReaderMutexLock {
 +   explicit ReaderMutexLock(Mutex* absl_nonnull mu) ABSL_SHARED_LOCK_FUNCTION(mu)
 +       : ReaderMutexLock(*mu) {}
-+ 
++
 +-  explicit ReaderMutexLock(Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY(this),
 ++  explicit ReaderMutexLock(Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY_THIS,
 +                            const Condition& cond) ABSL_SHARED_LOCK_FUNCTION(mu)
@@ -310,7 +310,7 @@ index 000000000..764a1b801
 +@@ -689,7 +689,7 @@ class ABSL_SCOPED_LOCKABLE WriterMutexLock {
 +       ABSL_EXCLUSIVE_LOCK_FUNCTION(mu)
 +       : WriterMutexLock(*mu) {}
-+ 
++
 +-  explicit WriterMutexLock(Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY(this),
 ++  explicit WriterMutexLock(Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY_THIS,
 +                            const Condition& cond)
@@ -328,7 +328,7 @@ index 000000000..764a1b801
 +   }
 +@@ -1104,7 +1103,7 @@ class ABSL_SCOPED_LOCKABLE ReleasableMutexLock {
 +       : ReleasableMutexLock(*mu) {}
-+ 
++
 +   explicit ReleasableMutexLock(
 +-      Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY(this),
 ++      Mutex& mu ABSL_INTERNAL_ATTRIBUTE_CAPTURED_BY_THIS,
@@ -378,6 +378,3 @@ index 000000000..8c5815ae9
 +  }
 +  return 0;
 +}
--- 
-2.43.0
-
