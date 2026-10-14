@@ -341,6 +341,13 @@ CLI executable. A `WORKAROUND` comment uses this issue to track rules_foreign_cc
 0.15.1 overwriting explicit `target_args["compile"]`; its supported `build_args`
 property selects the executable until that argument override is corrected.
 
+`upgrade-native-pkgconf-probe-archiver.patch` supplies the resource probe's
+LLVM archiver as a declared build input and an absolute Meson `AR` path.
+Apply it after `upgrade-native-pkgconf-bootstrap.patch` and its prerequisites.
+The same probe command compiles C and C++, creates its static archive, links,
+and runs the executable without requiring an archiver on the worker's `PATH`.
+The generated build script and Meson log must identify the declared `llvm-ar`.
+
 ## Native voice Meson resources
 
 `native-voice-meson-resource-directory.patch` preserves the declared linker
