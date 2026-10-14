@@ -447,6 +447,33 @@ action's inputs. The cross-build checks Darwin ARM64 linking; execution of the
 resulting test remains a native macOS gate. An unsandboxed link can succeed
 without the declared input and does not establish sandbox correctness.
 
+## OpenSSL Windows compiler diagnostics
+
+`upgrade-zz-openssl-windows-diagnostics.patch` matches the Windows SDK's empty
+Winsock guard definition and preserves the const qualifier of OpenSSL's
+installation-directory string. The directory fix follows
+[OpenSSL PR #30616](https://github.com/openssl/openssl/pull/30616).
+The parameter merge passes its mutable pointer arrays explicitly to `qsort`;
+the pointed-to parameters retain their const qualification. OpenSSL documents
+MSVC's C4090 false positives in `Configurations/10-main.conf`. The source
+carries a removable `WORKAROUND` comment rather than disabling the warning.
+Apply the OpenSSL upgrade, native tool upgrades, and OpenSSL linker-input patch
+first.
+
+```sh
+bazel test //tools/build-warnings/openssl:windows_defines_test --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+bazel test //tools/build-warnings/openssl:configuration_header_test //tools/build-warnings/openssl:ssl_init_test //tools/build-warnings/openssl:rust_bindings_test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the empty Winsock guard in actual Windows C
+compiler arguments. Assembly actions are outside that preprocessor check.
+The library tests verify initialization, providers, hashing, and TLS context
+creation on their execution platform. Run these library tests on native Windows
+with `--config=ci-windows-msvc` for MSVC compiler and runtime acceptance;
+Linux execution and Windows-target analysis do not establish that gate.
+
 ## Rust runtime selection on Darwin
 
 `upgrade-native-rust-runtime-selection.patch` removes C++ compiler-runtime

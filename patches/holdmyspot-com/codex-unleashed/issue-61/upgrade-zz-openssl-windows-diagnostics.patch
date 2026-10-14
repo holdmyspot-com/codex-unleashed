@@ -1,0 +1,163 @@
+From 8dd72f597abbd585add2b59ec7de4949c6b45f1b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 22:58:47 +0000
+Subject: [PATCH] Preserve Windows SDK and OpenSSL compiler type contracts
+
+Apply after the OpenSSL 4 upgrade and native tool/link-input patches on rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d). Match the SDK Winsock guard, backport OpenSSL PR 30616 directory qualifiers, and make mutable qsort array conversions explicit without disabling diagnostics.
+
+TDD: bazel test //tools/build-warnings/openssl:windows_defines_test --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --spawn_strategy=local --nouse_action_cache --disk_cache= exits 3 without the nested implementation patch and 0 with it. The regression checks C actions only; assembly has no C preprocessor contract. Native MSVC compiler/runtime validation remains a hosted gate. Maintained just fmt-check passes.
+---
+ MODULE.bazel                                 |  5 +-
+ patches/BUILD.bazel                          |  1 +
+ patches/openssl_windows_compiler_types.patch | 60 ++++++++++++++++++++
+ tools/build-warnings/openssl/BUILD.bazel     |  8 ++-
+ tools/build-warnings/openssl/inputs_test.bzl | 21 +++++++
+ 5 files changed, 93 insertions(+), 2 deletions(-)
+ create mode 100644 patches/openssl_windows_compiler_types.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 28f585ff5..0f0c02386 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -507,7 +507,10 @@ bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
+ single_version_override(
+     module_name = "openssl",
+     patch_strip = 1,
+-    patches = ["//patches:openssl_unused_globals.patch"],
++    patches = [
++        "//patches:openssl_unused_globals.patch",
++        "//patches:openssl_windows_compiler_types.patch",
++    ],
+ )
+
+ inject_repo(crate, "xz")
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 5beefe082..f955065b6 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,4 +1,5 @@
+ exports_files([
++    "openssl_windows_compiler_types.patch",
+     "make_source_warnings.patch",
+     "make_compiler_warnings.patch",
+     "rules_foreign_cc_meson_runfiles.patch",
+diff --git a/patches/openssl_windows_compiler_types.patch b/patches/openssl_windows_compiler_types.patch
+new file mode 100644
+index 000000000..79490cc4e
+--- /dev/null
++++ b/patches/openssl_windows_compiler_types.patch
+@@ -0,0 +1,60 @@
++From 13c7f1f0c54aa65ea238da3755774a38b46a7464 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Wed, 14 Oct 2026 22:49:59 +0000
++Subject: [PATCH] Preserve the Windows SDK guard and OpenSSL directory
++ qualifiers
++
++Use an empty _WINSOCKAPI_ guard matching winsock2.h instead of the implicit value 1. Backport upstream OpenSSL commit 8979944f905927508fadd7f16abac8f1f2925513 to retain the const qualifier returned by ossl_get_openssldir.
++---
++ BUILD.bazel            | 5 +++--
++ crypto/params_dup.c    | 8 ++++++--
++ crypto/x509/x509_def.c | 2 +-
++ 3 files changed, 10 insertions(+), 5 deletions(-)
++
++diff --git a/BUILD.bazel b/BUILD.bazel
++index d73a83d..a69bad3 100755
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -448,11 +448,12 @@ COMMON_DEFINES = select({
++ # _WINSOCKAPI_ and WIN32_LEAN_AND_MEAN are openssl-internal and must not
++ # propagate to consumers via CcInfo.
+++# Match the empty Winsock guard defined by the Windows SDK.
++ COMMON_LOCAL_DEFINES = select({
++     "//configs:windows_msvc": [
++-        "_WINSOCKAPI_",
+++        "_WINSOCKAPI_=",
++         "WIN32_LEAN_AND_MEAN",
++     ],
++     "//configs:windows_non_msvc": [
++-        "_WINSOCKAPI_",
+++        "_WINSOCKAPI_=",
++         "WIN32_LEAN_AND_MEAN",
++     ],
++diff --git a/crypto/params_dup.c b/crypto/params_dup.c
++index fcb9993..1bb7649 100644
++--- a/crypto/params_dup.c
+++++ b/crypto/params_dup.c
++@@ -186,6 +186,10 @@ OSSL_PARAM *OSSL_PARAM_merge(const OSSL_PARAM *p1, const OSSL_PARAM *p2)
++
++     /* Sort the 2 lists */
++-    qsort(list1, list1_sz, sizeof(OSSL_PARAM *), compare_params);
++-    qsort(list2, list2_sz, sizeof(OSSL_PARAM *), compare_params);
+++    /* WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++     * OpenSSL documents MSVC's C4090 false positives in Configurations/10-main.conf.
+++     * qsort writes the mutable pointer arrays, not their const pointees.
+++     * Remove the explicit conversions when MSVC accepts the implicit ones. */
+++    qsort((void *)list1, list1_sz, sizeof(OSSL_PARAM *), compare_params);
+++    qsort((void *)list2, list2_sz, sizeof(OSSL_PARAM *), compare_params);
++
++     /* Allocate enough space to store the merged parameters */
++diff --git a/crypto/x509/x509_def.c b/crypto/x509/x509_def.c
++index 5a6ecaf..797f687 100644
++--- a/crypto/x509/x509_def.c
+++++ b/crypto/x509/x509_def.c
++@@ -31,5 +31,5 @@ static char *x509_cert_fileptr = NULL;
++ static void get_windows_default_path(char *pathname, const char *suffix)
++ {
++-    char *ossldir;
+++    const char *ossldir;
++
++     ossldir = ossl_get_openssldir();
+diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
+index af8b303d0..be1984b84 100644
+--- a/tools/build-warnings/openssl/BUILD.bazel
++++ b/tools/build-warnings/openssl/BUILD.bazel
+@@ -1,6 +1,6 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load("@rules_rs//rs:rust_test.bzl", "rust_test")
+-load(":inputs_test.bzl", "openssl_install_inputs_test")
++load(":inputs_test.bzl", "openssl_install_inputs_test", "openssl_windows_defines_test")
+
+ openssl_install_inputs_test(
+     name = "rust_install_inputs_test",
+@@ -8,6 +8,12 @@ openssl_install_inputs_test(
+     target_under_test = ":rust_bindings_test",
+ )
+
++openssl_windows_defines_test(
++    name = "windows_defines_test",
++    size = "small",
++    target_under_test = "@openssl//:crypto",
++)
++
+ rust_test(
+     name = "rust_bindings_test",
+     size = "small",
+diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
+index 1d2e66334..52ac0d33f 100644
+--- a/tools/build-warnings/openssl/inputs_test.bzl
++++ b/tools/build-warnings/openssl/inputs_test.bzl
+@@ -18,3 +18,24 @@ openssl_install_inputs_test = analysistest.make(
+     _openssl_install_inputs_test_impl,
+     attrs = {"install": attr.label(default = "@openssl//:gen_dir")},
+ )
++
++def _openssl_windows_defines_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    compile_actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "CppCompile" and any([arg.endswith(".c") for arg in action.argv])
++    ]
++    asserts.true(env, len(compile_actions) > 0, "The Windows OpenSSL library must compile C sources")
++    for action in compile_actions:
++        winsock_args = [arg for arg in action.argv if "_WINSOCKAPI_" in arg]
++        asserts.true(env, winsock_args == ["-D_WINSOCKAPI_="] or winsock_args == ["/D_WINSOCKAPI_="], "The Winsock guard must match the SDK's empty macro definition: %s" % winsock_args)
++    return analysistest.end(env)
++
++openssl_windows_defines_test = analysistest.make(
++    _openssl_windows_defines_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt"],
++    },
++)
