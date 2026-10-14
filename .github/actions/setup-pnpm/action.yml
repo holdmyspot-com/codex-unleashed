@@ -1,0 +1,22 @@
+name: setup-pnpm
+description: Install Node.js and pnpm while retaining the existing pnpm store location.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      with:
+        node-version: 22
+    - name: Install pnpm
+      shell: bash
+      run: |
+        set -euo pipefail
+        install_root="${PNPM_INSTALL_ROOT:-$(node -p "require('node:path').join(require('node:os').homedir(), 'setup-pnpm')")}"
+        npm install --prefix "$install_root" pnpm@10
+        PNPM_INSTALL_ROOT="$install_root" node --input-type=module <<'JS'
+        import { appendFileSync } from 'node:fs';
+        import { join } from 'node:path';
+        const bin = join(process.env.PNPM_INSTALL_ROOT, 'node_modules', '.bin');
+        appendFileSync(process.env.GITHUB_ENV, `PNPM_HOME=${bin}\n`);
+        appendFileSync(process.env.GITHUB_PATH, `${bin}\n`);
+        JS
+        "$install_root/node_modules/.bin/pnpm" --version
