@@ -1,0 +1,123 @@
+From a4b643b1bad8665885c6db096faa50155f2566b9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 20:23:51 +0000
+Subject: [PATCH] Build OpenSSL with its declared configuration source header
+
+The pinned BCR overlay generates a second opensslconf.h over an existing source
+header. Unsandboxed compilers resolve the original source, which Bazel rejects
+as an undeclared input. Retain the declared source header and generate only
+the remaining metadata-listed headers. Dependency validation remains enabled.
+
+Track this compatibility repair in holdmyspot-com/codex-unleashed#61.
+Upstream repair: raccoons-build/bazel-openssl-cc#56.
+
+Red: configuration_header_test with --spawn_strategy=local --nouse_action_cache
+--disk_cache= fails on the undeclared opensslconf.h input.
+Green: the same command builds 1596 local actions and passes the runtime test.
+Exact commands and diagnostics: openssl-configuration-test-{red,green-final}.log.
+---
+ MODULE.bazel                                  |  5 ++-
+ patches/BUILD.bazel                           |  1 +
+ patches/openssl_source_headers.patch          | 33 +++++++++++++++++++
+ tools/build-warnings/openssl/BUILD.bazel      |  7 ++++
+ .../openssl/configuration_header_test.c       |  6 ++++
+ 5 files changed, 51 insertions(+), 1 deletion(-)
+ create mode 100644 patches/openssl_source_headers.patch
+ create mode 100644 tools/build-warnings/openssl/configuration_header_test.c
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index c08937b78..adb16bc27 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -491,7 +491,10 @@ bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
+ single_version_override(
+     module_name = "openssl",
+     patch_strip = 1,
+-    patches = ["//patches:openssl_unused_globals.patch"],
++    patches = [
++        "//patches:openssl_unused_globals.patch",
++        "//patches:openssl_source_headers.patch",
++    ],
+ )
+
+ inject_repo(crate, "xz")
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 7625ceac4..6ce39e2f7 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -8,6 +8,7 @@ exports_files([
+     "llvm_windows_arm64_powl.patch",
+     "llvm_windows_mingw_compat.patch",
+     "llvm_mingw_function_guard.patch",
++    "openssl_source_headers.patch",
+     "rules_rust_build_script_tools_transition.patch",
+     "rules_rust_compiler_thp.patch",
+     "rules_rust_group_build_script_arg_files.patch",
+diff --git a/patches/openssl_source_headers.patch b/patches/openssl_source_headers.patch
+new file mode 100644
+index 000000000..1df7abe97
+--- /dev/null
++++ b/patches/openssl_source_headers.patch
+@@ -0,0 +1,33 @@
++From 748bd636c575b6aae4458f39054dd154861a1177 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Wed, 14 Oct 2026 20:20:31 +0000
++Subject: [PATCH] Use the existing OpenSSL configuration source header
++
++Backport the source-header correction from raccoons-build/bazel-openssl-cc#56.
++Keep generated platform configuration and dependency validation intact.
++---
++ BUILD.bazel | 4 ++++
++ 1 file changed, 4 insertions(+)
++
++diff --git a/BUILD.bazel b/BUILD.bazel
++index a34209bdd..9665c8cfc 100644
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -541,6 +541,9 @@ write_file(
++     target_compatible_with = ["@platforms//:incompatible"],
++ )
++
+++# WORKAROUND: https://github.com/raccoons-build/bazel-openssl-cc/issues/42
+++# opensslconf.h is a source header that shadows its generated copy during
+++# unsandboxed builds. Remove when the overlay includes PR #56.
++ [
++     copy_file(
++         name = "copy_generated_{}".format(src),
++@@ -555,6 +558,7 @@ write_file(
++         out = src,
++     )
++     for src in _COMMON_GENERATED_FILES_COMBINED
+++    if src != "include/openssl/opensslconf.h"
++ ]
++
++ _PLATFORM_FILES = {
+diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
+index fc2f72933..da3b77920 100644
+--- a/tools/build-warnings/openssl/BUILD.bazel
++++ b/tools/build-warnings/openssl/BUILD.bazel
+@@ -1,5 +1,12 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
++cc_test(
++    name = "configuration_header_test",
++    size = "small",
++    srcs = ["configuration_header_test.c"],
++    deps = ["@openssl//:crypto"],
++)
++
+ cc_test(
+     name = "ssl_init_test",
+     size = "small",
+diff --git a/tools/build-warnings/openssl/configuration_header_test.c b/tools/build-warnings/openssl/configuration_header_test.c
+new file mode 100644
+index 000000000..868132a99
+--- /dev/null
++++ b/tools/build-warnings/openssl/configuration_header_test.c
+@@ -0,0 +1,6 @@
++#include <openssl/opensslconf.h>
++#include <openssl/crypto.h>
++
++int main(void) {
++  return OPENSSL_init_crypto(0, NULL) == 1 ? 0 : 1;
++}

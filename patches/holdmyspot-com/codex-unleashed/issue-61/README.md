@@ -242,6 +242,22 @@ The probe builds the CLI with fatal warnings, then runs its version and server
 help commands. Its output contains the pinned OpenSSL version and server usage
 text. It does not open a listener or establish a TLS connection.
 
+`native-openssl-z-source-header.patch` uses OpenSSL's existing
+`opensslconf.h` source header during unsandboxed compilation. It adapts the
+[upstream overlay repair](https://github.com/raccoons-build/bazel-openssl-cc/pull/56)
+to 3.5.4.bcr.0 and retains generated platform configuration headers and Bazel's
+dependency validation. Apply it after `native-openssl-unused-globals.patch`.
+
+```sh
+bazel test //tools/build-warnings/openssl:configuration_header_test --spawn_strategy=local --nouse_action_cache --disk_cache=
+```
+
+The check compiles and links the crypto library without a sandbox or cached
+actions, then initializes it successfully. Without the repair, compilation
+fails because the source header shadows its declared generated copy. Run the
+same target on native Windows for platform acceptance; a Linux pass establishes
+only the unsandboxed header-selection boundary.
+
 ## AWS-LC fork-detection state
 
 `native-aws-lc-windows-unused-fork-state.patch` backports
