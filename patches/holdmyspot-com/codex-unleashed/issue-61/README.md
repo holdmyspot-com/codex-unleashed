@@ -705,6 +705,24 @@ The test generates a message with the registered Prost toolchain and verifies
 an encode/decode round-trip. Without the backport, target analysis fails because
 the unused legacy dependency no longer exists.
 
+## Codespell tool isolation
+
+`codespell-isolated-tool-environment.patch` runs the existing Codespell check
+through uv's isolated tool environment. It preserves the action's package
+requirement, repository configuration, ignore list, count output, and failure
+status. The workflow caches tool dependencies using its own configuration as
+the cache input. It applies independently against the declared base.
+
+```sh
+uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
+just fmt-check
+```
+
+Tool installation produces no root-pip warning. Spelling findings retain their
+nonzero status; this patch does not establish that upstream's spelling inventory
+is clean. The Docker action's pinned version and latest stable version both
+install Python packages as root.
+
 ## Verification
 
 `typescript-lint-warning-policy.patch` sets a zero-warning threshold on the
