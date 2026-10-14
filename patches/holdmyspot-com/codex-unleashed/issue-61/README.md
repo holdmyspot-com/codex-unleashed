@@ -368,9 +368,8 @@ bazel build //tools/build-warnings/pkg-config:metadata_probe //tools/build-warni
 The metadata probe checks version lookup, variables, compiler flags, and private
 static dependency flags. Both probes pass on their execution host; Linux results
 do not establish native Mac acceptance. The bootstrap builds only its required
-CLI executable. A `WORKAROUND` comment uses this issue to track rules_foreign_cc
-0.15.1 overwriting explicit `target_args["compile"]`; its supported `build_args`
-property selects the executable until that argument override is corrected.
+CLI executable. With `upgrade-z-native-tools.patch`, rules_foreign_cc preserves
+explicit `target_args["compile"]` and both probes use that supported property.
 
 `upgrade-native-pkgconf-probe-archiver.patch` supplies the resource probe's
 LLVM archiver as a declared build input and an absolute Meson `AR` path.
@@ -378,6 +377,38 @@ Apply it after `upgrade-native-pkgconf-bootstrap.patch` and its prerequisites.
 The same probe command compiles C and C++, creates its static archive, links,
 and runs the executable without requiring an archiver on the worker's `PATH`.
 The generated build script and Meson log must identify the declared `llvm-ar`.
+
+## Foreign C/C++ build tools
+
+`upgrade-z-native-tools.patch` selects rules_foreign_cc 0.16.0, CMake 4.4.4,
+Meson 1.12.1, Ninja 1.13.2, rules_python 2.4.2, bazel_skylib 1.9.2,
+GNU Make 4.4.1.bcr.2, and rules_cc_autoconf 0.27.0. Apply the current issue #61
+toolchain, pkgconf, and OpenSSL prerequisites first.
+
+The toolchain uses the registry's Make source build with compiler warnings
+enabled and retains the string-comparison and assertion-counter source fixes.
+Obsolete Make bootstrap overrides are absent. Meson's Python executable declares
+its package initializers and required runfiles without changing the repository's
+global runfiles policy. The Meson linker-resource fix remains active. The native
+voice rule declares the compiler and platform attributes required by the updated
+foreign-build utilities.
+
+Resolve workspace package versions, then run from the patched checkout:
+
+```sh
+cargo update --workspace --manifest-path codex-rs/Cargo.toml
+bazel test //tools/build-warnings/make-bootstrap:make_warnings_test //tools/build-warnings/make-bootstrap:make_bootstrap_test
+bazel build //tools/build-warnings/cmake:stable_version_probe //tools/build-warnings/meson:resource_directory_probe //third_party/voice:pkg_config_unix
+bazel build //third_party/voice:native_prefix_linux_x86_64
+just fmt-check
+just bazel-lock-check
+```
+
+The CMake probe requires version 4.4.4. The Make analysis test requires fatal
+compiler warnings and rejects `-w` and `/w`; its runtime test executes a Makefile.
+The Meson probe links and executes its C/C++ fixture. The complete Linux prefix
+builds with fatal diagnostics. Native macOS and Windows checks remain separate
+platform acceptance gates.
 
 ## Rust runtime selection on Darwin
 
