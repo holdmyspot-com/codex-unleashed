@@ -10,7 +10,7 @@ Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/55
 
 ## Base and dependencies
 
-Base: `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`.
+Base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
 
 - `cli-version-identity.patch` follows
   `../branding-and-app-server-distribution/add-branding-and-build-metadata.patch`.

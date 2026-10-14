@@ -114,6 +114,14 @@ public final class BazelCommands
 
 		int configuredSeparator = separator(configured);
 		command.addAll(configured.subList(0, configuredSeparator));
+		if (environment.getOrDefault("GITHUB_ACTIONS", "").equals("true") &&
+			environment.getOrDefault("RUNNER_OS", "").equals("macOS") &&
+			arguments.subList(0, separator).contains("--config=ci-macos") &&
+			Set.of("build", "test", "run", "coverage", "cquery", "aquery").contains(arguments.get(commandIndex)) &&
+			arguments.subList(commandIndex + 1, separator).stream().noneMatch(argument ->
+				argument.equals("--jobs") || argument.startsWith("--jobs=") || argument.startsWith("-j")))
+			command.add("--jobs=2");
+
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPO_CONTENTS_CACHE",
 			"--repo_contents_cache=");
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPOSITORY_CACHE", "--repository_cache=");

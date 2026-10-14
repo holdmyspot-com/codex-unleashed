@@ -5,6 +5,8 @@
 - Keep caches created by local project builds and verification under the project root's `.cat/work/temp`, as confirmed
   by the invoked tools' effective cache paths.
 - Remove task-owned build artifacts and caches after their last required consumer finishes, and verify cleanup.
+- Keep local Rust baseline and patched verification independent by rejecting compiler outputs owned by another checkout
+  before starting the build, while permitting shared dependency downloads.
 
 ## Guidance
 
@@ -22,6 +24,18 @@ Before running the tool, confirm its effective cache and output paths are beneat
 Use separate subdirectories when verification requires isolated build state. Keep cache contents out of commits and
 release assets. This rule governs local build storage; it does not relocate user configuration or installed application
 data or change hosted CI cache storage.
+
+Run local Rust verification through the maintained helper, supplying absolute project and checkout paths:
+
+```sh
+tooling/bin/codex-tooling run-local-rust <project-root> <checkout> <cache-name> -- <command> [argument ...]
+```
+
+The command separates compiler outputs by canonical checkout path, rejects foreign or missing ownership before starting
+the child, and shares dependency downloads within the named cache. Use the checkout root consistently; pass maintained
+check commands and their required options unchanged. Do not override the helper's cache paths in the child command.
+Do not adopt existing unowned outputs
+by writing an ownership marker; select a fresh cache name or remove the outputs after their last consumer exits.
 
 Before invoking a build, assign its generated files and dependency caches a cleanup owner and their last required
 consumer. Include cleanup in the owning workflow's terminal path for success, failure, and cancellation. Wait for

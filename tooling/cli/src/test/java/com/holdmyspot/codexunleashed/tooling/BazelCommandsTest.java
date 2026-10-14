@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.tooling;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
@@ -291,6 +292,35 @@ public final class BazelCommandsTest
 			"BAZEL_DISK_CACHE", "managed/disk")), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
 				"build", "--disk_cache=managed/disk", "--experimental_disk_cache_gc_max_size=768M",
 				"--experimental_disk_cache_gc_max_age=14d"));
+	}
+
+	/**
+	 * Bounds hosted macOS CI execution while preserving explicit jobs and literal program arguments.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void hostedMacosBoundsDefaultConcurrency() throws IOException
+	{
+		Map<String, String> environment = Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", "macOS",
+			"BUILDBUDDY_API_KEY", "token");
+		for (String operation : List.of("build", "test", "cquery"))
+		{
+			List<String> arguments = List.of(operation, "--config=ci-macos", "//third_party/v8:pair", "--", "--jobs=99");
+			assertEquals(command(arguments, environment), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
+				operation, "--config=buildbuddy-generic-rbe", "--remote_header=x-buildbuddy-api-key=token",
+				"--remote_local_fallback", "--config=ci-macos", "//third_party/v8:pair", "--jobs=2", "--", "--jobs=99"));
+		}
+		for (List<String> option : List.of(List.of("--jobs=4"), List.of("--jobs", "4"), List.of("-j4"),
+			List.of("-j", "4")))
+		{
+			List<String> arguments = new ArrayList<>(List.of("build", "--config=ci-macos"));
+			arguments.addAll(option);
+			assertFalse(command(arguments, environment).contains("--jobs=2"));
+		}
+		assertFalse(command(List.of("build", "--config=ci-macos"), Map.of("RUNNER_OS", "macOS")).
+			contains("--jobs=2"));
+		assertFalse(command(List.of("build", "--config=ci-linux"), environment).contains("--jobs=2"));
 	}
 
 	/**

@@ -1,0 +1,99 @@
+From 8cad9bf07e2e90fff51831612bd4d95257506c66 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:13:32 +0000
+Subject: [PATCH] Backport GLib header diagnostic compatibility fixes
+
+Track native warning enforcement in #61. Apply after the documented native
+voice prerequisites; keep all compiler and linker checks enabled.
+
+Reproduction evidence: native-glib-combined-green.log. The actual native recipe reports the
+missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
+are recorded separately; an internal authoring commit is not full CI acceptance.
+---
+ third_party/voice/prepare_sources.py  | 23 +++++++++++++++++++++++
+ tools/build-warnings/glib/BUILD.bazel | 13 +++++++++++++
+ tools/build-warnings/glib/type_test.c | 18 ++++++++++++++++++
+ 3 files changed, 54 insertions(+)
+ create mode 100644 tools/build-warnings/glib/type_test.c
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index 75cfab0c4..ee916fdee 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -133,6 +133,29 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             raise ValueError("Pinned GLib log-writer implementation does not match")
+         messages.write_text(contents.replace(original, replacement), encoding="utf-8")
+ 
++        # WORKAROUND: backport GLib's Clang header compatibility fixes.
++        # https://github.com/GNOME/glib/commit/997154cecc465bd399b467cc5c6cb7c88c43559d
++        # https://gitlab.gnome.org/GNOME/glib/-/issues/4038
++        # Remove when the selected GLib release includes both upstream fixes.
++        header_fixes = (
++            (
++                "glib/glib-private.h",
++                "return G_UNLIKELY (__lsan_enable != NULL && __lsan_ignore_object != NULL);",
++                "return !!G_UNLIKELY (__lsan_enable != NULL && __lsan_ignore_object != NULL);",
++            ),
++            (
++                "gobject/gtype.h",
++                "static gpointer type_name##_parent_class = NULL;",
++                "G_GNUC_UNUSED static gpointer type_name##_parent_class = NULL;",
++            ),
++        )
++        for relative_path, original, replacement in header_fixes:
++            header = destination / source.root / relative_path
++            contents = header.read_text(encoding="utf-8")
++            if contents.count(original) != 1:
++                raise ValueError(f"Pinned GLib header does not match: {relative_path}")
++            header.write_text(contents.replace(original, replacement), encoding="utf-8")
++
+     if source.name == "ninja" and source.version == "1.13.2":
+         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/tools/build-warnings/glib/BUILD.bazel b/tools/build-warnings/glib/BUILD.bazel
+index 889c05223..6f3cb36ce 100644
+--- a/tools/build-warnings/glib/BUILD.bazel
++++ b/tools/build-warnings/glib/BUILD.bazel
+@@ -1,5 +1,18 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
++cc_test(
++    name = "type_test",
++    size = "small",
++    srcs = ["type_test.c"],
++    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
++    copts = [
++        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
++        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
++    ],
++    tags = ["manual"],
++    deps = ["//third_party/voice:native_link"],
++)
++
+ cc_test(
+     name = "printf_test",
+     size = "small",
+diff --git a/tools/build-warnings/glib/type_test.c b/tools/build-warnings/glib/type_test.c
+new file mode 100644
+index 000000000..f86635c7b
+--- /dev/null
++++ b/tools/build-warnings/glib/type_test.c
+@@ -0,0 +1,18 @@
++#include <glib-object.h>
++
++typedef GObject NativeType;
++typedef GObjectClass NativeTypeClass;
++
++GType native_type_get_type(void);
++G_DEFINE_TYPE(NativeType, native_type, G_TYPE_OBJECT)
++
++static void native_type_class_init(NativeTypeClass *klass) { (void)klass; }
++static void native_type_init(NativeType *self) { (void)self; }
++
++int main(void) {
++  GObject *object = g_object_new(native_type_get_type(), NULL);
++  if (!G_IS_OBJECT(object) || G_OBJECT_TYPE(object) != native_type_get_type())
++    return 1;
++  g_object_unref(object);
++  return 0;
++}

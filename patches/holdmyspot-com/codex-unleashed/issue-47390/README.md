@@ -1,7 +1,7 @@
 # Expanded diff previews in the full-screen transcript
 
 - Issue: [openai/codex#47390](https://github.com/openai/codex/issues/47390)
-- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
+- Applies to: upstream `openai/codex` `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
 
 ## Intent
 

@@ -1,4 +1,4 @@
-From 690dee50a0e3fa1d57e640adaebfcfb2915802d9 Mon Sep 17 00:00:00 2001
+From 0bb6434bd1be413926658238497d3ef29d8c5390 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 7 Oct 2026 23:43:50 -0400
 Subject: [PATCH] Keep Guardian authorization fixture root turns explicit
@@ -9,10 +9,10 @@ Base: rust-v0.160.0 with the issue-35 series. Red: matched hosted run 3772218379
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
-index 9902b14..d3f632d 100644
+index dd9017e9a..b13aa514c 100644
 --- a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
 +++ b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
-@@ -923,7 +923,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
+@@ -941,7 +941,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
      if lifecycle.uses_root_worker() {
          mock_config = mock_config
              .enable_feature(Feature::Collab)

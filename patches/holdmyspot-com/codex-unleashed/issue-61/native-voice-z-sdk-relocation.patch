@@ -1,0 +1,206 @@
+From e523b8e49abc687b52f822ebfd6e902363df3cc3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 10:06:59 -0400
+Subject: [PATCH] Relocate transitive native SDK metadata
+
+Generate libffi, PCRE2 and zlib metadata relative to pcfiledir so Rust build scripts do not retain the native build temporary prefix. Validate every exported metadata file while retaining Bazel non-hermetic path rejection.
+
+Verification: moved-template probe fails on the preceding extraction implementation with -I/deleted/build/prefix/include and passes for all three repaired templates. The SDK rejection regression fails before the guard and passes afterward. Eleven SDK/source-preparation tests and maintained just fmt-check pass. Full emitted consumer and hosted platform checks remain required.
+---
+ third_party/voice/prepare_sources.py          | 32 ++++++
+ third_party/voice/sdk.py                      |  9 +-
+ third_party/voice/test_sdk.py                 |  9 ++
+ .../check-native-sdk-relocation.py            | 97 +++++++++++++++++++
+ 4 files changed, 144 insertions(+), 3 deletions(-)
+ create mode 100644 tools/build-warnings/check-native-sdk-relocation.py
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index 863a72733..6075c3e51 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -83,6 +83,38 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             raise ValueError(f"Expanded source exceeds limits: {source.name}")
+         archive.extractall(destination, members=members, filter="data")
+ 
++    metadata_templates = {
++        ("libffi", "3.8.0"): ("libffi.pc.in", "@prefix@"),
++        ("pcre2", "10.47"): ("libpcre2-8.pc.in", "@prefix@"),
++        ("zlib", "1.3.2"): ("zlib.pc.cmakein", "@CMAKE_INSTALL_PREFIX@"),
++    }
++    if (source.name, source.version) in metadata_templates:
++        # WORKAROUND: these pinned dependencies embed the temporary install prefix.
++        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++        # Remove when all three producers emit relocatable pkg-config metadata.
++        relative_path, prefix_variable = metadata_templates[
++            (source.name, source.version)
++        ]
++        metadata = destination / source.root / relative_path
++        contents = metadata.read_text(encoding="utf-8")
++        replacements = [(f"prefix={prefix_variable}", "prefix=${pcfiledir}/../..")]
++        if source.name == "zlib":
++            replacements.append(
++                ("exec_prefix=@CMAKE_INSTALL_PREFIX@", "exec_prefix=${prefix}")
++            )
++        for original, replacement in replacements:
++            contents, count = re.subn(
++                "^" + re.escape(original) + "$",
++                replacement,
++                contents,
++                flags=re.MULTILINE,
++            )
++            if count != 1:
++                raise ValueError(
++                    f"Pinned pkg-config template does not match: {source.name}"
++                )
++        metadata.write_text(contents, encoding="utf-8")
++
+     if source.name == "glib" and source.version == "2.88.3":
+         # WORKAROUND: GLib's bundled gnulib has incomplete warning portability.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/third_party/voice/sdk.py b/third_party/voice/sdk.py
+index 8819ce731..f484a7ddd 100644
+--- a/third_party/voice/sdk.py
++++ b/third_party/voice/sdk.py
+@@ -106,10 +106,13 @@ def export_sdk(prefix: Path, receipts: Path, target: str, output: Path):
+         selected.append((name, source, expected))
+     for module in MODULES:
+         path = prefix / f"lib/pkgconfig/{module}.pc"
+-        if path.relative_to(prefix).as_posix().casefold() not in names or not re.search(
+-            r"^prefix=\$\{pcfiledir\}/\.\./\.\.$", path.read_text(), re.MULTILINE
++        if path.relative_to(prefix).as_posix().casefold() not in names:
++            raise ValueError("SDK is missing required pkg-config metadata")
++    for name, source, _ in selected:
++        if name.startswith("lib/pkgconfig/") and not re.search(
++            r"^prefix=\$\{pcfiledir\}/\.\./\.\.$", source.read_text(), re.MULTILINE
+         ):
+-            raise ValueError("rebuild the SDK with relocatable Meson pkg-config files")
++            raise ValueError("rebuild the SDK with relocatable pkg-config files")
+     if "lib/glib-2.0/include/glibconfig.h" not in names:
+         raise ValueError("SDK is missing the target's GLib configuration header")
+     output.mkdir()
+diff --git a/third_party/voice/test_sdk.py b/third_party/voice/test_sdk.py
+index d499a9e91..6c1c9b632 100644
+--- a/third_party/voice/test_sdk.py
++++ b/third_party/voice/test_sdk.py
+@@ -115,6 +115,15 @@ class SdkTests(unittest.TestCase):
+             export_sdk(self.prefix, self.receipts, self.target, self.output)
+         self.assertFalse(self.output.exists())
+ 
++    def test_transitive_dependency_metadata_must_be_relocatable(self):
++        metadata = self.prefix / "lib/pkgconfig/zlib.pc"
++        metadata.write_text(
++            metadata.read_text().replace("${pcfiledir}/../..", "/deleted/build")
++        )
++        with self.assertRaisesRegex(ValueError, "rebuild the SDK"):
++            export_sdk(self.prefix, self.receipts, self.target, self.output)
++        self.assertFalse(self.output.exists())
++
+     def test_development_alias_is_materialized_and_escape_is_rejected(self):
+         alias = self.prefix / "lib/libfixture.dylib"
+         try:
+diff --git a/tools/build-warnings/check-native-sdk-relocation.py b/tools/build-warnings/check-native-sdk-relocation.py
+new file mode 100644
+index 000000000..a63f99df8
+--- /dev/null
++++ b/tools/build-warnings/check-native-sdk-relocation.py
+@@ -0,0 +1,97 @@
++#!/usr/bin/env python3
++"""Query moved pkg-config metadata from the checksum-pinned native templates."""
++
++import argparse
++import json
++import os
++from pathlib import Path
++import shlex
++import subprocess
++import sys
++import tempfile
++
++CHECKOUT = Path(__file__).resolve().parents[2]
++sys.dont_write_bytecode = True
++sys.path.insert(0, str(CHECKOUT / "third_party/voice"))
++from prepare_sources import extract_source, load_sources
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("configuration", type=Path)
++    parser.add_argument("execroot", type=Path)
++    arguments = parser.parse_args()
++    root = arguments.execroot.absolute()
++    configuration = json.loads(arguments.configuration.read_text())
++    sources = load_sources((CHECKOUT / "third_party/voice/sources.json").read_bytes())
++    with tempfile.TemporaryDirectory(prefix="native-sdk-relocation-") as temporary:
++        scratch = Path(temporary)
++        extracted = scratch / "sources"
++        extracted.mkdir()
++        metadata = scratch / "sdk/lib/pkgconfig"
++        metadata.mkdir(parents=True)
++        variables = {
++            "prefix": "/deleted/build/prefix",
++            "exec_prefix": "${prefix}",
++            "libdir": "${exec_prefix}/lib",
++            "toolexeclibdir": "${libdir}",
++            "includedir": "${prefix}/include",
++            "PACKAGE_NAME": "libffi",
++            "PACKAGE_VERSION": "1.0",
++            "CMAKE_INSTALL_PREFIX": "/deleted/build/prefix",
++            "CMAKE_INSTALL_LIBDIR": "lib",
++            "CMAKE_INSTALL_INCLUDEDIR": "include",
++            "zlib_VERSION": "1.0",
++        }
++        cache = scratch / "configure.cmake"
++        cache.write_text(
++            "".join(f"set({key} [=[{value}]=])\n" for key, value in variables.items())
++        )
++        for package, template, module in (
++            ("libffi", "libffi.pc.in", "libffi"),
++            ("pcre2", "libpcre2-8.pc.in", "libpcre2-8"),
++            ("zlib", "zlib.pc.cmakein", "zlib"),
++        ):
++            source = next(item for item in sources if item.name == package)
++            archive = next(
++                root / item
++                for item in configuration["archives"]
++                if Path(item).name == source.archive
++            )
++            extract_source(source, archive.parent, extracted)
++            script = scratch / f"{package}.cmake"
++            script.write_text(
++                f"include([=[{cache}]=])\n"
++                f"configure_file([=[{extracted / source.root / template}]=] "
++                f"[=[{metadata / (module + '.pc')}]=] @ONLY)\n"
++            )
++            subprocess.run([root / configuration["cmake"], "-P", script], check=True)
++        moved = scratch / "moved SDK"
++        (scratch / "sdk").rename(moved)
++        for module in ("libffi", "libpcre2-8", "zlib"):
++            output = subprocess.check_output(
++                [root / configuration["pkg_config"], "--cflags", "--libs", module],
++                env={
++                    **os.environ,
++                    "PKG_CONFIG_PATH": "",
++                    "PKG_CONFIG_LIBDIR": str(moved / "lib/pkgconfig"),
++                },
++                text=True,
++            )
++            flags = shlex.split(output)
++            directories = set()
++            for flag in flags:
++                if flag.startswith(("-I", "-L")):
++                    directory = Path(flag[2:]).resolve()
++                    if not directory.is_relative_to(moved):
++                        raise AssertionError(f"{module} retains a foreign path: {flag}")
++                    directories.add((flag[:2], directory))
++            if not {("-I", moved / "include"), ("-L", moved / "lib")} <= directories:
++                raise AssertionError(
++                    f"{module} omits its moved SDK directories: {flags}"
++                )
++            print(f"{module}: moved SDK include and library paths resolve correctly")
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+

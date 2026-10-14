@@ -1,0 +1,174 @@
+From 4c5a360e7151899b2977e157e000f687672cf332 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 10:37:54 +0000
+Subject: [PATCH] Reject warning diagnostics from successful native build
+ commands
+
+Keep native command logs and full multiline warning context in the build
+receipt. Fail warning-producing commands even when their exit status is
+zero, and preserve the original status of commands that already fail.
+
+TDD: nine warning-producing child commands incorrectly pass without the
+change; the regression rejects compiler, linker, CMake, Meson, and GNU
+configure diagnostics. Source literals remain accepted. An unused CMake
+project option remains fatal with generic defaults in the initial cache.
+
+Native tooling: 96 tests pass, 19 platform-specific skips.
+Maintained just fmt-check: passes. Native Meson runtime probe: passes.
+---
+ third_party/voice/build_native.py      | 28 +++++++++
+ third_party/voice/test_build_native.py | 81 ++++++++++++++++++++++++++
+ 2 files changed, 109 insertions(+)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 1b4feada4..92c329705 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -18,6 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
+ from prepare_sources import MANIFEST, load_sources, prepare_sources
+ from windows_build_inputs import build_environment
+ 
++WARNING_DIAGNOSTIC = re.compile(
++    r"""^\s*(?:CMake (?:Deprecation )?Warning\b|(?:[^"'\n]*:\s*)?warning(?:\s+[A-Z]+\d+)?:\s)""",
++    re.IGNORECASE,
++)
++
+ TARGET_SYSTEMS = {
+     "apple-darwin": "Darwin",
+     "unknown-linux-gnu": "Linux",
+@@ -212,10 +217,33 @@ class NativeBuild:
+                 check=False,
+             )
+         step["exit_code"] = result.returncode
++        warning_diagnostics = []
++        if result.returncode == 0:
++            in_warning = False
++            lines = (self.output / f"{name}.log").read_text(
++                encoding="utf-8", errors="replace"
++            )
++            for line in lines.splitlines():
++                if WARNING_DIAGNOSTIC.match(line):
++                    warning_diagnostics.append(line)
++                    in_warning = True
++                elif in_warning and (not line or line[0].isspace()):
++                    warning_diagnostics[-1] += "\n" + line
++                else:
++                    in_warning = False
++            warning_diagnostics = [warning.rstrip() for warning in warning_diagnostics]
++            if warning_diagnostics:
++                step["warning_diagnostics"] = warning_diagnostics
++
+         (self.output / "build-state.json").write_text(
+             json.dumps(self.record, indent=2) + "\n", encoding="utf-8"
+         )
+         result.check_returncode()
++        if warning_diagnostics:
++            raise RuntimeError(
++                f"Native build step {name} completed with warning diagnostics:\n"
++                + "\n".join(warning_diagnostics)
++            )
+ 
+     def posix_path(self, path):
+         if not self.windows:
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index f15934baa..7165b8f0e 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -297,6 +297,22 @@ class NativeBuildTests(unittest.TestCase):
+             build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
+         )
+ 
++    def test_cmake_unused_project_option_remains_fatal(self):
++        cmake = shutil.which("cmake")
++        if cmake is None:
++            self.skipTest("Requires CMake")
++        self.args.cmake = Path(cmake)
++        source = self.root / "unused-option"
++        source.mkdir()
++        (source / "CMakeLists.txt").write_text(
++            "cmake_minimum_required(VERSION 3.15)\nproject(unused LANGUAGES NONE)\n"
++        )
++        build = NativeBuild(self.args, self.environment)
++        build.output.mkdir()
++        build.sources = {"fixture": source}
++        with self.assertRaisesRegex(RuntimeError, "UNUSED_PROJECT_OPTION"):
++            build.cmake("fixture", ["-DUNUSED_PROJECT_OPTION=ON"], bootstrap=True)
++
+     def test_build_refuses_existing_output_before_reading_sources(self):
+         self.args.output.mkdir()
+         (self.args.output / "keep").write_text("untouched")
+@@ -307,6 +323,71 @@ class NativeBuildTests(unittest.TestCase):
+             {"keep": "untouched"},
+         )
+ 
++    def test_successful_step_rejects_native_warning_diagnostics(self):
++        diagnostics = (
++            "warning: compiler diagnostic",
++            "WARNING: Meson configuration diagnostic",
++            "configure: WARNING: feature configuration diagnostic",
++            "CMake Warning at CMakeLists.txt:3 (message):\n  Configured warning detail",
++            "CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):",
++            "source.c:12:3: warning: compiler diagnostic",
++            "ld.lld: warning: linker diagnostic",
++            "source.c(12): warning C4996: compiler diagnostic",
++            "LINK : warning LNK4098: linker diagnostic",
++        )
++        for index, diagnostic in enumerate(diagnostics):
++            with self.subTest(diagnostic=diagnostic):
++                self.args.output = self.root / f"warning-{index}"
++                build = NativeBuild(self.args, self.environment)
++                build.output.mkdir()
++                command = [
++                    sys.executable,
++                    "-c",
++                    "import sys; print(sys.argv[1], file=sys.stderr)",
++                    diagnostic,
++                ]
++                with self.assertRaisesRegex(RuntimeError, "warning diagnostics"):
++                    build.run("warning", command)
++                state = json.loads((build.output / "build-state.json").read_text())
++                self.assertEqual(state["steps"][-1]["exit_code"], 0)
++                self.assertEqual(
++                    state["steps"][-1]["warning_diagnostics"], [diagnostic]
++                )
++                self.assertEqual(
++                    (build.output / "warning.log").read_text().strip(), diagnostic
++                )
++                self.assertFalse((build.output / "built.json").exists())
++
++    def test_successful_step_accepts_source_text_containing_warning_literals(self):
++        build = NativeBuild(self.args, self.environment)
++        build.output.mkdir()
++        output = (
++            "source contains warning: example\n"
++            'printf("note: warning: example");\n'
++            "clean build completed"
++        )
++        build.run(
++            "clean",
++            [sys.executable, "-c", "import sys; print(sys.argv[1])", output],
++        )
++        state = json.loads((build.output / "build-state.json").read_text())
++        self.assertEqual(state["steps"][-1]["exit_code"], 0)
++        self.assertNotIn("warning_diagnostics", state["steps"][-1])
++
++    def test_failed_step_preserves_its_status_when_it_also_emits_warnings(self):
++        build = NativeBuild(self.args, self.environment)
++        build.output.mkdir()
++        with self.assertRaises(subprocess.CalledProcessError) as error:
++            build.run(
++                "failed-warning",
++                [
++                    sys.executable,
++                    "-c",
++                    "print('warning: failure'); raise SystemExit(23)",
++                ],
++            )
++        self.assertEqual(error.exception.returncode, 23)
++
+     def test_failure_retains_log_and_state_without_completion_marker(self):
+         build = NativeBuild(self.args, self.environment)
+         build.output.mkdir()
+-- 
+2.43.0
+

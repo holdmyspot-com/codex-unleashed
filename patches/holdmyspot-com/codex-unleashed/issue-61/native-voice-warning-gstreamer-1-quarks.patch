@@ -1,0 +1,103 @@
+From 4e4f7c45d6c3b1ef1664147b0305b88a1378b91d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:13:33 +0000
+Subject: [PATCH] Remove unused GStreamer pad quark storage
+
+Track native warning enforcement in #61. Apply after the documented native
+voice prerequisites; keep all compiler and linker checks enabled.
+
+Reproduction evidence: native-glib-query-green.log. The actual native recipe reports the
+missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
+are recorded separately; an internal authoring commit is not full CI acceptance.
+---
+ third_party/voice/prepare_sources.py          | 15 +++++++++
+ tools/build-warnings/gstreamer/BUILD.bazel    | 33 +++++++++++++++++++
+ .../gstreamer/pad_quarks_test.c               | 13 ++++++++
+ 3 files changed, 61 insertions(+)
+ create mode 100644 tools/build-warnings/gstreamer/BUILD.bazel
+ create mode 100644 tools/build-warnings/gstreamer/pad_quarks_test.c
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index 49ef5717d..a5cc136f8 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -189,6 +189,21 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             contents = contents.replace(original, replacement)
+         query.write_text(contents, encoding="utf-8")
+ 
++    if source.name == "gstreamer" and source.version == "1.28.6":
++        # WORKAROUND: these pad quarks are interned but their storage is unused.
++        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++        # Remove when GStreamer no longer stores these unused probe quarks.
++        pad = destination / source.root / "gst/gstpad.c"
++        contents = pad.read_text(encoding="utf-8")
++        for name in ("buffer_quark", "buffer_list_quark", "event_quark"):
++            declaration = f"static GQuark {name};\n"
++            assignment = f"{name} = g_quark_from_static_string"
++            if contents.count(declaration) != 1 or contents.count(assignment) != 1:
++                raise ValueError(f"Pinned GStreamer pad quark does not match: {name}")
++            contents = contents.replace(declaration, "")
++            contents = contents.replace(assignment, "(void) g_quark_from_static_string")
++        pad.write_text(contents, encoding="utf-8")
++
+     if source.name == "ninja" and source.version == "1.13.2":
+         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/tools/build-warnings/gstreamer/BUILD.bazel b/tools/build-warnings/gstreamer/BUILD.bazel
+new file mode 100644
+index 000000000..191f97912
+--- /dev/null
++++ b/tools/build-warnings/gstreamer/BUILD.bazel
+@@ -0,0 +1,33 @@
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
++
++NATIVE_SDK = "//third_party/voice:native_sdk"
++
++NATIVE_INCLUDES = [
++    "-I$(execpath %s)/%s" % (NATIVE_SDK, include)
++    for include in [
++        "include/gstreamer-1.0",
++        "include/glib-2.0",
++        "lib/glib-2.0/include",
++    ]
++]
++
++TEST_NAMES = [
++    "pad_quarks_test",
++]
++
++[
++    cc_test(
++        name = name,
++        size = "small",
++        srcs = [name + ".c"],
++        additional_compiler_inputs = [NATIVE_SDK],
++        copts = NATIVE_INCLUDES,
++        tags = ["manual"],
++        target_compatible_with = select({
++            "@platforms//os:linux": [],
++            "//conditions:default": ["@platforms//:incompatible"],
++        }) if name == "allocator_type_test" else [],
++        deps = ["//third_party/voice:native_link"],
++    )
++    for name in TEST_NAMES
++]
+diff --git a/tools/build-warnings/gstreamer/pad_quarks_test.c b/tools/build-warnings/gstreamer/pad_quarks_test.c
+new file mode 100644
+index 000000000..a073b7ddc
+--- /dev/null
++++ b/tools/build-warnings/gstreamer/pad_quarks_test.c
+@@ -0,0 +1,13 @@
++#include <gst/gst.h>
++
++int main(void) {
++  gst_init(NULL, NULL);
++  GstPad *pad = gst_pad_new("native-pad", GST_PAD_SRC);
++  int status = !GST_IS_PAD(pad) || GST_PAD_DIRECTION(pad) != GST_PAD_SRC ||
++               g_quark_try_string("buffer") == 0 ||
++               g_quark_try_string("bufferlist") == 0 ||
++               g_quark_try_string("event") == 0;
++  gst_object_unref(pad);
++  gst_deinit();
++  return status;
++}

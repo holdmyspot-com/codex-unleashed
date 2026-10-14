@@ -1,0 +1,61 @@
+From 1aca532035bf2af72c9574a0e243351f46737169 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 19:46:18 -0400
+Subject: [PATCH] test(skills): isolate the no-marker fixture from host Git
+ ancestry
+
+Configure a marker absent from the fixture's owned temporary directory so
+running the test below a real Git checkout cannot introduce a project root.
+Keep production marker detection and the current-directory-only assertion.
+
+Fixes: https://github.com/holdmyspot-com/codex-unleashed/issues/64
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+
+Regression evidence uses the maintained run-local-rust helper with its
+project-local TMPDIR:
+- RED: just test -p codex-skills-extension --lib repo_ancestry_without_project_marker_does_not_walk_parents
+  Exit 100: unexpected ancestor skills root from the enclosing Git checkout.
+- GREEN: just test -p codex-skills-extension --lib
+  Exit 0: 150 tests pass with project-local temporary files.
+- FORMAT: just fmt-check
+  Exit 0.
+
+Evidence: .cat/work/temp/latest-toolchains-MzFT3d/skills-ancestry-project-temp-{red,green}.log
+Fresh emitted-patch verification remains a separate acceptance gate.
+---
+ codex-rs/ext/skills/src/host_roots_tests.rs | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/ext/skills/src/host_roots_tests.rs b/codex-rs/ext/skills/src/host_roots_tests.rs
+index fa8cb7d8d..f88c1f82d 100644
+--- a/codex-rs/ext/skills/src/host_roots_tests.rs
++++ b/codex-rs/ext/skills/src/host_roots_tests.rs
+@@ -405,8 +405,24 @@ async fn repo_ancestry_without_project_marker_does_not_walk_parents() {
+     let cwd = outer.join("nested/inner");
+     fs::create_dir_all(outer.join(".agents/skills")).expect("create outer skills");
+     fs::create_dir_all(cwd.join(".agents/skills")).expect("create cwd skills");
++    let missing_marker = temp_dir.path().join("missing-project-marker");
++    let mut layer = user_layer(&absolute(temp_dir.path().join(".codex")));
++    layer
++        .config
++        .as_table_mut()
++        .expect("user config table")
++        .insert(
++            "project_root_markers".to_string(),
++            toml::Value::Array(vec![toml::Value::String(
++                missing_marker
++                    .to_str()
++                    .expect("UTF-8 test marker path")
++                    .to_string(),
++            )]),
++        );
++    let config_stack = stack(vec![layer]);
+
+-    let roots = repo_agents_skill_roots(Some(Arc::clone(&LOCAL_FS)), &stack(Vec::new()), &cwd)
++    let roots = repo_agents_skill_roots(Some(Arc::clone(&LOCAL_FS)), &config_stack, &cwd)
+         .await
+         .into_iter()
+         .map(|root| root.path)
+-- 
+2.43.0
+

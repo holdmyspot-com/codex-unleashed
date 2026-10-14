@@ -1,0 +1,68 @@
+From ea71c14cad7411c397bfe6da4e67098de6c230a0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 19:59:55 -0400
+Subject: [PATCH] test(network-proxy): isolate path-policy coverage from live
+ DNS
+
+Use a public IP literal in the repository-path allowlist fixture so DNS
+availability cannot preempt the hook-policy assertions. The test makes no
+outbound connection and retains the allowed request, traversal denials,
+exact response reasons, and blocked-request telemetry assertions.
+
+Fixes: https://github.com/holdmyspot-com/codex-unleashed/issues/65
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+
+RED: just test -p codex-network-proxy --lib mitm_policy_blocks_encoded_path_traversal_for_repository_allowlist
+Using an isolated resolver pointing at an unavailable local DNS service,
+this exits 100 on unpatched upstream: blocked-by-allowlist preempts the
+expected MITM hook policy. Evidence: mitm-offline-dns-baseline-retry.log.
+
+Emitted-patch green and formatting acceptance remain required and are
+recorded separately in .cat/work/temp/latest-toolchains-MzFT3d.
+---
+ codex-rs/network-proxy/src/mitm_tests.rs | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/network-proxy/src/mitm_tests.rs b/codex-rs/network-proxy/src/mitm_tests.rs
+index ccbf006bd..68abba922 100644
+--- a/codex-rs/network-proxy/src/mitm_tests.rs
++++ b/codex-rs/network-proxy/src/mitm_tests.rs
+@@ -194,8 +194,10 @@ async fn mitm_policy_allows_matching_hooked_write_in_full_mode() {
+
+ #[tokio::test]
+ async fn mitm_policy_blocks_encoded_path_traversal_for_repository_allowlist() {
++    // This policy-only test does not connect; an IP literal avoids live DNS.
++    let host = "8.8.8.8";
+     let mut hook = github_write_hook();
+-    hook.host = "github.com".to_string();
++    hook.host = host.to_string();
+     hook.matcher.methods = vec!["GET".to_string()];
+     hook.matcher.path_prefixes = vec!["pattern:/openai/openai/**".to_string()];
+     hook.actions.inject_request_headers.clear();
+@@ -205,12 +207,12 @@ async fn mitm_policy_blocks_encoded_path_traversal_for_repository_allowlist() {
+         mode: NetworkMode::Full,
+         ..NetworkProxyConfig::default()
+     };
+-    network.set_allowed_domains(vec!["github.com".to_string()]);
++    network.set_allowed_domains(vec![host.to_string()]);
+     let app_state = Arc::new(network_proxy_state_for_policy(network));
+     let ctx = policy_ctx(
+         app_state.clone(),
+         NetworkMode::Full,
+-        "github.com",
++        host,
+         /*target_port*/ 443,
+     );
+     let paths = [
+@@ -224,7 +226,7 @@ async fn mitm_policy_blocks_encoded_path_traversal_for_repository_allowlist() {
+         let req = Request::builder()
+             .method(Method::GET)
+             .uri(path)
+-            .header(HOST, "github.com")
++            .header(HOST, host)
+             .body(Body::empty())
+             .unwrap();
+         let response = mitm_blocking_response(&req, &ctx).await.unwrap();
+-- 
+2.43.0
+

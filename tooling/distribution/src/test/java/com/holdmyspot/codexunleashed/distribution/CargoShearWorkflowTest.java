@@ -5,8 +5,6 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +15,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 /**
- * Executes the maintained Cargo Shear workflow with a real isolated Git checkout and a Java tool fixture.
+ * Executes the maintained Cargo Shear workflow with an isolated checkout and a Java tool fixture.
  */
 public final class CargoShearWorkflowTest
 {
@@ -29,7 +27,7 @@ public final class CargoShearWorkflowTest
 	}
 
 	/**
-	 * Accepts verified warning output, rejects changed baseline sources, and prevents Python invocation.
+	 * Accepts clean output, rejects warning output even with a zero tool status, and prevents Python invocation.
 	 * The maintained command receives its supported Cargo Shear executable override for the process fixture.
 	 *
 	 * @throws IOException if fixture access, runtime linking, or command execution fails
@@ -42,25 +40,12 @@ public final class CargoShearWorkflowTest
 		Path root = Files.createTempDirectory("shear-workflow-");
 		try
 		{
-			Path configuration = Files.writeString(root.resolve("empty-git-config"), "");
-			Path template = Files.createDirectory(root.resolve("empty-git-template"));
 			Path checkout = Files.createDirectory(root.resolve("upstream"));
 			Path cargo = Files.createDirectory(checkout.resolve("codex-rs"));
 			Files.writeString(cargo.resolve("Cargo.toml"), "fixture");
-			Path source = Files.writeString(cargo.resolve("source.txt"), "unchanged");
-			git(root, configuration, template, "init", "-q", checkout.toString());
-			git(root, configuration, template, "-C", checkout.toString(), "add", "codex-rs");
-			git(root, configuration, template, "-C", checkout.toString(), "-c", "user.name=Fixture",
-				"-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture");
-			String sha = git(root, configuration, template, "-C", checkout.toString(), "rev-parse", "HEAD").strip();
 			List<Map<String, String>> findings = List.of(Map.of("severity", "warning", "message", "known orphan"));
 			JsonMapper mapper = JsonMapper.builder().build();
-			Path baseline = Files.createDirectories(root.resolve(".github/scripts")).resolve("cargo-shear-baseline.json");
-			Files.writeString(baseline, mapper.writeValueAsString(Map.of("source_sha", sha,
-				"source_paths", List.of("codex-rs/source.txt"), "findings", findings)));
 			Path report = root.resolve("shear-report.json");
-			Files.writeString(report, mapper.writeValueAsString(Map.of("summary", Map.of("errors", 0, "warnings", 1),
-				"findings", findings)) + "\n");
 			Path adapters = Files.createDirectory(root.resolve("process adapters"));
 			JavaCommandFixtures.writeLauncher(adapters.resolve("python3"), RejectedCommandFixture.class);
 			Path shear = JavaCommandFixtures.writeNativeLauncher(adapters.resolve("cargo-shear"),
@@ -71,14 +56,19 @@ public final class CargoShearWorkflowTest
 			Path workflow = Path.of(System.getProperty("tooling.release.workflow")).resolveSibling("rust-ci.yml");
 			String command = WorkflowCommands.readStepCommand(workflow, "cargo_shear", "cargo shear") +
 				" --cargo-shear \"$CARGO_SHEAR_TEST_EXECUTABLE\"";
-			for (boolean changed : new boolean[]{false, true})
+			for (int scenario = 0; scenario < 3; ++scenario)
 			{
+				boolean warning = scenario > 0;
 				int expectedStatus = 0;
-				if (changed)
+				List<Map<String, String>> reportedFindings = List.of();
+				if (warning)
 				{
-					Files.writeString(source, "changed");
 					expectedStatus = 1;
+					reportedFindings = findings;
 				}
+				Files.writeString(report, mapper.writeValueAsString(Map.of(
+					"summary", Map.of("errors", 0, "warnings", expectedStatus),
+					"findings", reportedFindings)) + "\n");
 				Path log = root.resolve("workflow.log");
 				ProcessBuilder builder = NativeCommands.createBuilder("bash", "-eu", "-c", command);
 				builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
@@ -88,11 +78,12 @@ public final class CargoShearWorkflowTest
 				builder.environment().put("CARGO_SHEAR_TEST_EXECUTABLE", shear.toString());
 				builder.environment().put("CARGO_SHEAR_TEST_REPORT", report.toString());
 				builder.environment().put("TMPDIR", captures.toString());
-				isolateGit(builder, configuration, template);
+				String toolStatus = "0";
+				if (scenario == 2)
+					toolStatus = "1";
+				builder.environment().put("CARGO_SHEAR_TEST_STATUS", toolStatus);
 				assertEquals(run(builder, log), expectedStatus, Files.readString(log));
 				assertTrue(Files.readString(log).contains("shear diagnostics"));
-				assertEquals(Files.readString(log).contains("Only verified, unchanged upstream release warnings remain."),
-					!changed);
 			}
 			try (Stream<Path> files = Files.list(captures))
 			{
@@ -103,44 +94,6 @@ public final class CargoShearWorkflowTest
 		{
 			FixtureDirectories.deleteTree(root);
 		}
-	}
-
-	/**
-	 * Executes a real Git operation with isolated configuration and template paths.
-	 *
-	 * @param root the fixture working directory
-	 * @param configuration the empty Git configuration file
-	 * @param template the empty repository template directory
-	 * @param arguments the Git arguments
-	 * @return the command's output
-	 * @throws IOException if startup or output access fails
-	 * @throws InterruptedException if the Git wait is interrupted
-	 */
-	private static String git(Path root, Path configuration, Path template, String... arguments)
-		throws IOException, InterruptedException
-	{
-		List<String> command = new ArrayList<>(List.of("git"));
-		command.addAll(Arrays.asList(arguments));
-		Path log = root.resolve("git.log");
-		ProcessBuilder builder = NativeCommands.createBuilder(command);
-		builder.directory(root.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
-		isolateGit(builder, configuration, template);
-		assertEquals(run(builder, log), 0, Files.readString(log));
-		return Files.readString(log);
-	}
-
-	/**
-	 * Supplies explicit, fixture-owned Git configuration instead of consuming the user's hooks or configuration.
-	 *
-	 * @param builder the child process builder
-	 * @param configuration the empty Git configuration file
-	 * @param template the empty repository template directory
-	 */
-	private static void isolateGit(ProcessBuilder builder, Path configuration, Path template)
-	{
-		builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
-		builder.environment().put("GIT_CONFIG_GLOBAL", configuration.toString());
-		builder.environment().put("GIT_TEMPLATE_DIR", template.toString());
 	}
 
 	/**

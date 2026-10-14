@@ -8,7 +8,7 @@ The patch removes two unused imports and preserves all test targets and lint che
 ## Reference and base
 
 - [Issue #56](https://github.com/holdmyspot-com/codex-unleashed/issues/56).
-- Upstream base: `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`.
+- Upstream base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
 - The patch applies independently to that base and has no shared prerequisites.
 - Remove the patch when the selected upstream release includes these import removals.
 

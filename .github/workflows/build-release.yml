@@ -6,6 +6,11 @@ on:
       - "rust-v*.*.*"
   workflow_call:
     inputs:
+      automatic:
+        description: "Skip an unchanged failed release while its one-day failure record is retained. Leave false for an explicit retry."
+        required: false
+        default: false
+        type: boolean
       upstream_tag:
         description: "Optional upstream tag override."
         required: false
@@ -53,6 +58,11 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
+      automatic:
+        description: "Skip an unchanged failed release while its one-day failure record is retained. Leave false for an explicit retry."
+        required: false
+        default: false
+        type: boolean
       upstream_tag:
         description: "Optional upstream tag override."
         required: false
@@ -167,6 +177,7 @@ jobs:
         id: prepare
         shell: bash
         env:
+          INPUT_AUTOMATIC: ${{ inputs.automatic || false }}
           INPUT_UPSTREAM_TAG: ${{ inputs.upstream_tag || '' }}
           INPUT_BUILD_NUMBER: ${{ inputs.build_number || '' }}
           INPUT_ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id || '' }}
@@ -290,7 +301,7 @@ jobs:
           fi
           patched_tag="${upstream_tag}+${build_number}"
           release_name="${patched_tag#rust-v}"
-          failure_marker_name="failed-upstream-release-${patched_tag}-${GITHUB_SHA}"
+          failure_marker_name="failed-upstream-release-${upstream_tag}-${GITHUB_SHA}-${patch_hash}"
           export failure_marker_name
 
           if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
@@ -305,18 +316,17 @@ jobs:
             exit 0
           fi
 
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+          if [[ "${INPUT_AUTOMATIC}" == "true" ]]; then
             failure_marker_id="$(
               gh api \
                 "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
-                --paginate \
-                -q '.artifacts[]
+                --paginate --slurp \
+                -q '[.[].artifacts[]
                   | select(.expired == false and .name == env.failure_marker_name)
-                  | .id' \
-                2>/dev/null | head -n1 || true
+                  | .id] | first // empty'
             )"
             if [[ -n "${failure_marker_id}" ]]; then
-              echo "A previous release attempt for ${patched_tag} failed on this workflow revision (${GITHUB_SHA}); skipping scheduled retry."
+              echo "A release attempt for ${upstream_tag} and these sources failed within the retained one-day window; skipping automatic retry. Start a manual run with automatic=false to retry."
               echo "should_release=false" >> "${GITHUB_OUTPUT}"
               echo "upstream_tag=${upstream_tag}" >> "${GITHUB_OUTPUT}"
               echo "patched_tag=${patched_tag}" >> "${GITHUB_OUTPUT}"
@@ -564,6 +574,7 @@ jobs:
       ${{
         always() &&
         !cancelled() &&
+        needs.verify.result == 'success' &&
         needs.prepare.outputs.should_release == 'true' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
         (
@@ -750,7 +761,7 @@ jobs:
           : > "${cargo_home}/config.toml"
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
         with:
           targets: ${{ matrix.target }}
 
@@ -1153,6 +1164,7 @@ jobs:
       ${{
         always() &&
         !cancelled() &&
+        needs.verify.result == 'success' &&
         needs.prepare.outputs.should_release == 'true' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
         needs.prepare.outputs.windows_matrix != '[]' &&
@@ -1237,7 +1249,7 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
         with:
           targets: ${{ matrix.target }}
 
@@ -1937,6 +1949,6 @@ jobs:
       - name: Upload failure marker
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: failed-upstream-release-${{ needs.prepare.outputs.patched_tag }}-${{ github.sha }}
+          name: failed-upstream-release-${{ needs.prepare.outputs.upstream_tag }}-${{ github.sha }}-${{ needs.prepare.outputs.patch_hash }}
           path: failure-marker/README.txt
           retention-days: 1

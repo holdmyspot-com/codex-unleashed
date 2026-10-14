@@ -1,0 +1,86 @@
+From 856f0b70cbfdf9d759258d1d9a21f5b2f5c12ad9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 18:58:44 -0400
+Subject: [PATCH] fix(http-client): classify TLS errors inside I/O wrappers
+
+Traverse io::Error::get_ref() before following ordinary error sources so
+typed TLS failures remain visible through nested wrappers. Preserve the
+existing classifications and reject certificate-like text as TLS evidence.
+
+Track: https://github.com/holdmyspot-com/codex-unleashed/issues/62
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+
+Regression evidence (Rust 1.99.0, isolated run-local-rust outputs):
+RED: just test -p codex-http-client --lib request_failures_
+Exit 100: nested typed TLS and real certificate-handshake tests fail.
+GREEN: just test -p codex-http-client --lib --config <test-ca-env.toml>
+Exit 0: 114 tests pass. The Cargo config forces SSL_CERT_FILE and
+CODEX_CA_CERTIFICATE to empty values so native-TLS fixtures do not inherit
+the runner's automatically detected certificate file.
+just fmt-check exits 0.
+
+Only the two HTTP-client classifier source/test files belong to this
+intermediate patch commit. Other pending build/workflow edits are excluded.
+Fresh emitted-patch verification is recorded separately before acceptance.
+---
+ .../src/route_aware_client_pool.rs            |  9 +++++++-
+ .../src/route_aware_client_pool_tests.rs      | 23 +++++++++++++++++++
+ 2 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/http-client/src/route_aware_client_pool.rs b/codex-rs/http-client/src/route_aware_client_pool.rs
+index 905aaf8f0..27a0dbcc8 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool.rs
+@@ -127,7 +127,14 @@ impl RouteAwareRequestError {
+             if error.to_string() == "tunnel error: proxy authorization required" {
+                 return Some(RouteFailureClass::ProxyAuthenticationRequired);
+             }
+-            source = error.source();
++            // WORKAROUND: io::Error::source skips its wrapped error:
++            // https://github.com/rust-lang/rust/issues/101817
++            // Remove this special case if source exposes the immediate wrapped error.
++            source = error
++                .downcast_ref::<io::Error>()
++                .and_then(io::Error::get_ref)
++                .map(|inner| inner as &(dyn std::error::Error + 'static))
++                .or_else(|| error.source());
+         }
+
+         match self {
+diff --git a/codex-rs/http-client/src/route_aware_client_pool_tests.rs b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+index 711bc6b0e..3e4adca85 100644
+--- a/codex-rs/http-client/src/route_aware_client_pool_tests.rs
++++ b/codex-rs/http-client/src/route_aware_client_pool_tests.rs
+@@ -780,6 +780,29 @@ fn managed_request_timeout_covers_queued_transport_construction() {
+     });
+ }
+
++#[test]
++fn request_failures_classify_tls_errors_inside_nested_io_errors() {
++    let error = RouteAwareRequestError::Route(RouteAwareClientPoolError::Resolve(
++        io::Error::other(io::Error::other(rustls::Error::InvalidCertificate(
++            rustls::CertificateError::UnknownIssuer,
++        ))),
++    ));
++
++    assert_eq!(error.failure_class(), Some(RouteFailureClass::TlsError));
++}
++
++#[test]
++fn request_failures_do_not_classify_certificate_text_as_a_tls_error() {
++    let error = RouteAwareRequestError::Route(RouteAwareClientPoolError::Resolve(
++        io::Error::other(io::Error::other("invalid peer certificate: UnknownIssuer")),
++    ));
++
++    assert_eq!(
++        error.failure_class(),
++        Some(RouteFailureClass::ProxyResolutionUnavailable)
++    );
++}
++
+ #[tokio::test]
+ async fn request_timeout_is_shared_across_redirect_hops() {
+     let (address, server) = spawn_response_server(vec![
+-- 
+2.43.0
+

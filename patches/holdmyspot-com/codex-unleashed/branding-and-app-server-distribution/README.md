@@ -1,6 +1,6 @@
 # Codex Unleashed branding and build information
 
-- Branding patch applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
+- Branding patch applies to: upstream `openai/codex` `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
 
 ## Intent
 
@@ -86,8 +86,8 @@ version; the package policy resides in this repository's Java tooling.
 ## Public daemon releases
 
 [daemon-public-releases.patch](daemon-public-releases.patch) applies independently
-to upstream `rust-v0.161.0`, commit
-`979011409de0a60b52f179721948e65531d26144`.
+to upstream `rust-v0.162.1`, commit
+`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
 
 The `/daemon` option **Install latest public stable** keeps its existing text
 and installs the latest public release from
@@ -143,8 +143,8 @@ OpenAI's public release channel.
 
 ## Connected OpenAI app-server warning
 
-[warn-on-openai-app-server.patch](warn-on-openai-app-server.patch) applies to upstream `rust-v0.161.0`, commit
-`979011409de0a60b52f179721948e65531d26144`. The branding patch in this directory
+[warn-on-openai-app-server.patch](warn-on-openai-app-server.patch) applies to upstream `rust-v0.162.1`, commit
+`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`. The branding patch in this directory
 supplies the client vendor version and precedes this patch in the queue.
 
 A numeric Codex Unleashed build connected to a server without build metadata

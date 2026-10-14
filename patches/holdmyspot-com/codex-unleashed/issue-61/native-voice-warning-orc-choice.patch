@@ -1,0 +1,172 @@
+From 327b6b04af5b030302b4186cc6840d647fa82680 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:13:33 +0000
+Subject: [PATCH] Distinguish explicit Orc disablement from failed discovery
+
+Track native warning enforcement in #61. Apply after the documented native
+voice prerequisites; keep all compiler and linker checks enabled.
+
+Reproduction evidence: native-orc-choice-controlled-red.log. The actual native recipe reports the
+missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
+are recorded separately; an internal authoring commit is not full CI acceptance.
+---
+ third_party/voice/prepare_sources.py          |  19 +++
+ .../build-warnings/check-native-orc-choice.py | 119 ++++++++++++++++++
+ 2 files changed, 138 insertions(+)
+ create mode 100644 tools/build-warnings/check-native-orc-choice.py
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index 708f595e1..89c14fa4a 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -189,6 +189,25 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             contents = contents.replace(original, replacement)
+         query.write_text(contents, encoding="utf-8")
+ 
++    if (
++        source.name in ("gst-plugins-base", "gst-plugins-good")
++        and source.version == "1.28.6"
++    ):
++        # WORKAROUND: explicit Orc disablement selects the supported C fallback.
++        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++        # Remove when GStreamer distinguishes this choice from a missing Orc.
++        meson = destination / source.root / "meson.build"
++        contents = meson.read_text(encoding="utf-8")
++        original = "  warning('Orc not found or disabled, will use backup C code')"
++        replacement = (
++            "  if get_option('orc').disabled()\n"
++            "    message('Orc explicitly disabled; using backup C code')\n"
++            "  else\n" + original + "\n  endif"
++        )
++        if contents.count(original) != 1:
++            raise ValueError("Pinned GStreamer Orc fallback diagnostic does not match")
++        meson.write_text(contents.replace(original, replacement), encoding="utf-8")
++
+     if source.name == "gstreamer" and source.version == "1.28.6":
+         # WORKAROUND: these pad quarks are interned but their storage is unused.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/tools/build-warnings/check-native-orc-choice.py b/tools/build-warnings/check-native-orc-choice.py
+new file mode 100644
+index 000000000..b84c7e9ce
+--- /dev/null
++++ b/tools/build-warnings/check-native-orc-choice.py
+@@ -0,0 +1,119 @@
++#!/usr/bin/env python3
++"""Exercise the pinned GStreamer Orc diagnostic with the native Meson recipe."""
++
++import argparse
++import json
++import os
++from pathlib import Path
++import sys
++import tempfile
++from types import SimpleNamespace
++
++CHECKOUT = Path(__file__).resolve().parents[2]
++sys.dont_write_bytecode = True
++sys.path.insert(0, str(CHECKOUT / "third_party/voice"))
++from build_native import NativeBuild
++from prepare_sources import extract_source, load_sources
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("configuration", type=Path)
++    parser.add_argument("execroot", type=Path)
++    parser.add_argument("meson_source", type=Path)
++    parser.add_argument("ninja", type=Path)
++    arguments = parser.parse_args()
++    root = arguments.execroot.absolute()
++    configuration = json.loads(
++        arguments.configuration.read_text().replace("@VOICE_EXECROOT@", str(root))
++    )
++    archives = configuration.pop("archives")
++    for name in ("prefix", "receipt"):
++        configuration.pop(name)
++    linker = root / configuration.pop("ld")
++    for name in ("cc", "cxx", "ar", "ranlib", "cmake", "make", "pkg_config", "shell"):
++        configuration[name] = root / configuration[name]
++    manifest = (CHECKOUT / "third_party/voice/sources.json").read_bytes()
++    for package in ("gst-plugins-base", "gst-plugins-good"):
++        source = next(item for item in load_sources(manifest) if item.name == package)
++        archive = next(
++            root / item for item in archives if Path(item).name == source.archive
++        )
++
++        with tempfile.TemporaryDirectory(prefix="native-orc-choice-") as temporary:
++            scratch = Path(temporary)
++            extracted = scratch / "sources"
++            extracted.mkdir()
++            extract_source(source, archive.parent, extracted)
++            contents = (extracted / source.root / "meson.build").read_text()
++            start = "have_orcc = false\n"
++            end = (
++                "\nbase_platform_dep = []"
++                if package == "gst-plugins-base"
++                else "\nhave_nasm = false"
++            )
++            if contents.count(start) != 1 or contents.count(end) != 1:
++                raise ValueError("Pinned Orc dependency block does not match")
++            fragment = contents.split(start, 1)[1].split(end, 1)[0]
++            project = scratch / "project"
++            project.mkdir()
++            (project / "meson.build").write_text(
++                "project('orc-choice', 'c', meson_version: '>=1.1')\n"
++                "orc_req = '0.4.0'\ncore_conf = configuration_data()\ncdata = configuration_data()\n"
++                + start
++                + fragment
++            )
++            (project / "meson.options").write_text(
++                "option('orc', type: 'feature')\noption('orc-compiler', type: 'feature')\n"
++            )
++            empty = scratch / "empty-pkgconfig"
++            empty.mkdir()
++            for mode in ("disabled", "auto"):
++                builder = NativeBuild(
++                    SimpleNamespace(
++                        **configuration,
++                        archives=scratch,
++                        output=scratch / mode,
++                        bootstrap_make=None,
++                    ),
++                    os.environ,
++                )
++                builder.output.mkdir()
++                (builder.tools / "bin").mkdir(parents=True)
++                (builder.tools / "bin/ninja").symlink_to(arguments.ninja.absolute())
++                builder.sources = {
++                    "meson": arguments.meson_source.absolute(),
++                    "probe": project,
++                }
++                builder.environment["LD"] = str(linker)
++                builder.environment["PKG_CONFIG_LIBDIR"] = str(empty)
++                try:
++                    try:
++                        builder.meson(
++                            "probe",
++                            [
++                                f"-Dorc={mode}",
++                                "-Dorc-compiler=disabled",
++                                "-Dauto_features=auto",
++                            ],
++                        )
++                    except RuntimeError as error:
++                        if mode != "auto" or "Orc not found or disabled" not in str(
++                            error
++                        ):
++                            raise
++                    else:
++                        if mode == "auto":
++                            raise AssertionError(
++                                "Automatic missing-Orc warning is not fatal"
++                            )
++                finally:
++                    for log in sorted(builder.output.glob("*.log")):
++                        print(log.read_text(errors="replace"))
++    print(
++        "Explicit Orc disablement succeeds; automatic missing-Orc warning remains fatal"
++    )
++
++
++if __name__ == "__main__":
++    main()

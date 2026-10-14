@@ -1,0 +1,109 @@
+From 1e5c5bf848d2ef673a49b4ec789529fa09cd7c14 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 02:56:38 +0000
+Subject: [PATCH] Isolate official marketplace migration fixture from network
+
+Use a local Git repository and URL rewrite in a joined child test process. Deny HTTP and HTTPS transport in that child while preserving the inferred source and missing-plugin assertions.
+
+TDD: existing fixture with protocol.https.allow=never fails the succeeded_marketplaces assertion (exit 100); repaired fixture passes (1 test), all 168 migration tests pass, and just fmt-check passes. Commands and logs: .cat/work/temp/final-queue-acceptance-3qIAzi/marketplace-{network-red,network-green,package-green,format}.log in the fork execution record.
+
+Fixes holdmyspot-com/codex-unleashed#67
+---
+ .../src/service_tests/plugins/marketplaces.rs | 81 +++++++++++++++++++
+ 1 file changed, 81 insertions(+)
+
+diff --git a/codex-rs/external-agent-migration/src/service_tests/plugins/marketplaces.rs b/codex-rs/external-agent-migration/src/service_tests/plugins/marketplaces.rs
+index 682000381..6442b9fc4 100644
+--- a/codex-rs/external-agent-migration/src/service_tests/plugins/marketplaces.rs
++++ b/codex-rs/external-agent-migration/src/service_tests/plugins/marketplaces.rs
+@@ -480,6 +480,87 @@ async fn import_plugins_supports_relative_external_agent_plugin_marketplace_path
+
+ #[tokio::test]
+ async fn import_plugins_infers_external_official_marketplace_when_missing_from_settings() {
++    const CHILD_ENV: &str = "CODEX_TEST_MIGRATION_MARKETPLACE_CHILD";
++    if std::env::var_os(CHILD_ENV).is_none() {
++        let fixture = TempDir::new().expect("create marketplace fixture");
++        let remote = fixture.path().join("remote");
++        fs::create_dir_all(remote.join(".claude-plugin"))
++            .expect("create marketplace manifest directory");
++        fs::write(
++            remote.join(".claude-plugin/marketplace.json"),
++            serde_json::to_vec(&serde_json::json!({
++                "name": EXTERNAL_OFFICIAL_MARKETPLACE_NAME,
++                "plugins": []
++            }))
++            .expect("serialize marketplace"),
++        )
++        .expect("write marketplace manifest");
++
++        let run_git = |args: &[&str]| {
++            let output = std::process::Command::new("git")
++                .current_dir(&remote)
++                .args(args)
++                .output()
++                .expect("run fixture Git command");
++            assert!(
++                output.status.success(),
++                "git {args:?}: {}",
++                String::from_utf8_lossy(&output.stderr)
++            );
++        };
++        run_git(&["init", "--quiet"]);
++        run_git(&["add", "."]);
++        run_git(&[
++            "-c",
++            "user.name=Codex Tests",
++            "-c",
++            "user.email=codex-tests@example.com",
++            "commit",
++            "--quiet",
++            "-m",
++            "marketplace fixture",
++        ]);
++
++        let config = fixture.path().join("gitconfig");
++        let rewrite_key = format!("url.{}.insteadOf", remote.display());
++        run_git(&[
++            "config",
++            "--file",
++            config.to_str().expect("fixture config path"),
++            &rewrite_key,
++            "https://github.com/anthropics/claude-plugins-official.git",
++        ]);
++        let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
++            .args([
++                "--exact",
++                "service::tests::plugins::marketplaces::import_plugins_infers_external_official_marketplace_when_missing_from_settings",
++                "--nocapture",
++            ])
++            .env(CHILD_ENV, "1")
++            .env("GIT_CONFIG_GLOBAL", config)
++            .env("GIT_CONFIG_NOSYSTEM", "1")
++            .env("GIT_CONFIG_COUNT", "3")
++            .env("GIT_CONFIG_KEY_0", "protocol.file.allow")
++            .env("GIT_CONFIG_VALUE_0", "always")
++            .env("GIT_CONFIG_KEY_1", "protocol.https.allow")
++            .env("GIT_CONFIG_VALUE_1", "never")
++            .env("GIT_CONFIG_KEY_2", "protocol.http.allow")
++            .env("GIT_CONFIG_VALUE_2", "never")
++            .output()
++            .expect("join isolated marketplace import");
++        assert!(
++            output.status.success(),
++            "{}\n{}",
++            String::from_utf8_lossy(&output.stdout),
++            String::from_utf8_lossy(&output.stderr)
++        );
++        assert!(
++            String::from_utf8_lossy(&output.stdout).contains("1 passed"),
++            "the child must run the marketplace import test"
++        );
++        return;
++    }
++
+     let (_root, external_agent_home, codex_home) = fixture_paths();
+     fs::create_dir_all(&external_agent_home).expect("create external agent home");
+     fs::create_dir_all(&codex_home).expect("create codex home");
+-- 
+2.43.0
+

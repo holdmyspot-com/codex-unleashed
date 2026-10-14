@@ -1,0 +1,136 @@
+From f4da728254c1c0be6ce9aaaddd224aaadd0d397c Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 10:26:56 -0400
+Subject: [PATCH] Bind native SDK metadata to the consuming Bazel sandbox
+
+pkgconf follows individual TreeArtifact metadata symlinks to the outer execroot. Set its supported per-module prefix variables to the declared SDK so Cargo metadata remains portable without relaxing path validation.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), after the native voice compatibility and SDK relocation patches.
+
+Regression: check-native-sdk-sandbox.py consumes the actual aquery environment and materializes an SDK of file symlinks. Before prefix binding it fails on the outer gio-2.0 include path; afterwards all 12 modules pass. The real voice-host build fails before and passes after; just fmt-check passes. Evidence: llvm-toolchain-Rkha0k/native-sdk-sandbox-{red,green}.log, native-sdk-prefix-consumer.log, native-sdk-prefix-authoring-fmt-green.log.
+---
+ MODULE.bazel                                  | 19 +++++
+ .../check-native-sdk-sandbox.py               | 81 +++++++++++++++++++
+ 2 files changed, 100 insertions(+)
+ create mode 100644 tools/build-warnings/check-native-sdk-sandbox.py
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index e28b4df1a..c08937b78 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -772,6 +772,25 @@ inject_repo(crate, "alsa_lib")
+             "PKG_CONFIG": "$(execpath @@//third_party/voice:pkg_config)",
+             "PKG_CONFIG_LIBDIR": "$(execpath @@//third_party/voice:native_sdk)/lib/pkgconfig",
+             "PKG_CONFIG_PATH": "",
++        } | {
++            # pkgconf follows Bazel's individual .pc input symlinks outside the
++            # sandbox. Bind each SDK module's prefix to the consuming action's
++            # declared SDK instead, including transitive native dependencies.
++            "PKG_CONFIG_" + module + "_PREFIX": "$(execpath @@//third_party/voice:native_sdk)"
++            for module in [
++                "GLIB_2_0",
++                "GOBJECT_2_0",
++                "GIO_2_0",
++                "GMODULE_NO_EXPORT_2_0",
++                "GSTREAMER_1_0",
++                "GSTREAMER_BASE_1_0",
++                "GSTREAMER_APP_1_0",
++                "GSTREAMER_AUDIO_1_0",
++                "GSTREAMER_TAG_1_0",
++                "LIBFFI",
++                "LIBPCRE2_8",
++                "ZLIB",
++            ]
+         } | {
+             "SYSTEM_DEPS_" + key + "_SEARCH_NATIVE": "$(execpath @@//third_party/voice:native_link)/.."
+             for key in keys
+diff --git a/tools/build-warnings/check-native-sdk-sandbox.py b/tools/build-warnings/check-native-sdk-sandbox.py
+new file mode 100644
+index 000000000..07fe56377
+--- /dev/null
++++ b/tools/build-warnings/check-native-sdk-sandbox.py
+@@ -0,0 +1,81 @@
++#!/usr/bin/env python3
++"""Check native metadata using the actual Cargo action's sandbox environment."""
++
++import argparse
++import json
++import os
++from pathlib import Path
++import shlex
++import shutil
++import subprocess
++import tempfile
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("actions", type=Path)
++    parser.add_argument("execroot", type=Path)
++    parser.add_argument("sdk", type=Path)
++    arguments = parser.parse_args()
++    actions = json.loads(arguments.actions.read_text())["actions"]
++    environments = [
++        {
++            entry["key"]: entry.get("value", "")
++            for entry in action["environmentVariables"]
++        }
++        for action in actions
++        if action["mnemonic"] == "CargoBuildScriptRun"
++    ]
++    root = arguments.execroot.absolute()
++    sdk = arguments.sdk.absolute()
++    environment = next(
++        item
++        for item in environments
++        if item.get("CARGO_PKG_NAME") == "glib_sys"
++        and item.get("CARGO_PKG_VERSION") == "0.22.8"
++        and item.get("PKG_CONFIG_LIBDIR", "").replace("${pwd}", str(root))
++        == str(sdk / "lib/pkgconfig")
++    )
++    metadata = Path(environment["PKG_CONFIG_LIBDIR"].replace("${pwd}", str(root)))
++    executable = environment["PKG_CONFIG"].replace("${pwd}", str(root))
++
++    with tempfile.TemporaryDirectory(prefix="native-sdk-sandbox-") as temporary:
++        sandbox = Path(temporary)
++        relative = sdk.relative_to(root)
++        logical_sdk = sandbox / relative
++        # Bazel materializes TreeArtifact inputs as directories of file symlinks.
++        # Keep their physical source outside the simulated action's execroot.
++        shutil.copytree(sdk, logical_sdk, copy_function=os.symlink)
++        query_environment = {
++            **os.environ,
++            **{
++                key: value.replace("${pwd}", str(sandbox))
++                for key, value in environment.items()
++                if key.startswith("PKG_CONFIG") and key != "PKG_CONFIG"
++            },
++        }
++        for pc in sorted(metadata.glob("*.pc")):
++            output = subprocess.check_output(
++                [executable, "--cflags-only-I", "--libs-only-L", pc.stem],
++                env=query_environment,
++                text=True,
++            )
++            directories = [
++                Path(os.path.normpath(flag[2:]))
++                for flag in shlex.split(output)
++                if flag.startswith(("-I", "-L"))
++            ]
++            if not directories:
++                raise AssertionError(f"{pc.stem} exports no SDK directories")
++            for directory in directories:
++                # Physical resolution would follow the test's input symlinks.
++                # Cached metadata must retain the consuming action's logical root.
++                if not directory.is_relative_to(logical_sdk) or not directory.is_dir():
++                    raise AssertionError(
++                        f"{pc.stem} escapes its consuming sandbox: {directory}"
++                    )
++            print(f"{pc.stem}: metadata stays inside the consuming sandbox")
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+

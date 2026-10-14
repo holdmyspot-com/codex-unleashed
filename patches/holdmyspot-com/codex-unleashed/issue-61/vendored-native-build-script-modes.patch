@@ -1,0 +1,47 @@
+From 5e83dc6185601bd19de34207048f49598eaa67e9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 03:21:51 +0000
+Subject: [PATCH] build: select vendored native build scripts explicitly
+
+Keep the existing tikv-jemalloc-sys and libgit2-sys build scripts
+selected rather than relying on rules_rs auto selection. This removes
+the well-known-annotation advisories without changing native providers.
+
+Verification against rust-v0.162.1 with the current downstream queue:
+RED: fresh just bazel-lock-check exits zero but prints two well-known
+crate-annotation warnings (final-queue-acceptance-3qIAzi/bazel-lock.log).
+GREEN: cargo metadata normalizes workspace versions; just
+bazel-lock-update and just bazel-lock-check exit zero without warnings.
+just check-build-warnings exits zero: clean fixture builds, deprecated
+function fixture fails at the expected compiler diagnostic.
+---
+ MODULE.bazel | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index a0fcd2b48..0eac4d0cd 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -652,6 +652,7 @@ crate.annotation(
+         "@rules_foreign_cc//toolchains:current_make_toolchain",
+     ],
+     crate = "tikv-jemalloc-sys",
++    gen_build_script = "on",
+     patch_args = ["-p1"],
+     patches = [
+         "//patches:tikv-jemalloc-sys_make_env.patch",
+@@ -661,6 +662,11 @@ crate.annotation(
+
+ inject_repo(crate, "rules_foreign_cc")
+
++# Build the vendored libgit2 sources with the crate's existing build script.
++crate.annotation(
++    crate = "libgit2-sys",
++    gen_build_script = "on",
++)
+ crate.annotation(
+     # Provide the hermetic SDK path so the build script doesn't try to invoke an unavailable `xcrun --show-sdk-path`.
+     build_script_data = [
+-- 
+2.43.0
+

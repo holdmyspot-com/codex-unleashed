@@ -6,10 +6,14 @@
   configuration, upstream provenance, dependencies, and release versioning.
 - Accept patch verification only when the declared upstream checks pass on the
   emitted patch applied to its declared base.
+- Retire a patch only when regression evidence establishes that the selected
+  upstream release base covers its supported outcomes without the patch and
+  the remaining patch queue verifies.
 
 ## Guidance
 
-Apply these rules when creating, updating, or releasing patches under `patches/`.
+Apply these rules when creating, updating, releasing, or assessing upstream
+replacements for patches under `patches/`.
 
 ## Layout
 
@@ -85,8 +89,42 @@ Apply these rules when creating, updating, or releasing patches under `patches/`
   Require the same check to pass with the pin before concluding that the
   version difference caused the failure. If the project contract requires a
   pinned toolchain, use that pin from the start.
-- Remove a patch once upstream ships the fix. Keep patch history easy to
-  review against upstream.
+
+## Checking upstream fixes
+
+When checking whether upstream fixes an issue covered by our patches:
+
+1. Identify each patch's supported outcomes, regression tests, prerequisites,
+   and required platforms from its README, diff, and verification record.
+   Resolve the current upstream development revision and latest stable release
+   to exact commits; identify the release base our queue targets separately.
+2. Use the regression tests as the primary evidence. Run them on clean upstream
+   checkouts without the implementation patch. Bring across only the tests and
+   test support needed to exercise the outcomes. Keep baseline and patched
+   compiler outputs isolated under the build-cache rule.
+3. Adapt tests that depend on downstream-only APIs or flags to upstream's
+   interfaces while preserving the supported outcomes and assertions. A compile
+   error, missing fixture, unavailable platform, or environment failure leaves
+   the outcome unverified; it does not establish that the bug remains. Diagnose
+   that boundary before interpreting the result. A test failure establishes a
+   remaining issue only when it reproduces the intended missing outcome.
+4. Inspect upstream code and commits to explain the results and identify
+   equivalent fixes. Issue closure and successful reverse application are
+   supporting evidence; failed reverse application does not rule out a fix
+   implemented differently. Check outcomes outside the tests' coverage before
+   concluding that the entire patch is redundant, including configuration and
+   platform guarantees. Add a focused behavior check when coverage is missing.
+5. Record the patch identity, upstream commits, test-only adaptations, commands,
+   environment, results, and coverage gaps. Distinguish verified fixes on the
+   development branch from fixes shipped in stable, reproduced remaining bugs,
+   partial fixes, and unverified outcomes. Do not report a broad inspection as
+   behavioral verification or a passing subset as coverage of the whole patch.
+6. Remove a patch once the selected upstream release base covers all its
+   supported outcomes without it. Retain a backport when the fix exists only
+   on a newer upstream revision. For a partial fix, remove only the redundant
+   portion and verify the retained patch. Update dependencies and documentation,
+   then apply and verify the remaining queue on a fresh selected-base checkout
+   before accepting retirement. Keep patch history reviewable against upstream.
 
 ## Patch README content
 

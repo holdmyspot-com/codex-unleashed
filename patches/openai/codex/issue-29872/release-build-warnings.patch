@@ -1,4 +1,4 @@
-From deff14f412224b5393521c934e936cf85fbbeb99 Mon Sep 17 00:00:00 2001
+From 6db6050e22dc71a05168917278e42532e8a45df4 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 1 Oct 2026 22:48:17 -0400
 Subject: [PATCH] Remove unused imports and bindings from release builds
@@ -29,12 +29,12 @@ nine-patch queue applied to the declared base.
  3 files changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index bf1bb93..eaf2a96 100644
+index 896aa6623..868dfb9e8 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1500,9 +1500,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1509,9 +1509,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
  }
- 
+
  fn loader_overrides_with_test_user_config_file(
 -    mut loader_overrides: LoaderOverrides,
 +    loader_overrides: LoaderOverrides,
@@ -47,7 +47,7 @@ index bf1bb93..eaf2a96 100644
      if let Some(path) = test_user_config_file {
          let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
-index 6643684..1c3dea7 100644
+index 664368416..1c3dea772 100644
 --- a/codex-rs/cloud-tasks/src/lib.rs
 +++ b/codex-rs/cloud-tasks/src/lib.rs
 @@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
@@ -61,13 +61,13 @@ index 6643684..1c3dea7 100644
  use codex_http_client::RouteAwareClientPool;
  use codex_login::default_client::get_codex_user_agent;
 diff --git a/justfile b/justfile
-index 3614939..6fe4962 100644
+index fa823fa53..99932f44a 100644
 --- a/justfile
 +++ b/justfile
-@@ -60,6 +60,10 @@ fix *args:
- clippy *args:
-     cargo clippy --tests {args}
- 
+@@ -66,6 +66,10 @@ clippy *args:
+ check-build-warnings *args:
+     bash {{ justfile_directory() }}/tools/build-warnings/check.sh "$@"
+
 +# Check unused imports and mutable bindings in release builds.
 +check-release-warnings:
 +    cargo clippy --release --lib -p codex-core -p codex-app-server -p codex-cloud-tasks -- --no-deps -D unused_imports -D unused_mut

@@ -68,8 +68,8 @@ automatic-resumption guidance. It does not stop running children.
 
 ## Upstream base
 
-- Tag: `rust-v0.161.0`
-- Commit: `979011409de0a60b52f179721948e65531d26144`
+- Tag: `rust-v0.162.1`
+- Commit: `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
 - Upstream status: downstream feature; no upstream adoption is assumed.
 
 ## Patch order

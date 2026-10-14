@@ -1,0 +1,239 @@
+From c6eee3d0f20ee5ad50effdade14b371b7057f097 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 01:18:46 +0000
+Subject: [PATCH] build: reject Rust and native compiler warnings
+
+Promote Cargo compiler and rustdoc warnings to errors, including target
+and execution-platform Rust actions under Bazel. Enable the native
+warnings-as-errors feature for target and host toolchains. Supply that
+feature in hermetic LLVM with fatal linker diagnostics, while native
+MSVC toolchains use the existing rules_cc feature and /WX flags.
+
+Add a maintained native warning probe that first builds clean code,
+then requires the warning fixture to fail at its compiler diagnostic.
+
+Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+Authoring evidence: strict-build-warnings-smF5Al/acceptance.md and
+latest-toolchains-MzFT3d under .cat/work/temp. Before enforcement the
+warning probe builds successfully; with enforcement it fails at -Werror,
+and the clean probe passes. just check-build-warnings passes after the
+linker-argument compatibility adaptation tracked by issue #60.
+
+Fresh emitted queue and hosted Windows /WX acceptance remain required.
+This patch does not claim all toolchain warning boundaries complete.
+---
+ .bazelrc                                |  5 ++++
+ MODULE.bazel                            |  1 +
+ codex-rs/.cargo/config.toml             |  4 +++
+ justfile                                |  6 +++++
+ patches/BUILD.bazel                     |  1 +
+ patches/llvm_warnings_as_errors.patch   | 35 +++++++++++++++++++++++++
+ tools/build-warnings/BUILD.bazel        | 13 +++++++++
+ tools/build-warnings/check.sh           | 32 ++++++++++++++++++++++
+ tools/build-warnings/clean.c            |  3 +++
+ tools/build-warnings/compiler_warning.c | 14 ++++++++++
+ 10 files changed, 114 insertions(+)
+ create mode 100644 patches/llvm_warnings_as_errors.patch
+ create mode 100644 tools/build-warnings/BUILD.bazel
+ create mode 100644 tools/build-warnings/check.sh
+ create mode 100644 tools/build-warnings/clean.c
+ create mode 100644 tools/build-warnings/compiler_warning.c
+
+diff --git a/.bazelrc b/.bazelrc
+index ea06d4408..6ac80bda7 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -11,6 +11,11 @@ startup --experimental_remote_repo_contents_cache
+
+ common --experimental_platform_in_output_dir
+
++build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
++build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
++build --features=treat_warnings_as_errors
++build --host_features=treat_warnings_as_errors
++
+ build --workspace_status_command=./scripts/workspace-status.sh
+ build:windows --workspace_status_command=./scripts/workspace-status.cmd
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 7d00c8cd5..acc7bf839 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -18,6 +18,7 @@ single_version_override(
+         "//patches:llvm_rusty_v8_custom_libcxx.patch",
+         "//patches:llvm_windows_arm64_powl.patch",
+         "//patches:llvm_windows_mingw_compat.patch",
++        "//patches:llvm_warnings_as_errors.patch",
+     ],
+ )
+
+diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
+index 8a6f2c11e..bd1d67e1e 100644
+--- a/codex-rs/.cargo/config.toml
++++ b/codex-rs/.cargo/config.toml
+@@ -1,3 +1,7 @@
++[build]
++warnings = "deny"
++rustdocflags = ["-Dwarnings"]
++
+ [target.'cfg(all(windows, target_env = "msvc"))']
+ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
+
+diff --git a/justfile b/justfile
+index 3614939c7..fa823fa53 100644
+--- a/justfile
++++ b/justfile
+@@ -60,6 +60,12 @@ fix *args:
+ clippy *args:
+     cargo clippy --tests {args}
+
++# Verify that clean native code builds and compiler warnings fail the build.
++[no-cd]
++[unix]
++check-build-warnings *args:
++    bash {{ justfile_directory() }}/tools/build-warnings/check.sh "$@"
++
+ [unix]
+ install:
+     rustup show active-toolchain
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index e0423bbf7..351d64692 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,5 +1,6 @@
+ exports_files([
+     "rules_rust_unwind_driver_selection.patch",
++    "llvm_warnings_as_errors.patch",
+     "abseil_windows_gnullvm_thread_identity.patch",
+     "bzip2_windows_stack_args.patch",
+     "llvm_rusty_v8_custom_libcxx.patch",
+diff --git a/patches/llvm_warnings_as_errors.patch b/patches/llvm_warnings_as_errors.patch
+new file mode 100644
+index 000000000..a7d61213b
+--- /dev/null
++++ b/patches/llvm_warnings_as_errors.patch
+@@ -0,0 +1,35 @@
++diff --git a/toolchain/cc_toolchain.bzl b/toolchain/cc_toolchain.bzl
++index 9dea86b..e86d204 100644
++--- a/toolchain/cc_toolchain.bzl
+++++ b/toolchain/cc_toolchain.bzl
++@@ -10,0 +11 @@ def cc_toolchain(name, tool_map, module_map = None, extra_args = []):
+++            "@llvm//toolchain/features:treat_warnings_as_errors",
++diff --git a/toolchain/features/BUILD.bazel b/toolchain/features/BUILD.bazel
++index a6514ff..b306a69 100644
++--- a/toolchain/features/BUILD.bazel
+++++ b/toolchain/features/BUILD.bazel
++@@ -6,0 +7,24 @@ package(default_visibility = ["//visibility:public"])
+++cc_args(
+++    name = "warnings_as_errors_compile_flags",
+++    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    args = ["-Werror"],
+++)
+++
+++cc_args(
+++    name = "warnings_as_errors_link_flags",
+++    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+++    args = select({
+++        "@platforms//os:macos": ["-Werror", "-Wl,-fatal_warnings"],
+++        "//conditions:default": ["-Werror", "-Wl,--fatal-warnings"],
+++    }),
+++)
+++
+++cc_feature(
+++    name = "treat_warnings_as_errors",
+++    feature_name = "treat_warnings_as_errors",
+++    args = [
+++        ":warnings_as_errors_compile_flags",
+++        ":warnings_as_errors_link_flags",
+++    ],
+++)
+++
+diff --git a/tools/build-warnings/BUILD.bazel b/tools/build-warnings/BUILD.bazel
+new file mode 100644
+index 000000000..b52ae4daa
+--- /dev/null
++++ b/tools/build-warnings/BUILD.bazel
+@@ -0,0 +1,13 @@
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++
++cc_binary(
++    name = "clean",
++    srcs = ["clean.c"],
++    tags = ["manual"],
++)
++
++cc_binary(
++    name = "compiler_warning",
++    srcs = ["compiler_warning.c"],
++    tags = ["manual"],
++)
+diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
+new file mode 100644
+index 000000000..1d8567daa
+--- /dev/null
++++ b/tools/build-warnings/check.sh
+@@ -0,0 +1,32 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
++cd -- "$repo_root"
++probe_dir="$(mktemp -d "${TMPDIR:?TMPDIR must identify owned temporary storage}/codex-build-warnings-XXXXXX")"
++trap 'rm -r -- "$probe_dir"' EXIT
++
++# A clean build distinguishes policy enforcement from an unavailable compiler.
++if ! bazel build "$@" //tools/build-warnings:clean >"$probe_dir/clean.log" 2>&1; then
++    cat -- "$probe_dir/clean.log"
++    exit 1
++fi
++
++if bazel build "$@" //tools/build-warnings:compiler_warning >"$probe_dir/warning.log" 2>&1; then
++    cat -- "$probe_dir/warning.log"
++    echo "The C compiler accepts warnings; warnings must fail the build." >&2
++    exit 1
++fi
++
++if grep -Eq 'error.*codex_build_warning_probe|codex_build_warning_probe.*error' "$probe_dir/warning.log"; then
++    :
++elif grep -q 'error C2220:' "$probe_dir/warning.log" &&
++    grep -Eq 'warning C4996:.*codex_build_warning_probe' "$probe_dir/warning.log"; then
++    :
++else
++    cat -- "$probe_dir/warning.log"
++    echo "The warning probe failed without its expected compiler error." >&2
++    exit 1
++fi
++
++echo "Native compiler warning enforcement passes."
+diff --git a/tools/build-warnings/clean.c b/tools/build-warnings/clean.c
+new file mode 100644
+index 000000000..9b6bdc2ec
+--- /dev/null
++++ b/tools/build-warnings/clean.c
+@@ -0,0 +1,3 @@
++int main(void) {
++    return 0;
++}
+diff --git a/tools/build-warnings/compiler_warning.c b/tools/build-warnings/compiler_warning.c
+new file mode 100644
+index 000000000..97739b113
+--- /dev/null
++++ b/tools/build-warnings/compiler_warning.c
+@@ -0,0 +1,14 @@
++#if defined(_MSC_VER)
++void codex_build_warning_probe(void);
++#pragma deprecated(codex_build_warning_probe)
++#else
++__attribute__((deprecated("codex_build_warning_probe")))
++void codex_build_warning_probe(void);
++#endif
++
++void codex_build_warning_probe(void) {}
++
++int main(void) {
++    codex_build_warning_probe();
++    return 0;
++}
+-- 
+2.43.0
+

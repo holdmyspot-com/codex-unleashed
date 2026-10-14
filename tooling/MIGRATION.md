@@ -42,6 +42,11 @@ behavioral equivalence. Existing Python tests remain available until their corre
 
 The Maven reactor runs behavior tests, Checkstyle, and PMD through `tooling/mvnw verify`.
 Its distribution includes the CLI and its complete dependency module set in a bundled Java runtime.
+The dependency-free bootstrap module also runs directly from source before Maven starts. The Maven wrapper forwards
+both output streams, rejects structured warning or error diagnostics even when Maven exits successfully, and preserves
+ordinary nonzero statuses. It uses uncolored Maven diagnostics, and Maven logs to standard error so Ant's console
+formatters do not consume the build log stream. Wrapper behavior tests cover clean output, quoted source text,
+diagnostics on either stream, SLF4J and JVM warnings, and original failure statuses.
 Local migration acceptance includes 327 Maven tests, static checks, 48 native TypeScript SDK tests, both native package
 families, independent archive and release-manifest consumers, the live upstream-release checker, and completed-output
 cleanup. Native Linux, macOS, and Windows tooling CI runs the complete Maven and assembled-launcher checks, including
@@ -64,7 +69,7 @@ The CLI provides these commands:
 | `resource-manifest-assets` | Prints platform-order release asset names, declared sizes, and digests for a DotSlash resource manifest. |
 | `normalize-source-timestamps` | Normalizes source access and modification times while preserving Git metadata. |
 | `clean-cached-release-binaries` | Prepares Cargo reuse from source digests and records successful build inputs with `--record-source-inputs`. |
-| `check-cargo-shear` | Accepts only verified release warnings from unchanged baseline source paths. |
+| `check-cargo-shear` | Rejects all errors, warnings, and findings. |
 | `detect-upstream-release` | Compares stable upstream releases with exact vendor tags and appends GitHub outputs and summaries. |
 | `v8-canary-changes` | Selects general and Windows matrices using merge-base versions and case-sensitive path policies. |
 | `ensure-release-tag` | Reserves the original artifact build's immutable source tag before emitting publishing provenance. |
@@ -122,8 +127,8 @@ Hosted release-workflow execution, hosted npm publication, and native V8/Bazel i
 GHCR archive and registry behavior is covered by Java tests that invoke the maintained Bash helpers and real tar
 with controlled registry transport.
 
-Cargo Shear's Java command accepts only verified findings from the matching release commit with unchanged baseline
-sources. The Rust CI caller invokes it with the maintained baseline. The Python command and tests are retired.
+Cargo Shear's Java command requires a clean report. The Rust CI caller supplies the upstream checkout without
+a warning baseline. The Python command and tests are retired.
 The process boundary preserves both output streams and ordinary nonzero tool status for policy evaluation.
 
 Surefire supplies the wrapper's temporary directory at JVM startup. The storage test verifies the real default

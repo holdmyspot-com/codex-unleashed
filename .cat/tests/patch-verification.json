@@ -1,6 +1,6 @@
 {
   "guidance": ".cat/rules/common/patch-queue.md",
-  "response": "For each case, identify the verification command to select, its execution context, and the evidence needed for the stated claim. Read the guidance before deciding; inspect the declared upstream entry point when available.",
+  "response": "For each case, identify the verification checks, execution context, evidence needed for the stated claim, and any patch-retirement decision. Read the guidance before deciding; inspect the declared upstream entry point when available.",
   "cases": [
     {
       "input": "An openai/codex patch adds grouped Rust imports and needs a formatting acceptance result on its declared upstream base.",
@@ -12,7 +12,27 @@
     },
     {
       "input": "A developer asks only for one focused behavior test, with no upstream formatting, lint, or full-gate acceptance claim.",
-      "acceptance": "Run and report the focused test without imposing unrelated formatter or lint gates or claiming they passed."
+      "acceptance": "Run and report the focused test without imposing unrelated formatter, lint, upstream adoption, or patch-retirement gates or claiming they passed."
+    },
+    {
+      "input": "A patch cannot be reverse-applied to current upstream because upstream implements the same behavior through a different API. Its regression tests can use that upstream API without weakening their behavioral assertions.",
+      "acceptance": "Adapt only the tests and necessary test support, run them without the implementation patch in isolated upstream build state, and inspect the equivalent fix. Failed reverse application does not establish a remaining bug. Retire only after all supported outcomes pass on the selected release base and the remaining queue verifies."
+    },
+    {
+      "input": "The patch regression test fails to compile on unpatched upstream because it references a downstream feature flag. No behavior assertion has run.",
+      "acceptance": "Report the outcome as unverified, not an unfixed issue. Adapt the test to the upstream behavior boundary while preserving supported outcomes and assertions; do not transplant the implementation fix to make the test compile."
+    },
+    {
+      "input": "All patch regressions pass on upstream main without the implementation patch and reproduce their intended missing outcomes on the stable release selected by our queue.",
+      "acceptance": "Record both exact commits and results. Classify the fix as verified on main but absent from the selected release base; retain the backport until that base covers its supported outcomes."
+    },
+    {
+      "input": "An upstream issue is closed and one Linux regression passes, but the patch also protects an untested Windows behavior and supported configuration setting.",
+      "acceptance": "Record partial coverage and verify the Windows and configuration outcomes before retiring the whole patch. Issue closure and one passing test are supporting evidence only. If only part is redundant, narrow and verify the retained patch and remaining queue."
+    },
+    {
+      "input": "A regression run on unpatched upstream fails because a required runtime archive download returns HTTP 404 before the intended behavior can execute.",
+      "acceptance": "Diagnose and repair the test prerequisite through its supported setup. Report the behavior as unverified until it runs; do not classify the infrastructure failure as proof that the original bug remains. Retain the command, environment, diagnostic, and upstream revision."
     }
   ]
 }

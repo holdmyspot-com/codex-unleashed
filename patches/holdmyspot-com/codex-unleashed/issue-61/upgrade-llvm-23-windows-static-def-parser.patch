@@ -1,0 +1,149 @@
+From 7ba223853f292cd8bf3a9b6a02892bc3da3c1af7 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 08:41:13 +0000
+Subject: [PATCH] Skip Windows DLL processing for static-only libraries
+
+Generate DEF files only when cc_library produces a dynamic library.
+Static Windows GNU archives cross-compiled on Linux keep their symbols
+and link without executing the Windows-only no_op.bat placeholder.
+Dynamic-library export processing retains its existing path.
+
+Regression: bazel build //tools/build-warnings/windows-exports:static_link_probe
+--platforms=//:windows_x86_64_gnullvm --keep_going fails before the fix at
+DefParser/no_op.bat and passes after it. The probe checks the archive
+symbol and the linked executable imports. Windows runtime is unverified.
+
+Verification: just fmt-check and just bazel-lock-check pass.
+The actual @aws-lc//:thread_test Windows GNU executable cross-links.
+The emitted queue requires independent fresh-checkout acceptance.
+---
+ MODULE.bazel                                  |  1 +
+ .../rules_cc_static_library_def_parser.patch  | 12 +++++
+ .../windows-exports/BUILD.bazel               | 53 +++++++++++++++++++
+ .../build-warnings/windows-exports/consumer.c |  3 ++
+ .../build-warnings/windows-exports/exported.c |  3 ++
+ .../build-warnings/windows-exports/exported.h |  1 +
+ 6 files changed, 73 insertions(+)
+ create mode 100644 patches/rules_cc_static_library_def_parser.patch
+ create mode 100644 tools/build-warnings/windows-exports/BUILD.bazel
+ create mode 100644 tools/build-warnings/windows-exports/consumer.c
+ create mode 100644 tools/build-warnings/windows-exports/exported.c
+ create mode 100644 tools/build-warnings/windows-exports/exported.h
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 0482599d6..7f495fb1d 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -165,6 +165,7 @@ single_version_override(
+     patch_strip = 1,
+     patches = [
+         "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
++        "//patches:rules_cc_static_library_def_parser.patch",
+     ],
+ )
+ 
+diff --git a/patches/rules_cc_static_library_def_parser.patch b/patches/rules_cc_static_library_def_parser.patch
+new file mode 100644
+index 000000000..ef22ae967
+--- /dev/null
++++ b/patches/rules_cc_static_library_def_parser.patch
+@@ -0,0 +1,12 @@
++diff --git a/cc/private/rules_impl/cc_library_impl.bzl b/cc/private/rules_impl/cc_library_impl.bzl
++--- a/cc/private/rules_impl/cc_library_impl.bzl
+++++ b/cc/private/rules_impl/cc_library_impl.bzl
++@@ -136,7 +136,7 @@ def _cc_library_impl(ctx):
++         additional_inputs = _filter_linker_scripts(ctx.files.deps) + ctx.files.additional_linker_inputs
++         link_variables = {}
++         is_windows_enabled = cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "targets_windows")
++-        if is_windows_enabled:
+++        if is_windows_enabled and create_dynamic_library:
++             dll_name_suffix = cc_helper.dll_hash_suffix(ctx, feature_configuration, ctx.fragments.cpp)
++             generated_def_file = None
++ 
+diff --git a/tools/build-warnings/windows-exports/BUILD.bazel b/tools/build-warnings/windows-exports/BUILD.bazel
+new file mode 100644
+index 000000000..7d8919bcc
+--- /dev/null
++++ b/tools/build-warnings/windows-exports/BUILD.bazel
+@@ -0,0 +1,53 @@
++load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++cc_library(
++    name = "exported",
++    srcs = ["exported.c"],
++    hdrs = ["exported.h"],
++    features = ["windows_export_all_symbols"],
++    linkstatic = True,
++    tags = ["manual"],
++    target_compatible_with = ["@llvm//constraints/windows/abi:gnullvm"],
++)
++
++cc_binary(
++    name = "consumer",
++    srcs = ["consumer.c"],
++    linkstatic = True,
++    tags = ["manual"],
++    target_compatible_with = ["@llvm//constraints/windows/abi:gnullvm"],
++    deps = [":exported"],
++)
++
++filegroup(
++    name = "static_archive",
++    srcs = [":exported"],
++    output_group = "archive",
++    tags = ["manual"],
++    target_compatible_with = ["@llvm//constraints/windows/abi:gnullvm"],
++)
++
++genrule(
++    name = "static_link_probe",
++    srcs = [
++        ":consumer",
++        ":static_archive",
++    ],
++    outs = [
++        "symbols.txt",
++        "imports.txt",
++    ],
++    cmd = """
++        "$(location @llvm//tools:llvm-readobj)" --symbols "$(location :static_archive)" > "$(location symbols.txt)"
++        grep -F 'Name: codex_exported_probe' "$(location symbols.txt)" > /dev/null
++        "$(location @llvm//tools:llvm-readobj)" --coff-imports "$(location :consumer)" > "$(location imports.txt)"
++        if grep -F 'Symbol: codex_exported_probe' "$(location imports.txt)" > /dev/null; then
++            echo 'The static-library probe unexpectedly imports its function from a DLL.' >&2
++            exit 1
++        fi
++    """,
++    tags = ["manual"],
++    target_compatible_with = ["@llvm//constraints/windows/abi:gnullvm"],
++    tools = ["@llvm//tools:llvm-readobj"],
++)
+diff --git a/tools/build-warnings/windows-exports/consumer.c b/tools/build-warnings/windows-exports/consumer.c
+new file mode 100644
+index 000000000..d98a98a84
+--- /dev/null
++++ b/tools/build-warnings/windows-exports/consumer.c
+@@ -0,0 +1,3 @@
++#include "exported.h"
++
++int main(void) { return codex_exported_probe() == 42 ? 0 : 1; }
+diff --git a/tools/build-warnings/windows-exports/exported.c b/tools/build-warnings/windows-exports/exported.c
+new file mode 100644
+index 000000000..a9f3affd5
+--- /dev/null
++++ b/tools/build-warnings/windows-exports/exported.c
+@@ -0,0 +1,3 @@
++#include "exported.h"
++
++int codex_exported_probe(void) { return 42; }
+diff --git a/tools/build-warnings/windows-exports/exported.h b/tools/build-warnings/windows-exports/exported.h
+new file mode 100644
+index 000000000..e27e74b4b
+--- /dev/null
++++ b/tools/build-warnings/windows-exports/exported.h
+@@ -0,0 +1 @@
++int codex_exported_probe(void);
+-- 
+2.43.0
+

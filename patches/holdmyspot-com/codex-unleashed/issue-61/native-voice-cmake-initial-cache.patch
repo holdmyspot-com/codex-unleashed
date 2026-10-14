@@ -1,0 +1,125 @@
+From 863ad35dcd35e7c3ae961e7b5a08de78dab295c0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 10:37:34 +0000
+Subject: [PATCH] Configure generic native settings through the CMake initial
+ cache
+
+Preserve toolchain, offline discovery, installation, and platform settings
+without presenting generic defaults as project-specific CLI options.
+Retain exact literal values and record settings in build provenance.
+
+TDD: the CMake literal-cache regression fails on its missing -C input.
+With the change, the native tooling suite passes (96 tests, 19 skips)
+under the pending fatal-warning runner. Both real CMake build fixtures
+also stop emitting unused generic CLI warnings.
+---
+ third_party/voice/build_native.py      | 49 +++++++++++++++++---------
+ third_party/voice/test_build_native.py | 25 +++++++++++++
+ 2 files changed, 57 insertions(+), 17 deletions(-)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 1f7249b2b..1b4feada4 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -235,6 +235,36 @@ class NativeBuild:
+             else "Ninja"
+         )
+         make = self.bootstrap_make if bootstrap else self.environment["NINJA"]
++        settings = {
++            "CMAKE_MAKE_PROGRAM": str(make),
++            "CMAKE_BUILD_TYPE": "Release",
++            "CMAKE_INSTALL_PREFIX": str(prefix),
++            "CMAKE_INSTALL_LIBDIR": "lib",
++            "CMAKE_C_COMPILER": str(self.toolchain["cc"]),
++            "CMAKE_CXX_COMPILER": str(self.toolchain["cxx"]),
++            "CMAKE_PREFIX_PATH": str(self.prefix),
++            "CMAKE_FIND_USE_PACKAGE_REGISTRY": "OFF",
++            "CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY": "OFF",
++            "CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH": "OFF",
++            "FETCHCONTENT_FULLY_DISCONNECTED": "ON",
++        }
++        settings.update(
++            (f"CMAKE_{tool.upper()}", str(self.toolchain[tool]))
++            for tool in ("ar", "ranlib")
++            if tool in self.toolchain
++        )
++        settings.update(option[2:].split("=", 1) for option in self.cmake_platform)
++        cache = self.output / f"{name}-initial-cache.cmake"
++        entries = []
++        for key, value in settings.items():
++            delimiter = ""
++            while f"]{delimiter}]" in value:
++                delimiter += "="
++            entries.append(
++                f'set({key} [{delimiter}[\n{value}]{delimiter}] CACHE STRING "")\n'
++            )
++        cache.write_text("".join(entries), encoding="utf-8")
++        self.record.setdefault("cmake_initial_caches", {})[name] = settings
+         self.run(
+             name + "-configure",
+             [
+@@ -245,23 +275,8 @@ class NativeBuild:
+                 directory,
+                 "-G",
+                 generator,
+-                f"-DCMAKE_MAKE_PROGRAM={make}",
+-                "-DCMAKE_BUILD_TYPE=Release",
+-                f"-DCMAKE_INSTALL_PREFIX={prefix}",
+-                "-DCMAKE_INSTALL_LIBDIR=lib",
+-                f"-DCMAKE_C_COMPILER={self.toolchain['cc']}",
+-                f"-DCMAKE_CXX_COMPILER={self.toolchain['cxx']}",
+-                *(
+-                    f"-DCMAKE_{name.upper()}={self.toolchain[name]}"
+-                    for name in ("ar", "ranlib")
+-                    if name in self.toolchain
+-                ),
+-                f"-DCMAKE_PREFIX_PATH={self.prefix}",
+-                "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
+-                "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
+-                "-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF",
+-                "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+-                *self.cmake_platform,
++                "-C",
++                cache,
+                 *options,
+             ],
+         )
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 9cd6703a3..f15934baa 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -272,6 +272,31 @@ class NativeBuildTests(unittest.TestCase):
+                 ("libfixture.so", ("29=declared-relative-path:$ORIGIN",)),
+             )
+ 
++    def test_cmake_initial_cache_preserves_literal_settings(self):
++        cmake = shutil.which("cmake")
++        if cmake is None:
++            self.skipTest("Requires CMake")
++        build = NativeBuild(self.args, self.environment)
++        build.output.mkdir()
++        build.sources = {"fixture": self.root}
++        literal = '\nC:\\tools;"${literal}"]] ]=] trailing'
++        build.cmake_platform = [f"-DCODEX_LITERAL={literal}"]
++        with patch.object(build, "run") as run:
++            build.cmake("fixture", ["-DPROJECT_OPTION=ON"], bootstrap=True)
++        command = run.call_args_list[0].args[1]
++        cache = Path(command[command.index("-C") + 1])
++        self.assertIn("-DPROJECT_OPTION=ON", command)
++        probe = self.root / "probe.cmake"
++        output = self.root / "literal.txt"
++        probe.write_text('file(WRITE "${OUTPUT}" "${CODEX_LITERAL}")\n')
++        subprocess.run(
++            [cmake, "-C", cache, f"-DOUTPUT={output}", "-P", probe], check=True
++        )
++        self.assertEqual(output.read_text(), literal)
++        self.assertEqual(
++            build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
++        )
++
+     def test_build_refuses_existing_output_before_reading_sources(self):
+         self.args.output.mkdir()
+         (self.args.output / "keep").write_text("untouched")
+-- 
+2.43.0
+

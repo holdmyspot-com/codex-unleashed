@@ -1,0 +1,217 @@
+From 00902c3899918f8b467faa9ca8fad35bfda25310 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 18:35:06 -0400
+Subject: [PATCH] Reject formatter warnings except the upstream stable-rustfmt
+ diagnostic
+
+Keep stable rustfmt and exempt only its exact imports_granularity=Item unsupported-option warning in the Rust formatter group. Other warnings fail even when the child exits successfully; existing failure statuses and unrelated diagnostics remain intact. Link the exception to rust-lang/rustfmt#4991.
+
+Run the maintained formatter wrapper from Rust CI and execute its process-boundary regression tests in repository checks.
+
+TDD: original wrapper accepted unexpected warnings (formatter-warning-policy-7nvQcR/red.log, three intended failures); strict wrapper rejected the authorized exception (exception-red.log, one intended failure). Failure-output suppression reproduced two intended failures (exception-output-red.log). Final: ten formatter tests pass, just test-github-scripts passes 90 tests, and just fmt-check passes on Rust 1.99 stable. Fresh emitted-patch verification remains a separate gate.
+---
+ .github/scripts/test_format.py    | 117 ++++++++++++++++++++++++++++++
+ .github/workflows/repo-checks.yml |   3 +
+ .github/workflows/rust-ci.yml     |   8 +-
+ scripts/format.py                 |  30 ++++++--
+ 4 files changed, 150 insertions(+), 8 deletions(-)
+ create mode 100644 .github/scripts/test_format.py
+
+diff --git a/.github/scripts/test_format.py b/.github/scripts/test_format.py
+new file mode 100644
+index 000000000..e10b5c761
+--- /dev/null
++++ b/.github/scripts/test_format.py
+@@ -0,0 +1,117 @@
++import runpy
++import sys
++import unittest
++from pathlib import Path
++
++
++formatter = runpy.run_path(
++    str(Path(__file__).resolve().parents[2] / "scripts" / "format.py")
++)
++KNOWN_RUSTFMT_WARNING = (
++    "Warning: can't set `imports_granularity = Item`, "
++    "unstable features are only available in nightly channel."
++)
++
++
++class FormatTest(unittest.TestCase):
++    def run_command(self, code: str, group_name: str = "Fixture"):
++        command = formatter["Command"]((sys.executable, "-c", code))
++        group = formatter["FormatterGroup"](group_name, (command,))
++        return formatter["run_formatter_group"](group)
++
++    def test_exact_stable_rustfmt_warning_is_ignored(self) -> None:
++        result = self.run_command(
++            f"import sys; print({KNOWN_RUSTFMT_WARNING!r}, file=sys.stderr); "
++            f"print({KNOWN_RUSTFMT_WARNING!r}, file=sys.stderr)",
++            "Rust",
++        )
++        self.assertEqual(result.returncode, 0)
++        self.assertEqual(result.output, "")
++
++    def test_exception_does_not_apply_to_other_formatters(self) -> None:
++        result = self.run_command(
++            f"import sys; print({KNOWN_RUSTFMT_WARNING!r}, file=sys.stderr)"
++        )
++        self.assertEqual(result.returncode, 1)
++
++    def test_exception_does_not_hide_an_additional_warning(self) -> None:
++        result = self.run_command(
++            f"import sys; print({KNOWN_RUSTFMT_WARNING!r}, file=sys.stderr); "
++            "print('warning: another problem', file=sys.stderr)",
++            "Rust",
++        )
++        self.assertEqual(result.returncode, 1)
++        self.assertIn("warning: another problem", result.output)
++        self.assertNotIn(KNOWN_RUSTFMT_WARNING + "\n", result.output)
++
++    def test_exception_requires_the_exact_warning(self) -> None:
++        for warning in (
++            KNOWN_RUSTFMT_WARNING.replace("Item", "Module"),
++            KNOWN_RUSTFMT_WARNING + " extra diagnostic",
++            KNOWN_RUSTFMT_WARNING.lower(),
++        ):
++            with self.subTest(warning=warning):
++                result = self.run_command(
++                    f"import sys; print({warning!r}, file=sys.stderr)", "Rust"
++                )
++                self.assertEqual(result.returncode, 1)
++                self.assertIn(warning, result.output)
++
++    def test_ignored_warning_does_not_hide_command_failure(self) -> None:
++        result = self.run_command(
++            f"import sys; print({KNOWN_RUSTFMT_WARNING!r}, file=sys.stderr); "
++            "print('source diff'); sys.exit(7)",
++            "Rust",
++        )
++        self.assertEqual(result.returncode, 7)
++        self.assertIn("source diff", result.output)
++        self.assertNotIn(KNOWN_RUSTFMT_WARNING + "\n", result.output)
++
++    def test_successful_command_warning_fails_and_is_visible(self) -> None:
++        for warning in (
++            "Warning: unstable rustfmt option",
++            "warning: formatter configuration is deprecated",
++        ):
++            with self.subTest(warning=warning):
++                result = self.run_command(
++                    f"import sys; print({warning!r}, file=sys.stderr)"
++                )
++                self.assertNotEqual(result.returncode, 0)
++                self.assertIn(warning, result.output)
++
++    def test_clean_command_succeeds(self) -> None:
++        result = self.run_command(
++            "import sys; print('Checked sources', file=sys.stderr)"
++        )
++        self.assertEqual(result.returncode, 0)
++
++    def test_formatted_source_containing_warning_text_succeeds(self) -> None:
++        result = self.run_command("print('warning: example source text')")
++        self.assertEqual(result.returncode, 0)
++
++    def test_original_failure_status_and_both_streams_are_preserved(self) -> None:
++        result = self.run_command(
++            "import sys; print('source diff'); "
++            "print('warning: configuration', file=sys.stderr); sys.exit(7)"
++        )
++        self.assertEqual(result.returncode, 7)
++        self.assertIn("source diff", result.output)
++        self.assertIn("warning: configuration", result.output)
++
++    def test_warning_stops_the_group_before_the_next_command(self) -> None:
++        warning = formatter["Command"](
++            (
++                sys.executable,
++                "-c",
++                "import sys; print('warning: fixture', file=sys.stderr)",
++            )
++        )
++        following = formatter["Command"]((sys.executable, "-c", "raise SystemExit(9)"))
++        group = formatter["FormatterGroup"]("Fixture", (warning, following))
++        result = formatter["run_formatter_group"](group)
++        self.assertEqual(result.returncode, 1)
++        self.assertIn("warning: fixture", result.output)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
+index 4f05cd060..68416aff6 100644
+--- a/.github/workflows/repo-checks.yml
++++ b/.github/workflows/repo-checks.yml
+@@ -69,2 +69,5 @@ jobs:
+
++      - name: Test formatter warning enforcement
++        run: python3 -m unittest discover -s .github/scripts -p 'test_format.py'
++
+       - name: Check formatting (run `just fmt` to fix)
+diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
+index 0e122266b..ee38ccacd 100644
+--- a/.github/workflows/rust-ci.yml
++++ b/.github/workflows/rust-ci.yml
+@@ -75,4 +75,8 @@ jobs:
+           components: rustfmt
+-      - name: cargo fmt
+-        run: cargo fmt -- --config imports_granularity=Item --check
++      - name: Install uv
++        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
++        with:
++          version: "0.11.3"
++      - name: Check formatting
++        run: just fmt-check
+       - name: Rust benchmark smoke test
+diff --git a/scripts/format.py b/scripts/format.py
+index 9b408e1c7..5cc9ba6c9 100644
+--- a/scripts/format.py
++++ b/scripts/format.py
+@@ -14,2 +14,9 @@ from pathlib import Path
+ REPO_ROOT = Path(__file__).resolve().parents[1]
++# WORKAROUND: https://github.com/rust-lang/rustfmt/issues/4991
++# Stable rustfmt ignores upstream's import-splitting option. Remove this exact
++# warning exception when the option is stable.
++STABLE_RUSTFMT_IMPORTS_WARNING = (
++    "Warning: can't set `imports_granularity = Item`, "
++    "unstable features are only available in nightly channel."
++)
+
+@@ -136,3 +143,3 @@ def formatter_groups(*, check: bool) -> tuple[FormatterGroup, ...]:
+ def run_formatter_group(group: FormatterGroup) -> FormatterResult:
+-    """Run one formatter group sequentially and return its buffered output."""
++    """Run formatters sequentially, treating warning diagnostics as failures."""
+     for command in group.commands:
+@@ -143,3 +150,3 @@ def run_formatter_group(group: FormatterGroup) -> FormatterResult:
+                 stdout=subprocess.PIPE,
+-                stderr=subprocess.STDOUT,
++                stderr=subprocess.PIPE,
+                 text=True,
+@@ -151,7 +158,18 @@ def run_formatter_group(group: FormatterGroup) -> FormatterResult:
+
+-        if process.returncode != 0:
+-            output = f"$ {shlex.join(command.args)}\n{process.stdout}"
+-            if process.stdout and not process.stdout.endswith("\n"):
++        stderr = "".join(
++            line
++            for line in process.stderr.splitlines(keepends=True)
++            if not (
++                group.name == "Rust"
++                and line.removesuffix("\n") == STABLE_RUSTFMT_IMPORTS_WARNING
++            )
++        )
++        has_warning = any(
++            line.lstrip().lower().startswith("warning:") for line in stderr.splitlines()
++        )
++        if process.returncode != 0 or has_warning:
++            output = f"$ {shlex.join(command.args)}\n{process.stdout}{stderr}"
++            if not output.endswith("\n"):
+                 output += "\n"
+-            return FormatterResult(group.name, output, process.returncode)
++            return FormatterResult(group.name, output, process.returncode or 1)
+
+-- 
+2.43.0
+

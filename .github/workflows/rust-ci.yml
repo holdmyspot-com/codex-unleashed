@@ -84,9 +84,9 @@ jobs:
           set -euo pipefail
           cd upstream
           pnpm install --frozen-lockfile
-      - name: cargo fmt
-        working-directory: upstream/codex-rs
-        run: cargo fmt -- --config imports_granularity=Item --check
+      - name: Check formatting
+        working-directory: upstream
+        run: just fmt-check
       - name: Rust benchmark smoke test
         working-directory: upstream/codex-rs
         run: just bench-smoke
@@ -124,7 +124,7 @@ jobs:
           cd upstream
           pnpm install --frozen-lockfile
       - name: cargo shear
-        run: '"$CODEX_UNLEASHED_TOOLING" check-cargo-shear upstream .github/scripts/cargo-shear-baseline.json'
+        run: '"$CODEX_UNLEASHED_TOOLING" check-cargo-shear upstream'
 
   results:
     name: rust-ci results

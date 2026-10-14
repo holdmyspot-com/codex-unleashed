@@ -1,0 +1,97 @@
+From f14981603be06e3a193055314707b294954080e8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Tue, 13 Oct 2026 20:13:25 -0400
+Subject: [PATCH] test(exec-server): provide the empty-roots fixture's launcher
+ dependencies
+
+Preserve PATH and minimal read-only runtime directories so the sandbox
+helper can start the command. Keep the workspace-root list empty and the
+original two-second event deadline. Require cat's error exit and a report
+of the excluded file, so a helper panic or loader failure cannot falsely
+pass the denial regression. Preserve the stdout and closed-stream checks.
+
+Fixes: https://github.com/holdmyspot-com/codex-unleashed/issues/66
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+
+RED: just test -p codex-exec-server --test exec_process remote_process_preserves_empty_workspace_roots
+With only strengthened assertions, the unpatched base exits 100. Child
+traces identify missing bubblewrap and, with PATH alone, a missing dynamic
+loader. Evidence: exec-empty-roots-strengthened-baseline-red.log and
+exec-empty-roots-{panic,preserved-path}.strace.
+
+GREEN: The same maintained check with launcher dependencies exits 0 with
+all strengthened assertions. A diagnostic trace confirms /bin/cat starts
+and reports the excluded file; no timeout change is part of the fix.
+Evidence: exec-empty-roots-strengthened-green.log and
+exec-empty-roots-launcher-and-runtime.strace.
+
+Emitted-patch acceptance remains required in a distinct fresh patched
+checkout with compiler outputs isolated from exploratory baseline builds.
+Evidence directory: .cat/work/temp/latest-toolchains-MzFT3d.
+---
+ codex-rs/exec-server/tests/exec_process.rs | 31 +++++++++++++++-------
+ 1 file changed, 22 insertions(+), 9 deletions(-)
+
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index 936836bfe..08ee929ff 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -903,13 +903,22 @@ async fn remote_process_preserves_empty_workspace_roots() -> Result<()> {
+     let file = tmp.path().join("excluded.txt");
+     std::fs::write(&file, b"excluded")?;
+     let cwd = PathUri::from_host_native_path(tmp.path())?;
+-    let policy = FileSystemSandboxPolicy::restricted(vec![FileSystemSandboxEntry {
+-        path: FileSystemPath::Special {
+-            value: FileSystemSpecialPath::project_roots(/*subpath*/ None),
++    let policy = FileSystemSandboxPolicy::restricted(vec![
++        FileSystemSandboxEntry {
++            path: FileSystemPath::Special {
++                value: FileSystemSpecialPath::Minimal,
++            },
++            access: FileSystemAccessMode::Read,
++            missing_path_behavior: None,
++        },
++        FileSystemSandboxEntry {
++            path: FileSystemPath::Special {
++                value: FileSystemSpecialPath::project_roots(/*subpath*/ None),
++            },
++            access: FileSystemAccessMode::Read,
++            missing_path_behavior: None,
+         },
+-        access: FileSystemAccessMode::Read,
+-        missing_path_behavior: None,
+-    }]);
++    ]);
+     let mut sandbox = FileSystemSandboxContext::from_permission_profile(
+         PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Restricted),
+         cwd.clone(),
+@@ -925,7 +934,7 @@ async fn remote_process_preserves_empty_workspace_roots() -> Result<()> {
+             cwd,
+             shell_snapshot: None,
+             env_policy: None,
+-            env: HashMap::new(),
++            env: HashMap::from([("PATH".to_string(), std::env::var("PATH")?)]),
+             tty: false,
+             pipe_stdin: false,
+             arg0: None,
+@@ -935,11 +944,15 @@ async fn remote_process_preserves_empty_workspace_roots() -> Result<()> {
+             network_proxy: None,
+         })
+         .await?;
+-    let (stdout, _stderr, exit_code, closed) =
++    let (stdout, stderr, exit_code, closed) =
+         collect_process_output_from_events(session.process).await?;
+
+     assert!(!stdout.contains("excluded"), "unexpected stdout: {stdout}");
+-    assert_ne!(exit_code, Some(0));
++    assert_eq!(exit_code, Some(1), "unexpected stderr: {stderr}");
++    assert!(
++        stderr.contains(file.to_string_lossy().as_ref()),
++        "cat should report the excluded file: {stderr}"
++    );
+     assert!(closed);
+     Ok(())
+ }
+-- 
+2.43.0
+

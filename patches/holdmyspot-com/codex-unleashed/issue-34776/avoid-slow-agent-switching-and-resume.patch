@@ -1,4 +1,4 @@
-From 322a6891b7790afa607fe1988e9a8c7725705304 Mon Sep 17 00:00:00 2001
+From 780d4921c2888add44746b983255f033df4e5967 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
 Date: Fri, 2 Oct 2026 14:23:51 -0400
 Subject: [PATCH] Keep history replay and subagent switches responsive
@@ -30,22 +30,22 @@ Execution record:
  codex-rs/tui/src/app/reconnect.rs             |   4 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
- .../app/tests/pagination_completion_tests.rs  |  13 ++
- .../app/tests/session_lifecycle_requests.rs   | 203 ++++++++++++++++++
- codex-rs/tui/src/app/thread_events.rs         |  26 ++-
+ .../app/tests/pagination_completion_tests.rs  |  13 +
+ .../app/tests/session_lifecycle_requests.rs   | 253 +++++++++++++++++-
+ codex-rs/tui/src/app/thread_events.rs         |  26 +-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
  codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
- .../src/chatwidget/tests/history_replay.rs    | 103 +++++++++
- codex-rs/tui/src/inline_visualization.rs      |  12 ++
- .../tui/src/inline_visualization_tests.rs     |  59 +++++
+ .../src/chatwidget/tests/history_replay.rs    | 103 +++++++
+ codex-rs/tui/src/inline_visualization.rs      |  12 +
+ .../tui/src/inline_visualization_tests.rs     |  59 ++++
  codex-rs/tui/src/thread_transcript.rs         |  14 +-
- 14 files changed, 464 insertions(+), 9 deletions(-)
+ 14 files changed, 501 insertions(+), 22 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 432b49b..9512ce5 100644
+index 7eb126d4f..8d71653bf 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1199,6 +1199,9 @@
+@@ -1229,6 +1229,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -55,7 +55,7 @@ index 432b49b..9512ce5 100644
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -7298,6 +7301,9 @@
+@@ -7448,6 +7451,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -66,19 +66,19 @@ index 432b49b..9512ce5 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 0ccd96a..469b488 100644
+index 0670eb772..466b1add2 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -118,6 +118,8 @@ pub enum Feature {
- 
+
      /// Automatically start the shared local daemon for eligible interactive launches.
      DaemonAutoStart,
 +    /// Replay only the latest compacted conversation when switching back to a thread.
 +    UnleashedAgentFastSwitching,
- 
+
      // Experimental
-     /// Send per-content-entry classifications in internal Responses metadata.
-@@ -971,6 +973,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+     /// Advertise enabled environment-backed tools and their shell parameters before the
+@@ -996,6 +998,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::Stable,
          default_enabled: true,
      },
@@ -92,10 +92,10 @@ index 0ccd96a..469b488 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index a18292f..ca2fb67 100644
+index b7d6e2637..7e6958c52 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -424,7 +424,9 @@ impl App {
+@@ -431,7 +431,9 @@ impl App {
              self.thread_event_channels.insert(id, channel);
          }
          if let Some(id) = displayed
@@ -107,7 +107,7 @@ index a18292f..ca2fb67 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index e6f6c39..540e5d2 100644
+index 61550ab90..9878fdf7f 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -630,7 +630,9 @@ impl App {
@@ -122,11 +122,11 @@ index e6f6c39..540e5d2 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index b35b1a5..8b81415 100644
+index 73bc892cc..1024aebd0 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -1181,7 +1181,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
- 
+@@ -1185,7 +1185,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
+
      app.store_active_thread_receiver().await;
      let (_receiver, snapshot) = app
 -        .activate_thread_for_replay(thread_id)
@@ -135,10 +135,10 @@ index b35b1a5..8b81415 100644
          .expect("detached thread should reactivate for replay");
      app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
 diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-index d3d9849..d4d620e 100644
+index 7cfc88a95..3ca2f3b9c 100644
 --- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
 +++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-@@ -206,6 +206,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
+@@ -208,6 +208,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
                  crate::app_server_session::ResumeModelSettings::RestoreFromThread,
              )
              .await?;
@@ -159,13 +159,107 @@ index d3d9849..d4d620e 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 0961865..3a9c028 100644
+index b40809456..98d7d4d54 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1020,6 +1020,209 @@ fn spawn_approved_task_tool_call(
+@@ -38,11 +38,26 @@ use tokio::net::TcpListener;
+ use tokio::sync::oneshot;
+ use tokio::task::JoinHandle;
+ use tokio_tungstenite::accept_async;
++use tokio_tungstenite::tungstenite::Error as WebSocketError;
+ use tokio_tungstenite::tungstenite::Message;
++use tokio_tungstenite::tungstenite::error::ProtocolError;
+
+ pub(super) type RecordedRequests = Arc<Mutex<Vec<JSONRPCRequest>>>;
+ pub(super) type RecordingAppServer = (AppServerSession, RecordedRequests, JoinHandle<Result<()>>);
+
++fn is_recording_client_disconnect(error: &WebSocketError) -> bool {
++    match error {
++        WebSocketError::Protocol(ProtocolError::ResetWithoutClosingHandshake) => true,
++        WebSocketError::Io(error) => matches!(
++            error.kind(),
++            std::io::ErrorKind::BrokenPipe
++                | std::io::ErrorKind::ConnectionReset
++                | std::io::ErrorKind::ConnectionAborted
++        ),
++        _ => false,
++    }
++}
++
+ #[tokio::test]
+ async fn daybreak_command_persists_and_confirms_each_selection() -> Result<()> {
+     use codex_protocol::openai_models::ModelAccessPrograms;
+@@ -477,20 +492,19 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                     if let codex_app_server_client::InProcessServerEvent::ServerNotification(notification) = event
+                         && matches!(*notification, ServerNotification::ThreadSettingsUpdated(_))
+                     {
+-                        websocket.send(Message::Text(serde_json::to_string(&notification)?.into())).await?;
++                        let result = websocket.send(Message::Text(serde_json::to_string(&notification)?.into())).await;
++                        if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                            break;
++                        }
++                        result?;
+                     }
+                     continue;
+                 }
+             };
+             let Some(frame) = frame else { break };
+-            // The client can close with an unread settings notification during shutdown.
+-            match &frame {
+-                Err(tokio_tungstenite::tungstenite::Error::Protocol(
+-                    tokio_tungstenite::tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+-                )) => break,
+-                Err(tokio_tungstenite::tungstenite::Error::Io(error))
+-                    if matches!(error.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => break,
+-                _ => {}
++            // The client can close with requests or notifications pending during shutdown.
++            if frame.as_ref().is_err_and(is_recording_client_disconnect) {
++                break;
+             }
+             let Message::Text(text) = frame? else {
+                 continue;
+@@ -498,7 +512,7 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+             let message = serde_json::from_str::<JSONRPCMessage>(&text)?;
+             match message {
+                 JSONRPCMessage::Request(request) if request.method == "initialize" => {
+-                    websocket
++                    let result = websocket
+                         .send(Message::Text(
+                             serde_json::to_string(&JSONRPCMessage::Response(JSONRPCResponse {
+                                 id: request.id,
+@@ -509,7 +523,11 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                             }))?
+                             .into(),
+                         ))
+-                        .await?;
++                        .await;
++                    if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                        break;
++                    }
++                    result?;
+                 }
+                 JSONRPCMessage::Request(request) => {
+                     request_sink
+@@ -770,9 +788,13 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                             }
+                         }
+                     };
+-                    websocket
++                    let result = websocket
+                         .send(Message::Text(serde_json::to_string(&response)?.into()))
+-                        .await?;
++                        .await;
++                    if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                        break;
++                    }
++                    result?;
+                 }
+                 JSONRPCMessage::Notification(notification)
+                     if notification.method == "initialized" => {}
+@@ -1038,6 +1060,211 @@ fn spawn_approved_task_tool_call(
      });
  }
- 
+
 +#[test]
 +fn switching_back_replays_only_latest_compacted_conversation() -> Result<()> {
 +    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
@@ -283,6 +377,7 @@ index 0961865..3a9c028 100644
 +    let conversation_text = "history ".repeat(CONTEXT_WINDOW_TOKENS);
 +    let conversation = |index: usize| codex_app_server_protocol::Turn {
 +        id: format!("turn-{index}"),
++        root_turn_id: None,
 +        items_view: codex_app_server_protocol::TurnItemsView::Full,
 +        items: vec![codex_app_server_protocol::ThreadItem::UserMessage {
 +            id: format!("user-{index}"),
@@ -300,6 +395,7 @@ index 0961865..3a9c028 100644
 +    };
 +    let compaction = |index: usize| codex_app_server_protocol::Turn {
 +        id: format!("compaction-turn-{index}"),
++        root_turn_id: None,
 +        items_view: codex_app_server_protocol::TurnItemsView::Full,
 +        items: vec![codex_app_server_protocol::ThreadItem::ContextCompaction {
 +            id: format!("compaction-{index}"),
@@ -373,13 +469,13 @@ index 0961865..3a9c028 100644
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index 1972b80..38d6a43 100644
+index d7ef85824..3a8cc00fc 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
 @@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
      pub(super) input_state: Option<ThreadInputState>,
  }
- 
+
 +#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 +pub(super) enum ThreadEventSnapshotMode {
 +    FullHistory,
@@ -391,7 +487,7 @@ index 1972b80..38d6a43 100644
      Notification(Box<ServerNotification>),
 @@ -354,10 +360,28 @@ impl ThreadEventStore {
      }
- 
+
      pub(super) fn snapshot(&self) -> ThreadEventSnapshot {
 +        self.snapshot_with_turns(self.turns.clone())
 +    }
@@ -420,7 +516,7 @@ index 1972b80..38d6a43 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index 7965778..c1da9b9 100644
+index 9a6adc013..f6546ebb6 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
 @@ -121,12 +121,23 @@ impl App {
@@ -447,12 +543,12 @@ index 7965778..c1da9b9 100644
 +        };
          Some((receiver, snapshot))
      }
- 
+
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index d1d17f8..9b95470 100644
+index 1957cc4b3..d52fdebcb 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
-@@ -124,9 +124,10 @@ impl ChatWidget {
+@@ -126,9 +126,10 @@ impl ChatWidget {
              });
              if let Some(source) = source {
                  let inline_visualization_context = self.thread_id.and_then(|thread_id| {
@@ -464,7 +560,7 @@ index d1d17f8..9b95470 100644
                      )
                  });
                  self.note_stream_consolidation_queued();
-@@ -429,9 +430,10 @@ impl ChatWidget {
+@@ -434,9 +435,10 @@ impl ChatWidget {
              self.mark_safety_buffering_agent_message_started();
              self.bottom_pane.hide_status_indicator();
              let context = self.thread_id.and_then(|thread_id| {
@@ -477,13 +573,13 @@ index d1d17f8..9b95470 100644
              });
              self.add_to_history(
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 25dd196..81ad56e 100644
+index 23c08f227..3f425202e 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -93,6 +93,109 @@ async fn resumed_initial_messages_render_history() {
      insta::assert_snapshot!("resumed_daybreak_banner", merged_lines[0]);
  }
- 
+
 +#[tokio::test]
 +async fn replay_plain_assistant_messages_with_many_writable_roots_stays_responsive() {
 +    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
@@ -591,13 +687,13 @@ index 25dd196..81ad56e 100644
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
-index 5f5c9cd..143ec23 100644
+index 5f5c9cd5b..143ec233f 100644
 --- a/codex-rs/tui/src/inline_visualization.rs
 +++ b/codex-rs/tui/src/inline_visualization.rs
 @@ -46,6 +46,18 @@ impl InlineVisualizationContext {
          Self::new_with_writable_roots(codex_home, thread_id, std::iter::empty())
      }
- 
+
 +    pub(crate) fn from_config_for_markdown(
 +        config: &crate::legacy_core::config::Config,
 +        thread_id: ThreadId,
@@ -614,13 +710,13 @@ index 5f5c9cd..143ec23 100644
          config: &crate::legacy_core::config::Config,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
-index 7105d7c..7c1a914 100644
+index 7105d7c40..7c1a9146a 100644
 --- a/codex-rs/tui/src/inline_visualization_tests.rs
 +++ b/codex-rs/tui/src/inline_visualization_tests.rs
 @@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
      (codex_home, context)
  }
- 
+
 +#[tokio::test]
 +async fn markdown_context_keeps_visualization_links_and_rechecks_permissions() {
 +    use crate::legacy_core::config::ConfigBuilder;
@@ -684,7 +780,7 @@ index 7105d7c..7c1a914 100644
  fn unterminated_visualization_preview_uses_the_stream_context() {
      let (codex_home, context) = context_with_fragment("<div>chart</div>");
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index 22e156c..a323124 100644
+index 22e156c3e..a323124c2 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -128,9 +128,19 @@ pub(crate) fn thread_items_to_transcript_cells(

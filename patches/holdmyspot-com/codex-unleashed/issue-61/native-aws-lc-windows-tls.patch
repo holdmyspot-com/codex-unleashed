@@ -1,0 +1,157 @@
+From 57c769e94d2d8c1f9c9f91de35c4850985516474 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 04:56:56 +0000
+Subject: [PATCH] Preserve AWS-LC Windows TLS callbacks with LLVM 22
+
+Backport aws/aws-lc commit 8cca33b97eb64be944a3d90406230676e8a7b931. Retain the MSVC path and use MinGW section attributes plus an explicit _tls_used reference. Include a focused thread-exit cleanup regression in the maintained workspace suite without depending on the unrelated crypto test-data generator.
+
+Red: compiling pinned thread_win.c with Clang 22.1.8 for x86_64-w64-windows-gnu, -Wall -Werror, fails on const_seg pragmas. Green: the same command with the upstream fix exits 0 without diagnostics. COFF inspection confirms the callback in .CRT$XLC and a relocation to _tls_used. Evidence: .cat/work/temp/build-caches/strict-native-inputs/aws-lc-windows-EvKRHd. Emitted Bazel and Windows runtime gates remain pending.
+---
+ MODULE.bazel                            |  6 ++
+ patches/BUILD.bazel                     |  1 +
+ patches/aws_lc_windows_tls.patch        | 97 +++++++++++++++++++++++++
+ tools/build-warnings/aws-lc/BUILD.bazel |  4 +
+ 4 files changed, 108 insertions(+)
+ create mode 100644 patches/aws_lc_windows_tls.patch
+ create mode 100644 tools/build-warnings/aws-lc/BUILD.bazel
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index ed0026c81..92a7daaa1 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -159,6 +159,12 @@ single_version_override(
+
+ bazel_dep(name = "rules_platform", version = "0.1.0")
+ bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
++single_version_override(
++    module_name = "aws-lc",
++    patch_strip = 1,
++    patches = ["//patches:aws_lc_windows_tls.patch"],
++)
++
+ bazel_dep(name = "rules_rs", version = "0.0.96")
+ bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+ single_version_override(
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index fe3f8a02b..c4be10752 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,4 +1,5 @@
+ exports_files([
++    "aws_lc_windows_tls.patch",
+     "rules_rust_unwind_driver_selection.patch",
+     "llvm_warnings_as_errors.patch",
+     "abseil_windows_gnullvm_thread_identity.patch",
+diff --git a/patches/aws_lc_windows_tls.patch b/patches/aws_lc_windows_tls.patch
+new file mode 100644
+index 000000000..0054b3f19
+--- /dev/null
++++ b/patches/aws_lc_windows_tls.patch
+@@ -0,0 +1,97 @@
++diff --git a/BUILD.bazel b/BUILD.bazel
++index 58cac9f..0ef1de0 100755
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -822,3 +822,18 @@ cc_test(
++         "@googletest//:gtest",
++     ],
++ )
+++
+++cc_test(
+++    name = "thread_test",
+++    size = "small",
+++    srcs = ["crypto/thread_local_cleanup_test.cc"],
+++    conlyopts = BORINGSSL_CONLYOPTS,
+++    copts = COMMON_COPTS + BORINGSSL_COPTS,
+++    cxxopts = BORINGSSL_CXXOPTS,
+++    linkstatic = True,
+++    visibility = ["//visibility:public"],
+++    deps = [
+++        ":crypto",
+++        "@googletest//:gtest_main",
+++    ],
+++)
++diff --git a/crypto/thread_local_cleanup_test.cc b/crypto/thread_local_cleanup_test.cc
++new file mode 100644
++index 0000000..3aa22ef
++--- /dev/null
+++++ b/crypto/thread_local_cleanup_test.cc
++@@ -0,0 +1,31 @@
+++// Copyright (c) 2026, Codex Unleashed contributors.
+++// SPDX-License-Identifier: ISC
+++
+++#include "internal.h"
+++
+++#include <thread>
+++
+++#include <gtest/gtest.h>
+++
+++static void CountThreadCleanup(void *value) {
+++  if (value != nullptr) {
+++    ++*static_cast<unsigned *>(value);
+++  }
+++}
+++
+++TEST(ThreadTest, ThreadLocalCleanup) {
+++  unsigned destructor_calls = 0;
+++  std::thread worker([&] {
+++    ASSERT_EQ(nullptr, CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_TEST));
+++    ASSERT_TRUE(CRYPTO_set_thread_local(OPENSSL_THREAD_LOCAL_TEST,
+++                                      &destructor_calls, CountThreadCleanup));
+++    ASSERT_EQ(&destructor_calls,
+++              CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_TEST));
+++  });
+++  worker.join();
+++
+++  EXPECT_EQ(1u, destructor_calls);
+++  std::thread unused_thread([] {});
+++  unused_thread.join();
+++  EXPECT_EQ(1u, destructor_calls);
+++}
++diff --git a/crypto/thread_win.c b/crypto/thread_win.c
++index 10082fb..0ce0f9f 100644
++--- a/crypto/thread_win.c
+++++ b/crypto/thread_win.c
++@@ -180,6 +180,8 @@ __pragma(comment(
++ // reference to this variable with a linker /INCLUDE:symbol pragma to ensure
++ // that.) If this variable is discarded, the OnThreadExit function will never
++ // be called.
+++#if defined(_MSC_VER)
+++
++ #ifdef _WIN64
++
++ // .CRT section is merged with .rdata on x64 so it must be constant data.
++@@ -200,6 +202,23 @@ PIMAGE_TLS_CALLBACK p_thread_callback_boringssl = thread_local_destructor;
++
++ #endif  // _WIN64
++
+++#else  // !_MSC_VER
+++
+++// MinGW compilers do not reliably implement the MSVC section pragmas above;
+++// use the GCC section attribute instead ('used' prevents discarding).
+++extern const PIMAGE_TLS_CALLBACK p_thread_callback_boringssl;
+++__attribute__((section(".CRT$XLC"), used))
+++const PIMAGE_TLS_CALLBACK p_thread_callback_boringssl = thread_local_destructor;
+++
+++// The callback array is only walked if the image has a TLS directory, which
+++// requires the CRT's _tls_used symbol. MSVC forces it with /INCLUDE above;
+++// on MinGW, create a reference so the linker pulls it in.
+++extern const IMAGE_TLS_DIRECTORY _tls_used;
+++__attribute__((used))
+++static const IMAGE_TLS_DIRECTORY *tls_used_reference_boringssl = &_tls_used;
+++
+++#endif  // _MSC_VER
+++
++ static void **get_thread_locals(void) {
++   // |TlsGetValue| clears the last error even on success, so that callers may
++   // distinguish it successfully returning NULL or failing. It is documented to
+diff --git a/tools/build-warnings/aws-lc/BUILD.bazel b/tools/build-warnings/aws-lc/BUILD.bazel
+new file mode 100644
+index 000000000..cfde8a33d
+--- /dev/null
++++ b/tools/build-warnings/aws-lc/BUILD.bazel
+@@ -0,0 +1,4 @@
++test_suite(
++    name = "thread_test",
++    tests = ["@aws-lc//:thread_test"],
++)

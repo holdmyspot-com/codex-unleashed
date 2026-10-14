@@ -1,0 +1,94 @@
+From 4397e5e498c4d18db39619533820d1a0c0177e59 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:13:32 +0000
+Subject: [PATCH] Backport optional GLib trace-counter annotations
+
+Track native warning enforcement in #61. Apply after the documented native
+voice prerequisites; keep all compiler and linker checks enabled.
+
+Reproduction evidence: native-glib-all-green.log. The actual native recipe reports the
+missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
+are recorded separately; an internal authoring commit is not full CI acceptance.
+---
+ third_party/voice/prepare_sources.py  | 16 ++++++++++++++++
+ tools/build-warnings/glib/BUILD.bazel | 13 +++++++++++++
+ tools/build-warnings/glib/task_test.c | 20 ++++++++++++++++++++
+ 3 files changed, 49 insertions(+)
+ create mode 100644 tools/build-warnings/glib/task_test.c
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index ee916fdee..e2369a0fd 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -156,6 +156,22 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+                 raise ValueError(f"Pinned GLib header does not match: {relative_path}")
+             header.write_text(contents.replace(original, replacement), encoding="utf-8")
+ 
++        # WORKAROUND: GLib trace counters are optional without sysprof support.
++        # https://github.com/GNOME/glib/commit/168e378526a590439faa9ce7b607203fd434ff1d
++        # Remove when the selected GLib release includes this upstream fix.
++        task = destination / source.root / "gio/gtask.c"
++        contents = task.read_text(encoding="utf-8")
++        original = (
++            "static guint task_pool_max_counter;\nstatic guint tasks_running_counter;"
++        )
++        replacement = (
++            "static guint task_pool_max_counter G_GNUC_UNUSED;\n"
++            "static guint tasks_running_counter G_GNUC_UNUSED;"
++        )
++        if contents.count(original) != 1:
++            raise ValueError("Pinned GLib task trace counters do not match")
++        task.write_text(contents.replace(original, replacement), encoding="utf-8")
++
+     if source.name == "ninja" and source.version == "1.13.2":
+         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/tools/build-warnings/glib/BUILD.bazel b/tools/build-warnings/glib/BUILD.bazel
+index 6f3cb36ce..edfb39fda 100644
+--- a/tools/build-warnings/glib/BUILD.bazel
++++ b/tools/build-warnings/glib/BUILD.bazel
+@@ -1,5 +1,18 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ 
++cc_test(
++    name = "task_test",
++    size = "small",
++    srcs = ["task_test.c"],
++    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
++    copts = [
++        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
++        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
++    ],
++    tags = ["manual"],
++    deps = ["//third_party/voice:native_link"],
++)
++
+ cc_test(
+     name = "type_test",
+     size = "small",
+diff --git a/tools/build-warnings/glib/task_test.c b/tools/build-warnings/glib/task_test.c
+new file mode 100644
+index 000000000..8f0982a1e
+--- /dev/null
++++ b/tools/build-warnings/glib/task_test.c
+@@ -0,0 +1,20 @@
++#include <gio/gio.h>
++
++static void run_task(GTask *task, gpointer source, gpointer data,
++                     GCancellable *cancellable) {
++  (void)source;
++  (void)data;
++  (void)cancellable;
++  g_task_return_int(task, 42);
++}
++
++int main(void) {
++  GTask *task = g_task_new(NULL, NULL, NULL, NULL);
++  g_task_run_in_thread_sync(task, run_task);
++  GError *error = NULL;
++  gssize result = g_task_propagate_int(task, &error);
++  int status = result == 42 && error == NULL ? 0 : 1;
++  g_clear_error(&error);
++  g_object_unref(task);
++  return status;
++}

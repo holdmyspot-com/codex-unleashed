@@ -11,6 +11,7 @@
 	<name>Codex Unleashed tooling</name>
 
 	<modules>
+		<module>bootstrap</module>
 		<module>cli</module>
 		<module>distribution</module>
 	</modules>
@@ -29,7 +30,7 @@
 		<maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
 		<maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
 		<maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-		<maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
+		<maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
 		<checkstyle.version>14.1.0</checkstyle.version>
 		<pmd.version>7.27.0</pmd.version>
 		<testng.version>7.12.0</testng.version>
@@ -86,8 +87,11 @@
 					<configuration>
 						<parallel>methods</parallel>
 						<threadCount>4</threadCount>
+						<promoteUserPropertiesToSystemProperties>false</promoteUserPropertiesToSystemProperties>
 						<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" -Djdk.lang.Process.allowAmbiguousCommands=false ${tooling.test.jvm.options}</argLine>
 						<systemPropertyVariables>
+							<tooling.build.root>${tooling.build.root}</tooling.build.root>
+							<tooling.release.workflow>${tooling.release.workflow}</tooling.release.workflow>
 							<tooling.native.bash>${tooling.native.bash}</tooling.native.bash>
 						</systemPropertyVariables>
 						<properties>
@@ -124,6 +128,7 @@
 						<includeTestSourceDirectory>true</includeTestSourceDirectory>
 						<excludeGeneratedSources>true</excludeGeneratedSources>
 						<failOnViolation>true</failOnViolation>
+						<violationSeverity>warning</violationSeverity>
 						<consoleOutput>true</consoleOutput>
 						<linkXRef>false</linkXRef>
 					</configuration>
@@ -136,32 +141,54 @@
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
-					<artifactId>maven-pmd-plugin</artifactId>
-					<version>${maven-pmd-plugin.version}</version>
+					<artifactId>maven-antrun-plugin</artifactId>
+					<!-- WORKAROUND: https://github.com/apache/maven-pmd-plugin/pull/726
+					     Maven PMD 3.28.0 omits the JDK platform classes from PMD's auxiliary classpath.
+					     Use PMD's Ant task to provide them explicitly; return to Maven PMD when a
+					     released version includes the upstream fix. -->
+					<version>${maven-antrun-plugin.version}</version>
 					<dependencies>
+						<dependency>
+							<groupId>net.sourceforge.pmd</groupId>
+							<artifactId>pmd-ant</artifactId>
+							<version>${pmd.version}</version>
+						</dependency>
 						<dependency>
 							<groupId>net.sourceforge.pmd</groupId>
 							<artifactId>pmd-java</artifactId>
 							<version>${pmd.version}</version>
 						</dependency>
-						<dependency>
-							<groupId>net.sourceforge.pmd</groupId>
-							<artifactId>pmd-core</artifactId>
-							<version>${pmd.version}</version>
-						</dependency>
 					</dependencies>
-					<configuration>
-						<targetJdk>27</targetJdk>
-						<includeTests>true</includeTests>
-						<analysisCache>true</analysisCache>
-						<linkXRef>false</linkXRef>
-						<printFailingErrors>true</printFailingErrors>
-						<rulesets><ruleset>${tooling.config.directory}/pmd.xml</ruleset></rulesets>
-					</configuration>
 					<executions>
 						<execution>
+							<id>pmd</id>
 							<phase>process-test-classes</phase>
-							<goals><goal>check</goal></goals>
+							<goals><goal>run</goal></goals>
+							<configuration>
+								<target>
+									<taskdef name="pmd" classname="net.sourceforge.pmd.ant.PMDTask"
+										classpathref="maven.plugin.classpath"/>
+									<mkdir dir="${project.build.directory}/pmd"/>
+									<mkdir dir="${project.build.directory}/reports"/>
+									<pmd rulesetfiles="${tooling.config.directory}/pmd.xml" failOnError="true"
+										failOnRuleViolation="true" minimumPriority="5" encoding="UTF-8"
+										cacheLocation="${project.build.directory}/pmd/pmd.cache">
+										<sourceLanguage name="java" version="${maven.compiler.release}"/>
+									<auxclasspath>
+										<pathelement location="${java.home}/lib/jrt-fs.jar"/>
+										<restrict>
+											<path refid="maven.test.classpath"/>
+											<exists/>
+										</restrict>
+										</auxclasspath>
+										<formatter type="xml" toFile="${project.build.directory}/pmd.xml"/>
+										<formatter type="html" toFile="${project.build.directory}/reports/pmd.html"/>
+										<formatter type="text" toConsole="true"/>
+									<fileset dir="${project.build.sourceDirectory}" includes="**/*.java" erroronmissingdir="false"/>
+									<fileset dir="${project.build.testSourceDirectory}" includes="**/*.java" erroronmissingdir="false"/>
+									</pmd>
+								</target>
+							</configuration>
 						</execution>
 					</executions>
 				</plugin>

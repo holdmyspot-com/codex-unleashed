@@ -1,4 +1,4 @@
-From 8b821b72097cdf0fa517751f9d77300fc6dfc5bd Mon Sep 17 00:00:00 2001
+From 3db26a0a68ad2b2588743df02d2852d4cce7dbfe Mon Sep 17 00:00:00 2001
 From: Codex <codex@openai.com>
 Date: Mon, 5 Oct 2026 14:13:10 -0400
 Subject: [PATCH] bugfix: identify server distribution and order Unleashed
@@ -29,10 +29,10 @@ Green: just test -p codex-tui --lib -E 'test(update_versions) | test(status::rem
  create mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 
 diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
-index 079d1bd..82d4cd4 100644
+index df5dc3e99..b808cd776 100644
 --- a/codex-rs/app-server-client/src/lib.rs
 +++ b/codex-rs/app-server-client/src/lib.rs
-@@ -1381,7 +1381,14 @@ mod tests {
+@@ -1382,7 +1382,14 @@ mod tests {
      #[tokio::test]
      async fn remote_typed_request_roundtrip_works() {
          let websocket_url = start_test_remote_server(|mut websocket| async move {
@@ -48,22 +48,22 @@ index 079d1bd..82d4cd4 100644
              let JSONRPCMessage::Request(request) = read_websocket_message(&mut websocket).await
              else {
                  panic!("expected account/read request");
-@@ -1407,7 +1414,7 @@ mod tests {
+@@ -1408,7 +1415,7 @@ mod tests {
              .await
              .expect("remote client should connect");
- 
+
 -        assert_eq!(client.server_version(), Some("9.8.7-test"));
 +        assert_eq!(client.server_version(), Some("9.8.7+39"));
          assert_eq!(client.codex_home(), Some("/server/.codex"));
          let client = AppServerClient::Remote(client);
          let response: GetAccountResponse = client
 diff --git a/codex-rs/app-server/tests/suite/v2/initialize.rs b/codex-rs/app-server/tests/suite/v2/initialize.rs
-index 1ba0f26..e345c23 100644
+index 1ba0f266c..e345c239a 100644
 --- a/codex-rs/app-server/tests/suite/v2/initialize.rs
 +++ b/codex-rs/app-server/tests/suite/v2/initialize.rs
 @@ -62,6 +62,21 @@ async fn initialize_uses_client_info_name_as_originator() -> Result<()> {
      } = to_response::<InitializeResponse>(response)?;
- 
+
      assert!(user_agent.starts_with("codex_vscode/"));
 +    let version = user_agent
 +        .split_once('/')
@@ -84,13 +84,13 @@ index 1ba0f26..e345c23 100644
      assert_eq!(platform_family, std::env::consts::FAMILY);
      assert_eq!(platform_os, std::env::consts::OS);
 diff --git a/codex-rs/login/src/auth/default_client.rs b/codex-rs/login/src/auth/default_client.rs
-index 28a952e..c8c1d65 100644
+index 28a952ea2..c8c1d65ff 100644
 --- a/codex-rs/login/src/auth/default_client.rs
 +++ b/codex-rs/login/src/auth/default_client.rs
 @@ -149,11 +149,14 @@ pub fn is_first_party_chat_originator(originator_value: &str) -> bool {
      originator_value == "codex_atlas" || originator_value == "codex_chatgpt_desktop"
  }
- 
+
 +/// Return the request originator, compiled Unleashed version, host, and terminal identity.
 +/// The version includes the numeric vendor build or `dev`, matching the CLI package version.
  pub fn get_codex_user_agent() -> String {
@@ -104,10 +104,10 @@ index 28a952e..c8c1d65 100644
      let originator = originator();
      let prefix = format!(
 diff --git a/codex-rs/login/src/auth/default_client_tests.rs b/codex-rs/login/src/auth/default_client_tests.rs
-index 92d9bf2..aa09c6c 100644
+index 4a5d9410d..64335260d 100644
 --- a/codex-rs/login/src/auth/default_client_tests.rs
 +++ b/codex-rs/login/src/auth/default_client_tests.rs
-@@ -353,9 +353,29 @@ fn test_macos() {
+@@ -349,9 +349,29 @@ fn test_macos() {
      use regex_lite::Regex;
      let user_agent = get_codex_user_agent();
      let originator = regex_lite::escape(originator().value.as_str());
@@ -139,7 +139,7 @@ index 92d9bf2..aa09c6c 100644
 +    );
 +}
 diff --git a/codex-rs/tui/src/app/server_version_notice.rs b/codex-rs/tui/src/app/server_version_notice.rs
-index bca03e3..f90cf53 100644
+index bca03e34f..f90cf5346 100644
 --- a/codex-rs/tui/src/app/server_version_notice.rs
 +++ b/codex-rs/tui/src/app/server_version_notice.rs
 @@ -58,6 +58,7 @@ impl App {
@@ -152,7 +152,7 @@ index bca03e3..f90cf53 100644
              Some(format!(
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 new file mode 100644
-index 0000000..b5da90f
+index 000000000..b5da90f77
 --- /dev/null
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__unleashed_openai_server_warning_snapshot.snap
 @@ -0,0 +1,8 @@
@@ -165,13 +165,13 @@ index 0000000..b5da90f
 +  Use /daemon to manage the local background server.
 +  Updating may interrupt active or queued work.
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index aaf2443..9549a41 100644
+index 842543228..7cd36feca 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -100,6 +100,35 @@ fn local_daemon_version_notice_snapshot() {
      }
  }
- 
+
 +#[test]
 +fn unleashed_openai_server_warning_snapshot() {
 +    let target = crate::AppServerTarget::LocalDaemon {
@@ -205,11 +205,11 @@ index aaf2443..9549a41 100644
      let codex_home = std::env::temp_dir();
      ConfigBuilder::default()
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 6ed6fdd..7efef3c 100644
+index 6ed6fdd41..7efef3c63 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
 @@ -50,8 +50,28 @@ pub(crate) fn remote_connection_status_value(
- 
+
  pub(crate) fn server_version_notice(client: &str, server: Option<&str>) -> Option<String> {
      let server = server?;
 -    let comparison = match crate::update_versions::server_version_notice_kind(client, server)? {
@@ -241,7 +241,7 @@ index 6ed6fdd..7efef3c 100644
 @@ -174,6 +194,101 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use pretty_assertions::assert_eq;
- 
+
 +    #[test]
 +    fn numeric_unleashed_versions_order_release_before_build() {
 +        for (server, comparison) in [
@@ -341,7 +341,7 @@ index 6ed6fdd..7efef3c 100644
      fn remote_connection_status_value_formats_display_value() -> color_eyre::Result<()> {
          assert_eq!(
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index b0aa3de..d338802 100644
+index b0aa3deb4..d33880255 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
 @@ -22,10 +22,12 @@ pub(crate) fn is_source_build_version(version: &str) -> bool {
@@ -351,7 +351,7 @@ index b0aa3de..d338802 100644
 +    Newer,
      Different,
  }
- 
+
 -/// Stable clients compare release precedence. Prerelease clients only order versions
 +/// Numeric vendor builds compare release precedence before build metadata. Other
 +/// stable clients compare release precedence. Prerelease clients only order versions
@@ -384,7 +384,7 @@ index b0aa3de..d338802 100644
 @@ -43,6 +61,10 @@ pub(crate) fn server_version_notice_kind(
          .then_some(ServerVersionNoticeKind::Older)
  }
- 
+
 +pub(crate) fn is_numeric_vendor_build(build: &semver::BuildMetadata) -> bool {
 +    !build.is_empty() && build.as_str().bytes().all(|byte| byte.is_ascii_digit())
 +}
@@ -395,7 +395,7 @@ index b0aa3de..d338802 100644
 @@ -57,6 +79,45 @@ mod tests {
      use super::*;
      use pretty_assertions::assert_eq;
- 
+
 +    #[test]
 +    fn numeric_vendor_clients_recognize_older_servers() {
 +        for server in ["0.160.0", "0.160.0+40", "0.159.0+999"] {

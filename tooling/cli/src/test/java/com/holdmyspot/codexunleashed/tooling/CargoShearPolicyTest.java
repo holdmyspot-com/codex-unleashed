@@ -6,7 +6,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 /**
- * Verifies that only unchanged, verified release warnings pass Cargo Shear policy.
+ * Verifies that Cargo Shear accepts only reports without warnings or errors.
  */
 public final class CargoShearPolicyTest
 {
@@ -18,21 +18,17 @@ public final class CargoShearPolicyTest
 	}
 
 	/**
-	 * Rejects changed release identities, changed sources, and new warning content.
+	 * Rejects warnings regardless of whether they are known upstream.
 	 *
 	 * @throws IOException if a fixture report cannot be parsed
 	 */
 	@Test
-	public void acceptsOnlyUnchangedVerifiedWarnings() throws IOException
+	public void rejectsKnownWarnings() throws IOException
 	{
 		String finding = "{\"code\":\"shear/unlinked_files\",\"severity\":\"warning\",\"message\":\"known orphan\"}";
-		String baseline = "{\"source_sha\":\"" + "a".repeat(40) + "\",\"findings\":[" + finding + "]}";
 		String report = "{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[" + finding + "]}";
-		assertTrue(CargoShearPolicy.accepts(report, baseline, "a".repeat(40), false));
-		assertFalse(CargoShearPolicy.accepts(report, baseline, "b".repeat(40), false));
-		assertFalse(CargoShearPolicy.accepts(report, baseline, "a".repeat(40), true));
-		assertFalse(CargoShearPolicy.accepts(report.replace("known orphan", "new orphan"), baseline,
-			"a".repeat(40), false));
+		assertFalse(CargoShearPolicy.accepts(report));
+		assertFalse(CargoShearPolicy.accepts(report.replace("known orphan", "new orphan")));
 	}
 
 	/**
@@ -43,15 +39,13 @@ public final class CargoShearPolicyTest
 	@Test
 	public void rejectsErrorsAndUnverifiedWarnings() throws IOException
 	{
-		String baseline = "{\"source_sha\":\"" + "a".repeat(40) + "\",\"findings\":[]}";
 		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":1,\"warnings\":0},\"findings\":[]}", baseline, "a".repeat(40), false));
+			"{\"summary\":{\"errors\":1,\"warnings\":0},\"findings\":[]}"));
 		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[{\"severity\":\"warning\"}]}",
-			baseline, "a".repeat(40), false));
+			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[{\"severity\":\"warning\"}]}"));
 		assertTrue(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":0},\"findings\":[]}", baseline, "b".repeat(40), false));
+			"{\"summary\":{\"errors\":0,\"warnings\":0},\"findings\":[]}"));
 		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[]}", baseline, "a".repeat(40), false));
+			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[]}"));
 	}
 }

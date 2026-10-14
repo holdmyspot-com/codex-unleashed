@@ -1,4 +1,4 @@
-From b063d15feb28828908d3d511ca517390caf5fb4c Mon Sep 17 00:00:00 2001
+From 70d121c422da933520d4f760495af13194096aa7 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
 Date: Sun, 4 Oct 2026 00:20:42 -0400
 Subject: [PATCH] Route public daemon updates to Codex Unleashed releases
@@ -21,13 +21,13 @@ TDD against rust-v0.160.0 a956835d020762cb2b570053af06f643a11c0ecc: Python insta
  create mode 100644 scripts/install/test_install_ps1.ps1
 
 diff --git a/codex-rs/app-server-daemon/src/managed_install.rs b/codex-rs/app-server-daemon/src/managed_install.rs
-index ce3107f..f9c6c49 100644
+index 067ebcaba..17ae90510 100644
 --- a/codex-rs/app-server-daemon/src/managed_install.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install.rs
 @@ -70,6 +70,20 @@ pub(crate) fn managed_codex_bin(codex_home: &Path) -> PathBuf {
      }
  }
- 
+
 +/// Parse a non-development stable release, including a numeric downstream build number.
 +pub(crate) fn stable_public_version(value: &str) -> Option<semver::Version> {
 +    let version = semver::Version::parse(value).ok()?;
@@ -59,11 +59,11 @@ index ce3107f..f9c6c49 100644
              .is_ok_and(|selected| selected == release_name)
          && std::fs::canonicalize(codex_bin).is_ok_and(|bin| bin.starts_with(&release))
 diff --git a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-index b227c7e..b25ae45 100644
+index e076e7f60..c17c2b5d0 100644
 --- a/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
 +++ b/codex-rs/app-server-daemon/src/managed_install_path_tests.rs
-@@ -125,3 +125,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
-     std::fs::write(&binary, b"#!/bin/sh\nexit 0\n").expect("newer binary");
+@@ -121,3 +121,30 @@ async fn older_managed_binary_does_not_claim_updater_support() {
+     codex_utils_cargo_bin::write_executable(&binary, "#!/bin/sh\nexit 0\n").expect("newer binary");
      assert!(super::supports_daemon_update_loop(&binary).await);
  }
 +
@@ -94,7 +94,7 @@ index b227c7e..b25ae45 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
-index ecf2501..4f9f26e 100644
+index 3b09a604d..f7d0d98a3 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install.rs
 @@ -220,7 +220,7 @@ async fn prepare_from_package(
@@ -106,10 +106,10 @@ index ecf2501..4f9f26e 100644
      let releases = root.join("releases");
      std::fs::create_dir_all(&releases)?;
      let stage = tempfile::Builder::new()
-@@ -416,14 +416,6 @@ fn package_tree(root: &Path, destination: Option<&Path>) -> Result<String> {
+@@ -421,14 +421,6 @@ fn package_tree(root: &Path, destination: Option<&Path>) -> Result<String> {
      Ok(hasher.finalize().to_hex().to_string())
  }
- 
+
 -fn stable_version(value: &str) -> Option<semver::Version> {
 -    let version = semver::Version::parse(value).ok()?;
 -    (version.pre.is_empty()
@@ -122,10 +122,10 @@ index ecf2501..4f9f26e 100644
      let mut names = vec![
          "codex-package.json",
 diff --git a/codex-rs/app-server-daemon/src/prepare_install_tests.rs b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
-index 810a45b..112bda0 100644
+index eaa89527c..820a6f71a 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install_tests.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install_tests.rs
-@@ -384,3 +384,30 @@ async fn broken_selection_is_not_a_missing_installation() {
+@@ -373,3 +373,30 @@ async fn broken_selection_is_not_a_missing_installation() {
          PathBuf::from("missing-release")
      );
  }
@@ -157,12 +157,12 @@ index 810a45b..112bda0 100644
 +    }
 +}
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 499acd1..2ca4a4a 100644
+index 5e28ad885..4429df070 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -63,9 +63,11 @@ pub(crate) async fn request_manual_update(
- const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
- const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+@@ -71,9 +71,11 @@ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+ const INSTALLER_STDERR_TAIL_BYTES: usize = 2 * 1024;
+ const INSTALLER_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
  #[cfg(unix)]
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
 +const INSTALL_URL: &str =
@@ -171,14 +171,14 @@ index 499acd1..2ca4a4a 100644
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.ps1";
 +const INSTALL_URL: &str =
 +    "https://github.com/holdmyspot-com/codex-unleashed/releases/latest/download/install.ps1";
- 
+
  pub(crate) async fn run(
      http_client_factory: HttpClientFactory,
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 598222a..efdaa01 100644
+index 8ccfc1680..9a73f051b 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -34,7 +34,14 @@ async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
+@@ -36,7 +36,14 @@ async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
              .expect("installer fetch should succeed"),
          script
      );
@@ -192,15 +192,15 @@ index 598222a..efdaa01 100644
 +        }.to_string()]
 +    );
  }
- 
+
  #[tokio::test]
 diff --git a/scripts/install/install.ps1 b/scripts/install/install.ps1
-index cd9c0c7..9eba3dc 100644
+index 05657ee2f..af135d3a6 100644
 --- a/scripts/install/install.ps1
 +++ b/scripts/install/install.ps1
 @@ -12,13 +12,7 @@ if ([string]::IsNullOrWhiteSpace($Release)) {
  }
- 
+
  $NonInteractive = $env:CODEX_NON_INTERACTIVE -match "^(?i:1|true|yes)$"
 -$DefaultPreferReleasesOpenAICom = $true
 -$PreferReleasesOpenAICom = if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM)) {
@@ -212,18 +212,18 @@ index cd9c0c7..9eba3dc 100644
 +$ReleasesBaseUri = "https://github.com/holdmyspot-com/codex-unleashed"
  $ReleasesMetadataTimeoutSec = 30
  $ReleasesAssetTimeoutSec = 300
- 
+
 @@ -80,8 +74,8 @@ function Assert-ValidReleaseVersion {
          [string]$Version
      )
- 
+
 -    if ($Version -cne "latest" -and $Version -cnotmatch "^[0-9]+\.[0-9]+\.[0-9]+(?:-alpha(?:\.[0-9]+){0,2}|-beta(?:\.[0-9]+)?)?$") {
 -        throw "Invalid Codex release version: $Version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]."
 +    if ($Version -cne "latest" -and $Version -cnotmatch "^[0-9]+\.[0-9]+\.[0-9]+(?:-alpha(?:\.[0-9]+){0,2}|-beta(?:\.[0-9]+)?)?(?:\+[0-9]+)?$") {
 +        throw "Invalid Codex release version: $Version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]][+BUILD]."
      }
  }
- 
+
 @@ -165,17 +159,11 @@ function Resolve-ReleaseAssetSelection {
      $version = $ResolvedRelease.Version
      $releaseMetadata = $ResolvedRelease.Metadata
@@ -240,7 +240,7 @@ index cd9c0c7..9eba3dc 100644
 -        $checksumUrl = "$ReleasesBaseUri/releases/$version/$checksumAsset"
 -        $checksumFallbackUrl = "https://github.com/openai/codex/releases/download/rust-v$version/$checksumAsset"
 -    }
- 
+
      $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata -Url $packageUrl -FallbackUrl $packageFallbackUrl
      $checksumMetadata = Find-ReleaseAssetMetadata -AssetName $checksumAsset -ReleaseMetadata $releaseMetadata -Url $checksumUrl -FallbackUrl $checksumFallbackUrl
 @@ -191,10 +179,6 @@ function Resolve-ReleaseAssetSelection {
@@ -254,17 +254,17 @@ index cd9c0c7..9eba3dc 100644
      $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata -Url $packageUrl -FallbackUrl $packageFallbackUrl
      if ($null -eq $packageMetadata) {
          throw "Could not find Codex package or platform npm release assets for Codex $version."
-@@ -234,7 +218,7 @@ function Get-PackageArchiveDigest {
+@@ -248,7 +232,7 @@ function Get-PackageArchiveDigest {
          }
      }
- 
+
 -    throw "Could not find SHA-256 digest for $AssetName in codex-package_SHA256SUMS."
 +    throw "Could not find SHA-256 digest for $AssetName in SHA256SUMS."
  }
- 
+
  function Path-Contains {
-@@ -332,11 +316,11 @@ function Resolve-ReleaseFromGitHub {
- 
+@@ -346,11 +330,11 @@ function Resolve-ReleaseFromGitHub {
+
      if ($NormalizedVersion -eq "latest") {
          $requestedRelease = "latest"
 -        $metadataUri = "https://api.github.com/repos/openai/codex/releases/latest"
@@ -275,12 +275,12 @@ index cd9c0c7..9eba3dc 100644
 -        $metadataUri = "https://api.github.com/repos/openai/codex/releases/tags/rust-v$resolvedVersion"
 +        $metadataUri = "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/rust-v$resolvedVersion"
      }
- 
+
      try {
-@@ -356,47 +340,11 @@ function Resolve-ReleaseFromGitHub {
+@@ -370,47 +354,11 @@ function Resolve-ReleaseFromGitHub {
      }
  }
- 
+
 -function Resolve-ReleaseFromReleases {
 -    param(
 -        [string]$NormalizedVersion
@@ -309,11 +309,11 @@ index cd9c0c7..9eba3dc 100644
 -    }
 -    return $resolvedRelease
 -}
- 
+
  function Resolve-Release {
      $normalizedVersion = Normalize-Version -RawVersion $Release
      Assert-ValidReleaseVersion -Version $normalizedVersion
- 
+
 -    if ($PreferReleasesOpenAICom) {
 -        $release = Resolve-ReleaseFromReleases -NormalizedVersion $normalizedVersion
 -        if ($null -ne $release) {
@@ -324,10 +324,10 @@ index cd9c0c7..9eba3dc 100644
 -
      return Resolve-ReleaseFromGitHub -NormalizedVersion $normalizedVersion
  }
- 
-@@ -858,9 +806,9 @@ function Maybe-HandleConflictingInstall {
+
+@@ -872,9 +820,9 @@ function Maybe-HandleConflictingInstall {
      $manager = $Conflict.Manager
- 
+
      $uninstallArgs = if ($manager -eq "bun") {
 -        @("remove", "-g", "@openai/codex")
 +        @("remove", "-g", "@holdmyspot-com/codex-unleashed")
@@ -336,18 +336,18 @@ index cd9c0c7..9eba3dc 100644
 +        @("uninstall", "-g", "@holdmyspot-com/codex-unleashed")
      }
      $uninstallCommand = if ($manager -eq "bun") { "bun" } else { "npm" }
- 
-@@ -963,7 +911,7 @@ Write-Step "Resolved version: $resolvedVersion"
+
+@@ -977,7 +925,7 @@ Write-Step "Resolved version: $resolvedVersion"
  $conflictingInstall = if ($daemonOnly) { $null } else { Get-ConflictingInstall -VisibleBinDir $visibleBinDir }
  $oldStandaloneBackup = $null
- 
+
 -$checksumAsset = "codex-package_SHA256SUMS"
 +$checksumAsset = "SHA256SUMS"
  $assetSelection = Resolve-ReleaseAssetSelection -ResolvedRelease $resolvedRelease -Target $target -NpmTag $npmTag
  $packageAsset = $assetSelection.PackageAsset
  $packageMetadata = $assetSelection.PackageMetadata
 diff --git a/scripts/install/install.sh b/scripts/install/install.sh
-index 58815c7..af5ed3a 100755
+index 58815c797..af5ed3af8 100755
 --- a/scripts/install/install.sh
 +++ b/scripts/install/install.sh
 @@ -5,13 +5,10 @@ set -eu
@@ -362,13 +362,13 @@ index 58815c7..af5ed3a 100755
  RELEASES_METADATA_TIMEOUT=30
  RELEASES_ASSET_TIMEOUT=300
 -release_source="github"
- 
+
  BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
  BIN_PATH="$BIN_DIR/codex"
 @@ -74,8 +71,8 @@ validate_version() {
      return
    fi
- 
+
 -  if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-alpha(\.[0-9]+){0,2}|-beta(\.[0-9]+)?)?$'; then
 -    echo "Invalid Codex release version: $version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]." >&2
 +  if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-alpha(\.[0-9]+){0,2}|-beta(\.[0-9]+)?)?(\+[0-9]+)?$'; then
@@ -388,25 +388,25 @@ index 58815c7..af5ed3a 100755
 @@ -319,20 +314,14 @@ release_url_for_asset() {
    asset="$1"
    resolved_version="$2"
- 
+
 -  printf 'https://github.com/openai/codex/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
 +  printf 'https://github.com/holdmyspot-com/codex-unleashed/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
  }
- 
+
 -releases_url_for_asset() {
 -  asset="$1"
 -  resolved_version="$2"
 -
 -  printf '%s/releases/%s/%s\n' "$RELEASES_BASE_URL" "$resolved_version" "$asset"
 -}
- 
+
  release_metadata_url() {
    resolved_version="$1"
- 
+
 -  printf 'https://api.github.com/repos/openai/codex/releases/tags/rust-v%s\n' "$resolved_version"
 +  printf 'https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases/tags/rust-v%s\n' "$resolved_version"
  }
- 
+
  parse_downloaded_release_metadata() {
 @@ -361,7 +350,7 @@ resolve_release_from_github() {
    normalized_version="$1"
@@ -420,11 +420,11 @@ index 58815c7..af5ed3a 100755
 @@ -380,52 +369,13 @@ resolve_release_from_github() {
      resolved_version="$metadata_version"
    fi
- 
+
 -  release_source="github"
 -}
 +  }
- 
+
 -resolve_release_from_releases() {
 -  normalized_version="$1"
 -
@@ -453,11 +453,11 @@ index 58815c7..af5ed3a 100755
 -  resolved_version="$metadata_version"
 -  release_source="releases.openai.com"
 -}
- 
+
  resolve_release() {
    normalized_version="$(normalize_version "$RELEASE")"
    validate_version "$normalized_version"
- 
+
 -  case "$PREFER_RELEASES_OPENAI_COM" in
 -    1 | [Tt][Rr][Uu][Ee] | [Yy][Ee][Ss])
 -      if resolve_release_from_releases "$normalized_version" &&
@@ -472,18 +472,18 @@ index 58815c7..af5ed3a 100755
    select_release_assets
  }
 @@ -474,7 +424,7 @@ release_asset_digest() {
- 
+
  select_release_assets() {
    package_asset="codex-package-$vendor_target.tar.gz"
 -  checksum_asset="codex-package_SHA256SUMS"
 +  checksum_asset="SHA256SUMS"
    download_fallback_url=""
    checksum_fallback_url=""
- 
+
 @@ -490,18 +440,9 @@ select_release_assets() {
      return 1
    fi
- 
+
 -  if [ "$release_source" = "releases.openai.com" ]; then
 -    download_url="$(releases_url_for_asset "$asset" "$resolved_version")"
 -    download_fallback_url="$(release_url_for_asset "$asset" "$resolved_version")"
@@ -501,16 +501,16 @@ index 58815c7..af5ed3a 100755
 +    checksum_url="$(release_url_for_asset "$checksum_asset" "$resolved_version")"
    fi
  }
- 
+
 @@ -523,7 +464,7 @@ package_archive_digest() {
    ' "$manifest_path" 2>/dev/null || true)"
- 
+
    if [ -z "$digest" ]; then
 -    echo "Could not find SHA-256 digest for $asset in codex-package_SHA256SUMS." >&2
 +    echo "Could not find SHA-256 digest for $asset in SHA256SUMS." >&2
      return 1
    fi
- 
+
 @@ -927,10 +868,10 @@ handle_conflicting_install() {
        uninstall_cmd="brew uninstall --cask codex"
        ;;
@@ -523,10 +523,10 @@ index 58815c7..af5ed3a 100755
 +      uninstall_cmd="npm uninstall -g @holdmyspot-com/codex-unleashed"
        ;;
    esac
- 
+
 diff --git a/scripts/install/test_install_ps1.ps1 b/scripts/install/test_install_ps1.ps1
 new file mode 100644
-index 0000000..e7e98b9
+index 000000000..e7e98b91b
 --- /dev/null
 +++ b/scripts/install/test_install_ps1.ps1
 @@ -0,0 +1,40 @@
@@ -571,12 +571,12 @@ index 0000000..e7e98b9
 +if ($selection.PackageMetadata.Url -cne $resolved.Metadata.assets[0].browser_download_url) { throw 'Wrong package download URL.' }
 +Write-Output 'PowerShell release selection and version validation passed.'
 diff --git a/scripts/install/test_install_sh.py b/scripts/install/test_install_sh.py
-index 06465d9..2fd1744 100644
+index 06465d937..2fd17441e 100644
 --- a/scripts/install/test_install_sh.py
 +++ b/scripts/install/test_install_sh.py
 @@ -17,6 +17,68 @@ MISMATCH_VERSION = "0.145.0"
- 
- 
+
+
  class InstallShTest(unittest.TestCase):
 +    def test_unleashed_latest_downloads_own_package_and_preserves_selection_on_failure(
 +        self,
@@ -642,7 +642,7 @@ index 06465d9..2fd1744 100644
 +
      def test_metadata_fetch_failure_is_not_reported_as_missing_assets(self) -> None:
          result, requests = run_installer(VERSION, metadata_failure=True)
- 
+
 @@ -24,7 +86,7 @@ class InstallShTest(unittest.TestCase):
          self.assertEqual(
              requests,
@@ -712,13 +712,13 @@ index 06465d9..2fd1744 100644
          self.assertIn("/codex-npm-", requests[1])
 -        self.assertNotIn("codex-package_SHA256SUMS", requests[1])
 +        self.assertNotIn("SHA256SUMS", requests[1])
- 
+
      def test_macos_install_exposes_code_mode_host_beside_codex(self) -> None:
          with tempfile.TemporaryDirectory() as temp_dir:
 @@ -131,31 +193,6 @@ class InstallShTest(unittest.TestCase):
              )
              self.assertTrue(os.access(host_path, os.X_OK))
- 
+
 -    def test_releases_latest_installs_verified_package_by_default(self) -> None:
 -        with tempfile.TemporaryDirectory() as temp_dir:
 -            root = Path(temp_dir)
@@ -750,7 +750,7 @@ index 06465d9..2fd1744 100644
 @@ -345,354 +382,6 @@ class InstallShTest(unittest.TestCase):
                  (root / "codex-home/packages/standalone/auto-update-version").exists()
              )
- 
+
 -    def test_releases_unusable_metadata_falls_back_to_github(self) -> None:
 -        unusable_metadata = {
 -            "html": "<html>proxy error</html>",
@@ -1099,7 +1099,7 @@ index 06465d9..2fd1744 100644
 -            )
 -            self.assertNotIn("Downloading Codex CLI", second_result.stdout)
 -
- 
+
  def run_installer(
      release: str,
 @@ -767,7 +456,7 @@ def run_installer_in(
@@ -1156,7 +1156,7 @@ index 06465d9..2fd1744 100644
          package_dir / "bin" / "codex-code-mode-host",
 @@ -953,7 +643,7 @@ def create_package_release(
              archive.add(path, arcname=path.name)
- 
+
      archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
 -    checksum_path = root / "codex-package_SHA256SUMS"
 +    checksum_path = root / "SHA256SUMS"
@@ -1180,7 +1180,7 @@ index 06465d9..2fd1744 100644
 +        f"#!/bin/sh\nprintf 'codex-cli {binary_version}\\n'\n",
      )
      write_executable(vendor_dir / "path" / "rg", "#!/bin/sh\nexit 0\n")
- 
+
 @@ -1020,7 +710,7 @@ def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
      ]
      assets.append(

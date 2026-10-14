@@ -1,0 +1,152 @@
+From 436ca263175d350b3198e204124bb9cdad822bf1 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 02:46:38 -0400
+Subject: [PATCH] Backport simdutf compile-time chunk selection
+
+Backport simdutf a14c6ad21f3ef1582edefcf66b95348a9e63d2fe (#943) to
+V8's pinned 7.7.0 dependency. Use C++20 constexpr directly because this
+Bazel repository already requires C++20 and the older source lacks the
+newer compatibility macro. Discard unreachable chunk accesses without
+relaxing array-bounds diagnostics or changing the encoding algorithm.
+
+Include a native regression covering valid multibyte conversion, UTF-16
+contents, invalid input, and reported byte offsets for every implementation
+supported by the running processor.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+with the downstream native-warning policy and LLVM 23 prerequisite.
+Red: bazel test @v8//tests/codex_simdutf:transcoder_test --keep_going
+fails at out-of-bounds array accesses in the unpatched library.
+Green: the same command, just fmt-check, and just bazel-lock-check pass.
+Evidence: simdutf-transcoder-{red,green}.log, simdutf-fmt-check.log,
+and simdutf-lock-check.log in llvm-toolchain-Rkha0k.
+
+Upstream: https://github.com/simdutf/simdutf/pull/943
+---
+ MODULE.bazel                       |   1 +
+ patches/v8_simdutf_constexpr.patch | 101 +++++++++++++++++++++++++++++
+ 2 files changed, 102 insertions(+)
+ create mode 100644 patches/v8_simdutf_constexpr.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index b41bd706c..aaf2783fb 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -816,6 +816,7 @@ archive_override(
+         "//patches:v8_bazel_rules.patch",
+         "//patches:v8_source_portability.patch",
+         "//patches:v8_icu_mutex_annotations.patch",
++        "//patches:v8_simdutf_constexpr.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+diff --git a/patches/v8_simdutf_constexpr.patch b/patches/v8_simdutf_constexpr.patch
+new file mode 100644
+index 000000000..2ff54c4a1
+--- /dev/null
++++ b/patches/v8_simdutf_constexpr.patch
+@@ -0,0 +1,101 @@
++diff --git a/mod/v8-15.0.245.2/tests/codex_simdutf/BUILD.bazel b/mod/v8-15.0.245.2/tests/codex_simdutf/BUILD.bazel
++new file mode 100644
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/tests/codex_simdutf/BUILD.bazel
++@@ -0,0 +1,9 @@
+++load("@rules_cc//cc:defs.bzl", "cc_test")
+++
+++cc_test(
+++    name = "transcoder_test",
+++    size = "small",
+++    srcs = ["transcoder_test.cc"],
+++    copts = ["-std=c++20"],
+++    deps = ["@simdutf//:simdutf"],
+++)
++diff --git a/mod/v8-15.0.245.2/tests/codex_simdutf/transcoder_test.cc b/mod/v8-15.0.245.2/tests/codex_simdutf/transcoder_test.cc
++new file mode 100644
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/tests/codex_simdutf/transcoder_test.cc
++@@ -0,0 +1,40 @@
+++#include <string>
+++#include <vector>
+++#include "third_party/simdutf/simdutf.h"
+++
+++int main() {
+++  std::string valid;
+++  for (int i = 0; i < 128; ++i) {
+++    valid.append("\xc3\xa9");
+++  }
+++  std::vector<char16_t> output(valid.size());
+++
+++  for (const auto *implementation : simdutf::get_available_implementations()) {
+++    if (implementation->supported_by_runtime_system() == false) {
+++      continue;
+++    }
+++    if (implementation->convert_utf8_to_utf16le(valid.data(), valid.size(), output.data()) != 128) {
+++      return 1;
+++    }
+++    const auto converted = implementation->convert_utf8_to_utf16le_with_errors(valid.data(), valid.size(), output.data());
+++    if (converted.error != simdutf::error_code::SUCCESS || converted.count != 128) {
+++      return 1;
+++    }
+++    for (int i = 0; i < 128; ++i) {
+++      if (output[i] != u'\u00e9') {
+++        return 1;
+++      }
+++    }
+++
+++    std::string invalid = valid;
+++    invalid[96] = static_cast<char>(0xff);
+++    const auto rejected = implementation->convert_utf8_to_utf16le_with_errors(invalid.data(), invalid.size(), output.data());
+++    if (rejected.error == simdutf::error_code::SUCCESS || rejected.count != 96) {
+++      return 1;
+++    }
+++    if (implementation->convert_utf8_to_utf16le(invalid.data(), invalid.size(), output.data()) != 0) {
+++      return 1;
+++    }
+++  }
+++  return 0;
+++}
++diff --git a/mod/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
++--- a/mod/v8-15.0.245.2/MODULE.bazel
+++++ b/mod/v8-15.0.245.2/MODULE.bazel
++@@ -44,2 +44,4 @@
++ http_archive(
++     name = "simdutf",
+++    patch_args = ["-p1"],
+++    patches = ["@v8//:bazel/simdutf_constexpr.patch"],
++diff --git a/mod/v8-15.0.245.2/bazel/simdutf_constexpr.patch b/mod/v8-15.0.245.2/bazel/simdutf_constexpr.patch
++new file mode 100644
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/bazel/simdutf_constexpr.patch
++@@ -0,0 +1,29 @@
+++diff --git a/src/generic/utf8_to_utf16/utf8_to_utf16.h b/src/generic/utf8_to_utf16/utf8_to_utf16.h
+++--- a/src/generic/utf8_to_utf16/utf8_to_utf16.h
++++++ b/src/generic/utf8_to_utf16/utf8_to_utf16.h
+++@@ -158,10 +158,10 @@ struct validating_transcoder {
+++                 (simd8x64<uint8_t>::NUM_CHUNKS == 4),
+++             "We support either two or four chunks per 64-byte block.");
+++         auto zero = simd8<uint8_t>{uint8_t(0)};
+++-        if (simd8x64<uint8_t>::NUM_CHUNKS == 2) {
++++        if constexpr (simd8x64<uint8_t>::NUM_CHUNKS == 2) {
+++           this->check_utf8_bytes(input.chunks[0], zero);
+++           this->check_utf8_bytes(input.chunks[1], input.chunks[0]);
+++-        } else if (simd8x64<uint8_t>::NUM_CHUNKS == 4) {
++++        } else if constexpr (simd8x64<uint8_t>::NUM_CHUNKS == 4) {
+++           this->check_utf8_bytes(input.chunks[0], zero);
+++           this->check_utf8_bytes(input.chunks[1], input.chunks[0]);
+++           this->check_utf8_bytes(input.chunks[2], input.chunks[1]);
+++@@ -246,10 +246,10 @@ struct validating_transcoder {
+++                 (simd8x64<uint8_t>::NUM_CHUNKS == 4),
+++             "We support either two or four chunks per 64-byte block.");
+++         auto zero = simd8<uint8_t>{uint8_t(0)};
+++-        if (simd8x64<uint8_t>::NUM_CHUNKS == 2) {
++++        if constexpr (simd8x64<uint8_t>::NUM_CHUNKS == 2) {
+++           this->check_utf8_bytes(input.chunks[0], zero);
+++           this->check_utf8_bytes(input.chunks[1], input.chunks[0]);
+++-        } else if (simd8x64<uint8_t>::NUM_CHUNKS == 4) {
++++        } else if constexpr (simd8x64<uint8_t>::NUM_CHUNKS == 4) {
+++           this->check_utf8_bytes(input.chunks[0], zero);
+++           this->check_utf8_bytes(input.chunks[1], input.chunks[0]);
+++           this->check_utf8_bytes(input.chunks[2], input.chunks[1]);
+-- 
+2.43.0
+

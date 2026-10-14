@@ -33,5 +33,5 @@ if (!existsSync(executable)) throw new Error(`Missing Codex binary for ${target}
 const child = spawn(executable, process.argv.slice(2), { stdio: "inherit" });
 child.on("close", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
-  else process.exit(code ?? 1);
+  else process.exitCode = code ?? 1;
 });

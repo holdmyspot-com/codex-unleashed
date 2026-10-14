@@ -1,0 +1,110 @@
+From e6f3b4ba8b35131df6f987f5f907d776f7b3eb88 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:13:32 +0000
+Subject: [PATCH] Repair GLib printf fallback warning portability
+
+Track native warning enforcement in #61. Apply after the documented native
+voice prerequisites; keep all compiler and linker checks enabled.
+
+Reproduction evidence: native-glib-printf-red.log. The actual native recipe reports the
+missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
+are recorded separately; an internal authoring commit is not full CI acceptance.
+---
+ third_party/voice/prepare_sources.py    | 32 +++++++++++++++++++++++++
+ tools/build-warnings/glib/BUILD.bazel   | 14 +++++++++++
+ tools/build-warnings/glib/printf_test.c | 22 +++++++++++++++++
+ 3 files changed, 68 insertions(+)
+ create mode 100644 tools/build-warnings/glib/BUILD.bazel
+ create mode 100644 tools/build-warnings/glib/printf_test.c
+
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index e1ea3baf7..436435a20 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -83,6 +83,38 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             raise ValueError(f"Expanded source exceeds limits: {source.name}")
+         archive.extractall(destination, members=members, filter="data")
+ 
++    if source.name == "glib" and source.version == "2.88.3":
++        # WORKAROUND: GLib's bundled gnulib has incomplete warning portability.
++        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++        # Remove when its printf fallback uses the portable annotation and casts.
++        printf = destination / source.root / "glib/gnulib/vasnprintf.c"
++        contents = printf.read_text(encoding="utf-8")
++        replacements = (
++            (
++                "#ifndef FALLTHROUGH\n"
++                "# if __GNUC__ < 7\n"
++                "#  define FALLTHROUGH ((void) 0)\n"
++                "# else\n"
++                "#  define FALLTHROUGH __attribute__ ((__fallthrough__))\n"
++                "# endif\n"
++                "#endif",
++                "#ifndef FALLTHROUGH\n# define FALLTHROUGH G_GNUC_FALLTHROUGH\n#endif",
++            ),
++            (
++                "#if !USE_SNPRINTF\n                    if (count >= tmp_length)",
++                "#if !USE_SNPRINTF\n                    if ((unsigned int) count >= tmp_length)",
++            ),
++            (
++                "if (count > allocated - length)",
++                "if ((unsigned int) count > allocated - length)",
++            ),
++        )
++        for original, replacement in replacements:
++            if contents.count(original) != 1:
++                raise ValueError("Pinned GLib printf implementation does not match")
++            contents = contents.replace(original, replacement)
++        printf.write_text(contents, encoding="utf-8")
++
+     if source.name == "ninja" and source.version == "1.13.2":
+         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
+         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+diff --git a/tools/build-warnings/glib/BUILD.bazel b/tools/build-warnings/glib/BUILD.bazel
+new file mode 100644
+index 000000000..08b8b821e
+--- /dev/null
++++ b/tools/build-warnings/glib/BUILD.bazel
+@@ -0,0 +1,14 @@
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
++
++cc_test(
++    name = "printf_test",
++    size = "small",
++    srcs = ["printf_test.c"],
++    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
++    copts = [
++        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
++        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
++    ],
++    tags = ["manual"],
++    deps = ["//third_party/voice:native_link"],
++)
+diff --git a/tools/build-warnings/glib/printf_test.c b/tools/build-warnings/glib/printf_test.c
+new file mode 100644
+index 000000000..c1434879c
+--- /dev/null
++++ b/tools/build-warnings/glib/printf_test.c
+@@ -0,0 +1,22 @@
++#include <glib.h>
++#include <string.h>
++
++int main(void) {
++  char *result = g_strdup_printf("%lld/%llu", -9223372036854775807LL,
++                                 18446744073709551615ULL);
++  int valid = strcmp(result, "-9223372036854775807/18446744073709551615") == 0;
++  g_free(result);
++
++  result = g_strdup_printf("%*s", -8, "left");
++  valid = valid && strcmp(result, "left    ") == 0;
++  g_free(result);
++
++  result = g_strdup_printf("%s:%*s", "prefix", 4096, "tail");
++  valid = valid && strlen(result) == 4103 && strncmp(result, "prefix:", 7) == 0;
++  for (int index = 7; index < 4099; ++index) {
++    valid = valid && result[index] == ' ';
++  }
++  valid = valid && strcmp(result + 4099, "tail") == 0;
++  g_free(result);
++  return valid ? 0 : 1;
++}

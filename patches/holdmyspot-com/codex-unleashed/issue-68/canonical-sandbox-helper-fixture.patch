@@ -1,0 +1,33 @@
+From 33f2c6897ca938245d043ed90b7350ef442bad65 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 13:30:33 +0000
+Subject: [PATCH] Resolve sandbox helper fixture paths through runfiles
+ symlinks
+
+Refs #68. Keep production sandbox permissions and digest verification
+unchanged. Declared upstream release base: rust-v0.162.1 (092d3acd6).
+
+Red: queue-86-sandbox-baseline-red.log.
+Green: sandbox-all-with-metadata-green-test.log (67 passed, 3 ignored).
+The compiler-env regression fails at its missing digest before propagation.
+Formatting: sandbox-metadata-regression-fmt.log passes. Fresh emitted queue
+and full hosted acceptance remain separate required gates.
+---
+ codex-rs/linux-sandbox/tests/suite/managed_proxy.rs | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+index def499d6c..2012855cc 100644
+--- a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
++++ b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+@@ -805,7 +805,9 @@ async fn managed_proxy_mode_routes_through_bridge_and_blocks_direct_egress() {
+         format!("http://127.0.0.1:{proxy_port}"),
+     );
+ 
+-    let sandbox_helper_dir = std::path::Path::new(env!("CARGO_BIN_EXE_codex-linux-sandbox"))
++    let sandbox_helper = std::fs::canonicalize(env!("CARGO_BIN_EXE_codex-linux-sandbox"))
++        .expect("resolve sandbox helper executable");
++    let sandbox_helper_dir = sandbox_helper
+         .parent()
+         .expect("sandbox helper should have a parent");
+     let file_system_sandbox_policy =

@@ -18,7 +18,7 @@ public final class CargoShearReportFixture
 	}
 
 	/**
-	 * Verifies maintained command arguments and emits the selected report with warning status.
+	 * Verifies maintained command arguments and emits the selected report and exit status.
 	 *
 	 * @param args the Cargo Shear command arguments
 	 * @throws IOException if the selected fixture report cannot be read
@@ -31,6 +31,6 @@ public final class CargoShearReportFixture
 			throw new IllegalArgumentException("Cargo Shear received the wrong working directory");
 		System.err.print("shear diagnostics\n");
 		System.out.print(Files.readString(Path.of(System.getenv("CARGO_SHEAR_TEST_REPORT"))));
-		System.exit(1);
+		System.exit(Integer.parseInt(System.getenv("CARGO_SHEAR_TEST_STATUS")));
 	}
 }

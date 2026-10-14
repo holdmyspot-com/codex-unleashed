@@ -4,7 +4,7 @@
   "cases": [
     {
       "input": "Run Rust patch verification from a separate upstream worktree; existing Cargo caches are in the user's home cache directory.",
-      "acceptance": "Resolve the project's .cat/work/temp/build-caches to an absolute path and explicitly set CARGO_TARGET_DIR, CARGO_HOME, and any task-managed RUSTUP_HOME beneath it. Do not reuse the home caches; confirm effective paths before invocation."
+      "acceptance": "Use tooling/bin/codex-tooling run-local-rust with the absolute owning project root, upstream checkout root, cache name, and maintained verification command. Confirm its effective CARGO_TARGET_DIR and CARGO_HOME are beneath the project's .cat/work/temp/build-caches; keep any task-managed RUSTUP_HOME there too. Do not reuse home caches, override the helper's cache paths, or claim existing unowned outputs."
     },
     {
       "input": "Run a uv-backed formatting command from an upstream checkout and require an isolated verification cache.",

@@ -1,0 +1,123 @@
+From 78817928c7e1112b55b10d168a0b0ea360a2df11 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 10:20:00 +0000
+Subject: [PATCH] Preserve LLVM link resources in the native Meson recipe
+
+Normalize C and C++ resource-directory flags to the declared merged linker resource tree for Meson, whose link commands append compilation flags. Keep other arguments and resource-free toolchains unchanged.
+
+Regression: the actual declared LLVM 23 configuration fails the miniature C/C++ Meson link at its missing builtins archive before the change. The patched recipe compiles, links, and executes the standard-library fixture without warning diagnostics.
+
+Validation: just fmt-check and the maintained native voice unit suite pass (91 tests, 19 skips). The complete native voice prefix and fresh emitted integration gates remain separate.
+---
+ third_party/voice/build_native.py          | 17 +++++-
+ tools/build-warnings/check-native-meson.py | 67 ++++++++++++++++++++++
+ 2 files changed, 83 insertions(+), 1 deletion(-)
+ create mode 100644 tools/build-warnings/check-native-meson.py
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 58d482894..1f7249b2b 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -288,10 +288,25 @@ class NativeBuild:
+         )
+         if self.args.target.endswith("unknown-linux-gnu"):
+             link[-1] = "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
++
++        meson_flags = {name: list(flags) for name, flags in self.flags.items()}
++        resource_prefix = "-resource-dir="
++        link_resources = [
++            flag for flag in self.flags["LDFLAGS"] if flag.startswith(resource_prefix)
++        ]
++        if link_resources:
++            # Meson appends compilation flags to its link command. Preserve the
++            # declared linker resource tree, which includes headers and runtimes.
++            for variable in ("CFLAGS", "CXXFLAGS"):
++                meson_flags[variable] = [
++                    link_resources[-1] if flag.startswith(resource_prefix) else flag
++                    for flag in meson_flags[variable]
++                ]
++
+         self.environment.update(
+             {
+                 name: self.quote([*flags, *(link if name == "LDFLAGS" else [include])])
+-                for name, flags in self.flags.items()
++                for name, flags in meson_flags.items()
+             }
+         )
+         if self.args.target.endswith("apple-darwin"):
+diff --git a/tools/build-warnings/check-native-meson.py b/tools/build-warnings/check-native-meson.py
+new file mode 100644
+index 000000000..f1fae251d
+--- /dev/null
++++ b/tools/build-warnings/check-native-meson.py
+@@ -0,0 +1,67 @@
++#!/usr/bin/env python3
++"""Exercise the native voice Meson recipe with its declared C/C++ toolchain."""
++
++import argparse
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++import tempfile
++from types import SimpleNamespace
++
++CHECKOUT = Path(__file__).resolve().parents[2]
++sys.dont_write_bytecode = True
++sys.path.insert(0, str(CHECKOUT / "third_party/voice"))
++from build_native import NativeBuild
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("configuration", type=Path)
++    parser.add_argument("execroot", type=Path)
++    parser.add_argument("meson_source", type=Path)
++    parser.add_argument("ninja", type=Path)
++    arguments = parser.parse_args()
++    root = arguments.execroot.absolute()
++    configuration = json.loads(
++        arguments.configuration.read_text().replace("@VOICE_EXECROOT@", str(root))
++    )
++    for name in ("archives", "prefix", "receipt"):
++        configuration.pop(name)
++    linker = root / configuration.pop("ld")
++    for name in ("cc", "cxx", "ar", "ranlib", "cmake", "make", "pkg_config", "shell"):
++        configuration[name] = root / configuration[name]
++
++    with tempfile.TemporaryDirectory(
++        prefix="native-meson-probe-", dir=os.environ["TMPDIR"]
++    ) as temporary:
++        scratch = Path(temporary)
++        builder = NativeBuild(
++            SimpleNamespace(
++                **configuration,
++                archives=scratch,
++                output=scratch / "build",
++                bootstrap_make=None,
++            ),
++            os.environ,
++        )
++        builder.output.mkdir()
++        (builder.tools / "bin").mkdir(parents=True)
++        (builder.tools / "bin/ninja").symlink_to(arguments.ninja.absolute())
++        source = scratch / "sources"
++        shutil.copytree(CHECKOUT / "tools/build-warnings/meson", source)
++        builder.sources = {"meson": arguments.meson_source.absolute(), "probe": source}
++        builder.environment["LD"] = str(linker)
++        try:
++            builder.meson("probe", [])
++            subprocess.run([builder.output / "build/probe/resource-probe"], check=True)
++        finally:
++            for log in sorted(builder.output.glob("*.log")):
++                print(log.read_text(errors="replace"))
++    print("Native voice Meson compiles, links, and executes its C/C++ resource probe.")
++
++
++if __name__ == "__main__":
++    main()
+-- 
+2.43.0
+

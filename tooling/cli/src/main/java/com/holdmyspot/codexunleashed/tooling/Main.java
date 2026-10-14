@@ -87,6 +87,7 @@ public final class Main
 		{
 			return switch (args[0])
 			{
+				case "run-local-rust" -> LocalRustCommand.run(Arrays.copyOfRange(args, 1, args.length), err);
 				case "stage-release-installers" ->
 				{
 					if (args.length != 3)
@@ -168,13 +169,13 @@ public final class Main
 				case SourceCacheCommand.NAME -> SourceCacheCommand.run(Arrays.copyOfRange(args, 1, args.length), out, err);
 				case "check-cargo-shear" ->
 				{
-					if ((args.length != 3 && args.length != 5) ||
-						(args.length == 5 && !"--cargo-shear".equals(args[3])))
+					if ((args.length != 2 && args.length != 4) ||
+						(args.length == 4 && !"--cargo-shear".equals(args[2])))
 						yield usage(err);
 					String executable = "cargo-shear";
-					if (args.length == 5)
-						executable = args[4];
-					yield CargoShear.check(Path.of(args[1]), Path.of(args[2]), List.of(executable), out, runner,
+					if (args.length == 4)
+						executable = args[3];
+					yield CargoShear.check(Path.of(args[1]), List.of(executable), out,
 						Path.of(System.getProperty("java.io.tmpdir")));
 				}
 				case "detect-upstream-release" ->
@@ -239,6 +240,7 @@ public final class Main
 	private static int usage(PrintStream err)
 	{
 		err.println("Usage: codex-tooling <command> <arguments>");
+		err.println("  run-local-rust <project-root> <checkout> <cache-name> -- <command> [argument ...]");
 		err.println("  stage-release-installers <upstream-checkout> <release-directory>");
 		err.println("  next-release-build-number <upstream-tag> (tag inventory on standard input)");
 		err.println("  cache-prefix --upstream-ref <upstream-reference>");
@@ -252,7 +254,7 @@ public final class Main
 			err.println("  resource-manifest-assets <manifest>");
 		err.println("  normalize-source-timestamps <checkout> <source-date-epoch>");
 		err.println("  " + SourceCacheCommand.NAME + " [--record-source-inputs] <workspace> <target> [binary ...]");
-		err.println("  check-cargo-shear <checkout> <baseline-json> [--cargo-shear <executable>]");
+		err.println("  check-cargo-shear <checkout> [--cargo-shear <executable>]");
 		err.println("  detect-upstream-release <owner/name> <github-output> <step-summary>");
 		err.println("  v8-canary-changes <checkout> [--base <ref> --head <ref>] [--force]");
 		err.println("  release-cache-keys --target <target> --compiler-fingerprint <sha256> --v8-version <version>");

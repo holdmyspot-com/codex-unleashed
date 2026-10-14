@@ -1,0 +1,78 @@
+From 74054750dc26287d8097d39d66f1cf617a6f3e5a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 09:13:20 +0000
+Subject: [PATCH] Reject TypeScript SDK lint warnings
+
+Set a zero-warning threshold for the maintained SDK lint and lint-fix
+commands. Include a process-boundary regression that invokes the lint
+script with a warning-producing fixture and requires the ESLint warning
+threshold diagnostic. The normal lint command stays clean.
+
+Red: focused Jest regression observes warning diagnostics with status 0
+before the change. Green: the same regression passes with ESLint status 1
+and the maximum-zero-warnings diagnostic. The normal maintained SDK lint
+command passes.
+
+Commands: pnpm -r --filter ./sdk/typescript run test --runInBand
+--runTestsByPath tests/lintWarningPolicy.test.ts;
+pnpm -r --filter ./sdk/typescript run lint.
+Fresh emitted and full upstream gates remain required.
+---
+ sdk/typescript/package.json                   |  4 ++--
+ sdk/typescript/tests/fixtures/lint_warning.ts |  1 +
+ .../tests/lintWarningPolicy.test.ts           | 20 +++++++++++++++++++
+ 3 files changed, 23 insertions(+), 2 deletions(-)
+ create mode 100644 sdk/typescript/tests/fixtures/lint_warning.ts
+ create mode 100644 sdk/typescript/tests/lintWarningPolicy.test.ts
+
+diff --git a/sdk/typescript/package.json b/sdk/typescript/package.json
+index 8932fa70b..3a12941b6 100644
+--- a/sdk/typescript/package.json
++++ b/sdk/typescript/package.json
+@@ -35,8 +35,8 @@
+     "clean": "rm -rf dist",
+     "build": "tsup",
+     "build:watch": "tsup --watch",
+-    "lint": "pnpm eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+-    "lint:fix": "pnpm eslint --fix \"src/**/*.ts\" \"tests/**/*.ts\"",
++    "lint": "pnpm eslint --max-warnings=0 \"src/**/*.ts\" \"tests/**/*.ts\"",
++    "lint:fix": "pnpm eslint --fix --max-warnings=0 \"src/**/*.ts\" \"tests/**/*.ts\"",
+     "test": "jest",
+     "test:watch": "jest --watch",
+     "coverage": "jest --coverage",
+diff --git a/sdk/typescript/tests/fixtures/lint_warning.ts b/sdk/typescript/tests/fixtures/lint_warning.ts
+new file mode 100644
+index 000000000..04f089bc4
+--- /dev/null
++++ b/sdk/typescript/tests/fixtures/lint_warning.ts
+@@ -0,0 +1 @@
++// TODO: lint-warning-boundary-probe
+diff --git a/sdk/typescript/tests/lintWarningPolicy.test.ts b/sdk/typescript/tests/lintWarningPolicy.test.ts
+new file mode 100644
+index 000000000..1550ba2f2
+--- /dev/null
++++ b/sdk/typescript/tests/lintWarningPolicy.test.ts
+@@ -0,0 +1,20 @@
++import { spawnSync } from "node:child_process";
++
++test("the maintained lint command rejects an ESLint warning", () => {
++  const result = spawnSync(
++    "pnpm",
++    ["run", "lint", "tests/fixtures/lint_warning.ts", "--rule", "no-warning-comments:warn"],
++    {
++      cwd: process.cwd(),
++      encoding: "utf8",
++      timeout: 30_000,
++    },
++  );
++  const output = result.stdout + result.stderr;
++
++  expect(result.error).toBeUndefined();
++  expect(output).toContain("lint-warning-boundary-probe");
++  expect(output).toContain("no-warning-comments");
++  expect(result.status).toBe(1);
++  expect(output).toContain("ESLint found too many warnings (maximum: 0)");
++}, 30_000);
+-- 
+2.43.0
+

@@ -1,0 +1,570 @@
+From 01280d91ed81208a647ff17058d4645bf558b336 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 08:05:32 +0000
+Subject: [PATCH] Backport MinGW's scoped LLVM 23 ABI alias compatibility
+
+Backport MinGW commits 6c6368cb4a682b5c8b95a61d088efce453074cf4,
+01290efca885ae171f427ddbd338d21ac265a658, and
+b43f781b916e8170b66bc4c6784123e53b283f8a to v14.0.0.
+Adapt only four include-context differences and add a WORKAROUND
+reference to issue #61 with the upstream fix and removal condition.
+
+The positive compiler regression builds the actual MinGW runtime
+objects, then requires an unrelated alias mismatch to fail at its
+expected diagnostic. No global warning flag is relaxed.
+
+Verification: tools/build-warnings/mingw/check.sh
+--platforms=//:windows_x86_64_gnullvm --keep_going reproduces
+-Wattribute-alias before the backport and passes afterwards.
+Maintained just fmt-check and just bazel-lock-check pass.
+Logs: mingw-runtime-alias-{red,green}.log and
+mingw-alias-{fmt,lock}-check.log in llvm-toolchain task evidence.
+---
+ MODULE.bazel                                  |   1 +
+ patches/llvm_mingw_attribute_alias.patch      | 464 ++++++++++++++++++
+ tools/build-warnings/mingw/BUILD.bazel        |   9 +
+ .../mingw/attribute_alias_warning.c           |   5 +
+ tools/build-warnings/mingw/check.sh           |  20 +
+ 5 files changed, 499 insertions(+)
+ create mode 100644 patches/llvm_mingw_attribute_alias.patch
+ create mode 100644 tools/build-warnings/mingw/BUILD.bazel
+ create mode 100644 tools/build-warnings/mingw/attribute_alias_warning.c
+ create mode 100755 tools/build-warnings/mingw/check.sh
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 89fa7a6d2..2adbe3b8c 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -19,6 +19,7 @@ single_version_override(
+         "//patches:llvm_windows_arm64_powl.patch",
+         "//patches:llvm_windows_mingw_compat.patch",
+         "//patches:llvm_mingw_function_guard.patch",
++        "//patches:llvm_mingw_attribute_alias.patch",
+         "//patches:llvm_warnings_as_errors.patch",
+         "//patches:llvm_resource_directory_headers.patch",
+     ],
+diff --git a/patches/llvm_mingw_attribute_alias.patch b/patches/llvm_mingw_attribute_alias.patch
+new file mode 100644
+index 000000000..6b090eb08
+--- /dev/null
++++ b/patches/llvm_mingw_attribute_alias.patch
+@@ -0,0 +1,464 @@
++diff --git a/runtimes/mingw/BUILD.bazel b/runtimes/mingw/BUILD.bazel
++index 5bdba63..a120874 100644
++--- a/runtimes/mingw/BUILD.bazel
+++++ b/runtimes/mingw/BUILD.bazel
++@@ -7,6 +7,7 @@ load("//runtimes:defs.bzl", "stub_library")
++ load(":crt_object.bzl", "crt_object")
++ 
++ exports_files([
+++    "attribute_alias.patch",
++     "function_guard.patch",
++     "mingw.BUILD.bazel",
++ ])
++diff --git a/runtimes/mingw/attribute_alias.patch b/runtimes/mingw/attribute_alias.patch
++new file mode 100644
++index 0000000..8f51a01
++--- /dev/null
+++++ b/runtimes/mingw/attribute_alias.patch
++@@ -0,0 +1,430 @@
+++diff --git a/mingw-w64-crt/gdtoa/strtodnrp.c b/mingw-w64-crt/gdtoa/strtodnrp.c
+++index 9304866..523e36e 100644
+++--- a/mingw-w64-crt/gdtoa/strtodnrp.c
++++++ b/mingw-w64-crt/gdtoa/strtodnrp.c
+++@@ -89,7 +89,12 @@ __mingw_strtod (const char * __restrict__ src, char ** __restrict__ endptr)
+++ /* For systems other than x86, where long double == double, provide the
+++  * long double functions as aliases to __strtod. */
+++ 
++++#undef Long
++++#undef Bias
++++#include "internal.h"
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ long double __cdecl
+++ __mingw_strtold (const char * __restrict__ src, char ** __restrict__ endptr)
+++   __attribute__((alias("__strtod")));
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/include/internal.h b/mingw-w64-crt/include/internal.h
+++index 997a89b..5f52f32 100644
+++--- a/mingw-w64-crt/include/internal.h
++++++ b/mingw-w64-crt/include/internal.h
+++@@ -308,6 +308,21 @@ static inline unsigned int __mingw_statusfp(void)
+++ 
+++ #endif
+++ 
++++/* WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
++++ * MinGW LLVM 23 ABI aliases: upstream b43f781b916e8170b66bc4c6784123e53b283f8a.
++++ * Remove this backport when the pinned MinGW release includes the fix. */
++++#if (defined(__GNUC__) && __GNUC__ >= 8) || \
++++    (defined(__clang_major__) && __clang_major__ >= 23)
++++#define PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN     \
++++    _Pragma("GCC diagnostic push")                          \
++++    _Pragma("GCC diagnostic ignored \"-Wattribute-alias\"")
++++#define PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END       \
++++    _Pragma ("GCC diagnostic pop")
++++#else
++++#define PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
++++#define PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
++++#endif
++++
+++ #ifdef __cplusplus
+++ }
+++ #endif
+++diff --git a/mingw-w64-crt/misc/ftime32.c b/mingw-w64-crt/misc/ftime32.c
+++index 2ff79ba..d0df00f 100644
+++--- a/mingw-w64-crt/misc/ftime32.c
++++++ b/mingw-w64-crt/misc/ftime32.c
+++@@ -7,6 +7,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include <sys/timeb.h>
++++#include "internal.h"
+++ 
+++ int __cdecl ftime32(struct __timeb32 *tb32);
+++ int __cdecl ftime32(struct __timeb32 *tb32)
+++@@ -34,5 +35,7 @@ int __cdecl ftime32(struct __timeb32 *tb32)
+++ 
+++ /* On 32-bit systems is ftime ABI using 32-bit time_t */
+++ #ifndef _WIN64
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias("ftime32"))) __cdecl ftime(struct timeb *);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/misc/ftime64.c b/mingw-w64-crt/misc/ftime64.c
+++index c30003b..5928e99 100644
+++--- a/mingw-w64-crt/misc/ftime64.c
++++++ b/mingw-w64-crt/misc/ftime64.c
+++@@ -5,6 +5,7 @@
+++  */
+++ 
+++ #include <sys/timeb.h>
++++#include "internal.h"
+++ 
+++ int __cdecl ftime64(struct __timeb64 *tb64);
+++ int __cdecl ftime64(struct __timeb64 *tb64)
+++@@ -15,5 +16,7 @@ int __cdecl ftime64(struct __timeb64 *tb64)
+++ 
+++ /* On 64-bit systems is ftime ABI using 64-bit time_t */
+++ #ifdef _WIN64
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias("ftime64"))) __cdecl ftime(struct timeb *);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/misc/ftw32.c b/mingw-w64-crt/misc/ftw32.c
+++index 5eb9e37..cbfbead 100644
+++--- a/mingw-w64-crt/misc/ftw32.c
++++++ b/mingw-w64-crt/misc/ftw32.c
+++@@ -9,11 +9,15 @@
+++ #define STRUCT_STAT struct _stat32
+++ #include "ftw.c"
+++ 
++++#include "internal.h"
++++
+++ /* On 32-bit systems is stat ABI compatible with stat32 */
+++ #ifndef _WIN64
+++ #undef nftw
+++ #undef ftw
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("nftw32"))) __cdecl nftw(const char *, int (*) (const char *, const struct stat *, int, struct FTW *), int, int);
+++ int __attribute__ ((alias ("ftw32"))) __cdecl ftw(const char *, int (*) (const char *, const struct stat *, int), int);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/misc/ftw64i32.c b/mingw-w64-crt/misc/ftw64i32.c
+++index 2ded6ec..7cb8b46 100644
+++--- a/mingw-w64-crt/misc/ftw64i32.c
++++++ b/mingw-w64-crt/misc/ftw64i32.c
+++@@ -9,11 +9,15 @@
+++ #define STRUCT_STAT struct _stat64i32
+++ #include "ftw.c"
+++ 
++++#include "internal.h"
++++
+++ /* On 64-bit systems is stat ABI compatible with stat64i32 */
+++ #ifdef _WIN64
+++ #undef nftw
+++ #undef ftw
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("nftw64i32"))) __cdecl nftw(const char *, int (*) (const char *, const struct stat *, int, struct FTW *), int, int);
+++ int __attribute__ ((alias ("ftw64i32"))) __cdecl ftw(const char *, int (*) (const char *, const struct stat *, int), int);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/misc/imaxdiv.c b/mingw-w64-crt/misc/imaxdiv.c
+++index 8a6fb02..fb380c5 100644
+++--- a/mingw-w64-crt/misc/imaxdiv.c
++++++ b/mingw-w64-crt/misc/imaxdiv.c
+++@@ -17,6 +17,7 @@
+++ 
+++ #include	<inttypes.h>
+++ #include	<stdlib.h>
++++#include	"internal.h"
+++ 
+++ imaxdiv_t
+++ __cdecl
+++@@ -29,19 +30,11 @@ imaxdiv(intmax_t numer, intmax_t denom)
+++ }
+++ imaxdiv_t (__cdecl *__MINGW_IMP_SYMBOL(imaxdiv))(intmax_t, intmax_t) = imaxdiv;
+++ 
+++-/*
+++- * avoid gcc 8+ warning:
+++- * 'lldiv' alias between functions of incompatible types 'lldiv_t(long long int,  long long int)' {aka 'struct <anonymous>(long long int,  long long int)'} and 'imaxdiv_t(intmax_t,  intmax_t)' {aka 'struct <anonymous>(long long int,  long long int)'}
+++- */
+++-#if defined(__GNUC__) && __GNUC__ >= 8
+++-#pragma GCC diagnostic push
+++-#pragma GCC diagnostic ignored "-Wattribute-alias"
+++-#endif
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ lldiv_t __attribute__ ((alias ("imaxdiv")))
+++ __cdecl
+++ lldiv (long long, long long); 
+++ extern lldiv_t __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(imaxdiv)))))
+++ (__cdecl *__MINGW_IMP_SYMBOL(lldiv))(long long, long long);
+++-#if defined(__GNUC__) && __GNUC__ >= 8
+++-#pragma GCC diagnostic pop
+++-#endif
++++
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++diff --git a/mingw-w64-crt/stdio/_wfindfirst32.c b/mingw-w64-crt/stdio/_wfindfirst32.c
+++index a22a979..e6038eb 100644
+++--- a/mingw-w64-crt/stdio/_wfindfirst32.c
++++++ b/mingw-w64-crt/stdio/_wfindfirst32.c
+++@@ -1,5 +1,6 @@
+++ #include <io.h>
+++ #include <string.h>
++++#include "internal.h"
+++ 
+++ intptr_t __cdecl _wfindfirst32(const wchar_t *_Filename, struct _wfinddata32_t *_FindData)
+++ {
+++@@ -20,6 +21,8 @@ intptr_t (__cdecl *__MINGW_IMP_SYMBOL(_wfindfirst32))(const wchar_t *, struct _w
+++ 
+++ #ifndef _WIN64
+++ #undef _wfindfirst
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ intptr_t __attribute__ ((alias ("_wfindfirst32"))) __cdecl _wfindfirst(const char *, struct _wfinddata32_t *);
+++ extern intptr_t __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(_wfindfirst32))))) (__cdecl *__MINGW_IMP_SYMBOL(_wfindfirst))(const char *, struct _wfinddata32_t *);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_fstat32.c b/mingw-w64-crt/stdio/msvcr110plus_fstat32.c
+++index dfc57b2..ea91395 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_fstat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_fstat32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl fstat32(int fd, struct _stat32 *stat);
+++ int __cdecl fstat32(int fd, struct _stat32 *stat)
+++@@ -19,6 +20,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(fstat32))(int, struct _stat32 *) = fstat32;
+++ #ifndef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("fstat32"))) __cdecl fstat(int fd, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(fstat32))))) (__cdecl *__MINGW_IMP_SYMBOL(fstat))(int fd, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_fstat64i32.c b/mingw-w64-crt/stdio/msvcr110plus_fstat64i32.c
+++index 7b14828..f2290f4 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_fstat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_fstat64i32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl fstat64i32(int fd, struct _stat64i32 *stat);
+++ int __cdecl fstat64i32(int fd, struct _stat64i32 *stat)
+++@@ -19,6 +20,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(fstat64i32))(int fd, struct _stat64i32 *) = fst
+++ #ifdef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("fstat64i32"))) __cdecl fstat(int fd, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(fstat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(fstat))(int fd, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_stat32.c b/mingw-w64-crt/stdio/msvcr110plus_stat32.c
+++index f936ef9..e9fccb7 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_stat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_stat32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl stat32(const char *_Filename, struct _stat32 *_Stat);
+++ int __cdecl stat32(const char *_Filename, struct _stat32 *_Stat)
+++@@ -23,6 +24,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(stat32))(const char *, struct _stat32 *) = stat
+++ #ifndef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("stat32"))) __cdecl stat(const char *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(stat32))))) (__cdecl *__MINGW_IMP_SYMBOL(stat))(const char *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_stat64i32.c b/mingw-w64-crt/stdio/msvcr110plus_stat64i32.c
+++index 89c3e05..7e321ad 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_stat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_stat64i32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl stat64i32(const char *_Filename, struct _stat64i32 *_Stat);
+++ int __cdecl stat64i32(const char *_Filename, struct _stat64i32 *_Stat)
+++@@ -23,6 +24,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(stat64i32))(const char *, struct _stat64i32 *)
+++ #ifdef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("stat64i32"))) __cdecl stat(const char *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(stat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(stat))(const char *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_wstat32.c b/mingw-w64-crt/stdio/msvcr110plus_wstat32.c
+++index 50e183c..6b06171 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_wstat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_wstat32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl wstat32(const wchar_t *_Filename, struct _stat32 *_Stat);
+++ int __cdecl wstat32(const wchar_t *_Filename, struct _stat32 *_Stat)
+++@@ -24,6 +25,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(wstat32))(const wchar_t *, struct _stat32 *) =
+++ #undef stat
+++ #undef wstat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("wstat32"))) __cdecl wstat(const wchar_t *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(wstat32))))) (__cdecl *__MINGW_IMP_SYMBOL(wstat))(const wchar_t *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110plus_wstat64i32.c b/mingw-w64-crt/stdio/msvcr110plus_wstat64i32.c
+++index caf5ca7..1fa6c86 100644
+++--- a/mingw-w64-crt/stdio/msvcr110plus_wstat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110plus_wstat64i32.c
+++@@ -7,6 +7,7 @@
+++ #include <sys/stat.h>
+++ #include <stdlib.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ int __cdecl wstat64i32(const wchar_t *_Filename, struct _stat64i32 *_Stat);
+++ int __cdecl wstat64i32(const wchar_t *_Filename, struct _stat64i32 *_Stat)
+++@@ -24,6 +25,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(wstat64i32))(const wchar_t *, struct _stat64i32
+++ #undef stat
+++ #undef wstat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("wstat64i32"))) __cdecl wstat(const wchar_t *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(wstat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(wstat))(const wchar_t *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_fstat32.c b/mingw-w64-crt/stdio/msvcr110pre_fstat32.c
+++index cbc6dbb..9abc36a 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_fstat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_fstat32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _fstat32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -45,6 +46,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(fstat32))(int, struct _stat32 *) = fstat32;
+++ #ifndef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("fstat32"))) __cdecl fstat(int fd, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(fstat32))))) (__cdecl *__MINGW_IMP_SYMBOL(fstat))(int fd, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_fstat64i32.c b/mingw-w64-crt/stdio/msvcr110pre_fstat64i32.c
+++index 6ca74be..bdb8c3e 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_fstat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_fstat64i32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _fstat64i32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -45,6 +46,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(fstat64i32))(int, struct _stat64i32 *) = fstat6
+++ #ifdef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("fstat64i32"))) __cdecl fstat(int fd, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(fstat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(fstat))(int fd, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_stat32.c b/mingw-w64-crt/stdio/msvcr110pre_stat32.c
+++index 196c2de..e165b7f 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_stat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_stat32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _stat32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -49,6 +50,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(stat32))(const char *, struct _stat32 *) = stat
+++ #ifndef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("stat32"))) __cdecl stat(const char *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(stat32))))) (__cdecl *__MINGW_IMP_SYMBOL(stat))(const char *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_stat64i32.c b/mingw-w64-crt/stdio/msvcr110pre_stat64i32.c
+++index 2a6cc9a..8713b12 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_stat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_stat64i32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _stat64i32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -49,6 +50,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(stat64i32))(const char *, struct _stat64i32 *)
+++ #ifdef _WIN64
+++ #undef stat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("stat64i32"))) __cdecl stat(const char *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(stat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(stat))(const char *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_wstat32.c b/mingw-w64-crt/stdio/msvcr110pre_wstat32.c
+++index b9848ff..e0b7ca1 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_wstat32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_wstat32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _wstat32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -50,6 +51,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(wstat32))(const wchar_t *, struct _stat32 *) =
+++ #undef stat
+++ #undef wstat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("wstat32"))) __cdecl wstat(const wchar_t *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(wstat32))))) (__cdecl *__MINGW_IMP_SYMBOL(wstat))(const wchar_t *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
+++diff --git a/mingw-w64-crt/stdio/msvcr110pre_wstat64i32.c b/mingw-w64-crt/stdio/msvcr110pre_wstat64i32.c
+++index a7611bf..705dc51 100644
+++--- a/mingw-w64-crt/stdio/msvcr110pre_wstat64i32.c
++++++ b/mingw-w64-crt/stdio/msvcr110pre_wstat64i32.c
+++@@ -9,6 +9,7 @@
+++ #include <stdint.h>
+++ #include <errno.h>
+++ #include "__mingw_fix_stat.h"
++++#include "internal.h"
+++ 
+++ /* For pre-msvcr110 builds, we cannot use _wstat64i32() as it does
+++  * not signal EOVERFLOW when file size does not fit into the st_size field,
+++@@ -50,6 +51,8 @@ int (__cdecl *__MINGW_IMP_SYMBOL(wstat64i32))(const wchar_t *, struct _stat64i32
+++ #undef stat
+++ #undef wstat
+++ struct stat;
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_BEGIN
+++ int __attribute__ ((alias ("wstat64i32"))) __cdecl wstat(const wchar_t *name, struct stat *stat);
+++ extern int __attribute__ ((alias (__MINGW64_STRINGIFY(__MINGW_IMP_SYMBOL(wstat64i32))))) (__cdecl *__MINGW_IMP_SYMBOL(wstat))(const wchar_t *name, struct stat *stat);
++++PRAGMA_DIAGNOSTIC_IGNORED_ATTRIBUTE_ALIAS_END
+++ #endif
++diff --git a/runtimes/mingw/extension/mingw.bzl b/runtimes/mingw/extension/mingw.bzl
++index 29a65d1..4601a8c 100644
++--- a/runtimes/mingw/extension/mingw.bzl
+++++ b/runtimes/mingw/extension/mingw.bzl
++@@ -13,7 +13,10 @@ def _mingw_extension_impl(module_ctx):
++         integrity = "sha256-1xzGRM1aN8M38nGfPgx52J6NjV+54pUqYtP6I2I9wTc=",
++         strip_prefix = "mingw-w64-14.0.0",
++         build_file = "//runtimes/mingw:mingw.BUILD.bazel",
++-        patches = ["//runtimes/mingw:function_guard.patch"],
+++        patches = [
+++            "//runtimes/mingw:function_guard.patch",
+++            "//runtimes/mingw:attribute_alias.patch",
+++        ],
++         patch_args = ["-p1"],
++     )
++ 
+diff --git a/tools/build-warnings/mingw/BUILD.bazel b/tools/build-warnings/mingw/BUILD.bazel
+new file mode 100644
+index 000000000..b7fb24f71
+--- /dev/null
++++ b/tools/build-warnings/mingw/BUILD.bazel
+@@ -0,0 +1,9 @@
++genrule(
++    name = "attribute_alias_warning",
++    srcs = ["attribute_alias_warning.c"],
++    outs = ["attribute_alias_warning.obj"],
++    cmd = "\"$(location @llvm//tools:clang)\" --target=x86_64-w64-windows-gnu -Wall -Werror -c \"$(location attribute_alias_warning.c)\" -o \"$@\"",
++    tags = ["manual"],
++    target_compatible_with = ["@platforms//os:linux"],
++    tools = ["@llvm//tools:clang"],
++)
+diff --git a/tools/build-warnings/mingw/attribute_alias_warning.c b/tools/build-warnings/mingw/attribute_alias_warning.c
+new file mode 100644
+index 000000000..efba48a04
+--- /dev/null
++++ b/tools/build-warnings/mingw/attribute_alias_warning.c
+@@ -0,0 +1,5 @@
++struct original { int value; };
++struct different { int value; };
++int expected_attribute_alias_warning(struct original *value) { return value->value; }
++int incompatible_alias(struct different *value)
++    __attribute__((alias("expected_attribute_alias_warning")));
+diff --git a/tools/build-warnings/mingw/check.sh b/tools/build-warnings/mingw/check.sh
+new file mode 100755
+index 000000000..4b3bb367d
+--- /dev/null
++++ b/tools/build-warnings/mingw/check.sh
+@@ -0,0 +1,20 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++probe_dir="$(mktemp -d "${TMPDIR:?TMPDIR must identify owned temporary storage}/codex-mingw-alias-XXXXXX")"
++trap 'rm -rf -- "${probe_dir}"' EXIT
++
++if ! bazel build @llvm//runtimes/mingw:mingwex @llvm//runtimes/mingw:msvcrt_extra --output_groups=compilation_outputs "$@" > "${probe_dir}/runtime.log" 2>&1; then
++    cat "${probe_dir}/runtime.log" >&2
++    exit 1
++fi
++cat "${probe_dir}/runtime.log"
++
++if bazel build //tools/build-warnings/mingw:attribute_alias_warning "$@" --platforms=//:local_linux > "${probe_dir}/negative.log" 2>&1; then
++    cat "${probe_dir}/negative.log" >&2
++    echo 'Expected the unrelated alias mismatch to fail compilation.' >&2
++    exit 1
++fi
++grep -F 'expected_attribute_alias_warning' "${probe_dir}/negative.log" > /dev/null
++grep -F '[-Werror,-Wattribute-alias]' "${probe_dir}/negative.log" > /dev/null
++echo 'MinGW runtime compiles; unrelated alias warnings remain fatal.'
+-- 
+2.43.0
+

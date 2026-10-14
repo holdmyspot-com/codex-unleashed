@@ -1,0 +1,182 @@
+From d02c2a52751b907a61a58a2ba94f016345998bce Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 09:57:10 +0000
+Subject: [PATCH] Keep libffi internal calls outside deprecated public entry
+ points
+
+Give the pinned Java raw implementations private helpers and retain public wrappers with the existing ABI and deprecation attributes. Apply the source fix only after archive verification and reject unexpected definitions.
+
+Regression: check-libffi.sh against the original extracted 3.8.0 archive fails at deprecated internal calls under GCC -Wall -Werror. The repaired shared library builds without warnings, exports its Java raw API, and passes an argument conversion round trip. An independent deprecated consumer still fails compilation.
+
+Validation: focused Linux GCC regression and just fmt-check pass. LLVM 23 native voice integration, emitted queue checks, and Windows/macOS acceptance are separate required gates.
+---
+ third_party/voice/README.md          |  5 +-
+ third_party/voice/prepare_sources.py | 49 +++++++++++++++++++
+ tools/build-warnings/check-libffi.sh | 72 ++++++++++++++++++++++++++++
+ 3 files changed, 125 insertions(+), 1 deletion(-)
+ create mode 100755 tools/build-warnings/check-libffi.sh
+
+diff --git a/third_party/voice/README.md b/third_party/voice/README.md
+index 6cbddf369..1d864ad2c 100644
+--- a/third_party/voice/README.md
++++ b/third_party/voice/README.md
+@@ -36,6 +36,8 @@ The adapter verifies archive digests and bounds, then extracts with Python's
+ targets when link creation is unavailable, including on Windows. It refuses an
+ existing output directory and cleans up incomplete output. `prepared.json` records
+ successful preparation, not the integrity of later edits to the extracted tree.
++The pinned libffi 3.8.0 Java raw entry points use private implementation helpers;
++their public ABI and deprecation annotations remain available.
+ 
+ Ordinary CLI builds do not run either path. The Bazel `:sources` target is
+ `manual`, so wildcard builds do not fetch these archives. `:source_inputs`
+@@ -113,7 +115,8 @@ On macOS, specify the existing release deployment target with
+ Windows requires the normal Visual Studio SDK environment, Cygwin GNU make,
+ bash/cygpath and Automake 1.18's standard `ar-lib` for upstream libffi,
+ native Windows pkgconf, and `--bootstrap-make` pointing to NMake.
+-The recipe does not install these build prerequisites or patch upstream sources.
++The recipe uses the source adapter's pinned libffi Java raw fix. It does not
++install these build prerequisites.
+ The optional `--windows-build-inputs <json>` argument records an explicit selection
+ of these tools, the target-specific MSVC assembler, linker, library manager,
+ inspector, Windows SDK resource/manifest tools, Python, and include/library roots.
+diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
+index 247d1d3e7..82d728f58 100644
+--- a/third_party/voice/prepare_sources.py
++++ b/third_party/voice/prepare_sources.py
+@@ -83,6 +83,55 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             raise ValueError(f"Expanded source exceeds limits: {source.name}")
+         archive.extractall(destination, members=members, filter="data")
+ 
++    if source.name == "libffi" and source.version == "3.8.0":
++        # WORKAROUND: libffi calls its deprecated public Java raw API internally.
++        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++        # Remove when libffi uses internal helpers for these entry points.
++        java_raw = destination / source.root / "src/java_raw_api.c"
++        contents = java_raw.read_text(encoding="utf-8")
++        functions = (
++            ("ffi_java_raw_size", "size_t", "ffi_cif *cif", "cif"),
++            (
++                "ffi_java_raw_to_ptrarray",
++                "void",
++                "ffi_cif *cif, ffi_java_raw *raw, void **args",
++                "cif, raw, args",
++            ),
++            (
++                "ffi_java_ptrarray_to_raw",
++                "void",
++                "ffi_cif *cif, void **args, ffi_java_raw *raw",
++                "cif, args, raw",
++            ),
++            (
++                "ffi_prep_java_raw_closure_loc",
++                "ffi_status",
++                "ffi_java_raw_closure *cl, ffi_cif *cif, "
++                "void (*fun)(ffi_cif*,void*,ffi_java_raw*,void*), "
++                "void *user_data, void *codeloc",
++                "cl, cif, fun, user_data, codeloc",
++            ),
++        )
++        for name, _, _, _ in functions:
++            contents = contents.replace(f"{name} (", f"{name}_internal (")
++
++        for name, return_type, parameters, arguments in functions:
++            definition = f"{return_type}\n{name}_internal ("
++            if contents.count(definition) != 1:
++                raise ValueError(f"Pinned libffi definition does not match: {name}")
++            return_statement = "" if return_type == "void" else "return "
++            wrapper = (
++                f"static {return_type} {name}_internal ({parameters});\n\n"
++                f"{return_type}\n{name} ({parameters})\n"
++                "{\n"
++                f"  {return_statement}{name}_internal ({arguments});\n"
++                "}\n\n"
++                f"static {definition}"
++            )
++            contents = contents.replace(definition, wrapper)
++
++        java_raw.write_text(contents, encoding="utf-8")
++
+ 
+ def prepare_sources(archives: Path, output: Path, manifest: bytes) -> None:
+     sources = load_sources(manifest)
+diff --git a/tools/build-warnings/check-libffi.sh b/tools/build-warnings/check-libffi.sh
+new file mode 100755
+index 000000000..afde11c18
+--- /dev/null
++++ b/tools/build-warnings/check-libffi.sh
+@@ -0,0 +1,72 @@
++#!/usr/bin/env bash
++set -euo pipefail
++archive=$(realpath "$1")
++compiler=$(realpath "$2")
++make_tool=$(realpath "$3")
++checkout=$(cd "$(dirname "$0")/../.." && pwd)
++scratch=$(mktemp -d "${TMPDIR:?}/libffi-warning-check-XXXXXX")
++trap 'rm -rf -- "$scratch"' EXIT
++source_root=$(PYTHONDONTWRITEBYTECODE=1 python3 - "$checkout" "$archive" "$scratch" <<'PY'
++import sys
++from pathlib import Path
++sys.path.insert(0, str(Path(sys.argv[1]) / "third_party/voice"))
++from prepare_sources import MANIFEST, extract_source, load_sources
++source = next(source for source in load_sources(MANIFEST.read_bytes()) if source.name == "libffi")
++extract_source(source, Path(sys.argv[2]).parent, Path(sys.argv[3]))
++print(Path(sys.argv[3]) / source.root)
++PY
++)
++mkdir "$scratch/build"
++cd "$scratch/build"
++CC="$compiler" CFLAGS="-Wall -Werror ${CFLAGS:-}" "$source_root/configure" --enable-shared --disable-static --disable-docs > configure.log 2>&1 || { cat configure.log; exit 1; }
++"$make_tool" -j2 > build.log 2>&1 || { cat build.log; exit 1; }
++if grep -niE '(^|[[:space:]])warning:' configure.log build.log; then
++  echo "Unexpected warnings in the libffi build." >&2
++  exit 1
++fi
++cat > consumer.c <<'C'
++#include <ffi.h>
++size_t deprecated_consumer(ffi_cif *cif) { return ffi_java_raw_size(cif); }
++C
++if "$compiler" -Wall -Werror -Iinclude -I"$source_root/include" -c consumer.c -o consumer.o > consumer.log 2>&1; then
++  echo "Deprecated public Java raw API unexpectedly compiled without an error." >&2
++  exit 1
++fi
++grep -Eq 'error:.*deprecated' consumer.log
++nm -D .libs/libffi.so > exports.txt
++grep -q ' T ffi_java_raw_size' exports.txt
++grep -q ' T ffi_java_ptrarray_to_raw' exports.txt
++cat > runtime.c <<'C'
++#include <dlfcn.h>
++#include <ffi.h>
++#include <stdint.h>
++#include <stdlib.h>
++int main(int argc, char **argv) {
++  if (argc != 2) return 1;
++  void *library = dlopen(argv[1], RTLD_NOW);
++  if (!library) return 2;
++  size_t (*raw_size)(ffi_cif *) = dlsym(library, "ffi_java_raw_size");
++  void (*to_raw)(ffi_cif *, void **, ffi_java_raw *) = dlsym(library, "ffi_java_ptrarray_to_raw");
++  void (*to_array)(ffi_cif *, ffi_java_raw *, void **) = dlsym(library, "ffi_java_raw_to_ptrarray");
++  ffi_status (*prepare)(ffi_cif *, ffi_abi, unsigned int, ffi_type *, ffi_type **) = dlsym(library, "ffi_prep_cif");
++  ffi_type *integer = dlsym(library, "ffi_type_sint32");
++  if (!raw_size || !to_raw || !to_array || !prepare || !integer) return 3;
++  ffi_cif cif;
++  ffi_type *types[] = {integer};
++  if (prepare(&cif, FFI_DEFAULT_ABI, 1, integer, types) != FFI_OK) return 4;
++  ffi_java_raw *raw = calloc(1, raw_size(&cif));
++  if (!raw) return 5;
++  int32_t value = 42;
++  void *arguments[] = {&value};
++  to_raw(&cif, arguments, raw);
++  void *decoded[] = {NULL};
++  to_array(&cif, raw, decoded);
++  int result = decoded[0] && *(int32_t *)decoded[0] == value ? 0 : 6;
++  free(raw);
++  dlclose(library);
++  return result;
++}
++C
++"$compiler" -Wall -Werror -Iinclude -I"$source_root/include" runtime.c -ldl -o runtime
++./runtime "$scratch/build/.libs/libffi.so"
++echo "libffi builds with fatal warnings, preserves its Java raw API, and diagnoses deprecated consumers."
+-- 
+2.43.0
+

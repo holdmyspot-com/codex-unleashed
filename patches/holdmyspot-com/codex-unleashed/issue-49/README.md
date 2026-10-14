@@ -1,7 +1,7 @@
 # Use a mountable procfs denial to test snapshot descriptor fallback
 
 - Issue: [https://github.com/holdmyspot-com/codex-unleashed/issues/49](https://github.com/holdmyspot-com/codex-unleashed/issues/49)
-- Applies to: upstream `openai/codex` `rust-v0.161.0`, commit `979011409de0a60b52f179721948e65531d26144`
+- Applies to: upstream `openai/codex` `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
 
 ## Intent
 
@@ -27,4 +27,4 @@ All selected checks expect to pass. The sandbox feature matches the Linux V8 bui
 
 ## Upstream status
 
-The issue tracks this downstream baseline repair against [upstream 0.161.0](https://github.com/openai/codex/releases/tag/rust-v0.161.0).
+The issue tracks this downstream baseline repair against [upstream 0.162.1](https://github.com/openai/codex/releases/tag/rust-v0.162.1).
