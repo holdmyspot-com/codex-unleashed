@@ -242,24 +242,36 @@ The probe builds the CLI with fatal warnings, then runs its version and server
 help commands. Its output contains the pinned OpenSSL version and server usage
 text. It does not open a listener or establish a TLS connection.
 
-`native-openssl-z-source-header.patch` selects OpenSSL 3.5.5.bcr.1, whose
+`upgrade-openssl.patch` selects OpenSSL 4.0.1.bcr.0, whose
 Bazel integration includes the
 [upstream source-header repair](https://github.com/raccoons-build/bazel-openssl-cc/pull/56).
 The released integration uses the existing `opensslconf.h` source header,
 retains generated platform configuration headers, and keeps Bazel's dependency
-validation enabled. The patch adapts the library and CLI warning backports to
-3.5.5's source formatting. Apply it after `native-openssl-unused-globals.patch`
-and `native-openssl-unused-options.patch`.
+validation enabled. The patch updates the Rust bindings to `openssl` 0.10.81
+and `openssl-sys` 0.9.117, which support OpenSSL 4. It adapts the remaining
+library and CLI warning backports and omits the initialization-state fix
+already included in OpenSSL 4. Apply it after
+`native-openssl-unused-globals.patch`, `native-openssl-unused-options.patch`,
+and `upgrade-llvm-23-windows-driver.patch`.
+
+Resolve the workspace package versions before running the Bazel checks:
 
 ```sh
+cargo update --workspace --manifest-path codex-rs/Cargo.toml
 bazel test //tools/build-warnings/openssl:configuration_header_test --spawn_strategy=local --nouse_action_cache --disk_cache=
+bazel test //tools/build-warnings/openssl:rust_bindings_test
+just fmt-check
+just bazel-lock-check
 ```
 
 The check compiles and links the crypto library without a sandbox or cached
 actions, then initializes it successfully. Without the repair, compilation
 fails because the source header shadows its declared generated copy. Run the
 same target on native Windows for platform acceptance; a Linux pass establishes
-only the unsandboxed header-selection boundary.
+only the unsandboxed header-selection boundary. The Rust regression verifies
+that the bundled OpenSSL 4 library supports hashing and TLS context creation
+through the selected bindings. The older `openssl-sys` 0.9.111 rejects
+OpenSSL 4 during its build script.
 
 ## AWS-LC fork-detection state
 
