@@ -1,0 +1,23 @@
+From 42f20b718e7dc12f2c495487d21ef465286d6721 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 15:23:59 +0000
+Subject: [PATCH] Remove an empty unlinked core integration-test placeholder
+
+The upstream file contains only a module comment and has no tests or module registration. Delete it so the existing dependency-usage check passes without exempting unlinked source files.
+
+With cargo-shear 1.11.2, the maintained check-cargo-shear command fails with shear/unlinked_files before deletion and exits 0 with zero warnings afterward.
+---
+ codex-rs/core/tests/suite/scenarios_read_only_mcp.rs | 1 -
+ 1 file changed, 1 deletion(-)
+ delete mode 100644 codex-rs/core/tests/suite/scenarios_read_only_mcp.rs
+
+diff --git a/codex-rs/core/tests/suite/scenarios_read_only_mcp.rs b/codex-rs/core/tests/suite/scenarios_read_only_mcp.rs
+deleted file mode 100644
+index 2cad1c930..000000000
+--- a/codex-rs/core/tests/suite/scenarios_read_only_mcp.rs
++++ /dev/null
+@@ -1 +0,0 @@
+-//! Thread policy reaches MCP discovery and execution without relying on model arguments.
+-- 
+2.43.0
+

@@ -61,6 +61,36 @@ Repeated occurrences are suppressed. The same text from another formatter, a dif
 
 The unpatched wrapper discards successful command output and accepts warnings. Its regression tests exercise real child processes that emit warning diagnostics with a zero exit status. The tests also cover clean output, source text containing `warning:`, exact exception matching, mixed diagnostics, and original failure statuses.
 
+### Rustls Bazel metadata
+
+`rustls-bazel-metadata.patch` refreshes the Rustls crate fact in
+`MODULE.bazel.lock` for version 0.23.46. Apply it after the issue #60 toolchain
+patches, this issue's Bazel module changes, and the
+`security-RUSTSEC-2026-0346/update-rustls.patch` security update. It changes no
+other crate facts.
+
+After Cargo resolves the workspace lockfile versions, run `just bazel-lock-check`
+from the patched checkout. The check passes; a stale Rustls 0.23.45 fact causes
+the maintained check to reject the lockfile.
+
+## Dependency-usage source inventory
+
+`remove-empty-test-placeholder.patch` removes the upstream core integration-test
+placeholder `scenarios_read_only_mcp.rs`. The file contains only a module comment,
+has no tests, and is absent from the suite's module registry. Removing it resolves
+Cargo shear's unlinked-file warning without excluding source files from the check.
+The patch applies independently.
+
+With Cargo shear 1.11.2 on `PATH`, run the project's maintained check:
+
+```sh
+tooling/bin/codex-tooling check-cargo-shear /path/to/patched-checkout
+```
+
+The check reports zero warnings and no findings. With the placeholder present,
+it fails with `shear/unlinked_files`. Local execution uses the project's
+`run-local-rust` helper and checkout-specific build storage.
+
 ## V8 legacy callback compatibility
 
 `native-v8-callback-compatibility.patch` keeps the pinned Rust callback ABI while

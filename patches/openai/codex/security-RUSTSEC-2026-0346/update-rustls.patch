@@ -1,0 +1,31 @@
+From 70d5cf748ed2ea6bc4914cdb052a17b56679994c Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 11:21:58 -0400
+Subject: [PATCH] Update Rustls to address four TLS security advisories
+
+Select Rustls 0.23.46 for RUSTSEC-2026-0346 through RUSTSEC-2026-0349 without disabling advisory checks.
+
+The hosted cargo-deny check fails with all four vulnerabilities on 0.23.45. With 0.23.46, cargo-deny 0.20.2 --log-level warn --manifest-path codex-rs/Cargo.toml --all-features check exits 0 using Rust 1.99.0. Existing duplicate and stale-policy warnings remain visible.
+---
+ codex-rs/Cargo.lock | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 22f249e19..8f7c8029c 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -13573,9 +13573,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "rustls"
+-version = "0.23.45"
++version = "0.23.46"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
++checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+ dependencies = [
+  "aws-lc-rs",
+  "log",
+-- 
+2.43.0
+
