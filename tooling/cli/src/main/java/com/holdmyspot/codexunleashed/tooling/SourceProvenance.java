@@ -238,12 +238,69 @@ public final class SourceProvenance
 			for (String addition : paths(run(expected,
 				"diff", "--cached", "--name-only", "--diff-filter=A", "-z", "HEAD")))
 				run(actual, "add", "--force", "--", addition);
+			if (run(null, "config", "--type=bool", "--default=true", "--get", "core.filemode").strip().equals("false"))
+				preservePatchExecutableModes();
 			String actualTree = run(actual, "write-tree").strip();
 			if (!actualTree.equals(expectedTree))
 				throw new IOException("Source audit failed: checkout is not upstream HEAD plus patches/. " +
 					"Expected tree " + expectedTree + ", got " + actualTree + ". Differing paths:\n" +
 					run(null, "diff-tree", "--no-commit-id", "--name-status", "-r", expectedTree, actualTree));
 			return actualTree;
+		}
+
+		/**
+		 * Restores regular-file executable bits that Git cannot observe, retaining actual contents and types.
+		 *
+		 * @throws IOException if reading or updating an independent index fails
+		 */
+		private void preservePatchExecutableModes() throws IOException
+		{
+			Map<String, String> expectedModes = fileModes(expected);
+			for (Map.Entry<String, String> entry : fileModes(actual).entrySet())
+			{
+				String expectedMode = expectedModes.getOrDefault(entry.getKey(), "");
+				if (isRegularFileMode(entry.getValue()) && isRegularFileMode(expectedMode) &&
+					!entry.getValue().equals(expectedMode))
+				{
+					String permission = switch (expectedMode)
+					{
+						case "100755" -> "--chmod=+x";
+						default -> "--chmod=-x";
+					};
+					run(actual, "update-index", permission, "--", entry.getKey());
+				}
+			}
+		}
+
+		/**
+		 * Reads index modes using NUL-separated fields without trimming or quoting path names.
+		 *
+		 * @param index the independent index
+		 * @return the indexed paths and their Git modes
+		 * @throws IOException if Git cannot read the index
+		 */
+		private Map<String, String> fileModes(Path index) throws IOException
+		{
+			String[] fields = run(index, "ls-files", "-z", "--format=%(path)%x00%(objectmode)").split("\0", -1);
+			Map<String, String> modes = new HashMap<>();
+			for (int field = 0; field + 1 < fields.length; field += 2)
+				modes.put(fields[field], fields[field + 1]);
+			return modes;
+		}
+
+		/**
+		 * Identifies Git modes whose only distinction is the executable bit.
+		 *
+		 * @param mode the Git index mode
+		 * @return true for an ordinary regular file mode
+		 */
+		private static boolean isRegularFileMode(String mode)
+		{
+			return switch (mode)
+			{
+				case "100644", "100755" -> true;
+				default -> false;
+			};
 		}
 
 		/**

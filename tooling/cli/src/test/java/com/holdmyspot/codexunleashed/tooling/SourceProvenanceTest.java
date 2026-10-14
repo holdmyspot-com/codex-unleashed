@@ -108,6 +108,88 @@ public final class SourceProvenanceTest
 	}
 
 	/**
+	 * Preserves patch-declared executable modes when Git cannot observe filesystem executable bits.
+	 *
+	 * @throws IOException if fixture setup or auditing fails
+	 */
+	@Test
+	public void verifiesUnobservableExecutableModes() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.applyExecutableModePatch();
+			byte[] index = Files.readAllBytes(fixture.checkout.resolve(".git/index"));
+			SourceProvenance.generate(fixture.request(), fixture.temporary, fixture.environment);
+			JsonNode document = JsonMapper.builder().build().readTree(Files.readString(fixture.output));
+			assertEquals(document.get("patched_tree").stringValue(), fixture.patchedTree);
+			assertEquals(Files.readAllBytes(fixture.checkout.resolve(".git/index")), index);
+			fixture.assertTemporaryEmpty();
+		}
+	}
+
+	/**
+	 * Rejects executable script content changes even when Git cannot observe executable bits.
+	 *
+	 * @throws IOException if fixture access fails
+	 */
+	@Test
+	public void rejectsChangedExecutableContents() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			Path script = fixture.applyExecutableModePatch();
+			Files.writeString(script, "unexpected content\n");
+			Files.writeString(fixture.output, "previous report");
+			IOException failure = expectThrows(IOException.class, () ->
+				SourceProvenance.generate(fixture.request(), fixture.temporary, fixture.environment));
+			assertTrue(failure.getMessage().contains("Source audit failed"));
+			assertTrue(failure.getMessage().contains(script.getFileName().toString()));
+			assertEquals(Files.readString(fixture.output), "previous report");
+			fixture.assertTemporaryEmpty();
+		}
+	}
+
+	/**
+	 * Rejects a missing executable script when filesystem executable bits are unavailable.
+	 *
+	 * @throws IOException if fixture access fails
+	 */
+	@Test
+	public void rejectsMissingExecutable() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			Files.delete(fixture.applyExecutableModePatch());
+			expectThrows(IOException.class, () ->
+				SourceProvenance.generate(fixture.request(), fixture.temporary, fixture.environment));
+			assertFalse(Files.exists(fixture.output));
+			fixture.assertTemporaryEmpty();
+		}
+	}
+
+	/**
+	 * Rejects a symbolic link replacing a regular script despite matching target contents.
+	 *
+	 * @throws IOException if fixture access or symbolic link creation fails
+	 */
+	@Test
+	public void rejectsExecutableSymlinkReplacement() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			Path script = fixture.applyExecutableModePatch();
+			Path target = Files.writeString(fixture.root.resolve("script-target"), Files.readString(script));
+			Files.delete(script);
+			Files.createSymbolicLink(script, target);
+			IOException failure = expectThrows(IOException.class, () ->
+				SourceProvenance.generate(fixture.request(), fixture.temporary, fixture.environment));
+			assertTrue(failure.getMessage().contains("Source audit failed"));
+			assertFalse(Files.exists(fixture.output));
+			fixture.assertTemporaryEmpty();
+		}
+	}
+
+	/**
 	 * Accepts a clean baseline without a patch directory and emits empty patch and changed-path arrays.
 	 *
 	 * @throws IOException if fixture setup or auditing fails
@@ -255,6 +337,30 @@ public final class SourceProvenanceTest
 				}
 				throw failure;
 			}
+		}
+
+		/**
+		 * Applies a second patch that adds an executable script and changes an existing file's mode.
+		 *
+		 * @return the added script
+		 * @throws IOException if Git or fixture access fails
+		 */
+		private Path applyExecutableModePatch() throws IOException
+		{
+			git("add", "--force", "ignored.txt");
+			commit("first source state");
+			git("config", "core.filemode", "false");
+			Path script = Files.writeString(checkout.resolve("script, name.sh"), "#!/bin/sh\nexit 0\n");
+			git("add", "--", script.getFileName().toString());
+			git("update-index", "--chmod=+x", "--", script.getFileName().toString(), "source.txt");
+			commit("executable mode patch");
+			patchedTree = git("rev-parse", "HEAD^{tree}").strip();
+			Path second = patchRepo.resolve("patches/é.patch.next.patch");
+			Files.writeString(second, git("format-patch", "-1", "--stdout", "--binary"));
+			git("reset", "--hard", baseline);
+			git("apply", patchRepo.resolve("patches/é.patch").toString());
+			git("apply", second.toString());
+			return script;
 		}
 
 		/**
