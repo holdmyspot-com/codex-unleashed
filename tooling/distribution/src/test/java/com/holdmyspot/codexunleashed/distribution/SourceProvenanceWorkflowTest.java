@@ -58,10 +58,14 @@ public final class SourceProvenanceWorkflowTest
 				Path checkout = Files.createDirectory(working.resolve("upstream"));
 				git(checkout, gitEnvironment, "init", "--initial-branch=main");
 				Files.writeString(checkout.resolve("source.txt"), "before\n");
+				Path cargoLock = Files.createDirectories(checkout.resolve("codex-rs")).resolve("Cargo.lock");
+				Files.writeString(cargoLock, "upstream dependencies\n");
 				Files.writeString(checkout.resolve(".gitignore"), "ignored.bin\ntarget/\n");
 				commit(checkout, gitEnvironment, "baseline");
 				String baseline = git(checkout, gitEnvironment, "rev-parse", "HEAD").strip();
 				Files.writeString(checkout.resolve("source.txt"), "after é\n");
+				String patchedLock = "patched dependencies\n";
+				Files.writeString(cargoLock, patchedLock);
 				Files.write(checkout.resolve("ignored.bin"), new byte[]{0, (byte) 255, 1});
 				git(checkout, gitEnvironment, "add", "--force", "ignored.bin");
 				commit(checkout, gitEnvironment, "patched");
@@ -70,6 +74,19 @@ public final class SourceProvenanceWorkflowTest
 				Files.writeString(patch, git(checkout, gitEnvironment, "format-patch", "-1", "--stdout", "--binary"));
 				git(checkout, gitEnvironment, "reset", "--hard", baseline);
 				git(checkout, gitEnvironment, "apply", patch.toString());
+				if (job.equals("build-unix"))
+				{
+					String preserveCommand = WorkflowCommands.readStepCommand(job, "Preserve patched Cargo metadata");
+					Path preserveLog = working.resolve("preserve.log");
+					assertEquals(runWorkflow(preserveCommand, working, temporary, bin, runtime, gitEnvironment, preserveLog),
+						0, Files.readString(preserveLog));
+					Files.writeString(cargoLock, "generated build metadata\n");
+					String restoreCommand = WorkflowCommands.readStepCommand(job, "Restore generated Cargo metadata");
+					Path restoreLog = working.resolve("restore.log");
+					assertEquals(runWorkflow(restoreCommand, working, temporary, bin, runtime, gitEnvironment, restoreLog),
+						0, Files.readString(restoreLog));
+					assertEquals(Files.readString(cargoLock), patchedLock);
+				}
 				byte[] index = Files.readAllBytes(checkout.resolve(".git/index"));
 				String command = WorkflowCommands.readStepCommand(job, "Record source provenance").
 					replace("${{ matrix.target }}", "fixture-target").replace("${{ matrix.bundle }}", "fixture-bundle");
@@ -88,7 +105,7 @@ public final class SourceProvenanceWorkflowTest
 				assertEquals(document.get("workflow").get("sha").stringValue(), "a".repeat(40));
 				assertEquals(document.get("workflow").get("run_id").stringValue(), "7");
 				assertEquals(document.get("patches").size(), 1);
-				assertEquals(document.get("changed_paths").size(), 2);
+				assertEquals(document.get("changed_paths").size(), 3);
 				assertFalse(Files.exists(working.resolve("source-provenance.json")));
 				assertTemporaryEmpty(temporary);
 

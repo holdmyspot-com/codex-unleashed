@@ -702,6 +702,12 @@ jobs:
           expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
           apply-patches: true
 
+      - name: Preserve patched Cargo metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream add -- codex-rs/Cargo.lock
+
       - name: Normalize patched source timestamps
         shell: bash
         env:
@@ -980,9 +986,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Cargo may refresh the upstream lockfile when building an older
-          # release with a newer toolchain. It is build-time state, not a
-          # repository patch, so restore it before the source audit.
+          # Restore the patched lockfile preserved before the build. The Git
+          # index contains downstream dependency changes as well as upstream
+          # dependencies; HEAD alone does not describe the patched source.
           git -C upstream checkout -- codex-rs/Cargo.lock
 
       - name: Record source provenance
