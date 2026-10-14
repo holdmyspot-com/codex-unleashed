@@ -38,7 +38,8 @@ public final class SourceInputInventoryTest
 			Files.writeString(fixture.root.resolve(".gitignore"), "ignored\n");
 			Path source = Files.createDirectories(fixture.root.resolve("workspace/src")).resolve("lib.rs");
 			Files.writeString(source, "original");
-			SystemCommands.run(java.util.List.of("git", "-C", fixture.root.toString(), "add", ".gitignore", "workspace"));
+			SystemCommands.run(java.util.List.of("git", "-c", "core.autocrlf=false", "-C", fixture.root.toString(),
+				"add", ".gitignore", "workspace"));
 			byte[] payload = {0, (byte) 255, 13, 10};
 			Files.write(source, payload);
 			Instant timestamp = Instant.ofEpochSecond(1_000_000_000L, 123_456_789);
