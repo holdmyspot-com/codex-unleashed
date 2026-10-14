@@ -363,10 +363,11 @@ bazel test //tools/build-warnings/llvm-driver:all
 just fmt-check
 ```
 
-Both Darwin cross-links must pass. The runtime test loads the linked procedural
-macro during compilation and checks its expansion when executed. Run it on
-native macOS hosts to establish macOS loading and runtime behavior; a Linux
-execution covers only the Linux branch. The full platform build remains required.
+Both Darwin cross-links must pass. The test loads the procedural macro on the
+compiler's execution platform and checks its expansion on the test platform.
+Remote compilation can use Linux even when the target platform is macOS, so
+cross-links and that test do not establish native macOS macro loading. The full
+platform build remains required.
 
 ## Native voice Meson resources
 
