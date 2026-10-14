@@ -4,6 +4,7 @@ import com.holdmyspot.codexunleashed.tooling.PayloadDirectories;
 import com.holdmyspot.codexunleashed.tooling.SystemCommands;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -421,7 +422,38 @@ public final class NpmPackagesTest
 		try (Stream<Path> paths = Files.walk(root))
 		{
 			for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-				Files.delete(path);
+			{
+				for (int attempt = 0; ; ++attempt)
+				{
+					try
+					{
+						Files.delete(path);
+						break;
+					}
+					catch (FileSystemException failure)
+					{
+						if (path.getFileSystem().getSeparator().equals("\\") &&
+							path.getFileName().toString().equals("codex.exe") && attempt < 15)
+						{
+							// Windows can retain a just-executed fixture image after its process exits.
+							try
+							{
+								Thread.sleep(500);
+							}
+							catch (InterruptedException interrupted)
+							{
+								Thread.currentThread().interrupt();
+								IOException cleanup = new IOException("Interrupted deleting executable fixture " + path,
+									interrupted);
+								cleanup.addSuppressed(failure);
+								throw cleanup;
+							}
+						}
+						else
+							throw failure;
+					}
+				}
+			}
 		}
 	}
 }
