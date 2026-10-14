@@ -242,11 +242,14 @@ The probe builds the CLI with fatal warnings, then runs its version and server
 help commands. Its output contains the pinned OpenSSL version and server usage
 text. It does not open a listener or establish a TLS connection.
 
-`native-openssl-z-source-header.patch` uses OpenSSL's existing
-`opensslconf.h` source header during unsandboxed compilation. It adapts the
-[upstream overlay repair](https://github.com/raccoons-build/bazel-openssl-cc/pull/56)
-to 3.5.4.bcr.0 and retains generated platform configuration headers and Bazel's
-dependency validation. Apply it after `native-openssl-unused-globals.patch`.
+`native-openssl-z-source-header.patch` selects OpenSSL 3.5.5.bcr.1, whose
+Bazel integration includes the
+[upstream source-header repair](https://github.com/raccoons-build/bazel-openssl-cc/pull/56).
+The released integration uses the existing `opensslconf.h` source header,
+retains generated platform configuration headers, and keeps Bazel's dependency
+validation enabled. The patch adapts the library and CLI warning backports to
+3.5.5's source formatting. Apply it after `native-openssl-unused-globals.patch`
+and `native-openssl-unused-options.patch`.
 
 ```sh
 bazel test //tools/build-warnings/openssl:configuration_header_test --spawn_strategy=local --nouse_action_cache --disk_cache=
