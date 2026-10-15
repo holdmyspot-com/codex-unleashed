@@ -2035,3 +2035,29 @@ ICU-definition fixture. Native Windows CI must also compile and run
 `//tools/build-warnings/v8:windows_stack_assembly_test` on GNU and MSVC
 platforms. Linux analysis and cross-compilation do not establish those native
 assembler and runtime outcomes.
+
+## Libtool compile-only probes
+
+`zzzz-0017-libffi-compile-only-driver.patch` keeps Darwin's system-linker
+selection out of Libtool's compile-only invocations. Libtool uses `LTCC`
+for both capability probes and partial links, whose command omits
+`LDFLAGS`. A private compiler driver selects the system linker only for
+linking. Compiler warnings remain fatal.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0016`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Run with Clang 23 available on `PATH`:
+
+```sh
+python3 -m unittest discover -v -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+The linker-selection regression compiles through both `CC` and `LTCC`,
+executes the linked program, and checks normal and partial-link driver
+traces for the declared system linker. Native macOS CI must additionally
+confirm the real `-force_load` probe succeeds and build the complete voice
+prefix without warning diagnostics.
