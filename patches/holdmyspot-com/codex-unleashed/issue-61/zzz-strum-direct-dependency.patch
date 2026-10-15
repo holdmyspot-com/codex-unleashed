@@ -1,0 +1,123 @@
+From 74b55c72f42ca130e908b2f2896bc7df44451686 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 04:07:52 -0400
+Subject: [PATCH] Align the direct strum dependency with its current derive
+ macros
+
+Upgrade the workspace strum dependency from 0.27.2 to stable 0.28.0, matching the already selected strum_macros 0.28.0. Cargo removes the older strum and strum_macros versions without adding or upgrading other external packages.
+
+Regression: tools/build-warnings/check-enum-dependencies.sh with RUSTUP_TOOLCHAIN=stable fails with ambiguous strum versions on the prepared preceding queue (exit 101) and passes after the direct upgrade (exit 0). Maintained just fmt-check and just bazel-lock-check pass; protocol and state Bazel unit tests pass. Eight TUI failures reproduce identically in the preceding baseline; they remain local fixture/environment follow-up and are not claimed passing.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with preceding issue-61 dependency updates. Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+---
+ MODULE.bazel.lock                             |  2 -
+ codex-rs/Cargo.lock                           | 41 +++++--------------
+ codex-rs/Cargo.toml                           |  2 +-
+ .../build-warnings/check-enum-dependencies.sh |  7 ++++
+ 4 files changed, 18 insertions(+), 34 deletions(-)
+ create mode 100755 tools/build-warnings/check-enum-dependencies.sh
+
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index 7e7381c86..7144c15a8 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -2265,5 +2265,3 @@
+       "strsim_0.11.1": "{\"dependencies\":[],\"features\":{}}",
+-      "strum_0.27.2": "{\"dependencies\":[{\"features\":[\"macros\"],\"name\":\"phf\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"strum_macros\",\"optional\":true,\"req\":\"^0.27\"}],\"features\":{\"default\":[\"std\"],\"derive\":[\"strum_macros\"],\"std\":[]}}",
+       "strum_0.28.0": "{\"dependencies\":[{\"features\":[\"macros\"],\"name\":\"phf\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"strum_macros\",\"optional\":true,\"req\":\"^0.28\"}],\"features\":{\"default\":[\"std\"],\"derive\":[\"strum_macros\"],\"std\":[]}}",
+-      "strum_macros_0.27.2": "{\"dependencies\":[{\"name\":\"heck\",\"req\":\"^0.5.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"parsing\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
+       "strum_macros_0.28.0": "{\"dependencies\":[{\"name\":\"heck\",\"req\":\"^0.5.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"parsing\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 3b792c9be..c203c3b7c 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -2265,3 +2265,3 @@ dependencies = [
+  "similar",
+- "strum_macros 0.28.0",
++ "strum_macros",
+  "tempfile",
+@@ -4241,3 +4241,3 @@ dependencies = [
+  "serde_json",
+- "strum_macros 0.28.0",
++ "strum_macros",
+  "thiserror 2.0.20",
+@@ -4334,4 +4334,4 @@ dependencies = [
+  "serde_with",
+- "strum 0.27.2",
+- "strum_macros 0.28.0",
++ "strum",
++ "strum_macros",
+  "sys-locale",
+@@ -4679,3 +4679,3 @@ dependencies = [
+  "sqlx-sqlite",
+- "strum 0.27.2",
++ "strum",
+  "tokio",
+@@ -4898,4 +4898,4 @@ dependencies = [
+  "shlex",
+- "strum 0.27.2",
+- "strum_macros 0.28.0",
++ "strum",
++ "strum_macros",
+  "supports-color 3.0.2",
+@@ -12755,3 +12755,3 @@ dependencies = [
+  "serde",
+- "strum 0.28.0",
++ "strum",
+  "thiserror 2.0.20",
+@@ -12830,3 +12830,3 @@ dependencies = [
+  "serde",
+- "strum 0.28.0",
++ "strum",
+  "time",
+@@ -14926,11 +14926,2 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+-[[package]]
+-name = "strum"
+-version = "0.27.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+-dependencies = [
+- "strum_macros 0.27.2",
+-]
+-
+ [[package]]
+@@ -14941,15 +14932,3 @@ checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+ dependencies = [
+- "strum_macros 0.28.0",
+-]
+-
+-[[package]]
+-name = "strum_macros"
+-version = "0.27.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+-dependencies = [
+- "heck",
+- "proc-macro2",
+- "quote",
+- "syn 2.0.117",
++ "strum_macros",
+ ]
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index e7ff9c522..be5a45d04 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -501,3 +501,3 @@ sqlx-sqlite = { version = "=0.9.0", default-features = false, features = ["offli
+ starlark = { version = "0.14.2", default-features = false }
+-strum = "0.27.2"
++strum = "0.28.0"
+ strum_macros = "0.28.0"
+diff --git a/tools/build-warnings/check-enum-dependencies.sh b/tools/build-warnings/check-enum-dependencies.sh
+new file mode 100755
+index 000000000..86aa1059d
+--- /dev/null
++++ b/tools/build-warnings/check-enum-dependencies.sh
+@@ -0,0 +1,7 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
++cd -- "$repo_root/codex-rs"
++cargo tree --locked --workspace --invert strum
++cargo tree --locked --workspace --invert strum_macros

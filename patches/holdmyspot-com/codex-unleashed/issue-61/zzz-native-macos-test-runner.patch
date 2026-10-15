@@ -1,0 +1,23 @@
+From 5cf68198d6da23a40ab3479b0a14a2296f3a13f9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 04:09:40 -0400
+Subject: [PATCH] Run the Intel macOS Bazel test matrix on Intel hosts
+
+The native Bazel test command uses its host platform. macos-15-xlarge is ARM64, so the x86_64 matrix entry repeats ARM coverage. Select the documented macos-15-intel runner for that entry.
+
+Regression evidence: downstream Actions run 38695233250, x86_64 job 116290142596, builds darwin_arm64 targets and duplicates the ARM native test failures. Native hosted verification must show an Intel host and darwin_x86_64 targets after the correction. Preserve target cache namespaces.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d). Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+---
+ .github/workflows/bazel.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
+index ede5a7f07..1f0fac918 100644
+--- a/.github/workflows/bazel.yml
++++ b/.github/workflows/bazel.yml
+@@ -30,3 +30,3 @@ jobs:
+             target: aarch64-apple-darwin
+-          - os: macos-15-xlarge
++          - os: macos-15-intel
+             target: x86_64-apple-darwin

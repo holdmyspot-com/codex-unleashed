@@ -1387,3 +1387,41 @@ just bazel-lock-check
 The expected result is a passing pointer-format test on Darwin, Linux, and
 Windows. Native Darwin execution verifies Darwin's format selection and runtime
 behavior; a Linux execution alone does not establish Darwin coverage.
+
+## Direct enum dependency alignment
+
+`zzz-strum-direct-dependency.patch` upgrades the direct workspace `strum`
+dependency to 0.28.0, matching the selected `strum_macros` version. Cargo removes
+the two older package versions without adding or upgrading other external
+packages. The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+dependency patches. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+```sh
+tools/build-warnings/check-enum-dependencies.sh
+just fmt-check
+just bazel-lock-check
+bazel test //codex-rs/protocol:protocol-unit-tests //codex-rs/state:state-unit-tests
+```
+
+The dependency check succeeds only when Cargo resolves one version of each enum
+package. Protocol and state unit tests verify affected enum users. The complete
+TUI suite remains a separate acceptance gate.
+
+## Native Intel macOS test runner
+
+`zzz-native-macos-test-runner.patch` selects `macos-15-intel` for the native
+`x86_64-apple-darwin` Bazel test matrix entry. The fork's corresponding workflow
+uses the same runner selection. ARM and Intel jobs retain their existing target
+cache namespaces. The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`); the runner correction applies
+independently. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+Verification requires the Intel matrix job to report an x86-64 host and build
+`darwin_x86_64` targets. The ARM job must report an ARM64 host and build
+`darwin_arm64` targets. A green job whose actual host differs from its declared
+native target does not establish that target's coverage. GitHub's
+[runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+documents the host architectures of these runner labels.
