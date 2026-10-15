@@ -1,4 +1,5 @@
 [codespell]
+# The project vocabulary in .codespellignore includes Windows structured exception handling (SEH).
 # Git hunk headers, including nested patches, can end in the middle of a source word.
 # WORKAROUND: preserve this verbatim AWS-LC context until upstream corrects its typo.
 # https://github.com/holdmyspot-com/codex-unleashed/issues/61
