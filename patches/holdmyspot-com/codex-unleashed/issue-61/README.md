@@ -1825,3 +1825,38 @@ bazel test --test_verbose_timeout_warnings --test_output=errors \
 
 All nine checks pass without timing-range advisories. Required queue checks
 remain `just fmt-check` and `just bazel-lock-check`.
+
+## Explicit Python zip applications
+
+`zzzz-0010-explicit-python-zipapps.patch` disables rules_python's implicit zip
+outputs. Explicit `py_zipapp_binary` generators keep their declared outputs.
+Windows hosts otherwise enable the legacy default for Linux remote-execution
+tools, including Bazel's SHA-256 tool. The native Bazel 9 `build_python_zip`
+option is a deprecated no-op, so the patch uses its supported Starlark
+replacement. This changes the output selection rather than filtering a warning.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue,
+including the explicit initializer test. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61; the migration guide is
+https://github.com/bazel-contrib/rules_python/issues/3567.
+
+```sh
+bazel test --test_output=errors \
+  //tools/build-warnings/python:hash_initializers_test \
+  //tools/build-warnings/python:hash_zipapp_test \
+  //tools/build-warnings/python:hash_runtime_test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis test requires the Linux-execution hash tool's default outputs to
+exclude legacy zip files. The runtime check executes the actual hash tool with
+its declared runtime files and compares the SHA-256 digest of `abc` with the
+known value. Run these checks with the maintained Linux and Windows CI
+configurations; local Linux execution does not verify the native Windows
+launcher. Adding
+`--@rules_python//python/config_settings:build_python_zip=true` reproduces the
+Windows-host default locally: the analysis assertion fails and rules_python
+reports the legacy zipapp diagnostic. The project configuration requires all
+three focused tests to pass without that diagnostic.

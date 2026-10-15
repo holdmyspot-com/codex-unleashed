@@ -1,0 +1,118 @@
+From bfff7b8dbf92c9646646f9f2cd38bd936bc607d9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 14:28:15 +0000
+Subject: [PATCH] Use explicit Python zipapps with Bazel 9
+
+Disable rules_python implicit zip outputs while preserving explicitly declared zipapp generators. Bazel 9 ignores and deprecates the native build_python_zip option, so configure only its supported Starlark replacement.
+
+Regression: hash_zipapp_test fails with build_python_zip=true, reproducing the Windows-host default for the Linux RBE hash tool. With the project setting false, the default-output assertion and an actual abc SHA-256 invocation pass. just fmt-check and just bazel-lock-check pass. Native Windows execution remains a hosted acceptance gate.
+---
+ .bazelrc                                      |  3 ++
+ tools/build-warnings/python/BUILD.bazel       | 19 +++++++++++-
+ tools/build-warnings/python/hash_runtime.bzl  | 29 +++++++++++++++++++
+ .../build-warnings/python/init_files_test.bzl | 12 ++++++++
+ 4 files changed, 62 insertions(+), 1 deletion(-)
+ create mode 100644 tools/build-warnings/python/hash_runtime.bzl
+
+diff --git a/.bazelrc b/.bazelrc
+index 79e27ca3d..a44eed97d 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -33,6 +33,9 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
+ # Python targets declare their required package initializers explicitly.
+ common --incompatible_default_to_explicit_init_py
+ 
++# Zip applications use explicit py_zipapp_binary targets on every platform.
++common --@rules_python//python/config_settings:build_python_zip=false
++
+ common --enable_platform_specific_config
+ common:linux --host_platform=//:local_linux
+ common:windows --host_platform=//:local_windows
+diff --git a/tools/build-warnings/python/BUILD.bazel b/tools/build-warnings/python/BUILD.bazel
+index cf3fbb4aa..bf828e892 100644
+--- a/tools/build-warnings/python/BUILD.bazel
++++ b/tools/build-warnings/python/BUILD.bazel
+@@ -1,7 +1,24 @@
+-load(":init_files_test.bzl", "explicit_initializers_test")
++load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
++load(":hash_runtime.bzl", "hash_fixture")
++load(":init_files_test.bzl", "explicit_initializers_test", "explicit_zipapps_test")
+ 
+ explicit_initializers_test(
+     name = "hash_initializers_test",
+     size = "small",
+     target_under_test = "@bazel_tools//tools/build_defs/hash:sha256",
+ )
++
++explicit_zipapps_test(
++    name = "hash_zipapp_test",
++    size = "small",
++    target_under_test = "@bazel_tools//tools/build_defs/hash:sha256",
++)
++
++hash_fixture(name = "hash_fixture")
++
++diff_test(
++    name = "hash_runtime_test",
++    size = "small",
++    file1 = ":hash_fixture.sha256",
++    file2 = ":hash_fixture.expected",
++)
+diff --git a/tools/build-warnings/python/hash_runtime.bzl b/tools/build-warnings/python/hash_runtime.bzl
+new file mode 100644
+index 000000000..c43744243
+--- /dev/null
++++ b/tools/build-warnings/python/hash_runtime.bzl
+@@ -0,0 +1,29 @@
++"""Exercise Bazel's hash executable with its declared runtime files."""
++
++def _hash_fixture_impl(ctx):
++    source = ctx.actions.declare_file(ctx.label.name + ".input")
++    ctx.actions.write(source, "abc")
++    ctx.actions.write(ctx.outputs.expected, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
++    ctx.actions.run(
++        executable = ctx.attr._hash[DefaultInfo].files_to_run,
++        arguments = [source.path, ctx.outputs.digest.path],
++        inputs = [source],
++        outputs = [ctx.outputs.digest],
++        mnemonic = "HashRuntimeFixture",
++    )
++    return DefaultInfo(files = depset([ctx.outputs.digest, ctx.outputs.expected]))
++
++hash_fixture = rule(
++    implementation = _hash_fixture_impl,
++    attrs = {
++        "_hash": attr.label(
++            default = "@bazel_tools//tools/build_defs/hash:sha256",
++            executable = True,
++            cfg = "exec",
++        ),
++    },
++    outputs = {
++        "digest": "%{name}.sha256",
++        "expected": "%{name}.expected",
++    },
++)
+diff --git a/tools/build-warnings/python/init_files_test.bzl b/tools/build-warnings/python/init_files_test.bzl
+index 7569309bd..ee3e8f0a1 100644
+--- a/tools/build-warnings/python/init_files_test.bzl
++++ b/tools/build-warnings/python/init_files_test.bzl
+@@ -12,3 +12,15 @@ def _explicit_initializers_test_impl(ctx):
+     return analysistest.end(env)
+ 
+ explicit_initializers_test = analysistest.make(_explicit_initializers_test_impl)
++
++def _explicit_zipapps_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    target = analysistest.target_under_test(env)
++    zip_files = [file for file in target[DefaultInfo].files.to_list() if file.extension == "zip"]
++    asserts.equals(env, [], zip_files, "The hash tool must not include a legacy implicit zipapp in its default outputs")
++    return analysistest.end(env)
++
++explicit_zipapps_test = analysistest.make(
++    _explicit_zipapps_test_impl,
++    config_settings = {"//command_line_option:platforms": str(Label("//:rbe"))},
++)
+-- 
+2.43.0
+
