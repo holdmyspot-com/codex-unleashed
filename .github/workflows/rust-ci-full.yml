@@ -1,135 +1,378 @@
-name: rust-ci-full
+name: Diagnose macOS Cargo cache reuse
 
 on:
-  workflow_call:
-    inputs:
-      upstream_ref:
-        required: false
-        type: string
   workflow_dispatch:
-    inputs:
-      upstream_ref:
-        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
-        required: false
-        type: string
 
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: diagnose-macos-cargo-cache-${{ github.ref_name }}
+  cancel-in-progress: false
+
+# Match release-metadata from run 38757516811 (rust-v0.162.1+27).
+# The build steps and cache identity follow the production build-unix job.
+# This diagnostic downloads compiled outputs but does not replace GHCR caches.
 jobs:
-  cargo-deny:
-    uses: ./.github/workflows/cargo-deny.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  codespell:
-    uses: ./.github/workflows/codespell.yml
-    secrets: inherit
-
-  repo-checks:
-    uses: ./.github/workflows/repo-checks.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  rust-ci:
-    uses: ./.github/workflows/rust-ci.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  sdk:
-    uses: ./.github/workflows/sdk.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  bazel:
-    uses: ./.github/workflows/bazel.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  v8-canary:
-    uses: ./.github/workflows/v8-canary.yml
-    with:
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  tests-linux-x64:
-    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
-    with:
-      runner: ubuntu-latest
-      target: x86_64-unknown-linux-gnu
-      profile: ci-test
-      artifact_id: linux-x64
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  tests-macos-arm64:
-    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
-    with:
-      runner: macos-15
-      target: aarch64-apple-darwin
-      profile: ci-test
-      artifact_id: macos-arm64
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  tests-windows-x64:
-    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
-    with:
-      runner: windows-latest
-      target: x86_64-pc-windows-msvc
-      profile: ci-test
-      artifact_id: windows-x64
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  tests-linux-arm64:
-    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
-    with:
-      runner: ubuntu-24.04-arm
-      target: aarch64-unknown-linux-gnu
-      profile: ci-test
-      artifact_id: linux-arm64
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  tests-macos-x64:
-    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
-    with:
-      runner: macos-15
-      target: x86_64-apple-darwin
-      profile: ci-test
-      artifact_id: macos-x64
-      upstream_ref: ${{ inputs.upstream_ref }}
-    secrets: inherit
-
-  results:
-    name: rust-ci-full results
-    if: ${{ always() }}
-    needs:
-      - cargo-deny
-      - codespell
-      - repo-checks
-      - rust-ci
-      - sdk
-      - bazel
-      - v8-canary
-      - tests-linux-x64
-      - tests-macos-arm64
-      - tests-macos-x64
-      - tests-windows-x64
-      - tests-linux-arm64
-    runs-on: ubuntu-latest
+  cargo-cache-audit:
+    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout_minutes || 180 }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+    env:
+      CODEX_UNLEASHED_BUILD_NUMBER: "27"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      REPRODUCIBILITY_MODE: off
+      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
+      SOURCE_DATE_EPOCH: "1791567545"
+      CODEX_PACKAGE_ARCHIVE_MTIME: "1791567545"
+      CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: "1791567545"
+      CODEX_PACKAGE_ARCHIVE_MEMBER_MTIMES: '{}'
+      CODEX_STANDALONE_ARCHIVE_MTIME: "1791567545"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: x86_64-apple-darwin
+            bundle: primary
+            timeout_minutes: 180
+            binaries: codex codex-code-mode-host codex-responses-api-proxy
     steps:
-      - uses: actions/checkout@v6
+      - name: Record job start
+        id: timing_start
+        shell: bash
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout patch repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-ci
         with:
-          persist-credentials: false
+          # Linux hosted runners can use the path from upstream's build
+          # environment. Other platforms are aligned after the upstream
+          # checkout is prepared.
+          cargo-target-dir: ${{ runner.os == 'Linux' && '/home/runner/work/codex/codex/codex-rs/target' || '' }}
 
-      - name: Set up Java tooling
-        uses: ./.github/actions/setup-tooling
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
 
-      - name: Require successful dependencies
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Print runner specs (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cpu_model="$(lscpu | awk -F: '/Model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')"
+          total_ram="$(awk '/MemTotal/ {printf "%.1f GiB\n", $2 / 1024 / 1024}' /proc/meminfo)"
+          echo "Runner: ${RUNNER_NAME:-unknown}"
+          echo "OS: $(uname -a)"
+          echo "CPU model: ${cpu_model}"
+          echo "Logical CPUs: $(nproc)"
+          echo "Total RAM: ${total_ram}"
+          echo "Disk usage:"
+          df -h .
+
+      - name: Print runner specs (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          total_ram="$(sysctl -n hw.memsize | awk '{printf "%.1f GiB\n", $1 / 1024 / 1024 / 1024}')"
+          echo "Runner: ${RUNNER_NAME:-unknown}"
+          echo "OS: $(sw_vers -productName) $(sw_vers -productVersion)"
+          echo "Hardware model: $(sysctl -n hw.model)"
+          echo "CPU architecture: $(uname -m)"
+          echo "Logical CPUs: $(sysctl -n hw.logicalcpu)"
+          echo "Physical CPUs: $(sysctl -n hw.physicalcpu)"
+          echo "Total RAM: ${total_ram}"
+          echo "Disk usage:"
+          df -h .
+
+      - name: Set up Zig
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c # v2.2.2
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Prepare Linux APT cache directories
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
+          sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
+
+      - name: Restore APT cache
+        if: ${{ runner.os == 'Linux' }}
+        id: apt_cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: /var/cache/apt
+          key: upstream-rust-v0.162.1-apt-${{ runner.os }}-${{ matrix.target }}-v1
+
+      - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: rust-v0.162.1
+          expected-upstream-commit: 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d
+          apply-patches: true
+
+      - name: Preserve patched Cargo metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream add -- codex-rs/Cargo.lock
+
+      - name: Normalize patched source timestamps
+        shell: bash
         env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: '"$CODEX_UNLEASHED_TOOLING" check-ci-results "$NEEDS"'
+          SOURCE_DATE_EPOCH: "1791567545"
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" normalize-source-timestamps upstream "$SOURCE_DATE_EPOCH"
+
+      - name: Align upstream checkout with release path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cargo embeds build-script output paths in release binaries. The
+          # upstream release is built from this canonical GitHub runner path;
+          # use the same physical path instead of compensating with RUSTFLAGS,
+          # which changes Cargo fingerprints.
+          release_checkout="${GITHUB_WORKSPACE%/*/*}/codex/codex"
+          if [[ "${release_checkout}" != "${GITHUB_WORKSPACE}/upstream" ]]; then
+            # setup-ci and the GHCR restore may already have populated this
+            # target directory. Preserve it while replacing the checkout;
+            # removing release_checkout wholesale would otherwise discard the
+            # restored Cargo fingerprints before Cargo can use them.
+            preserved_target="${RUNNER_TEMP}/codex-release-target"
+            if [[ -d "${release_checkout}/codex-rs/target" ]]; then
+              rm -rf "${preserved_target}"
+              mv "${release_checkout}/codex-rs/target" "${preserved_target}"
+            fi
+            rm -rf "${release_checkout}"
+            mkdir -p "$(dirname "${release_checkout}")"
+            mv "${GITHUB_WORKSPACE}/upstream" "${release_checkout}"
+            ln -s "${release_checkout}" "${GITHUB_WORKSPACE}/upstream"
+            if [[ -d "${preserved_target}" ]]; then
+              mkdir -p "${release_checkout}/codex-rs"
+              mv "${preserved_target}" "${release_checkout}/codex-rs/target"
+            fi
+          fi
+          mkdir -p "${release_checkout}/codex-rs/target"
+          # Upstream's release workflow exposes the physical source checkout
+          # through CODEX_REPO_ROOT. Set it after moving the checkout so build
+          # scripts embed the same canonical path as the official release.
+          echo "CODEX_REPO_ROOT=${release_checkout}" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=${release_checkout}/codex-rs/target" >> "$GITHUB_ENV"
+
+      - name: Use upstream-compatible Cargo home (Linux musl)
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="/home/runner/work/codex/codex/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Record Rust compiler cache input
+        id: rust_compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null 2>&1; then
+            fingerprint="$(rustc -Vv | sha256sum | awk '{print $1}')"
+          else
+            fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
+          fi
+          echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
+          v8_version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version .)"
+          "$CODEX_UNLEASHED_TOOLING" release-cache-keys \
+            --target "${{ matrix.target }}" \
+            --compiler-fingerprint "$fingerprint" \
+            --v8-version "$v8_version" \
+            --mode "off" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        id: pnpm_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: upstream-rust-v0.162.1-pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          restore-keys: |
+            upstream-rust-v0.162.1-pnpm-${{ runner.os }}-
+
+      - name: Cache Cargo dependencies
+        id: cargo_cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: upstream-rust-v0.162.1-
+          workspaces: |
+            upstream/codex-rs -> target
+          # Cargo target directories belong exclusively to the GHCR overflow
+          # cache below. Keep only registry, Git, and other dependency data in
+          # the GitHub Actions cache.
+          cache-targets: false
+          # Do not include runner- and run-specific environment paths in the
+          # cache key: this cache contains source downloads, while compiled
+          # outputs have a separate compiler identity in GHCR.
+          add-rust-environment-hash-key: false
+          # Namespace dependency downloads by upstream release for retention.
+          # Their content identity remains independent of the patch set.
+          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
+          cache-workspace-crates: false
+          # Cargo's installed binaries are setup tools, not release outputs;
+          # cache them through their dedicated setup steps instead.
+          cache-bin: false
+          cache-all-crates: false
+          save-if: true
+          cache-on-failure: true
+
+      - name: Set up ORAS for GHCR Cargo cache
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
+
+      - name: Log in to GHCR Cargo cache
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Restore GHCR Cargo target cache
+        id: ghcr_cargo_cache
+        continue-on-error: true
+        shell: bash
+        env:
+          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if bash .github/scripts/ghcr-cargo-target-cache.sh pull \
+            "$GHCR_CACHE_REPOSITORY" \
+            "$GHCR_CACHE_TAG" \
+            "$CARGO_TARGET_DIR" \
+            "rust-v0.162.1"; then
+            echo "restored=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record restored Cargo cache contents
+        shell: bash
+        run: '"$CODEX_UNLEASHED_TOOLING" write-cargo-cache-manifest "${RUNNER_TEMP}/cargo-restored-cache.tsv"'
+
+      - name: Require a restored cache for this warm-cache diagnostic
+        env:
+          RESTORED: ${{ steps.ghcr_cargo_cache.outputs.restored }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RESTORED" == true ]]; then
+            echo "Confirmed the compiled Cargo cache is available for diagnosis."
+          else
+            echo "Warm-cache diagnosis requires a successful GHCR cache restore." >&2
+            exit 1
+          fi
+
+      - name: Rebuild release binaries from cached dependencies
+        shell: bash
+        run: |
+          "${CODEX_UNLEASHED_TOOLING}" clean-cached-release-binaries \
+            upstream/codex-rs \
+            "${{ matrix.target }}" \
+            ${{ matrix.binaries }}
+
+      - name: Cache rusty_v8 artifacts
+        id: rusty_v8_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .cache/rusty_v8
+          key: upstream-rust-v0.162.1-${{ steps.rust_compiler.outputs.rusty_v8_key }}
+
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Install upstream dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          pnpm install --frozen-lockfile
+
+      - name: Configure Linux musl toolchain
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bash upstream/.github/scripts/install-musl-build-tools.sh
+
+      - name: Disable aws-lc jitter entropy (musl)
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
+          target_no_jitter="${target_no_jitter//-/_}"
+          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+      - name: Build patched release
+        shell: bash
+        run: |
+          set -euo pipefail
+          export UPSTREAM_TARGET="${{ matrix.target }}"
+          export UPSTREAM_BINARIES="${{ matrix.binaries }}"
+          export PATCHES_ALREADY_APPLIED=1
+          export SKIP_UPSTREAM_TESTS=1
+          export SKIP_ARTIFACT_COLLECTION=1
+          export CARGO_LOG="cargo::core::compiler::fingerprint=info"
+          ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output"
+
+      - name: Record successfully compiled source inputs
+        shell: bash
+        run: |
+          "${CODEX_UNLEASHED_TOOLING}" clean-cached-release-binaries --record-source-inputs \
+            upstream/codex-rs "${{ matrix.target }}"
+
+      - name: Upload Cargo cache diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-cargo-cache-diagnostic
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
+            ${{ runner.temp }}/cargo-restored-cache.tsv
+          retention-days: 1
+          if-no-files-found: error

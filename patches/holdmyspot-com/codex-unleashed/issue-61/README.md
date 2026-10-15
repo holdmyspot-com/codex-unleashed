@@ -2232,3 +2232,132 @@ unrelated component logs must retain their existing behavior. On native
 macOS, build `//third_party/voice:native_prefix_macos_aarch64`; a failed
 compiler probe must include its detailed Meson log. This diagnostic patch
 does not establish that the underlying native compiler failure is fixed.
+
+## Transport reconnect test timeout
+
+`zzzz-0024-transport-retry-test-timeout.patch` gives the transport unit suite
+an explicit moderate timeout. Its conflict-recovery regressions exercise
+consecutive real reconnect waits of up to 30 seconds. The short default is
+insufficient for that workload. Assertions, reconnect behavior, and verbose
+timeout diagnostics remain enabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+just fmt-check
+just bazel-lock-check
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/test-timeouts:all
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/app-server-transport:app-server-transport-unit-tests
+```
+
+The analysis regression requires the real generated transport test's explicit
+timeout. The actual transport suite must complete with every assertion passing
+on each supported native platform; an analysis pass alone does not establish
+that execution gate.
+
+## Native voice Meson sanity flags
+
+`zzzz-0025-native-voice-meson-sanity-flags.patch` selects the checksum-pinned
+[Meson 1.12.1 release](https://github.com/mesonbuild/meson/releases/tag/1.12.1)
+for native voice builds. This release fixes duplicated environment compiler
+and linker arguments in Meson's compiler sanity checks. Darwin links retain
+fatal warnings and receive the native recipe's runtime path exactly once.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice patches, including `native-voice-meson-resource-directory.patch`
+and `native-voice-z-symbol-tools.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+With the generated native-prefix configuration, declared tool inputs, and a
+project-owned `TMPDIR`, run:
+
+```sh
+python3 tools/build-warnings/check-native-meson.py <native-prefix-json> <execroot> <meson-source> <ninja>
+just fmt-check
+just bazel-lock-check
+```
+
+The probe requires exactly one runtime-path argument in each actual compiler
+sanity command, then executes its linked C/C++ fixture. Meson 1.12.0 fails the
+argument check; 1.12.1 passes. The probe resolves the declared symbol tools
+alongside its other executable inputs and removes its scratch outputs on exit.
+Native macOS acceptance additionally requires the complete
+`//third_party/voice:native_prefix_macos_aarch64` build; Linux probe execution
+does not establish Darwin linker behavior.
+
+## Windows Bash executable resolution
+
+`zzzz-0026-windows-bash-path-resolution.patch` resolves Bash through `PATH`
+before the upstream Python bridge invokes the configured Java tooling launcher.
+Native Windows process creation searches the system directory before `PATH`
+for a bare executable name, which can select the WSL launcher rather than Git
+Bash. The bridge uses the resolved executable and retains the tooling command's
+arguments, output, and exit status. Missing Bash produces an explicit error.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with
+`zzzz-0022-bazel-python-jvm-warning-bridge.patch` and its prerequisites. The
+tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+python3 .github/scripts/test_run_bazel_with_buildbuddy.py
+just fmt-check
+just bazel-lock-check
+```
+
+All 16 wrapper regressions must pass. The configured-tooling regression launches
+real child processes from a path containing spaces and requires exact arguments,
+stdout, stderr, and exit status 37. Its failure diagnostic includes both output
+streams. Run it on native Windows with Git Bash on `PATH` and no installed WSL
+distribution, as well as Linux. Linux execution alone does not establish Windows
+executable resolution. The Windows Bazel shard and Clippy jobs remain separate
+acceptance gates for the complete launcher chain.
+
+## Serialized exec-server unit-test timeout
+
+`zzzz-0027-serialized-exec-server-timeout.patch` gives exec-server's serialized
+unit suite an explicit moderate timeout. Its hundreds of tests include real
+network retry waits and require more than the short budget on native macOS.
+Integration-test budgets and verbose timeout diagnostics retain their settings.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test //tools/build-warnings/test-timeouts:timeouts_tests
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/exec-server:exec-server-unit-tests
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the real generated unit target's moderate
+timeout. The actual suite must complete with every assertion passing on each
+supported native platform; analysis alone does not establish that execution gate.
+
+## Exec-server compatibility test deadlines
+
+`zzzz-0028-exec-server-compatibility-timeouts.patch` gives the current-version,
+minimum-release, and stable-release compatibility checks short deadlines.
+These Linux-only checks complete in seconds. Verbose timeout diagnostics remain
+enabled, and the compatibility assertions retain their behavior.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0027`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/test-timeouts:timeouts_tests //codex-rs/exec-server:exec-server-current-version-test //codex-rs/exec-server:exec-server-minimum-release-test //codex-rs/exec-server:exec-server-stable-release-test
+just fmt-check
+just bazel-lock-check
+```
+
+All eleven timeout analysis regressions and the three actual compatibility
+checks must pass without timing-range advisories. The focused runtime command
+requires a Linux x86-64 execution host and the pinned comparison releases.
