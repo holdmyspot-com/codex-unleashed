@@ -1,0 +1,282 @@
+From 0b8fc98c0f24fd1ae6d8fd77cd06a3c9ddd5f16a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 09:33:51 +0000
+Subject: [PATCH] Select V8 Windows flags by compiler driver
+
+Regression: the Windows pointer compile-action test fails with -std=c++20 instead of /std:c++20. Preserve GNU options, use CL spellings for msvc-cl and clang-cl, and verify C++ actions for the pointer and assembly-library fixtures. Native MSVC execution remains a required hosted gate.
+---
+ MODULE.bazel                           |   1 +
+ patches/v8_msvc_driver_flags.patch     | 190 +++++++++++++++++++++++++
+ tools/build-warnings/v8/BUILD.bazel    |  12 ++
+ tools/build-warnings/v8/flags_test.bzl |  30 ++++
+ 4 files changed, 233 insertions(+)
+ create mode 100644 patches/v8_msvc_driver_flags.patch
+ create mode 100644 tools/build-warnings/v8/flags_test.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index bf546a8c1..b2e4865d8 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -907,8 +907,9 @@ archive_override(
+         "//patches:v8_clang_mingw_detection.patch",
+         "//patches:v8_windows_stack_assembly.patch",
+         "//patches:v8_wasm_header_inline.patch",
+         "//patches:v8_inspector_python_runtime.patch",
++        "//patches:v8_msvc_driver_flags.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+ )
+diff --git a/patches/v8_msvc_driver_flags.patch b/patches/v8_msvc_driver_flags.patch
+new file mode 100644
+index 000000000..74644431e
+--- /dev/null
++++ b/patches/v8_msvc_driver_flags.patch
+@@ -0,0 +1,190 @@
++From 4b853944292a24622e1e4b9bb4db0673b1515435 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 09:33:30 +0000
++Subject: [PATCH] Use CL compiler and linker syntax for Windows MSVC drivers
++
++---
++ BUILD.bazel              | 12 +++++++++++-
++ bazel/config/BUILD.bazel | 12 ++++++++++++
++ bazel/defs.bzl           | 17 +++++++++++++++++
++ 3 files changed, 40 insertions(+), 1 deletion(-)
++
++diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
++index 39983b2..61dab3b 100644
++--- a/orig/v8-15.0.245.2/BUILD.bazel
+++++ b/mod/v8-15.0.245.2/BUILD.bazel
++@@ -5011,9 +5011,18 @@ cc_test(
++         "src/base/macros.h",
++         "src/base/template-utils.h",
++         "test/codex/pointer-formats-test.cc",
++     ],
++-    copts = ["-std=c++20"],
+++    copts = select({
+++        "@rules_cc//cc/compiler:msvc-cl": ["/std:c++20"],
+++        "@rules_cc//cc/compiler:clang-cl": ["/std:c++20"],
+++        "//conditions:default": ["-std=c++20"],
+++    }),
+++    features = select({
+++        "@rules_cc//cc/compiler:msvc-cl": ["-default_cpp_std"],
+++        "@rules_cc//cc/compiler:clang-cl": ["-default_cpp_std"],
+++        "//conditions:default": [],
+++    }),
++     visibility = ["//visibility:public"],
++ )
++
++ filegroup(
++@@ -5024,8 +5033,9 @@ filegroup(
++ v8_library(
++     name = "codex_windows_stack_assembly_library",
++     srcs = [":codex_windows_stack_assembly"],
++     icu_srcs = ["test/codex/i18n-defines-test.cc"],
+++    visibility = ["//visibility:public"],
++     target_compatible_with = [
++         "@platforms//os:windows",
++         "@platforms//cpu:x86_64",
++     ],
++diff --git a/orig/v8-15.0.245.2/bazel/config/BUILD.bazel b/mod/v8-15.0.245.2/bazel/config/BUILD.bazel
++index 17e379b..939d46e 100644
++--- a/orig/v8-15.0.245.2/bazel/config/BUILD.bazel
+++++ b/mod/v8-15.0.245.2/bazel/config/BUILD.bazel
++@@ -162,8 +162,20 @@ config_setting(
++     name = "is_windows",
++     constraint_values = ["@platforms//os:windows"],
++ )
++
+++config_setting(
+++    name = "is_windows_msvc",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {"@rules_cc//cc/compiler:compiler": "msvc-cl"},
+++)
+++
+++config_setting(
+++    name = "is_windows_clang_cl",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {"@rules_cc//cc/compiler:compiler": "clang-cl"},
+++)
+++
++ selects.config_setting_group(
++     name = "is_64bit",
++     match_any = [
++         ":v8_target_arm64",
++diff --git a/orig/v8-15.0.245.2/bazel/defs.bzl b/mod/v8-15.0.245.2/bazel/defs.bzl
++index 42e9637..8aefdc4 100644
++--- a/orig/v8-15.0.245.2/bazel/defs.bzl
+++++ b/mod/v8-15.0.245.2/bazel/defs.bzl
++@@ -112,8 +112,13 @@ v8_config = rule(
++ )
++
++ def _default_args():
++     return struct(
+++        features = select({
+++            "@rules_cc//cc/compiler:msvc-cl": ["-default_cpp_std"],
+++            "@rules_cc//cc/compiler:clang-cl": ["-default_cpp_std"],
+++            "//conditions:default": [],
+++        }),
++         deps = [":define_flags"] + select({
++             "@v8//:is_v8_use_rusty_v8_custom_libcxx": [
++                 "@@//third_party/v8:rusty_v8_custom_libcxx_headers",
++                 "@@//third_party/v8:rusty_v8_custom_libcxx_runtime",
++@@ -175,8 +180,10 @@ def _default_args():
++                 # Use GNU dialect, because GCC doesn't allow using
++                 # ##__VA_ARGS__ when in standards-conforming mode.
++                 "-std=gnu++2a",
++             ],
+++            "@v8//bazel/config:is_windows_msvc": ["/std:c++20"],
+++            "@v8//bazel/config:is_windows_clang_cl": ["/std:c++20"],
++             "@v8//bazel/config:is_windows": [
++                 "-Wno-invalid-offsetof",
++                 "-Wno-deprecated-this-capture",
++                 "-Wno-deprecated-declarations",
++@@ -209,8 +216,10 @@ def _default_args():
++             ],
++         }),
++         includes = ["include"],
++         linkopts = select({
+++            "@v8//bazel/config:is_windows_msvc": ["winmm.lib", "dbghelp.lib", "advapi32.lib"],
+++            "@v8//bazel/config:is_windows_clang_cl": ["winmm.lib", "dbghelp.lib", "advapi32.lib"],
++             "@v8//bazel/config:is_windows": [
++                 "-lwinmm",
++                 "-ldbghelp",
++                 "-ladvapi32",
++@@ -241,8 +250,9 @@ def v8_binary(
++         deps = [],
++         defines = [],
++         includes = [],
++         copts = [],
+++        features = [],
++         linkopts = [],
++         noicu_srcs = [],
++         noicu_deps = [],
++         noicu_defines = [],
++@@ -258,8 +268,9 @@ def v8_binary(
++             deps = deps + noicu_deps + default.deps,
++             defines = defines + noicu_defines + default.defines,
++             includes = includes + ["noicu/"] + default.includes,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             linkopts = linkopts + default.linkopts,
++             **kwargs
++         )
++         cc_binary(
++@@ -268,8 +279,9 @@ def v8_binary(
++             deps = deps + icu_deps + default.deps,
++             includes = includes + ["icu/"] + default.includes,
++             defines = defines + icu_defines + default.defines,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             local_defines = ENABLE_I18N_SUPPORT_DEFINES,
++             linkopts = linkopts + default.linkopts,
++             **kwargs
++         )
++@@ -280,8 +292,9 @@ def v8_binary(
++             deps = deps + default.deps,
++             defines = defines + default.defines,
++             includes = includes + default.includes,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             linkopts = linkopts + default.linkopts,
++             **kwargs
++         )
++
++@@ -291,8 +304,9 @@ def v8_library(
++         srcs,
++         deps = [],
++         includes = [],
++         copts = [],
+++        features = [],
++         linkopts = [],
++         noicu_srcs = [],
++         noicu_deps = [],
++         noicu_defines = [],
++@@ -307,8 +321,9 @@ def v8_library(
++             srcs = srcs + noicu_srcs,
++             deps = deps + noicu_deps + default.deps,
++             includes = includes + ["noicu/"] + default.includes,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             linkopts = linkopts + default.linkopts,
++             alwayslink = 1,
++             linkstatic = 1,
++             **kwargs
++@@ -326,8 +341,9 @@ def v8_library(
++             srcs = srcs + icu_srcs,
++             deps = deps + icu_deps + default.deps,
++             includes = includes + ["icu/"] + default.includes,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             local_defines = ENABLE_I18N_SUPPORT_DEFINES,
++             linkopts = linkopts + default.linkopts,
++             alwayslink = 1,
++             linkstatic = 1,
++@@ -347,8 +363,9 @@ def v8_library(
++             srcs = srcs,
++             deps = deps + default.deps,
++             includes = includes + default.includes,
++             copts = copts + default.copts,
+++            features = features + default.features,
++             linkopts = linkopts + default.linkopts,
++             alwayslink = 1,
++             linkstatic = 1,
++             **kwargs
+diff --git a/tools/build-warnings/v8/BUILD.bazel b/tools/build-warnings/v8/BUILD.bazel
+index 333fea42e..1ca108a84 100644
+--- a/tools/build-warnings/v8/BUILD.bazel
++++ b/tools/build-warnings/v8/BUILD.bazel
+@@ -1,4 +1,16 @@
++load(":flags_test.bzl", "windows_cpp_flags_test")
++
++windows_cpp_flags_test(
++    name = "windows_pointer_flags_test",
++    target_under_test = "@v8//:codex_pointer_formats_test",
++)
++
++windows_cpp_flags_test(
++    name = "windows_library_flags_test",
++    target_under_test = "@v8//:codex_windows_stack_assembly_library_icu",
++)
++
+ test_suite(
+     name = "pointer_formats_test",
+     tests = ["@v8//:codex_pointer_formats_test"],
+ )
+diff --git a/tools/build-warnings/v8/flags_test.bzl b/tools/build-warnings/v8/flags_test.bzl
+new file mode 100644
+index 000000000..f7fad417b
+--- /dev/null
++++ b/tools/build-warnings/v8/flags_test.bzl
+@@ -0,0 +1,30 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _windows_cpp_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "CppCompile" and any([arg.endswith(".cc") for arg in action.argv])
++    ]
++    asserts.true(env, len(actions) > 0, "The fixture must compile C++ sources")
++    for action in actions:
++        standard_flags = [arg for arg in action.argv if arg.startswith("/std:")]
++        asserts.equals(env, ["/std:c++20"], standard_flags[-1:], "CL actions select C++20")
++        compiler = action.argv[0].replace("\\", "/").split("/")[-1]
++        if compiler in ["clang-cl", "clang-cl.exe"]:
++            for required in ["/EHsc", "/GR", "/GS"]:
++                asserts.true(env, required in action.argv, "clang-cl retains %s" % required)
++        else:
++            asserts.equals(env, ["/std:c++20"], standard_flags, "MSVC selects its standard once")
++        incompatible_flags = [arg for arg in action.argv if arg.startswith("-std=") or arg.startswith("-Wno-")]
++        asserts.equals(env, [], incompatible_flags, "CL compile actions must use CL flag syntax")
++    return analysistest.end(env)
++
++windows_cpp_flags_test = analysistest.make(
++    _windows_cpp_flags_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt"],
++    },
++)

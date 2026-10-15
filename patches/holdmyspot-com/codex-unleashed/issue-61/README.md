@@ -1501,3 +1501,31 @@ Windows target configurations on a Linux execution host while an executable
 fixture makes `unzip` unavailable. Both builds must succeed using the declared
 runtime. This cross-platform check does not establish native Windows or macOS
 execution; hosted V8 builds remain separate acceptance gates.
+
+## V8 MSVC driver flags
+
+`zzz-v8-msvc-driver-flags.patch` selects C++20 and Windows library options
+using the compiler driver. MSVC and clang-cl receive CL syntax. MSVC selects
+C++20 once; clang-cl selects C++20 through its supported override. GNU drivers
+retain GNU syntax. It also exposes the existing assembly-library fixture to
+the compile-action regression. Package versions remain unchanged. The tracking
+issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 build and inspector-runtime patches.
+
+```sh
+bazel test --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+  //tools/build-warnings/v8:windows_pointer_flags_test \
+  //tools/build-warnings/v8:windows_library_flags_test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regressions require C++20, require one language selection for MSVC,
+preserve clang-cl's exception, RTTI, and stack-protector options, and reject GNU C++ standard and
+warning flags in Windows CL compile actions. They inspect the pointer fixture
+and the assembly library's C++ fixture without compiling their dependencies.
+Native Windows compilation remains a separate acceptance gate, including the
+assembly source and linker behavior.
