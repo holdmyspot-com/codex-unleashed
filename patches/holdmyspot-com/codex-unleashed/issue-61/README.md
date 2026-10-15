@@ -1780,6 +1780,8 @@ avoid Apple's oversized unwind-section warning without disabling diagnostics.
 Its removable `WORKAROUND` comment references
 https://github.com/rust-lang/rust/issues/159105. LLD preserves valid DWARF fallback
 offsets as described in https://reviews.llvm.org/D147505.
+The configuration uses the stable `ld64.lld` linker flavor documented in
+https://doc.rust-lang.org/rustc/codegen-options/index.html#linker-flavor.
 The native regression retains more
 than 16 MiB of DWARF call-frame information, links with fatal warnings, and
 catches a Rust panic that unwinds through an assembly frame beyond the compact

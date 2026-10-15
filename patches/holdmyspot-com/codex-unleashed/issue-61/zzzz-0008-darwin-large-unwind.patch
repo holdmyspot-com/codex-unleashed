@@ -1,11 +1,11 @@
-From 659f88226d27b7c0cec89626a856e0cd9a8566da Mon Sep 17 00:00:00 2001
-From: GiliTzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 13:50:08 +0000
-Subject: [PATCH] Fix large Darwin unwind sections with LLD
+From 640ef08995e6e830092273a0c0975f2226c4fbe3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 13:59:09 +0000
+Subject: [PATCH] Fix large Darwin unwind sections with stable LLD options
 
-Use Rust LLD on macOS and include a behavioral regression that links a greater-than-16MiB unwind section and catches a panic through its DWARF fallback.
+Use bundled Rust LLD through the stable ld64.lld flavor. Include the native large-unwind panic regression. Baseline Actions run 38742997751 reproduces the Apple linker warning on both architectures with exit 101.
 
-Baseline: Actions run 38742997751, jobs 116449623051 (ARM) and 116449622958 (Intel), both reproduce the Apple linker oversized unwind warning and Cargo exit 101. Native patched acceptance remains required on both architectures.
+Cargo exact target-query probe: darwin-lld exits 1 as unstable; ld64.lld exits 0. A print-cfg-only probe does not validate linker stability. Native patched acceptance remains required.
 ---
  codex-rs/.cargo/config.toml                 |   7 ++
  tools/build-warnings/check-darwin-linker.sh | 109 ++++++++++++++++++++
@@ -13,7 +13,7 @@ Baseline: Actions run 38742997751, jobs 116449623051 (ARM) and 116449622958 (Int
  create mode 100755 tools/build-warnings/check-darwin-linker.sh
 
 diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
-index bd1d67e1e..03689d25d 100644
+index bd1d67e1e..92e1f1109 100644
 --- a/codex-rs/.cargo/config.toml
 +++ b/codex-rs/.cargo/config.toml
 @@ -1,8 +1,15 @@
@@ -26,7 +26,7 @@ index bd1d67e1e..03689d25d 100644
 +# Apple's linker warns for large unwind sections. LLD retains valid DWARF
 +# fallback offsets. Remove when the system linker handles these sections.
 +linker = "rust-lld"
-+rustflags = ["-C", "linker-flavor=darwin-lld"]
++rustflags = ["-C", "linker-flavor=ld64.lld"]
 +
  [target.'cfg(all(windows, target_env = "msvc"))']
  rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
