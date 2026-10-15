@@ -347,8 +347,10 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
     # Native tool rules read these values during analysis, before inherited
     # action environment variables are resolved by the executor.
     for env_var in SystemRoot PROCESSOR_ARCHITECTURE; do
-      if [[ -n "${!env_var:-}" ]]; then
-        post_config_bazel_args+=("--action_env=${env_var}=${!env_var}" "--host_action_env=${env_var}=${!env_var}")
+      uppercase_env_var="${env_var^^}"
+      env_value="${!env_var:-${!uppercase_env_var:-}}"
+      if [[ -n "$env_value" ]]; then
+        post_config_bazel_args+=("--action_env=${env_var}=${env_value}" "--host_action_env=${env_var}=${env_value}")
       fi
     done
 

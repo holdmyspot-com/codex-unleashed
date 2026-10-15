@@ -72,6 +72,11 @@ public final class BazelCallerTest
 			for (String operatingSystem : List.of("Linux", "Windows"))
 			{
 				environment.put("RUNNER_OS", operatingSystem);
+				if (operatingSystem.equals("Windows"))
+				{
+					environment.remove("SystemRoot");
+					environment.put("SYSTEMROOT", systemRoot);
+				}
 				for (String credential : List.of("", "fixture-token"))
 				{
 					environment.put("BUILDBUDDY_API_KEY", credential);
