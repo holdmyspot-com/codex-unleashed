@@ -2386,3 +2386,18 @@ The analysis regression requires the actual generated integration target's
 moderate timeout. All eight runtime shards must complete with every assertion
 passing on each supported native platform. An analysis pass alone does not
 establish that execution gate.
+
+
+## V8 compiler feature guards
+
+`zzzz-0030-v8-warning-feature-guards.patch` nests Clang warning-feature
+checks so GCC and MSVC never parse unavailable `__has_warning` expressions.
+The existing pointer-format regression also exercises both diagnostic scopes.
+Compiler warnings remain fatal.
+
+The base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 patches. Run `bazel test //tools/build-warnings/v8:pointer_formats_test`,
+`just fmt-check`, and `just bazel-lock-check`. Native Windows verification
+compiles and executes the same fixture with `/std:c++20 /Zc:__cplusplus /W4 /WX`.
+GCC and MSVC must compile and run it without preprocessor diagnostics.
