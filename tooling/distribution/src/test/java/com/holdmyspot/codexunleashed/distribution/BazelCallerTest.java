@@ -65,6 +65,8 @@ public final class BazelCallerTest
 			environment.put("SystemRoot", systemRoot);
 			String processorArchitecture = environment.getOrDefault("PROCESSOR_ARCHITECTURE", "AMD64");
 			environment.put("PROCESSOR_ARCHITECTURE", processorArchitecture);
+			String voiceRepository = Files.createDirectory(root.resolve("voice inputs")).toString();
+			environment.put("VOICE_WINDOWS_BAZEL_REPOSITORY", voiceRepository);
 			Path scripts = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().resolve("scripts");
 			String expression = "kind(\"rust_library rule\", //codex-rs/...)";
 			for (String operatingSystem : List.of("Linux", "Windows"))
@@ -96,6 +98,11 @@ public final class BazelCallerTest
 						assertTrue(test.contains("--host_action_env=SystemRoot=" + systemRoot));
 						assertTrue(test.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
 						assertTrue(test.contains("--host_action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
+						assertTrue(test.contains("--inject_repository=voice_windows_tools=" + voiceRepository),
+							"Native voice actions require the provisioned and verified Windows tool repository");
+						assertTrue(test.contains("--//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools"));
+						assertTrue(test.contains("--extra_toolchains=//third_party/voice:windows_pkg_config_toolchain," +
+							"//third_party/voice:windows_cmake_toolchain"));
 					}
 					assertEquals(test.contains("--remote_header=x-buildbuddy-api-key=fixture-token"), !credential.isEmpty());
 					if (operatingSystem.equals("Windows") && !credential.isEmpty())
@@ -115,6 +122,7 @@ public final class BazelCallerTest
 						assertFalse(crossBuild.contains("--action_env=SystemRoot=" + systemRoot),
 							"Linux remote build tools must not inherit the Windows directory");
 						assertFalse(crossBuild.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
+						assertFalse(crossBuild.contains("--inject_repository=voice_windows_tools=" + voiceRepository));
 						assertFalse(crossBuild.stream().anyMatch(argument -> argument.startsWith("--experimental_disk_cache_gc_")));
 						environment.remove("GITHUB_ACTIONS");
 						environment.remove("BAZEL_DISK_CACHE");

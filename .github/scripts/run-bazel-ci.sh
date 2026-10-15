@@ -352,6 +352,14 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
       fi
     done
 
+    if [[ -n "${VOICE_WINDOWS_BAZEL_REPOSITORY:-}" ]]; then
+      post_config_bazel_args+=(
+        "--inject_repository=voice_windows_tools=${VOICE_WINDOWS_BAZEL_REPOSITORY}"
+        "--//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools"
+        "--extra_toolchains=//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
+      )
+    fi
+
     windows_action_env_vars=(
       INCLUDE
       LIB
