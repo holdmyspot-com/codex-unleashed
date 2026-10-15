@@ -1896,3 +1896,30 @@ endpoints disabled verifies option expansion; the native Windows CI build and
 its cache statistics remain separate required acceptance gates.
 The fork's Maven wrapper implements the same selection; `tooling/mvnw verify`
 verifies it through the project tooling's full gate.
+
+## Libffi configure diagnostics
+
+`zzzz-0012-libffi-configure-diagnostics.patch` preserves Libffi's configure
+context in a failed Bazel native-prefix action. If a Libffi configure, build, or
+install step fails, the action prints the failing step's output and the existing
+`build/libffi/config.log` before removing its temporary directory. The original
+exception and failure status remain intact, including failures caused by warnings.
+An absent configure log does not replace the original failure.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding native voice
+warning-policy patches. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. From the patched
+checkout, run:
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+The regression exercises real failing child commands and a successful command
+that emits a fatal warning. It requires configure context for Libffi failures,
+preserves exit status 23, and covers unrelated steps and missing configure logs.
+This patch provides diagnosis; the native macOS build remains required to
+establish that the underlying Libffi warning is fixed.
