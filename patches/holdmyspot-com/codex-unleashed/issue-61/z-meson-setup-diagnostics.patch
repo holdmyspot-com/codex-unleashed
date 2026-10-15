@@ -1,0 +1,104 @@
+From 84a6213472faeed04b5b19e014707a8b0e5957df Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:56:24 +0000
+Subject: [PATCH] Print detailed Meson setup failure diagnostics
+
+A failing setup fixture produces CODEX_MESON_SETUP_EXPECTED_FAILURE without its debug detail on the baseline. Printing meson-log.txt on failure exposes CODEX_MESON_LOG_DETAIL and retains the failure result. The Linux maintained warning check passes; native and fresh emitted-patch gates remain in the owning verification record.
+---
+ MODULE.bazel                                  |  1 +
+ ...s_foreign_cc_meson_setup_diagnostics.patch | 26 +++++++++++++++++++
+ tools/build-warnings/check.sh                 | 12 +++++++++
+ .../meson-diagnostics/BUILD.bazel             | 13 ++++++++++
+ .../meson-diagnostics/meson.build             |  3 +++
+ 5 files changed, 55 insertions(+)
+ create mode 100644 patches/rules_foreign_cc_meson_setup_diagnostics.patch
+ create mode 100644 tools/build-warnings/meson-diagnostics/BUILD.bazel
+ create mode 100644 tools/build-warnings/meson-diagnostics/meson.build
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index e0fd613ab..0d1d86baf 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -192,2 +192,3 @@ single_version_override(
+         "//patches:rules_foreign_cc_meson_resource_directory.patch",
++        "//patches:rules_foreign_cc_meson_setup_diagnostics.patch",
+     ],
+diff --git a/patches/rules_foreign_cc_meson_setup_diagnostics.patch b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
+new file mode 100644
+index 000000000..33863de94
+--- /dev/null
++++ b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
+@@ -0,0 +1,26 @@
++From dd3f095c7c9c941b3ee5fd79e6539b0946608833 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 01:52:01 +0000
++Subject: [PATCH] Print Meson setup diagnostics before returning its failure
++
++---
++ foreign_cc/meson.bzl | 10 +++++++++-
++ 1 file changed, 9 insertions(+), 1 deletion(-)
++
++diff --git a/foreign_cc/meson.bzl b/foreign_cc/meson.bzl
++index 2cfb974..0be7cf2 100644
++--- a/foreign_cc/meson.bzl
+++++ b/foreign_cc/meson.bzl
++@@ -168,3 +168,11 @@ def _create_meson_script(configureParameters):
++
++-    script.append("{meson} setup --prefix={install_dir} {setup_args} {options} {source_dir}".format(
+++    script.append("""if {meson} setup --prefix={install_dir} {setup_args} {options} {source_dir}; then
+++    :
+++else
+++    status=$?
+++    if test -f meson-logs/meson-log.txt; then
+++        cat meson-logs/meson-log.txt || :
+++    fi
+++    exit "$status"
+++fi""".format(
++         meson = meson_path,
+diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
+index 0c0353f08..7df4ad024 100644
+--- a/tools/build-warnings/check.sh
++++ b/tools/build-warnings/check.sh
+@@ -45,2 +45,14 @@ done
+
++if bazel build "$@" //tools/build-warnings/meson-diagnostics:setup_failure >"$probe_dir/meson.log" 2>&1; then
++    cat -- "$probe_dir/meson.log"
++    echo "Meson setup unexpectedly succeeded" >&2
++    exit 1
++fi
++if ! grep -q 'CODEX_MESON_LOG_DETAIL' "$probe_dir/meson.log" ||
++    ! grep -q 'CODEX_MESON_SETUP_EXPECTED_FAILURE' "$probe_dir/meson.log"; then
++    cat -- "$probe_dir/meson.log"
++    echo "Meson setup did not print its detailed failure log" >&2
++    exit 1
++fi
++
+ if bazel build "$@" //tools/build-warnings:compiler_warning >"$probe_dir/warning.log" 2>&1; then
+diff --git a/tools/build-warnings/meson-diagnostics/BUILD.bazel b/tools/build-warnings/meson-diagnostics/BUILD.bazel
+new file mode 100644
+index 000000000..89dca5dd7
+--- /dev/null
++++ b/tools/build-warnings/meson-diagnostics/BUILD.bazel
+@@ -0,0 +1,13 @@
++load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
++
++filegroup(
++    name = "source",
++    srcs = ["meson.build"],
++)
++
++meson(
++    name = "setup_failure",
++    lib_source = ":source",
++    out_static_libs = ["libunused.a"],
++    tags = ["manual"],
++)
+diff --git a/tools/build-warnings/meson-diagnostics/meson.build b/tools/build-warnings/meson-diagnostics/meson.build
+new file mode 100644
+index 000000000..ac47d8135
+--- /dev/null
++++ b/tools/build-warnings/meson-diagnostics/meson.build
+@@ -0,0 +1,3 @@
++project('setup-diagnostics')
++debug('CODEX_MESON_LOG_DETAIL')
++error('CODEX_MESON_SETUP_EXPECTED_FAILURE')

@@ -180,6 +180,18 @@ analysis failures print their captured log and preserve the original status.
 The Windows GNU command checks cross-compilation; native Windows execution
 and the complete release build remain separate gates.
 
+## Meson setup diagnostics
+
+`z-meson-setup-diagnostics.patch` prints Meson's detailed setup log when setup
+fails and preserves the setup command's failure status. This exposes compiler
+diagnostics before Bazel removes the sandbox. It applies after the stable native
+tool, Meson runfiles, Meson resource directory, and assembly argument patches.
+
+`just check-build-warnings` builds a deliberately failing Meson project and
+requires both its setup failure and a detail written only to the Meson log.
+The fixture has the `manual` tag and does not participate in wildcard builds.
+`just fmt-check` and `just bazel-lock-check` remain required checks.
+
 ## V8 Python generator platforms
 
 `z-v8-python-platforms.patch` resolves inspector-generator dependencies for
