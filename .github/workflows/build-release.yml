@@ -349,7 +349,7 @@ jobs:
             fi
           fi
 
-          git clone --depth 1 --branch "${upstream_tag}" https://github.com/openai/codex.git upstream
+          bash .github/scripts/checkout-upstream-tag.sh https://github.com/openai/codex.git "${upstream_tag}" upstream
           upstream_sha="$(git -C upstream rev-parse HEAD)"
           patch_files="$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
           supported_targets="x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin, aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc"
