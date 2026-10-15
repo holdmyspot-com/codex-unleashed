@@ -344,6 +344,14 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
   fi
 
   if [[ $pass_windows_build_env -eq 1 ]]; then
+    # Native tool rules read these values during analysis, before inherited
+    # action environment variables are resolved by the executor.
+    for env_var in SystemRoot PROCESSOR_ARCHITECTURE; do
+      if [[ -n "${!env_var:-}" ]]; then
+        post_config_bazel_args+=("--action_env=${env_var}=${!env_var}" "--host_action_env=${env_var}=${!env_var}")
+      fi
+    done
+
     windows_action_env_vars=(
       INCLUDE
       LIB

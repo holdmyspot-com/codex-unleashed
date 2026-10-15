@@ -61,6 +61,10 @@ public final class BazelCallerTest
 			environment.put("BAZEL_REPOSITORY_CACHE", Files.createDirectory(root.resolve("repository cache")).toString());
 			String windowsPath = "C:\\Program Files\\PowerShell\\7;C:\\Program Files\\Git\\bin";
 			environment.put("CODEX_BAZEL_WINDOWS_PATH", windowsPath);
+			String systemRoot = environment.getOrDefault("SystemRoot", "E:\\Windows Root");
+			environment.put("SystemRoot", systemRoot);
+			String processorArchitecture = environment.getOrDefault("PROCESSOR_ARCHITECTURE", "AMD64");
+			environment.put("PROCESSOR_ARCHITECTURE", processorArchitecture);
 			Path scripts = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().resolve("scripts");
 			String expression = "kind(\"rust_library rule\", //codex-rs/...)";
 			for (String operatingSystem : List.of("Linux", "Windows"))
@@ -85,7 +89,14 @@ public final class BazelCallerTest
 					assertTrue(test.contains("test"));
 					assertEquals(test.getLast(), "//fixture:test");
 					if (operatingSystem.equals("Windows"))
+					{
 						assertTrue(test.contains("--test_env=PATH=" + windowsPath));
+						assertTrue(test.contains("--action_env=SystemRoot=" + systemRoot),
+							"Native Windows build tools require a fixed Windows directory during analysis");
+						assertTrue(test.contains("--host_action_env=SystemRoot=" + systemRoot));
+						assertTrue(test.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
+						assertTrue(test.contains("--host_action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
+					}
 					assertEquals(test.contains("--remote_header=x-buildbuddy-api-key=fixture-token"), !credential.isEmpty());
 					if (operatingSystem.equals("Windows") && !credential.isEmpty())
 					{
@@ -101,6 +112,9 @@ public final class BazelCallerTest
 						assertTrue(crossBuild.contains("--remote_header=x-buildbuddy-api-key=fixture-token"));
 						assertTrue(crossBuild.contains("--disk_cache="));
 						assertTrue(crossBuild.contains("--repository_cache=" + environment.get("BAZEL_REPOSITORY_CACHE")));
+						assertFalse(crossBuild.contains("--action_env=SystemRoot=" + systemRoot),
+							"Linux remote build tools must not inherit the Windows directory");
+						assertFalse(crossBuild.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
 						assertFalse(crossBuild.stream().anyMatch(argument -> argument.startsWith("--experimental_disk_cache_gc_")));
 						environment.remove("GITHUB_ACTIONS");
 						environment.remove("BAZEL_DISK_CACHE");
