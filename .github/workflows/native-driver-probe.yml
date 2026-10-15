@@ -27,4 +27,5 @@ jobs:
           cd upstream
           "$GITHUB_WORKSPACE/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary -- \
-            build --jobs=2 -- //third_party/voice:pkg_config_unix_native_macos_aarch64_
+            build --jobs=2 --@rules_python//python/config_settings:bootstrap_impl=script -- \
+            //third_party/voice:pkg_config_unix_native_macos_aarch64_
