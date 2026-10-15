@@ -1,9 +1,8 @@
-From 47e4d268c7d6a861a632fabc6934c168a491f18d Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 6 Oct 2026 10:17:33 -0400
+From 3a16ed30698eaef31d0c18b7c375c1101d1a4aee Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 23:47:01 +0000
 Subject: [PATCH] Group tool activity with expandable retained output
 
-Use the direct Config method reference to satisfy the maintained Clippy redundant-closure lint.
 ---
  codex-rs/config/src/config_toml.rs            |   2 +
  codex-rs/core/config.schema.json              |   6 +
@@ -41,7 +40,7 @@ Use the direct Config method reference to satisfy the maintained Clippy redundan
  create mode 100644 codex-rs/tui/src/transcript_view/tool_activity.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index fa623c0b2..f165d6952 100644
+index f28d62e39..eaf7a88d7 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -165,6 +165,8 @@ pub struct FeatureToggleToml {
@@ -54,10 +53,10 @@ index fa623c0b2..f165d6952 100644
 
  /// Base config deserialized from ~/.codex/config.toml.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 5864a5df7..7eb126d4f 100644
+index 4aba1bab6..5c69ac3eb 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1232,6 +1232,9 @@
+@@ -1273,6 +1273,9 @@
              "use_agent_identity": {
                "type": "boolean"
              },
@@ -67,7 +66,7 @@ index 5864a5df7..7eb126d4f 100644
              "use_legacy_landlock": {
                "type": "boolean"
              },
-@@ -7448,6 +7451,9 @@
+@@ -7601,6 +7604,9 @@
          "use_agent_identity": {
            "type": "boolean"
          },
@@ -78,10 +77,10 @@ index 5864a5df7..7eb126d4f 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/core/src/config/config_loader_tests.rs b/codex-rs/core/src/config/config_loader_tests.rs
-index 419a6b78a..ca1bc1171 100644
+index a00066dc7..d03137acc 100644
 --- a/codex-rs/core/src/config/config_loader_tests.rs
 +++ b/codex-rs/core/src/config/config_loader_tests.rs
-@@ -142,6 +142,66 @@ command = "{command}"
+@@ -146,6 +146,66 @@ command = "{command}"
      .await
  }
 
@@ -149,12 +148,12 @@ index 419a6b78a..ca1bc1171 100644
  async fn cli_overrides_resolve_relative_paths_against_cwd() -> std::io::Result<()> {
      let codex_home = tempdir().expect("tempdir");
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 1eb2cdf83..d986af04d 100644
+index c5ab36546..51a643145 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -812,6 +812,9 @@ pub struct Config {
-     /// Override the terminal-specific default for copying transcript mouse selections.
-     pub tui_copy_on_select: codex_config::types::CopyOnSelect,
+@@ -834,6 +834,9 @@ pub struct Config {
+     /// Whether to deselect transcript text after a confirmed automatic copy.
+     pub tui_copy_on_select_clear_selection: bool,
 
 +    /// Group adjacent file reads and shell commands when enabled.
 +    pub unleashed_collapsed_tool_activity: bool,
@@ -162,7 +161,7 @@ index 1eb2cdf83..d986af04d 100644
      /// Right-click text paste fallback for the fullscreen TUI.
      pub tui_right_click_paste: codex_config::types::RightClickPaste,
 
-@@ -1587,6 +1590,12 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
+@@ -1620,6 +1623,12 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
  }
 
  impl Config {
@@ -175,10 +174,10 @@ index 1eb2cdf83..d986af04d 100644
      pub fn sqlite_config(&self) -> &codex_state::SqliteConfig {
          &self.sqlite
      }
-@@ -4561,6 +4570,11 @@ impl Config {
+@@ -4668,6 +4677,11 @@ impl Config {
+                 .tui
                  .as_ref()
-                 .map(|tui| tui.copy_on_select)
-                 .unwrap_or_default(),
+                 .is_some_and(|tui| tui.copy_on_select_clear_selection),
 +            unleashed_collapsed_tool_activity: cfg
 +                .codex_unleashed
 +                .as_ref()
@@ -188,10 +187,10 @@ index 1eb2cdf83..d986af04d 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index c68bc3bb7..0670eb772 100644
+index 13ff893c1..18cd83063 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -109,6 +109,8 @@ pub enum Feature {
+@@ -110,6 +110,8 @@ pub enum Feature {
      ViewImage,
      /// Allow registration of the built-in sleep tool.
      SleepTool,
@@ -200,7 +199,7 @@ index c68bc3bb7..0670eb772 100644
      /// Enable Claude-style lifecycle hooks loaded from hooks.json files.
      CodexHooks,
      /// Store CLI auth in the encrypted local secrets backend when keyring storage is selected.
-@@ -1287,6 +1289,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1336,6 +1338,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -214,10 +213,10 @@ index c68bc3bb7..0670eb772 100644
          id: Feature::WriteStdinApproval,
          key: "write_stdin_approval",
 diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
-index 5891dc0c9..0b55eec69 100644
+index a8a8fca05..a58781b5e 100644
 --- a/codex-rs/features/src/tests.rs
 +++ b/codex-rs/features/src/tests.rs
-@@ -897,3 +897,16 @@ code_mode = true
+@@ -901,3 +901,16 @@ code_mode = true
          message
      );
  }
@@ -235,10 +234,10 @@ index 5891dc0c9..0b55eec69 100644
 +    assert!(!features.enabled(feature));
 +}
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index a70b8c981..7827cdd59 100644
+index 0d53be005..caacc5a53 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -284,6 +284,7 @@ async fn new_config(
+@@ -287,6 +287,7 @@ async fn new_config(
          notify: None,
          tui_notifications: TuiNotificationSettings::default(),
          animations: true,
@@ -247,7 +246,7 @@ index a70b8c981..7827cdd59 100644
          tui_rendering: Default::default(),
          show_tooltips: true,
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index dcacf8da0..554f94809 100644
+index ca29929c1..959196ca3 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -50,6 +50,9 @@ impl App {
@@ -261,10 +260,10 @@ index dcacf8da0..554f94809 100644
          let cell: Arc<dyn HistoryCell> = cell.into();
          if let Some(Overlay::Transcript(t)) = &mut self.overlay {
 diff --git a/codex-rs/tui/src/app/owned_transcript.rs b/codex-rs/tui/src/app/owned_transcript.rs
-index 3fcd0cd23..d90f27d5c 100644
+index 8c42d78f1..59bbd7791 100644
 --- a/codex-rs/tui/src/app/owned_transcript.rs
 +++ b/codex-rs/tui/src/app/owned_transcript.rs
-@@ -51,6 +51,7 @@ impl App {
+@@ -53,6 +53,7 @@ impl App {
          view.set_keymap_bindings(&self.keymap);
          view.set_presentation(view.is_detailed(), chat_widget.history_render_mode());
          let active_key = chat_widget.active_cell_transcript_key();
@@ -273,10 +272,10 @@ index 3fcd0cd23..d90f27d5c 100644
          let active_ids = chat_widget.active_activity_ids();
          let expanded = view.sync_live_activity(&self.transcript_cells, active_ids)
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 026fe11ea..f3bc249fa 100644
+index ff6e0201b..efb643410 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -1783,3 +1783,110 @@ async fn fullscreen_composer_remote_images_leave_an_editable_prompt_row() -> Res
+@@ -1849,3 +1849,110 @@ async fn footer_selection_defers_warning_clicks_and_preserves_the_draft() -> Res
      tui.set_owned_screen(/*owned*/ false)?;
      Ok(())
  }
@@ -388,10 +387,10 @@ index 026fe11ea..f3bc249fa 100644
 +    assert!(buffer_text(&buffer).contains("completion output"));
 +}
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 7dbb54bb8..583599517 100644
+index 2f74f843d..4a9072bd5 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -1726,9 +1726,13 @@ impl ChatWidget {
+@@ -1743,9 +1743,13 @@ impl ChatWidget {
          self.bottom_pane.composer_is_vim_enabled()
      }
 
@@ -670,10 +669,10 @@ index 80c0a10c1..20eea079c 100644
 +    );
 +}
 diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-index 1db139d73..475399628 100644
+index 9ce2635d3..c9c23e63d 100644
 --- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
-@@ -220,6 +220,11 @@ pub(super) async fn make_chatwidget_manual_with_auth(
+@@ -221,6 +221,11 @@ pub(super) async fn make_chatwidget_manual_with_auth(
      let app_event_tx = AppEventSender::new(tx_raw);
      let (op_tx, op_rx) = unbounded_channel::<Op>();
      let (codex_home, mut cfg) = test_config().await;
@@ -1168,10 +1167,10 @@ index 267168c87..0c4c5c4c7 100644
 +    }
 +}
 diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
-index 31ebfec5e..416c5bfb1 100644
+index 4a2b80353..fee52ce0e 100644
 --- a/codex-rs/tui/src/transcript_view.rs
 +++ b/codex-rs/tui/src/transcript_view.rs
-@@ -20,6 +20,7 @@ mod search;
+@@ -21,6 +21,7 @@ mod select_mode;
  mod selection;
  mod snapshot;
  mod text;
@@ -1179,15 +1178,15 @@ index 31ebfec5e..416c5bfb1 100644
  mod turn_tip;
 
  use std::sync::Arc;
-@@ -285,6 +286,7 @@ impl TranscriptView {
+@@ -316,6 +317,7 @@ impl TranscriptView {
          if self.tail_visible {
              self.unseen_activity = false;
          }
 +        self.render_tool_activity(buf);
          self.render_selection(buf);
+         self.render_select_cursor(buf);
          if self.history == TranscriptHistoryState::LoadingBeginning && self.is_following() {
-             self.scroll(current_cells, /*rows*/ 0);
-@@ -314,9 +316,20 @@ impl TranscriptView {
+@@ -346,9 +348,20 @@ impl TranscriptView {
              .disclosure
              .keymap
              .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
@@ -1268,10 +1267,10 @@ index d22138770..ba494965f 100644
              return false;
          }
 diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
-index ced88a72b..3b8297c7d 100644
+index f5bf11940..0ac763509 100644
 --- a/codex-rs/tui/src/transcript_view/input.rs
 +++ b/codex-rs/tui/src/transcript_view/input.rs
-@@ -224,11 +224,28 @@ impl TranscriptView {
+@@ -252,6 +252,20 @@ impl TranscriptView {
          cells: &[Arc<dyn HistoryCell>],
          mode: MouseMode,
      ) -> Option<ViewAction> {
@@ -1292,7 +1291,9 @@ index ced88a72b..3b8297c7d 100644
          if mode == MouseMode::Interactive
              && let Some(action) = self.handle_follow_control_mouse(event)
          {
-             return Some(action);
+@@ -273,6 +287,9 @@ impl TranscriptView {
+             }
+             return Some(ViewAction::Changed);
          }
 +        if event.kind == MouseEventKind::Moved {
 +            return pointer_changed.then_some(ViewAction::Changed);
@@ -1335,7 +1336,7 @@ index 5e912a062..00432086a 100644
      match source_offset {
          Some(offset) => layout.with_disclosure_control_at(label, offset),
 diff --git a/codex-rs/tui/src/transcript_view/text.rs b/codex-rs/tui/src/transcript_view/text.rs
-index 282925dfd..a61387eb1 100644
+index 4aac01ddd..3b2439b88 100644
 --- a/codex-rs/tui/src/transcript_view/text.rs
 +++ b/codex-rs/tui/src/transcript_view/text.rs
 @@ -48,6 +48,7 @@ pub(super) struct TextLayout {
@@ -1355,7 +1356,7 @@ index 282925dfd..a61387eb1 100644
          if let Some(control) = &self.disclosure_control {
              layout =
                  layout.with_disclosure_control_at(control.label.clone(), control.source_offset);
-@@ -454,6 +457,7 @@ impl TextLayout {
+@@ -506,6 +509,7 @@ impl TextLayout {
              width,
              separated: false,
              disclosure: false,
@@ -1680,6 +1681,3 @@ index 92b3eb1ca..fbaec289a 100644
 +    );
 +    assert!(raw.contains("failure details"));
 +}
--- 
-2.43.0
-

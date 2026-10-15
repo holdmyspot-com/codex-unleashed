@@ -1,46 +1,8 @@
-From 94a6f17034a4663ee57d1845fdd3170c5358e94e Mon Sep 17 00:00:00 2001
-From: Codex Patch Verification <codex@example.invalid>
-Date: Tue, 6 Oct 2026 00:06:06 -0400
+From ad2f9a73269c76c990eb78f486a1cf67d2791eb0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 23:47:02 +0000
 Subject: [PATCH] feature: Resume available parents when V2 subagents finish
 
-Red: just test -p codex-app-server -E test(app_server_resumes_parent_after_background_child_finishes) on rust-v0.160.0 does not start the parent when its child completes.
-Green: production core requests verify idle resumption, ordinary conversation, active-turn delivery, failure, child/parent interruption, missing parent, opt-out, multiple children and follow-up identity. The combined maintained gate passes all 29 cases.
-
-Scope: live-process best-effort delivery; no restart replay, task UI, or Monitor support.
-
-Schema prerequisite: issue-34776/avoid-slow-agent-switching-and-resume.patch and preceding release-queue patches. Runtime behavior is unchanged by this schema-context rebase.
-
-Catalog compatibility red: full maintained just test fails scenario catalog snapshots after completion guidance changes, and board-only scenarios observe independent automatic child completion.
-Catalog compatibility green: just test -E "package(codex-core) & test(suite::scenarios::)" passes with catalog fingerprints regenerated for the new guidance and board/guardian explicit-turn fixtures explicitly disabling independent child completion. Snapshot updates preserve all content except catalog hashes and retain existing metadata.
-
-Additional rust-v0.160.0 explicit-turn fixture compatibility:
-The residency test uses explicit parent turns. The authorization fixture
-injects parent history after waiting for child completion. Disable independent
-completion callbacks in those fixtures so their existing contracts remain
-isolated from the background-parent feature. Production behavior is unchanged.
-
-RED: maintained affected-package run reports the residency timeout and
-authorization ordering failures (final-emitted-packages.log, exit100).
-GREEN: maintained focused compatibility run, 41/41 passed, exit0; includes
-four residency variants, authorization variants, daemon and help fixtures.
-
-Additional explicit-turn fixture isolation: access-program inheritance, role
-service tiers, cold-root resume and model-specific tool descriptions disable
-independent background callbacks in their sequence-only mocks. Dedicated
-background-parent tests retain default-on behavior. No runtime change.
-
-RED: fixture-final-workspace.log records seven affected failures (exit100).
-GREEN: maintained just test focused callback-fixture-focused.log passes 7/7
-cases, exit0, using the same emitted release queue with these fixture controls.
-
-Attribution fixture red: the final emitted full suite records three starts
-rather than two in child_turn_start_preserves_root_attribution. This
-two-turn attribution control opts out of independent completion, while
-dedicated background-parent checks retain the enabled feature.
-GREEN: maintained just test -p codex-core -p codex-code-mode-host
--p codex-rmcp-client -E "test(child_turn_start_preserves_root_attribution) |
-test(background_subagent_)" passes 18/18, exit0. Maintained repository
-checks including just fmt-check also pass. Fresh emitted verification is pending.
 ---
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/core/src/agent/control/completion.rs |  25 +-
@@ -66,7 +28,7 @@ checks including just fmt-check also pass. Fresh emitted verification is pending
  ...e_mode_catalog_messages_ranked_search.snap |   4 +-
  ...ed_helpers__code_mode_settled_helpers.snap |   4 +-
  ...ios__compaction__remote_slash_compact.snap |   8 +-
- ...__catalog_indirect_namespace_prefixes.snap |   8 +-
+ ...__catalog_indirect_namespace_prefixes.snap |   4 +-
  ...ource_messages__mcp_resource_messages.snap |   4 +-
  ...arios__multi_agent_catalog_parameters.snap |   4 +-
  ...ilities__custom_provider_capabilities.snap |   4 +-
@@ -76,14 +38,14 @@ checks including just fmt-check also pass. Fresh emitted verification is pending
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 34 files changed, 847 insertions(+), 53 deletions(-)
+ 34 files changed, 845 insertions(+), 51 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 8d71653bf..053e72d94 100644
+index 5ec881958..7c0fbb473 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1232,6 +1232,9 @@
+@@ -1273,6 +1273,9 @@
              "unleashed_agent_fast_switching": {
                "type": "boolean"
              },
@@ -93,7 +55,7 @@ index 8d71653bf..053e72d94 100644
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -7454,6 +7457,9 @@
+@@ -7607,6 +7610,9 @@
          "unleashed_agent_fast_switching": {
            "type": "boolean"
          },
@@ -161,7 +123,7 @@ index 587f4cdae..05552de45 100644
              AgentCommunicationContext::new(AgentCommunicationKind::Result, outcome.thread_id);
          let delivery = self
 diff --git a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
-index 6991af147..8244e01c2 100644
+index f6ffb7a8b..565744de1 100644
 --- a/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
 +++ b/codex-rs/core/src/tools/handlers/multi_agents_tests.rs
 @@ -1892,12 +1892,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
@@ -196,10 +158,10 @@ index 6991af147..8244e01c2 100644
                                  Some(communication.content)
                              }
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
-index 7e2213456..9eadf7de2 100644
+index fd5b5e14e..6d617b517 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -1388,6 +1388,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+@@ -1476,6 +1476,18 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                  agent_type_description(turn_context, context.default_agent_type_description);
              let hide_spawn_agent_metadata =
                  turn_context.config.multi_agent_v2.hide_spawn_agent_metadata;
@@ -218,7 +180,7 @@ index 7e2213456..9eadf7de2 100644
              registry.register_trusted_with_exposure(
                  multi_agent_v2_handler(
                      SpawnAgentHandlerV2::new(
-@@ -1405,11 +1417,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
+@@ -1493,11 +1505,7 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                                  .config
                                  .multi_agent_v2
                                  .expose_spawn_agent_model_overrides,
@@ -995,7 +957,7 @@ index 5aca6a2fc..83a1730ac 100644
                  Feature::Collab,
                  Feature::MultiAgentV2,
 diff --git a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
-index cf3f57075..17d7c1d6f 100644
+index 96beaeff1..f7f9db8ca 100644
 --- a/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 +++ b/codex-rs/core/tests/suite/guardian_subagent_authorization.rs
 @@ -734,6 +734,10 @@ async fn run_guardian_subagent_review(
@@ -1025,7 +987,7 @@ index 09c317d8f..750059f73 100644
          .features
          .enable(Feature::Collab)
 diff --git a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
-index 9702e31a9..f69a7cb1f 100644
+index c857a313d..2321041a5 100644
 --- a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 +++ b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 @@ -75,6 +75,11 @@ fn done() -> String {
@@ -1361,20 +1323,9 @@ index 4e78cadff..f8ef58bd5 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
-index c7761cf29..daba06577 100644
+index 5a09b5f5e..d9271c606 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
-@@ -15,8 +15,8 @@ Settings:
-   stream: true
-   text: {"verbosity":"low"}
-   tool_choice: "auto"
--  tools (4; hash=7707adf4d5cde816):
--    - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=66e0c24dd8b9010d
-+  tools (4; hash=e71908b0e495862e):
-+    - custom/exec: Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided JavaScript code in...; hash=1b3224ae8405aa85
-     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
-     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
-     - web_search; hash=e214d4db1bc49e89
 @@ -49,8 +49,8 @@ Settings:
  ## Window 2 (after request 2)
  Settings: relative to window 1
@@ -1539,19 +1490,19 @@ index 74d559254..4da8c11c1 100644
          config
              .features
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 466b1add2..5f79b5d6c 100644
+index 2950fc5cc..9a228da35 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -229,6 +229,8 @@ pub enum Feature {
-     ModelCatalogInContext,
-     /// Inherit client-defined dynamic tools in fresh V2 subagents.
+@@ -234,6 +234,8 @@ pub enum Feature {
      MultiAgentV2DynamicTools,
+     /// Use each subagent model's default context window and auto-compaction threshold.
+     SubagentDefaultContextLimits,
 +    /// Resume an idle parent when a background V2 subagent completes its turn.
 +    UnleashedBackgroundSubagents,
      /// Keep sampling through reasoning and commentary boundaries when agent mail arrives.
      /// Pending mail is delivered at the next normal input boundary instead.
      DeferMailboxPreemption,
-@@ -1457,6 +1459,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1518,6 +1520,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::UnderDevelopment,
          default_enabled: false,
      },
@@ -1564,6 +1515,3 @@ index 466b1add2..5f79b5d6c 100644
      FeatureSpec {
          id: Feature::AgentMessageBoard,
          key: "agent_message_board",
--- 
-2.43.0
-

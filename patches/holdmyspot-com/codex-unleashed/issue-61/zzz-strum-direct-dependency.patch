@@ -1,76 +1,125 @@
-From 74b55c72f42ca130e908b2f2896bc7df44451686 Mon Sep 17 00:00:00 2001
+From 8aa1ab718f41b03a0aff76dfe5fa4729b45bca53 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 04:07:52 -0400
+Date: Thu, 15 Oct 2026 23:50:16 +0000
 Subject: [PATCH] Align the direct strum dependency with its current derive
  macros
 
-Upgrade the workspace strum dependency from 0.27.2 to stable 0.28.0, matching the already selected strum_macros 0.28.0. Cargo removes the older strum and strum_macros versions without adding or upgrading other external packages.
-
-Regression: tools/build-warnings/check-enum-dependencies.sh with RUSTUP_TOOLCHAIN=stable fails with ambiguous strum versions on the prepared preceding queue (exit 101) and passes after the direct upgrade (exit 0). Maintained just fmt-check and just bazel-lock-check pass; protocol and state Bazel unit tests pass. Eight TUI failures reproduce identically in the preceding baseline; they remain local fixture/environment follow-up and are not claimed passing.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with preceding issue-61 dependency updates. Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
 ---
- MODULE.bazel.lock                             |  2 -
+ MODULE.bazel.lock                             |  5 ---
  codex-rs/Cargo.lock                           | 41 +++++--------------
  codex-rs/Cargo.toml                           |  2 +-
  .../build-warnings/check-enum-dependencies.sh |  7 ++++
- 4 files changed, 18 insertions(+), 34 deletions(-)
+ 4 files changed, 18 insertions(+), 37 deletions(-)
  create mode 100755 tools/build-warnings/check-enum-dependencies.sh
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 7e7381c86..7144c15a8 100644
+index ccfcdb131..e0e0cbcaa 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
-@@ -2265,5 +2265,3 @@
+@@ -1208,7 +1208,6 @@
+       "async-stream_0.3.6": "{\"dependencies\":[{\"name\":\"async-stream-impl\",\"req\":\"=0.3.6\"},{\"name\":\"futures-core\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1\"}],\"features\":{}}",
+       "async-task_4.7.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"atomic-waker\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"easy-parallel\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"flaky_test\",\"req\":\"^0.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"flume\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.0.0\"},{\"kind\":\"dev\",\"name\":\"once_cell\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"pin-project-lite\",\"req\":\"^0.2.10\"},{\"default_features\":false,\"name\":\"portable-atomic\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"smol\",\"req\":\"^2\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "async-trait_0.1.89": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.81\"}],\"features\":{}}",
+-      "async-trait_0.1.92": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"default_features\":false,\"features\":[\"clone-impls\",\"full\",\"parsing\",\"printing\",\"proc-macro\",\"visit-mut\"],\"name\":\"syn\",\"req\":\"^3\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing-attributes\",\"req\":\"^0.1.27\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{}}",
+       "asynk-strim_0.1.5": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-fn-stream\",\"req\":\"^0.3.2\"},{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.6\"},{\"default_features\":false,\"features\":[\"cargo_bench_support\",\"plotters\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.3.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.14\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.99\"}],\"features\":{}}",
+       "atoi_2.0.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"req\":\"^0.2.14\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"num-traits/std\"]}}",
+       "atomic-polyfill_1.0.3": "{\"dependencies\":[{\"name\":\"critical-section\",\"req\":\"^1.0.0\"}],\"features\":{}}",
+@@ -2265,9 +2264,7 @@
+       "strong_hash_derive_0.1.0": "{\"dependencies\":[{\"name\":\"quote\",\"req\":\"^1.0.44\"},{\"features\":[\"extra-traits\",\"full\",\"visit\"],\"name\":\"syn\",\"req\":\"^2.0.110\"}],\"features\":{}}",
+       "strsim_0.10.0": "{\"dependencies\":[],\"features\":{}}",
        "strsim_0.11.1": "{\"dependencies\":[],\"features\":{}}",
 -      "strum_0.27.2": "{\"dependencies\":[{\"features\":[\"macros\"],\"name\":\"phf\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"strum_macros\",\"optional\":true,\"req\":\"^0.27\"}],\"features\":{\"default\":[\"std\"],\"derive\":[\"strum_macros\"],\"std\":[]}}",
        "strum_0.28.0": "{\"dependencies\":[{\"features\":[\"macros\"],\"name\":\"phf\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"strum_macros\",\"optional\":true,\"req\":\"^0.28\"}],\"features\":{\"default\":[\"std\"],\"derive\":[\"strum_macros\"],\"std\":[]}}",
 -      "strum_macros_0.27.2": "{\"dependencies\":[{\"name\":\"heck\",\"req\":\"^0.5.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"parsing\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
        "strum_macros_0.28.0": "{\"dependencies\":[{\"name\":\"heck\",\"req\":\"^0.5.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"parsing\"],\"name\":\"syn\",\"req\":\"^2.0\"}],\"features\":{}}",
+       "substring_1.4.5": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"autocfg\",\"req\":\"^1.0.1\"}],\"features\":{}}",
+       "subtle_2.6.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8\"}],\"features\":{\"const-generics\":[],\"core_hint_black_box\":[],\"default\":[\"std\",\"i128\"],\"i128\":[],\"nightly\":[],\"std\":[]}}",
+@@ -2320,11 +2317,9 @@
+       "thiserror-impl-no-std_2.0.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"name\":\"syn\",\"req\":\"^1.0.45\"}],\"features\":{\"std\":[]}}",
+       "thiserror-impl_1.0.69": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
+       "thiserror-impl_2.0.18": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
+-      "thiserror-impl_2.0.20": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^3\"}],\"features\":{}}",
+       "thiserror-no-std_2.0.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"name\":\"thiserror-impl-no-std\",\"req\":\"=2.0.2\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.49\"}],\"features\":{\"std\":[\"thiserror-impl-no-std/std\"]}}",
+       "thiserror_1.0.69": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=1.0.69\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.81\"}],\"features\":{}}",
+       "thiserror_2.0.18": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=2.0.18\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+-      "thiserror_2.0.20": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.73\"},{\"kind\":\"dev\",\"name\":\"ref-cast\",\"req\":\"^1.0.18\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.13\"},{\"name\":\"thiserror-impl\",\"req\":\"=2.0.20\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "thread_local_1.1.9": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"}],\"features\":{\"nightly\":[]}}",
+       "threadpool_1.8.1": "{\"dependencies\":[{\"name\":\"num_cpus\",\"req\":\"^1.13\"}],\"features\":{}}",
+       "tiff_0.10.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.1\"},{\"name\":\"fax34\",\"optional\":true,\"package\":\"fax\",\"req\":\"^0.2.6\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.0.20\"},{\"name\":\"half\",\"req\":\"^2.4.1\"},{\"name\":\"quick-error\",\"req\":\"^2.0.1\"},{\"name\":\"weezl\",\"optional\":true,\"req\":\"^0.1.10\"},{\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"zune-jpeg\",\"optional\":true,\"req\":\"^0.4.17\"}],\"features\":{\"default\":[\"deflate\",\"fax\",\"jpeg\",\"lzw\"],\"deflate\":[\"dep:flate2\"],\"fax\":[\"dep:fax34\"],\"jpeg\":[\"dep:zune-jpeg\"],\"lzw\":[\"dep:weezl\"],\"zstd\":[\"dep:zstd\"]}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 3b792c9be..c203c3b7c 100644
+index c48f6c895..a01cbc1ba 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -2265,3 +2265,3 @@ dependencies = [
+@@ -2263,7 +2263,7 @@ dependencies = [
+  "serde_json",
+  "serde_with",
   "similar",
 - "strum_macros 0.28.0",
 + "strum_macros",
   "tempfile",
-@@ -4241,3 +4241,3 @@ dependencies = [
+  "thiserror 2.0.18",
+  "tracing",
+@@ -4250,7 +4250,7 @@ dependencies = [
+  "seccompiler",
+  "serde",
   "serde_json",
 - "strum_macros 0.28.0",
 + "strum_macros",
-  "thiserror 2.0.20",
-@@ -4334,4 +4334,4 @@ dependencies = [
+  "thiserror 2.0.18",
+  "tokio",
+  "tokio-tungstenite",
+@@ -4343,8 +4343,8 @@ dependencies = [
+  "serde",
+  "serde_json",
   "serde_with",
 - "strum 0.27.2",
 - "strum_macros 0.28.0",
 + "strum",
 + "strum_macros",
   "sys-locale",
-@@ -4679,3 +4679,3 @@ dependencies = [
+  "tempfile",
+  "thiserror 2.0.18",
+@@ -4668,7 +4668,7 @@ dependencies = [
+  "sqlx",
+  "sqlx-macros",
   "sqlx-sqlite",
 - "strum 0.27.2",
 + "strum",
   "tokio",
-@@ -4898,4 +4898,4 @@ dependencies = [
+  "tracing",
+  "tracing-subscriber",
+@@ -4886,8 +4886,8 @@ dependencies = [
+  "serial_test",
+  "sha2 0.10.9",
   "shlex",
 - "strum 0.27.2",
 - "strum_macros 0.28.0",
 + "strum",
 + "strum_macros",
   "supports-color 3.0.2",
-@@ -12755,3 +12755,3 @@ dependencies = [
+  "syntect",
+  "tempfile",
+@@ -12745,7 +12745,7 @@ dependencies = [
+  "lru",
+  "palette",
   "serde",
 - "strum 0.28.0",
 + "strum",
-  "thiserror 2.0.20",
-@@ -12830,3 +12830,3 @@ dependencies = [
+  "thiserror 2.0.18",
+  "unicode-segmentation",
+  "unicode-truncate",
+@@ -12820,7 +12820,7 @@ dependencies = [
+  "line-clipping",
+  "ratatui-core",
   "serde",
 - "strum 0.28.0",
 + "strum",
   "time",
-@@ -14926,11 +14926,2 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+  "unicode-segmentation",
+  "unicode-width 0.2.1",
+@@ -14929,34 +14929,13 @@ version = "0.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 -[[package]]
 -name = "strum"
@@ -82,7 +131,10 @@ index 3b792c9be..c203c3b7c 100644
 -]
 -
  [[package]]
-@@ -14941,15 +14932,3 @@ checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+ name = "strum"
+ version = "0.28.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
  dependencies = [
 - "strum_macros 0.28.0",
 -]
@@ -99,15 +151,21 @@ index 3b792c9be..c203c3b7c 100644
 - "syn 2.0.117",
 + "strum_macros",
  ]
+
+ [[package]]
 diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
-index e7ff9c522..be5a45d04 100644
+index e84b9776a..613f046c9 100644
 --- a/codex-rs/Cargo.toml
 +++ b/codex-rs/Cargo.toml
-@@ -501,3 +501,3 @@ sqlx-sqlite = { version = "=0.9.0", default-features = false, features = ["offli
+@@ -497,7 +497,7 @@ sqlx-macros = { version = "=0.9.0", default-features = false, features = ["deriv
+ # Preserve the target driver's query-description support without building it on the host.
+ sqlx-sqlite = { version = "=0.9.0", default-features = false, features = ["offline"] }
  starlark = { version = "0.14.2", default-features = false }
 -strum = "0.27.2"
 +strum = "0.28.0"
  strum_macros = "0.28.0"
+ supports-color = "3.0.2"
+ syntect = "5"
 diff --git a/tools/build-warnings/check-enum-dependencies.sh b/tools/build-warnings/check-enum-dependencies.sh
 new file mode 100755
 index 000000000..86aa1059d

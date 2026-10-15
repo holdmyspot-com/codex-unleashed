@@ -1,26 +1,8 @@
-From c6eee3d0f20ee5ad50effdade14b371b7057f097 Mon Sep 17 00:00:00 2001
+From 89c295000bb8b97cc28c0f0ec16165b5937ae213 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 01:18:46 +0000
+Date: Thu, 15 Oct 2026 23:47:05 +0000
 Subject: [PATCH] build: reject Rust and native compiler warnings
 
-Promote Cargo compiler and rustdoc warnings to errors, including target
-and execution-platform Rust actions under Bazel. Enable the native
-warnings-as-errors feature for target and host toolchains. Supply that
-feature in hermetic LLVM with fatal linker diagnostics, while native
-MSVC toolchains use the existing rules_cc feature and /WX flags.
-
-Add a maintained native warning probe that first builds clean code,
-then requires the warning fixture to fail at its compiler diagnostic.
-
-Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/61
-Authoring evidence: strict-build-warnings-smF5Al/acceptance.md and
-latest-toolchains-MzFT3d under .cat/work/temp. Before enforcement the
-warning probe builds successfully; with enforcement it fails at -Werror,
-and the clean probe passes. just check-build-warnings passes after the
-linker-argument compatibility adaptation tracked by issue #60.
-
-Fresh emitted queue and hosted Windows /WX acceptance remain required.
-This patch does not claim all toolchain warning boundaries complete.
 ---
  .bazelrc                                |  5 ++++
  MODULE.bazel                            |  1 +
@@ -40,12 +22,12 @@ This patch does not claim all toolchain warning boundaries complete.
  create mode 100644 tools/build-warnings/compiler_warning.c
 
 diff --git a/.bazelrc b/.bazelrc
-index ea06d4408..6ac80bda7 100644
+index b7698b896..935aba345 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -11,6 +11,11 @@ startup --experimental_remote_repo_contents_cache
-
- common --experimental_platform_in_output_dir
+@@ -17,6 +17,11 @@ common --experimental_platform_in_output_dir
+ build --features=static_link_msvcrt
+ build --host_features=static_link_msvcrt
 
 +build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
 +build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
@@ -56,7 +38,7 @@ index ea06d4408..6ac80bda7 100644
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 7d00c8cd5..acc7bf839 100644
+index b062d1080..cfbabeebd 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -18,6 +18,7 @@ single_version_override(
@@ -97,7 +79,7 @@ index 3614939c7..fa823fa53 100644
  install:
      rustup show active-toolchain
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index e0423bbf7..351d64692 100644
+index 4cfe5e30c..092d29882 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,5 +1,6 @@
@@ -234,6 +216,3 @@ index 000000000..97739b113
 +    codex_build_warning_probe();
 +    return 0;
 +}
--- 
-2.43.0
-

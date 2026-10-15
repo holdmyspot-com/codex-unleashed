@@ -1,51 +1,30 @@
-From 780d4921c2888add44746b983255f033df4e5967 Mon Sep 17 00:00:00 2001
-From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Fri, 2 Oct 2026 14:23:51 -0400
+From 7b6d61b6d901bf1a2d019d3affb61335c9ecd80b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 23:47:02 +0000
 Subject: [PATCH] Keep history replay and subagent switches responsive
 
-Retain bounded initial history hydration and older-page navigation. Skip
-visualization permission-context construction for ordinary replayed and
-completed assistant markdown and plain transcript pages. Visualization
-references keep fresh permission and fragment validation; live streams
-retain context for references arriving in later chunks.
-
-Preserve the stable default-enabled unleashed_agent_fast_switching feature
-and its latest-compaction window for agent switching.
-
-TDD on rust-v0.159.1 (8e68a98ef03cdde76d2e6800791ebdf1b3b95b24):
-just test -p codex-tui -E
-  'test(replay_plain_assistant_messages_with_many_writable_roots_stays_responsive)'
-RED: fails after 46.220s and 45.994s (exit 100), all message content retained.
-GREEN: regression passes in 0.190s; focused replay, pagination,
-visualization and switching selection passes 26/26 (exit 0).
-just fmt-check: passes (exit 0), including all upstream formatter groups.
-Full TUI suite and fresh emitted-patch checks are recorded in the execution
-record; baseline snapshot differences require unpatched comparison.
-
-Execution record:
-.cat/work/reports/resume-profile-01a0aa21/implementation.json
 ---
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/features/src/lib.rs                  |   8 +
  codex-rs/tui/src/app/reconnect.rs             |   4 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
- .../app/tests/pagination_completion_tests.rs  |  13 +
- .../app/tests/session_lifecycle_requests.rs   | 253 +++++++++++++++++-
- codex-rs/tui/src/app/thread_events.rs         |  26 +-
+ .../app/tests/pagination_completion_tests.rs  |  13 ++
+ .../app/tests/session_lifecycle_requests.rs   | 205 ++++++++++++++++++
+ codex-rs/tui/src/app/thread_events.rs         |  26 ++-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
  codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
- .../src/chatwidget/tests/history_replay.rs    | 103 +++++++
+ .../src/chatwidget/tests/history_replay.rs    | 103 +++++++++
  codex-rs/tui/src/inline_visualization.rs      |  12 +
- .../tui/src/inline_visualization_tests.rs     |  59 ++++
+ .../tui/src/inline_visualization_tests.rs     |  59 +++++
  codex-rs/tui/src/thread_transcript.rs         |  14 +-
- 14 files changed, 501 insertions(+), 22 deletions(-)
+ 14 files changed, 466 insertions(+), 9 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 7eb126d4f..8d71653bf 100644
+index 5c69ac3eb..5ec881958 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -1229,6 +1229,9 @@
+@@ -1270,6 +1270,9 @@
              "unified_image_budget": {
                "type": "boolean"
              },
@@ -55,7 +34,7 @@ index 7eb126d4f..8d71653bf 100644
              "use_agent_identity": {
                "type": "boolean"
              },
-@@ -7448,6 +7451,9 @@
+@@ -7601,6 +7604,9 @@
          "unified_image_budget": {
            "type": "boolean"
          },
@@ -66,10 +45,10 @@ index 7eb126d4f..8d71653bf 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 0670eb772..466b1add2 100644
+index 18cd83063..2950fc5cc 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
-@@ -118,6 +118,8 @@ pub enum Feature {
+@@ -119,6 +119,8 @@ pub enum Feature {
 
      /// Automatically start the shared local daemon for eligible interactive launches.
      DaemonAutoStart,
@@ -78,7 +57,7 @@ index 0670eb772..466b1add2 100644
 
      // Experimental
      /// Advertise enabled environment-backed tools and their shell parameters before the
-@@ -996,6 +998,12 @@ pub const FEATURES: &[FeatureSpec] = &[
+@@ -1033,6 +1035,12 @@ pub const FEATURES: &[FeatureSpec] = &[
          stage: Stage::Stable,
          default_enabled: true,
      },
@@ -92,10 +71,10 @@ index 0670eb772..466b1add2 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index b7d6e2637..7e6958c52 100644
+index 97e8d65d1..9d2c35c35 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
-@@ -431,7 +431,9 @@ impl App {
+@@ -458,7 +458,9 @@ impl App {
              self.thread_event_channels.insert(id, channel);
          }
          if let Some(id) = displayed
@@ -107,10 +86,10 @@ index b7d6e2637..7e6958c52 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 61550ab90..9878fdf7f 100644
+index a4fff209a..50e9f94ad 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -630,7 +630,9 @@ impl App {
+@@ -632,7 +632,9 @@ impl App {
          }
          self.store_active_thread_receiver().await;
          self.active_thread_id = None;
@@ -122,10 +101,10 @@ index 61550ab90..9878fdf7f 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 73bc892cc..1024aebd0 100644
+index 40c30df92..67f20168b 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -1185,7 +1185,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
+@@ -1282,7 +1282,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
 
      app.store_active_thread_receiver().await;
      let (_receiver, snapshot) = app
@@ -159,104 +138,10 @@ index 7cfc88a95..3ca2f3b9c 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index b40809456..98d7d4d54 100644
+index 062efa383..9aaa37852 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -38,11 +38,26 @@ use tokio::net::TcpListener;
- use tokio::sync::oneshot;
- use tokio::task::JoinHandle;
- use tokio_tungstenite::accept_async;
-+use tokio_tungstenite::tungstenite::Error as WebSocketError;
- use tokio_tungstenite::tungstenite::Message;
-+use tokio_tungstenite::tungstenite::error::ProtocolError;
-
- pub(super) type RecordedRequests = Arc<Mutex<Vec<JSONRPCRequest>>>;
- pub(super) type RecordingAppServer = (AppServerSession, RecordedRequests, JoinHandle<Result<()>>);
-
-+fn is_recording_client_disconnect(error: &WebSocketError) -> bool {
-+    match error {
-+        WebSocketError::Protocol(ProtocolError::ResetWithoutClosingHandshake) => true,
-+        WebSocketError::Io(error) => matches!(
-+            error.kind(),
-+            std::io::ErrorKind::BrokenPipe
-+                | std::io::ErrorKind::ConnectionReset
-+                | std::io::ErrorKind::ConnectionAborted
-+        ),
-+        _ => false,
-+    }
-+}
-+
- #[tokio::test]
- async fn daybreak_command_persists_and_confirms_each_selection() -> Result<()> {
-     use codex_protocol::openai_models::ModelAccessPrograms;
-@@ -477,20 +492,19 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
-                     if let codex_app_server_client::InProcessServerEvent::ServerNotification(notification) = event
-                         && matches!(*notification, ServerNotification::ThreadSettingsUpdated(_))
-                     {
--                        websocket.send(Message::Text(serde_json::to_string(&notification)?.into())).await?;
-+                        let result = websocket.send(Message::Text(serde_json::to_string(&notification)?.into())).await;
-+                        if result.as_ref().is_err_and(is_recording_client_disconnect) {
-+                            break;
-+                        }
-+                        result?;
-                     }
-                     continue;
-                 }
-             };
-             let Some(frame) = frame else { break };
--            // The client can close with an unread settings notification during shutdown.
--            match &frame {
--                Err(tokio_tungstenite::tungstenite::Error::Protocol(
--                    tokio_tungstenite::tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
--                )) => break,
--                Err(tokio_tungstenite::tungstenite::Error::Io(error))
--                    if matches!(error.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => break,
--                _ => {}
-+            // The client can close with requests or notifications pending during shutdown.
-+            if frame.as_ref().is_err_and(is_recording_client_disconnect) {
-+                break;
-             }
-             let Message::Text(text) = frame? else {
-                 continue;
-@@ -498,7 +512,7 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
-             let message = serde_json::from_str::<JSONRPCMessage>(&text)?;
-             match message {
-                 JSONRPCMessage::Request(request) if request.method == "initialize" => {
--                    websocket
-+                    let result = websocket
-                         .send(Message::Text(
-                             serde_json::to_string(&JSONRPCMessage::Response(JSONRPCResponse {
-                                 id: request.id,
-@@ -509,7 +523,11 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
-                             }))?
-                             .into(),
-                         ))
--                        .await?;
-+                        .await;
-+                    if result.as_ref().is_err_and(is_recording_client_disconnect) {
-+                        break;
-+                    }
-+                    result?;
-                 }
-                 JSONRPCMessage::Request(request) => {
-                     request_sink
-@@ -770,9 +788,13 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
-                             }
-                         }
-                     };
--                    websocket
-+                    let result = websocket
-                         .send(Message::Text(serde_json::to_string(&response)?.into()))
--                        .await?;
-+                        .await;
-+                    if result.as_ref().is_err_and(is_recording_client_disconnect) {
-+                        break;
-+                    }
-+                    result?;
-                 }
-                 JSONRPCMessage::Notification(notification)
-                     if notification.method == "initialized" => {}
-@@ -1038,6 +1060,211 @@ fn spawn_approved_task_tool_call(
+@@ -1101,6 +1101,211 @@ fn spawn_approved_task_tool_call(
      });
  }
 
@@ -516,7 +401,7 @@ index d7ef85824..3a8cc00fc 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index 9a6adc013..f6546ebb6 100644
+index c8d16dc9c..5741a4987 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
 @@ -121,12 +121,23 @@ impl App {
@@ -573,10 +458,10 @@ index 1957cc4b3..d52fdebcb 100644
              });
              self.add_to_history(
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 23c08f227..3f425202e 100644
+index 93662ffac..4e0285578 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-@@ -93,6 +93,109 @@ async fn resumed_initial_messages_render_history() {
+@@ -115,6 +115,109 @@ async fn resumed_initial_messages_render_history() {
      insta::assert_snapshot!("resumed_daybreak_banner", merged_lines[0]);
  }
 
@@ -805,6 +690,3 @@ index 22e156c3e..a323124c2 100644
      let mut cells: TranscriptCells = Vec::new();
      let mut pending = None;
      for item in items {
--- 
-2.43.0
-

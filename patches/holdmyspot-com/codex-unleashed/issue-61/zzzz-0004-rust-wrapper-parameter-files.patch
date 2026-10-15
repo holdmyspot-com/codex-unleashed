@@ -1,47 +1,46 @@
-From 6d982e7f7e2574912cd0094aa5caf0c37d612895 Mon Sep 17 00:00:00 2001
+From e8b7d80810d495c9a3df3e0081025e95b99d91f6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:14:32 +0000
+Date: Thu, 15 Oct 2026 23:47:11 +0000
 Subject: [PATCH] Transport long Rust wrapper commands through parameter files
 
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue. RED: the unchanged parser rejects a >32767-character wrapper parameter file and loses its read-error cause. GREEN: all seven focused parser tests pass; maintained process_wrapper_test passes; the Rust transport test compiles and runs with 600 environment files. Subcommand evidence confirms process_wrapper @transport_test-0.params. LF and CRLF, backslashes, quotes, spaces, empty arguments and child response-file references are preserved. Evidence: windows-wrapper-gbpNjj wrapper-flags-red.log, wrapper-flags-green.log, wrapper-transport.log and wrapper-maintained-tests.log. Fresh emitted patch and native Windows execution remain required gates.
 ---
- MODULE.bazel                                  |   1 +
+ MODULE.bazel                                  |   3 +-
  patches/BUILD.bazel                           |   1 +
  .../rules_rust_wrapper_parameter_files.patch  | 201 ++++++++++++++++++
  .../build-warnings/wrapper-params/BUILD.bazel |  15 ++
  .../wrapper-params/environment_files.bzl      |  13 ++
  .../wrapper-params/transport.rs               |   4 +
- 6 files changed, 235 insertions(+)
+ 6 files changed, 235 insertions(+), 2 deletions(-)
  create mode 100644 patches/rules_rust_wrapper_parameter_files.patch
  create mode 100644 tools/build-warnings/wrapper-params/BUILD.bazel
  create mode 100644 tools/build-warnings/wrapper-params/environment_files.bzl
  create mode 100644 tools/build-warnings/wrapper-params/transport.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 82a26cef0..97703d27f 100644
+index 6487ffeb4..0e03866b7 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -279,8 +279,9 @@ rules_rust.patch(
+@@ -284,9 +284,8 @@ rules_rust.patch(
+         # Skip transient native-Windows linker outputs while consolidating
+         # dependency search paths.
          "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
-         # Group build-script argument files to avoid Windows command-line limits.
-         "//patches:rules_rust_group_build_script_arg_files.patch",
+-        # Spill wrapper arguments to a params file to avoid Windows command-line limits.
+-        "//patches:rules_rust_process_wrapper_param_file.patch",
          "//patches:rules_rust_cargo_c_standard.patch",
 +        "//patches:rules_rust_wrapper_parameter_files.patch",
          "//patches:rules_rust_windows_execroot_separators.patch",
          "//patches:rules_rust_compiler_thp.patch",
          "//patches:rules_rust_unwind_driver_selection.patch",
-         "//patches:rules_rust_prost_unused_grep.patch",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 5243ca9e6..e53bd694e 100644
+index cb809ec7a..c9c6a9df6 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  exports_files([
 +    "rules_rust_wrapper_parameter_files.patch",
      "aws_lc_c_standard.patch",
      "rules_rust_cargo_c_standard.patch",
      "xz_windows_driver_flags.patch",
-     "ninja_elapsed_time.patch",
 diff --git a/patches/rules_rust_wrapper_parameter_files.patch b/patches/rules_rust_wrapper_parameter_files.patch
 new file mode 100644
 index 000000000..c46e6bee4

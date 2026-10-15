@@ -1,11 +1,8 @@
-From 57c769e94d2d8c1f9c9f91de35c4850985516474 Mon Sep 17 00:00:00 2001
+From 065c110df50845129b70fc11f7a07e041f9c6755 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 04:56:56 +0000
+Date: Thu, 15 Oct 2026 23:47:05 +0000
 Subject: [PATCH] Preserve AWS-LC Windows TLS callbacks with LLVM 22
 
-Backport aws/aws-lc commit 8cca33b97eb64be944a3d90406230676e8a7b931. Retain the MSVC path and use MinGW section attributes plus an explicit _tls_used reference. Include a focused thread-exit cleanup regression in the maintained workspace suite without depending on the unrelated crypto test-data generator.
-
-Red: compiling pinned thread_win.c with Clang 22.1.8 for x86_64-w64-windows-gnu, -Wall -Werror, fails on const_seg pragmas. Green: the same command with the upstream fix exits 0 without diagnostics. COFF inspection confirms the callback in .CRT$XLC and a relocation to _tls_used. Evidence: .cat/work/temp/build-caches/strict-native-inputs/aws-lc-windows-EvKRHd. Emitted Bazel and Windows runtime gates remain pending.
 ---
  MODULE.bazel                            |  6 ++
  patches/BUILD.bazel                     |  1 +
@@ -16,12 +13,12 @@ Red: compiling pinned thread_win.c with Clang 22.1.8 for x86_64-w64-windows-gnu,
  create mode 100644 tools/build-warnings/aws-lc/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index ed0026c81..92a7daaa1 100644
+index cfbabeebd..ffea32d2f 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -159,6 +159,12 @@ single_version_override(
-
+@@ -165,6 +165,12 @@ single_version_override(
  bazel_dep(name = "rules_platform", version = "0.1.0")
+ bazel_dep(name = "rules_pkg", version = "1.0.1")
  bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
 +single_version_override(
 +    module_name = "aws-lc",
@@ -33,7 +30,7 @@ index ed0026c81..92a7daaa1 100644
  bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
  single_version_override(
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index fe3f8a02b..c4be10752 100644
+index 092d29882..afb097b27 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@

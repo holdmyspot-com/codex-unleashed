@@ -1,11 +1,8 @@
-From 0e3307efdf6e0beb348d8d51c2c7c1497159f417 Mon Sep 17 00:00:00 2001
+From 9955d9cc4f4a9991ba74b6d1dcb01895275019aa Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 15:34:12 +0000
+Date: Thu, 15 Oct 2026 23:47:11 +0000
 Subject: [PATCH] Give generated Rust tests bounded default timeouts
 
-Use short default timeouts for unit, binary-unit and integration test wrappers while preserving explicit crate overrides and None semantics. Keep verbose timeout diagnostics active. Analysis regressions reside beside private targets and retain platform compatibility restrictions.
-
-Red: three real-target assertions expect short but observe moderate; long override controls pass. Green: all six analysis checks plus the actual ANSI unit suite pass with --platforms=//:rbe --extra_execution_platforms=//:rbe --test_verbose_timeout_warnings --test_output=errors. The full native platform suites remain acceptance gates. Fresh emitted verification includes just fmt-check and just bazel-lock-check.
 ---
  .../agent-message-board-client/BUILD.bazel    | 12 +++++++-
  codex-rs/ansi-escape/BUILD.bazel              |  9 ++++++
@@ -26,7 +23,7 @@ index cd4f32e25..e27ff908a 100644
 -load("//:defs.bzl", "codex_rust_crate")
 +load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "agent-message-board-client",
      crate_name = "codex_agent_message_board_client",
@@ -47,7 +44,7 @@ index 27622583b..43c69a21b 100644
 @@ -1,6 +1,15 @@
  load("//:defs.bzl", "codex_rust_crate")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "ansi-escape",
      crate_name = "codex_ansi_escape",
@@ -61,20 +58,21 @@ index 27622583b..43c69a21b 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/app-server/BUILD.bazel b/codex-rs/app-server/BUILD.bazel
-index ae19f195c..4108fcd30 100644
+index 051a7dd8e..daa8ba325 100644
 --- a/codex-rs/app-server/BUILD.bazel
 +++ b/codex-rs/app-server/BUILD.bazel
-@@ -1,4 +1,6 @@
+@@ -1,5 +1,7 @@
 -load("//:defs.bzl", "codex_rust_crate")
 +load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
+ load("//bazel/rules:runtime_package.bzl", "release_binary")
 +load("//bazel/rules/testing/wine:wine_runtime.bzl", "WINE_TEST_TARGET_COMPATIBLE_WITH")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "app-server",
-@@ -29,3 +31,29 @@ codex_rust_crate(
-         "//conditions:default": 0,
-     }),
+@@ -34,3 +36,29 @@ codex_rust_crate(
+ release_binary(
+     binary = ":codex-app-server",
  )
 +
 +timeout_test(
@@ -109,7 +107,7 @@ index 78eea8c3d..bd38b7980 100644
 @@ -1,4 +1,5 @@
  load("//:defs.bzl", "codex_rust_crate")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "login",
 @@ -14,3 +15,11 @@ codex_rust_crate(
@@ -125,10 +123,10 @@ index 78eea8c3d..bd38b7980 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/defs.bzl b/defs.bzl
-index f89ddb8e6..d0647785d 100644
+index a297207b8..c6b7a4dc3 100644
 --- a/defs.bzl
 +++ b/defs.bzl
-@@ -226,12 +226,12 @@ def codex_rust_crate(
+@@ -204,12 +204,12 @@ def codex_rust_crate(
          integration_test_args = [],
          unit_test_args = [],
          binary_test_target_compatible_with = [],
@@ -143,7 +141,7 @@ index f89ddb8e6..d0647785d 100644
          extra_binaries = [],
          extra_binaries_non_windows = [],
          run_tests_with_wine_exec = False):
-@@ -276,7 +276,8 @@ def codex_rust_crate(
+@@ -253,7 +253,8 @@ def codex_rust_crate(
          unit_test_args: Optional args for the unit test binary.
          binary_test_target_compatible_with: Platform constraints for binary unit tests.
          integration_test_timeout: Optional Bazel timeout for integration test
@@ -153,7 +151,7 @@ index f89ddb8e6..d0647785d 100644
          test_data_extra: Extra runtime data for tests.
          test_shard_counts: Mapping from generated test target name to Bazel
              shard count. Matching tests use native Bazel sharding on the outer
-@@ -289,7 +290,8 @@ def codex_rust_crate(
+@@ -266,7 +267,8 @@ def codex_rust_crate(
              Typically used to disable the sandbox, but see https://bazel.build/reference/be/common-definitions#common.tags
          test_threads: Optional Rust test thread limit for sharded integration tests.
          unit_test_timeout: Optional Bazel timeout for the unit-test target
@@ -208,6 +206,3 @@ index 000000000..64ee601a8
 +    attrs = {"expected_timeout": attr.string(mandatory = True)},
 +    extra_target_under_test_aspects = [_timeout_aspect],
 +)
--- 
-2.43.0
-

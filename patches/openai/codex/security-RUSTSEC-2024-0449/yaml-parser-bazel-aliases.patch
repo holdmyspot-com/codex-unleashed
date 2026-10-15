@@ -1,24 +1,8 @@
-From f6297a99f07d7045d42f46e1a915721217228638 Mon Sep 17 00:00:00 2001
+From 04b5168d5f8df20722d6950b130ce1cf7420a899 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 01:19:24 -0400
+Date: Thu, 15 Oct 2026 23:47:13 +0000
 Subject: [PATCH] Preserve Cargo dependency aliases in Bazel Rust targets
 
-Restrict alias labels to each target's normal, development, or build
- dependencies and preserve platform conditions. This avoids introducing
- development-only dependency cycles into ordinary library builds.
-
-Include an integration regression that uses the maintained YAML parser
- through its serde_yaml alias and verifies the public skill metadata.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d).
-Prerequisite for the renamed-parser regression: maintained-yaml-parser.patch.
-
-Red: bazel test //codex-rs/skills:skills-yaml_dependency_alias-test
- without the macro repair fails E0433 resolving serde_yaml. Evidence:
- final-queue-verification-z5VhEx/yaml-alias-regression-red.log.
-Green: the regression and skills-unit-tests pass with scoped aliases.
- Evidence: yaml-alias-regression-green.log. just fmt-check passes:
- yaml-alias-format.log. Fresh emitted acceptance remains required.
 ---
  .../skills/tests/yaml_dependency_alias.rs     | 16 ++++++++++
  defs.bzl                                      | 29 +++++++++++++++++++
@@ -48,10 +32,10 @@ index 000000000..4c2e6b5aa
 +    );
 +}
 diff --git a/defs.bzl b/defs.bzl
-index a3bf72185..34fa7fca2 100644
+index fbc8a489d..4160df457 100644
 --- a/defs.bzl
 +++ b/defs.bzl
-@@ -183,6 +183,27 @@ workspace_root_test = rule(
+@@ -195,6 +195,27 @@ workspace_root_test = rule(
      },
  )
 
@@ -79,15 +63,15 @@ index a3bf72185..34fa7fca2 100644
  def codex_rust_crate(
          name,
          crate_name,
-@@ -320,6 +341,7 @@ def codex_rust_crate(
-         cargo_build_script(
+@@ -337,6 +358,7 @@ def codex_rust_crate(
              name = name + "-build-script",
+             pkg_name = package_data["package_name"],
              srcs = ["build.rs"],
 +            aliases = _crate_aliases(package_data, ["build_deps"]),
              deps = all_crate_deps(build = True),
              data = build_script_data,
              version = crate_version,
-@@ -333,6 +355,7 @@ def codex_rust_crate(
+@@ -350,6 +372,7 @@ def codex_rust_crate(
              name = name,
              crate_name = crate_name,
              crate_features = crate_features,
@@ -95,7 +79,7 @@ index a3bf72185..34fa7fca2 100644
              deps = all_crate_deps() + maybe_deps + deps_extra,
              compile_data = compile_data,
              data = lib_data_extra,
-@@ -356,6 +379,7 @@ def codex_rust_crate(
+@@ -373,6 +396,7 @@ def codex_rust_crate(
              name = unit_test_binary,
              crate = name,
              crate_features = crate_features,
@@ -103,15 +87,15 @@ index a3bf72185..34fa7fca2 100644
              deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
              # Unit tests also compile to standalone Windows executables, so
              # keep their stack reserve aligned with binaries and integration
-@@ -410,6 +434,7 @@ def codex_rust_crate(
+@@ -427,6 +451,7 @@ def codex_rust_crate(
              name = binary,
              crate_name = binary.replace("-", "_"),
              crate_root = main,
 +            aliases = _crate_aliases(package_data, ["deps"]),
              deps = all_crate_deps() + maybe_deps + deps_extra,
              edition = crate_edition,
-             # Keep per-binary Cargo link behavior scoped to the matching
-@@ -440,6 +465,7 @@ def codex_rust_crate(
+             # Scope each binary's compile data and linker flags to its generated
+@@ -458,6 +483,7 @@ def codex_rust_crate(
              name = binary_unit_test_binary,
              crate = ":" + binary,
              crate_features = crate_features,
@@ -119,7 +103,7 @@ index a3bf72185..34fa7fca2 100644
              deps = all_crate_deps(normal_dev = True),
              rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
                  "--remap-path-prefix=../codex-rs=",
-@@ -569,6 +595,7 @@ def codex_rust_crate(
+@@ -587,6 +613,7 @@ def codex_rust_crate(
                  srcs = [test],
                  data = integration_test_files + integration_test_binaries + integration_test_data_extra,
                  compile_data = integration_test_files + integration_compile_data_extra,
@@ -127,7 +111,7 @@ index a3bf72185..34fa7fca2 100644
                  deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
                  # Bazel has emitted both `codex-rs/<crate>/...` and
                  # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
-@@ -610,6 +637,7 @@ def codex_rust_crate(
+@@ -629,6 +656,7 @@ def codex_rust_crate(
                  srcs = [test],
                  data = integration_test_files + integration_test_binaries + integration_test_data_extra,
                  compile_data = integration_test_files + integration_compile_data_extra,
@@ -135,7 +119,7 @@ index a3bf72185..34fa7fca2 100644
                  deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
                  # Bazel has emitted both `codex-rs/<crate>/...` and
                  # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
-@@ -686,6 +714,7 @@ def codex_rust_crate(
+@@ -706,6 +734,7 @@ def codex_rust_crate(
              srcs = [test],
              data = integration_test_files + integration_test_binaries + integration_test_data_extra,
              compile_data = integration_test_files + integration_compile_data_extra,

@@ -1,20 +1,19 @@
-From c01e9da33709a00f4871a891ecdcbe9551aab095 Mon Sep 17 00:00:00 2001
+From a22e6c8712e27fc3940043ddcae6e6b8d5c7af49 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:55:22 +0000
+Date: Thu, 15 Oct 2026 23:47:11 +0000
 Subject: [PATCH] Align Cargo build-script target features with Rust runtime
  flags
 
-The native MSVC action regression fails without the toolchain crt-static flag. A real static build script then fails because its CARGO_CFG_TARGET_FEATURE ignores encoded flags. Both regressions and the dynamic control pass after exporting toolchain flags and querying rustc cfg with those flags. Native Windows compiler acceptance remains required.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
- patches/rules_rust_cargo_runtime_flags.patch  | 81 +++++++++++++++++++
- .../build-warnings/cargo-runtime/BUILD.bazel  | 57 +++++++++++++
+ patches/rules_rust_cargo_runtime_flags.patch  | 69 +++++++++++++++++++
+ .../build-warnings/cargo-runtime/BUILD.bazel  | 57 +++++++++++++++
  tools/build-warnings/cargo-runtime/build.rs   | 10 +++
  tools/build-warnings/cargo-runtime/empty.rs   |  1 +
  .../cargo-runtime/flags_test.bzl              | 18 +++++
- tools/build-warnings/cargo-runtime/runtime.rs |  4 +
- 8 files changed, 173 insertions(+)
+ tools/build-warnings/cargo-runtime/runtime.rs |  4 ++
+ 8 files changed, 161 insertions(+)
  create mode 100644 patches/rules_rust_cargo_runtime_flags.patch
  create mode 100644 tools/build-warnings/cargo-runtime/BUILD.bazel
  create mode 100644 tools/build-warnings/cargo-runtime/build.rs
@@ -23,63 +22,49 @@ The native MSVC action regression fails without the toolchain crt-static flag. A
  create mode 100644 tools/build-warnings/cargo-runtime/runtime.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 2becee37f..c16078c69 100644
+index 61741154e..4b644c0fa 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -281,8 +281,9 @@ rules_rust.patch(
-         # Group build-script argument files to avoid Windows command-line limits.
-         "//patches:rules_rust_group_build_script_arg_files.patch",
+@@ -287,6 +287,7 @@ rules_rust.patch(
+         "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
          "//patches:rules_rust_cargo_c_standard.patch",
          "//patches:rules_rust_wrapper_parameter_files.patch",
 +        "//patches:rules_rust_cargo_runtime_flags.patch",
          "//patches:rules_rust_windows_execroot_separators.patch",
          "//patches:rules_rust_compiler_thp.patch",
          "//patches:rules_rust_unwind_driver_selection.patch",
-         "//patches:rules_rust_prost_unused_grep.patch",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 1a29d72de..c8c198189 100644
+index a54bd81a6..333408e68 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  exports_files([
 +    "rules_rust_cargo_runtime_flags.patch",
      "make_c_standard.patch",
      "rules_rust_wrapper_parameter_files.patch",
      "aws_lc_c_standard.patch",
-     "rules_rust_cargo_c_standard.patch",
 diff --git a/patches/rules_rust_cargo_runtime_flags.patch b/patches/rules_rust_cargo_runtime_flags.patch
 new file mode 100644
-index 000000000..11f1673fd
+index 000000000..94a202ce0
 --- /dev/null
 +++ b/patches/rules_rust_cargo_runtime_flags.patch
-@@ -0,0 +1,81 @@
-+From ad0d1ef322b2f45ef07906810d07edc49958a7c1 Mon Sep 17 00:00:00 2001
+@@ -0,0 +1,69 @@
++From d345752def8f4e25f05978930844afc2ad3a058b Mon Sep 17 00:00:00 2001
 +From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Thu, 15 Oct 2026 12:56:02 +0000
++Date: Thu, 15 Oct 2026 19:45:06 -0400
 +Subject: [PATCH] Query Cargo target features with configured Rust runtime
 + flags
 +
 +---
-+ cargo/private/cargo_build_script.bzl          |  5 +++-
++ cargo/private/cargo_build_script.bzl          |  4 ++-
 + .../private/cargo_build_script_runner/bin.rs  | 27 ++++++++++++++-----
-+ 2 files changed, 25 insertions(+), 7 deletions(-)
++ 2 files changed, 24 insertions(+), 7 deletions(-)
 +
 +diff --git a/cargo/private/cargo_build_script.bzl b/cargo/private/cargo_build_script.bzl
-+index a02227a..7b84174 100644
++index 3865418..ad1007b 100644
 +--- a/cargo/private/cargo_build_script.bzl
 ++++ b/cargo/private/cargo_build_script.bzl
-+@@ -22,8 +22,9 @@ load(
-+     "deduplicate",
-+     "expand_dict_value_locations",
-+     "find_cc_toolchain",
-+     "find_toolchain",
-++    "is_exec_configuration",
-+     _name_to_crate_name = "name_to_crate_name",
-+ )
-+
-+ # Reexport for cargo_build_script_wrapper.bzl
-+@@ -539,12 +540,14 @@ def _cargo_build_script_impl(ctx):
-+         # ARFLAGS, make changes to cc-rs.
++@@ -603,10 +603,12 @@ def _cargo_build_script_impl(ctx):
 +
 +     # Inform build scripts of rustc flags
 +     # https://github.com/rust-lang/cargo/issues/9600
@@ -93,13 +78,11 @@ index 000000000..11f1673fd
 +
 +     for f in ctx.attr.crate_features:
 +         env["CARGO_FEATURE_" + f.upper().replace("-", "_")] = "1"
-+
 +diff --git a/cargo/private/cargo_build_script_runner/bin.rs b/cargo/private/cargo_build_script_runner/bin.rs
 +index 140f535..a235b88 100644
 +--- a/cargo/private/cargo_build_script_runner/bin.rs
 ++++ b/cargo/private/cargo_build_script_runner/bin.rs
-+@@ -471,14 +471,29 @@ impl Args {
-+ }
++@@ -472,12 +472,27 @@ impl Args {
 +
 + fn get_target_env_vars<P: AsRef<Path>>(rustc: &P) -> Result<BTreeMap<String, String>, String> {
 +     // As done by Cargo when constructing a cargo::core::compiler::build_context::target_info::TargetInfo.
@@ -133,7 +116,8 @@ index 000000000..11f1673fd
 +         .output()
 +         .map_err(|err| format!("Error running rustc to get target information: {err}"))?;
 +     if !output.status.success() {
-+         return Err(format!(
++--
++2.43.0
 diff --git a/tools/build-warnings/cargo-runtime/BUILD.bazel b/tools/build-warnings/cargo-runtime/BUILD.bazel
 new file mode 100644
 index 000000000..7d8dbc9be

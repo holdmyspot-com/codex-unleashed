@@ -1,14 +1,9 @@
-From 1bf84ca29c9a29a0cbc71e767982089e8180316a Mon Sep 17 00:00:00 2001
+From 9239762e780a632567ada68b4a6d4712be2c8998 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 04:03:14 +0000
+Date: Thu, 15 Oct 2026 23:47:05 +0000
 Subject: [PATCH] Correct MinGW native function guard and enforce strict
  preprocessing
 
-Use a valid identifier in the F_X86_NATIVE guard and preserve its architecture-dependent expansion. Make generated import definitions reject warnings. Include x86-64 and ARM64 regression tests through the actual hermetic Clang and MinGW inputs.
-
-TDD: both Bazel regression targets fail on the original header with extra tokens at end of #ifndef (bazel-red.log, exit 1). Both pass after the fix (bazel-green-second.log, exit 0). Actual msvcr90d.def and ucrtbase.def generation with fatal diagnostics passes (def-generation.log, exit 0). just fmt-check passes (format.log); emitted checks are recorded separately.
-
-Base: rust-v0.162.1, 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Refs holdmyspot-com/codex-unleashed#61.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
@@ -22,7 +17,7 @@ Base: rust-v0.162.1, 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Refs holdmyspot-c
  create mode 100644 tools/build-warnings/mingw_function_guard.c
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 2610b8b10..d8479c786 100644
+index 6e8afe638..93c84ae31 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -18,6 +18,7 @@ single_version_override(
@@ -34,17 +29,17 @@ index 2610b8b10..d8479c786 100644
      ],
  )
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index f3d9a5513..49e72c4b1 100644
+index be012dc86..5b6d8453f 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -6,6 +6,7 @@ exports_files([
+@@ -7,6 +7,7 @@ exports_files([
      "llvm_rusty_v8_custom_libcxx.patch",
      "llvm_windows_arm64_powl.patch",
      "llvm_windows_mingw_compat.patch",
 +    "llvm_mingw_function_guard.patch",
+     "mxc-sdk_utf8_resources.patch",
      "rules_rust_build_script_tools_transition.patch",
      "rules_rust_compiler_thp.patch",
-     "rules_rust_group_build_script_arg_files.patch",
 diff --git a/patches/llvm_mingw_function_guard.patch b/patches/llvm_mingw_function_guard.patch
 new file mode 100644
 index 000000000..0da47e01a

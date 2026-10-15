@@ -1,11 +1,8 @@
-From 0946cd9a506df841cedafedf9dea73080e70b867 Mon Sep 17 00:00:00 2001
+From 0faff291c6b5c2a04526b98605e285905c548491 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 18:19:43 -0400
+Date: Thu, 15 Oct 2026 23:47:08 +0000
 Subject: [PATCH] Upgrade foreign build tools while enforcing compiler warnings
 
-Select stable rules_foreign_cc 0.16.0, CMake 4.4.4, Meson 1.12.1, Ninja 1.13.2, rules_python 2.4.2, Make 4.4.1.bcr.2, rules_cc_autoconf 0.27.0 and bazel_skylib 1.9.2. Preserve declared Python runfiles, LLVM linker resources and Make source repairs. Remove obsolete bootstrap overrides and use explicit Meson compile arguments.
-
-Verification: CMake version probe fails on 3.31.8 and passes on 4.4.4. Make warning-policy regression rejects all 32 suppressed compilation actions before repair; warning-policy and runtime tests pass after repair. Meson resource probe reproduces the missing runtime archive without the retained fix and passes with it. The complete Linux native prefix builds with fatal diagnostics. Maintained just fmt-check and just bazel-lock-check pass after workspace package resolution. Base: rust-v0.162.1 / 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Hosted platform and emitted-patch verification remain separate gates.
 ---
  MODULE.bazel                                  |  65 +-
  MODULE.bazel.lock                             | 752 ++++++++++++++----
@@ -39,7 +36,7 @@ Verification: CMake version probe fails on 3.31.8 and passes on 4.4.4. Make warn
  create mode 100644 tools/build-warnings/make-bootstrap/warnings_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 00fa714c6..28f585ff5 100644
+index 4ae7ddd61..ed19a5182 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -1,7 +1,7 @@
@@ -51,7 +48,7 @@ index 00fa714c6..28f585ff5 100644
  bazel_dep(name = "platforms", version = "1.1.0")
 
  # Expose the public protobuf rules already used transitively by rules_rs.
-@@ -181,40 +181,56 @@ single_version_override(
+@@ -186,40 +186,56 @@ single_version_override(
  )
 
  bazel_dep(name = "rules_rs", version = "0.0.96")
@@ -126,7 +123,7 @@ index 00fa714c6..28f585ff5 100644
 
  single_version_override(
      module_name = "rules_rs",
-@@ -542,17 +558,6 @@ crate.annotation(
+@@ -551,17 +567,6 @@ crate.annotation(
 
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -145,7 +142,7 @@ index 00fa714c6..28f585ff5 100644
      name = "pkgconf_src",
      build_file_content = 'filegroup(name = "all_srcs", srcs = glob(["**"]), visibility = ["//visibility:public"])',
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 66834a8e9..add18e03e 100644
+index e45089e10..1e56309b2 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -49,17 +49,21 @@
@@ -994,7 +991,7 @@ index 66834a8e9..add18e03e 100644
        "Inflector_0.11.4": "{\"dependencies\":[{\"name\":\"lazy_static\",\"optional\":true,\"req\":\"^1.2.0\"},{\"name\":\"regex\",\"optional\":true,\"req\":\"^1.1\"}],\"features\":{\"default\":[\"heavyweight\"],\"heavyweight\":[\"regex\",\"lazy_static\"],\"unstable\":[]}}",
        "addr2line_0.25.1": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.13\"},{\"features\":[\"wrap_help\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4.3.21\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"cpp_demangle\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"fallible-iterator\",\"optional\":true,\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"findshlibs\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"read\"],\"name\":\"gimli\",\"req\":\"^0.32.0\"},{\"kind\":\"dev\",\"name\":\"libtest-mimic\",\"req\":\"^0.8.1\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"read\",\"compression\"],\"name\":\"object\",\"optional\":true,\"req\":\"^0.37.0\"},{\"name\":\"rustc-demangle\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"smallvec\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"typed-arena\",\"optional\":true,\"req\":\"^2\"}],\"features\":{\"all\":[\"bin\",\"wasm\"],\"bin\":[\"loader\",\"rustc-demangle\",\"cpp_demangle\",\"fallible-iterator\",\"smallvec\",\"dep:clap\"],\"cargo-all\":[],\"default\":[\"rustc-demangle\",\"cpp_demangle\",\"loader\",\"fallible-iterator\",\"smallvec\"],\"loader\":[\"std\",\"dep:object\",\"dep:memmap2\",\"dep:typed-arena\"],\"rustc-dep-of-std\":[\"core\",\"alloc\",\"gimli/rustc-dep-of-std\"],\"std\":[\"gimli/std\"],\"wasm\":[\"object/wasm\"]}}",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 7625ceac4..5beefe082 100644
+index 5b6d8453f..7b8677586 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,8 @@
@@ -1006,7 +1003,7 @@ index 7625ceac4..5beefe082 100644
      "aws_lc_windows_tls.patch",
      "rules_rust_unwind_driver_selection.patch",
      "llvm_warnings_as_errors.patch",
-@@ -15,10 +19,6 @@ exports_files([
+@@ -17,10 +21,6 @@ exports_files([
      "rules_rust_windows_msvc_direct_link_args.patch",
      "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
      "rules_cc_rusty_v8_custom_libcxx.patch",
@@ -1512,7 +1509,7 @@ index 000000000..92dfaa03d
 ++    ),
 + }
 diff --git a/third_party/voice/BUILD.bazel b/third_party/voice/BUILD.bazel
-index 119fc7e28..9c172eadb 100644
+index a3ff636c9..d66a03205 100644
 --- a/third_party/voice/BUILD.bazel
 +++ b/third_party/voice/BUILD.bazel
 @@ -87,10 +87,6 @@ toolchain(
@@ -1544,7 +1541,7 @@ index 119fc7e28..9c172eadb 100644
      visibility = ["//visibility:public"],
  )
 diff --git a/third_party/voice/native.bzl b/third_party/voice/native.bzl
-index 96c889648..99d489fa4 100644
+index 087c4c062..35a95d102 100644
 --- a/third_party/voice/native.bzl
 +++ b/third_party/voice/native.bzl
 @@ -3,6 +3,8 @@
@@ -1565,9 +1562,9 @@ index 96c889648..99d489fa4 100644
 +        "set_file_prefix_map": CC_EXTERNAL_RULE_ATTRIBUTES["set_file_prefix_map"],
 +        "_set_file_prefix_map_default": CC_EXTERNAL_RULE_ATTRIBUTES["_set_file_prefix_map_default"],
          "archives": attr.label_list(allow_files = True, mandatory = True),
+         "copts": attr.string_list(),
          "target": attr.string(mandatory = True),
-         "_driver": attr.label(default = "//third_party/voice:bazel_native.py", allow_single_file = True),
-@@ -105,7 +111,7 @@ native_prefix = rule(
+@@ -106,7 +112,7 @@ native_prefix = rule(
          "_readelf": attr.label(default = "@llvm//tools:llvm-readelf", executable = True, allow_files = True, cfg = "exec"),
          "_ld": attr.label(default = "//third_party/voice:pkg_config_linker", executable = True, allow_files = True, cfg = "exec"),
          "_pkg_config": attr.label(default = "//third_party/voice:pkg_config", allow_single_file = True, cfg = "exec"),

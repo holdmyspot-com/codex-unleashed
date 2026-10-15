@@ -1,31 +1,11 @@
-From 2ea3cc20d0f39c6c7a50fad8c41808ade6249d9d Mon Sep 17 00:00:00 2001
+From 480f998b61638a985a6bc66e02be580446e78632 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 01:17:33 +0000
+Date: Thu, 15 Oct 2026 23:47:05 +0000
 Subject: [PATCH] build: support stable Rust 1.99 and Bazel 9.3
 
-Align Cargo, Bazel, Windows setup, and upstream workflow callers with
-Rust 1.99. Refresh Bazel's embedded dependency selections and lock data.
-Update compiler/Clippy compatibility without weakening the lint policy,
-and compare rendered cells and spans independently of Unicode Debug escapes.
-Remove the inert unwind driver argument that produces a Clang diagnostic.
-
-Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/60
-WORKAROUND: https://github.com/hermeticbuild/hermetic-llvm/issues/304
-Remove the unwind adaptation when the upstream linker argument selection
-omits that inert option for Rust links.
-
-Verification records: latest-toolchains-MzFT3d/acceptance.md and
-strict-build-warnings-smF5Al/acceptance.md under .cat/work/temp.
-The halfwidth rendering regression fails on the declared upstream base and
-passes with the explicit cell/span assertions. Rust 1.99 workspace Clippy
-passes. Authoring just fmt-check and just test-github-scripts pass after
-aligning nine workflow/action files. Scope transaction reports no outside
-changes. Cargo.lock workspace-version normalization is excluded.
-
-Fresh emitted-patch and full hosted/platform acceptance remain required.
 ---
  .bazelversion                                 |   2 +-
- .../actions/build-codex-packages/action.yml   |   2 +-
+ .../build-cargo-package-binaries/action.yml   |   2 +-
  .github/workflows/cargo-deny.yml              |   4 +-
  .../rust-ci-full-nextest-platform.yml         |   4 +-
  .github/workflows/rust-ci-full.yml            |   6 +-
@@ -35,11 +15,9 @@ Fresh emitted-patch and full hosted/platform acceptance remain required.
  .github/workflows/rusty-v8-release.yml        |  10 +-
  .github/workflows/v8-canary.yml               |  10 +-
  MODULE.bazel                                  |   9 +-
- MODULE.bazel.lock                             | 225 ++++++++--------
- codex-rs/Cargo.lock                           | 250 +++++++++---------
+ MODULE.bazel.lock                             | 225 +++++++++---------
  codex-rs/agent-identity/src/lib.rs            |   1 -
  codex-rs/app-server/src/message_processor.rs  |   6 +-
- .../tests/suite/v2/turn_start_zsh_fork.rs     |   2 +-
  .../src/session_runtime/mod.rs                |   2 +-
  .../src/connection_manager/startup.rs         |   3 +-
  codex-rs/core/src/realtime_conversation.rs    |   6 +-
@@ -51,7 +29,7 @@ Fresh emitted-patch and full hosted/platform acceptance remain required.
  codex-rs/exec/src/lib.rs                      |   4 +-
  codex-rs/ext/skills/src/provider/executor.rs  |   4 +-
  codex-rs/external-agent-migration/src/mcp.rs  |   5 +-
- .../otel/tests/suite/otlp_http_loopback.rs    |  42 +--
+ .../otel/tests/suite/otlp_http_loopback.rs    |  42 ++--
  codex-rs/rust-toolchain.toml                  |   2 +-
  codex-rs/scripts/setup-windows.ps1            |   2 +-
  codex-rs/shell-command/src/bash.rs            |   7 +-
@@ -75,7 +53,7 @@ Fresh emitted-patch and full hosted/platform acceptance remain required.
  codex-rs/websocket-auth/src/lib.rs            |   2 +-
  patches/BUILD.bazel                           |   1 +
  .../rules_rust_unwind_driver_selection.patch  |  15 ++
- 51 files changed, 377 insertions(+), 354 deletions(-)
+ 49 files changed, 251 insertions(+), 228 deletions(-)
  create mode 100644 patches/rules_rust_unwind_driver_selection.patch
 
 diff --git a/.bazelversion b/.bazelversion
@@ -85,13 +63,13 @@ index deeb3d66e..b13d146a7 100644
 @@ -1 +1 @@
 -9.2.0
 +9.3.0
-diff --git a/.github/actions/build-codex-packages/action.yml b/.github/actions/build-codex-packages/action.yml
-index ac1bd2ea5..fde56a2a0 100644
---- a/.github/actions/build-codex-packages/action.yml
-+++ b/.github/actions/build-codex-packages/action.yml
-@@ -67,7 +67,7 @@ runs:
-         sudo apt-get update -y
-         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils make pkg-config libcap-dev
+diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
+index 84a35f5ec..730c7fdc7 100644
+--- a/.github/actions/build-cargo-package-binaries/action.yml
++++ b/.github/actions/build-cargo-package-binaries/action.yml
+@@ -39,7 +39,7 @@ runs:
+           *) echo "Unsupported build mode: $BUILD_MODE" >&2; exit 1 ;;
+         esac
 
 -    - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +    - uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
@@ -202,23 +180,23 @@ index 48bee976c..0e122266b 100644
          shell: bash
          run: |
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
-index 0ac0b8036..23ff22835 100644
+index 0f28688ee..e4751564f 100644
 --- a/.github/workflows/rust-release-windows.yml
 +++ b/.github/workflows/rust-release-windows.yml
-@@ -84,7 +84,7 @@ jobs:
-           Write-Host "Total RAM: $ramGiB GiB"
+@@ -100,7 +100,7 @@ jobs:
            Write-Host "Disk usage:"
            Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
+       - name: Set up Rust toolchain
+-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
          with:
-           targets: ${{ matrix.target }}
+           targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
 
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index f06bff1dc..48f0bf9a4 100644
+index 42011c686..8b3015280 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -32,7 +32,7 @@ jobs:
+@@ -30,7 +30,7 @@ jobs:
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
            persist-credentials: false
@@ -227,14 +205,14 @@ index f06bff1dc..48f0bf9a4 100644
        - name: Validate tag matches Cargo.toml version
          shell: bash
          run: |
-@@ -173,7 +173,7 @@ jobs:
-           set -euo pipefail
+@@ -183,7 +183,7 @@ jobs:
            sudo apt-get update -y
            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
+       - name: Set up Rust toolchain
+-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
          with:
-           targets: ${{ matrix.target }}
+           targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
 
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 index 32ec3af83..15b05c2b5 100644
@@ -311,7 +289,7 @@ index 94f1aa019..becd13964 100644
 
        - name: Upload staged artifacts
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 3fd011a3c..7d00c8cd5 100644
+index d946666be..b7f1c4905 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -2,7 +2,7 @@ module(name = "codex")
@@ -323,7 +301,7 @@ index 3fd011a3c..7d00c8cd5 100644
 
  # Expose the public protobuf rules already used transitively by rules_rs.
  bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
-@@ -140,8 +140,8 @@ osx.frameworks(names = [
+@@ -144,8 +144,8 @@ osx.libraries(names = [
  use_repo(osx, "macos_sdk")
 
  # Needed to disable xcode...
@@ -334,25 +312,25 @@ index 3fd011a3c..7d00c8cd5 100644
 
  # Windows voice jobs explicitly select the installed MSVC C toolchains.
  cc_configure = use_extension("@rules_cc//cc:extensions.bzl", "cc_configure_extension")
-@@ -213,6 +213,7 @@ rules_rust.patch(
-         "//patches:rules_rust_group_build_script_arg_files.patch",
+@@ -220,6 +220,7 @@ rules_rust.patch(
+         "//patches:rules_rust_process_wrapper_param_file.patch",
          "//patches:rules_rust_windows_execroot_separators.patch",
          "//patches:rules_rust_compiler_thp.patch",
 +        "//patches:rules_rust_unwind_driver_selection.patch",
      ],
      strip = 1,
  )
-@@ -291,7 +292,7 @@ use_repo(nightly_rust, "rust_toolchains")
- toolchains = use_extension("@rules_rs//rs/toolchains:module_extension.bzl", "toolchains")
- toolchains.toolchain(
+@@ -308,7 +309,7 @@ toolchains.toolchain(
      edition = "2024",
+     extra_exec_rustc_flags = MSVC_RUSTC_FLAGS,
+     extra_rustc_flags = MSVC_RUSTC_FLAGS,
 -    version = "1.95.0",
 +    version = "1.99.0",
  )
  use_repo(toolchains, "default_rust_toolchains")
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index d43417521..6ab85c5ba 100644
+index c49a5d67e..970baab6e 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -23,9 +23,8 @@
@@ -448,7 +426,7 @@ index d43417521..6ab85c5ba 100644
        "asynk-strim_0.1.5": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-fn-stream\",\"req\":\"^0.3.2\"},{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.6\"},{\"default_features\":false,\"features\":[\"cargo_bench_support\",\"plotters\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"futures-core\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.3.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.14\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.99\"}],\"features\":{}}",
        "atoi_2.0.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"req\":\"^0.2.14\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"num-traits/std\"]}}",
        "atomic-polyfill_1.0.3": "{\"dependencies\":[{\"name\":\"critical-section\",\"req\":\"^1.0.0\"}],\"features\":{}}",
-@@ -1824,9 +1823,11 @@
+@@ -1827,9 +1826,11 @@
        "thiserror-impl-no-std_2.0.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"name\":\"syn\",\"req\":\"^1.0.45\"}],\"features\":{\"std\":[]}}",
        "thiserror-impl_1.0.69": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
        "thiserror-impl_2.0.18": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.74\"},{\"name\":\"quote\",\"req\":\"^1.0.35\"},{\"name\":\"syn\",\"req\":\"^2.0.87\"}],\"features\":{}}",
@@ -460,7 +438,7 @@ index d43417521..6ab85c5ba 100644
        "thread_local_1.1.9": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"}],\"features\":{\"nightly\":[]}}",
        "threadpool_1.8.1": "{\"dependencies\":[{\"name\":\"num_cpus\",\"req\":\"^1.13\"}],\"features\":{}}",
        "tiff_0.10.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.1\"},{\"name\":\"fax34\",\"optional\":true,\"package\":\"fax\",\"req\":\"^0.2.6\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.0.20\"},{\"name\":\"half\",\"req\":\"^2.4.1\"},{\"name\":\"quick-error\",\"req\":\"^2.0.1\"},{\"name\":\"weezl\",\"optional\":true,\"req\":\"^0.1.10\"},{\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"zune-jpeg\",\"optional\":true,\"req\":\"^0.4.17\"}],\"features\":{\"default\":[\"deflate\",\"fax\",\"jpeg\",\"lzw\"],\"deflate\":[\"dep:flate2\"],\"fax\":[\"dep:fax34\"],\"jpeg\":[\"dep:zune-jpeg\"],\"lzw\":[\"dep:weezl\"],\"zstd\":[\"dep:zstd\"]}}",
-@@ -2123,107 +2124,107 @@
+@@ -2126,107 +2127,107 @@
        "zvariant_utils_2.1.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"}],\"features\":{}}"
      },
      "@@rules_rs+//rs/toolchains:module_extension.bzl%toolchains": {
@@ -669,1103 +647,6 @@ index d43417521..6ab85c5ba 100644
      },
      "@@windows_support+//windows:extensions.bzl%msvc_runtime": {
        "visual_studio_installer_manifest_v1": {
-diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 74ee187a0..b034de5df 100644
---- a/codex-rs/Cargo.lock
-+++ b/codex-rs/Cargo.lock
-@@ -215,7 +215,7 @@ dependencies = [
-  "ratatui-core",
-  "simdutf8",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -316,7 +316,7 @@ dependencies = [
-  "sandbox_spec",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "widestring",
-  "windows 0.62.2",
-  "windows-core 0.62.2",
-@@ -421,7 +421,7 @@ dependencies = [
-  "nom 7.1.3",
-  "num-traits",
-  "rusticata-macros",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
- ]
-
-@@ -646,13 +646,13 @@ checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
-
- [[package]]
- name = "async-trait"
--version = "0.1.89"
-+version = "0.1.92"
- source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
-+checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
- dependencies = [
-  "proc-macro2",
-  "quote",
-- "syn 2.0.117",
-+ "syn 3.0.3",
- ]
-
- [[package]]
-@@ -1563,7 +1563,7 @@ dependencies = [
-  "cached_proc_macro_types",
-  "hashbrown 0.15.5",
-  "once_cell",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "web-time",
- ]
-
-@@ -1890,7 +1890,7 @@ version = "0.3.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
- dependencies = [
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -1916,7 +1916,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
- ]
-
-@@ -2059,7 +2059,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-test",
-  "tokio-tungstenite",
-@@ -2168,7 +2168,7 @@ dependencies = [
-  "tar",
-  "tempfile",
-  "test-case",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tikv-jemallocator",
-  "time",
-  "tokio",
-@@ -2265,7 +2265,7 @@ dependencies = [
-  "similar",
-  "strum_macros 0.28.0",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
-  "ts-rs",
-  "uuid",
-@@ -2354,7 +2354,7 @@ dependencies = [
-  "pretty_assertions",
-  "similar",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tree-sitter",
-  "tree-sitter-bash",
-@@ -2424,7 +2424,7 @@ dependencies = [
-  "rcgen",
-  "rustls",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-rustls",
-  "url",
-@@ -2634,7 +2634,7 @@ dependencies = [
-  "hyper-util",
-  "pretty_assertions",
-  "prost",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-rustls",
-  "tonic",
-@@ -2664,7 +2664,7 @@ dependencies = [
-  "serde_json",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
- ]
-@@ -2714,7 +2714,7 @@ dependencies = [
-  "codex-http-client",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -2854,7 +2854,7 @@ dependencies = [
-  "serde_path_to_error",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-stream",
-  "toml 0.9.11+spec-1.1.0",
-@@ -2911,7 +2911,7 @@ dependencies = [
-  "codex-plugin",
-  "codex-utils-path-uri",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
- ]
-
-@@ -3047,7 +3047,7 @@ dependencies = [
-  "tempfile",
-  "test-case",
-  "test-log",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-tungstenite",
-  "tokio-util",
-@@ -3098,7 +3098,7 @@ dependencies = [
-  "semver",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -3146,7 +3146,7 @@ dependencies = [
-  "sha2 0.10.9",
-  "tar",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "toml 0.9.11+spec-1.1.0",
-  "tracing",
-@@ -3273,7 +3273,7 @@ dependencies = [
-  "serial_test",
-  "tempfile",
-  "test-case",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-tungstenite",
-  "tokio-util",
-@@ -3333,7 +3333,7 @@ dependencies = [
-  "shlex",
-  "starlark",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
- ]
-
-@@ -3525,7 +3525,7 @@ dependencies = [
-  "serde",
-  "similar",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "ts-rs",
-  "walkdir",
-@@ -3622,7 +3622,7 @@ dependencies = [
-  "pretty_assertions",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "uuid",
-@@ -3734,7 +3734,7 @@ dependencies = [
-  "sha2 0.10.9",
-  "system-configuration",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "tracing-opentelemetry",
-@@ -3873,7 +3873,7 @@ dependencies = [
-  "serial_test",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tiny_http",
-  "tokio",
-  "tracing",
-@@ -3917,7 +3917,7 @@ dependencies = [
-  "serde_json",
-  "sha1 0.10.6",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-util",
-  "tracing",
-@@ -3950,7 +3950,7 @@ dependencies = [
-  "pretty_assertions",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-util",
-  "tracing",
-@@ -3975,7 +3975,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
- ]
-
-@@ -4136,7 +4136,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracelogging",
-  "windows-sys 0.61.2",
-  "wxc_common",
-@@ -4182,7 +4182,7 @@ dependencies = [
-  "serde_json",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tokio",
-  "tracing",
-@@ -4240,7 +4240,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "strum_macros 0.28.0",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-tungstenite",
-  "tracing",
-@@ -4271,7 +4271,7 @@ dependencies = [
-  "codex-utils-plugins",
-  "pretty_assertions",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -4336,7 +4336,7 @@ dependencies = [
-  "strum_macros 0.28.0",
-  "sys-locale",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "ts-rs",
-@@ -4359,7 +4359,7 @@ dependencies = [
-  "pretty_assertions",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "uuid",
-@@ -4448,7 +4448,7 @@ dependencies = [
-  "sha2 0.10.9",
-  "sse-stream",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tiny_http",
-  "tokio",
-  "tokio-util",
-@@ -4615,7 +4615,7 @@ dependencies = [
-  "serde",
-  "serde_yaml",
-  "shlex",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
- ]
-
-@@ -4768,7 +4768,7 @@ dependencies = [
-  "sqlx",
-  "sqlx-macros",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "uuid",
-@@ -4796,7 +4796,7 @@ dependencies = [
-  "rmcp",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
-  "urlencoding",
- ]
-@@ -4902,7 +4902,7 @@ dependencies = [
-  "syntect",
-  "tempfile",
-  "textwrap 0.16.2",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-stream",
-  "tokio-tungstenite",
-@@ -4957,7 +4957,7 @@ dependencies = [
-  "security-framework-sys",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
- ]
-
-@@ -4992,7 +4992,7 @@ dependencies = [
-  "codex-utils-string",
-  "pretty_assertions",
-  "symphonia",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
- ]
-
-@@ -5011,7 +5011,7 @@ version = "0.0.0"
- dependencies = [
-  "assert_cmd",
-  "runfiles",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -5067,7 +5067,7 @@ dependencies = [
-  "image",
-  "mime_guess",
-  "png",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
- ]
-
-@@ -5121,7 +5121,7 @@ dependencies = [
-  "schemars 0.8.22",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "ts-rs",
-  "url",
-  "urlencoding",
-@@ -5173,7 +5173,7 @@ name = "codex-utils-readiness"
- version = "0.0.0"
- dependencies = [
-  "assert_matches",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tokio",
- ]
-@@ -5392,7 +5392,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "url",
-  "wiremock",
-@@ -7184,7 +7184,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
- dependencies = [
-  "memchr",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7562,7 +7562,7 @@ dependencies = [
-  "gix-worktree-stream",
-  "nonempty",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7603,7 +7603,7 @@ dependencies = [
-  "gix-trace",
-  "kstring",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "unicode-bom",
- ]
-
-@@ -7633,7 +7633,7 @@ dependencies = [
-  "gix-traverse",
-  "gix-worktree",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7687,7 +7687,7 @@ dependencies = [
-  "gix-sec",
-  "memchr",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "unicode-bom",
-  "winnow 0.7.14",
- ]
-@@ -7702,7 +7702,7 @@ dependencies = [
-  "bstr",
-  "gix-path",
-  "libc",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7737,7 +7737,7 @@ dependencies = [
-  "gix-worktree",
-  "imara-diff 0.1.8",
-  "imara-diff 0.2.0",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7757,7 +7757,7 @@ dependencies = [
-  "gix-trace",
-  "gix-utils",
-  "gix-worktree",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7772,7 +7772,7 @@ dependencies = [
-  "gix-path",
-  "gix-ref",
-  "gix-sec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7798,7 +7798,7 @@ dependencies = [
-  "libc",
-  "once_cell",
-  "prodash",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "walkdir",
-  "zlib-rs 0.6.3",
- ]
-@@ -7821,7 +7821,7 @@ dependencies = [
-  "gix-trace",
-  "gix-utils",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7835,7 +7835,7 @@ dependencies = [
-  "gix-features",
-  "gix-path",
-  "gix-utils",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7859,7 +7859,7 @@ dependencies = [
-  "faster-hex",
-  "gix-features",
-  "sha1-checked",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7911,7 +7911,7 @@ dependencies = [
-  "memmap2",
-  "rustix 1.1.4",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7922,7 +7922,7 @@ checksum = "054fbd0989700c69dc5aa80bc66944f05df1e15aa7391a9e42aca7366337905f"
- dependencies = [
-  "gix-tempfile",
-  "gix-utils",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7948,7 +7948,7 @@ dependencies = [
-  "gix-worktree",
-  "imara-diff 0.1.8",
-  "nonempty",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -7982,7 +7982,7 @@ dependencies = [
-  "gix-validate",
-  "itoa",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "winnow 0.7.14",
- ]
-
-@@ -8003,7 +8003,7 @@ dependencies = [
-  "gix-quote",
-  "parking_lot",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8022,7 +8022,7 @@ dependencies = [
-  "gix-path",
-  "memmap2",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8034,7 +8034,7 @@ dependencies = [
-  "bstr",
-  "faster-hex",
-  "gix-trace",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8046,7 +8046,7 @@ dependencies = [
-  "bstr",
-  "gix-trace",
-  "gix-validate",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8061,7 +8061,7 @@ dependencies = [
-  "gix-config-value",
-  "gix-glob",
-  "gix-path",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8080,7 +8080,7 @@ dependencies = [
-  "gix-utils",
-  "maybe-async",
-  "nonempty",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "winnow 0.7.14",
- ]
-
-@@ -8112,7 +8112,7 @@ dependencies = [
-  "gix-utils",
-  "gix-validate",
-  "memmap2",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "winnow 0.7.14",
- ]
-
-@@ -8129,7 +8129,7 @@ dependencies = [
-  "gix-revision",
-  "gix-validate",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8163,7 +8163,7 @@ dependencies = [
-  "gix-hashtable",
-  "gix-object",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8188,7 +8188,7 @@ dependencies = [
-  "gix-hash",
-  "gix-lock",
-  "nonempty",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8211,7 +8211,7 @@ dependencies = [
-  "gix-pathspec",
-  "gix-worktree",
-  "portable-atomic",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8226,7 +8226,7 @@ dependencies = [
-  "gix-pathspec",
-  "gix-refspec",
-  "gix-url",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8261,7 +8261,7 @@ dependencies = [
-  "gix-quote",
-  "gix-sec",
-  "gix-url",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8278,7 +8278,7 @@ dependencies = [
-  "gix-object",
-  "gix-revwalk",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8290,7 +8290,7 @@ dependencies = [
-  "bstr",
-  "gix-path",
-  "percent-encoding",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8346,7 +8346,7 @@ dependencies = [
-  "gix-path",
-  "gix-worktree",
-  "io-close",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8473,7 +8473,7 @@ dependencies = [
-  "pastey",
-  "pin-project-lite",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -8794,7 +8794,7 @@ dependencies = [
-  "once_cell",
-  "rand 0.9.3",
-  "ring",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tinyvec",
-  "tokio",
-  "tracing",
-@@ -8817,7 +8817,7 @@ dependencies = [
-  "rand 0.9.3",
-  "resolv-conf",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
- ]
-@@ -9729,7 +9729,7 @@ dependencies = [
-  "jni-sys 0.4.1",
-  "log",
-  "simd_cesu8",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "walkdir",
-  "windows-link",
- ]
-@@ -9824,7 +9824,7 @@ checksum = "bde5057d6143cc94e861d90f591b9303d6716c6b9602309150bd068853c10899"
- dependencies = [
-  "hashbrown 0.16.1",
-  "portable-atomic",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -9907,7 +9907,7 @@ checksum = "49fefd6652c57d68aaa32544a4c0e642929725bdc1fd929367cdeb673ab81088"
- dependencies = [
-  "enumflags2",
-  "libc",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -9926,7 +9926,7 @@ dependencies = [
-  "serde_json",
-  "sha2 0.10.9",
-  "tempfile",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -9936,7 +9936,7 @@ source = "git+https://github.com/microsoft/mxc?rev=6cd3d58f05d3447e67109cfb75e04
- dependencies = [
-  "learning_mode_core",
-  "sha2 0.10.9",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "windows 0.62.2",
-  "windows-core 0.62.2",
-  "wxc_common",
-@@ -10416,7 +10416,7 @@ source = "git+https://github.com/microsoft/mxc?rev=6cd3d58f05d3447e67109cfb75e04
- dependencies = [
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -11150,7 +11150,7 @@ dependencies = [
-  "futures-sink",
-  "js-sys",
-  "pin-project-lite",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tracing",
- ]
-
-@@ -11193,7 +11193,7 @@ dependencies = [
-  "prost",
-  "reqwest 0.12.28",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tonic",
-  "tracing",
-@@ -11234,7 +11234,7 @@ dependencies = [
-  "opentelemetry",
-  "percent-encoding",
-  "rand 0.9.3",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-stream",
- ]
-@@ -12196,7 +12196,7 @@ dependencies = [
-  "rustc-hash",
-  "rustls",
-  "socket2 0.6.3",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tracing",
-  "web-time",
-@@ -12217,7 +12217,7 @@ dependencies = [
-  "rustls",
-  "rustls-pki-types",
-  "slab",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tinyvec",
-  "tracing",
-  "web-time",
-@@ -12737,7 +12737,7 @@ dependencies = [
-  "palette",
-  "serde",
-  "strum 0.28.0",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "unicode-segmentation",
-  "unicode-truncate",
-  "unicode-width 0.2.1",
-@@ -12889,7 +12889,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
- dependencies = [
-  "getrandom 0.2.17",
-  "libredox",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -13136,7 +13136,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "sse-stream",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tokio",
-  "tokio-stream",
-  "tokio-util",
-@@ -13308,7 +13308,7 @@ dependencies = [
-  "rand 0.10.1",
-  "rtc-rtp",
-  "rtc-shared",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -13347,7 +13347,7 @@ dependencies = [
-  "rtc-shared",
-  "rustc-hash",
-  "slab",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -13378,7 +13378,7 @@ dependencies = [
-  "sec1",
-  "serde",
-  "substring",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "url",
-  "winapi",
- ]
-@@ -13983,7 +13983,7 @@ dependencies = [
-  "rand 0.9.3",
-  "serde",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "url",
-  "uuid",
-@@ -14375,7 +14375,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
- dependencies = [
-  "num-bigint",
-  "num-traits",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
- ]
-
-@@ -14580,7 +14580,7 @@ dependencies = [
-  "serde_json",
-  "sha2 0.10.9",
-  "smallvec",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tokio",
-  "tokio-stream",
-@@ -14651,7 +14651,7 @@ dependencies = [
-  "sha1 0.11.0",
-  "sha2 0.11.0",
-  "sqlx-core",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tracing",
-  "uuid",
-@@ -14688,7 +14688,7 @@ dependencies = [
-  "smallvec",
-  "sqlx-core",
-  "stringprep",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tracing",
-  "uuid",
-@@ -14715,7 +14715,7 @@ dependencies = [
-  "percent-encoding",
-  "serde",
-  "sqlx-core",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tracing",
-  "url",
-@@ -14783,7 +14783,7 @@ dependencies = [
-  "strong_hash",
-  "strsim 0.10.0",
-  "textwrap 0.11.0",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -14834,7 +14834,7 @@ dependencies = [
-  "once_cell",
-  "pagable",
-  "starlark_map",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -15178,7 +15178,7 @@ dependencies = [
-  "serde",
-  "serde_derive",
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "walkdir",
- ]
-
-@@ -15497,11 +15497,11 @@ dependencies = [
-
- [[package]]
- name = "thiserror"
--version = "2.0.18"
-+version = "2.0.20"
- source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
-+checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
- dependencies = [
-- "thiserror-impl 2.0.18",
-+ "thiserror-impl 2.0.20",
- ]
-
- [[package]]
-@@ -15517,13 +15517,13 @@ dependencies = [
-
- [[package]]
- name = "thiserror-impl"
--version = "2.0.18"
-+version = "2.0.20"
- source = "registry+https://github.com/rust-lang/crates.io-index"
--checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
-+checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
- dependencies = [
-  "proc-macro2",
-  "quote",
-- "syn 2.0.117",
-+ "syn 3.0.3",
- ]
-
- [[package]]
-@@ -16037,7 +16037,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
- dependencies = [
-  "crossbeam-channel",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "tracing-subscriber",
- ]
-@@ -16226,7 +16226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "4994acea2522cd2b3b85c1d9529a55991e3ad5e25cdcd3de9d505972c4379424"
- dependencies = [
-  "serde_json",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "ts-rs-macros",
-  "uuid",
- ]
-@@ -16259,7 +16259,7 @@ dependencies = [
-  "rustls",
-  "rustls-pki-types",
-  "sha1 0.10.6",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "utf-8",
- ]
-
-@@ -17039,7 +17039,7 @@ version = "0.3.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "f9b0540e91e49de3817c314da0dd3bc518093ceacc6ea5327cb0e1eb073e5189"
- dependencies = [
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
- ]
-
- [[package]]
-@@ -17681,7 +17681,7 @@ dependencies = [
-  "log",
-  "os_pipe",
-  "rustix 1.1.4",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "tree_magic_mini",
-  "wayland-backend",
-  "wayland-client",
-@@ -17710,7 +17710,7 @@ dependencies = [
-  "serde",
-  "serde_json",
-  "serde_path_to_error",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "unicode-general-category",
-  "url",
-  "widestring",
-@@ -17780,7 +17780,7 @@ dependencies = [
-  "oid-registry 0.8.1",
-  "ring",
-  "rusticata-macros",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
- ]
-
-@@ -18028,7 +18028,7 @@ dependencies = [
-  "memchr",
-  "pbkdf2",
-  "sha1 0.10.6",
-- "thiserror 2.0.18",
-+ "thiserror 2.0.20",
-  "time",
-  "xz2",
-  "zeroize",
 diff --git a/codex-rs/agent-identity/src/lib.rs b/codex-rs/agent-identity/src/lib.rs
 index 14a9e3519..30f2b8a2e 100644
 --- a/codex-rs/agent-identity/src/lib.rs
@@ -1779,10 +660,10 @@ index 14a9e3519..30f2b8a2e 100644
      use ed25519_dalek::Verifier as _;
      use jsonwebtoken::EncodingKey;
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index 0c7649bbc..262762805 100644
+index 748017e0a..901f5cb20 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
-@@ -1217,7 +1217,7 @@ impl MessageProcessor {
+@@ -1215,7 +1215,7 @@ impl MessageProcessor {
                  .clients_revoke(params)
                  .await
                  .map(|response| Some(response.into())),
@@ -1791,7 +672,7 @@ index 0c7649bbc..262762805 100644
                  .config_processor
                  .config_requirements_read()
                  .await
-@@ -1276,7 +1276,7 @@ impl MessageProcessor {
+@@ -1274,7 +1274,7 @@ impl MessageProcessor {
                  .unwatch(connection_id, params)
                  .await
                  .map(|response| Some(response.into())),
@@ -1800,7 +681,7 @@ index 0c7649bbc..262762805 100644
                  .config_processor
                  .model_provider_capabilities_read()
                  .await
-@@ -1690,7 +1690,7 @@ impl MessageProcessor {
+@@ -1695,7 +1695,7 @@ impl MessageProcessor {
              ClientRequest::ThreadTimelineList { params, .. } => {
                  self.thread_processor.thread_timeline_list(params).await
              }
@@ -1809,19 +690,6 @@ index 0c7649bbc..262762805 100644
                  self.turn_processor.thread_realtime_list_voices().await
              }
              ClientRequest::ReviewStart { params, .. } => {
-diff --git a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
-index 938454131..1b243e2da 100644
---- a/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
-+++ b/codex-rs/app-server/tests/suite/v2/turn_start_zsh_fork.rs
-@@ -576,7 +576,7 @@ async fn turn_start_shell_zsh_fork_subcommand_decline_marks_parent_declined_v2()
-     let mut target_decision_index = 0;
-     let first_file_str = first_file.to_string_lossy().into_owned();
-     let second_file_str = second_file.to_string_lossy().into_owned();
--    let parent_shell_hint = format!("&& {}", &first_file_str);
-+    let parent_shell_hint = format!("&& {first_file_str}");
-     while target_decision_index < target_decisions.len() || !saw_parent_approval {
-         let server_req = timeout(
-             DEFAULT_READ_TIMEOUT,
 diff --git a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs b/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
 index 0d2f45392..9b27e72f3 100644
 --- a/codex-rs/code-mode-runtime/src/session_runtime/mod.rs
@@ -1856,7 +724,7 @@ index 5d4c1fdd5..99fee2501 100644
 
  pub(super) fn mcp_startup_failure_reason(
 diff --git a/codex-rs/core/src/realtime_conversation.rs b/codex-rs/core/src/realtime_conversation.rs
-index 007898db4..0af52d32f 100644
+index dab0d42f6..d3f8aeee6 100644
 --- a/codex-rs/core/src/realtime_conversation.rs
 +++ b/codex-rs/core/src/realtime_conversation.rs
 @@ -352,14 +352,14 @@ impl RealtimeStreamedItem {
@@ -1878,10 +746,10 @@ index 007898db4..0af52d32f 100644
          self.sent_bytes += text.len();
          Some(text)
 diff --git a/codex-rs/core/src/tools/executed_tool_calls.rs b/codex-rs/core/src/tools/executed_tool_calls.rs
-index 636d3cbd9..08bd15cf2 100644
+index 853c88a97..26c1eb72a 100644
 --- a/codex-rs/core/src/tools/executed_tool_calls.rs
 +++ b/codex-rs/core/src/tools/executed_tool_calls.rs
-@@ -382,7 +382,7 @@ impl ExecutedToolCalls {
+@@ -369,7 +369,7 @@ impl ExecutedToolCalls {
      fn reserve_direct_call(&self) -> Option<DirectCallPermit> {
          let recording = Arc::downgrade(&self.lock_state().as_ref()?.recording);
          self.pending_direct_calls
@@ -1891,10 +759,10 @@ index 636d3cbd9..08bd15cf2 100644
              })
              .ok()?;
 diff --git a/codex-rs/core/tests/common/apps_test_server.rs b/codex-rs/core/tests/common/apps_test_server.rs
-index 4ae5d8034..5ac1f7ebd 100644
+index cde2ed74d..6771062f9 100644
 --- a/codex-rs/core/tests/common/apps_test_server.rs
 +++ b/codex-rs/core/tests/common/apps_test_server.rs
-@@ -541,7 +541,7 @@ impl Respond for CodexAppsJsonRpcResponder {
+@@ -543,7 +543,7 @@ impl Respond for CodexAppsJsonRpcResponder {
                      .as_ref()
                      .is_some_and(|remaining| {
                          remaining
@@ -1904,10 +772,10 @@ index 4ae5d8034..5ac1f7ebd 100644
                              })
                              .is_ok()
 diff --git a/codex-rs/core/tests/suite/tools.rs b/codex-rs/core/tests/suite/tools.rs
-index 62ab267fa..b6b4cd88e 100644
+index e371db1e3..e2df9c9b5 100644
 --- a/codex-rs/core/tests/suite/tools.rs
 +++ b/codex-rs/core/tests/suite/tools.rs
-@@ -714,7 +714,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
+@@ -709,7 +709,7 @@ async fn sandbox_denied_exec_command_returns_original_output() -> Result<()> {
          "printf {sentinel:?} >&2; printf {content:?} > {path:?}",
          sentinel = format!("{sentinel}\n"),
          content = "sandbox denied",
@@ -1930,7 +798,7 @@ index a966e4aee..91b878b39 100644
              });
      }
 diff --git a/codex-rs/exec-server-protocol/src/protocol.rs b/codex-rs/exec-server-protocol/src/protocol.rs
-index 62d901e0f..ae6992f8f 100644
+index 26614350c..e0b10ff7c 100644
 --- a/codex-rs/exec-server-protocol/src/protocol.rs
 +++ b/codex-rs/exec-server-protocol/src/protocol.rs
 @@ -232,7 +232,7 @@ impl EnvironmentInfo {
@@ -1943,10 +811,10 @@ index 62d901e0f..ae6992f8f 100644
              {
                  temporary_directories.push(path);
 diff --git a/codex-rs/exec/src/lib.rs b/codex-rs/exec/src/lib.rs
-index 8bf926248..5950fac33 100644
+index f97ce4273..78f6eb33e 100644
 --- a/codex-rs/exec/src/lib.rs
 +++ b/codex-rs/exec/src/lib.rs
-@@ -2302,7 +2302,9 @@ fn decode_utf16(
+@@ -2305,7 +2305,9 @@ fn decode_utf16(
      }
 
      let units: Vec<u16> = input
@@ -2186,7 +1054,7 @@ index ddd5807bf..d092127c5 100644
      Some(commands)
  }
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 7e6958c52..3a649c69e 100644
+index 9d2c35c35..f84785689 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -118,7 +118,7 @@ pub(super) async fn reconnect(
@@ -2199,10 +1067,10 @@ index 7e6958c52..3a649c69e 100644
 
  impl App {
 diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 16862db0f..04891650d 100644
+index 438ce7605..7bea7f1d6 100644
 --- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-@@ -1184,7 +1184,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
+@@ -1213,7 +1213,7 @@ async fn command_center_new_checkout_and_worktree_preserve_source_and_default_br
                      return Ok::<_, color_eyre::Report>(());
                  }
              }
@@ -2212,10 +1080,10 @@ index 16862db0f..04891650d 100644
          .await??;
          app.chat_widget.handle_key_event(KeyCode::Up.into());
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 98d7d4d54..52362e012 100644
+index 9aaa37852..56aca8130 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1966,7 +1966,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
+@@ -2013,7 +2013,7 @@ async fn older_external_server_starts_without_unsupported_dynamic_tools_or_histo
 
      let starts = recorded_params(&requests, "thread/start");
      assert_eq!(starts.len(), 6);
@@ -2225,10 +1093,10 @@ index 98d7d4d54..52362e012 100644
          assert_eq!(attempts[0]["historyMode"], "paginated");
          assert_eq!(attempts[1]["dynamicTools"], serde_json::Value::Null);
 diff --git a/codex-rs/tui/src/app/user_verification_tests.rs b/codex-rs/tui/src/app/user_verification_tests.rs
-index 64d1e97ce..6e4f8db3e 100644
+index ed1cd6d0a..797134fb5 100644
 --- a/codex-rs/tui/src/app/user_verification_tests.rs
 +++ b/codex-rs/tui/src/app/user_verification_tests.rs
-@@ -152,7 +152,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
+@@ -194,7 +194,7 @@ async fn run_verification_rpc_scenario(scenario: RpcScenario) -> color_eyre::Res
                  }
              }
          }
@@ -2238,10 +1106,10 @@ index 64d1e97ce..6e4f8db3e 100644
      let client = crate::connect_remote_app_server(endpoint).await?;
      let mode = if scenario == RpcScenario::RemoteWorkspace {
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index f55b75c1b..a1068571d 100644
+index f962f3ba8..fb8babd3d 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -602,7 +602,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
+@@ -616,7 +616,7 @@ pub(crate) fn backtrack_revert_before_turn_id(
          }
      }
 
@@ -2356,10 +1224,10 @@ index 4dc0fc13b..2394d4188 100644
 -    ]),
 -]
 diff --git a/codex-rs/tui/src/pager_overlay.rs b/codex-rs/tui/src/pager_overlay.rs
-index 685fff820..1fdbc0a17 100644
+index b20061fc6..d77247cb7 100644
 --- a/codex-rs/tui/src/pager_overlay.rs
 +++ b/codex-rs/tui/src/pager_overlay.rs
-@@ -144,7 +144,9 @@ fn render_navigation_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
+@@ -151,7 +151,9 @@ fn render_navigation_hints(area: Rect, buf: &mut Buffer, keymap: &PagerKeymap) {
          ("jump_bottom", &keymap.jump_bottom),
      ];
      let hints = actions
@@ -2507,7 +1375,7 @@ index 5a062ffdc..18ac47b44 100644
          let low = hex_nibble(flag_name, pair[1])?;
          digest[index] = (high << 4) | low;
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 6fd6aded0..e0423bbf7 100644
+index e442235b4..afff7bc4c 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -2537,6 +1405,3 @@ index 000000000..6502f7130
 +         link_env = cc_common.get_environment_variables(
 +             feature_configuration = feature_configuration,
 +             action_name = action_name,
--- 
-2.43.0
-
