@@ -115,6 +115,34 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
                 )
         metadata.write_text(contents, encoding="utf-8")
 
+    if source.name == "meson" and source.version == "1.12.1":
+        # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+        # Use value and type probes without unused expressions or declarations.
+        # Remove when Meson detects header symbols with fatal compiler warnings.
+        compiler = destination / source.root / "mesonbuild/compilers/c.py"
+        contents = compiler.read_text(encoding="utf-8")
+        replacements = (
+            ("                {symbol};", "                (void) {symbol};"),
+            (
+                "        return self.compiles(t.format(**fargs), extra_args=extra_args,\n"
+                "                             dependencies=dependencies)",
+                "        found, cached = self.compiles(t.format(**fargs), extra_args=extra_args,\n"
+                "                                     dependencies=dependencies)\n"
+                "        if found:\n"
+                "            return found, cached\n"
+                "        type_probe = t.replace('(void) {symbol};',\n"
+                "                               '{symbol} *meson_symbol = 0; (void) meson_symbol;')\n"
+                "        found, type_cached = self.compiles(type_probe.format(**fargs),\n"
+                "                                           extra_args=extra_args, dependencies=dependencies)\n"
+                "        return found, cached and type_cached",
+            ),
+        )
+        for original, replacement in replacements:
+            if contents.count(original) != 1:
+                raise ValueError("Pinned Meson header symbol probe does not match")
+            contents = contents.replace(original, replacement)
+        compiler.write_text(contents, encoding="utf-8")
+
     if source.name == "glib" and source.version == "2.88.3":
         # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
         # Invalid C escapes and deprecated sprintf break the positional printf probe.
