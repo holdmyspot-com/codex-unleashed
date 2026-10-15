@@ -2006,3 +2006,32 @@ just bazel-lock-check
 The generator-support regression checks Windows NMake, Windows Ninja, Unix
 Makefiles, and Unix Ninja commands. The complete native Windows voice build
 remains a required hosted acceptance gate.
+
+## V8 Windows assembly selection
+
+`zzzz-0016-v8-windows-assembly-abi.patch` gives the Windows GNU stack-scanning
+assembly its own `.S` source and restores the original MASM implementation.
+The configured Windows ABI selects the source for both V8's production
+library and its existing callback regression. Both sources preserve Windows
+unwind metadata. V8 declares the existing LLVM constraint dependency at the
+same selected version; no compiler warning check is disabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 and LLVM build patches. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+With the MSVC runtime license environment set, run:
+
+```sh
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/v8-assembly:all
+bazel build --platforms=//:windows_x86_64_gnullvm @v8//:codex_windows_stack_assembly_library_icu
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regressions require the corresponding source in each ABI's
+actual compiler action. The GNU build compiles the selected assembly and
+ICU-definition fixture. Native Windows CI must also compile and run
+`//tools/build-warnings/v8:windows_stack_assembly_test` on GNU and MSVC
+platforms. Linux analysis and cross-compilation do not establish those native
+assembler and runtime outcomes.
