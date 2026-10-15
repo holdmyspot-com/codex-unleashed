@@ -2485,3 +2485,40 @@ flag, and excludes linker selection from compile-only arguments. Native macOS
 acceptance additionally requires the native Meson probe and complete voice
 prefix. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+## Native GLib macOS content types
+
+`zzzz-0036-glib-macos-content-types.patch` uses Apple's UniformTypeIdentifiers
+API in the pinned GLib macOS content-type backend. MIME conversions, filename
+guesses, type relationships, descriptions, and fallback values retain their
+GIO interfaces. Each Objective-C lookup owns an autorelease pool and copies
+returned strings before draining it, including calls from ordinary GLib
+worker threads. Undeclared identifiers retain self-conformance. Runtime
+projection declares the exact Apple framework dependency and preserves its
+system install name. Compiler deprecation diagnostics remain fatal.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue,
+including the GLib positional-probe and native Darwin linker repairs. GLib
+2.88.3's CoreServices UTI calls fail native macOS compilation with deprecated
+declarations treated as errors. The replacement API is documented at
+https://developer.apple.com/documentation/uniformtypeidentifiers/uttypereference?language=objc.
+The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+Run these checks from the patched checkout:
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_prepare_sources.py
+python3 -m unittest discover -s third_party/voice -p test_macos_runtime.py
+just fmt-check
+just bazel-lock-check
+bazel test //tools/build-warnings/glib:content_type_test
+```
+
+The source-preparation and maintained checks must pass. The content-type test
+requires native macOS execution and exercises the installed GIO library from
+a worker thread. It verifies MIME round trips, valid and undeclared type
+relationships, executable classification, descriptions, dynamic filename
+types, XML and text exceptions, and volume and folder detection. Other
+platforms mark this macOS-specific target incompatible.

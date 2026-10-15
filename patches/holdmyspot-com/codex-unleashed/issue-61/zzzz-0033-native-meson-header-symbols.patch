@@ -19,7 +19,7 @@ index 8f43f1602..39d8e23a7 100644
 @@ -115,6 +115,34 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
                  )
          metadata.write_text(contents, encoding="utf-8")
- 
+
 +    if source.name == "meson" and source.version == "1.12.1":
 +        # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
 +        # Use value and type probes without unused expressions or declarations.
@@ -94,6 +94,5 @@ index 9b000ac3a..4d5018ea8 100644
 +
  probe = static_library('probe', 'probe.c')
  executable('resource-probe', 'main.cc', link_with: probe)
--- 
+--
 2.43.0
-

@@ -15,7 +15,7 @@ index 5b2b98005..2cec9bc57 100644
 +++ b/third_party/voice/build_native.py
 @@ -327,6 +327,8 @@ class NativeBuild:
              link[-1] = "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
- 
+
          meson_flags = {name: list(flags) for name, flags in self.flags.items()}
 +        if self.args.target.endswith("apple-darwin"):
 +            meson_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
@@ -41,7 +41,7 @@ index db62edffa..61ea415ea 100644
 @@ -832,6 +837,27 @@ class NativeBuildTests(unittest.TestCase):
                  ],
              )
- 
+
 +    def test_meson_native_linker_selection_matches_target(self):
 +        for suffix, expected in (
 +            ("apple-darwin", "-fuse-ld=/usr/bin/ld"),
@@ -66,6 +66,5 @@ index db62edffa..61ea415ea 100644
      def test_windows_paths_use_cygpath_and_propagate_failure(self):
          build = NativeBuild(self.args, self.environment)
          build.windows = True
--- 
+--
 2.43.0
-

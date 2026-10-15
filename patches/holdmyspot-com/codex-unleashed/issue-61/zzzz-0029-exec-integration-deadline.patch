@@ -18,7 +18,7 @@ index 6aec3e0b7..da10abcbc 100644
 @@ -1,10 +1,20 @@
  load("//:defs.bzl", "codex_rust_crate")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "exec",
      crate_name = "codex_exec",
@@ -48,6 +48,5 @@ index c23867589..3b3dcb0c4 100644
          "//codex-rs/exec-server:current_compat_timeout_test",
          "//codex-rs/exec-server:minimum_compat_timeout_test",
          "//codex-rs/exec-server:serialized_unit_timeout_test",
--- 
+--
 2.43.0
-

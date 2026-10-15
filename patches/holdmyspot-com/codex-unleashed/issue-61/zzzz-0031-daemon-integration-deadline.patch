@@ -18,7 +18,7 @@ index 41fbbb78b..a9f317dc3 100644
  load("//bazel/platforms:release_binaries.bzl", "multiplatform_binaries")
  load("//bazel/rules:e2e_benchmark.bzl", "codex_e2e_benchmark")
 +load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
- 
+
  codex_rust_crate(
      name = "cli",
 @@ -9,6 +10,7 @@ codex_rust_crate(
@@ -53,6 +53,5 @@ index 3b3dcb0c4..b5be2473a 100644
          "//codex-rs/exec:integration_deadline_test",
          "//codex-rs/exec-server:current_compat_timeout_test",
          "//codex-rs/exec-server:minimum_compat_timeout_test",
--- 
+--
 2.43.0
-

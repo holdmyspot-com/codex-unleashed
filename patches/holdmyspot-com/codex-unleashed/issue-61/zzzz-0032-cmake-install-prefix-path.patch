@@ -29,7 +29,7 @@ index f68c5f265..db62edffa 100644
 @@ -488,6 +488,36 @@ class NativeBuildTests(unittest.TestCase):
              build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
          )
- 
+
 +    @unittest.skipUnless(
 +        os.name == "nt", "Requires native Windows install-script generation"
 +    )
@@ -63,6 +63,5 @@ index f68c5f265..db62edffa 100644
      def test_cmake_parallel_builds_match_generator_support(self):
          self.environment["USERPROFILE"] = str(self.root / "user profile")
          for system, suffix in (
--- 
+--
 2.43.0
-

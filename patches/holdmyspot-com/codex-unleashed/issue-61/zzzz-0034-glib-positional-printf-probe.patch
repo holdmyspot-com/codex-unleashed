@@ -17,7 +17,7 @@ index 39d8e23a7..e700d33f3 100644
 +++ b/third_party/voice/prepare_sources.py
 @@ -144,6 +144,17 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
          compiler.write_text(contents, encoding="utf-8")
- 
+
      if source.name == "glib" and source.version == "2.88.3":
 +        # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
 +        # Invalid C escapes and deprecated sprintf break the positional printf probe.
@@ -88,6 +88,5 @@ index c1434879c..fa5b91700 100644
 +  g_free(result);
    return valid ? 0 : 1;
  }
--- 
+--
 2.43.0
-
