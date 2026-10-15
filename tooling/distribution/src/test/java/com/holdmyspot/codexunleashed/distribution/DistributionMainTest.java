@@ -212,7 +212,7 @@ public final class DistributionMainTest
 			builder.redirectErrorStream(true).redirectOutput(log.toFile());
 			builder.environment().put("PATH", adapters + java.io.File.pathSeparator +
 				builder.environment().getOrDefault("PATH", ""));
-			builder.environment().put("TMPDIR", "/hosted-msys-temporary");
+			builder.environment().put("TMPDIR", CygpathFixture.MSYS_TEMPORARY_DIRECTORY);
 			builder.environment().put("FIXTURE_NATIVE_TEMP", fixture.root.toString());
 			builder.environment().put("MSYS2_ARG_CONV_EXCL", "*");
 			builder.environment().put("JDK_JAVA_OPTIONS", "-XshowSettings:properties");

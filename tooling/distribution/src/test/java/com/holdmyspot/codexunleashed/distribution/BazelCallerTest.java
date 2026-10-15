@@ -94,7 +94,7 @@ public final class BazelCallerTest
 					{
 						assertTrue(test.contains("--test_env=PATH=" + windowsPath));
 						assertTrue(test.contains("--action_env=SystemRoot=" + systemRoot),
-							"Native Windows build tools require a fixed Windows directory during analysis");
+							"Expected native Windows directory " + systemRoot + "; received arguments " + test);
 						assertTrue(test.contains("--host_action_env=SystemRoot=" + systemRoot));
 						assertTrue(test.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
 						assertTrue(test.contains("--host_action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
