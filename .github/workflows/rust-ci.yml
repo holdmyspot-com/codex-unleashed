@@ -115,12 +115,48 @@ jobs:
       - name: cargo shear
         run: '"$CODEX_UNLEASHED_TOOLING" check-cargo-shear upstream'
 
+  darwin_linker:
+    name: Large Darwin unwind section (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: changed
+    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref }}
+      - name: Check large-section linking and panic unwinding
+        working-directory: upstream
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/darwin-linker/target
+          TMPDIR: ${{ runner.temp }}/darwin-linker/temp
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR" "$CARGO_TARGET_DIR"
+          bash tools/build-warnings/check-darwin-linker.sh
+      - name: Remove linker probe outputs
+        if: always()
+        shell: bash
+        run: rm -rf -- "${{ runner.temp }}/darwin-linker"
+
   results:
     name: rust-ci results
     needs:
       - changed
       - general
       - cargo_shear
+      - darwin_linker
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -136,6 +172,7 @@ jobs:
 
           [[ '${{ needs.general.result }}' == 'success' ]] || { echo 'general failed'; exit 1; }
           [[ '${{ needs.cargo_shear.result }}' == 'success' ]] || { echo 'cargo_shear failed'; exit 1; }
+          [[ '${{ needs.darwin_linker.result }}' == 'success' ]] || { echo 'darwin_linker failed'; exit 1; }
         env:
           NEEDS_CHANGED_OUTPUTS_CODEX: ${{ needs.changed.outputs.codex }}
           NEEDS_CHANGED_OUTPUTS_WORKFLOWS: ${{ needs.changed.outputs.workflows }}

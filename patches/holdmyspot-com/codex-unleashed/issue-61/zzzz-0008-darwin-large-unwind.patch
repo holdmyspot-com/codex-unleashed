@@ -1,0 +1,126 @@
+From 11db62e9ba4cb6a94bcef0d872682033e22cd55d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 13:26:37 +0000
+Subject: [PATCH] Add a native regression for large Darwin unwind sections
+
+Keep a DWARF section larger than 16 MiB and unwind a Rust panic through an assembly frame beyond that limit. Run on both supported native macOS architectures.
+---
+ tools/build-warnings/check-darwin-linker.sh | 109 ++++++++++++++++++++
+ 1 file changed, 109 insertions(+)
+ create mode 100755 tools/build-warnings/check-darwin-linker.sh
+
+diff --git a/tools/build-warnings/check-darwin-linker.sh b/tools/build-warnings/check-darwin-linker.sh
+new file mode 100755
+index 000000000..d1191efe3
+--- /dev/null
++++ b/tools/build-warnings/check-darwin-linker.sh
+@@ -0,0 +1,109 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [[ "$(uname -s)" != Darwin ]]; then
++  echo "The Darwin linker regression requires a native macOS host." >&2
++  exit 2
++fi
++
++repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
++cd -- "$repo_root/codex-rs"
++host="$(rustc -vV | sed -n 's/^host: //p')"
++probe="$(mktemp -d "${TMPDIR:?TMPDIR must identify owned temporary storage}/codex-darwin-linker-XXXXXX")"
++cleanup() {
++  local status=$?
++  if [[ -f "$probe/Cargo.toml" ]]; then
++    cargo clean --manifest-path "$probe/Cargo.toml" --target "$host" -p codex-darwin-linker-probe || status=1
++  fi
++  rm -r -- "$probe" || status=1
++  exit "$status"
++}
++trap cleanup EXIT
++trap 'exit 130' INT
++trap 'exit 143' TERM
++mkdir "$probe/src"
++cat > "$probe/Cargo.toml" <<'MANIFEST'
++[package]
++name = "codex-darwin-linker-probe"
++version = "0.0.0"
++edition = "2024"
++[workspace]
++MANIFEST
++cat > "$probe/src/main.rs" <<'RUST'
++core::arch::global_asm!(include_str!("stress.s"));
++
++unsafe extern "C-unwind" {
++    fn codex_unwind_bridge();
++}
++
++#[unsafe(no_mangle)]
++extern "C-unwind" fn codex_unwind_callback() {
++    panic!("large unwind section probe");
++}
++
++fn main() {
++    std::panic::set_hook(Box::new(|_| {}));
++    let caught = std::panic::catch_unwind(|| unsafe { codex_unwind_bridge() });
++    assert!(caught.is_err());
++}
++RUST
++
++cat > "$probe/src/stress.s" <<'ASM'
++.text
++.globl _codex_unwind_padding
++.no_dead_strip _codex_unwind_padding
++.p2align 2
++_codex_unwind_padding:
++.cfi_startproc
++.rept 0x800001
++.cfi_escape 0x2e, 0x00
++.endr
++ret
++.cfi_endproc
++
++.globl _codex_unwind_bridge
++.p2align 2
++_codex_unwind_bridge:
++.cfi_startproc
++ASM
++
++case "$host" in
++  aarch64-apple-darwin)
++    cat >> "$probe/src/stress.s" <<'ASM'
++stp x29, x30, [sp, #-16]!
++.cfi_def_cfa_offset 16
++.cfi_offset w29, -16
++.cfi_offset w30, -8
++mov x29, sp
++.cfi_escape 0x0f, 0x02, 0x8f, 0x10
++bl _codex_unwind_callback
++ldp x29, x30, [sp], #16
++ASM
++    ;;
++  x86_64-apple-darwin)
++    cat >> "$probe/src/stress.s" <<'ASM'
++push rbp
++.cfi_def_cfa_offset 16
++.cfi_offset rbp, -16
++mov rbp, rsp
++.cfi_def_cfa_register rbp
++.cfi_escape 0x0f, 0x02, 0x76, 0x10
++call _codex_unwind_callback
++pop rbp
++ASM
++    ;;
++  *)
++    echo "Unsupported Darwin linker regression target: $host" >&2
++    exit 2
++    ;;
++esac
++
++cat >> "$probe/src/stress.s" <<'ASM'
++ret
++.cfi_endproc
++ASM
++
++cargo rustc --offline --manifest-path "$probe/Cargo.toml" --target "$host" -- \
++  -Dwarnings
++"${CARGO_TARGET_DIR:?CARGO_TARGET_DIR must identify owned build storage}/$host/debug/codex-darwin-linker-probe"
++echo "The Darwin linker preserves panic unwinding with more than 16 MiB of CFI."

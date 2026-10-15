@@ -1772,3 +1772,19 @@ the same command fails at the MSVC runtime license check. The workflow runs this
 check on Linux before the full test build. Required queue checks remain
 `just fmt-check` and `just bazel-lock-check`; the native platform matrix verifies
 the complete builds.
+
+## Large Darwin unwind-section regression
+
+`zzzz-0008-darwin-large-unwind.patch` adds a native macOS regression for
+https://github.com/rust-lang/rust/issues/159105 and issue #61. It retains more
+than 16 MiB of DWARF call-frame information, links with fatal warnings, and
+catches a Rust panic that unwinds through an assembly frame beyond the compact
+unwind offset limit. Both Apple Silicon and Intel macOS run the check.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the issue-61 fatal-warning
+policy. Run `bash tools/build-warnings/check-darwin-linker.sh` from the patched
+checkout with owned `TMPDIR` and `CARGO_TARGET_DIR` directories. Success requires
+both linking and panic unwinding. Non-macOS hosts return 2 rather than claiming
+native coverage. The script removes its temporary source and package outputs.
+The full macOS Cargo release build remains a separate required gate.
