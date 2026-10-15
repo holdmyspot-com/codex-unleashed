@@ -228,6 +228,35 @@ jobs:
             -- \
             "${selected_targets[@]}"
 
+      - name: Execute Windows GNU stack assembly callback
+        if: matrix.shard == 1
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          # Compile on Linux RBE workers, then execute the self-contained
+          # callback probe directly on Windows without a Rust batch launcher.
+          : "${BUILDBUDDY_API_KEY:?Windows GNU callback verification requires RBE}"
+          stack_bazel_args=(
+            --config=ci-windows-cross
+            --host_platform=//:rbe
+            --shell_executable=/bin/bash
+            --noremote_local_fallback
+            --action_env=PATH=/usr/bin:/bin
+            --host_action_env=PATH=/usr/bin:/bin
+            --jobs=2
+            --remote_download_outputs=toplevel
+          )
+          "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy build \
+            "${stack_bazel_args[@]}" -- @v8//:codex_windows_stack_assembly_test
+          test_binary="$("$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy cquery \
+            "${stack_bazel_args[@]}" --output=files -- @v8//:codex_windows_stack_assembly_test)"
+          test_binary="${test_binary//$'\r'/}"
+          test -f "$test_binary"
+          "$test_binary"
+
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true

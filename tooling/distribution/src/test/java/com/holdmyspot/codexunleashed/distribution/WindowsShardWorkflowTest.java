@@ -7,11 +7,13 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 /**
- * Executes the maintained Windows shard step with a failing native Bazel query.
+ * Executes maintained Windows shard commands across build and native execution boundaries.
  */
 public final class WindowsShardWorkflowTest
 {
@@ -20,6 +22,72 @@ public final class WindowsShardWorkflowTest
 	 */
 	public WindowsShardWorkflowTest()
 	{
+	}
+
+	/**
+	 * Supplies passing and failing callback statuses.
+	 *
+	 * @return the native executable statuses
+	 */
+	@DataProvider
+	public Object[][] callbackStatuses()
+	{
+		return new Object[][] {{0}, {37}};
+	}
+
+	/**
+	 * Runs the built callback binary and propagates its status, preserving spaces and CRLF output paths.
+	 *
+	 * @param status the callback's exit status
+	 * @throws IOException if fixture creation, execution, or cleanup fails
+	 * @throws InterruptedException if process waiting is interrupted
+	 * @throws URISyntaxException if the fixture class location cannot be represented
+	 */
+	@Test(dataProvider = "callbackStatuses")
+	public void executesStackAssemblyCallback(int status) throws IOException, InterruptedException, URISyntaxException
+	{
+		Path root = Files.createTempDirectory("windows-stack-workflow-");
+		try
+		{
+			Files.createDirectory(root.resolve("upstream"));
+			Path project = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
+			String command = WorkflowCommands.readStepCommand(project.resolve(".github/workflows/bazel.yml"),
+				"test-windows-shard", "Execute Windows GNU stack assembly callback");
+			Path bazel = JavaCommandFixtures.writeNativeLauncher(root.resolve("bazel"), WindowsStackAssemblyFixture.class);
+			Path callback = JavaCommandFixtures.writeNativeLauncher(root.resolve("stack callback"),
+				WindowsStackAssemblyFixture.class);
+			Path image = root.resolve("runtime");
+			DistributionMain.main(new String[] {System.getProperty("tooling.runtime.modules"), image.toString()});
+			Map<String, String> environment = new HashMap<>(System.getenv());
+			environment.put("GITHUB_WORKSPACE", project.toString());
+			environment.put("GITHUB_SHA", "fixture-source");
+			environment.put("GITHUB_ACTIONS", "true");
+			environment.put("RUNNER_OS", "Linux");
+			environment.put("CODEX_UNLEASHED_TOOLING", image.resolve("bin/codex-tooling").toString());
+			environment.put("CODEX_BAZEL_BIN", bazel.toString());
+			environment.put("BUILDBUDDY_API_KEY", "fixture-token");
+			environment.put("STACK_FIXTURE_EVIDENCE", root.toString());
+			environment.put("STACK_FIXTURE_BINARY", callback.toString().replace('\\', '/'));
+			environment.put("STACK_FIXTURE_STATUS", Integer.toString(status));
+			environment.put("TMPDIR", root.toString());
+			Path console = root.resolve("console");
+			ProcessBuilder builder = NativeCommands.createBuilder(java.util.List.of("bash", "-c", command)).
+				directory(root.toFile()).redirectErrorStream(true).redirectOutput(console.toFile());
+			builder.environment().clear();
+			builder.environment().putAll(environment);
+			try (Process process = builder.start())
+			{
+				process.getOutputStream().close();
+				assertEquals(process.waitFor(), status, Files.readString(console));
+			}
+			assertTrue(Files.readString(root.resolve("build")).contains("@v8//:codex_windows_stack_assembly_test"));
+			assertTrue(Files.readString(root.resolve("cquery")).contains("@v8//:codex_windows_stack_assembly_test"));
+			assertTrue(Files.isRegularFile(root.resolve("callback")), Files.readString(console));
+		}
+		finally
+		{
+			FixtureDirectories.deleteTree(root);
+		}
 	}
 
 	/**
