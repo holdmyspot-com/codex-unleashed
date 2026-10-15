@@ -1,31 +1,18 @@
-From e87534803ae1550a7e7d1f15468276b128584ec7 Mon Sep 17 00:00:00 2001
+From 87cea7a79602107c1f76f62772d6abc5f83c67fd Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:49:16 -0400
+Date: Thu, 15 Oct 2026 17:29:59 +0000
 Subject: [PATCH] Resolve native test fixtures through Bazel runfiles
 
-Use the maintained cargo-bin binary and resource resolvers in the schema
-and Windows sandbox manifest regressions. Bazel exposes logical runfile
-names; treating those as filesystem paths fails with manifest-only Windows
-runfiles. Preserve schema byte/value comparisons and Windows resource API
-checks for asInvoker and disabled UI access.
+Use the maintained resource and binary resolvers for the published schema and Windows sandbox manifest tests. Preserve schema value checks and Windows manifest resource assertions.
 
-Native red: run38747669404 job116473691446 fails both config-schema tests
-and helper_manifest on unresolved logical paths (os errors2/3), retained in
-bazel-msvc-271217d.log. Focused Linux Bazel schema tests now pass; maintained
-just fmt-check, just bazel-lock-update, and just bazel-lock-check pass after
-the CI Cargo metadata preparation. Native MSVC analysis accepts the sandbox
-test graph; Windows execution remains an explicit hosted gate.
+The canonical schema patch owns its generated CLI test and the final schema dev-dependency registration, because scripts/apply-patches.sh applies schema after issue-61. Keep this patch independent of those later additions.
 
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) plus the
-documented queue through issue-61 zzzz-0017. Evidence directory:
-.cat/work/temp/build-caches/windows-wrapper-gbpNjj/.
+Native red: jobs 116473691446 and 116520488151 reproduce unresolved logical runfiles. Focused schema tests, maintained formatting, and lock gates pass with the final combined tree. Complete ordered queue verification is required.
 ---
  codex-rs/Cargo.lock                                  | 1 +
- codex-rs/config-schema/Cargo.toml                    | 1 +
- codex-rs/config-schema/tests/codex_unleashed.rs      | 8 +++++---
  codex-rs/config-schema/tests/published_schema.rs     | 5 +++--
  codex-rs/windows-sandbox-rs/tests/helper_manifest.rs | 7 ++-----
- 5 files changed, 12 insertions(+), 10 deletions(-)
+ 3 files changed, 6 insertions(+), 7 deletions(-)
 
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index 2dce92f41..e7887f926 100644
@@ -39,47 +26,6 @@ index 2dce92f41..e7887f926 100644
   "serde_json",
   "tempfile",
  ]
-diff --git a/codex-rs/config-schema/Cargo.toml b/codex-rs/config-schema/Cargo.toml
-index 233094088..ef08a6c63 100644
---- a/codex-rs/config-schema/Cargo.toml
-+++ b/codex-rs/config-schema/Cargo.toml
-@@ -17,5 +17,6 @@ clap = { workspace = true, features = ["derive"] }
- codex-config = { workspace = true }
- 
- [dev-dependencies]
-+codex-utils-cargo-bin = { workspace = true }
- serde_json = { workspace = true }
- tempfile = { workspace = true }
-diff --git a/codex-rs/config-schema/tests/codex_unleashed.rs b/codex-rs/config-schema/tests/codex_unleashed.rs
-index 38c7a42d4..b4dc38386 100644
---- a/codex-rs/config-schema/tests/codex_unleashed.rs
-+++ b/codex-rs/config-schema/tests/codex_unleashed.rs
-@@ -1,3 +1,5 @@
-+use codex_utils_cargo_bin::cargo_bin;
-+use codex_utils_cargo_bin::find_resource;
- use std::process::Command;
- 
- #[test]
-@@ -5,7 +7,7 @@ fn codex_unleashed_config_schema_matches_published_fixture() {
-     let temp = tempfile::tempdir().unwrap();
-     let output = temp.path().join("config.schema.json");
-     assert!(
--        Command::new(env!("CARGO_BIN_EXE_codex-write-config-schema"))
-+        Command::new(cargo_bin("codex-write-config-schema").unwrap())
-             .arg("--out")
-             .arg(&output)
-             .status()
-@@ -19,8 +21,8 @@ fn codex_unleashed_config_schema_matches_published_fixture() {
-         .replace("\r\n", "\n")
-         .into_bytes();
-     let generated: serde_json::Value = serde_json::from_slice(&generated_bytes).unwrap();
--    let fixture =
--        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config.schema.json");
-+    let fixture = find_resource!("../core/config.schema.json")
-+        .expect("resolve the published configuration schema");
-     let published_bytes = std::fs::read(fixture).unwrap();
-     #[cfg(windows)]
-     let published_bytes = String::from_utf8(published_bytes)
 diff --git a/codex-rs/config-schema/tests/published_schema.rs b/codex-rs/config-schema/tests/published_schema.rs
 index d14ac6a70..94092053e 100644
 --- a/codex-rs/config-schema/tests/published_schema.rs

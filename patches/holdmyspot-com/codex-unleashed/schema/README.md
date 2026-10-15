@@ -29,6 +29,12 @@ queue. Its property order and formatting match upstream's schema generator.
 Runtime behavior and configuration defaults remain owned by the feature
 patches.
 
+This patch owns the configuration-schema test's Cargo/Bazel helper dependency
+and resolves its executable and published fixture through those helpers.
+Manifest-only Windows runfiles therefore use physical resource paths. The
+preceding issue-61 runfiles patch does not depend on this patch's new files or
+manifest section.
+
 ## Reproduction
 
 Apply the complete patch queue and compare the published configuration schema

@@ -2070,6 +2070,13 @@ resource and binary helpers. It supports manifest-only runfiles without
 assuming logical runfile names are filesystem paths. Schema byte and value
 comparisons and Windows manifest resource assertions retain their meaning.
 
+The later canonical schema patch registers the schema test's helper dependency
+and uses the same resolvers in its generated CLI regression. Patch 0018 does
+not modify files or manifest sections introduced by that later patch. Verify
+application order with `scripts/apply-patches.sh` on a clean release checkout;
+applying an individual patch to an already-combined tree does not establish
+that the maintained queue applies.
+
 The declared base is `rust-v0.162.1`
 (`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
 queue through `zzzz-0017`. The tracking issue is
@@ -2114,3 +2121,29 @@ bazel test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --test_ou
 All doctor safety cases must pass, including extensionless discovery of the
 fixture Git helper and the no-execution assertions. Linux execution cannot
 establish Windows extension lookup or environment inheritance.
+
+## MSVC C++ language-version reporting
+
+`zzzz-0020-v8-msvc-language-version.patch` makes CL drivers report the selected
+C++20 language version to V8 headers with `/Zc:__cplusplus`. It covers both
+the pointer-format regression and the V8 library compile actions. It enables
+the correct language-version macro without disabling V8's C++20 requirement
+or suppressing a compiler diagnostic.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0019`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+just fmt-check
+just bazel-lock-check
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/v8:windows_pointer_flags_test //tools/build-warnings/v8:windows_library_flags_test
+bazel test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/v8:pointer_formats_test //tools/build-warnings/v8:windows_stack_assembly_test
+```
+
+The action tests require the language-version reporting flag. Native Windows
+execution must also compile the real V8 headers and pass both executable
+regressions. The fork's Windows GNU shard 1 additionally builds the small stack
+callback probe through RBE and executes its downloaded binary directly on the
+Windows runner. Analysis and cross-compilation alone do not verify that callback.

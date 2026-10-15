@@ -1,6 +1,6 @@
-From b15fd68d4145c031b485d8a6edb5202b0a6b250d Mon Sep 17 00:00:00 2001
+From 8d74f8e59adf8b3967f9d51bd93d4d408e33d0d6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:16:24 -0400
+Date: Thu, 15 Oct 2026 16:16:24 +0000
 Subject: [PATCH] Select V8 stack assembly by Windows ABI
 
 Restore the original MASM source and give the Windows GNU implementation
@@ -58,7 +58,7 @@ index e6f12b16a..e63fb5efd 100644
      "windows-support-remote-case-aliases.patch",
 diff --git a/patches/v8_windows_assembly_abi.patch b/patches/v8_windows_assembly_abi.patch
 new file mode 100644
-index 000000000..522c4df30
+index 000000000..910c5a78b
 --- /dev/null
 +++ b/patches/v8_windows_assembly_abi.patch
 @@ -0,0 +1,207 @@
@@ -67,7 +67,7 @@ index 000000000..522c4df30
 +--- a/orig/v8-15.0.245.2/BUILD.bazel
 ++++ b/mod/v8-15.0.245.2/BUILD.bazel
 +@@ -5027,7 +5027,10 @@ cc_test(
-+ 
++
 + filegroup(
 +     name = "codex_windows_stack_assembly",
 +-    srcs = ["src/heap/base/asm/x64/push_registers_masm.asm"],
@@ -76,7 +76,7 @@ index 000000000..522c4df30
 ++        "//conditions:default": ["src/heap/base/asm/x64/push_registers_masm.asm"],
 ++    }),
 + )
-+ 
++
 + v8_library(
 +diff --git a/orig/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
 +index fe6e8a5..b15b54d 100644
@@ -87,7 +87,7 @@ index 000000000..522c4df30
 + bazel_dep(name = "abseil-cpp", version = "20250814.0")
 + bazel_dep(name = "rules_license", version = "0.0.4")
 ++bazel_dep(name = "llvm", version = "0.8.24")
-+ 
++
 + git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 + http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 +diff --git a/orig/v8-15.0.245.2/src/heap/base/asm/x64/push_registers_gas.S b/mod/v8-15.0.245.2/src/heap/base/asm/x64/push_registers_gas.S
@@ -328,6 +328,3 @@ index 000000000..f02acb82b
 +        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt"],
 +    },
 +)
--- 
-2.43.0
-

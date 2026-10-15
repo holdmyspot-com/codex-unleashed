@@ -1,4 +1,4 @@
-From da023146d91a5eff4d5544d0439e6822aaa708b7 Mon Sep 17 00:00:00 2001
+From a48ae5b59e869793326a33ccf7aae62eecc9e07c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 15:51:16 +0000
 Subject: [PATCH] Propagate V8 Windows registry linkage to Rust consumers
@@ -58,7 +58,7 @@ index c8c198189..e6f12b16a 100644
      "tikv-jemalloc-sys_dependency_flags.patch",
 diff --git a/patches/rusty_v8_windows_registry.patch b/patches/rusty_v8_windows_registry.patch
 new file mode 100644
-index 000000000..32a2c3afc
+index 000000000..998d3d7f1
 --- /dev/null
 +++ b/patches/rusty_v8_windows_registry.patch
 @@ -0,0 +1,14 @@
@@ -74,7 +74,7 @@ index 000000000..32a2c3afc
 ++    // Remove when rusty_v8 emits the registry library required by its archive.
 ++    println!("cargo:rustc-link-lib=dylib=advapi32");
 +   }
-+ 
++
 +   if target_env == "msvc" {
 diff --git a/tools/build-warnings/v8-link-metadata/BUILD.bazel b/tools/build-warnings/v8-link-metadata/BUILD.bazel
 new file mode 100644
