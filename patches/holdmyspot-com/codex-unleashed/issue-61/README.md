@@ -2358,6 +2358,31 @@ just fmt-check
 just bazel-lock-check
 ```
 
-All eleven timeout analysis regressions and the three actual compatibility
+All timeout analysis regressions and the three actual compatibility
 checks must pass without timing-range advisories. The focused runtime command
 requires a Linux x86-64 execution host and the pinned comparison releases.
+
+
+## Sharded exec integration deadline
+
+`zzzz-0029-exec-integration-deadline.patch` gives exec integration tests an
+explicit moderate timeout. The eight-shard suite can exceed the short budget
+on native macOS. Unit-test defaults, sharding, assertions, and verbose timeout
+diagnostics retain their behavior.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0028`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test //tools/build-warnings/test-timeouts:timeouts_tests
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/exec:exec-all-test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the actual generated integration target's
+moderate timeout. All eight runtime shards must complete with every assertion
+passing on each supported native platform. An analysis pass alone does not
+establish that execution gate.
