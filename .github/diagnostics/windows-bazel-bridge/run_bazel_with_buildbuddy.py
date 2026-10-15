@@ -197,7 +197,10 @@ def main() -> None:
     if tooling:
         bash = shutil.which("bash")
         if bash is None:
-            raise FileNotFoundError("Bash is required on PATH to run CODEX_UNLEASHED_TOOLING")
+            raise FileNotFoundError(
+                "Bash is required on PATH to run CODEX_UNLEASHED_TOOLING"
+            )
+
         result = subprocess.run(
             [
                 bash,

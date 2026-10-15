@@ -690,18 +690,7 @@ jobs:
         run: |
           Get-Command bash -All | Format-List Source,CommandType
           python --version
-      - name: Reproduce original fixture
+      - name: Verify emitted bridge regression suite
         shell: pwsh
         working-directory: .github/diagnostics/windows-bazel-bridge
-        run: python -m unittest test_run_bazel_with_buildbuddy.RunBazelWithBuildBuddyTest.test_main_uses_configured_java_tooling_with_exact_arguments_and_status
-      - name: Compare LF fixture
-        if: always()
-        shell: pwsh
-        working-directory: .github/diagnostics/windows-bazel-bridge
-        run: |
-          @'
-          from pathlib import Path
-          p = Path('test_run_bazel_with_buildbuddy.py')
-          p.write_text(p.read_text().replace('encoding="utf-8",', r'encoding="utf-8", newline="\n",'))
-          '@ | python
-          python -m unittest test_run_bazel_with_buildbuddy.RunBazelWithBuildBuddyTest.test_main_uses_configured_java_tooling_with_exact_arguments_and_status
+        run: python test_run_bazel_with_buildbuddy.py

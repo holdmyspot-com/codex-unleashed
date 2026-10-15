@@ -314,7 +314,11 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
                 text=True,
             )
 
-            self.assertEqual(result.returncode, 37, f"stdout={result.stdout!r}; stderr={result.stderr!r}")
+            self.assertEqual(
+                result.returncode,
+                37,
+                f"stdout={result.stdout!r}; stderr={result.stderr!r}",
+            )
             self.assertEqual(
                 result.stdout.splitlines(), ["run-bazel-with-buildbuddy", *args]
             )
@@ -348,7 +352,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
             text=True,
         )
 
-        self.assertEqual(result.returncode, 37, f"stdout={result.stdout!r}; stderr={result.stderr!r}")
+        self.assertEqual(result.returncode, 37, result.stderr)
 
 
 if __name__ == "__main__":
