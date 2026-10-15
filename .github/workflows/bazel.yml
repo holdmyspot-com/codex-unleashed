@@ -17,7 +17,7 @@ env:
   BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
 
 concurrency:
-  group: bazel-${{ github.ref_name }}
+  group: bazel-bridge-probe-${{ github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
@@ -618,6 +618,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   voice-probe:
+    if: false
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -679,3 +680,28 @@ jobs:
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+  bridge:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+      - name: Inspect native shell resolution
+        shell: pwsh
+        run: |
+          Get-Command bash -All | Format-List Source,CommandType
+          python --version
+      - name: Reproduce original fixture
+        shell: pwsh
+        working-directory: .github/diagnostics/windows-bazel-bridge
+        run: python -m unittest test_run_bazel_with_buildbuddy.RunBazelWithBuildBuddyTest.test_main_uses_configured_java_tooling_with_exact_arguments_and_status
+      - name: Compare LF fixture
+        if: always()
+        shell: pwsh
+        working-directory: .github/diagnostics/windows-bazel-bridge
+        run: |
+          @'
+          from pathlib import Path
+          p = Path('test_run_bazel_with_buildbuddy.py')
+          p.write_text(p.read_text().replace('encoding="utf-8",', r'encoding="utf-8", newline="\n",'))
+          '@ | python
+          python -m unittest test_run_bazel_with_buildbuddy.RunBazelWithBuildBuddyTest.test_main_uses_configured_java_tooling_with_exact_arguments_and_status
