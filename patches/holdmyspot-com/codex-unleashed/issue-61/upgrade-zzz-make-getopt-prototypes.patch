@@ -1,0 +1,70 @@
+From 6b5de0559a027dd46087e9a3adffa7cb04e0d848 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 23:48:17 +0000
+Subject: [PATCH] Match Make getopt prototypes on modern Darwin compilers
+
+The Darwin Clang 23 baseline rejects the legacy declarations. Match the implemented signatures without suppressing diagnostics. Keep patch context independent of later OpenSSL exports.
+---
+ MODULE.bazel                         |  1 +
+ patches/BUILD.bazel                  |  1 +
+ patches/make_getopt_prototypes.patch | 35 ++++++++++++++++++++++++++++
+ 3 files changed, 37 insertions(+)
+ create mode 100644 patches/make_getopt_prototypes.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 0f0c023..079e33e 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -203,2 +203,3 @@ single_version_override(
+         "//patches:make_source_warnings.patch",
++        "//patches:make_getopt_prototypes.patch",
+     ],
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index f955065..581f3aa 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -3,2 +3,3 @@ exports_files([
+     "make_source_warnings.patch",
++    "make_getopt_prototypes.patch",
+     "make_compiler_warnings.patch",
+diff --git a/patches/make_getopt_prototypes.patch b/patches/make_getopt_prototypes.patch
+new file mode 100644
+index 0000000..a9f42e1
+--- /dev/null
++++ b/patches/make_getopt_prototypes.patch
+@@ -0,0 +1,35 @@
++From 56684060ef1d97a381cc57dcf2e6df20544f9c0e Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Wed, 14 Oct 2026 23:39:45 +0000
++Subject: [PATCH] Give Make getopt declarations their implemented prototypes
++
++Darwin Clang 23 rejects the legacy non-prototype getopt and getenv declarations with warnings as errors. Match the existing definitions and platform declarations without disabling diagnostics.
++---
++ src/getopt.c | 2 +-
++ src/getopt.h | 7 -------
++ 2 files changed, 1 insertion(+), 8 deletions(-)
++
++diff --git a/src/getopt.c b/src/getopt.c
++index 7a792de..76251cc 100644
++--- a/src/getopt.c
+++++ b/src/getopt.c
++@@ -204,3 +204,3 @@ static char *posixly_correct;
++ #ifndef getenv
++-extern char *getenv ();
+++extern char *getenv (const char *);
++ #endif
++diff --git a/src/getopt.h b/src/getopt.h
++index df18cee..a6cc621 100644
++--- a/src/getopt.h
+++++ b/src/getopt.h
++@@ -98,10 +98,3 @@ struct option
++ #if defined (__STDC__) && __STDC__
++-#ifdef __GNU_LIBRARY__
++-/* Many other libraries have conflicting prototypes for getopt, with
++-   differences in the consts, in stdlib.h.  To avoid compilation
++-   errors, only prototype getopt for the GNU C library.  */
++ extern int getopt (int argc, char *const *argv, const char *shortopts);
++-#else /* not __GNU_LIBRARY__ */
++-extern int getopt ();
++-#endif /* __GNU_LIBRARY__ */
++ extern int getopt_long (int argc, char *const *argv, const char *shortopts,

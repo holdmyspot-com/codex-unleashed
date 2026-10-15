@@ -1,0 +1,142 @@
+From 487c428ace6a7af6fdc90617caee704dd39d3332 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 00:28:32 +0000
+Subject: [PATCH] Enable the compiled XZ ARM64 filter on Windows
+
+Select the latest registered XZ module, 5.4.5.bcr.9, and enable both ARM64 filter entry points in the Windows build configuration. This fixes the unused internal initializer without relaxing compiler diagnostics.
+
+The focused Windows cross-build fails with arm64_coder_init unused before the change and succeeds afterward. The ARM64 filter compression/decompression regression passes on Linux; native Windows execution remains a hosted gate.
+---
+ MODULE.bazel                                |  3 +-
+ MODULE.bazel.lock                           |  6 ++-
+ patches/BUILD.bazel                         |  1 +
+ patches/xz_windows_arm64_filter.patch       | 13 ++++++
+ tools/build-warnings/xz/BUILD.bazel         |  8 ++++
+ tools/build-warnings/xz/arm64_filter_test.c | 46 +++++++++++++++++++++
+ 6 files changed, 74 insertions(+), 3 deletions(-)
+ create mode 100644 patches/xz_windows_arm64_filter.patch
+ create mode 100644 tools/build-warnings/xz/BUILD.bazel
+ create mode 100644 tools/build-warnings/xz/arm64_filter_test.c
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 8c7532130..5eb6456e8 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -492,3 +492,3 @@ inject_repo(crate, "zlib")
+
+-bazel_dep(name = "xz", version = "5.4.5.bcr.8")
++bazel_dep(name = "xz", version = "5.4.5.bcr.9")
+ single_version_override(
+@@ -498,2 +498,3 @@ single_version_override(
+         "//patches:xz_windows_stack_args.patch",
++        "//patches:xz_windows_arm64_filter.patch",
+     ],
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index add18e03e..30644b986 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -63,3 +63,4 @@
+     "https://bcr.bazel.build/modules/bazel_lib/3.2.2/MODULE.bazel": "e2c890c8a515d6bca9c66d47718aa9e44b458fde64ec7204b8030bf2d349058c",
+-    "https://bcr.bazel.build/modules/bazel_lib/3.2.2/source.json": "9e84e115c20e14652c5c21401ae85ff4daa8702e265b5c0b3bf89353f17aa212",
++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/MODULE.bazel": "cbc920fff00a55b2fd663d40850560a6fb17fd5ef3a9f3d6cbf0d32908dd8a40",
++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/source.json": "7a9c2b06a113c4962d329bb68befdb90d0447788a19aabaa32b476a0458e7d28",
+     "https://bcr.bazel.build/modules/bazel_skylib/1.0.3/MODULE.bazel": "bcb0fd896384802d1ad283b4e4eb4d718eebd8cb820b0a2c3a347fb971afd9d8",
+@@ -292,3 +293,4 @@
+     "https://bcr.bazel.build/modules/xz/5.4.5.bcr.8/MODULE.bazel": "e48a69bd54053c2ec5fffc2a29fb70122afd3e83ab6c07068f63bc6553fa57cc",
+-    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.8/source.json": "bd7e928ccd63505b44f4784f7bbf12cc11f9ff23bf3ca12ff2c91cd74846099e",
++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/MODULE.bazel": "ff7cf8a5334a96b7b9ffcbe73418d45929ce125efebac39c1ee7d14bd2ae7a9b",
++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/source.json": "abf61f3c1630eab7b81722f710060b6f31e7c160511bcbfaad74bb4385883051",
+     "https://bcr.bazel.build/modules/zlib-ng/2.3.3.bcr.2/MODULE.bazel": "86130924115bf8dfc4aba286fb49a2ec8d32430a21771db9ccf5381acf0d10cc",
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index a705f5f4a..b4f944c77 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -43,2 +43,3 @@ exports_files([
+     "xz_windows_stack_args.patch",
++    "xz_windows_arm64_filter.patch",
+     "zstd-sys_windows_msvc_include_dirs.patch",
+diff --git a/patches/xz_windows_arm64_filter.patch b/patches/xz_windows_arm64_filter.patch
+new file mode 100644
+index 000000000..34d53dec0
+--- /dev/null
++++ b/patches/xz_windows_arm64_filter.patch
+@@ -0,0 +1,13 @@
++diff --git a/BUILD.bazel b/BUILD.bazel
++index cf0e783..4fb9ca4 100644
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -166,3 +166,7 @@ cc_library(
++     defines = select({
++-        "@platforms//os:windows": ["LZMA_API_STATIC"],
+++        "@platforms//os:windows": [
+++            "LZMA_API_STATIC",
+++            "HAVE_ENCODER_ARM64=1",
+++            "HAVE_DECODER_ARM64=1",
+++        ],
++         "//conditions:default": [],
+diff --git a/tools/build-warnings/xz/BUILD.bazel b/tools/build-warnings/xz/BUILD.bazel
+new file mode 100644
+index 000000000..fc78c6671
+--- /dev/null
++++ b/tools/build-warnings/xz/BUILD.bazel
+@@ -0,0 +1,8 @@
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
++
++cc_test(
++    name = "arm64_filter_test",
++    size = "small",
++    srcs = ["arm64_filter_test.c"],
++    deps = ["@xz//:lzma"],
++)
+diff --git a/tools/build-warnings/xz/arm64_filter_test.c b/tools/build-warnings/xz/arm64_filter_test.c
+new file mode 100644
+index 000000000..d3875223d
+--- /dev/null
++++ b/tools/build-warnings/xz/arm64_filter_test.c
+@@ -0,0 +1,46 @@
++#include <lzma.h>
++#include <stdint.h>
++#include <string.h>
++
++int main(void) {
++    const uint8_t input[] = {
++        0x00, 0x00, 0x00, 0x94, 0x00, 0x00, 0x00, 0x90,
++        0x04, 0x00, 0x00, 0x94, 0x20, 0x00, 0x00, 0x90,
++    };
++    if (!lzma_filter_encoder_is_supported(LZMA_FILTER_ARM64) ||
++        !lzma_filter_decoder_is_supported(LZMA_FILTER_ARM64)) {
++        return 1;
++    }
++
++    lzma_options_lzma options;
++    if (lzma_lzma_preset(&options, LZMA_PRESET_DEFAULT)) {
++        return 2;
++    }
++    lzma_filter filters[] = {
++        {LZMA_FILTER_ARM64, NULL},
++        {LZMA_FILTER_LZMA2, &options},
++        {LZMA_VLI_UNKNOWN, NULL},
++    };
++    uint8_t compressed[256];
++    size_t compressed_size = 0;
++    if (lzma_stream_buffer_encode(filters, LZMA_CHECK_CRC64, NULL,
++            input, sizeof(input), compressed, &compressed_size,
++            sizeof(compressed)) != LZMA_OK) {
++        return 3;
++    }
++
++    uint8_t decoded[sizeof(input)];
++    uint64_t memory_limit = UINT64_MAX;
++    size_t input_position = 0;
++    size_t output_position = 0;
++    if (lzma_stream_buffer_decode(&memory_limit, 0, NULL, compressed,
++            &input_position, compressed_size, decoded, &output_position,
++            sizeof(decoded)) != LZMA_OK) {
++        return 4;
++    }
++    if (input_position != compressed_size || output_position != sizeof(input) ||
++        memcmp(input, decoded, sizeof(input)) != 0) {
++        return 5;
++    }
++    return 0;
++}

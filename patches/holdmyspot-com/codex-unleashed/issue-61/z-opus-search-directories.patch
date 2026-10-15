@@ -1,0 +1,60 @@
+From 3ad7739500c9c417363c70ae60566750c402b91f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 23:58:06 +0000
+Subject: [PATCH] Keep bundled Opus library search paths valid during
+ cross-builds
+
+Baseline: the real Darwin ARM codec regression fails at a missing lib64 path under fatal linker diagnostics. The build script executes on Linux remote workers and its host cfg is not the target OS. Retain optional installed lib64 support and all linker diagnostics.
+---
+ MODULE.bazel                                 |  4 ++++
+ patches/BUILD.bazel                          |  1 +
+ patches/opusic_sys_library_directories.patch | 21 ++++++++++++++++++++
+ 3 files changed, 26 insertions(+)
+ create mode 100644 patches/opusic_sys_library_directories.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 85d7373e7..8c7532130 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -702,2 +702,6 @@ crate.annotation(
+     crate = "opusic-sys",
++    patch_args = ["-p1"],
++    # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
++    # Remove when opusic-sys emits only installed library search directories.
++    patches = ["//patches:opusic_sys_library_directories.patch"],
+ )
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 581f3aab2..a705f5f4a 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,2 +1,3 @@
+ exports_files([
++    "opusic_sys_library_directories.patch",
+     "openssl_windows_compiler_types.patch",
+diff --git a/patches/opusic_sys_library_directories.patch b/patches/opusic_sys_library_directories.patch
+new file mode 100644
+index 000000000..3f5620395
+--- /dev/null
++++ b/patches/opusic_sys_library_directories.patch
+@@ -0,0 +1,21 @@
++From 41fe6b2a890c1c276f4c7116d22ec33220da1f1f Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Wed, 14 Oct 2026 23:58:06 +0000
++Subject: [PATCH] Emit the optional Opus lib64 directory only when installed
++
++A Linux build-script executor can target Darwin. Its host cfg currently emits a missing lib64 directory even though CMake installs to lib, and Darwin fatal linker diagnostics reject that path. Preserve installed lib64 compatibility without emitting nonexistent directories.
++---
++ build.rs | 4 +++-
++ 1 file changed, 3 insertions(+), 1 deletion(-)
++
++diff --git a/build.rs b/build.rs
++index 6e6cae4..77e43af 100644
++--- a/build.rs
+++++ b/build.rs
++@@ -248,3 +248,5 @@ fn build() {
++         out_dir.push("lib64");
++-        println!("cargo:rustc-link-search=native={}", out_dir.display());
+++        if out_dir.is_dir() {
+++            println!("cargo:rustc-link-search=native={}", out_dir.display());
+++        }
++     }

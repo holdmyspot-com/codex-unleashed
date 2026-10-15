@@ -1,0 +1,24 @@
+From 3d24a4a81a7a3fe6006a5b215fbec504cc91143e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 23:40:37 +0000
+Subject: [PATCH] Run the MSVC OpenSSL analysis fixture only on its platform
+
+The general macOS test sweep must not materialize MSVC SDK repositories solely for this Windows compiler regression. Keep explicit Windows/MSVC analysis coverage.
+---
+ tools/build-warnings/openssl/BUILD.bazel | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
+index be1984b84..6d12c016c 100644
+--- a/tools/build-warnings/openssl/BUILD.bazel
++++ b/tools/build-warnings/openssl/BUILD.bazel
+@@ -11,5 +11,9 @@ openssl_install_inputs_test(
+ openssl_windows_defines_test(
+     name = "windows_defines_test",
+     size = "small",
++    target_compatible_with = [
++        "@platforms//os:windows",
++        "@llvm//constraints/windows/abi:msvc",
++    ],
+     target_under_test = "@openssl//:crypto",
+ )

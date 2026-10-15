@@ -461,7 +461,7 @@ Apply the OpenSSL upgrade, native tool upgrades, and OpenSSL linker-input patch
 first.
 
 ```sh
-bazel test //tools/build-warnings/openssl:windows_defines_test --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+bazel test //tools/build-warnings/openssl:windows_defines_test --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
 bazel test //tools/build-warnings/openssl:configuration_header_test //tools/build-warnings/openssl:ssl_init_test //tools/build-warnings/openssl:rust_bindings_test
 just fmt-check
 just bazel-lock-check
@@ -473,6 +473,96 @@ The library tests verify initialization, providers, hashing, and TLS context
 creation on their execution platform. Run these library tests on native Windows
 with `--config=ci-windows-msvc` for MSVC compiler and runtime acceptance;
 Linux execution and Windows-target analysis do not establish that gate.
+
+## GNU Make modern C declarations
+
+`upgrade-zzz-make-getopt-prototypes.patch` gives GNU Make's bundled `getopt`
+and `getenv` declarations their existing implemented signatures. Modern Darwin
+compilers can compile these sources with fatal warnings without accepting obsolete
+non-prototype declarations. Apply `upgrade-z-native-tools.patch` first.
+
+```sh
+bazel build @make//:make --platforms=@llvm//platforms:macos_arm64
+bazel test //tools/build-warnings/make-bootstrap:make_bootstrap_test
+just fmt-check
+just bazel-lock-check
+```
+
+The cross-build compiles the actual Darwin implementation and links GNU Make.
+The runtime probe checks Makefile execution on its execution host. Native macOS
+execution remains a separate gate.
+
+## Bundled Opus build executable
+
+`z-opus-ninja-executable.patch` supplies the underlying Ninja 1.13.2
+executable directly to Opus's Cargo build script. It declares the executable as
+a build input and retains CMake's resolved toolchain. The version matches the
+existing foreign-build tool selection. This Cargo action runs outside the
+foreign-build wrapper's environment. Apply `upgrade-z-native-tools.patch` and
+`vendored-native-build-script-modes.patch` first.
+
+```sh
+bazel test //tools/build-warnings/opus:bundled_opus_test
+bazel build //tools/build-warnings/opus:bundled_opus_test --platforms=@llvm//platforms:macos_arm64
+just fmt-check
+just bazel-lock-check
+```
+
+`z-opus-search-directories.patch` follows the Ninja executable patch. The build
+script emits its optional `lib64` search path only when that directory exists.
+Linux executors can therefore target Darwin without adding a nonexistent linker
+search directory. Fatal linker diagnostics remain enabled.
+
+The test builds the real bundled codec, links its Rust bindings, and checks its
+version string. The Darwin cross-build verifies compilation and linking; native
+macOS execution remains a separate gate.
+
+## Platform-specific warning regressions
+
+`upgrade-zz-openssl-windows-test-scope.patch` limits the MSVC compiler-argument
+fixture to Windows/MSVC targets. General Linux and macOS test sweeps do not
+materialize the MSVC SDK for this fixture. Apply the OpenSSL Windows diagnostics
+patch first. The explicit Windows analysis command above requires the selected
+Windows platform and accepted runtime license.
+
+`upgrade-zz-seatbelt-formatting.patch` passes three path-display values directly
+to Seatbelt test assertions. Formatting borrows its arguments, so these assertions
+retain their behavior without Clippy's redundant-borrow findings. Native macOS
+Clippy and sandboxing tests verify this platform-specific source.
+
+## Explicit Python package initializers
+
+`z-python-explicit-initializers.patch` enables Bazel's explicit initializer
+semantics. Python packages supply their own required `__init__.py` files rather
+than receiving empty files for every directory in their runfiles. This removes
+the deprecated implicit-initializer behavior reported by the built-in hash tool;
+it does not disable the warning. Apply it after the issue #61 build-tool patches.
+
+`bazel test //tools/build-warnings/python:hash_initializers_test` verifies that
+the actual hash tool has no generated empty package initializers.
+`bazel build //tools/build-warnings/meson:resource_directory_probe` exercises
+Meson's Python tool and native compiler/linker integration with this policy.
+The owning rules_python migration is tracked in
+[rules_python #2945](https://github.com/bazel-contrib/rules_python/issues/2945).
+
+## Windows XZ ARM64 filter configuration
+
+`z-xz-windows-arm64-filter.patch` selects Bazel module `xz` 5.4.5.bcr.9 and
+enables the ARM64 encoder and decoder that its Windows build already compiles.
+The Windows configuration lacks those entry points, leaving the internal filter
+initializer unused under strict compiler checks. This repair supplies the missing
+configuration rather than excluding the source or disabling its diagnostic.
+Apply it after the issue #61 native build patches. The registry module's required
+`bazel_lib` dependency resolves to 3.7.2 as part of this direct dependency update.
+
+`bazel test //tools/build-warnings/xz:arm64_filter_test` verifies ARM64 filter
+availability and an actual compression/decompression round trip.
+`bazel build //tools/build-warnings/xz:arm64_filter_test --platforms=//:windows_x86_64_gnullvm`
+compiles and links the Windows regression with strict compiler diagnostics.
+Native Windows CI executes the same regression on the MSVC platform.
+
+The source configuration is maintained in the
+[Bazel Central Registry XZ module](https://github.com/bazelbuild/bazel-central-registry/tree/main/modules/xz/5.4.5.bcr.9).
 
 ## Rust runtime selection on Darwin
 

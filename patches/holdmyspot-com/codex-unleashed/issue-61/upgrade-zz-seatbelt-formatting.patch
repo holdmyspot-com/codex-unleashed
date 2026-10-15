@@ -1,0 +1,41 @@
+From be4563251c16481dbb97ef887743633c05c29cb8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 14 Oct 2026 23:40:37 +0000
+Subject: [PATCH] Remove redundant display borrows in Seatbelt assertions
+
+Clippy on macOS reports useless_borrows_in_formatting at lines 2038, 2076 and 2114. Formatting borrows its arguments; pass Display values directly without changing the assertions.
+---
+ codex-rs/sandboxing/src/seatbelt_tests.rs | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/sandboxing/src/seatbelt_tests.rs b/codex-rs/sandboxing/src/seatbelt_tests.rs
+index 9466175b7..e5d8876f0 100644
+--- a/codex-rs/sandboxing/src/seatbelt_tests.rs
++++ b/codex-rs/sandboxing/src/seatbelt_tests.rs
+@@ -2035,7 +2035,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         !output.status.success(),
+         "command to write {} should fail under seatbelt",
+-        &config_toml.display()
++        config_toml.display()
+     );
+     assert_seatbelt_denied(&output.stderr, &config_toml);
+
+@@ -2073,7 +2073,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         !output.status.success(),
+         "command to write {} should fail under seatbelt",
+-        &pre_commit_hook.display()
++        pre_commit_hook.display()
+     );
+     assert_seatbelt_denied(&output.stderr, &pre_commit_hook);
+
+@@ -2111,7 +2111,7 @@ fn create_seatbelt_args_with_read_only_git_and_codex_subpaths() {
+     assert!(
+         output.status.success(),
+         "command to write {} should succeed under seatbelt",
+-        &allowed_file.display()
++        allowed_file.display()
+     );
+     assert_eq!(
+         "this is allowed\n",

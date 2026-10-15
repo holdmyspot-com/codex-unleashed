@@ -1,0 +1,59 @@
+From ab8b6e2f19c618af8385e24b50d509e5e204d101 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 00:17:15 +0000
+Subject: [PATCH] Declare Python package initializers explicitly
+
+Enable Bazel explicit initializer semantics instead of generating unused package initializers in the built-in hash tool. Keep required initializer files supplied by each Python package.
+
+Regression: hash_initializers_test fails with 21 generated initializers before this change and passes afterward. The Meson resource-directory build passes with the new semantics, and the actual Bazel hash helper produces the expected SHA-256 when runfiles are enabled. Direct bazel run with the maintained noenable_runfiles setting fails in both baseline and changed configurations at the absent stage2 bootstrap, independently of initializer policy.
+---
+ .bazelrc                                        |  3 +++
+ tools/build-warnings/python/BUILD.bazel         |  7 +++++++
+ tools/build-warnings/python/init_files_test.bzl | 14 ++++++++++++++
+ 3 files changed, 24 insertions(+)
+ create mode 100644 tools/build-warnings/python/BUILD.bazel
+ create mode 100644 tools/build-warnings/python/init_files_test.bzl
+
+diff --git a/.bazelrc b/.bazelrc
+index 88bb56b13..b20365f10 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -28,2 +28,5 @@ common --noenable_runfiles
+
++# Python targets declare their required package initializers explicitly.
++common --incompatible_default_to_explicit_init_py
++
+ common --enable_platform_specific_config
+diff --git a/tools/build-warnings/python/BUILD.bazel b/tools/build-warnings/python/BUILD.bazel
+new file mode 100644
+index 000000000..cf3fbb4aa
+--- /dev/null
++++ b/tools/build-warnings/python/BUILD.bazel
+@@ -0,0 +1,7 @@
++load(":init_files_test.bzl", "explicit_initializers_test")
++
++explicit_initializers_test(
++    name = "hash_initializers_test",
++    size = "small",
++    target_under_test = "@bazel_tools//tools/build_defs/hash:sha256",
++)
+diff --git a/tools/build-warnings/python/init_files_test.bzl b/tools/build-warnings/python/init_files_test.bzl
+new file mode 100644
+index 000000000..7569309bd
+--- /dev/null
++++ b/tools/build-warnings/python/init_files_test.bzl
+@@ -0,0 +1,14 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _explicit_initializers_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    target = analysistest.target_under_test(env)
++    generated_initializers = [
++        filename
++        for filename in target[DefaultInfo].default_runfiles.empty_filenames.to_list()
++        if filename.endswith("/__init__.py")
++    ]
++    asserts.equals(env, [], generated_initializers, "The hash tool must not generate implicit package initializers")
++    return analysistest.end(env)
++
++explicit_initializers_test = analysistest.make(_explicit_initializers_test_impl)
