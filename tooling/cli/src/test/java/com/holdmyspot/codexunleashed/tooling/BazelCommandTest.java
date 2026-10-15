@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import static org.testng.Assert.assertEquals;
@@ -17,18 +18,34 @@ import static org.testng.Assert.assertTrue;
 /** Verifies literal native-child arguments and ordinary exit status through the public CLI. */
 public final class BazelCommandTest
 {
+	private static final String LAUNCHER_WARNING = "OpenJDK 64-Bit Server VM warning: " +
+		"Options -Xverify:none and -noverify were deprecated in JDK 13 and will likely be removed in a future release.";
+
 	/** Creates CLI tests. */
 	public BazelCommandTest()
 	{
 	}
 
 	/**
-	 * Runs a real Node child that accepts one spaced Windows-style argument and exits with status 37.
+	 * Supplies complete and partial diagnostics at EOF and ordinary successful and failed statuses.
 	 *
+	 * @return child diagnostic tails and exit statuses
+	 */
+	@DataProvider
+	public Object[][] diagnosticTailCases()
+	{
+		return new Object[][]{{"", 0}, {LAUNCHER_WARNING, 37}, {"OpenJDK 64-Bit", 37}, {LAUNCHER_WARNING + "\r", 37}};
+	}
+
+	/**
+	 * Runs a real Node child with literal arguments, near-miss diagnostics, exact warnings, and an ordinary status.
+	 *
+	 * @param diagnosticTail the final diagnostic bytes before EOF
+	 * @param status the child's ordinary status
 	 * @throws IOException if fixture or process operations fail
 	 */
-	@Test
-	public void forwardsLiteralArgumentsAndStatus() throws IOException
+	@Test(dataProvider = "diagnosticTailCases")
+	public void forwardsLiteralArgumentsAndStatus(String diagnosticTail, int status) throws IOException
 	{
 		Path root = Files.createTempDirectory("bazel-command-");
 		try
@@ -43,16 +60,27 @@ public final class BazelCommandTest
 			JsonMapper mapper = JsonMapper.builder().build();
 			Path preload = Files.writeString(root.resolve("bazel-fixture.cjs"), """
 				if (process.argv.at(-1) !== %s) process.exit(91);
+				const warning = %s;
+				process.stderr.write(warning + '\\n' + warning + '\\r\\n');
+				process.stderr.write(warning + ' extra\\nwarning: unrelated\\nprefix ' + warning + '\\n');
 				console.log('literal arguments intact');
-				process.exit(37);
-				""".formatted(mapper.writeValueAsString(spaced)));
+				process.stderr.write(%s);
+				process.exit(%d);
+				""".formatted(mapper.writeValueAsString(spaced), mapper.writeValueAsString(LAUNCHER_WARNING),
+				mapper.writeValueAsString(diagnosticTail), status));
 			environment.put("CODEX_BAZEL_BIN", node);
 			environment.put("NODE_OPTIONS", "--require=" + mapper.writeValueAsString(preload.toString()));
 			SystemCommands.Result result = cli(root, environment, List.of("run-bazel-with-buildbuddy", "run",
 				"//fixture:child", "--", spaced));
-			assertEquals(result.status(), 37, result.stdout() + result.stderr());
+			assertEquals(result.status(), status, result.stdout() + result.stderr());
 			assertEquals(result.stdout(), "literal arguments intact\n");
 			assertTrue(result.stderr().contains("BuildBuddy key unavailable; using local Bazel configuration."));
+			String expectedTail = diagnosticTail;
+			if (diagnosticTail.equals(LAUNCHER_WARNING))
+				expectedTail = "";
+			assertEquals(result.stderr(), "BuildBuddy key unavailable; using local Bazel configuration." +
+				System.lineSeparator() + LAUNCHER_WARNING + " extra\nwarning: unrelated\nprefix " + LAUNCHER_WARNING +
+				"\n" + expectedTail);
 		}
 		finally
 		{
