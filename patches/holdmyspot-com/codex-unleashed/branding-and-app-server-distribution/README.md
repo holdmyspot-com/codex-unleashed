@@ -58,6 +58,9 @@ env -u CODEX_UNLEASHED_BUILD_NUMBER -u WT_SESSION -u NO_COLOR \
   -E 'test(startup_draft::) | test(startup_frame_tests::) | test(realtime_requests::) | test(history_cell::tests::) | test(update_prompt::tests::) | test(slash_copy_picker_copies_status_fields_and_preserves_source_after_copying) | test(status_snapshot_uses_default_reasoning_when_config_empty)'
 ```
 
+The owned startup-layout snapshot marks each row's right edge with `|`. It retains
+every terminal cell and column-padding space without trailing file whitespace.
+
 ## Package and executable version agreement
 
 The JDK 27 release tooling records the full Unleashed executable version,

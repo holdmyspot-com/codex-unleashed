@@ -1,90 +1,73 @@
-From 17b0f3c65a3a7b1e22bfa6c221ef1a36eb3ef2fa Mon Sep 17 00:00:00 2001
+From e878e3b6c4944abea10309438d4bd9eb541ca08c Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@holdmyspot.com>
-Date: Mon, 5 Oct 2026 23:30:03 -0400
-Subject: [PATCH] Adapt released branding test fixtures to rust-v0.160.0
+Date: Thu, 15 Oct 2026 02:35:44 +0000
+Subject: [PATCH] Adapt branding fixtures and preserve terminal row padding
 
-Retain the existing Unleashed welcome, status and connected-server warning
-expectations. Include startup, voice-caption, status-copy and update fixtures.
-Keep terminal colors consistent with the declared upstream base, reserve room
-for the branded welcome header and address the directory row explicitly.
+Retain the released branding, daemon version, startup, voice-caption, status-copy, and update expectations on rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d).
 
-Account for branded root CLI argument ordering in exec-server help. Daemon
-fixtures use a non-placeholder stable release and record the full branded
-executable version in their package manifest. No production changes or new
-daemon-updater feature work are included.
+Mark the right edge of each startup-layout snapshot row so column padding remains asserted without trailing file whitespace. The terminal renderer and its cells are unchanged.
 
-RED: maintained affected-package and workspace checks report the relevant
-branding, version and startup-fixture failures; see final-emitted-packages.log
-and fixture-final-workspace.log (exit100).
-GREEN: existing focused compatibility gate passes 41/41 cases. The maintained
-UI gate passes 196/197 with its one remaining stale accent expectation;
-branding-halfwidth-green.log passes that corrected case (exit0). Additional
-status-copy, remote-status, startup, ANSI, socket and native-audio checks pass
-13/13 in branding-and-environment-additional.log (exit0). The other 196 checked
-inputs remain unchanged. Maintained fmt-check passes (exit0).
-
-Scope: test sources and terminal snapshots only. Snapshots intentionally
-preserve rendered column padding; source whitespace checks exclude *.snap.
+Whitespace RED: git apply --check --whitespace=error reports the three padded branding additions in the original emitted patch. The reconstructed source passes git diff --check after adding row boundary markers. Runtime and fresh emitted verification are recorded separately.
 ---
- ..._server_help_documents_remote_options.snap | 12 +--
- codex-rs/cli/tests/app_server_daemon.rs       |  5 +-
- ..._menu__tests__daemon_cli_confirmation.snap |  5 +-
- ..._animation_tests__fresh_thread_header.snap | 12 +--
- ...s_previous_transcript_before_replay-2.snap |  6 +-
- ...e_reconnect__unavailable_conversation.snap |  4 +-
- ...daemon_command_center_vanished_rename.snap |  2 +-
- ...e_buffered_replay_reconciles_captions.snap |  6 +-
- ...__voice_completed_after_thread_switch.snap |  6 +-
- ...partial_completed_after_thread_switch.snap |  5 +-
- ...e_replay_reconciles_matching_captions.snap |  6 +-
- ...rame_tests__startup_tip_in_transcript.snap | 16 ++--
- .../tui/src/chatwidget/rendering_tests.rs     |  6 +-
- ...__catalog_model_session_header_resume.snap |  5 +-
- ..._catalog_model_session_header_startup.snap |  6 +-
- ...og_model_session_header_unknown_model.snap |  5 +-
- ...idget__tests__slash_copy_whole_status.snap |  2 +
- ...pdate_available_history_cell_snapshot.snap |  2 +-
- ...session_header_clamps_to_narrow_width.snap |  7 +-
- ...s__session_header_halfwidth_directory.snap | 78 ++++++++++---------
- ...s__session_header_indicates_yolo_mode.snap |  7 +-
- ...nfo_availability_nux_tooltip_snapshot.snap |  6 +-
- ...pdate_available_history_cell_snapshot.snap |  2 +-
- ...pdate_available_history_cell_snapshot.snap |  2 +-
- ...ter_long_transcript_fresh_header_only.snap |  5 +-
- ...__layout__tests__owned_startup_layout.snap |  6 +-
- ...artup_draft_fresh_session_transitions.snap | 30 ++++---
- ...aft__tests__startup_draft_full_frames.snap | 34 +++++---
- ...__startup_draft_onboarding_transition.snap |  5 +-
- ...raft__tests__terminal_app_ssh_startup.snap | 11 +--
- ...__tests__update_picker_selected_28x12.snap |  4 +-
- ...te_prompt__tests__update_prompt_modal.snap |  2 +-
- .../tui/src/startup_draft_layout_tests.rs     |  2 +-
- codex-rs/tui/src/startup_draft_tests.rs       |  8 +-
- ...ests__status_server_auth_not_required.snap |  4 +-
- ...s__tests__status_server_auth_required.snap |  4 +-
- ...ched_limits_hide_credits_without_flag.snap |  4 +-
- ..._snapshot_includes_credits_and_limits.snap |  4 +-
- ...ludes_enterprise_monthly_credit_limit.snap |  4 +-
- ..._status_snapshot_includes_forked_from.snap |  4 +-
- ...tatus_snapshot_includes_monthly_limit.snap |  4 +-
- ...s_snapshot_includes_reasoning_details.snap |  4 +-
- ...atus_snapshot_local_background_server.snap |  4 +-
- ..._tests__status_snapshot_remote_server.snap |  4 +-
- ...hot_shows_active_user_defined_profile.snap |  4 +-
- ...napshot_shows_auto_review_permissions.snap |  4 +-
- ...shot_shows_chatgpt_plan_without_email.snap |  4 +-
- ...snapshot_shows_missing_limits_message.snap |  4 +-
- ...apshot_shows_refreshing_limits_notice.snap |  4 +-
- ...s_snapshot_shows_stale_limits_message.snap |  4 +-
- ...shot_shows_unavailable_limits_message.snap |  4 +-
- ...tes_halfwidth_kana_in_narrow_terminal.snap |  5 +-
- ...snapshot_truncates_in_narrow_terminal.snap |  4 +-
- ...s_default_reasoning_when_config_empty.snap |  4 +-
- ..._limit_labels_for_unsupported_windows.snap |  4 +-
- ...hly_credit_details_in_narrow_terminal.snap |  4 +-
- ...ipt_overlay_status_rate_limit_refresh.snap | 12 +--
- codex-rs/tui/src/status/tests.rs              | 19 +++--
- 58 files changed, 266 insertions(+), 174 deletions(-)
+ ..._server_help_documents_remote_options.snap |  12 +--
+ codex-rs/cli/tests/app_server_daemon.rs       |   5 +-
+ ..._menu__tests__daemon_cli_confirmation.snap |   5 +-
+ ..._animation_tests__fresh_thread_header.snap |  12 +--
+ ...s_previous_transcript_before_replay-2.snap |   6 +-
+ ...e_reconnect__unavailable_conversation.snap |   4 +-
+ ...daemon_command_center_vanished_rename.snap |   2 +-
+ ...e_buffered_replay_reconciles_captions.snap |   6 +-
+ ...__voice_completed_after_thread_switch.snap |   6 +-
+ ...partial_completed_after_thread_switch.snap |   5 +-
+ ...e_replay_reconciles_matching_captions.snap |   6 +-
+ ...rame_tests__startup_tip_in_transcript.snap |  16 ++--
+ .../tui/src/chatwidget/rendering_tests.rs     |   6 +-
+ ...__catalog_model_session_header_resume.snap |   5 +-
+ ..._catalog_model_session_header_startup.snap |   6 +-
+ ...og_model_session_header_unknown_model.snap |   5 +-
+ ...idget__tests__slash_copy_whole_status.snap |   2 +
+ ...pdate_available_history_cell_snapshot.snap |   2 +-
+ ...session_header_clamps_to_narrow_width.snap |   7 +-
+ ...s__session_header_halfwidth_directory.snap |  78 ++++++++++--------
+ ...s__session_header_indicates_yolo_mode.snap |   7 +-
+ ...nfo_availability_nux_tooltip_snapshot.snap |   6 +-
+ ...pdate_available_history_cell_snapshot.snap |   2 +-
+ ...pdate_available_history_cell_snapshot.snap |   2 +-
+ ...ter_long_transcript_fresh_header_only.snap |   5 +-
+ ...__layout__tests__owned_startup_layout.snap | Bin 988 -> 1011 bytes
+ ...artup_draft_fresh_session_transitions.snap |  30 ++++---
+ ...aft__tests__startup_draft_full_frames.snap |  34 +++++---
+ ...__startup_draft_onboarding_transition.snap |   5 +-
+ ...raft__tests__terminal_app_ssh_startup.snap |  11 +--
+ ...__tests__update_picker_selected_28x12.snap |   4 +-
+ ...te_prompt__tests__update_prompt_modal.snap |   2 +-
+ .../tui/src/startup_draft_layout_tests.rs     |   7 +-
+ codex-rs/tui/src/startup_draft_tests.rs       |   8 +-
+ ...ests__status_server_auth_not_required.snap |   4 +-
+ ...s__tests__status_server_auth_required.snap |   4 +-
+ ...ched_limits_hide_credits_without_flag.snap |   4 +-
+ ..._snapshot_includes_credits_and_limits.snap |   4 +-
+ ...ludes_enterprise_monthly_credit_limit.snap |   4 +-
+ ..._status_snapshot_includes_forked_from.snap |   4 +-
+ ...tatus_snapshot_includes_monthly_limit.snap |   4 +-
+ ...s_snapshot_includes_reasoning_details.snap |   4 +-
+ ...atus_snapshot_local_background_server.snap |   4 +-
+ ..._tests__status_snapshot_remote_server.snap |   4 +-
+ ...hot_shows_active_user_defined_profile.snap |   4 +-
+ ...napshot_shows_auto_review_permissions.snap |   4 +-
+ ...shot_shows_chatgpt_plan_without_email.snap |   4 +-
+ ...snapshot_shows_missing_limits_message.snap |   4 +-
+ ...apshot_shows_refreshing_limits_notice.snap |   4 +-
+ ...s_snapshot_shows_stale_limits_message.snap |   4 +-
+ ...shot_shows_unavailable_limits_message.snap |   4 +-
+ ...tes_halfwidth_kana_in_narrow_terminal.snap |   5 +-
+ ...snapshot_truncates_in_narrow_terminal.snap |   4 +-
+ ...s_default_reasoning_when_config_empty.snap |   4 +-
+ ..._limit_labels_for_unsupported_windows.snap |   4 +-
+ ...hly_credit_details_in_narrow_terminal.snap |   4 +-
+ ...ipt_overlay_status_rate_limit_refresh.snap |  12 +--
+ codex-rs/tui/src/status/tests.rs              |  19 +++--
+ 58 files changed, 266 insertions(+), 173 deletions(-)
 
 diff --git a/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap b/codex-rs/cli/src/snapshots/codex__exec_server_args_tests__exec_server_help_documents_remote_options.snap
 index 2010b1e0c..a79121c55 100644
@@ -659,29 +642,18 @@ index b11e54d20..206a9c18c 100644
 +     https://holdmyspot.com/codex-unleashed/
       /tmp/project
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
-index 6065eb840..6e8c79f9e 100644
---- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
-+++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
-@@ -3,8 +3,9 @@ source: tui/src/startup_draft_layout_tests.rs
- expression: "format!(\"cursor={:?}\\n{frame}\",\nlayout.cursor_pos(area)).replace(crate::version::CODEX_CLI_VERSION,\n\"<VERSION>\")"
- ---
- cursor=Some((13, 12))
--                                                
--  >_ OpenAI Codex (v<VERSION>)                      
-+  >_ Codex Unleashed (v<VERSION>)             
-+     Unofficial fork of OpenAI Codex            
-+     https://holdmyspot.com/codex-unleashed/    
-      loading                                    
-                                                 
-                                                 
-@@ -13,7 +14,6 @@ cursor=Some((13, 12))
-                                                 
-                                                 
-                                                 
--                                                
- › first line                                    
-   second line                                   
-                                                 
+index 6065eb84068867616a4cfdc9b7739b489aa93aad..ee809f973d064d709331bab117ea8d0eae126e67 100644
+GIT binary patch
+delta 250
+zcmcb^{+WHkm3q5)1?T*f)Cz^ryqwg;;*8W31&uPBFxQ}9Pk%o<O$B67!v*Gr=H;iQ
+zWhQ4P<|w4)7iBBtrz!Xsq~<w#LQO)_0@aaGQc_TCrLUinpOcbXSzM4`qL-YXtDl^o
+zB9vO8TMDyTAEdKpvN@w6W6i{i1c}KXn2h;BHWa5O=jWv;<YeZhPA+6rM%Fxe8?!1u
+Kl7oQea{&NJlTJtg
+
+delta 104
+zcmey&eusU+mB~|>^yIk|6zt*^{0ma^96c4B^HWkQ6g0|g!d!!bJ^lUcG$$`)6q}sN
+YXgGNy6Mp=a$#}9RGeXUNW>rQm01Ol%f&c&j
+
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
 index a01b3b6d9..ea3910545 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
@@ -917,10 +889,23 @@ index b54764227..3d7c1614a 100644
 
  › 1. Update now (runs `npm install -g @openai/codex`)                           
 diff --git a/codex-rs/tui/src/startup_draft_layout_tests.rs b/codex-rs/tui/src/startup_draft_layout_tests.rs
-index c9e1dab58..a92e1c7ea 100644
+index c9e1dab58..0b0e9e27e 100644
 --- a/codex-rs/tui/src/startup_draft_layout_tests.rs
 +++ b/codex-rs/tui/src/startup_draft_layout_tests.rs
-@@ -37,7 +37,7 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
+@@ -20,9 +20,10 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
+     layout.render(area, &mut buffer);
+     let frame = (area.y..area.bottom())
+         .map(|y| {
+-            (area.x..area.right())
++            let row = (area.x..area.right())
+                 .map(|x| buffer[(x, y)].symbol())
+-                .collect::<String>()
++                .collect::<String>();
++            format!("{row}|")
+         })
+         .collect::<Vec<_>>()
+         .join("\n");
+@@ -37,7 +38,7 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
  fn new_startup_decoration_tracks_draft_and_session_action() {
      let mut pump = crate::startup_draft::tests::quiet_startup_test_pump();
      let area = Rect::new(
