@@ -1,4 +1,4 @@
-From 6b2de5774824a9784915154ca4814d12051c89f7 Mon Sep 17 00:00:00 2001
+From cc98af0c89aef16402feb5c5dd4bbfb87af5d527 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 22:41:33 +0000
 Subject: [PATCH] Use modern macOS content-type APIs in native GLib
@@ -234,7 +234,7 @@ index edfb39fda..e55561e14 100644
      size = "small",
 diff --git a/tools/build-warnings/glib/content_type_test.c b/tools/build-warnings/glib/content_type_test.c
 new file mode 100644
-index 000000000..94dc72827
+index 000000000..7f929ef81
 --- /dev/null
 +++ b/tools/build-warnings/glib/content_type_test.c
 @@ -0,0 +1,71 @@
@@ -289,7 +289,7 @@ index 000000000..94dc72827
 +  type = g_content_type_guess ("document.txt", NULL, 0, NULL);
 +  g_assert_cmpstr (type, ==, "public.text");
 +  g_free (type);
-+  type = g_content_type_guess ("/Volumes/Drive/", NULL, 0, NULL);
++  type = g_content_type_guess ("/Volumes/", NULL, 0, NULL);
 +  g_assert_cmpstr (type, ==, "public.volume");
 +  g_free (type);
 +  type = g_content_type_guess ("/folder.codex-unregistered-extension/", NULL, 0, &uncertain);
