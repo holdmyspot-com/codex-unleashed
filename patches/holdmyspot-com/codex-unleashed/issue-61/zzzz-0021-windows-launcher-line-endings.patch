@@ -1,0 +1,189 @@
+From 7aef0cd57ba8798182bc1c209c5b4a32da86b585 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:06:55 +0000
+Subject: [PATCH] Fix native Windows launcher line endings
+
+Normalize batch launcher line endings after all template substitutions.
+Share the generation action with focused byte regressions for LF and CRLF
+helper exports, without requiring Windows compiler toolchains on Linux.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+Prerequisites: preceding issue-61 queue through zzzz-0020.
+Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+
+RED: bazel test --test_output=errors --test_verbose_timeout_warnings --
+//tools/build-warnings/windows-launcher:all exits 3; both byte regressions
+report a line without a CRLF terminator.
+GREEN: the same command exits 0; both regressions pass.
+Gates: just fmt-check, just bazel-lock-check, and the launcher, schema,
+and V8 action regressions pass on the fresh ordered queue checkout.
+The known Bazel launcher JVM warning remains separately tracked.
+
+Native CMD probe:
+https://github.com/holdmyspot-com/codex-unleashed/actions/runs/38780814025
+LF launchers with 3 and 12 helper exports fail with missing resolve_runfile;
+CRLF cases pass helper path assertions and propagate exit status 37.
+---
+ defs.bzl                                      | 23 ++++++--
+ .../windows-launcher/BUILD.bazel              | 19 ++++++
+ .../windows-launcher/check-launcher.sh        | 13 +++++
+ .../windows-launcher/launcher_test.bzl        | 58 +++++++++++++++++++
+ 4 files changed, 108 insertions(+), 5 deletions(-)
+ create mode 100644 tools/build-warnings/windows-launcher/BUILD.bazel
+ create mode 100644 tools/build-warnings/windows-launcher/check-launcher.sh
+ create mode 100644 tools/build-warnings/windows-launcher/launcher_test.bzl
+
+diff --git a/defs.bzl b/defs.bzl
+index d0647785d..771c16f48 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -47,6 +47,18 @@ MACOS_WEBRTC_RUSTC_LINK_FLAGS = select({
+     "//conditions:default": [],
+ })
+
++def expand_workspace_root_launcher(actions, template, output, substitutions, is_windows):
++    """Expand a launcher with native Windows line endings after all placeholders."""
++    if is_windows:
++        substitutions = substitutions | {"\r\n": "\n", "\n": "\r\n"}
++
++    actions.expand_template(
++        template = template,
++        output = output,
++        is_executable = True,
++        substitutions = substitutions,
++    )
++
+ def _workspace_root_test_impl(ctx):
+     is_windows = ctx.target_platform_has_constraint(ctx.attr._windows_constraint[platform_common.ConstraintValueInfo])
+     launcher = ctx.actions.declare_file(ctx.label.name + ".bat" if is_windows else ctx.label.name)
+@@ -55,16 +67,17 @@ def _workspace_root_test_impl(ctx):
+     launcher_template = ctx.file._windows_launcher_template if is_windows else ctx.file._bash_launcher_template
+     runfile_env_exports = _windows_runfile_env_exports(ctx) if is_windows else _bash_runfile_env_exports(ctx)
+     workspace_root_setup = _windows_workspace_root_setup(ctx) if is_windows else _bash_workspace_root_setup(ctx)
+-    ctx.actions.expand_template(
+-        template = launcher_template,
+-        output = launcher,
+-        is_executable = True,
+-        substitutions = {
++    expand_workspace_root_launcher(
++        ctx.actions,
++        launcher_template,
++        launcher,
++        {
+             "__RUNFILE_ENV_EXPORTS__": runfile_env_exports,
+             "__TEST_BIN__": test_bin.short_path,
+             "__WORKSPACE_ROOT_SETUP__": workspace_root_setup,
+             "__WORKSPACE_ROOT_MARKER__": workspace_root_marker.short_path,
+         },
++        is_windows = is_windows,
+     )
+
+     runfiles = ctx.runfiles(files = [test_bin, workspace_root_marker]).merge(ctx.attr.test_bin[DefaultInfo].default_runfiles)
+diff --git a/tools/build-warnings/windows-launcher/BUILD.bazel b/tools/build-warnings/windows-launcher/BUILD.bazel
+new file mode 100644
+index 000000000..f40c008e4
+--- /dev/null
++++ b/tools/build-warnings/windows-launcher/BUILD.bazel
+@@ -0,0 +1,19 @@
++load(":launcher_test.bzl", "launcher_fixture", "windows_launcher_test")
++
++[launcher_fixture(
++    name = "fixture_" + line_endings,
++    crlf_substitutions = line_endings == "crlf",
++) for line_endings in [
++    "lf",
++    "crlf",
++]]
++
++[windows_launcher_test(
++    name = "windows_launcher_" + line_endings + "_test",
++    size = "small",
++    launcher = ":fixture_" + line_endings,
++    target_compatible_with = ["@platforms//os:linux"],
++) for line_endings in [
++    "lf",
++    "crlf",
++]]
+diff --git a/tools/build-warnings/windows-launcher/check-launcher.sh b/tools/build-warnings/windows-launcher/check-launcher.sh
+new file mode 100644
+index 000000000..93cfa86cc
+--- /dev/null
++++ b/tools/build-warnings/windows-launcher/check-launcher.sh
+@@ -0,0 +1,13 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++launcher="${TEST_SRCDIR}/${TEST_WORKSPACE}/{launcher}"
++if LC_ALL=C grep -qv $'\r$' "$launcher"; then
++  echo "Windows launcher contains a line without a CRLF terminator." >&2
++  exit 1
++fi
++if LC_ALL=C grep -q $'\r\r$' "$launcher"; then
++  echo "Windows launcher doubles CR bytes when normalizing line endings." >&2
++  exit 1
++fi
++grep -Fq 'set "CARGO_BIN_EXE_fixture_helper=' "$launcher"
+diff --git a/tools/build-warnings/windows-launcher/launcher_test.bzl b/tools/build-warnings/windows-launcher/launcher_test.bzl
+new file mode 100644
+index 000000000..4583b35a7
+--- /dev/null
++++ b/tools/build-warnings/windows-launcher/launcher_test.bzl
+@@ -0,0 +1,58 @@
++load("//:defs.bzl", "expand_workspace_root_launcher")
++
++def _launcher_fixture_impl(ctx):
++    launcher = ctx.actions.declare_file(ctx.label.name + ".bat")
++    newline = "\r\n" if ctx.attr.crlf_substitutions else "\n"
++    expand_workspace_root_launcher(
++        ctx.actions,
++        ctx.file._template,
++        launcher,
++        {
++            "__RUNFILE_ENV_EXPORTS__": newline.join([
++                'call :resolve_runfile "fixture/helper.exe"',
++                "if errorlevel 1 exit /b 1",
++                'set "CARGO_BIN_EXE_fixture_helper=!resolve_runfile_result!"',
++            ]),
++            "__TEST_BIN__": "fixture/test.exe",
++            "__WORKSPACE_ROOT_SETUP__": newline.join([
++                'set "INSTA_WORKSPACE_ROOT=%workspace_root%"',
++                'cd /d "%workspace_root%" || exit /b 1',
++            ]),
++            "__WORKSPACE_ROOT_MARKER__": "fixture/Cargo.toml",
++        },
++        is_windows = True,
++    )
++    return [DefaultInfo(files = depset([launcher]))]
++
++launcher_fixture = rule(
++    implementation = _launcher_fixture_impl,
++    attrs = {
++        "crlf_substitutions": attr.bool(),
++        "_template": attr.label(
++            allow_single_file = True,
++            default = "//:workspace_root_test_launcher.bat.tpl",
++        ),
++    },
++)
++
++def _windows_launcher_test_impl(ctx):
++    script = ctx.actions.declare_file(ctx.label.name + ".sh")
++    ctx.actions.expand_template(
++        template = ctx.file._script,
++        output = script,
++        substitutions = {"{launcher}": ctx.file.launcher.short_path},
++        is_executable = True,
++    )
++    return [DefaultInfo(
++        executable = script,
++        runfiles = ctx.runfiles(files = [ctx.file.launcher]),
++    )]
++
++windows_launcher_test = rule(
++    implementation = _windows_launcher_test_impl,
++    test = True,
++    attrs = {
++        "launcher": attr.label(allow_single_file = True, mandatory = True),
++        "_script": attr.label(allow_single_file = True, default = ":check-launcher.sh"),
++    },
++)

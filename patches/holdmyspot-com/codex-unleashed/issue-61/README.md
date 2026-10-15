@@ -2147,3 +2147,29 @@ execution must also compile the real V8 headers and pass both executable
 regressions. The fork's Windows GNU shard 1 additionally builds the small stack
 callback probe through RBE and executes its downloaded binary directly on the
 Windows runner. Analysis and cross-compilation alone do not verify that callback.
+
+## Native Windows launcher line endings
+
+`zzzz-0021-windows-launcher-line-endings.patch` emits workspace-root batch
+launchers with CRLF after expanding every placeholder. Native CMD reliably
+finds helper labels even when the launcher exports multiple helper binaries.
+The generation boundary normalizes existing CRLF before adding native line
+endings, so multiline substitutions cannot introduce doubled carriage returns.
+Bash launcher expansion retains its existing behavior.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0020`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+just fmt-check
+just bazel-lock-check
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/windows-launcher:all
+bazel test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --test_output=errors --test_verbose_timeout_warnings //codex-rs/app-server:app-server-unit-tests
+```
+
+The Linux generation regressions require CRLF throughout launchers containing
+LF and CRLF helper substitutions, with no doubled carriage returns. Native
+Windows execution must also resolve the app-server's helper binaries and run
+the actual tests; generation checks alone do not establish that outcome.
