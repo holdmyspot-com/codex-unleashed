@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -194,9 +195,12 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
 def main() -> None:
     tooling = os.environ.get("CODEX_UNLEASHED_TOOLING")
     if tooling:
+        bash = shutil.which("bash")
+        if bash is None:
+            raise FileNotFoundError("Bash is required on PATH to run CODEX_UNLEASHED_TOOLING")
         result = subprocess.run(
             [
-                "bash",
+                bash,
                 Path(tooling).as_posix(),
                 "run-bazel-with-buildbuddy",
                 *sys.argv[1:],
