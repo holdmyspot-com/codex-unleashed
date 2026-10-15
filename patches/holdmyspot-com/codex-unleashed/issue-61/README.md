@@ -2467,3 +2467,21 @@ execute successfully. The public GLib regression must print positional
 arguments as `2 3 1`. Native macOS execution remains required to establish the
 Darwin compiler and libc boundary. All five patches track
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+## Native Meson Darwin linker selection
+
+`zzzz-0035-native-meson-darwin-linker.patch` selects the native Darwin linker
+for native voice Meson links and capability probes. The selector belongs only
+in `LDFLAGS`; compile-only arguments retain their existing values. Other
+platforms retain the declared LLVM linker. Fatal diagnostics remain enabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice queue. With the declared CMake and C/C++ tools on `PATH`, run
+`python3 -m unittest discover -s third_party/voice -p test_build_native.py`,
+`just fmt-check`, and `just bazel-lock-check`. The regression requires the
+native selector last on Darwin, preserves the Linux selector and fatal-linker
+flag, and excludes linker selection from compile-only arguments. Native macOS
+acceptance additionally requires the native Meson probe and complete voice
+prefix. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
