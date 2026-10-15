@@ -1,0 +1,54 @@
+From c677f922013bc521ed7d05c7050c9d0d39a95465 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 03:19:02 +0000
+Subject: [PATCH] Temporarily trace Meson native compiler invocations
+
+Diagnostic branch experiment only; print the pre-Meson LIBRARY_PATH and enable verbose compiler output without weakening warnings or changing runtime dependencies.
+---
+ ...s_foreign_cc_meson_setup_diagnostics.patch | 24 ++++++++++++-------
+ 1 file changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/patches/rules_foreign_cc_meson_setup_diagnostics.patch b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
+index 33863de94..fd6222c37 100644
+--- a/patches/rules_foreign_cc_meson_setup_diagnostics.patch
++++ b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
+@@ -1,20 +1,24 @@
+-From dd3f095c7c9c941b3ee5fd79e6539b0946608833 Mon Sep 17 00:00:00 2001
+-From: Gili Tzabari <cowwoc2020@gmail.com>
+-Date: Thu, 15 Oct 2026 01:52:01 +0000
+-Subject: [PATCH] Print Meson setup diagnostics before returning its failure
++From 777fa49dc8af9e4fdcc466cf1f4699c6c2977c4a Mon Sep 17 00:00:00 2001
++From: Codex Unleashed <codex-unleashed@holdmyspot.com>
++Date: Thu, 15 Oct 2026 03:19:02 +0000
++Subject: [PATCH] Trace compiler arguments during Meson setup failures
+
+ ---
+- foreign_cc/meson.bzl | 10 +++++++++-
+- 1 file changed, 9 insertions(+), 1 deletion(-)
++ foreign_cc/meson.bzl | 12 +++++++++++-
++ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+ diff --git a/foreign_cc/meson.bzl b/foreign_cc/meson.bzl
+-index 2cfb974..0be7cf2 100644
++index 2cfb974..7da2d17 100644
+ --- a/foreign_cc/meson.bzl
+ +++ b/foreign_cc/meson.bzl
+-@@ -168,3 +168,11 @@ def _create_meson_script(configureParameters):
++@@ -166,7 +166,17 @@ def _create_meson_script(configureParameters):
++     # Expand options
++     build_options = expand_locations_and_make_variables(ctx, build_options, "options", data)
+
+ -    script.append("{meson} setup --prefix={install_dir} {setup_args} {options} {source_dir}".format(
+-+    script.append("""if {meson} setup --prefix={install_dir} {setup_args} {options} {source_dir}; then
+++    script.append("""printf 'LIBRARY_PATH=%s\\n' "${{LIBRARY_PATH-}}"
+++export CFLAGS="${{CFLAGS:-}} -v"
+++if {meson} setup --prefix={install_dir} {setup_args} {options} {source_dir}; then
+ +    :
+ +else
+ +    status=$?
+@@ -24,3 +28,5 @@ index 2cfb974..0be7cf2 100644
+ +    exit "$status"
+ +fi""".format(
+          meson = meson_path,
++         install_dir = "$$INSTALLDIR$$",
++         setup_args = " ".join(target_args.get("setup", [])),

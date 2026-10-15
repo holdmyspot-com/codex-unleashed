@@ -50,3 +50,25 @@ jobs:
             -Wl,-no_warn_duplicate_libraries -lSystem -Wl,-dead_strip -Wl,-S \
             -Wl,-fatal_warnings sanity.c -o sanity
           ./sanity
+
+  meson-action:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/prepare-patched-upstream
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: aarch64-apple-darwin
+          cache-scope: bazel-test
+      - name: Trace the failing native Meson action
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          cd upstream
+          "$GITHUB_WORKSPACE/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary -- \
+            build --jobs=2 -- //third_party/voice:pkg_config_unix_native_macos_aarch64_
