@@ -1,20 +1,20 @@
-From 16ccb2ec89b743d407fd9b117a5e028906c94b56 Mon Sep 17 00:00:00 2001
+From 6e9b14ddcbb73e177982ae3adce44d234df467dc Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 03:19:02 +0000
 Subject: [PATCH] Temporarily trace Meson native compiler invocations
 
 Diagnostic branch experiment only; print the pre-Meson LIBRARY_PATH and enable verbose compiler output without weakening warnings or changing runtime dependencies.
 ---
- ...s_foreign_cc_meson_setup_diagnostics.patch | 66 ++++++++++++++++---
- 1 file changed, 58 insertions(+), 8 deletions(-)
+ ...s_foreign_cc_meson_setup_diagnostics.patch | 69 ++++++++++++++++---
+ 1 file changed, 61 insertions(+), 8 deletions(-)
 
 diff --git a/patches/rules_foreign_cc_meson_setup_diagnostics.patch b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
-index 33863de94..0ac4a4700 100644
+index 33863de94..6a851d763 100644
 --- a/patches/rules_foreign_cc_meson_setup_diagnostics.patch
 +++ b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
-@@ -1,20 +1,68 @@
+@@ -1,20 +1,71 @@
 -From dd3f095c7c9c941b3ee5fd79e6539b0946608833 Mon Sep 17 00:00:00 2001
-+From 82a7fd95290ca749221d3e709855b7eeda723a2c Mon Sep 17 00:00:00 2001
++From cd9ccce1ff3ed9996e507673309aae783376a05a Mon Sep 17 00:00:00 2001
  From: Gili Tzabari <cowwoc2020@gmail.com>
 -Date: Thu, 15 Oct 2026 01:52:01 +0000
 -Subject: [PATCH] Print Meson setup diagnostics before returning its failure
@@ -25,9 +25,9 @@ index 33863de94..0ac4a4700 100644
  ---
 - foreign_cc/meson.bzl | 10 +++++++++-
 - 1 file changed, 9 insertions(+), 1 deletion(-)
-+ foreign_cc/built_tools/meson_tool_wrapper.py | 13 +++++++++++
-+ foreign_cc/meson.bzl                         | 23 +++++++++++++++++++-
-+ 2 files changed, 35 insertions(+), 1 deletion(-)
++ foreign_cc/built_tools/meson_tool_wrapper.py | 13 ++++++++++
++ foreign_cc/meson.bzl                         | 26 +++++++++++++++++++-
++ 2 files changed, 38 insertions(+), 1 deletion(-)
 +
 +diff --git a/foreign_cc/built_tools/meson_tool_wrapper.py b/foreign_cc/built_tools/meson_tool_wrapper.py
 +index 6e13f07..f60bc58 100644
@@ -62,11 +62,11 @@ index 33863de94..0ac4a4700 100644
 
  diff --git a/foreign_cc/meson.bzl b/foreign_cc/meson.bzl
 -index 2cfb974..0be7cf2 100644
-+index 2cfb974..590806d 100644
++index 2cfb974..7f2057a 100644
  --- a/foreign_cc/meson.bzl
  +++ b/foreign_cc/meson.bzl
 -@@ -168,3 +168,11 @@ def _create_meson_script(configureParameters):
-+@@ -166,7 +166,28 @@ def _create_meson_script(configureParameters):
++@@ -166,7 +166,31 @@ def _create_meson_script(configureParameters):
 +     # Expand options
 +     build_options = expand_locations_and_make_variables(ctx, build_options, "options", data)
 
@@ -75,6 +75,9 @@ index 33863de94..0ac4a4700 100644
 ++    script.append("""printf 'LIBRARY_PATH=%s\\n' "${{LIBRARY_PATH-}}"
 ++printf 'MESON_BASH_RESOLVED=%s\\n' "$(command -v bash)"
 ++/usr/bin/env bash -c 'printf "MESON_ENV_BASH_LIBRARY_PATH=%s\\n" "${{LIBRARY_PATH-}}"'
+++printf 'MESON_LAUNCHER_BEGIN\\n'
+++cat {meson}
+++printf 'MESON_LAUNCHER_END\\n'
 ++probe_cc="$PWD/compiler-probe"
 ++cat > "$probe_cc" <<'CODEX_DRIVER'
 ++#!/usr/bin/env bash
@@ -89,7 +92,7 @@ index 33863de94..0ac4a4700 100644
  +    :
  +else
  +    status=$?
-@@ -24,3 +72,5 @@ index 2cfb974..0be7cf2 100644
+@@ -24,3 +75,5 @@ index 2cfb974..0be7cf2 100644
  +    exit "$status"
  +fi""".format(
           meson = meson_path,
