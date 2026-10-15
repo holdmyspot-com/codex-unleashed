@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.distribution;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -184,6 +185,56 @@ public final class DistributionMainTest
 						if (process.isAlive())
 							process.destroyForcibly().waitFor();
 					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Converts an MSYS temporary path before passing it to the native JVM when argument conversion is disabled.
+	 *
+	 * @throws IOException if runtime assembly or fixture access fails
+	 * @throws InterruptedException if the launcher wait is interrupted
+	 * @throws URISyntaxException if the converter fixture location is invalid
+	 */
+	@Test
+	public void convertsMsysTemporaryDirectory() throws IOException, InterruptedException, URISyntaxException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path image = fixture.root.resolve("runtime");
+			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
+			Path adapters = Files.createDirectory(fixture.root.resolve("adapters"));
+			JavaCommandFixtures.writeNativeLauncher(adapters.resolve("cygpath"), CygpathFixture.class);
+			Path log = fixture.root.resolve("msys-temporary.log");
+			ProcessBuilder builder = NativeCommands.createBuilder("bash", image.resolve("bin/codex-tooling").toString(),
+				"v8-canary-changes", ".", "--force");
+			builder.redirectErrorStream(true).redirectOutput(log.toFile());
+			builder.environment().put("PATH", adapters + java.io.File.pathSeparator +
+				builder.environment().getOrDefault("PATH", ""));
+			builder.environment().put("TMPDIR", "/hosted-msys-temporary");
+			builder.environment().put("FIXTURE_NATIVE_TEMP", fixture.root.toString());
+			builder.environment().put("MSYS2_ARG_CONV_EXCL", "*");
+			builder.environment().put("JDK_JAVA_OPTIONS", "-XshowSettings:properties");
+			try (Process process = builder.start())
+			{
+				try
+				{
+					assertTrue(process.waitFor(30, TimeUnit.SECONDS), "MSYS launcher timed out");
+					String settings = Files.readString(log);
+					assertEquals(process.exitValue(), 0, settings);
+					Path actual = settings.lines().map(String::strip).
+						filter(line -> line.startsWith("java.io.tmpdir = ")).
+						map(line -> Path.of(line.substring("java.io.tmpdir = ".length()))).
+						reduce((previous, current) -> current).
+						orElseThrow(() -> new AssertionError("Missing temporary directory: " + settings));
+					assertEquals(actual, fixture.root, settings);
+					assertFalse(settings.contains("java.io.tmpdir directory does not exist"), settings);
+				}
+				finally
+				{
+					if (process.isAlive())
+						process.destroyForcibly().waitFor();
 				}
 			}
 		}

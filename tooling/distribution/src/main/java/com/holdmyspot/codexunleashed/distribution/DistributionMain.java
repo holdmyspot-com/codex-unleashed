@@ -68,7 +68,11 @@ public final class DistributionMain
 			set -eu
 			LAUNCHER=$0
 			%sDIR=$(CDPATH= cd -- "${LAUNCHER%%/*}" && pwd)
-			exec "$DIR/java" "-Djava.io.tmpdir=${TMPDIR:-/tmp}" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
+			JAVA_TEMP=${TMPDIR:-/tmp}
+			if command -v cygpath >/dev/null 2>&1; then
+				JAVA_TEMP=$(cygpath -m "$JAVA_TEMP")
+			fi
+			exec "$DIR/java" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
 				-Djdk.lang.Process.allowAmbiguousCommands=true --enable-native-access=%s -m %s/%s "$@"
 			""".formatted(normalizeLauncher, TOOLING_MODULE, TOOLING_MODULE, TOOLING_MAIN);
 		Files.writeString(output.resolve("bin/codex-tooling"), launcher);
