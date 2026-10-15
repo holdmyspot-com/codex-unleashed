@@ -652,6 +652,20 @@ jobs:
             -- \
             //third_party/voice:native_prefix_macos_aarch64
 
+      - name: Preserve native action output
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          destination="$RUNNER_TEMP/bazel-execution-logs/action-output"
+          mkdir -p "$destination"
+          for log in "$BAZEL_OUTPUT_BASE"/execroot/_main/bazel-out/_tmp/actions/{stdout,stderr}-*; do
+            if [[ -s "$log" ]]; then
+              cp "$log" "$destination/"
+            fi
+          done
+
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
