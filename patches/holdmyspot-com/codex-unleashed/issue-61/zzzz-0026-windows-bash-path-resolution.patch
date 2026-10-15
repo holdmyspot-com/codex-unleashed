@@ -1,0 +1,62 @@
+From b4d931fb384be7f86172bc698c669d1f4573c152 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 16:06:09 -0400
+Subject: [PATCH] Resolve Git Bash through PATH before invoking Java tooling
+
+Native Windows CreateProcess searches the system directory before PATH for a bare bash command, selecting the WSL launcher instead of Git Bash. Resolve the executable explicitly and include both child streams in regression failures.
+
+RED: native Windows run 38798862538, original launcher and LF fixture comparison both exit 1 with WSL has no installed distributions. GREEN: run 38799049032, the same real child-process regression passes after PATH resolution with both original and LF fixtures. Linux: all 16 BuildBuddy wrapper tests pass. Emitted-patch formatting and lock checks remain required.
+---
+ .github/scripts/run_bazel_with_buildbuddy.py      | 9 ++++++++-
+ .github/scripts/test_run_bazel_with_buildbuddy.py | 6 +++++-
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/.github/scripts/run_bazel_with_buildbuddy.py b/.github/scripts/run_bazel_with_buildbuddy.py
+index 68932190e..92f44ca1a 100755
+--- a/.github/scripts/run_bazel_with_buildbuddy.py
++++ b/.github/scripts/run_bazel_with_buildbuddy.py
+@@ -2,6 +2,7 @@
+
+ import json
+ import os
++import shutil
+ import subprocess
+ import sys
+ from collections.abc import Mapping
+@@ -194,9 +195,15 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
+ def main() -> None:
+     tooling = os.environ.get("CODEX_UNLEASHED_TOOLING")
+     if tooling:
++        bash = shutil.which("bash")
++        if bash is None:
++            raise FileNotFoundError(
++                "Bash is required on PATH to run CODEX_UNLEASHED_TOOLING"
++            )
++
+         result = subprocess.run(
+             [
+-                "bash",
++                bash,
+                 Path(tooling).as_posix(),
+                 "run-bazel-with-buildbuddy",
+                 *sys.argv[1:],
+diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
+index f683c11f8..b7ae0ffcc 100644
+--- a/.github/scripts/test_run_bazel_with_buildbuddy.py
++++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
+@@ -314,7 +314,11 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+                 text=True,
+             )
+
+-            self.assertEqual(result.returncode, 37, result.stderr)
++            self.assertEqual(
++                result.returncode,
++                37,
++                f"stdout={result.stdout!r}; stderr={result.stderr!r}",
++            )
+             self.assertEqual(
+                 result.stdout.splitlines(), ["run-bazel-with-buildbuddy", *args]
+             )
+-- 
+2.43.0
+

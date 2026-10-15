@@ -2288,3 +2288,31 @@ alongside its other executable inputs and removes its scratch outputs on exit.
 Native macOS acceptance additionally requires the complete
 `//third_party/voice:native_prefix_macos_aarch64` build; Linux probe execution
 does not establish Darwin linker behavior.
+
+## Windows Bash executable resolution
+
+`zzzz-0026-windows-bash-path-resolution.patch` resolves Bash through `PATH`
+before the upstream Python bridge invokes the configured Java tooling launcher.
+Native Windows process creation searches the system directory before `PATH`
+for a bare executable name, which can select the WSL launcher rather than Git
+Bash. The bridge uses the resolved executable and retains the tooling command's
+arguments, output, and exit status. Missing Bash produces an explicit error.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with
+`zzzz-0022-bazel-python-jvm-warning-bridge.patch` and its prerequisites. The
+tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+python3 .github/scripts/test_run_bazel_with_buildbuddy.py
+just fmt-check
+just bazel-lock-check
+```
+
+All 16 wrapper regressions must pass. The configured-tooling regression launches
+real child processes from a path containing spaces and requires exact arguments,
+stdout, stderr, and exit status 37. Its failure diagnostic includes both output
+streams. Run it on native Windows with Git Bash on `PATH` and no installed WSL
+distribution, as well as Linux. Linux execution alone does not establish Windows
+executable resolution. The Windows Bazel shard and Clippy jobs remain separate
+acceptance gates for the complete launcher chain.
