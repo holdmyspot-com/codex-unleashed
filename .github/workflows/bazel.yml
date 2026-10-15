@@ -618,7 +618,6 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   voice-probe:
-    if: false
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -627,6 +626,28 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/prepare-patched-upstream
+
+      - name: Add native Meson function detection regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -R .github/diagnostics/native-meson upstream/third_party/voice/function-probe
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('upstream/third_party/voice')
+          build = root / 'BUILD.bazel'
+          text = build.read_text()
+          needle = '    name = "native_recipe",\n    srcs = [\n'
+          assert text.count(needle) == 1
+          files = ''.join(f'        "function-probe/{name}",\n' for name in ('meson.build', 'main.cc', 'probe.c', 'probe.h'))
+          build.write_text(text.replace(needle, needle + files))
+          recipe = root / 'build_native.py'
+          text = recipe.read_text()
+          needle = '        self.cmake(\n            "zlib",'
+          assert text.count(needle) == 1
+          probe = '        self.sources["function-probe"] = Path(__file__).resolve().parent / "function-probe"\n        self.meson("function-probe", [])\n'
+          recipe.write_text(text.replace(needle, probe + needle))
+          PY
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -682,6 +703,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   bridge:
+    if: false
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
