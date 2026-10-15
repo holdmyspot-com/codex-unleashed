@@ -1,0 +1,58 @@
+From c8d44357301c690026e0ec176e8ef08faded7b25 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:02:11 -0400
+Subject: [PATCH] Give daemon integration tests a moderate deadline
+
+The native macOS daemon integration suite exceeds the short default. The target analysis regression fails on the short budget and passes with the moderate budget. Verification: tools/build-warnings/test-timeouts:timeouts_tests passes all thirteen checks; just fmt-check passes. Actual native suite execution remains a hosted acceptance gate.
+---
+ codex-rs/cli/BUILD.bazel                       | 10 ++++++++++
+ tools/build-warnings/test-timeouts/BUILD.bazel |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/codex-rs/cli/BUILD.bazel b/codex-rs/cli/BUILD.bazel
+index 41fbbb78b..a9f317dc3 100644
+--- a/codex-rs/cli/BUILD.bazel
++++ b/codex-rs/cli/BUILD.bazel
+@@ -1,6 +1,7 @@
+ load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "codex_rust_crate")
+ load("//bazel/platforms:release_binaries.bzl", "multiplatform_binaries")
+ load("//bazel/rules:e2e_benchmark.bzl", "codex_e2e_benchmark")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "cli",
+@@ -9,6 +10,7 @@ codex_rust_crate(
+     extra_binaries = [
+         "//codex-rs/bwrap:bwrap",
+     ],
++    integration_test_timeout = "moderate",
+     rustc_flags_extra = MACOS_WEBRTC_RUSTC_LINK_FLAGS,
+     test_data_extra = glob(["src/**/snapshots/**"]),
+ )
+@@ -21,3 +23,11 @@ codex_e2e_benchmark(
+     name = "codex-help",
+     binaries = [":codex"],
+ )
++
++timeout_test(
++    name = "daemon_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":cli-app_server_daemon-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index 3b3dcb0c4..b5be2473a 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -7,6 +7,7 @@ test_suite(
+         "//codex-rs/app-server:integration_override_test",
+         "//codex-rs/app-server:wine_override_test",
+         "//codex-rs/app-server-transport:retry_unit_timeout_test",
++        "//codex-rs/cli:daemon_deadline_test",
+         "//codex-rs/exec:integration_deadline_test",
+         "//codex-rs/exec-server:current_compat_timeout_test",
+         "//codex-rs/exec-server:minimum_compat_timeout_test",
+-- 
+2.43.0
+

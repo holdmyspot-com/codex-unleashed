@@ -2401,3 +2401,17 @@ V8 patches. Run `bazel test //tools/build-warnings/v8:pointer_formats_test`,
 `just fmt-check`, and `just bazel-lock-check`. Native Windows verification
 compiles and executes the same fixture with `/std:c++20 /Zc:__cplusplus /W4 /WX`.
 GCC and MSVC must compile and run it without preprocessor diagnostics.
+
+## Daemon integration deadline
+
+`zzzz-0031-daemon-integration-deadline.patch` gives CLI integration tests a
+moderate timeout. The daemon suite includes real startup and shutdown waits
+that exceed the short default on native macOS. Assertions and verbose timing
+diagnostics remain enabled.
+
+The base and prerequisites match patch 0030. Run
+`bazel test //tools/build-warnings/test-timeouts:timeouts_tests`,
+`bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/cli:cli-app_server_daemon-test`,
+`just fmt-check`, and `just bazel-lock-check`. The analysis regression requires
+the real generated daemon target's moderate deadline; native execution must
+also complete successfully on each supported platform.
