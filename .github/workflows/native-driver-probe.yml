@@ -38,3 +38,15 @@ jobs:
           env -i PATH=/usr/bin:/bin HOME="$probe_root" TMPDIR="$probe_root" \
             "$compiler" --no-default-config -### -target aarch64-apple-darwin \
             -fuse-ld=lld -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
+          printf '%s\n' '=== native link with Meson toolchain flags ==='
+          printf '%s\n' 'int main(void) { return 0; }' > sanity.c
+          "$compiler" -v -target aarch64-apple-darwin -no-canonical-prefixes \
+            --sysroot="$sdk_root" -isysroot "$sdk_root" -mmacosx-version-min=14.0 \
+            -g0 -O2 -D_FORTIFY_SOURCE=1 -DNDEBUG -ffunction-sections -fdata-sections \
+            -fstack-protector -Wall -Wthread-safety -Wself-assign \
+            -Wunused-but-set-parameter -Wno-free-nonheap-object -fno-omit-frame-pointer \
+            -fPIC -Werror -Wl,-framework,Foundation -Wl,-oso_prefix,. -fuse-ld=lld \
+            -rtlib=compiler-rt -lc++ -headerpad_max_install_names \
+            -Wl,-no_warn_duplicate_libraries -lSystem -Wl,-dead_strip -Wl,-S \
+            -Wl,-fatal_warnings sanity.c -o sanity
+          ./sanity
