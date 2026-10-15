@@ -1749,3 +1749,26 @@ run on Linux and Windows. macOS excludes these runtime-specific fixtures.
 The full native Windows build remains required to verify compiler commands and
 the absence of runtime-option warnings in dependency builds. The source carries
 removable `WORKAROUND` comments; no warning diagnostic is suppressed.
+
+## CI MSVC runtime license propagation
+
+`zzzz-0007-ci-msvc-runtime-license.patch` supplies the accepted MSVC runtime
+license to every Bazel CI job. Linux analysis tests also resolve Windows runtime
+headers, so the setting applies across the CI matrix. Ordinary local builds
+continue to require the operator's license acceptance.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). This patch changes only the Bazel
+workflow and applies independently of the compiler repair series. The focused
+CI check uses the LLVM module supplied by the preceding issue-61 dependency
+patches. The canonical tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+Verification uses `bazel build --nobuild
+@llvm//runtimes/msvc:msvc_include` with the workflow's
+`BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1` environment. It resolves and analyzes
+the runtime headers without a license error. With that environment absent,
+the same command fails at the MSVC runtime license check. The workflow runs this
+check on Linux before the full test build. Required queue checks remain
+`just fmt-check` and `just bazel-lock-check`; the native platform matrix verifies
+the complete builds.

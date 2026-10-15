@@ -13,6 +13,9 @@ on:
         required: false
         type: string
 
+env:
+  BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
+
 concurrency:
   group: bazel-${{ github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
@@ -86,6 +89,13 @@ jobs:
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-module-bazel
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-consumer-selectors
           just test-github-scripts
+
+      - name: Verify cross-platform MSVC runtime analysis
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: ./.github/scripts/run-bazel-ci.sh -- build --nobuild -- @llvm//runtimes/msvc:msvc_include
 
       - name: Check MODULE.bazel.lock is up to date
         if: ${{ matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu' }}

@@ -1,0 +1,43 @@
+From ed2a811f2e81bddacc621322e1378746a1db5f00 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 13:17:40 +0000
+Subject: [PATCH] Carry the accepted MSVC runtime license into all Bazel CI
+ jobs
+
+The Linux cross-platform analysis reaches the MSVC runtime repository. Supply the accepted license through the workflow environment and check that repository before the full test build.
+---
+ .github/workflows/bazel.yml | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
+index 1f0fac918..8e7bf44c6 100644
+--- a/.github/workflows/bazel.yml
++++ b/.github/workflows/bazel.yml
+@@ -6,8 +6,11 @@ name: Bazel
+ on:
+   workflow_call:
+   workflow_dispatch:
+
++env:
++  BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
++
+ concurrency:
+   # Cancel previous actions from the same PR or branch except 'main' branch.
+   # See https://docs.github.com/en/actions/using-jobs/using-concurrency and https://docs.github.com/en/actions/learn-github-actions/contexts for more info.
+   group: concurrency-group::${{ github.workflow }}::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}${{ github.ref_name == 'main' && format('::{0}', github.run_id) || ''}}
+@@ -69,8 +72,15 @@ jobs:
+         run: |
+           python3 .github/scripts/rusty_v8_bazel.py check-module-bazel
+           just test-github-scripts
+
++      - name: Verify cross-platform MSVC runtime analysis
++        if: matrix.target == 'x86_64-unknown-linux-gnu'
++        env:
++          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
++        shell: bash
++        run: ./.github/scripts/run-bazel-ci.sh -- build --nobuild -- @llvm//runtimes/msvc:msvc_include
++
+       - name: Check MODULE.bazel.lock is up to date
+         if: matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu'
+         shell: bash
+         run: ./scripts/check-module-bazel-lock.sh
