@@ -7,50 +7,6 @@ on:
 permissions: {}
 
 jobs:
-  probe:
-    runs-on: macos-15
-    steps:
-      - name: Trace the released native compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          export TZ=UTC
-          probe_root=$(mktemp -d "$RUNNER_TEMP/native-driver-XXXXXX")
-          trap 'rm -rf -- "$probe_root"' EXIT
-          export TMPDIR="$probe_root"
-          cd "$probe_root"
-          curl --fail --location --silent --show-error \
-            https://github.com/hermeticbuild/hermetic-llvm/releases/download/llvm-23.1.2-1/llvm-toolchain-minimal-23.1.2-darwin-arm64.tar.zst \
-            --output llvm.tar.zst
-          printf '%s\n' '77b6100c6c715458e8af38ab36557a9d70e1876d203b220254aac86ad36cfcda  llvm.tar.zst' | shasum -a 256 --check
-          tar --zstd -xf llvm.tar.zst
-          compiler="$probe_root/bin/clang"
-          sdk_root=$(xcrun --show-sdk-path)
-          "$compiler" --version
-          printf '%s\n' '=== inherited environment, default configuration ==='
-          "$compiler" -### -target aarch64-apple-darwin -fuse-ld=lld \
-            -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
-          printf '%s\n' '=== clean environment, default configuration ==='
-          env -i PATH=/usr/bin:/bin HOME="$probe_root" TMPDIR="$probe_root" \
-            "$compiler" -### -target aarch64-apple-darwin -fuse-ld=lld \
-            -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
-          printf '%s\n' '=== clean environment, default configuration disabled ==='
-          env -i PATH=/usr/bin:/bin HOME="$probe_root" TMPDIR="$probe_root" \
-            "$compiler" --no-default-config -### -target aarch64-apple-darwin \
-            -fuse-ld=lld -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
-          printf '%s\n' '=== native link with Meson toolchain flags ==='
-          printf '%s\n' 'int main(void) { return 0; }' > sanity.c
-          "$compiler" -v -target aarch64-apple-darwin -no-canonical-prefixes \
-            --sysroot="$sdk_root" -isysroot "$sdk_root" -mmacosx-version-min=14.0 \
-            -g0 -O2 -D_FORTIFY_SOURCE=1 -DNDEBUG -ffunction-sections -fdata-sections \
-            -fstack-protector -Wall -Wthread-safety -Wself-assign \
-            -Wunused-but-set-parameter -Wno-free-nonheap-object -fno-omit-frame-pointer \
-            -fPIC -Werror -Wl,-framework,Foundation -Wl,-oso_prefix,. -fuse-ld=lld \
-            -rtlib=compiler-rt -lc++ -headerpad_max_install_names \
-            -Wl,-no_warn_duplicate_libraries -lSystem -Wl,-dead_strip -Wl,-S \
-            -Wl,-fatal_warnings sanity.c -o sanity
-          ./sanity
-
   meson-action:
     runs-on: macos-15
     permissions:
