@@ -2429,3 +2429,18 @@ initial-cache patch. On native Windows with CMake 4.4.4 and Ninja 1.13.2 on
 The new regression must install its marker beneath a prefix containing spaces.
 The baseline fails with `Invalid character escape`. Required queue checks are
 `just fmt-check` and `just bazel-lock-check`.
+
+## Native Meson header symbols
+
+`zzzz-0033-native-meson-header-symbols.patch` repairs the checksum-pinned
+Meson 1.12.1 C header-symbol probe. Value probes explicitly discard their
+result; type probes use a pointer declaration. Functions, variables, macros,
+enums, and incomplete types remain detectable with fatal compiler warnings.
+Missing symbols remain unavailable. No compiler diagnostic is suppressed.
+
+The base and prerequisites match patch 0030, including the native Meson
+1.12.1 upgrade. Run the native Meson recipe probe documented above,
+`just fmt-check`, and `just bazel-lock-check`. Its separate header-symbol
+fixture requires all seven supported symbols and rejects the missing symbol.
+The baseline fails at the declared-function assertion. The complete native
+voice prefix must also build on macOS and Windows.
