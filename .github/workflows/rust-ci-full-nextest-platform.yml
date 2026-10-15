@@ -1,19 +1,19 @@
-name: Diagnose macOS test deadlines
+name: Diagnose native Windows CMake paths
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: diagnose-macos-tests-${{ github.ref_name }}
-  cancel-in-progress: true
+  group: diagnose-windows-cmake-${{ github.ref_name }}
+  cancel-in-progress: false
 
 env:
   BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
 
 jobs:
-  deadlines:
-    runs-on: macos-15
-    timeout-minutes: 90
+  windows-cmake:
+    runs-on: windows-2022
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -21,41 +21,62 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
 
-      - name: Prepare Bazel CI
-        id: prepare_bazel
-        uses: ./.github/actions/prepare-bazel-ci
+      - uses: actions/setup-python@v6
         with:
-          target: aarch64-apple-darwin
-          cache-scope: bazel-test
+          python-version: "3.12"
 
-      - name: Diagnose suites exceeding their short deadlines
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        shell: bash
+      - name: Prepare pinned native CMake regression tools
+        shell: pwsh
         run: |
-          set -euo pipefail
-          cd upstream
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary \
-            --print-failed-test-logs \
-            -- \
-            test \
-            --jobs=2 \
-            --test_timeout=300 \
-            --test_output=all \
-            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            --build_metadata=TAG_job=diagnose-macos-test-deadlines \
-            -- \
-            //codex-rs/exec-server:exec-server-unit-tests \
-            //codex-rs/exec:exec-all-test \
-            //codex-rs/cli:cli-app_server_daemon-test
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:RUNNER_TEMP 'windows-cmake-probe-tools'
+          python -m venv $tools
+          if ($LASTEXITCODE -ne 0) { throw 'Creating the diagnostic tool environment failed.' }
+          & "$tools/Scripts/python.exe" -m pip install --disable-pip-version-check cmake==4.4.4 ninja==1.13.2
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the pinned diagnostic tools failed.' }
+          "$tools/Scripts" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "TMPDIR=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TEMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Copy-Item .github/diagnostics/windows-cmake/test_build_native.py upstream/third_party/voice/test_build_native.py
 
-      - name: Upload diagnostic execution logs
+      - name: Reproduce native Windows install path failure
+        shell: pwsh
+        working-directory: upstream/third_party/voice
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          Get-Command cmake,ninja -ErrorAction Stop
+          cmake --version
+          ninja --version
+          $log = Join-Path $env:RUNNER_TEMP 'windows-cmake-red.log'
+          python -m unittest test_build_native.NativeBuildTests.test_cmake_windows_install_preserves_prefix_path *> $log
+          $status = $LASTEXITCODE
+          Get-Content $log
+          if ($status -eq 0) { throw 'The baseline must reproduce the native installation failure.' }
+          if (-not (Select-String -Path $log -SimpleMatch 'Invalid character escape')) {
+            throw 'An unrelated failure does not establish the CMake path regression.'
+          }
+
+      - name: Verify normalized installation prefix
+        shell: pwsh
+        working-directory: upstream/third_party/voice
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -c 'from pathlib import Path; p=Path("build_native.py"); s=p.read_text(); old="\"CMAKE_INSTALL_PREFIX\": str(prefix),"; new="\"CMAKE_INSTALL_PREFIX\": prefix.as_posix(),"; assert s.count(old)==1; p.write_text(s.replace(old,new))'
+          if ($LASTEXITCODE -ne 0) { throw 'Applying the diagnostic path correction failed.' }
+          $log = Join-Path $env:RUNNER_TEMP 'windows-cmake-green.log'
+          python -m unittest test_build_native.NativeBuildTests.test_cmake_windows_install_preserves_prefix_path *> $log
+          $status = $LASTEXITCODE
+          Get-Content $log
+          if ($status -ne 0) { throw 'The corrected native installation regression failed.' }
+
+      - name: Preserve native path diagnostic evidence
         if: always() && !cancelled()
         uses: actions/upload-artifact@v6
         with:
-          name: bazel-execution-logs-macos-test-deadlines
-          path: ${{ runner.temp }}/bazel-execution-logs
+          name: windows-cmake-path-diagnostic
+          path: ${{ runner.temp }}/windows-cmake-*.log
           retention-days: 1
           if-no-files-found: ignore
 
