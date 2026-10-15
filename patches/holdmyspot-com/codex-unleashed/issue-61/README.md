@@ -2415,3 +2415,17 @@ The base and prerequisites match patch 0030. Run
 `just fmt-check`, and `just bazel-lock-check`. The analysis regression requires
 the real generated daemon target's moderate deadline; native execution must
 also complete successfully on each supported platform.
+
+## Native CMake installation paths
+
+`zzzz-0032-cmake-install-prefix-path.patch` supplies the installation prefix
+with forward slashes. CMake's generated Windows installation script therefore
+preserves the path rather than interpreting backslashes as escape sequences.
+Other initial-cache values retain their literal handling.
+
+The base and prerequisites match patch 0030, including the native CMake
+initial-cache patch. On native Windows with CMake 4.4.4 and Ninja 1.13.2 on
+`PATH`, run `python -m unittest discover -s third_party/voice -p test_build_native.py`.
+The new regression must install its marker beneath a prefix containing spaces.
+The baseline fails with `Invalid character escape`. Required queue checks are
+`just fmt-check` and `just bazel-lock-check`.

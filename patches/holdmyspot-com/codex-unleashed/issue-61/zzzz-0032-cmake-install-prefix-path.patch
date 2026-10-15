@@ -1,0 +1,68 @@
+From 0b60550d24e171b18b3afcd94948527c0956db0b Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:03:20 -0400
+Subject: [PATCH] Normalize native CMake installation prefix paths
+
+CMake emits its install script with backslash escape sequences when a Windows prefix enters through the initial cache. Normalize the prefix to forward slashes while preserving literal handling for other cache values. The native Windows regression fails with Invalid character escape on the baseline and installs the marker successfully with the fix in Actions run 38814200108, windows-cmake job.
+---
+ third_party/voice/build_native.py      |  2 +-
+ third_party/voice/test_build_native.py | 30 ++++++++++++++++++++++++++
+ 2 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 4007781da..5b2b98005 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -266,7 +266,7 @@ class NativeBuild:
+         settings = {
+             "CMAKE_MAKE_PROGRAM": str(make),
+             "CMAKE_BUILD_TYPE": "Release",
+-            "CMAKE_INSTALL_PREFIX": str(prefix),
++            "CMAKE_INSTALL_PREFIX": prefix.as_posix(),
+             "CMAKE_INSTALL_LIBDIR": "lib",
+             "CMAKE_C_COMPILER": str(self.toolchain["cc"]),
+             "CMAKE_CXX_COMPILER": str(self.toolchain["cxx"]),
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index f68c5f265..db62edffa 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -488,6 +488,36 @@ class NativeBuildTests(unittest.TestCase):
+             build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
+         )
+ 
++    @unittest.skipUnless(
++        os.name == "nt", "Requires native Windows install-script generation"
++    )
++    def test_cmake_windows_install_preserves_prefix_path(self):
++        for argument, tool in (("cmake", "cmake"), ("make", "ninja")):
++            selected = shutil.which(tool)
++            if selected is None:
++                self.skipTest(f"Requires {tool}")
++            setattr(self.args, argument, Path(selected))
++        source = self.root / "windows-install-source"
++        source.mkdir()
++        (source / "marker.txt").write_text("installed fixture")
++        (source / "CMakeLists.txt").write_text(
++            "cmake_minimum_required(VERSION 3.15)\n"
++            "project(windows_install LANGUAGES NONE)\n"
++            "install(FILES marker.txt DESTINATION share)\n"
++        )
++        build = NativeBuild(self.args, self.environment)
++        build.output.mkdir()
++        build.sources = {"fixture": source}
++        build.environment["NINJA"] = str(self.args.make)
++        try:
++            build.cmake("fixture", [])
++        finally:
++            for log in sorted(build.output.glob("*.log")):
++                print(log.read_text(), flush=True)
++        self.assertEqual(
++            (build.prefix / "share/marker.txt").read_text(), "installed fixture"
++        )
++
+     def test_cmake_parallel_builds_match_generator_support(self):
+         self.environment["USERPROFILE"] = str(self.root / "user profile")
+         for system, suffix in (
+-- 
+2.43.0
+
