@@ -1,0 +1,40 @@
+name: Native macOS compiler driver probe
+
+on:
+  push:
+    branches: [diagnostic/mac-native-driver]
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: macos-15
+    steps:
+      - name: Trace the released native compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TZ=UTC
+          probe_root=$(mktemp -d "$RUNNER_TEMP/native-driver-XXXXXX")
+          trap 'rm -rf -- "$probe_root"' EXIT
+          export TMPDIR="$probe_root"
+          cd "$probe_root"
+          curl --fail --location --silent --show-error \
+            https://github.com/hermeticbuild/hermetic-llvm/releases/download/llvm-23.1.2-1/llvm-toolchain-minimal-23.1.2-darwin-arm64.tar.zst \
+            --output llvm.tar.zst
+          printf '%s\n' '77b6100c6c715458e8af38ab36557a9d70e1876d203b220254aac86ad36cfcda  llvm.tar.zst' | shasum -a 256 --check
+          tar --zstd -xf llvm.tar.zst
+          compiler="$probe_root/bin/clang"
+          sdk_root=$(xcrun --show-sdk-path)
+          "$compiler" --version
+          printf '%s\n' '=== inherited environment, default configuration ==='
+          "$compiler" -### -target aarch64-apple-darwin -fuse-ld=lld \
+            -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
+          printf '%s\n' '=== clean environment, default configuration ==='
+          env -i PATH=/usr/bin:/bin HOME="$probe_root" TMPDIR="$probe_root" \
+            "$compiler" -### -target aarch64-apple-darwin -fuse-ld=lld \
+            -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
+          printf '%s\n' '=== clean environment, default configuration disabled ==='
+          env -i PATH=/usr/bin:/bin HOME="$probe_root" TMPDIR="$probe_root" \
+            "$compiler" --no-default-config -### -target aarch64-apple-darwin \
+            -fuse-ld=lld -isysroot "$sdk_root" -Wl,-fatal_warnings -x c /dev/null
