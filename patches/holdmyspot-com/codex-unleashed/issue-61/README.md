@@ -1556,3 +1556,86 @@ retained C compiler options. They run without executing MSVC tools and do not
 establish native compilation. A Windows MSVC build of
 `//tools/build-warnings/assembly:compile_inputs` remains a separate acceptance
 gate for source syntax and command execution.
+
+## Native libffi library directory
+
+`zzz-libffi-native-library-directory.patch` uses libffi's supported
+`--disable-multi-os-directory` option for the native voice prefix. Libraries
+install in the declared `lib` directory without invoking GCC's multilib query,
+which Clang does not support. Compiler warnings remain fatal and dependency
+versions remain unchanged. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice build patches.
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+The recipe regressions require explicit native library placement on Unix and
+Windows. An integration comparison runs libffi 3.8.0's configure with Clang 23:
+the configured `libdir` and `toolexeclibdir` stay the same, and the unsupported
+`-print-multi-os-directory` diagnostics disappear. Native macOS acceptance also
+requires resolving the separate obsolete `-single_module` linker probe.
+
+## Ninja browse capability on Windows
+
+`zzz-ninja-windows-browse.patch` excludes Windows targets from Ninja's Unix
+browse-mode probes. Windows builds use the supported configuration without
+that Unix-only feature. Unix targets retain their probes, browse support, and
+warnings when required capabilities are missing. Dependency versions remain
+unchanged. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice source-preparation patches.
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_prepare_sources.py
+just fmt-check
+just bazel-lock-check
+```
+
+With CMake available, the regression executes the pinned browse configuration
+after source preparation. Windows must avoid Unix probes, a supported Unix
+target must retain browse support, and missing Unix capabilities must still
+produce a warning. These configuration checks do not establish native Windows
+compilation; the hosted voice-prefix build remains a separate acceptance gate.
+
+## Ninja elapsed edge times
+
+`zzz-ninja-elapsed-time.patch` preserves the 64-bit elapsed start time between
+Ninja's edge-start and edge-completion callbacks. It fixes the MSVC C4244 error
+in the direct Ninja 1.13.2 Bazel module without changing the dependency version.
+The BCR build exposes Ninja's existing core as a library so the regression runs
+its real `Builder`; the executable retains its compiler options and Windows
+preprocessor definitions. Ninja's existing build-log representation is outside
+this patch's scope.
+
+The declared base is `rust-v0.162.1` (`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`)
+with the preceding issue-61 module and build-policy patches. The nested patch
+applies to the Ninja 1.13.2 BCR source archive and its published build overlay.
+The canonical tracking issue is <https://github.com/holdmyspot-com/codex-unleashed/issues/61>.
+Remove the workaround when the selected Ninja module preserves elapsed edge
+start times without narrowing and the regression passes without the type fix.
+
+Run from the patched checkout:
+
+```sh
+bazel test //tools/build-warnings/ninja:elapsed_time_test --test_output=errors
+bazel build @ninja//:ninja
+just fmt-check
+just bazel-lock-check
+```
+
+The runtime test checks an ordinary elapsed time and a start time above
+`INT_MAX`. Each edge has exactly one start and completion callback, both
+callbacks receive the same start time, and completion cannot precede the start.
+The test-only baseline loses the high bit in the completion callback. The
+patched native test preserves it. Linux execution does not establish native
+Windows/MSVC acceptance; that remains a hosted-platform gate.

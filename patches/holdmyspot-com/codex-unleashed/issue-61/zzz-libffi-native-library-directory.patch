@@ -1,0 +1,73 @@
+From d75ddfc084cbcb3f641c2480382541aefe436bb1 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 10:18:31 +0000
+Subject: [PATCH] Keep native libffi installation in its declared library
+ directory
+
+Disable the unused GCC multilib directory query in the native prefix recipe. Clang 23 configure completed with unsupported -print-multi-os-directory errors before the change; the supported --disable-multi-os-directory option removes both errors and preserves libdir and toolexeclibdir.
+
+Regression: recipe test fails without the option and passes with it. All 24 native-build tests pass with Clang 23.1.2 and CMake 4.4.4. Actual libffi 3.8.0 configure red and green logs retain the controlled comparison. The separate Darwin single_module warning remains unresolved.
+---
+ third_party/voice/build_native.py      |  1 +
+ third_party/voice/test_build_native.py | 23 +++++++++++++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index dbf9d3fd7..28ea9219a 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -516,8 +516,9 @@ class NativeBuild:
+                 f"--prefix={self.posix_path(self.prefix)}",
+                 "--enable-shared",
+                 "--disable-static",
+                 "--disable-docs",
++                "--disable-multi-os-directory",
+                 *configure_options,
+             ],
+             cwd=ffi_build,
+             environment=environment,
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index c56ad1dd2..94a79b75d 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -266,8 +266,30 @@ class NativeBuildTests(unittest.TestCase):
+         self.assertIn('"/usr/bin/ld"', reload_trace.stderr)
+         result = subprocess.run([build.output / "probe"], check=False)
+         self.assertEqual(result.returncode, 0)
+
++    @unittest.skipIf(
++        os.name == "nt", "Windows configure arguments have a separate recipe test"
++    )
++    def test_libffi_native_prefix_uses_its_declared_library_directory(self):
++        build = NativeBuild(self.args, self.environment)
++        with (
++            patch(
++                "build_native.prepare_sources",
++                side_effect=lambda *args: (build.output / "build").mkdir(),
++            ),
++            patch.object(build, "cmake"),
++            patch.object(build, "meson"),
++            patch.object(build, "run") as run,
++        ):
++            build.build()
++        command = next(
++            call.args[1]
++            for call in run.call_args_list
++            if call.args[0] == "libffi-configure"
++        )
++        self.assertIn("--disable-multi-os-directory", command)
++
+     @unittest.skipIf(os.name == "nt", "Exercises Autoconf's Unix flag expansion")
+     def test_libffi_compiler_receives_literal_defines_without_shell_quotes(self):
+         compiler = shutil.which("cc")
+         if compiler is None:
+@@ -681,8 +703,9 @@ class NativeBuildTests(unittest.TestCase):
+                         "--prefix=/cygdrive/d/prefix",
+                         "--enable-shared",
+                         "--disable-static",
+                         "--disable-docs",
++                        "--disable-multi-os-directory",
+                         f"--build={host}",
+                         f"--host={host}",
+                     ],
+                 )
