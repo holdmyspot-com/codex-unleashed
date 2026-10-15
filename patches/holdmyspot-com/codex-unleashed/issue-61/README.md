@@ -1450,3 +1450,54 @@ The focused regression builds the actual Windows GNU OpenSSL CLI with fatal
 warnings. It covers the CLI source that library-only socket tests omit. The
 expected result is a successful build without socket conversion diagnostics.
 Native Windows execution and MSVC compilation remain separate platform gates.
+
+## V8 Python execution platforms
+
+`zzz-v8-python-execution-platforms.patch` makes V8's existing Python 3.11
+dependencies available on ARM Linux remote workers and both macOS
+architectures. The selected package versions and hashes remain unchanged.
+The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 dependency and Python bootstrap patches.
+
+```sh
+tools/build-warnings/v8/check-python-platforms.sh
+just fmt-check
+just bazel-lock-check
+```
+
+The regression resolves V8's code generator for Linux x64, Windows x64,
+Linux ARM64, macOS x64, and macOS ARM64, then generates the inspector sources
+on the executing host. All configurations must resolve without a missing-wheel
+error. Analysis on one host does not establish native execution on the other
+platforms; hosted V8 canary builds remain separate acceptance gates.
+
+## V8 inspector runtime
+
+`zzz-v8-inspector-python-runtime.patch` generates V8 inspector sources on
+workers without a system `unzip` command. It launches the existing zipapp with
+Bazel's declared execution-platform Python runtime and uses Python's zip
+extraction support. Package versions remain unchanged. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 build patches. The Python execution-platform patch supplies the additional
+wheel configurations needed by ARM Linux and macOS workers. These two fixes
+can apply in either order.
+
+```sh
+tools/build-warnings/v8/check-inspector-runtime.sh
+tools/build-warnings/v8/check-python-platforms.sh
+just fmt-check
+just bazel-lock-check
+```
+
+The runtime regression generates the actual inspector sources for Linux and
+Windows target configurations on a Linux execution host while an executable
+fixture makes `unzip` unavailable. Both builds must succeed using the declared
+runtime. This cross-platform check does not establish native Windows or macOS
+execution; hosted V8 builds remain separate acceptance gates.
