@@ -474,6 +474,21 @@ creation on their execution platform. Run these library tests on native Windows
 with `--config=ci-windows-msvc` for MSVC compiler and runtime acceptance;
 Linux execution and Windows-target analysis do not establish that gate.
 
+## OpenSSL Rust library names
+
+`z-openssl-library-names.patch` supplies `ssl:crypto` through openssl-sys's
+supported `OPENSSL_LIBS` setting for the Bazel-managed installation. Bazel's
+MSVC outputs are `ssl.lib` and `crypto.lib`; the Rust build script's normal
+Windows defaults request `libssl` and `libcrypto` instead. The explicit selection
+also matches the Unix archives through Rust's normal platform naming convention.
+It retains static linking and the declared Bazel installation inputs.
+
+Apply this patch after `upgrade-zz-openssl-link-inputs.patch`, which
+supplies the focused regression. `bazel test //tools/build-warnings/openssl:rust_bindings_test`
+verifies cryptography and TLS through the actual Rust bindings. Native Windows
+CI runs the same regression on the MSVC platform; successful Unix execution
+alone does not establish that platform's link result.
+
 ## GNU Make modern C declarations
 
 `upgrade-zzz-make-getopt-prototypes.patch` gives GNU Make's bundled `getopt`
