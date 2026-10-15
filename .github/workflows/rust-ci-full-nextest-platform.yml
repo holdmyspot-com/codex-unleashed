@@ -130,9 +130,9 @@ jobs:
       - name: Verify the emitted V8 patch with MSVC
         run: |
           $ErrorActionPreference = 'Stop'
-          git apply --check -p3 repair.patch
+          git -C ../../.. apply --check --verbose --directory=.github/diagnostics/v8-guards -p3 .github/diagnostics/v8-guards/repair.patch
           if ($LASTEXITCODE -ne 0) { throw 'The emitted V8 patch does not apply.' }
-          git apply -p3 repair.patch
+          git -C ../../.. apply --verbose --directory=.github/diagnostics/v8-guards -p3 .github/diagnostics/v8-guards/repair.patch
           if ($LASTEXITCODE -ne 0) { throw 'Applying the emitted V8 patch failed.' }
           $log = Join-Path $env:RUNNER_TEMP 'v8-guards-green.log'
           & $env:ComSpec /d /c (Join-Path $env:RUNNER_TEMP 'compile-v8-guards.cmd') *> $log
