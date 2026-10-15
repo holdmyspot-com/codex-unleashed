@@ -1,0 +1,54 @@
+From 48beb3bee54defa4989ec6ef211fa630ef5c9972 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 12:50:07 -0400
+Subject: [PATCH] Preserve Windows executable extensions in Bazel tests
+
+Forward the native client's PATHEXT alongside SYSTEMROOT, COMSPEC, and
+WINDIR. Extensionless executable discovery uses this environment input;
+Bazel's sanitized test environment otherwise drops it.
+
+Existing native regression: cli-doctor_path_safety-test fails to discover
+the git.cmd fixture with which8, while retaining the no-helper-execution
+assertions. run38747669404 job116473691446 records eight passing cases and
+this one failing discovery assertion in bazel-msvc-271217d.log. Windows
+execution with the restored environment remains a hosted acceptance gate.
+
+This configuration repair does not change product lookup semantics or relax
+the diagnostic safety assertions. Base rust-v0.162.1 with the preceding
+issue-61 queue through zzzz-0018.
+---
+ .bazelrc                                 | 2 ++
+ codex-rs/cli/tests/doctor_path_safety.rs | 4 +++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index 1abee8dd0..31aa47c0f 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -56,6 +56,8 @@ common:macos --strategy=CcConfigureMakeRule=remote,sandboxed,local
+ common:windows --test_env=SYSTEMROOT
+ common:windows --test_env=COMSPEC
+ common:windows --test_env=WINDIR
++# Windows executable discovery uses PATHEXT when resolving extensionless names.
++common:windows --test_env=PATHEXT
+ # Rust's libtest harness runs test bodies on std-spawned threads. The default
+ # 2 MiB stack can be too small for large async test futures on Windows CI; see
+ # https://github.com/openai/codex/pull/19067 for the motivating failure.
+diff --git a/codex-rs/cli/tests/doctor_path_safety.rs b/codex-rs/cli/tests/doctor_path_safety.rs
+index bbc4f9f7b..34d749762 100644
+--- a/codex-rs/cli/tests/doctor_path_safety.rs
++++ b/codex-rs/cli/tests/doctor_path_safety.rs
+@@ -186,7 +186,9 @@ fn startup_and_doctor_do_not_execute_path_helpers() -> Result<()> {
+         );
+         assert_eq!(
+             report["checks"]["git.environment"]["summary"],
+-            "git executable found; execution not verified"
++            "git executable found; execution not verified",
++            "extensionless helper discovery uses PATHEXT on Windows: {:?}",
++            std::env::var_os("PATHEXT")
+         );
+         assert!(!fixture.marker.exists(), "doctor executed a PATH helper");
+     }
+-- 
+2.43.0
+

@@ -2061,3 +2061,56 @@ executes the linked program, and checks normal and partial-link driver
 traces for the declared system linker. Native macOS CI must additionally
 confirm the real `-force_load` probe succeeds and build the complete voice
 prefix without warning diagnostics.
+
+## Native test runfiles
+
+`zzzz-0018-native-test-runfiles.patch` resolves configuration-schema fixtures
+and the Windows sandbox setup executable through the maintained Cargo/Bazel
+resource and binary helpers. It supports manifest-only runfiles without
+assuming logical runfile names are filesystem paths. Schema byte and value
+comparisons and Windows manifest resource assertions retain their meaning.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0017`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Apply the complete queue before running the normal release package-version
+preparation, then verify:
+
+```sh
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just fmt-check
+just bazel-lock-check
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/config-schema:config-schema-published_schema-test //codex-rs/config-schema:config-schema-codex_unleashed-test
+```
+
+On native Windows, also run the schema tests and
+`//codex-rs/windows-sandbox-rs:windows-sandbox-rs-helper_manifest-test`
+using CI's `ci-windows-msvc` configuration and MSVC platform. The sandbox
+regression must locate the real executable and read its embedded manifest
+through the Windows resource API. Linux schema results and MSVC analysis
+alone do not establish the native resource outcome.
+
+## Windows executable discovery environment
+
+`zzzz-0019-windows-test-executable-extensions.patch` forwards the native
+client's `PATHEXT` into Bazel tests alongside the other Windows environment
+inputs. Extensionless executable lookup retains the client's extension
+policy, including discovery of the doctor's `.cmd` fixture. The safety
+regression continues to require that startup and doctor never execute the
+fixture helpers; lookup failures include the extension policy in diagnostics.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0018`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+On native Windows, run:
+
+```sh
+just fmt-check
+bazel test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --test_output=errors --test_verbose_timeout_warnings //codex-rs/cli:cli-doctor_path_safety-test
+```
+
+All doctor safety cases must pass, including extensionless discovery of the
+fixture Git helper and the no-execution assertions. Linux execution cannot
+establish Windows extension lookup or environment inheritance.
