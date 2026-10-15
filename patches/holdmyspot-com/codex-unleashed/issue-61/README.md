@@ -1773,10 +1773,14 @@ check on Linux before the full test build. Required queue checks remain
 `just fmt-check` and `just bazel-lock-check`; the native platform matrix verifies
 the complete builds.
 
-## Large Darwin unwind-section regression
+## Large Darwin unwind sections
 
-`zzzz-0008-darwin-large-unwind.patch` adds a native macOS regression for
-https://github.com/rust-lang/rust/issues/159105 and issue #61. It retains more
+`zzzz-0008-darwin-large-unwind.patch` selects Rust's bundled LLD on macOS to
+avoid Apple's oversized unwind-section warning without disabling diagnostics.
+Its removable `WORKAROUND` comment references
+https://github.com/rust-lang/rust/issues/159105. LLD preserves valid DWARF fallback
+offsets as described in https://reviews.llvm.org/D147505.
+The native regression retains more
 than 16 MiB of DWARF call-frame information, links with fatal warnings, and
 catches a Rust panic that unwinds through an assembly frame beyond the compact
 unwind offset limit. Both Apple Silicon and Intel macOS run the check.
@@ -1787,4 +1791,35 @@ policy. Run `bash tools/build-warnings/check-darwin-linker.sh` from the patched
 checkout with owned `TMPDIR` and `CARGO_TARGET_DIR` directories. Success requires
 both linking and panic unwinding. Non-macOS hosts return 2 rather than claiming
 native coverage. The script removes its temporary source and package outputs.
+Required queue checks are `just fmt-check` and `just bazel-lock-check`.
 The full macOS Cargo release build remains a separate required gate.
+
+## Short regression test resource declarations
+
+`zzzz-0009-regression-test-sizes.patch` declares nine short native build
+regressions as small Bazel tests. It covers the assembly fixture checks,
+AWS-LC and Cargo C-standard checks, the Make C-standard check, the Ninja elapsed
+time check, and the two XZ driver checks. Verbose timeout diagnostics remain
+active.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 patches
+that introduce these test targets, including `zzzz-0005-make-c-standard.patch`.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Run the following focused check with the MSVC runtime license environment set:
+
+```sh
+bazel test --test_verbose_timeout_warnings --test_output=errors \
+  //tools/build-warnings/assembly:native_fixture_selection_test \
+  //tools/build-warnings/assembly/native:flags_test \
+  //tools/build-warnings/aws-lc:crypto_standard_test \
+  //tools/build-warnings/aws-lc:ssl_standard_test \
+  //tools/build-warnings/cargo-c-standard:flags_test \
+  //tools/build-warnings/make:standard_test \
+  //tools/build-warnings/ninja:elapsed_time_test \
+  //tools/build-warnings/xz:gnu_flags_test \
+  //tools/build-warnings/xz:msvc_flags_test
+```
+
+All nine checks pass without timing-range advisories. Required queue checks
+remain `just fmt-check` and `just bazel-lock-check`.

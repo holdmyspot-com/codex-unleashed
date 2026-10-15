@@ -1,14 +1,37 @@
-From 11db62e9ba4cb6a94bcef0d872682033e22cd55d Mon Sep 17 00:00:00 2001
-From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 13:26:37 +0000
-Subject: [PATCH] Add a native regression for large Darwin unwind sections
+From 659f88226d27b7c0cec89626a856e0cd9a8566da Mon Sep 17 00:00:00 2001
+From: GiliTzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 13:50:08 +0000
+Subject: [PATCH] Fix large Darwin unwind sections with LLD
 
-Keep a DWARF section larger than 16 MiB and unwind a Rust panic through an assembly frame beyond that limit. Run on both supported native macOS architectures.
+Use Rust LLD on macOS and include a behavioral regression that links a greater-than-16MiB unwind section and catches a panic through its DWARF fallback.
+
+Baseline: Actions run 38742997751, jobs 116449623051 (ARM) and 116449622958 (Intel), both reproduce the Apple linker oversized unwind warning and Cargo exit 101. Native patched acceptance remains required on both architectures.
 ---
+ codex-rs/.cargo/config.toml                 |   7 ++
  tools/build-warnings/check-darwin-linker.sh | 109 ++++++++++++++++++++
- 1 file changed, 109 insertions(+)
+ 2 files changed, 116 insertions(+)
  create mode 100755 tools/build-warnings/check-darwin-linker.sh
 
+diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
+index bd1d67e1e..03689d25d 100644
+--- a/codex-rs/.cargo/config.toml
++++ b/codex-rs/.cargo/config.toml
+@@ -1,8 +1,15 @@
+ [build]
+ warnings = "deny"
+ rustdocflags = ["-Dwarnings"]
+
++[target.'cfg(target_os = "macos")']
++# WORKAROUND: https://github.com/rust-lang/rust/issues/159105
++# Apple's linker warns for large unwind sections. LLD retains valid DWARF
++# fallback offsets. Remove when the system linker handles these sections.
++linker = "rust-lld"
++rustflags = ["-C", "linker-flavor=darwin-lld"]
++
+ [target.'cfg(all(windows, target_env = "msvc"))']
+ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
+
+ # MSVC emits a warning about code that may trip "Cortex-A53 MPCore processor bug #843419" (see
 diff --git a/tools/build-warnings/check-darwin-linker.sh b/tools/build-warnings/check-darwin-linker.sh
 new file mode 100755
 index 000000000..d1191efe3

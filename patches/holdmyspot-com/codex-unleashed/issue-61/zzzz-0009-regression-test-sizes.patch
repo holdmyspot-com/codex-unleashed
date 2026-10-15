@@ -1,0 +1,119 @@
+From c156e6c14fb4618eecbc766a0e394b4b07bfc022 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 13:35:14 +0000
+Subject: [PATCH] Declare short build regressions as small Bazel tests
+
+The Linux CI execution reports these nine checks finish in fractions of a second but use the default moderate timeout. Match their resource declarations to the observed work while retaining verbose timeout checks. All nine tests execute successfully without sizing advisories after the correction.
+---
+ tools/build-warnings/assembly/BUILD.bazel         | 1 +
+ tools/build-warnings/assembly/native/BUILD.bazel  | 1 +
+ tools/build-warnings/aws-lc/BUILD.bazel           | 2 ++
+ tools/build-warnings/cargo-c-standard/BUILD.bazel | 1 +
+ tools/build-warnings/make/BUILD.bazel             | 1 +
+ tools/build-warnings/ninja/BUILD.bazel            | 1 +
+ tools/build-warnings/xz/BUILD.bazel               | 2 ++
+ 7 files changed, 9 insertions(+)
+
+diff --git a/tools/build-warnings/assembly/BUILD.bazel b/tools/build-warnings/assembly/BUILD.bazel
+index e2eb66766..6907c9adc 100644
+--- a/tools/build-warnings/assembly/BUILD.bazel
++++ b/tools/build-warnings/assembly/BUILD.bazel
+@@ -2,8 +2,9 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
+ load("//tools/build-warnings/assembly/native:flags_test.bzl", "masm_fixture_selection_test")
+
+ masm_fixture_selection_test(
+     name = "native_fixture_selection_test",
++    size = "small",
+     target_under_test = ":compile_inputs",
+ )
+
+ cc_library(
+diff --git a/tools/build-warnings/assembly/native/BUILD.bazel b/tools/build-warnings/assembly/native/BUILD.bazel
+index 73e2fa6fb..e05c01e03 100644
+--- a/tools/build-warnings/assembly/native/BUILD.bazel
++++ b/tools/build-warnings/assembly/native/BUILD.bazel
+@@ -73,6 +73,7 @@ cc_library(
+ )
+
+ masm_flags_test(
+     name = "flags_test",
++    size = "small",
+     target_under_test = ":assembly_inputs",
+ )
+diff --git a/tools/build-warnings/aws-lc/BUILD.bazel b/tools/build-warnings/aws-lc/BUILD.bazel
+index 0a314a086..870c6ea36 100644
+--- a/tools/build-warnings/aws-lc/BUILD.bazel
++++ b/tools/build-warnings/aws-lc/BUILD.bazel
+@@ -2,13 +2,15 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load(":standard_flags_test.bzl", "native_c_standard_test")
+
+ native_c_standard_test(
+     name = "crypto_standard_test",
++    size = "small",
+     target_under_test = "@aws-lc//:crypto",
+ )
+
+ native_c_standard_test(
+     name = "ssl_standard_test",
++    size = "small",
+     target_under_test = "@aws-lc//:ssl",
+ )
+
+ test_suite(
+diff --git a/tools/build-warnings/cargo-c-standard/BUILD.bazel b/tools/build-warnings/cargo-c-standard/BUILD.bazel
+index 3c92a51fc..8da9ba571 100644
+--- a/tools/build-warnings/cargo-c-standard/BUILD.bazel
++++ b/tools/build-warnings/cargo-c-standard/BUILD.bazel
+@@ -9,6 +9,7 @@ cargo_build_script(
+ )
+
+ cargo_c_flags_test(
+     name = "flags_test",
++    size = "small",
+     target_under_test = ":probe",
+ )
+diff --git a/tools/build-warnings/make/BUILD.bazel b/tools/build-warnings/make/BUILD.bazel
+index e86dcdb5d..62930429c 100644
+--- a/tools/build-warnings/make/BUILD.bazel
++++ b/tools/build-warnings/make/BUILD.bazel
+@@ -1,6 +1,7 @@
+ load("//tools/build-warnings/aws-lc:standard_flags_test.bzl", "native_c_standard_test")
+
+ native_c_standard_test(
+     name = "standard_test",
++    size = "small",
+     target_under_test = "@make//:make",
+ )
+diff --git a/tools/build-warnings/ninja/BUILD.bazel b/tools/build-warnings/ninja/BUILD.bazel
+index 7a7c5146a..2367c267a 100644
+--- a/tools/build-warnings/ninja/BUILD.bazel
++++ b/tools/build-warnings/ninja/BUILD.bazel
+@@ -1,7 +1,8 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+ cc_test(
+     name = "elapsed_time_test",
++    size = "small",
+     srcs = ["elapsed_time_test.cc"],
+     deps = ["@ninja//:ninja_core"],
+ )
+diff --git a/tools/build-warnings/xz/BUILD.bazel b/tools/build-warnings/xz/BUILD.bazel
+index c5e340b0c..76b5c2a78 100644
+--- a/tools/build-warnings/xz/BUILD.bazel
++++ b/tools/build-warnings/xz/BUILD.bazel
+@@ -2,13 +2,15 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+ load(":driver_flags_test.bzl", "xz_gnu_flags_test", "xz_msvc_flags_test")
+
+ xz_msvc_flags_test(
+     name = "msvc_flags_test",
++    size = "small",
+     target_under_test = "@xz//:lzma",
+ )
+
+ xz_gnu_flags_test(
+     name = "gnu_flags_test",
++    size = "small",
+     target_under_test = "@xz//:lzma",
+ )
+
+ cc_test(
