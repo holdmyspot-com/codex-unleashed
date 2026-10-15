@@ -1,0 +1,256 @@
+From c01e9da33709a00f4871a891ecdcbe9551aab095 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 12:55:22 +0000
+Subject: [PATCH] Align Cargo build-script target features with Rust runtime
+ flags
+
+The native MSVC action regression fails without the toolchain crt-static flag. A real static build script then fails because its CARGO_CFG_TARGET_FEATURE ignores encoded flags. Both regressions and the dynamic control pass after exporting toolchain flags and querying rustc cfg with those flags. Native Windows compiler acceptance remains required.
+---
+ MODULE.bazel                                  |  1 +
+ patches/BUILD.bazel                           |  1 +
+ patches/rules_rust_cargo_runtime_flags.patch  | 81 +++++++++++++++++++
+ .../build-warnings/cargo-runtime/BUILD.bazel  | 57 +++++++++++++
+ tools/build-warnings/cargo-runtime/build.rs   | 10 +++
+ tools/build-warnings/cargo-runtime/empty.rs   |  1 +
+ .../cargo-runtime/flags_test.bzl              | 18 +++++
+ tools/build-warnings/cargo-runtime/runtime.rs |  4 +
+ 8 files changed, 173 insertions(+)
+ create mode 100644 patches/rules_rust_cargo_runtime_flags.patch
+ create mode 100644 tools/build-warnings/cargo-runtime/BUILD.bazel
+ create mode 100644 tools/build-warnings/cargo-runtime/build.rs
+ create mode 100644 tools/build-warnings/cargo-runtime/empty.rs
+ create mode 100644 tools/build-warnings/cargo-runtime/flags_test.bzl
+ create mode 100644 tools/build-warnings/cargo-runtime/runtime.rs
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 2becee37f..c16078c69 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -281,8 +281,9 @@ rules_rust.patch(
+         # Group build-script argument files to avoid Windows command-line limits.
+         "//patches:rules_rust_group_build_script_arg_files.patch",
+         "//patches:rules_rust_cargo_c_standard.patch",
+         "//patches:rules_rust_wrapper_parameter_files.patch",
++        "//patches:rules_rust_cargo_runtime_flags.patch",
+         "//patches:rules_rust_windows_execroot_separators.patch",
+         "//patches:rules_rust_compiler_thp.patch",
+         "//patches:rules_rust_unwind_driver_selection.patch",
+         "//patches:rules_rust_prost_unused_grep.patch",
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 1a29d72de..c8c198189 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,5 +1,6 @@
+ exports_files([
++    "rules_rust_cargo_runtime_flags.patch",
+     "make_c_standard.patch",
+     "rules_rust_wrapper_parameter_files.patch",
+     "aws_lc_c_standard.patch",
+     "rules_rust_cargo_c_standard.patch",
+diff --git a/patches/rules_rust_cargo_runtime_flags.patch b/patches/rules_rust_cargo_runtime_flags.patch
+new file mode 100644
+index 000000000..11f1673fd
+--- /dev/null
++++ b/patches/rules_rust_cargo_runtime_flags.patch
+@@ -0,0 +1,81 @@
++From ad0d1ef322b2f45ef07906810d07edc49958a7c1 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 12:56:02 +0000
++Subject: [PATCH] Query Cargo target features with configured Rust runtime
++ flags
++
++---
++ cargo/private/cargo_build_script.bzl          |  5 +++-
++ .../private/cargo_build_script_runner/bin.rs  | 27 ++++++++++++++-----
++ 2 files changed, 25 insertions(+), 7 deletions(-)
++
++diff --git a/cargo/private/cargo_build_script.bzl b/cargo/private/cargo_build_script.bzl
++index a02227a..7b84174 100644
++--- a/cargo/private/cargo_build_script.bzl
+++++ b/cargo/private/cargo_build_script.bzl
++@@ -22,8 +22,9 @@ load(
++     "deduplicate",
++     "expand_dict_value_locations",
++     "find_cc_toolchain",
++     "find_toolchain",
+++    "is_exec_configuration",
++     _name_to_crate_name = "name_to_crate_name",
++ )
++
++ # Reexport for cargo_build_script_wrapper.bzl
++@@ -539,12 +540,14 @@ def _cargo_build_script_impl(ctx):
++         # ARFLAGS, make changes to cc-rs.
++
++     # Inform build scripts of rustc flags
++     # https://github.com/rust-lang/cargo/issues/9600
+++    # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++    # Remove when build-script flags include the toolchain's target runtime.
++     env["CARGO_ENCODED_RUSTFLAGS"] = "\\x1f".join([
++         # Allow build scripts to locate the generated sysroot
++         "--sysroot=${{pwd}}/{}".format(toolchain.sysroot),
++-    ] + ctx.attr.rustc_flags)
+++    ] + (toolchain.extra_exec_rustc_flags if is_exec_configuration(ctx) else toolchain.extra_rustc_flags) + ctx.attr.rustc_flags)
++
++     for f in ctx.attr.crate_features:
++         env["CARGO_FEATURE_" + f.upper().replace("-", "_")] = "1"
++
++diff --git a/cargo/private/cargo_build_script_runner/bin.rs b/cargo/private/cargo_build_script_runner/bin.rs
++index 140f535..a235b88 100644
++--- a/cargo/private/cargo_build_script_runner/bin.rs
+++++ b/cargo/private/cargo_build_script_runner/bin.rs
++@@ -471,14 +471,29 @@ impl Args {
++ }
++
++ fn get_target_env_vars<P: AsRef<Path>>(rustc: &P) -> Result<BTreeMap<String, String>, String> {
++     // As done by Cargo when constructing a cargo::core::compiler::build_context::target_info::TargetInfo.
++-    let output = Command::new(rustc.as_ref())
++-        .arg("--print=cfg")
++-        .arg(format!(
++-            "--target={}",
++-            env::var("TARGET").expect("missing TARGET")
++-        ))
+++    let mut command = Command::new(rustc.as_ref());
+++    command.arg("--print=cfg").arg(format!(
+++        "--target={}",
+++        env::var("TARGET").expect("missing TARGET")
+++    ));
+++
+++    // WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++    // Remove when the runner queries cfg with the configured Rust flags.
+++    // Native build scripts use crt-static to select the matching C runtime.
+++    if let Ok(encoded_flags) = env::var("CARGO_ENCODED_RUSTFLAGS") {
+++        if !encoded_flags.is_empty() {
+++            let exec_root = env::current_dir()
+++                .map_err(|err| format!("Error resolving Rust flag paths: {err}"))?;
+++            let flags = encoded_flags
+++                .replace("\\x1f", "\x1f")
+++                .replace("${pwd}", &exec_root.to_string_lossy());
+++            command.args(flags.split('\x1f'));
+++        }
+++    }
+++
+++    let output = command
++         .output()
++         .map_err(|err| format!("Error running rustc to get target information: {err}"))?;
++     if !output.status.success() {
++         return Err(format!(
+diff --git a/tools/build-warnings/cargo-runtime/BUILD.bazel b/tools/build-warnings/cargo-runtime/BUILD.bazel
+new file mode 100644
+index 000000000..7d8dbc9be
+--- /dev/null
++++ b/tools/build-warnings/cargo-runtime/BUILD.bazel
+@@ -0,0 +1,57 @@
++load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
++load("@rules_rust//rust:defs.bzl", "rust_test")
++load(":flags_test.bzl", "runtime_flags_test")
++
++runtime_flags_test(
++    name = "toolchain_flags_test",
++    size = "small",
++    target_under_test = ":toolchain_probe",
++)
++
++cargo_build_script(
++    name = "toolchain_probe",
++    testonly = True,
++    srcs = ["empty.rs"],
++    edition = "2024",
++)
++
++[
++    cargo_build_script(
++        name = mode + "_build_script",
++        testonly = True,
++        srcs = ["build.rs"],
++        build_script_env = {
++            "CARGO_ENCODED_RUSTFLAGS": "-C\\x1ftarget-feature=" + feature + "crt-static",
++            "EXPECT_CRT_STATIC": expected,
++        },
++        edition = "2024",
++        target_compatible_with = select({
++            "@platforms//os:linux": [],
++            "@platforms//os:windows": [],
++            "//conditions:default": ["@platforms//:incompatible"],
++        }),
++    )
++    for mode, expected, feature in [
++        ("static", "true", "+"),
++        ("dynamic", "false", "-"),
++    ]
++]
++
++[
++    rust_test(
++        name = mode + "_runtime_test",
++        size = "small",
++        srcs = ["runtime.rs"],
++        edition = "2024",
++        target_compatible_with = select({
++            "@platforms//os:linux": [],
++            "@platforms//os:windows": [],
++            "//conditions:default": ["@platforms//:incompatible"],
++        }),
++        deps = [":" + mode + "_build_script"],
++    )
++    for mode in [
++        "static",
++        "dynamic",
++    ]
++]
+diff --git a/tools/build-warnings/cargo-runtime/build.rs b/tools/build-warnings/cargo-runtime/build.rs
+new file mode 100644
+index 000000000..ae1b41f40
+--- /dev/null
++++ b/tools/build-warnings/cargo-runtime/build.rs
+@@ -0,0 +1,10 @@
++fn main() {
++    let expected: bool = std::env::var("EXPECT_CRT_STATIC").unwrap().parse().unwrap();
++    let features = std::env::var("CARGO_CFG_TARGET_FEATURE").unwrap();
++    let actual = features.split(',').any(|feature| feature == "crt-static");
++    assert_eq!(
++        actual, expected,
++        "build-script target features must match configured Rust flags"
++    );
++    println!("cargo:rustc-env=RUNTIME_FEATURE_VERIFIED=true");
++}
+diff --git a/tools/build-warnings/cargo-runtime/empty.rs b/tools/build-warnings/cargo-runtime/empty.rs
+new file mode 100644
+index 000000000..f328e4d9d
+--- /dev/null
++++ b/tools/build-warnings/cargo-runtime/empty.rs
+@@ -0,0 +1 @@
++fn main() {}
+diff --git a/tools/build-warnings/cargo-runtime/flags_test.bzl b/tools/build-warnings/cargo-runtime/flags_test.bzl
+new file mode 100644
+index 000000000..2b7a0b4df
+--- /dev/null
++++ b/tools/build-warnings/cargo-runtime/flags_test.bzl
+@@ -0,0 +1,18 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _runtime_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CargoBuildScriptRun"]
++    asserts.equals(env, 1, len(actions), "The fixture runs one Cargo build script")
++    for action in actions:
++        flags = action.env["CARGO_ENCODED_RUSTFLAGS"].split("\\x1f")
++        asserts.true(env, "-Ctarget-feature=+crt-static" in flags, "Build scripts receive the configured MSVC toolchain runtime flag")
++    return analysistest.end(env)
++
++runtime_flags_test = analysistest.make(
++    _runtime_flags_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:extra_toolchains": [str(Label("//tools/build-warnings/assembly/native:analysis_toolchain"))],
++    },
++)
+diff --git a/tools/build-warnings/cargo-runtime/runtime.rs b/tools/build-warnings/cargo-runtime/runtime.rs
+new file mode 100644
+index 000000000..e4f97487f
+--- /dev/null
++++ b/tools/build-warnings/cargo-runtime/runtime.rs
+@@ -0,0 +1,4 @@
++#[test]
++fn build_script_verifies_runtime_feature() {
++    assert_eq!(env!("RUNTIME_FEATURE_VERIFIED"), "true");
++}

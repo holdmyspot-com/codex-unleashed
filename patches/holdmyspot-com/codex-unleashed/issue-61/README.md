@@ -1720,3 +1720,32 @@ test establishes parameter-file transport, while native Windows execution
 establishes behavior at the Windows process-creation boundary. The Bazel JVM
 startup diagnostic is a separate launcher issue and is not suppressed by this
 series. No dependency version changes are required.
+
+## Cargo native runtime features
+
+`zzzz-0006-cargo-runtime-features.patch` supplies the configured target or
+execution-platform Rust toolchain flags to Cargo build scripts and uses those
+flags when querying Rust's target configuration. Native build scripts receive
+the `crt-static` feature that matches the selected Rust runtime, avoiding
+conflicting MSVC runtime options. Explicit build-script flags and fatal-warning
+settings remain enabled. Dependency versions remain unchanged.
+
+The base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue, including the Cargo C-standard and parameter-file patches. The tracking
+issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+```sh
+bazel test //tools/build-warnings/cargo-runtime:toolchain_flags_test //tools/build-warnings/cargo-runtime:static_runtime_test //tools/build-warnings/cargo-runtime:dynamic_runtime_test
+bazel test @rules_rust//cargo/private/cargo_build_script_runner:bin_test @rules_rust//cargo/private/cargo_build_script_runner:test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis test requires the configured MSVC toolchain's static-runtime flag
+in the build-script action. The executable tests require both static and dynamic
+runtime choices to reach real build scripts through encoded Rust flags; they
+run on Linux and Windows. macOS excludes these runtime-specific fixtures.
+The full native Windows build remains required to verify compiler commands and
+the absence of runtime-option warnings in dependency builds. The source carries
+removable `WORKAROUND` comments; no warning diagnostic is suppressed.
