@@ -346,8 +346,9 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
   if [[ $pass_windows_build_env -eq 1 ]]; then
     # Native tool rules read these values during analysis, before inherited
     # action environment variables are resolved by the executor.
-    for env_var in SystemRoot PROCESSOR_ARCHITECTURE; do
-      uppercase_env_var="${env_var^^}"
+    for env_binding in SystemRoot:SYSTEMROOT PROCESSOR_ARCHITECTURE:PROCESSOR_ARCHITECTURE; do
+      env_var="${env_binding%%:*}"
+      uppercase_env_var="${env_binding#*:}"
       env_value="${!env_var:-${!uppercase_env_var:-}}"
       if [[ -n "$env_value" ]]; then
         post_config_bazel_args+=("--action_env=${env_var}=${env_value}" "--host_action_env=${env_var}=${env_value}")
