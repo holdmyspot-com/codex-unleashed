@@ -60,51 +60,21 @@ jobs:
           target: aarch64-apple-darwin
           cache-scope: bazel-clippy
 
-      - name: Reproduce native Meson function detection failure
-        id: regression
-        continue-on-error: true
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - name: Apply the verified linker correction and GLib probe repair
         shell: bash
         run: |
           set -euo pipefail
-          cd upstream
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary \
-            -- \
-            build \
-            --jobs=2 \
-            --config=clippy \
-            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            --build_metadata=TAG_job=clippy \
-            -- \
-            //third_party/voice:native_prefix_macos_aarch64
-
-      - name: Require the intended regression before correcting linker selection
-        env:
-          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os
+          cp .github/diagnostics/glib-printf/prepare_sources.py upstream/third_party/voice/prepare_sources.py
+          cp .github/diagnostics/glib-printf/printf_test.c upstream/tools/build-warnings/glib/printf_test.c
+          python3 - <<'PYCODE'
           from pathlib import Path
-          assert os.environ['REGRESSION_OUTCOME'] == 'failure', 'The baseline must reproduce the function-detection failure'
-          logs = Path(os.environ['BAZEL_OUTPUT_BASE']).joinpath('execroot/_main/bazel-out/_tmp/actions')
-          matched = False
-          for path in logs.glob('stderr-*'):
-              text = path.read_text(errors='replace')
-              if "ld64.lld: error: Option `-no_weak_imports' is not yet implemented." in text and 'ERROR: Assert failed: Standard C function detection must succeed' in text:
-                  print(f'Confirmed intended regression in {path.name}')
-                  matched = True
-          assert matched, 'An unrelated setup or compiler failure does not establish the regression'
           recipe = Path('upstream/third_party/voice/build_native.py')
           text = recipe.read_text()
           needle = '        meson_flags = {name: list(flags) for name, flags in self.flags.items()}\n'
           assert text.count(needle) == 1
           correction = '        if self.args.target.endswith("apple-darwin"):\n            meson_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")\n'
           recipe.write_text(text.replace(needle, needle + correction))
-          PY
+          PYCODE
 
       - name: Verify function detection and complete native prefix
         env:
@@ -116,13 +86,14 @@ jobs:
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             -- \
-            build \
+            test \
             --jobs=2 \
             --config=clippy \
             "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
             --build_metadata=TAG_job=clippy \
             -- \
-            //third_party/voice:native_prefix_macos_aarch64
+            //third_party/voice:native_prefix_macos_aarch64 \
+            //tools/build-warnings/glib:printf_test
 
       - name: Preserve native action output
         if: always() && !cancelled()
