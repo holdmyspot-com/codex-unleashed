@@ -1668,3 +1668,55 @@ and retain `capability=no`; a plain C Mach-O shared library must link with
 linker warnings fatal. Linux uses Clang and `ld64.lld` for this bounded
 cross-link check. Native macOS uses its native linker. The complete
 voice-prefix build and its consumers remain required native-platform gates.
+
+## Windows compiler flag ownership and Rust wrapper parameter files
+
+The `zzzz-0001` through `zzzz-0005` series applies in numeric order after the
+existing issue-61 queue. Its upstream base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). The series uses the existing
+native MSVC analysis toolchain and dependency overrides. Adjacent patch
+registrations account for the ordering dependency; each file contains one fix.
+
+- `zzzz-0001-xz-windows-driver-flags.patch` restricts GNU stack flags to
+  Windows Clang, GCC, and MinGW GCC drivers. MSVC receives neither GNU flag;
+  the GNU Windows configuration retains both flags.
+- `zzzz-0002-cargo-c-standard.patch` lets Cargo build scripts choose their C
+  dialect without also exporting the toolchain's default dialect. Explicit
+  compile flags, the selected runtime, and fatal warnings remain enabled.
+- `zzzz-0003-aws-lc-c-standard.patch` selects AWS-LC's explicit C11 dialect
+  without also adding the toolchain's default C17 dialect. Its shared feature
+  selection covers the libraries, bundled tools, and tests.
+- `zzzz-0004-rust-wrapper-parameter-files.patch` lets Bazel spill long Rust
+  process-wrapper arguments into a multiline parameter file. The parser
+  preserves LF and CRLF files, backslashes, spaces, quotes, empty arguments,
+  and child compiler response-file references. An unreadable wrapper file
+  reports its path and retains the underlying I/O error.
+- `zzzz-0005-make-c-standard.patch` selects GNU Make's explicit C11 dialect
+  without also adding the toolchain's default dialect. Its analysis regression
+  reuses the native C-standard fixture from `zzzz-0003`.
+
+The compiler-action checks inspect the native MSVC toolchain configuration.
+They require the intended dialect or driver flags and retain `/WX` or
+`-Werror`. The Cargo check also requires exactly one static-runtime flag.
+The transport test uses 600 environment files to exceed Windows' process
+command-line limit and verifies that their compiler environment is available.
+The maintained wrapper suite includes a parameter file larger than that limit.
+
+Run the focused checks from the patched checkout root:
+
+```sh
+bazel test //tools/build-warnings/xz:msvc_flags_test //tools/build-warnings/xz:gnu_flags_test //tools/build-warnings/cargo-c-standard:flags_test //tools/build-warnings/aws-lc:crypto_standard_test //tools/build-warnings/aws-lc:ssl_standard_test
+bazel test @rules_rust//util/process_wrapper:process_wrapper_test //tools/build-warnings/wrapper-params:transport_test
+bazel test //tools/build-warnings/make:standard_test
+just fmt-check
+just bazel-lock-check
+```
+
+Each command succeeds. The action checks establish compiler configuration;
+full native Windows compilation and execution remain separate required gates.
+The AWS-LC action checks cover crypto and SSL directly; native CI also covers
+jitterentropy and other transitive targets. Linux execution of the transport
+test establishes parameter-file transport, while native Windows execution
+establishes behavior at the Windows process-creation boundary. The Bazel JVM
+startup diagnostic is a separate launcher issue and is not suppressed by this
+series. No dependency version changes are required.

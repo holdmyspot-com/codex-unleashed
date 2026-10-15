@@ -1,0 +1,227 @@
+From 62bea272d456a42b00bf388036db8a2b228061e9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 12:13:43 +0000
+Subject: [PATCH] Select the AWS-LC C11 dialect without a conflicting default
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue and native MSVC analysis fixture. RED: AWS-LC crypto and SSL C actions contain both /std:c17 and /std:c11. GREEN: both action tests select /std:c11 once and retain /WX. Evidence: windows-wrapper-gbpNjj aws-lc-standard-red.log and compiler-flags-batch-green.log. Fresh emitted patch and full native Windows execution remain required gates.
+---
+ MODULE.bazel                                  |   1 +
+ patches/BUILD.bazel                           |   1 +
+ patches/aws_lc_c_standard.patch               | 128 ++++++++++++++++++
+ tools/build-warnings/aws-lc/BUILD.bazel       |  11 ++
+ .../aws-lc/standard_flags_test.bzl            |  25 ++++
+ 5 files changed, 166 insertions(+)
+ create mode 100644 patches/aws_lc_c_standard.patch
+ create mode 100644 tools/build-warnings/aws-lc/standard_flags_test.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 1895b76f8..82a26cef0 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -180,8 +180,9 @@ single_version_override(
+     patch_strip = 1,
+     patches = [
+         "//patches:aws_lc_windows_tls.patch",
+         "//patches:aws_lc_fork_unused_globals.patch",
++        "//patches:aws_lc_c_standard.patch",
+     ],
+ )
+
+ bazel_dep(name = "rules_rs", version = "0.0.96")
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 71f7b4440..5243ca9e6 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,5 +1,6 @@
+ exports_files([
++    "aws_lc_c_standard.patch",
+     "rules_rust_cargo_c_standard.patch",
+     "xz_windows_driver_flags.patch",
+     "ninja_elapsed_time.patch",
+     "opusic_sys_library_directories.patch",
+diff --git a/patches/aws_lc_c_standard.patch b/patches/aws_lc_c_standard.patch
+new file mode 100644
+index 000000000..ec6704a95
+--- /dev/null
++++ b/patches/aws_lc_c_standard.patch
+@@ -0,0 +1,128 @@
++From ee19061fb0a04cfb2326ff71993fabd820de815d Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 12:00:48 +0000
++Subject: [PATCH] Select the AWS-LC C standard exactly once
++
++---
++ BUILD.bazel | 16 +++++++++++++++-
++ 1 file changed, 15 insertions(+), 1 deletion(-)
++
++diff --git a/BUILD.bazel b/BUILD.bazel
++index 0ef1de0..e1d96c3 100755
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -30,8 +30,13 @@ BORINGSSL_CONLYOPTS = select({
++     "@rules_cc//cc/compiler:msvc-cl": ["/std:c11"],
++     "//conditions:default": ["-std=c11"],
++ })
++
+++# WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++# AWS-LC chooses C11 explicitly. Remove when its Bazel build disables the
+++# toolchain's default C standard instead of passing a conflicting flag.
+++BORINGSSL_FEATURES = ["-default_c_std"]
+++
++ BORINGSSL_CXXOPTS = select({
++     "@platforms//os:windows": [],
++     "//conditions:default": [
++         "-fno-exceptions",
++@@ -227,9 +232,9 @@ cc_library(
++             "-fvisibility=hidden",
++         ],
++     }) + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
++-    features = ["-opt"],
+++    features = ["-opt"] + BORINGSSL_FEATURES,
++     includes = [
++         "include",
++         "third_party/jitterentropy/jitterentropy-library",
++     ],
++@@ -503,8 +508,9 @@ cc_library(
++     ),
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     implementation_deps = [
++         ":jitterentropy",
++     ],
++     includes = [
++@@ -566,8 +572,9 @@ cc_library(
++     ),
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     includes = ["include"],
++     visibility = ["//visibility:public"],
++     deps = [
++         ":crypto",
++@@ -586,8 +593,9 @@ cc_binary(
++     ),
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     includes = [
++         "include",
++         "tool",
++     ],
++@@ -614,8 +622,9 @@ cc_library(
++     hdrs = glob(["crypto/test/*.h"]),
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     includes = ["include"],
++     local_defines = ["BORINGSSL_USE_BAZEL_RUNFILES"],
++     deps = [
++         ":crypto",
++@@ -636,8 +645,9 @@ cc_library(
++     ],
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     includes = ["crypto/test"],
++     deps = [
++         ":crypto_test_support",
++         "@googletest//:gtest",
++@@ -763,8 +773,9 @@ cc_test(
++     ],
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + ["-DAWS_LC_TEST_ENV"] + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     linkstatic = True,
++     shard_count = 30,
++     deps = [
++@@ -781,8 +792,9 @@ cc_test(
++     srcs = ["crypto/rand_extra/urandom_test.cc"],
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     deps = [
++         ":crypto",
++         ":crypto_test_support",
++@@ -812,8 +824,9 @@ cc_test(
++     ],
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     linkstatic = True,
++     deps = [
++         ":boringssl_gtest_main",
++@@ -829,8 +842,9 @@ cc_test(
++     srcs = ["crypto/thread_local_cleanup_test.cc"],
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_FEATURES,
++     linkstatic = True,
++     visibility = ["//visibility:public"],
++     deps = [
++         ":crypto",
+diff --git a/tools/build-warnings/aws-lc/BUILD.bazel b/tools/build-warnings/aws-lc/BUILD.bazel
+index 7cd14ab83..0a314a086 100644
+--- a/tools/build-warnings/aws-lc/BUILD.bazel
++++ b/tools/build-warnings/aws-lc/BUILD.bazel
+@@ -1,5 +1,16 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
++load(":standard_flags_test.bzl", "native_c_standard_test")
++
++native_c_standard_test(
++    name = "crypto_standard_test",
++    target_under_test = "@aws-lc//:crypto",
++)
++
++native_c_standard_test(
++    name = "ssl_standard_test",
++    target_under_test = "@aws-lc//:ssl",
++)
+
+ test_suite(
+     name = "thread_test",
+     tests = ["@aws-lc//:thread_test"],
+diff --git a/tools/build-warnings/aws-lc/standard_flags_test.bzl b/tools/build-warnings/aws-lc/standard_flags_test.bzl
+new file mode 100644
+index 000000000..c33f395a2
+--- /dev/null
++++ b/tools/build-warnings/aws-lc/standard_flags_test.bzl
+@@ -0,0 +1,25 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _native_c_standard_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "CppCompile" and any([arg.endswith(".c") for arg in action.argv])
++    ]
++    asserts.true(env, len(actions) > 0, "The fixture must compile native C sources")
++    for action in actions:
++        asserts.true(env, action.argv[0].endswith("cl.exe"), "The fixture uses the native MSVC compiler configuration")
++        standards = [arg for arg in action.argv if arg.startswith("/std:")]
++        asserts.equals(env, ["/std:c11"], standards, "Each C action selects C11 exactly once")
++        asserts.true(env, "/WX" in action.argv, "C compilation retains fatal warnings")
++    return analysistest.end(env)
++
++native_c_standard_test = analysistest.make(
++    _native_c_standard_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:extra_toolchains": [str(Label("//tools/build-warnings/assembly/native:analysis_toolchain"))],
++        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt", "treat_warnings_as_errors"],
++    },
++)

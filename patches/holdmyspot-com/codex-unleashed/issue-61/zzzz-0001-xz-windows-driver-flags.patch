@@ -1,0 +1,172 @@
+From 0a7fc7fc5edd6bae808ac31fac03d83aec8c40ab Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 12:13:00 +0000
+Subject: [PATCH] Restrict XZ stack flags to GNU Windows drivers
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue and native MSVC analysis fixture. RED: native compiler action checks report both GNU flags passed to MSVC. GREEN: MSVC and GNU Windows action tests pass, retaining /WX and -Werror. Evidence: windows-wrapper-gbpNjj compiler-flags-native-red.log and compiler-flags-batch-green.log. Fresh emitted patch and native Windows execution remain required acceptance gates.
+---
+ MODULE.bazel                                  |  1 +
+ patches/BUILD.bazel                           |  1 +
+ patches/xz_windows_driver_flags.patch         | 57 +++++++++++++++++++
+ tools/build-warnings/xz/BUILD.bazel           | 11 ++++
+ tools/build-warnings/xz/driver_flags_test.bzl | 41 +++++++++++++
+ 5 files changed, 111 insertions(+)
+ create mode 100644 patches/xz_windows_driver_flags.patch
+ create mode 100644 tools/build-warnings/xz/driver_flags_test.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index e3bf60b50..e65a75f8e 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -511,8 +511,9 @@ single_version_override(
+     module_name = "xz",
+     patch_strip = 1,
+     patches = [
+         "//patches:xz_windows_stack_args.patch",
++        "//patches:xz_windows_driver_flags.patch",
+         "//patches:xz_windows_arm64_filter.patch",
+     ],
+ )
+
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 5f156b48d..894c79b42 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,5 +1,6 @@
+ exports_files([
++    "xz_windows_driver_flags.patch",
+     "ninja_elapsed_time.patch",
+     "opusic_sys_library_directories.patch",
+     "openssl_windows_compiler_types.patch",
+     "make_source_warnings.patch",
+diff --git a/patches/xz_windows_driver_flags.patch b/patches/xz_windows_driver_flags.patch
+new file mode 100644
+index 000000000..c4eb62da7
+--- /dev/null
++++ b/patches/xz_windows_driver_flags.patch
+@@ -0,0 +1,57 @@
++From 7d018c251facb604aa9d5c421b1bb5c9feb399dc Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 11:59:22 +0000
++Subject: [PATCH] Select GNU stack flags only for GNU Windows compiler drivers
++
++---
++ BUILD.bazel | 23 +++++++++++++++++++++--
++ 1 file changed, 21 insertions(+), 2 deletions(-)
++
++diff --git a/BUILD.bazel b/BUILD.bazel
++index 80cf19d..04804b8 100755
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -11,8 +11,26 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
++ load("//:tools.bzl", "multi_test")
++
++ package(default_visibility = ["//visibility:private"])
++
+++config_setting(
+++    name = "windows_clang",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {"@bazel_tools//tools/cpp:compiler": "clang"},
+++)
+++
+++config_setting(
+++    name = "windows_gcc",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {"@bazel_tools//tools/cpp:compiler": "gcc"},
+++)
+++
+++config_setting(
+++    name = "windows_mingw_gcc",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {"@bazel_tools//tools/cpp:compiler": "mingw-gcc"},
+++)
+++
++ config_setting(
++     name = "osx_arm64",
++     constraint_values = [
++         "@platforms//os:osx",
++@@ -158,13 +176,14 @@ cc_library(
++     ),
++     hdrs = [
++         "src/liblzma/api/lzma.h",  # Publicly exported header
++     ],
++-    copts = select({
++-        "@platforms//os:windows": [
+++    copts = selects.with_or({
+++        (":windows_clang", ":windows_gcc", ":windows_mingw_gcc"): [
++             "-fno-stack-protector",
++             "-mno-stack-arg-probe",
++         ],
+++        "@platforms//os:windows": [],
++         "//conditions:default": ["-std=c99"],
++     }),
++     defines = select({
++         "@platforms//os:windows": ["LZMA_API_STATIC"],
+diff --git a/tools/build-warnings/xz/BUILD.bazel b/tools/build-warnings/xz/BUILD.bazel
+index fc78c6671..c5e340b0c 100644
+--- a/tools/build-warnings/xz/BUILD.bazel
++++ b/tools/build-warnings/xz/BUILD.bazel
+@@ -1,5 +1,16 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
++load(":driver_flags_test.bzl", "xz_gnu_flags_test", "xz_msvc_flags_test")
++
++xz_msvc_flags_test(
++    name = "msvc_flags_test",
++    target_under_test = "@xz//:lzma",
++)
++
++xz_gnu_flags_test(
++    name = "gnu_flags_test",
++    target_under_test = "@xz//:lzma",
++)
+
+ cc_test(
+     name = "arm64_filter_test",
+     size = "small",
+diff --git a/tools/build-warnings/xz/driver_flags_test.bzl b/tools/build-warnings/xz/driver_flags_test.bzl
+new file mode 100644
+index 000000000..5345b54f1
+--- /dev/null
++++ b/tools/build-warnings/xz/driver_flags_test.bzl
+@@ -0,0 +1,41 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++_GNU_STACK_FLAGS = ["-fno-stack-protector", "-mno-stack-arg-probe"]
++
++def _xz_msvc_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile"]
++    asserts.true(env, len(actions) > 0, "The fixture must compile XZ sources")
++    for action in actions:
++        asserts.true(env, action.argv[0].endswith("cl.exe"), "The fixture uses the native MSVC compiler configuration")
++        for flag in _GNU_STACK_FLAGS:
++            asserts.false(env, flag in action.argv, "MSVC must not receive %s" % flag)
++        asserts.true(env, "/WX" in action.argv, "MSVC warnings remain fatal")
++    return analysistest.end(env)
++
++def _xz_gnu_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile"]
++    asserts.true(env, len(actions) > 0, "The fixture must compile XZ sources")
++    for action in actions:
++        for flag in _GNU_STACK_FLAGS:
++            asserts.true(env, flag in action.argv, "GNU Windows retains %s" % flag)
++        asserts.true(env, "-Werror" in action.argv, "GNU Windows warnings remain fatal")
++    return analysistest.end(env)
++
++xz_msvc_flags_test = analysistest.make(
++    _xz_msvc_flags_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:extra_toolchains": [str(Label("//tools/build-warnings/assembly/native:analysis_toolchain"))],
++        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt", "treat_warnings_as_errors"],
++    },
++)
++
++xz_gnu_flags_test = analysistest.make(
++    _xz_gnu_flags_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm")),
++        "//command_line_option:features": ["-static_link_msvcrt", "treat_warnings_as_errors"],
++    },
++)

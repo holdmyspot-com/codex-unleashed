@@ -1,0 +1,301 @@
+From 6d982e7f7e2574912cd0094aa5caf0c37d612895 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 12:14:32 +0000
+Subject: [PATCH] Transport long Rust wrapper commands through parameter files
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue. RED: the unchanged parser rejects a >32767-character wrapper parameter file and loses its read-error cause. GREEN: all seven focused parser tests pass; maintained process_wrapper_test passes; the Rust transport test compiles and runs with 600 environment files. Subcommand evidence confirms process_wrapper @transport_test-0.params. LF and CRLF, backslashes, quotes, spaces, empty arguments and child response-file references are preserved. Evidence: windows-wrapper-gbpNjj wrapper-flags-red.log, wrapper-flags-green.log, wrapper-transport.log and wrapper-maintained-tests.log. Fresh emitted patch and native Windows execution remain required gates.
+---
+ MODULE.bazel                                  |   1 +
+ patches/BUILD.bazel                           |   1 +
+ .../rules_rust_wrapper_parameter_files.patch  | 201 ++++++++++++++++++
+ .../build-warnings/wrapper-params/BUILD.bazel |  15 ++
+ .../wrapper-params/environment_files.bzl      |  13 ++
+ .../wrapper-params/transport.rs               |   4 +
+ 6 files changed, 235 insertions(+)
+ create mode 100644 patches/rules_rust_wrapper_parameter_files.patch
+ create mode 100644 tools/build-warnings/wrapper-params/BUILD.bazel
+ create mode 100644 tools/build-warnings/wrapper-params/environment_files.bzl
+ create mode 100644 tools/build-warnings/wrapper-params/transport.rs
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 82a26cef0..97703d27f 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -279,8 +279,9 @@ rules_rust.patch(
+         "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
+         # Group build-script argument files to avoid Windows command-line limits.
+         "//patches:rules_rust_group_build_script_arg_files.patch",
+         "//patches:rules_rust_cargo_c_standard.patch",
++        "//patches:rules_rust_wrapper_parameter_files.patch",
+         "//patches:rules_rust_windows_execroot_separators.patch",
+         "//patches:rules_rust_compiler_thp.patch",
+         "//patches:rules_rust_unwind_driver_selection.patch",
+         "//patches:rules_rust_prost_unused_grep.patch",
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 5243ca9e6..e53bd694e 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,5 +1,6 @@
+ exports_files([
++    "rules_rust_wrapper_parameter_files.patch",
+     "aws_lc_c_standard.patch",
+     "rules_rust_cargo_c_standard.patch",
+     "xz_windows_driver_flags.patch",
+     "ninja_elapsed_time.patch",
+diff --git a/patches/rules_rust_wrapper_parameter_files.patch b/patches/rules_rust_wrapper_parameter_files.patch
+new file mode 100644
+index 000000000..c46e6bee4
+--- /dev/null
++++ b/patches/rules_rust_wrapper_parameter_files.patch
+@@ -0,0 +1,201 @@
++From 740190f81491566d59ba17ae66e1b03e69becb60 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 12:08:35 +0000
++Subject: [PATCH] Transport long process wrapper arguments through Bazel
++ parameter files
++
++---
++ rust/private/rustc.bzl        |   2 +
++ util/process_wrapper/flags.rs | 128 +++++++++++++++++++++++++++++++++-
++ 2 files changed, 128 insertions(+), 2 deletions(-)
++
++diff --git a/rust/private/rustc.bzl b/rust/private/rustc.bzl
++index 537c918..7d3cf79 100644
++--- a/rust/private/rustc.bzl
+++++ b/rust/private/rustc.bzl
++@@ -1129,8 +1129,10 @@ def construct_arguments(
++     env = _get_rustc_env(attr, toolchain, crate_info.name)
++
++     # Wrapper args first
++     process_wrapper_flags = ctx.actions.args()
+++    process_wrapper_flags.set_param_file_format("multiline")
+++    process_wrapper_flags.use_param_file("@%s")
++
++     for build_env_file in build_env_files:
++         process_wrapper_flags.add("--env-file", build_env_file)
++
++diff --git a/util/process_wrapper/flags.rs b/util/process_wrapper/flags.rs
++index 8ea9557..5ceb4ab 100644
++--- a/util/process_wrapper/flags.rs
+++++ b/util/process_wrapper/flags.rs
++@@ -17,15 +17,20 @@ use std::error::Error;
++ use std::fmt;
++ use std::fmt::Write;
++ use std::iter::Peekable;
++ use std::mem::take;
+++use std::sync::Arc;
++
++ #[derive(Debug, Clone)]
++ pub(crate) enum FlagParseError {
++     UnknownFlag(String),
++     ValueMissing(String),
++     ProvidedMultipleTimes(String),
++     ProgramNameMissing,
+++    ArgumentFileRead {
+++        path: String,
+++        source: Arc<std::io::Error>,
+++    },
++ }
++
++ impl fmt::Display for FlagParseError {
++     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
++@@ -37,12 +42,22 @@ impl fmt::Display for FlagParseError {
++             }
++             Self::ProgramNameMissing => {
++                 write!(f, "program name (argv[0]) missing")
++             }
+++            Self::ArgumentFileRead { path, source } => {
+++                write!(f, "could not read argument file \"{path}\": {source}")
+++            }
+++        }
+++    }
+++}
+++impl Error for FlagParseError {
+++    fn source(&self) -> Option<&(dyn Error + 'static)> {
+++        match self {
+++            Self::ArgumentFileRead { source, .. } => Some(source.as_ref()),
+++            _ => None,
++         }
++     }
++ }
++-impl Error for FlagParseError {}
++
++ struct FlagDef<'a, T> {
++     name: String,
++     help: String,
++@@ -141,9 +156,21 @@ impl<'a> Flags<'a> {
++         }
++         help_text
++     }
++
++-    pub(crate) fn parse(mut self, argv: Vec<String>) -> Result<ParseOutcome, FlagParseError> {
+++    pub(crate) fn parse(mut self, mut argv: Vec<String>) -> Result<ParseOutcome, FlagParseError> {
+++        // Bazel may spill the first Args block into a multiline parameter file.
+++        // Expand only that block; compiler @files and flag values stay intact.
+++        if let Some(path) = argv.get(1).and_then(|arg| arg.strip_prefix('@')) {
+++            let contents = std::fs::read_to_string(path).map_err(|source| {
+++                FlagParseError::ArgumentFileRead {
+++                    path: path.to_owned(),
+++                    source: Arc::new(source),
+++                }
+++            })?;
+++            argv.splice(1..2, contents.lines().map(str::to_owned));
+++        }
+++
++         let mut argv_iter = argv.into_iter().peekable();
++         let program_name = argv_iter.next().ok_or(FlagParseError::ProgramNameMissing)?;
++
++         // To check if a non-repeated flag has been set already.
++@@ -271,5 +298,102 @@ mod test {
++         } else {
++             panic!("expected correct parsing, got {:?}", result)
++         }
++     }
+++
+++    #[test]
+++    fn test_large_wrapper_parameter_file() {
+++        for newline in ["\n", "\r\n"] {
+++            let path = std::path::PathBuf::from(
+++                std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR must isolate test files"),
+++            )
+++            .join(format!("wrapper parameters-{}.params", newline.len()));
+++            let mut expected_substitutions = Vec::new();
+++            let mut wrapper_args = Vec::new();
+++            for index in 0..1_000 {
+++                let substitution = format!(
+++                    "bazel-out/windows-fastbuild/bin/build-script-{index}.out_dir=C:\\build output\\build-script-{index}.out_dir\\"
+++                );
+++                wrapper_args.push("--subst".to_owned());
+++                wrapper_args.push(substitution.clone());
+++                expected_substitutions.push(substitution);
+++            }
+++            wrapper_args.extend(
+++                args(&[
+++                    "--arg-file",
+++                    "@ordinary-flag-value",
+++                    r#"C:\build output\quoted "directory"\"#,
+++                    "",
+++                ])
+++                .into_iter()
+++                .skip(1),
+++            );
+++            let contents = wrapper_args.join(newline) + newline;
+++            assert!(contents.encode_utf16().count() > 32_767);
+++            std::fs::write(&path, contents).unwrap();
+++
+++            let mut substitutions = None;
+++            let mut arg_files = None;
+++            let mut parser = Flags::new();
+++            parser.define_repeated_flag("--subst", "substitutions", &mut substitutions);
+++            parser.define_repeated_flag("--arg-file", "compiler argument files", &mut arg_files);
+++            let result = parser.parse(vec![
+++                "process_wrapper".to_owned(),
+++                format!("@{}", path.display()),
+++                "--".to_owned(),
+++                "rustc".to_owned(),
+++                "@compiler.params".to_owned(),
+++                "".to_owned(),
+++            ]);
+++            std::fs::remove_file(&path).unwrap();
+++
+++            let ParseOutcome::Parsed(child_args) = result.unwrap() else {
+++                panic!("parameter files must parse wrapper flags, not request help");
+++            };
+++            assert_eq!(substitutions, Some(expected_substitutions));
+++            assert_eq!(
+++                arg_files,
+++                Some(vec![
+++                    "@ordinary-flag-value".to_owned(),
+++                    r#"C:\build output\quoted "directory"\"#.to_owned(),
+++                    "".to_owned(),
+++                ])
+++            );
+++            assert_eq!(child_args, ["rustc", "@compiler.params", ""]);
+++        }
+++    }
+++
+++    #[test]
+++    fn test_unreadable_wrapper_parameter_file() {
+++        let path = std::path::PathBuf::from(
+++            std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR must isolate test files"),
+++        )
+++        .join("missing wrapper parameters.params");
+++        let result = Flags::new().parse(vec![
+++            "process_wrapper".to_owned(),
+++            format!("@{}", path.display()),
+++        ]);
+++        let error = result.unwrap_err();
+++        assert!(
+++            error.to_string().contains("read argument file"),
+++            "{}",
+++            error
+++        );
+++        assert!(
+++            error.to_string().contains(path.to_str().unwrap()),
+++            "{}",
+++            error
+++        );
+++        assert!(error.source().is_some());
+++    }
+++
+++    #[test]
+++    fn test_child_parameter_file_is_not_a_wrapper_file() {
+++        let result = Flags::new()
+++            .parse(args(&["--", "rustc", "@missing-compiler.params"]))
+++            .unwrap();
+++        let ParseOutcome::Parsed(child_args) = result else {
+++            panic!("expected compiler arguments");
+++        };
+++        assert_eq!(child_args, ["rustc", "@missing-compiler.params"]);
+++    }
++ }
+diff --git a/tools/build-warnings/wrapper-params/BUILD.bazel b/tools/build-warnings/wrapper-params/BUILD.bazel
+new file mode 100644
+index 000000000..e850c4f3b
+--- /dev/null
++++ b/tools/build-warnings/wrapper-params/BUILD.bazel
+@@ -0,0 +1,15 @@
++load("@rules_rust//rust:defs.bzl", "rust_test")
++load(":environment_files.bzl", "environment_files")
++
++environment_files(
++    name = "environment_files",
++    testonly = True,
++)
++
++rust_test(
++    name = "transport_test",
++    size = "small",
++    srcs = ["transport.rs"],
++    edition = "2024",
++    rustc_env_files = [":environment_files"],
++)
+diff --git a/tools/build-warnings/wrapper-params/environment_files.bzl b/tools/build-warnings/wrapper-params/environment_files.bzl
+new file mode 100644
+index 000000000..44edd53fa
+--- /dev/null
++++ b/tools/build-warnings/wrapper-params/environment_files.bzl
+@@ -0,0 +1,13 @@
++def _environment_files_impl(ctx):
++    files = []
++    command_length = 0
++    for index in range(600):
++        output = ctx.actions.declare_file("env/argument-%s-with-path-remapping.env" % index)
++        ctx.actions.write(output, "WRAPPER_PARAM_FILE_PROBE=passed\n")
++        files.append(output)
++        command_length += len(output.path) + len(" --env-file ")
++    if command_length <= 32767:
++        fail("The fixture must exceed the Windows process command-line limit")
++    return [DefaultInfo(files = depset(files))]
++
++environment_files = rule(implementation = _environment_files_impl)
+diff --git a/tools/build-warnings/wrapper-params/transport.rs b/tools/build-warnings/wrapper-params/transport.rs
+new file mode 100644
+index 000000000..789289b23
+--- /dev/null
++++ b/tools/build-warnings/wrapper-params/transport.rs
+@@ -0,0 +1,4 @@
++#[test]
++fn wrapper_parameter_files_preserve_compiler_environment() {
++    assert_eq!(env!("WRAPPER_PARAM_FILE_PROBE"), "passed");
++}
