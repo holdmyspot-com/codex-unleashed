@@ -2358,6 +2358,167 @@ just fmt-check
 just bazel-lock-check
 ```
 
-All eleven timeout analysis regressions and the three actual compatibility
+All timeout analysis regressions and the three actual compatibility
 checks must pass without timing-range advisories. The focused runtime command
 requires a Linux x86-64 execution host and the pinned comparison releases.
+
+
+## Sharded exec integration deadline
+
+`zzzz-0029-exec-integration-deadline.patch` gives exec integration tests an
+explicit moderate timeout. The eight-shard suite can exceed the short budget
+on native macOS. Unit-test defaults, sharding, assertions, and verbose timeout
+diagnostics retain their behavior.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0028`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test //tools/build-warnings/test-timeouts:timeouts_tests
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/exec:exec-all-test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the actual generated integration target's
+moderate timeout. All eight runtime shards must complete with every assertion
+passing on each supported native platform. An analysis pass alone does not
+establish that execution gate.
+
+
+## V8 compiler feature guards
+
+`zzzz-0030-v8-warning-feature-guards.patch` nests Clang warning-feature
+checks so GCC and MSVC never parse unavailable `__has_warning` expressions.
+The existing pointer-format regression also exercises both diagnostic scopes.
+Compiler warnings remain fatal.
+
+The base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 patches. Run `bazel test //tools/build-warnings/v8:pointer_formats_test`,
+`just fmt-check`, and `just bazel-lock-check`. Native Windows verification
+compiles and executes the same fixture with `/std:c++20 /Zc:__cplusplus /W4 /WX`.
+GCC and MSVC must compile and run it without preprocessor diagnostics.
+
+## Daemon integration deadline
+
+`zzzz-0031-daemon-integration-deadline.patch` gives CLI integration tests a
+moderate timeout. The daemon suite includes real startup and shutdown waits
+that exceed the short default on native macOS. Assertions and verbose timing
+diagnostics remain enabled.
+
+The base and prerequisites match patch 0030. Run
+`bazel test //tools/build-warnings/test-timeouts:timeouts_tests`,
+`bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/cli:cli-app_server_daemon-test`,
+`just fmt-check`, and `just bazel-lock-check`. The analysis regression requires
+the real generated daemon target's moderate deadline; native execution must
+also complete successfully on each supported platform.
+
+## Native CMake installation paths
+
+`zzzz-0032-cmake-install-prefix-path.patch` supplies the installation prefix
+with forward slashes. CMake's generated Windows installation script therefore
+preserves the path rather than interpreting backslashes as escape sequences.
+Other initial-cache values retain their literal handling.
+
+The base and prerequisites match patch 0030, including the native CMake
+initial-cache patch. On native Windows with CMake 4.4.4 and Ninja 1.13.2 on
+`PATH`, run `python -m unittest discover -s third_party/voice -p test_build_native.py`.
+The new regression must install its marker beneath a prefix containing spaces.
+The baseline fails with `Invalid character escape`. Required queue checks are
+`just fmt-check` and `just bazel-lock-check`.
+
+## Native Meson header symbols
+
+`zzzz-0033-native-meson-header-symbols.patch` repairs the checksum-pinned
+Meson 1.12.1 C header-symbol probe. Value probes explicitly discard their
+result; type probes use a pointer declaration. Functions, variables, macros,
+enums, and incomplete types remain detectable with fatal compiler warnings.
+Missing symbols remain unavailable. No compiler diagnostic is suppressed.
+
+The base and prerequisites match patch 0030, including the native Meson
+1.12.1 upgrade. Run the native Meson recipe probe documented above,
+`just fmt-check`, and `just bazel-lock-check`. Its separate header-symbol
+fixture requires all seven supported symbols and rejects the missing symbol.
+The baseline fails at the declared-function assertion. The complete native
+voice prefix must also build on macOS and Windows.
+
+## Native GLib positional printf probe
+
+`zzzz-0034-glib-positional-printf-probe.patch` uses bounded `snprintf` and
+standard positional format spelling in GLib 2.88.3's configure probe. It
+avoids invalid C escapes and Darwin's deprecated `sprintf` diagnostic while
+preserving the positional-format capability check.
+
+The base and prerequisites match patch 0030 plus patch 0033. With a
+project-owned `TMPDIR`, run:
+
+```sh
+python3 tools/build-warnings/glib/printf_probe_test.py <prepared-glib-source> <native-cc>
+bazel test //tools/build-warnings/glib:printf_test
+just fmt-check
+just bazel-lock-check
+```
+
+The extracted configure probe must compile with `-Wall -Wextra -Werror` and
+execute successfully. The public GLib regression must print positional
+arguments as `2 3 1`. Native macOS execution remains required to establish the
+Darwin compiler and libc boundary. All five patches track
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+## Native Meson Darwin linker selection
+
+`zzzz-0035-native-meson-darwin-linker.patch` selects the native Darwin linker
+for native voice Meson links and capability probes. The selector belongs only
+in `LDFLAGS`; compile-only arguments retain their existing values. Other
+platforms retain the declared LLVM linker. Fatal diagnostics remain enabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice queue. With the declared CMake and C/C++ tools on `PATH`, run
+`python3 -m unittest discover -s third_party/voice -p test_build_native.py`,
+`just fmt-check`, and `just bazel-lock-check`. The regression requires the
+native selector last on Darwin, preserves the Linux selector and fatal-linker
+flag, and excludes linker selection from compile-only arguments. Native macOS
+acceptance additionally requires the native Meson probe and complete voice
+prefix. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+## Native GLib macOS content types
+
+`zzzz-0036-glib-macos-content-types.patch` uses Apple's UniformTypeIdentifiers
+API in the pinned GLib macOS content-type backend. MIME conversions, filename
+guesses, type relationships, descriptions, and fallback values retain their
+GIO interfaces. Each Objective-C lookup owns an autorelease pool and copies
+returned strings before draining it, including calls from ordinary GLib
+worker threads. Undeclared identifiers retain self-conformance. Runtime
+projection declares the exact Apple framework dependency and preserves its
+system install name. Compiler deprecation diagnostics remain fatal.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue,
+including the GLib positional-probe and native Darwin linker repairs. GLib
+2.88.3's CoreServices UTI calls fail native macOS compilation with deprecated
+declarations treated as errors. The replacement API is documented at
+https://developer.apple.com/documentation/uniformtypeidentifiers/uttypereference?language=objc.
+The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+Run these checks from the patched checkout:
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_prepare_sources.py
+python3 -m unittest discover -s third_party/voice -p test_macos_runtime.py
+just fmt-check
+just bazel-lock-check
+bazel test //tools/build-warnings/glib:content_type_test
+```
+
+The source-preparation and maintained checks must pass. The content-type test
+requires native macOS execution and exercises the installed GIO library from
+a worker thread. It verifies MIME round trips, valid and undeclared type
+relationships, executable classification, descriptions, dynamic filename
+types, XML and text exceptions, and volume and folder detection. Other
+platforms mark this macOS-specific target incompatible.

@@ -1,0 +1,70 @@
+From 4faabc908335e863cb1290e5be725c29a3ce5771 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:16:42 -0400
+Subject: [PATCH] Select the native Darwin linker for Meson probes
+
+The native voice recipe must use the system Darwin linker consistently for its C shared libraries and Meson capability probes. Override the inherited LLVM linker selector only in Darwin LDFLAGS. Compiler-only arguments, fatal warnings, and other target selectors remain unchanged. The new target-selection regression fails on the baseline and passes with the fix; all 29 native-builder tests pass on Linux with four platform skips. Hosted function-probe compilation and execution pass with this correction, while the full native prefix remains a separate acceptance gate.
+---
+ third_party/voice/build_native.py      |  2 ++
+ third_party/voice/test_build_native.py | 26 ++++++++++++++++++++++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 5b2b98005..2cec9bc57 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -327,6 +327,8 @@ class NativeBuild:
+             link[-1] = "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
+
+         meson_flags = {name: list(flags) for name, flags in self.flags.items()}
++        if self.args.target.endswith("apple-darwin"):
++            meson_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
+         resource_prefix = "-resource-dir="
+         link_resources = [
+             flag for flag in self.flags["LDFLAGS"] if flag.startswith(resource_prefix)
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index db62edffa..61ea415ea 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -823,6 +823,11 @@ class NativeBuildTests(unittest.TestCase):
+                 shlex.split(build.environment["LDFLAGS"]),
+                 [
+                     *self.args.link_flag,
++                    *(
++                        ["-fuse-ld=/usr/bin/ld"]
++                        if self.args.target.endswith("apple-darwin")
++                        else []
++                    ),
+                     f"-L{build.prefix / 'lib'}",
+                     (
+                         "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
+@@ -832,6 +837,27 @@ class NativeBuildTests(unittest.TestCase):
+                 ],
+             )
+
++    def test_meson_native_linker_selection_matches_target(self):
++        for suffix, expected in (
++            ("apple-darwin", "-fuse-ld=/usr/bin/ld"),
++            ("unknown-linux-gnu", "-fuse-ld=lld"),
++        ):
++            with self.subTest(target=suffix):
++                self.args.target = "x86_64-" + suffix
++                self.args.link_flag = ["-fuse-ld=lld", "-Wl,-fatal_warnings"]
++                with patch("build_native.validate_target"):
++                    build = NativeBuild(self.args, self.environment)
++                build.sources = {"meson": self.root, "probe": self.root}
++                with patch.object(build, "run"):
++                    build.meson("probe", [])
++                link = shlex.split(build.environment["LDFLAGS"])
++                selectors = [flag for flag in link if flag.startswith("-fuse-ld=")]
++                self.assertEqual(selectors[-1], expected)
++                self.assertIn("-Wl,-fatal_warnings", link)
++                self.assertEqual(build.flags["LDFLAGS"], self.args.link_flag)
++                for variable in ("CFLAGS", "CXXFLAGS"):
++                    self.assertNotIn(expected, shlex.split(build.environment[variable]))
++
+     def test_windows_paths_use_cygpath_and_propagate_failure(self):
+         build = NativeBuild(self.args, self.environment)
+         build.windows = True
+--
+2.43.0

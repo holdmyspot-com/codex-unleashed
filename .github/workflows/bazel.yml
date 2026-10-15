@@ -31,28 +31,6 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
 
-      - name: Add native Meson function detection regression
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp -R .github/diagnostics/native-meson upstream/third_party/voice/function-probe
-          python3 - <<'PY'
-          from pathlib import Path
-          root = Path('upstream/third_party/voice')
-          build = root / 'BUILD.bazel'
-          text = build.read_text()
-          needle = '    name = "native_recipe",\n    srcs = [\n'
-          assert text.count(needle) == 1
-          files = ''.join(f'        "function-probe/{name}",\n' for name in ('meson.build', 'main.cc', 'probe.c', 'probe.h'))
-          build.write_text(text.replace(needle, needle + files))
-          recipe = root / 'build_native.py'
-          text = recipe.read_text()
-          needle = '        self.cmake(\n            "zlib",'
-          assert text.count(needle) == 1
-          probe = '        self.prefix.joinpath("lib").mkdir(parents=True, exist_ok=True)\n        self.prefix.joinpath("include").mkdir(parents=True, exist_ok=True)\n        self.sources["function-probe"] = Path(__file__).resolve().parent / "function-probe"\n        self.meson("function-probe", [])\n'
-          recipe.write_text(text.replace(needle, probe + needle))
-          PY
-
       - name: Prepare Bazel CI
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
@@ -60,31 +38,11 @@ jobs:
           target: aarch64-apple-darwin
           cache-scope: bazel-clippy
 
-      - name: Apply the verified linker correction and GLib probe repair
+      - name: Verify native macOS runtime relocation
         shell: bash
-        run: |
-          set -euo pipefail
-          cp .github/diagnostics/glib-printf/prepare_sources.py upstream/third_party/voice/prepare_sources.py
-          cp .github/diagnostics/glib-printf/printf_test.c upstream/tools/build-warnings/glib/printf_test.c
-          cp .github/diagnostics/glib-printf/glib-content-type.h upstream/third_party/voice/glib-content-type.h
-          cp .github/diagnostics/glib-printf/content_type_test.c upstream/tools/build-warnings/glib/content_type_test.c
-          cp .github/diagnostics/glib-printf/BUILD.bazel upstream/tools/build-warnings/glib/BUILD.bazel
-          python3 - <<'PYCODE'
-          from pathlib import Path
-          build = Path('upstream/third_party/voice/BUILD.bazel')
-          contents = build.read_text()
-          needle = '        "prepare_sources.py",\n'
-          assert contents.count(needle) == 1
-          build.write_text(contents.replace(needle, '        "glib-content-type.h",\n' + needle))
-          recipe = Path('upstream/third_party/voice/build_native.py')
-          text = recipe.read_text()
-          needle = '        meson_flags = {name: list(flags) for name, flags in self.flags.items()}\n'
-          assert text.count(needle) == 1
-          correction = '        if self.args.target.endswith("apple-darwin"):\n            meson_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")\n'
-          recipe.write_text(text.replace(needle, needle + correction))
-          PYCODE
+        run: python3 -m unittest discover -s upstream/third_party/voice -p test_macos_runtime.py
 
-      - name: Verify function detection and complete native prefix
+      - name: Verify emitted native prefix and content-type behavior
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
