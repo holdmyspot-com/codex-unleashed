@@ -149,6 +149,23 @@ The tests pass with CMake and the LLVM toolchain available on `PATH`; platform
 tests skip outside their supported host. The Linux native prefix builds without
 missing symbol-tool warnings. Hosted remote execution remains a separate gate.
 
+## V8 Python generator platforms
+
+`z-v8-python-platforms.patch` resolves inspector-generator dependencies for
+Linux execution workers, Windows, and the native host. It uses MarkupSafe 3.0.4
+with pinned SHA-256 hashes to provide Python 3.11 wheels; the older pin falls
+back to a source build that fails hash enforcement. Jinja2 keeps its existing
+version. The generator uses the supported `py_zipapp_binary` launcher so its
+dependencies do not depend on generated repository names or directory runfiles.
+The workspace keeps its manifest runfiles policy.
+
+Apply this patch after `upgrade-z-native-tools.patch`, which supplies
+rules_python 2.4.2. Run `tools/build-warnings/v8/check-python-platforms.sh` with
+the normal Bazel build options. It analyzes the actual inspector generator for
+Linux and Windows, then generates the inspector files on the execution host.
+Both analyses and generation must succeed. Native Windows execution remains a
+separate CI gate; cross-platform analysis does not establish that runtime result.
+
 ## V8 legacy callback compatibility
 
 `native-v8-callback-compatibility.patch` keeps the pinned Rust callback ABI while
