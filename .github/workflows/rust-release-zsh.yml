@@ -147,9 +147,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
+      - uses: ./.github/actions/setup-tooling
+
+      - name: Download staged artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          names="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --paginate --jq '.artifacts[].name')"
+          while IFS= read -r name; do
+            [[ -n "$name" ]] || continue
+            "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+              "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$name" "dist/$name"
+          done <<< "$names"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

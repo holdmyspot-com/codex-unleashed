@@ -141,6 +141,9 @@ jobs:
     needs: archive
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
@@ -178,17 +181,25 @@ jobs:
           version: 0.9.103
 
       - name: Download nextest archive
-        uses: actions/download-artifact@v4
-        with:
-          name: nextest-archive-${{ inputs.artifact_id }}
-          path: ${{ runner.temp }}/nextest-archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: nextest-archive-${{ inputs.artifact_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RUNNER_TEMP/nextest-archive"
 
       - name: Download runtime test helpers
         if: ${{ runner.os == 'Linux' || runner.os == 'Windows' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.TEST_HELPERS_ARTIFACT }}
-          path: ${{ runner.temp }}/${{ env.TEST_HELPERS_ARTIFACT }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$TEST_HELPERS_ARTIFACT" \
+            "$RUNNER_TEMP/$TEST_HELPERS_ARTIFACT"
 
       - name: Run nextest shard
         id: test
