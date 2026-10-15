@@ -2203,3 +2203,32 @@ The module-lock check must pass without the obsolete JVM-option message.
 All helper tests must pass, including exact argument forwarding, a tooling
 path containing spaces, diagnostic forwarding, the configured launcher's
 exit status, and the existing fallback behavior.
+
+## Meson compiler-failure context
+
+`zzzz-0023-meson-compiler-failure-context.patch` includes the failing native
+voice component's `meson-log.txt` in Bazel's action diagnostics before
+temporary build cleanup. Compiler commands and their errors remain available
+for configure, build, and install failures. The original step exception and
+the existing libffi configure diagnostics remain available.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0022`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+With Clang 23 and CMake 4.4.4 available on `PATH`, run:
+
+```sh
+python3 -m unittest discover -v -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+All native-builder tests must pass. Configure-context cases require the
+Meson diagnostic, the original exception, and no completion artifacts,
+including warnings raised after a zero child exit status. Missing logs and
+unrelated component logs must retain their existing behavior. On native
+macOS, build `//third_party/voice:native_prefix_macos_aarch64`; a failed
+compiler probe must include its detailed Meson log. This diagnostic patch
+does not establish that the underlying native compiler failure is fixed.

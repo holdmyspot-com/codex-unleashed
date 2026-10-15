@@ -1,0 +1,121 @@
+From 9cef077688ab10a732e7753653a1a4163c2e7537 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:30:14 +0000
+Subject: [PATCH] Preserve Meson compiler diagnostics before native voice
+ cleanup
+
+Print the failing component's meson-log.txt into the Bazel action log
+before the temporary native build directory is removed. Keep the original
+step failure and the existing libffi configure context.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+Prerequisites: preceding issue-61 queue through zzzz-0022.
+Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+Native failure: job 116574277335 in run 38779077132 reports a failed
+proxy-libintl compiler sanity probe but loses the referenced Meson log.
+
+RED: focused configure-context regression fails in the Meson configure,
+build, and warning-only install cases because compiler detail is absent.
+GREEN: the same regression passes with original exceptions and no output
+completion markers. Missing logs and unrelated context remain covered.
+Gates: all 27 native-builder tests, just fmt-check, and just bazel-lock-check
+pass with declared CMake 4.4.4 and the cached Clang 23.1.2.
+This diagnostic repair does not yet fix the hosted compiler failure.
+---
+ third_party/voice/bazel_native.py      |  9 +++++
+ third_party/voice/test_build_native.py | 46 ++++++++++++++++++--------
+ 2 files changed, 41 insertions(+), 14 deletions(-)
+
+diff --git a/third_party/voice/bazel_native.py b/third_party/voice/bazel_native.py
+index 602694852..4d5be012a 100644
+--- a/third_party/voice/bazel_native.py
++++ b/third_party/voice/bazel_native.py
+@@ -68,6 +68,15 @@ def main():
+                         print(
+                             configure_log.read_text(errors="replace"), file=sys.stderr
+                         )
++                meson_log = (
++                    builder.output
++                    / "build"
++                    / step_name.rsplit("-", 1)[0]
++                    / "meson-logs/meson-log.txt"
++                )
++                if meson_log.is_file():
++                    print(f"{step_name} meson-log.txt:", file=sys.stderr)
++                    print(meson_log.read_text(errors="replace"), file=sys.stderr)
+             raise
+         with tarfile.open(prefix, "w") as archive:
+             archive.add(builder.prefix, arcname=".")
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index a1e6d4fbd..f68c5f265 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -637,14 +637,33 @@ class NativeBuildTests(unittest.TestCase):
+         )
+         self.assertFalse((build.output / "built.json").exists())
+
+-    def test_bazel_failure_preserves_libffi_configure_context_and_original_error(self):
+-        for index, (name, status, detail) in enumerate(
++    def test_bazel_failure_preserves_configure_context_and_original_error(self):
++        for index, (name, status, detail, context) in enumerate(
+             (
+-                ("libffi-configure", 23, "configure failed"),
+-                ("libffi-build", 0, "warning: no debug symbols"),
+-                ("libffi-install", 23, "install failed"),
+-                ("other-build", 23, "other failed"),
+-                ("libffi-configure", 23, None),
++                ("libffi-configure", 23, "configure failed", "libffi/config.log"),
++                ("libffi-build", 0, "warning: no debug symbols", "libffi/config.log"),
++                ("libffi-install", 23, "install failed", "libffi/config.log"),
++                ("other-build", 23, "other failed", "libffi/config.log"),
++                ("libffi-configure", 23, None, "libffi/config.log"),
++                (
++                    "proxy-libintl-configure",
++                    23,
++                    "compiler failed",
++                    "proxy-libintl/meson-logs/meson-log.txt",
++                ),
++                ("glib-build", 23, "compile failed", "glib/meson-logs/meson-log.txt"),
++                (
++                    "gstreamer-install",
++                    0,
++                    "warning: Meson install diagnostic",
++                    "gstreamer/meson-logs/meson-log.txt",
++                ),
++                (
++                    "proxy-libintl-configure",
++                    23,
++                    None,
++                    "proxy-libintl/meson-logs/meson-log.txt",
++                ),
+             )
+         ):
+             with self.subTest(name=name, status=status, detail=detail):
+@@ -672,12 +691,10 @@ class NativeBuildTests(unittest.TestCase):
+
+                 def fail():
+                     build.output.mkdir()
+-                    directory = build.output / "build/libffi"
+-                    directory.mkdir(parents=True)
+                     if detail is not None:
+-                        (directory / "config.log").write_text(
+-                            "force_load probe: native linker detail\n"
+-                        )
++                        log = build.output / "build" / context
++                        log.parent.mkdir(parents=True)
++                        log.write_text("native configure probe detail\n")
+                     build.run(
+                         name,
+                         [
+@@ -703,8 +720,9 @@ class NativeBuildTests(unittest.TestCase):
+                     self.assertEqual(error.exception.returncode, status)
+                 self.assertIn(detail or "configure failed", stderr.getvalue())
+                 self.assertEqual(
+-                    "force_load probe: native linker detail" in stderr.getvalue(),
+-                    name.startswith("libffi-") and detail is not None,
++                    "native configure probe detail" in stderr.getvalue(),
++                    Path(context).parts[0] == name.rsplit("-", 1)[0]
++                    and detail is not None,
+                 )
+                 self.assertFalse((self.root / "prefix.tar").exists())
+                 self.assertFalse((self.root / "built.json").exists())
