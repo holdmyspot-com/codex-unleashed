@@ -1,4 +1,4 @@
-From 6e9b14ddcbb73e177982ae3adce44d234df467dc Mon Sep 17 00:00:00 2001
+From 5cf2c394f6a523c9b28b994ee5d2f45e5df86c3d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 03:19:02 +0000
 Subject: [PATCH] Temporarily trace Meson native compiler invocations
@@ -9,12 +9,12 @@ Diagnostic branch experiment only; print the pre-Meson LIBRARY_PATH and enable v
  1 file changed, 61 insertions(+), 8 deletions(-)
 
 diff --git a/patches/rules_foreign_cc_meson_setup_diagnostics.patch b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
-index 33863de94..6a851d763 100644
+index 33863de94..6871e4ad7 100644
 --- a/patches/rules_foreign_cc_meson_setup_diagnostics.patch
 +++ b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
 @@ -1,20 +1,71 @@
 -From dd3f095c7c9c941b3ee5fd79e6539b0946608833 Mon Sep 17 00:00:00 2001
-+From cd9ccce1ff3ed9996e507673309aae783376a05a Mon Sep 17 00:00:00 2001
++From b12239dfe5a40a70d94a82a91630ba9abdadad02 Mon Sep 17 00:00:00 2001
  From: Gili Tzabari <cowwoc2020@gmail.com>
 -Date: Thu, 15 Oct 2026 01:52:01 +0000
 -Subject: [PATCH] Print Meson setup diagnostics before returning its failure
@@ -62,7 +62,7 @@ index 33863de94..6a851d763 100644
 
  diff --git a/foreign_cc/meson.bzl b/foreign_cc/meson.bzl
 -index 2cfb974..0be7cf2 100644
-+index 2cfb974..7f2057a 100644
++index 2cfb974..c0fa645 100644
  --- a/foreign_cc/meson.bzl
  +++ b/foreign_cc/meson.bzl
 -@@ -168,3 +168,11 @@ def _create_meson_script(configureParameters):
@@ -75,9 +75,9 @@ index 33863de94..6a851d763 100644
 ++    script.append("""printf 'LIBRARY_PATH=%s\\n' "${{LIBRARY_PATH-}}"
 ++printf 'MESON_BASH_RESOLVED=%s\\n' "$(command -v bash)"
 ++/usr/bin/env bash -c 'printf "MESON_ENV_BASH_LIBRARY_PATH=%s\\n" "${{LIBRARY_PATH-}}"'
-++printf 'MESON_LAUNCHER_BEGIN\\n'
-++cat {meson}
-++printf 'MESON_LAUNCHER_END\\n'
+++printf 'MESON_BOOTSTRAP_PYTHON=%s\\n' "$(command -v python3)"
+++python3 -c 'import os, sys; print("SYSTEM_PYTHON_LIBRARY_PATH=" + os.environ.get("LIBRARY_PATH", "")); print("SYSTEM_PYTHON_EXECUTABLE=" + sys.executable); print("SYSTEM_PYTHON_SITE_CUSTOMIZE=" + str(getattr(sys.modules.get("sitecustomize"), "__file__", None)))'
+++python3 -S -c 'import os; print("SYSTEM_PYTHON_NO_SITE_LIBRARY_PATH=" + os.environ.get("LIBRARY_PATH", ""))'
 ++probe_cc="$PWD/compiler-probe"
 ++cat > "$probe_cc" <<'CODEX_DRIVER'
 ++#!/usr/bin/env bash
