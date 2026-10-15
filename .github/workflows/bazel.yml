@@ -66,8 +66,16 @@ jobs:
           set -euo pipefail
           cp .github/diagnostics/glib-printf/prepare_sources.py upstream/third_party/voice/prepare_sources.py
           cp .github/diagnostics/glib-printf/printf_test.c upstream/tools/build-warnings/glib/printf_test.c
+          cp .github/diagnostics/glib-printf/glib-content-type.h upstream/third_party/voice/glib-content-type.h
+          cp .github/diagnostics/glib-printf/content_type_test.c upstream/tools/build-warnings/glib/content_type_test.c
+          cp .github/diagnostics/glib-printf/BUILD.bazel upstream/tools/build-warnings/glib/BUILD.bazel
           python3 - <<'PYCODE'
           from pathlib import Path
+          build = Path('upstream/third_party/voice/BUILD.bazel')
+          contents = build.read_text()
+          needle = '        "prepare_sources.py",\n'
+          assert contents.count(needle) == 1
+          build.write_text(contents.replace(needle, '        "glib-content-type.h",\n' + needle))
           recipe = Path('upstream/third_party/voice/build_native.py')
           text = recipe.read_text()
           needle = '        meson_flags = {name: list(flags) for name, flags in self.flags.items()}\n'
@@ -93,7 +101,8 @@ jobs:
             --build_metadata=TAG_job=clippy \
             -- \
             //third_party/voice:native_prefix_macos_aarch64 \
-            //tools/build-warnings/glib:printf_test
+            //tools/build-warnings/glib:printf_test \
+            //tools/build-warnings/glib:content_type_test
 
       - name: Preserve native action output
         if: always() && !cancelled()

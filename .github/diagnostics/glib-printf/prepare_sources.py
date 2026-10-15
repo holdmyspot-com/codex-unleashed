@@ -145,6 +145,41 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
 
     if source.name == "glib" and source.version == "2.88.3":
         # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+        # Replace deprecated macOS UTI APIs without relaxing compiler diagnostics.
+        # Remove when GLib uses UniformTypeIdentifiers in its content-type backend.
+        gio = destination / source.root / "gio"
+        shutil.copyfile(Path(__file__).with_name("glib-content-type.h"), gio / "glib-content-type.h")
+        content_type = gio / "gcontenttype-osx.m"
+        contents = content_type.read_text(encoding="utf-8")
+        replacements = (
+            ('#include <CoreServices/CoreServices.h>', '#include "glib-content-type.h"', 1),
+            ("UTTypeEqual (", "content_type_equals (", 1),
+            ("UTTypeConformsTo (", "content_type_conforms_to (", 5),
+            ("UTTypeCopyDescription (", "content_type_copy_description (", 1),
+            ("UTTypeCreatePreferredIdentifierForTag (", "content_type_create_identifier_for_tag (", 3),
+            ("kUTTagClassMIMEType, mime_str, NULL", "UTTagClassMIMEType, mime_str", 1),
+            ("kUTTagClassFilenameExtension,\n                                                           extension, NULL", "UTTagClassFilenameExtension,\n                                                           extension", 2),
+            ("UTTypeCopyPreferredTagWithClass(uti_str, kUTTagClassMIMEType)", "content_type_copy_mime_type (uti_str)", 1),
+            ("kUTTypeApplication", 'CFSTR ("com.apple.application")', 1),
+            ("kUTTypeVolume", 'CFSTR ("public.volume")', 1),
+            ("kUTTypeFolder", 'CFSTR ("public.folder")', 2),
+            ("kUTTypeXML", 'CFSTR ("public.xml")', 1),
+        )
+        for original, replacement, count in replacements:
+            if contents.count(original) != count:
+                raise ValueError(f"Pinned GLib macOS content-type API does not match: {original}")
+            contents = contents.replace(original, replacement)
+        content_type.write_text(contents, encoding="utf-8")
+
+        gio_meson = gio / "meson.build"
+        contents = gio_meson.read_text(encoding="utf-8")
+        original = "modules : ['Foundation', 'CoreFoundation', 'AppKit']"
+        replacement = "modules : ['Foundation', 'CoreFoundation', 'AppKit', 'UniformTypeIdentifiers']"
+        if contents.count(original) != 1:
+            raise ValueError("Pinned GLib macOS framework dependencies do not match")
+        gio_meson.write_text(contents.replace(original, replacement), encoding="utf-8")
+
+        # WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
         # Invalid C escapes and deprecated sprintf break the positional printf probe.
         # Remove when GLib's probe compiles with warnings treated as errors.
         meson = destination / source.root / "meson.build"

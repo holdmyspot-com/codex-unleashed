@@ -1,0 +1,67 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_test(
+    name = "content_type_test",
+    size = "small",
+    srcs = ["content_type_test.c"],
+    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
+    copts = [
+        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
+        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = ["//third_party/voice:native_link"],
+)
+
+cc_test(
+    name = "task_test",
+    size = "small",
+    srcs = ["task_test.c"],
+    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
+    copts = [
+        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
+        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
+    ],
+    tags = ["manual"],
+    deps = ["//third_party/voice:native_link"],
+)
+
+cc_test(
+    name = "type_test",
+    size = "small",
+    srcs = ["type_test.c"],
+    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
+    copts = [
+        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
+        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
+    ],
+    tags = ["manual"],
+    deps = ["//third_party/voice:native_link"],
+)
+
+cc_test(
+    name = "printf_test",
+    size = "small",
+    srcs = ["printf_test.c"],
+    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
+    copts = [
+        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
+        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
+    ],
+    tags = ["manual"],
+    deps = ["//third_party/voice:native_link"],
+)
+
+cc_test(
+    name = "log_writer_test",
+    size = "small",
+    srcs = ["log_writer_test.c"],
+    additional_compiler_inputs = ["//third_party/voice:native_sdk"],
+    copts = [
+        "-I$(execpath //third_party/voice:native_sdk)/include/glib-2.0",
+        "-I$(execpath //third_party/voice:native_sdk)/lib/glib-2.0/include",
+    ],
+    tags = ["manual"],
+    deps = ["//third_party/voice:native_link"],
+)
