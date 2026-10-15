@@ -4,10 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -78,11 +76,7 @@ public final class UpstreamCheckoutWorkflowTest
 		}
 		finally
 		{
-			try (Stream<Path> files = Files.walk(root))
-			{
-				for (Path file : files.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(file);
-			}
+			FixtureDirectories.deleteTree(root);
 		}
 	}
 
