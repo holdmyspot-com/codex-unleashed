@@ -1,0 +1,184 @@
+From 39a548df0e3ba816682b25f7915eafd3b2136b46 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:04:33 -0400
+Subject: [PATCH] Keep V8 ICU preprocessor definitions off raw assembly actions
+
+Exercise the production V8 library macro and Windows stack assembly with a callback ABI regression. The ICU C++ fixture requires all three macros to remain defined. Preserve their target-local scope through local_defines.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the existing issue-61 queue and Clang MinGW detection prerequisite.
+
+RED: Bazel build --platforms=//:windows_x86_64_gnullvm @v8//:codex_windows_stack_assembly_test fails with the three intended unused -D argument errors. GREEN: the same full compile/link command passes after using local_defines. Evidence: v8-windows-stack-macro-{red,green}.log. Native Windows runtime and emitted fresh-checkout gates remain pending.
+---
+ MODULE.bazel                            |   1 +
+ patches/v8_windows_stack_assembly.patch | 136 ++++++++++++++++++++++++
+ tools/build-warnings/v8/BUILD.bazel     |   5 +
+ 3 files changed, 142 insertions(+)
+ create mode 100644 patches/v8_windows_stack_assembly.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 6d4c9bb26..1d3bb1346 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -897,6 +897,7 @@ archive_override(
+         "//patches:v8_callback_compatibility.patch",
+         "//patches:v8_simdutf_constexpr.patch",
+         "//patches:v8_clang_mingw_detection.patch",
++        "//patches:v8_windows_stack_assembly.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+diff --git a/patches/v8_windows_stack_assembly.patch b/patches/v8_windows_stack_assembly.patch
+new file mode 100644
+index 000000000..98a5d97b0
+--- /dev/null
++++ b/patches/v8_windows_stack_assembly.patch
+@@ -0,0 +1,136 @@
++diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
++index 2589094..bbeb91a 100644
++--- a/orig/v8-15.0.245.2/BUILD.bazel
+++++ b/mod/v8-15.0.245.2/BUILD.bazel
++@@ -4142,7 +4142,7 @@ filegroup(
++         "@v8//bazel/config:is_inline_asm_riscv64": ["src/heap/base/asm/riscv64/push_registers_asm.cc"],
++         "@v8//bazel/config:is_inline_asm_ppc64le": ["src/heap/base/asm/ppc/push_registers_asm.cc"],
++         "@v8//bazel/config:is_msvc_asm_ia32": ["src/heap/base/asm/ia32/push_registers_asm.cc"],
++-        "@v8//bazel/config:is_msvc_asm_x64": ["src/heap/base/asm/x64/push_registers_masm.asm"],
+++        "@v8//bazel/config:is_msvc_asm_x64": [":codex_windows_stack_assembly"],
++         "@v8//bazel/config:is_msvc_asm_arm64": ["src/heap/base/asm/arm64/push_registers_asm.cc"],
++     }),
++ )
++@@ -5002,3 +5002,32 @@ cc_test(
++     copts = ["-std=c++20"],
++     visibility = ["//visibility:public"],
++ )
+++
+++filegroup(
+++    name = "codex_windows_stack_assembly",
+++    srcs = ["src/heap/base/asm/x64/push_registers_masm.asm"],
+++)
+++
+++v8_library(
+++    name = "codex_windows_stack_assembly_library",
+++    srcs = [":codex_windows_stack_assembly"],
+++    icu_srcs = ["test/codex/i18n-defines-test.cc"],
+++    target_compatible_with = [
+++        "@platforms//os:windows",
+++        "@platforms//cpu:x86_64",
+++    ],
+++)
+++
+++cc_test(
+++    name = "codex_windows_stack_assembly_test",
+++    size = "small",
+++    srcs = [
+++        "test/codex/windows-stack-assembly-test.cc",
+++    ],
+++    deps = [":icu/codex_windows_stack_assembly_library"],
+++    target_compatible_with = [
+++        "@platforms//os:windows",
+++        "@platforms//cpu:x86_64",
+++    ],
+++    visibility = ["//visibility:public"],
+++)
++diff --git a/orig/v8-15.0.245.2/bazel/defs.bzl b/mod/v8-15.0.245.2/bazel/defs.bzl
++index 19f4351..42e9637 100644
++--- a/orig/v8-15.0.245.2/bazel/defs.bzl
+++++ b/mod/v8-15.0.245.2/bazel/defs.bzl
++@@ -224,11 +224,11 @@ def _default_args():
++     )
++
++ ENABLE_I18N_SUPPORT_DEFINES = [
++-    "-DV8_INTL_SUPPORT",
++-    "-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
+++    "V8_INTL_SUPPORT",
+++    "ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
++     # src/regexp/regexp-compiler-tonode.cc uses an unsafe ICU method and
++     # access a character implicitly.
++-    "-DUNISTR_FROM_CHAR_EXPLICIT=",
+++    "UNISTR_FROM_CHAR_EXPLICIT=",
++ ]
++
++ def _should_emit_noicu_and_icu(noicu_srcs, noicu_deps, noicu_defines, icu_srcs, icu_deps, icu_defines):
++@@ -268,7 +268,8 @@ def v8_binary(
++             deps = deps + icu_deps + default.deps,
++             includes = includes + ["icu/"] + default.includes,
++             defines = defines + icu_defines + default.defines,
++-            copts = copts + default.copts + ENABLE_I18N_SUPPORT_DEFINES,
+++            copts = copts + default.copts,
+++            local_defines = ENABLE_I18N_SUPPORT_DEFINES,
++             linkopts = linkopts + default.linkopts,
++             **kwargs
++         )
++@@ -325,7 +326,8 @@ def v8_library(
++             srcs = srcs + icu_srcs,
++             deps = deps + icu_deps + default.deps,
++             includes = includes + ["icu/"] + default.includes,
++-            copts = copts + default.copts + ENABLE_I18N_SUPPORT_DEFINES,
+++            copts = copts + default.copts,
+++            local_defines = ENABLE_I18N_SUPPORT_DEFINES,
++             linkopts = linkopts + default.linkopts,
++             alwayslink = 1,
++             linkstatic = 1,
++diff --git a/orig/v8-15.0.245.2/test/codex/i18n-defines-test.cc b/mod/v8-15.0.245.2/test/codex/i18n-defines-test.cc
++new file mode 100644
++index 0000000..666a617
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/test/codex/i18n-defines-test.cc
++@@ -0,0 +1,15 @@
+++// Copyright 2026 the V8 project authors. All rights reserved.
+++// Use of this source code is governed by a BSD-style license that can be
+++// found in the LICENSE file.
+++
+++#ifndef V8_INTL_SUPPORT
+++#error ICU builds require V8_INTL_SUPPORT.
+++#endif
+++#ifndef ICU_UTIL_DATA_IMPL
+++#error ICU builds require ICU_UTIL_DATA_IMPL.
+++#endif
+++#ifndef UNISTR_FROM_CHAR_EXPLICIT
+++#error ICU builds require UNISTR_FROM_CHAR_EXPLICIT.
+++#endif
+++
+++UNISTR_FROM_CHAR_EXPLICIT int CodexI18nDefinesAvailable() { return 1; }
++diff --git a/orig/v8-15.0.245.2/test/codex/windows-stack-assembly-test.cc b/mod/v8-15.0.245.2/test/codex/windows-stack-assembly-test.cc
++new file mode 100644
++index 0000000..9b4b796
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/test/codex/windows-stack-assembly-test.cc
++@@ -0,0 +1,24 @@
+++// Copyright 2026 the V8 project authors. All rights reserved.
+++// Use of this source code is governed by a BSD-style license that can be
+++// found in the LICENSE file.
+++
+++#include <cstdint>
+++
+++using Callback = void (*)(void*, void*, void*);
+++extern "C" void PushAllRegistersAndIterateStack(void*, void*, Callback);
+++
+++void CheckStack(void* stack, void* visitor, void* registers) {
+++  auto* result = static_cast<int*>(stack);
+++  auto* expected = static_cast<int*>(visitor);
+++  if (registers != nullptr &&
+++      (reinterpret_cast<std::uintptr_t>(registers) & 15) == 0) {
+++    *result = *expected;
+++  }
+++}
+++
+++int main() {
+++  int result = 0;
+++  int expected = 42;
+++  PushAllRegistersAndIterateStack(&result, &expected, CheckStack);
+++  return result == expected ? 0 : 1;
+++}
+diff --git a/tools/build-warnings/v8/BUILD.bazel b/tools/build-warnings/v8/BUILD.bazel
+index f7c014ef3..333fea42e 100644
+--- a/tools/build-warnings/v8/BUILD.bazel
++++ b/tools/build-warnings/v8/BUILD.bazel
+@@ -2,3 +2,8 @@ test_suite(
+     name = "pointer_formats_test",
+     tests = ["@v8//:codex_pointer_formats_test"],
+ )
++
++test_suite(
++    name = "windows_stack_assembly_test",
++    tests = ["@v8//:codex_windows_stack_assembly_test"],
++)

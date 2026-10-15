@@ -1,0 +1,182 @@
+From bf2bda6461913bd91dedabb9f03e0f70ba3003b8 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 00:38:20 -0400
+Subject: [PATCH] Fix Abseil compiler selection for Windows Clang
+
+Restrict MSVC pragmas to the MSVC ABI and declare dbghelp when Clang
+targets MinGW. Preserve the existing MSVC and non-Windows selections.
+
+Add a regression executable that uses CPU discovery and symbolization,
+checking both compilation and the library's transitive link requirements.
+Keep Abseil at 20250814.1; no dependency version changes are required.
+
+RED: bazel build --platforms=//:windows_x86_64_gnullvm
+//tools/build-warnings/abseil:windows_platform_test exits 1 with six
+unknown-pragmas errors. Guarding pragmas alone then reproduces undefined
+SymSetOptions, SymInitialize and SymFromAddr references at link time.
+
+GREEN: the same Windows build exits 0 after both corrections.
+CONTROL: bazel test --platforms=//:rbe
+//tools/build-warnings/abseil:windows_platform_test exits 0, one test passes.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with
+the existing issue-61 warning policy and dependency patch prerequisites.
+Native Windows runtime and fresh emitted queue acceptance remain separate
+required gates; these authoring checks do not establish them.
+---
+ MODULE.bazel                                  |  1 +
+ patches/abseil_msvc_pragma_guards.patch       | 90 +++++++++++++++++++
+ tools/build-warnings/abseil/BUILD.bazel       | 10 +++
+ .../abseil/windows_platform_test.cc           | 14 +++
+ 4 files changed, 115 insertions(+)
+ create mode 100644 patches/abseil_msvc_pragma_guards.patch
+ create mode 100644 tools/build-warnings/abseil/windows_platform_test.cc
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index a45a1f5b6..cec11cd78 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -94,6 +94,7 @@ single_version_override(
+     patches = [
+         "//patches:abseil_windows_gnullvm_thread_identity.patch",
+         "//patches:abseil_lifetime_capture_by_this.patch",
++        "//patches:abseil_msvc_pragma_guards.patch",
+     ],
+ )
+
+diff --git a/patches/abseil_msvc_pragma_guards.patch b/patches/abseil_msvc_pragma_guards.patch
+new file mode 100644
+index 000000000..0bc1768de
+--- /dev/null
++++ b/patches/abseil_msvc_pragma_guards.patch
+@@ -0,0 +1,90 @@
++From 8175a97393aaf13ffea275dcc569678b0e379af7 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 00:37:13 -0400
++Subject: [PATCH] Use compiler-specific pragmas and symbolizer linking on
++ Windows
++
++---
++ absl/BUILD.bazel                   | 9 +++++++++
++ absl/base/internal/sysinfo.cc      | 4 ++++
++ absl/debugging/BUILD.bazel         | 1 +
++ absl/debugging/symbolize_win32.inc | 4 ++++
++ 4 files changed, 18 insertions(+)
++
++diff --git a/absl/BUILD.bazel b/absl/BUILD.bazel
++index 2a25ac6..e5d708c 100644
++--- a/absl/BUILD.bazel
+++++ b/absl/BUILD.bazel
++@@ -28,6 +28,15 @@ config_setting(
++     visibility = [":__subpackages__"],
++ )
++
+++config_setting(
+++    name = "mingw-clang_compiler",
+++    constraint_values = ["@platforms//os:windows"],
+++    flag_values = {
+++        "@bazel_tools//tools/cpp:compiler": "clang",
+++    },
+++    visibility = [":__subpackages__"],
+++)
+++
++ config_setting(
++     name = "mingw_unspecified_compiler",
++     flag_values = {
++diff --git a/absl/base/internal/sysinfo.cc b/absl/base/internal/sysinfo.cc
++index 1937db3..db166cf 100644
++--- a/absl/base/internal/sysinfo.cc
+++++ b/absl/base/internal/sysinfo.cc
++@@ -90,7 +90,9 @@ DWORD Win32CountSetBits(ULONG_PTR bitMask) {
++ // 0 if the number of processors is not available or can not be computed.
++ // https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformation
++ int Win32NumCPUs() {
+++#ifdef _MSC_VER
++ #pragma comment(lib, "kernel32.lib")
+++#endif
++   using Info = SYSTEM_LOGICAL_PROCESSOR_INFORMATION;
++
++   DWORD info_size = sizeof(Info);
++@@ -162,7 +164,9 @@ static double GetNominalCPUFrequency() {
++   // API informing about CPU nominal frequency.
++   return 1.0;
++ #else
+++#ifdef _MSC_VER
++ #pragma comment(lib, "advapi32.lib")  // For Reg* functions.
+++#endif
++   HKEY key;
++   // Use the Reg* functions rather than the SH functions because shlwapi.dll
++   // pulls in gdi32.dll which makes process destruction much more costly.
++diff --git a/absl/debugging/BUILD.bazel b/absl/debugging/BUILD.bazel
++index 56f25fa..65d4836 100644
++--- a/absl/debugging/BUILD.bazel
+++++ b/absl/debugging/BUILD.bazel
++@@ -96,6 +96,7 @@ cc_library(
++     linkopts = ABSL_DEFAULT_LINKOPTS + select({
++         "@rules_cc//cc/compiler:msvc-cl": ["-DEFAULTLIB:dbghelp.lib"],
++         "@rules_cc//cc/compiler:clang-cl": ["-DEFAULTLIB:dbghelp.lib"],
+++        "//absl:mingw-clang_compiler": ["-ldbghelp"],
++         "//absl:mingw_compiler": [
++             "-DEFAULTLIB:dbghelp.lib",
++             "-ldbghelp",
++diff --git a/absl/debugging/symbolize_win32.inc b/absl/debugging/symbolize_win32.inc
++index 589890f..aa3f728 100644
++--- a/absl/debugging/symbolize_win32.inc
+++++ b/absl/debugging/symbolize_win32.inc
++@@ -20,12 +20,16 @@
++ #include <winternl.h>
++
++ // MSVC header dbghelp.h has a warning for an ignored typedef.
+++#ifdef _MSC_VER
++ #pragma warning(push)
++ #pragma warning(disable:4091)
+++#endif
++ #include <dbghelp.h>
+++#ifdef _MSC_VER
++ #pragma warning(pop)
++
++ #pragma comment(lib, "dbghelp.lib")
+++#endif
++
++ #include <algorithm>
++ #include <cstring>
+diff --git a/tools/build-warnings/abseil/BUILD.bazel b/tools/build-warnings/abseil/BUILD.bazel
+index a29586d5a..372ca1416 100644
+--- a/tools/build-warnings/abseil/BUILD.bazel
++++ b/tools/build-warnings/abseil/BUILD.bazel
+@@ -1,5 +1,15 @@
+ load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
++cc_test(
++    name = "windows_platform_test",
++    size = "small",
++    srcs = ["windows_platform_test.cc"],
++    deps = [
++        "@abseil-cpp//absl/base:base",
++        "@abseil-cpp//absl/debugging:symbolize",
++    ],
++)
++
+ cc_test(
+     name = "lifetime_attribute_test",
+     size = "small",
+diff --git a/tools/build-warnings/abseil/windows_platform_test.cc b/tools/build-warnings/abseil/windows_platform_test.cc
+new file mode 100644
+index 000000000..2ca78c859
+--- /dev/null
++++ b/tools/build-warnings/abseil/windows_platform_test.cc
+@@ -0,0 +1,14 @@
++#include "absl/base/internal/sysinfo.h"
++#include "absl/debugging/symbolize.h"
++
++int main(int, char** argv) {
++  if (absl::base_internal::NumCPUs() < 1 ||
++      absl::base_internal::NominalCPUFrequency() <= 0) {
++    return 1;
++  }
++
++  absl::InitializeSymbolizer(argv[0]);
++  char symbol[1024];
++  (void)absl::Symbolize(reinterpret_cast<void*>(&main), symbol, sizeof(symbol));
++  return 0;
++}

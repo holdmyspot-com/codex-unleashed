@@ -1,0 +1,109 @@
+From d181883e4b8419c1e2aecd0793b6268a9d28c43e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:34:08 -0400
+Subject: [PATCH] Remove unused ICU Windows locale mapping storage
+
+The Windows locale converter declares len without using it. Remove that declaration while preserving locale conversion and strict compiler warnings.
+
+Regression: icu_lcid_test checks en_US LCID, phonebook collation, and reverse mapping. Windows GNU build fails at the unused len diagnostic before the fix and compiles/links afterward. Linux runtime and maintained just fmt-check pass. Emitted patch and native Windows runtime acceptance remain separate gates.
+---
+ MODULE.bazel                          |  1 +
+ patches/v8_icu_lcid_declaration.patch | 34 +++++++++++++++++++++++++++
+ third_party/v8/BUILD.bazel            |  7 ++++++
+ third_party/v8/icu_lcid_test.cc       | 16 +++++++++++++
+ 4 files changed, 58 insertions(+)
+ create mode 100644 patches/v8_icu_lcid_declaration.patch
+ create mode 100644 third_party/v8/icu_lcid_test.cc
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index da5aed1a2..a1618bbf6 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -895,6 +895,7 @@ archive_override(
+         "//patches:v8_bazel_rules.patch",
+         "//patches:v8_source_portability.patch",
+         "//patches:v8_icu_mutex_annotations.patch",
++        "//patches:v8_icu_lcid_declaration.patch",
+         "//patches:v8_callback_compatibility.patch",
+         "//patches:v8_simdutf_constexpr.patch",
+         "//patches:v8_clang_mingw_detection.patch",
+diff --git a/patches/v8_icu_lcid_declaration.patch b/patches/v8_icu_lcid_declaration.patch
+new file mode 100644
+index 000000000..bcd0a4921
+--- /dev/null
++++ b/patches/v8_icu_lcid_declaration.patch
+@@ -0,0 +1,34 @@
++diff --git a/orig/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
++index 22cfaf8..7eee9b7 100644
++--- a/orig/v8-15.0.245.2/MODULE.bazel
+++++ b/mod/v8-15.0.245.2/MODULE.bazel
++@@ -29,7 +29,10 @@ git_repository(
++     patch_args = ["-p1"],
++     patch_cmds = ["find source -name BUILD.bazel | xargs rm"],
++     patch_cmds_win = ["Get-ChildItem -Path source -File -Include BUILD.bazel -Recurse | Remove-Item"],
++-    patches = ["@v8//:bazel/icu_mutex_annotations.patch"],
+++    patches = [
+++        "@v8//:bazel/icu_mutex_annotations.patch",
+++        "@v8//:bazel/icu_lcid_declaration.patch",
+++    ],
++     remote = "https://chromium.googlesource.com/chromium/deps/icu.git",
++ )
++
++diff --git a/orig/v8-15.0.245.2/bazel/icu_lcid_declaration.patch b/mod/v8-15.0.245.2/bazel/icu_lcid_declaration.patch
++new file mode 100644
++index 0000000..585390c
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/bazel/icu_lcid_declaration.patch
++@@ -0,0 +1,12 @@
+++diff --git a/source/common/locmap.cpp b/source/common/locmap.cpp
+++index da78c77..488a1c1 100644
+++--- a/source/common/locmap.cpp
++++++ b/source/common/locmap.cpp
+++@@ -1173,7 +1173,6 @@ uprv_convertToLCIDPlatform(const char* localeID, UErrorCode* status)
+++     // The purpose of this function is to leverage the Windows platform name->lcid
+++     // conversion functionality when available.
+++ #if U_PLATFORM_HAS_WIN32_API && UCONFIG_USE_WINDOWS_LCID_MAPPING_API
+++-    int32_t len;
+++     icu::CharString baseName;
+++     const char * mylocaleID = localeID;
+++
+diff --git a/third_party/v8/BUILD.bazel b/third_party/v8/BUILD.bazel
+index 6125d71fc..4d06a2d3b 100644
+--- a/third_party/v8/BUILD.bazel
++++ b/third_party/v8/BUILD.bazel
+@@ -6,6 +6,13 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
+
+ package(default_visibility = ["//visibility:public"])
+
++cc_test(
++    name = "icu_lcid_test",
++    size = "small",
++    srcs = ["icu_lcid_test.cc"],
++    deps = ["@v8//bazel/icu_mutex:icu"],
++)
++
+ cc_test(
+     name = "icu_mutex_analysis_test",
+     size = "small",
+diff --git a/third_party/v8/icu_lcid_test.cc b/third_party/v8/icu_lcid_test.cc
+new file mode 100644
+index 000000000..9604634a8
+--- /dev/null
++++ b/third_party/v8/icu_lcid_test.cc
+@@ -0,0 +1,16 @@
++#include <cstring>
++
++#include "unicode/uloc.h"
++
++int main() {
++  if (uloc_getLCID("en_US") != 0x0409) return 1;
++  if (uloc_getLCID("de_DE@collation=phonebook") != 0x10407) return 2;
++
++  UErrorCode status = U_ZERO_ERROR;
++  char locale[ULOC_FULLNAME_CAPACITY] = {};
++  int32_t length = uloc_getLocaleForLCID(0x0409, locale, sizeof(locale), &status);
++  if (U_FAILURE(status)) return 3;
++  if (length != 5) return 4;
++  if (std::strcmp(locale, "en_US") != 0) return 5;
++  return 0;
++}

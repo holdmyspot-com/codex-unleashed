@@ -1,0 +1,101 @@
+From 996512caaef6594514086b264eba09e2b4bb02c3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:20:17 -0400
+Subject: [PATCH] Launch Python build tools without a system interpreter
+ bootstrap
+
+Select rules_python supported script bootstrap for Unix tools. rules_python retains its Windows-specific bootstrap selection. The regression invokes the actual Meson FilesToRunProvider with its declared runfiles, shadows host python3 with a rejecting fixture, and requires a nonempty version response. Scratch tools are removed on both success and failure.
+
+RED: the same final fixture with bootstrap_impl=system_python fails with Unexpected host Python bootstrap. GREEN: the fixture runs Meson successfully with the project script-bootstrap default. Logs: meson-hermetic-bootstrap-final-{red,green}.log. Authoring maintained just fmt-check passes. Base rust-v0.162.1 092d3acd6 with issue-61 native-tool selection prerequisites. Fresh emitted verification and native macOS acceptance remain pending.
+---
+ .bazelrc                                      |  3 ++
+ tools/build-warnings/meson/BUILD.bazel        | 10 +++++++
+ .../meson/hermetic_bootstrap.bzl              | 30 +++++++++++++++++++
+ .../meson/reject_host_python.sh               |  3 ++
+ 4 files changed, 46 insertions(+)
+ create mode 100644 tools/build-warnings/meson/hermetic_bootstrap.bzl
+ create mode 100644 tools/build-warnings/meson/reject_host_python.sh
+
+diff --git a/.bazelrc b/.bazelrc
+index a77f52164..79e27ca3d 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -27,6 +27,9 @@ build:windows --workspace_status_command=./scripts/workspace-status.cmd
+ # Runfiles strategy rationale: codex-rs/utils/cargo-bin/README.md
+ common --noenable_runfiles
+
++# Launch Python tools through their hermetic interpreter without host Python.
++common --@rules_python//python/config_settings:bootstrap_impl=script
++
+ # Python targets declare their required package initializers explicitly.
+ common --incompatible_default_to_explicit_init_py
+
+diff --git a/tools/build-warnings/meson/BUILD.bazel b/tools/build-warnings/meson/BUILD.bazel
+index 665056ace..510b99392 100644
+--- a/tools/build-warnings/meson/BUILD.bazel
++++ b/tools/build-warnings/meson/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
+ load("@rules_foreign_cc//foreign_cc/private:transitions.bzl", "foreign_cc_rule_variant")
++load(":hermetic_bootstrap.bzl", "hermetic_bootstrap_probe")
+ load(":tool_path.bzl", "native_ninja_path_probe")
+
+ filegroup(
+@@ -58,3 +59,12 @@ native_ninja_path_probe(
+     ],
+     tags = ["manual"],
+ )
++
++hermetic_bootstrap_probe(
++    name = "hermetic_bootstrap_probe",
++    host_python = "reject_host_python.sh",
++    target_compatible_with = select({
++        "@platforms//os:windows": ["@platforms//:incompatible"],
++        "//conditions:default": [],
++    }),
++)
+diff --git a/tools/build-warnings/meson/hermetic_bootstrap.bzl b/tools/build-warnings/meson/hermetic_bootstrap.bzl
+new file mode 100644
+index 000000000..faf3f6600
+--- /dev/null
++++ b/tools/build-warnings/meson/hermetic_bootstrap.bzl
+@@ -0,0 +1,30 @@
++"""Exercise Meson's declared Python executable without a host interpreter."""
++
++def _hermetic_bootstrap_probe_impl(ctx):
++    data = ctx.toolchains["@rules_foreign_cc//toolchains:meson_toolchain"].data
++    output = ctx.actions.declare_file(ctx.label.name + ".txt")
++    ctx.actions.run_shell(
++        inputs = [ctx.file.host_python],
++        tools = [data.target[DefaultInfo].files_to_run],
++        outputs = [output],
++        arguments = [ctx.file.host_python.path, data.path, output.path],
++        env = {"REAL_MESON": data.env["REAL_MESON"]},
++        use_default_shell_env = True,
++        command = """
++            host_tools="$PWD/$(dirname "$3")/host_python_probe"
++            mkdir -p "$host_tools"
++            trap 'rm -r -- "$host_tools"' EXIT
++            cp "$1" "$host_tools/python3"
++            chmod +x "$host_tools/python3"
++            export PATH="$host_tools:$PATH"
++            "$2" --version > "$3"
++            test -s "$3"
++        """,
++    )
++    return [DefaultInfo(files = depset([output]))]
++
++hermetic_bootstrap_probe = rule(
++    implementation = _hermetic_bootstrap_probe_impl,
++    attrs = {"host_python": attr.label(allow_single_file = True, mandatory = True)},
++    toolchains = ["@rules_foreign_cc//toolchains:meson_toolchain"],
++)
+diff --git a/tools/build-warnings/meson/reject_host_python.sh b/tools/build-warnings/meson/reject_host_python.sh
+new file mode 100644
+index 000000000..1d754407a
+--- /dev/null
++++ b/tools/build-warnings/meson/reject_host_python.sh
+@@ -0,0 +1,3 @@
++#!/bin/sh
++echo "Unexpected host Python bootstrap" >&2
++exit 97

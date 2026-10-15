@@ -1,0 +1,102 @@
+From ee72d5b1ac102384d75e294196d5b26cb5d94df4 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:12:16 -0400
+Subject: [PATCH] Keep native Ninja executable selection on its requested
+ platform
+
+select_executable selects a file from the caller-configured target without applying a second exec transition. Mixed Linux remote and native macOS execution otherwise puts a Linux path in the tool provider while declaring only the macOS wrapper input.
+
+The manual analysis probe requires the selected Ninja path to be among its actual declared files. RED: with Linux execution listed first and macOS ARM64 second, the probe fails for the missing rbe_platform path. GREEN: the same probe passes after preserving the caller configuration. Logs: macos-native-ninja-path-{red,green}.log. Native macOS execution, fresh emitted verification, and Linux build control remain pending.
+---
+ MODULE.bazel                                  |  1 +
+ ..._foreign_cc_executable_configuration.patch | 23 +++++++++++++++++++
+ tools/build-warnings/meson/BUILD.bazel        | 10 ++++++++
+ tools/build-warnings/meson/tool_path.bzl      | 13 +++++++++++
+ 4 files changed, 47 insertions(+)
+ create mode 100644 patches/rules_foreign_cc_executable_configuration.patch
+ create mode 100644 tools/build-warnings/meson/tool_path.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 1d3bb1346..da5aed1a2 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -193,6 +193,7 @@ single_version_override(
+         "//patches:rules_foreign_cc_meson_runfiles.patch",
+         "//patches:rules_foreign_cc_meson_resource_directory.patch",
+         "//patches:rules_foreign_cc_meson_setup_diagnostics.patch",
++        "//patches:rules_foreign_cc_executable_configuration.patch",
+     ],
+ )
+
+diff --git a/patches/rules_foreign_cc_executable_configuration.patch b/patches/rules_foreign_cc_executable_configuration.patch
+new file mode 100644
+index 000000000..82c000bd0
+--- /dev/null
++++ b/patches/rules_foreign_cc_executable_configuration.patch
+@@ -0,0 +1,23 @@
++From 4a1d8f6f28eb29f81000ae04a0cb2d51efd181c3 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 01:11:23 -0400
++Subject: [PATCH] Preserve the caller configuration when selecting a tool
++ executable
++
++---
++ foreign_cc/private/select_executable.bzl | 2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/foreign_cc/private/select_executable.bzl b/foreign_cc/private/select_executable.bzl
++index 7256970..d45d40a 100644
++--- a/foreign_cc/private/select_executable.bzl
+++++ b/foreign_cc/private/select_executable.bzl
++@@ -9,7 +9,7 @@ select_executable = rule(
++     attrs = {
++         "src": attr.label(
++             allow_files = True,
++-            cfg = "exec",
+++            cfg = "target",
++             executable = True,
++             mandatory = True,
++             doc = "The target producing the file among other outputs",
+diff --git a/tools/build-warnings/meson/BUILD.bazel b/tools/build-warnings/meson/BUILD.bazel
+index 19d7645c0..665056ace 100644
+--- a/tools/build-warnings/meson/BUILD.bazel
++++ b/tools/build-warnings/meson/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
+ load("@rules_foreign_cc//foreign_cc/private:transitions.bzl", "foreign_cc_rule_variant")
++load(":tool_path.bzl", "native_ninja_path_probe")
+
+ filegroup(
+     name = "sources",
+@@ -48,3 +49,12 @@ genrule(
+     }),
+     tools = [":resource_probe"],
+ )
++
++native_ninja_path_probe(
++    name = "ninja_native_macos_path_probe",
++    exec_compatible_with = [
++        "@platforms//os:macos",
++        "@platforms//cpu:aarch64",
++    ],
++    tags = ["manual"],
++)
+diff --git a/tools/build-warnings/meson/tool_path.bzl b/tools/build-warnings/meson/tool_path.bzl
+new file mode 100644
+index 000000000..2cb1ef003
+--- /dev/null
++++ b/tools/build-warnings/meson/tool_path.bzl
+@@ -0,0 +1,13 @@
++"""Check that a native Ninja toolchain declares the executable it selects."""
++
++def _native_ninja_path_probe_impl(ctx):
++    data = ctx.toolchains["@rules_foreign_cc//toolchains:ninja_toolchain"].data
++    paths = [file.path for file in data.target.files.to_list()]
++    if data.path in paths:
++        return [DefaultInfo()]
++    fail("Selected Ninja executable {} is absent from declared tool inputs: {}".format(data.path, paths))
++
++native_ninja_path_probe = rule(
++    implementation = _native_ninja_path_probe_impl,
++    toolchains = ["@rules_foreign_cc//toolchains:ninja_toolchain"],
++)

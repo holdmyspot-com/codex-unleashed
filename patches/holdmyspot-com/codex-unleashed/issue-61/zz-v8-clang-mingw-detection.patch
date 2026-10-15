@@ -1,0 +1,151 @@
+From 0b7e5705ddad25a807ed74a7861dce5f1465e515 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 04:06:13 +0000
+Subject: [PATCH] Fix V8 pointer formatting for Clang targeting MinGW
+
+The focused regression includes actual V8 headers without linking unused V8 implementation libraries. On unpatched V8 it reproduces three missing MinGW classifications and three pointer-format type mismatches. With the correction its Windows GNU compilation passes under Clang 23.1.2 and fatal warnings; the native Linux formatting runtime test also passes. Native Windows execution and fresh emitted queue acceptance remain pending.
+---
+ MODULE.bazel                           |   1 +
+ patches/v8_clang_mingw_detection.patch | 109 +++++++++++++++++++++++++
+ tools/build-warnings/v8/BUILD.bazel    |   4 +
+ 3 files changed, 114 insertions(+)
+ create mode 100644 patches/v8_clang_mingw_detection.patch
+ create mode 100644 tools/build-warnings/v8/BUILD.bazel
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 0d1d86baf..a45a1f5b6 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -894,6 +894,7 @@ archive_override(
+         "//patches:v8_icu_mutex_annotations.patch",
+         "//patches:v8_callback_compatibility.patch",
+         "//patches:v8_simdutf_constexpr.patch",
++        "//patches:v8_clang_mingw_detection.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+diff --git a/patches/v8_clang_mingw_detection.patch b/patches/v8_clang_mingw_detection.patch
+new file mode 100644
+index 000000000..5d4e3fe3a
+--- /dev/null
++++ b/patches/v8_clang_mingw_detection.patch
+@@ -0,0 +1,109 @@
++From b1e94478942765675ec7d497221017fc8cebb5f6 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 04:11:12 +0000
++Subject: [PATCH] Recognize Clang MinGW and verify pointer formats with real
++ headers
++
++---
++ BUILD.bazel                        | 20 ++++++++++++++++++++
++ include/v8config.h                 | 16 ++++++++++------
++ test/codex/pointer-formats-test.cc | 28 ++++++++++++++++++++++++++++
++ 3 files changed, 58 insertions(+), 6 deletions(-)
++ create mode 100644 test/codex/pointer-formats-test.cc
++
++diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
++index 2c6ba57..2589094 100644
++--- a/orig/v8-15.0.245.2/BUILD.bazel
+++++ b/mod/v8-15.0.245.2/BUILD.bazel
++@@ -6,4 +6,5 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
++ load("@rules_cc//cc:cc_library.bzl", "cc_library")
++ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+++load("@rules_cc//cc:cc_test.bzl", "cc_test")
++ load("@rules_python//python:defs.bzl", "py_binary", "py_test")
++ load("@rules_python//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
++@@ -4983,2 +4984,21 @@ py_test(
++     ],
++ )
+++
+++cc_test(
+++    name = "codex_pointer_formats_test",
+++    size = "small",
+++    srcs = [
+++        "include/v8config.h",
+++        "src/base/abort-mode.h",
+++        "src/base/base-export.h",
+++        "src/base/build_config.h",
+++        "src/base/compiler-specific.h",
+++        "src/base/immediate-crash.h",
+++        "src/base/logging.h",
+++        "src/base/macros.h",
+++        "src/base/template-utils.h",
+++        "test/codex/pointer-formats-test.cc",
+++    ],
+++    copts = ["-std=c++20"],
+++    visibility = ["//visibility:public"],
+++)
++diff --git a/orig/v8-15.0.245.2/include/v8config.h b/mod/v8-15.0.245.2/include/v8config.h
++index 1b560f0..8c2921b 100644
++--- a/orig/v8-15.0.245.2/include/v8config.h
+++++ b/mod/v8-15.0.245.2/include/v8config.h
++@@ -445,10 +445,4 @@ path. Add it with -I<path> to the command line
++ #  define V8_CC_INTEL 1
++ # endif
++-# if defined(__MINGW32__)
++-#  define V8_CC_MINGW32 1
++-# endif
++-# if defined(__MINGW64__)
++-#  define V8_CC_MINGW64 1
++-# endif
++ # define V8_CC_MINGW (V8_CC_MINGW32 || V8_CC_MINGW64)
++
++@@ -486,4 +480,14 @@ path. Add it with -I<path> to the command line
++ #endif
++
+++#if defined(__MINGW32__)
+++# define V8_CC_MINGW32 1
+++#endif
+++#if defined(__MINGW64__)
+++# define V8_CC_MINGW64 1
+++#endif
+++#if defined(__clang__) && (defined(__MINGW32__) || defined(__MINGW64__))
+++# define V8_CC_MINGW (V8_CC_MINGW32 || V8_CC_MINGW64)
+++#endif
+++
++ #if defined(_MSC_VER)
++ # define V8_CC_MSVC 1
++diff --git a/orig/v8-15.0.245.2/test/codex/pointer-formats-test.cc b/mod/v8-15.0.245.2/test/codex/pointer-formats-test.cc
++new file mode 100644
++index 0000000..c49e072
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/test/codex/pointer-formats-test.cc
++@@ -0,0 +1,28 @@
+++#include <cstdint>
+++#include <cstdio>
+++#include <cstring>
+++
+++#include "src/base/macros.h"
+++
+++#if defined(__MINGW32__)
+++static_assert(V8_CC_MINGW32 == 1);
+++static_assert(V8_CC_MINGW == 1);
+++#endif
+++
+++#if defined(__MINGW64__)
+++static_assert(V8_CC_MINGW64 == 1);
+++#endif
+++
+++int main() {
+++  char output[128];
+++#if UINTPTR_MAX == UINT64_MAX
+++  constexpr std::uintptr_t address = UINT64_C(0x123456789abcdef0);
+++  constexpr const char* expected = "123456789abcdef0 -123 123";
+++#else
+++  constexpr std::uintptr_t address = UINT32_C(0x12345678);
+++  constexpr const char* expected = "12345678 -123 123";
+++#endif
+++  std::snprintf(output, sizeof(output), "%" V8PRIxPTR " %" V8PRIdPTR " %" V8PRIuPTR,
+++                address, std::intptr_t{-123}, std::uintptr_t{123});
+++  return std::strcmp(output, expected);
+++}
+diff --git a/tools/build-warnings/v8/BUILD.bazel b/tools/build-warnings/v8/BUILD.bazel
+new file mode 100644
+index 000000000..f7c014ef3
+--- /dev/null
++++ b/tools/build-warnings/v8/BUILD.bazel
+@@ -0,0 +1,4 @@
++test_suite(
++    name = "pointer_formats_test",
++    tests = ["@v8//:codex_pointer_formats_test"],
++)

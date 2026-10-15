@@ -1,0 +1,91 @@
+From dacbd416d1e94083a1a66f1f132c97466e09a371 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 06:37:28 +0000
+Subject: [PATCH] Fix V8 wasm header helpers under strict Clang diagnostics
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the documented build-warning queue prerequisites.
+
+Regression: //third_party/v8:wasm_header_compile_test includes the production decoder header without instantiating helper callers. Windows GNU LLVM compilation outputs fail before the repair with exactly two -Wunneeded-internal-declaration errors (v8-wasm-header-red.log, exit 1) and pass after it (v8-wasm-header-green.log, exit 0). Keep internal linkage and the existing function bodies; add inline without disabling diagnostics or changing dependencies.
+---
+ MODULE.bazel                               |  1 +
+ patches/v8_wasm_header_inline.patch        | 27 ++++++++++++++++++++++
+ third_party/v8/BUILD.bazel                 |  8 +++++++
+ third_party/v8/wasm_header_compile_test.cc |  4 ++++
+ 4 files changed, 40 insertions(+)
+ create mode 100644 patches/v8_wasm_header_inline.patch
+ create mode 100644 third_party/v8/wasm_header_compile_test.cc
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 159ff1e50..42f3e7df0 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -904,6 +904,7 @@ archive_override(
+         "//patches:v8_simdutf_constexpr.patch",
+         "//patches:v8_clang_mingw_detection.patch",
+         "//patches:v8_windows_stack_assembly.patch",
++        "//patches:v8_wasm_header_inline.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+diff --git a/patches/v8_wasm_header_inline.patch b/patches/v8_wasm_header_inline.patch
+new file mode 100644
+index 000000000..5bda3d8ef
+--- /dev/null
++++ b/patches/v8_wasm_header_inline.patch
+@@ -0,0 +1,27 @@
++From e71681e2e68a40da8e7631acb542dd5301d89988 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 06:36:37 +0000
++Subject: [PATCH] Declare header-only wasm type population helpers inline
++
++---
++ src/wasm/function-body-decoder-impl.h | 4 ++--
++ 1 file changed, 2 insertions(+), 2 deletions(-)
++
++diff --git a/orig/v8-15.0.245.2/src/wasm/function-body-decoder-impl.h b/mod/v8-15.0.245.2/src/wasm/function-body-decoder-impl.h
++index c04f36f..de52eb0 100644
++--- a/orig/v8-15.0.245.2/src/wasm/function-body-decoder-impl.h
+++++ b/mod/v8-15.0.245.2/src/wasm/function-body-decoder-impl.h
++@@ -526,5 +526,5 @@ bool ValidateValueType(Decoder* decoder, const uint8_t* pc,
++
++ // Updates {unfinished_type} in-place using information from {module}.
++-static void Populate(HeapType* unfinished_type, const WasmModule* module) {
+++static inline void Populate(HeapType* unfinished_type, const WasmModule* module) {
++   if (!unfinished_type->has_index()) return;
++   DCHECK(module->has_type(unfinished_type->ref_index()));
++@@ -535,5 +535,5 @@ static void Populate(HeapType* unfinished_type, const WasmModule* module) {
++
++ // Updates {unfinished_type} in-place using information from {module}.
++-static void Populate(ValueType* unfinished_type, const WasmModule* module) {
+++static inline void Populate(ValueType* unfinished_type, const WasmModule* module) {
++   if (!unfinished_type->has_index()) return;
++   DCHECK(module->has_type(unfinished_type->ref_index()));
+diff --git a/third_party/v8/BUILD.bazel b/third_party/v8/BUILD.bazel
+index 4d06a2d3b..f1dcdd4c9 100644
+--- a/third_party/v8/BUILD.bazel
++++ b/third_party/v8/BUILD.bazel
+@@ -6,6 +6,14 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
+
+ package(default_visibility = ["//visibility:public"])
+
++cc_library(
++    name = "wasm_header_compile_test",
++    testonly = True,
++    srcs = ["wasm_header_compile_test.cc"],
++    copts = ["-std=c++20"],
++    deps = ["@v8//:core_lib_icu"],
++)
++
+ cc_test(
+     name = "icu_lcid_test",
+     size = "small",
+diff --git a/third_party/v8/wasm_header_compile_test.cc b/third_party/v8/wasm_header_compile_test.cc
+new file mode 100644
+index 000000000..f53905f5d
+--- /dev/null
++++ b/third_party/v8/wasm_header_compile_test.cc
+@@ -0,0 +1,4 @@
++#include "src/wasm/function-body-decoder-impl.h"
++
++static_assert(v8::internal::wasm::EmptyInterface::decoding_mode ==
++              v8::internal::wasm::kFunctionBody);

@@ -251,6 +251,28 @@ The test compiles the public container, status, and mutex headers and executes
 exclusive, shared, and writer lock guards. It passes without deprecated-attribute
 diagnostics. It does not establish lock behavior under concurrent contention.
 
+## V8 MinGW pointer formatting
+
+`zz-v8-clang-mingw-detection.patch` recognizes MinGW when compiling with Clang
+as well as GCC. V8 selects pointer format specifiers for the Windows GNU ABI
+rather than treating its 64-bit pointers as `long`. Compiler warnings remain
+fatal. Apply the native warning policy, LLVM 23, V8 callback compatibility,
+SIMD UTF, and V8 Python generator prerequisites before verification.
+
+```sh
+bazel build @v8//:codex_pointer_formats_test --platforms=//:windows_x86_64_gnullvm --output_groups=compilation_outputs
+bazel test //tools/build-warnings/v8:pointer_formats_test
+just fmt-check
+just bazel-lock-check
+```
+
+The compile regression includes V8's actual headers, checks its MinGW
+classification, and type-checks signed, unsigned, and hexadecimal pointer
+formats. The executable verifies the formatted values. Run the test on a native
+Windows GNU execution host for its Windows runtime gate; Linux execution and
+cross-compilation do not establish that outcome. The complete V8 build remains
+a separate acceptance gate.
+
 ## SIMD UTF conversion
 
 `native-simdutf-constexpr.patch` backports compile-time chunk selection from
@@ -591,6 +613,53 @@ search directory. Fatal linker diagnostics remain enabled.
 The test builds the real bundled codec, links its Rust bindings, and checks its
 version string. The Darwin cross-build verifies compilation and linking; native
 macOS execution remains a separate gate.
+
+## Abseil Windows compiler selection
+
+`zz-abseil-windows-compiler-selection.patch` keeps Abseil's MSVC pragmas
+inside `_MSC_VER` guards and supplies `dbghelp` when Clang targets MinGW.
+The existing MSVC library selection and non-Windows behavior remain in use.
+Abseil stays at version `20250814.1`.
+
+The patch targets `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the earlier issue-61
+warning-policy and Abseil patches applied. Its regression executable uses CPU
+discovery and symbolization so a successful object compilation alone cannot
+hide missing Windows link dependencies.
+
+Verification commands from the patched checkout root:
+
+```sh
+bazel build --platforms=//:windows_x86_64_gnullvm //tools/build-warnings/abseil:windows_platform_test
+bazel test --platforms=//:rbe //tools/build-warnings/abseil:windows_platform_test
+```
+
+The Windows executable builds with warnings treated as errors; the Linux
+control test passes. Native Windows CI also runs the regression executable.
+Issue [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61)
+tracks adoption of the equivalent upstream corrections.
+
+## CCTZ strptime availability
+
+`zz-cctz-strptime-availability.patch` defines `HAS_STRPTIME` as zero on
+platforms that use CCTZ's existing C++ fallback. Explicit caller definitions
+and the native `strptime` selection remain supported. The explicit default
+allows MinGW and MSVC compilation with undefined-macro warnings as errors.
+
+The patch targets `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) after the issue-61 Abseil
+compiler-selection patch. Its parsing regression checks a 12-hour AM input
+against the Unix epoch.
+
+```sh
+bazel build --platforms=//:windows_x86_64_gnullvm //tools/build-warnings/abseil:strptime_fallback_test
+bazel test --platforms=//:rbe //tools/build-warnings/abseil:strptime_fallback_test
+```
+
+The Windows executable builds, and the Linux control passes using native
+`strptime`. Native Windows CI exercises parsing through the C++ fallback.
+Issue [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61)
+tracks the remaining platform build corrections.
 
 ## Platform-specific warning regressions
 
@@ -1059,3 +1128,210 @@ The declared upstream release permits ignoring the stable-rustfmt import-layout 
 AWS-LC [commit `8cca33b97eb64be944a3d90406230676e8a7b931`](https://github.com/aws/aws-lc/commit/8cca33b97eb64be944a3d90406230676e8a7b931) fixes MinGW TLS callback registration. The queue retains the backport while its AWS-LC dependency lacks that fix.
 
 GNU Make [commit `63961d5d0905f69c59b44652fd33ac932f7d1c23`](https://gnu.googlesource.com/make/+/63961d5d0905f69c59b44652fd33ac932f7d1c23) removes string-pointer comparisons that trigger compiler warnings. [Autoconf's supported configuration contract](https://lists.gnu.org/archive/html/autoconf/2020-12/msg00002.html) requires applying global warning promotion after its feature probes.
+
+## V8 ICU assembly arguments
+
+`zz-v8-windows-stack-assembly.patch` supplies ICU preprocessor definitions
+through Bazel's `local_defines` property instead of raw compiler options.
+C++ inputs retain all three definitions and their target-local scope; raw
+assembly receives no unused preprocessor arguments. Compiler warnings remain
+fatal. Apply the existing LLVM assembly-action patch and V8 MinGW detection
+patch first. V8 remains at version `15.0.245.2`.
+
+```sh
+bazel build @v8//:codex_windows_stack_assembly_test --platforms=//:windows_x86_64_gnullvm
+bazel test //tools/build-warnings/v8:windows_stack_assembly_test --platforms=//:windows_x86_64_gnullvm
+just fmt-check
+just bazel-lock-check
+```
+
+The regression uses V8's production library macro and selected Windows stack
+assembly. Its C++ fixture requires the ICU definitions, and its executable
+checks callback arguments and stack alignment. Cross-compilation verifies the
+compile and link boundary; run the test on a Windows execution host for runtime
+acceptance. Full V8 builds and hosted platform checks remain separate gates.
+
+## Native tool executable configuration
+
+`zz-native-tool-executable-configuration.patch` preserves the caller's
+execution-platform configuration when selecting a foreign-build executable.
+The toolchain already transitions to its execution platform; its executable
+selector uses that configuration instead of performing a second transition.
+Ninja's selected path therefore belongs to its declared tool inputs, including
+when a Linux worker precedes the native macOS execution platform.
+Apply `upgrade-z-native-tools.patch` and its prerequisites first.
+
+```sh
+bazel build //tools/build-warnings/meson:ninja_native_macos_path_probe --nobuild --platforms=@llvm//platforms:macos_arm64 --extra_execution_platforms=//:rbe,@llvm//platforms:macos_arm64
+bazel build //third_party/voice:pkg_config_unix --platforms=//:rbe
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the selected Ninja executable in the
+toolchain's declared inputs. The Linux control builds the actual pkgconf
+executable. Native macOS acceptance builds
+`//third_party/voice:pkg_config_unix_native_macos_aarch64_` on a macOS ARM64
+execution host. Analysis alone does not establish native execution.
+
+## Hermetic Python tool bootstrap
+
+`zz-native-z-hermetic-python-bootstrap.patch` selects rules_python's supported
+`bootstrap_impl=script` launcher. Unix tools start through their declared
+interpreter without running host Python first. This prevents Apple's host
+Python from injecting an unrelated library search path into native builds.
+rules_python retains its Windows launcher selection. Dependency versions and
+compiler warning checks remain unchanged. Apply the native tool executable
+configuration patch first.
+
+```sh
+bazel build //tools/build-warnings/meson:hermetic_bootstrap_probe --platforms=//:rbe
+bazel build //third_party/voice:pkg_config_unix --platforms=//:rbe
+just fmt-check
+just bazel-lock-check
+```
+
+The bootstrap regression runs the real Meson tool with a rejecting host
+`python3` first on `PATH` and requires nonempty version output. Its action uses
+the tool's executable provider to preserve declared runfiles. Explicitly
+overriding `--@rules_python//python/config_settings:bootstrap_impl=system_python`
+must fail with `Unexpected host Python bootstrap`. The regression runs on Unix;
+Windows launcher and complete platform builds remain separate acceptance gates.
+
+## ICU Windows locale mapping
+
+`zz-v8-z-icu-lcid-declarations.patch` removes an unused local declaration
+from ICU's Windows locale converter. Locale lookup, collation handling, and
+reverse mapping retain their existing behavior; unused-variable warnings
+remain fatal. ICU stays at V8's pinned commit
+`a86a32e67b8d1384b33f8fa48c83a6079b86f8cd`.
+Apply the issue #61 ICU mutex annotations and preceding V8 patches first.
+
+```sh
+bazel build //third_party/v8:icu_lcid_test --platforms=//:windows_x86_64_gnullvm
+bazel test //third_party/v8:icu_lcid_test --platforms=//:rbe
+just fmt-check
+just bazel-lock-check
+```
+
+The regression checks the US English LCID, German phonebook collation, and
+reverse conversion to `en_US`. The Windows command compiles and links the
+actual ICU library. Run the test on a native Windows execution host to verify
+its Windows API path; Linux execution covers the table-based control only.
+
+## OpenSSL socket error sentinels
+
+`zz-openssl-socket-sentinel.patch` makes Windows' invalid-socket conversion
+explicit at OpenSSL's existing `int` socket ABI. BIO, the notifier, and QUIC
+retain the `-1` error sentinel without implicit constant-conversion warnings.
+OpenSSL stays at `4.0.1.bcr.0`. Apply the OpenSSL Windows diagnostics patch
+and its prerequisites first.
+
+```sh
+bazel build //tools/build-warnings/openssl:socket_error_test --platforms=//:windows_x86_64_gnullvm
+bazel test //tools/build-warnings/openssl:socket_error_test --platforms=//:local_linux
+just fmt-check
+just bazel-lock-check
+```
+
+The regression opens and closes a UDP socket, then checks that invalid socket
+creation and acceptance return `-1` and populate OpenSSL's error queue. The
+Windows build compiles the actual BIO, notifier, and QUIC implementations with
+fatal warnings. Native Windows execution remains required for runtime acceptance;
+the public BIO assertions do not exercise every internal notifier or QUIC path.
+The assembly-argument patch below is also required for the full Windows build.
+
+## OpenSSL assembly preprocessor definitions
+
+`zz-openssl-z-assembly-defines.patch` supplies common, platform, and feature
+macros through Bazel's `local_defines` instead of raw compiler options. C and
+preprocessed assembly retain the definitions; raw assembly receives no unused
+preprocessor arguments. The definitions remain private to OpenSSL, and compiler
+warnings remain fatal. Apply the socket-sentinel patch and the existing LLVM
+assembly-action patch first. Dependency versions remain unchanged.
+
+```sh
+bazel test //tools/build-warnings/openssl:assembly_defines_test --platforms=//:local_linux
+bazel build //tools/build-warnings/openssl:socket_error_test //tools/build-warnings/openssl:ssl_init_test --platforms=//:windows_x86_64_gnullvm
+bazel test //tools/build-warnings/openssl:socket_error_test //tools/build-warnings/openssl:ssl_init_test --platforms=//:local_linux
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression inspects the production Windows GNU compiler actions.
+It requires raw assembly without `-D` arguments, C compilation with the platform
+and explicitly selected feature macros, and no export of private macros through
+the library's compilation interface. The executable tests verify BIO socket
+errors, TLS initialization, and provider loading on their execution host. Native
+Windows execution and complete release builds remain separate acceptance gates.
+
+## OpenSSL Windows GNU Clang selection
+
+`zz-openssl-zz-gnu-clang-selection.patch` includes the existing Windows GNU
+Clang compiler setting in OpenSSL's non-MSVC platform groups. Windows x86-64
+assembly generation selects `mingw64` instead of an empty flavor that produces
+ELF assembly. Existing GCC, clang-cl, and MSVC selections remain supported.
+The Microsoft SDK's Winsock guard applies only to MSVC and clang-cl. GNU
+Windows builds use `WIN32_LEAN_AND_MEAN` and let MinGW define its own guard.
+The generator is visible to the downstream regression package for inspection.
+Apply the OpenSSL assembly-definition patch first.
+
+```sh
+bazel test //tools/build-warnings/openssl:windows_perlasm_test --platforms=//:local_linux
+bazel build //tools/build-warnings/openssl:ssl_init_test --platforms=//:windows_x86_64_gnullvm
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the MinGW flavor in every production Windows
+x86-64 GNU assembly-generation action. The build compiles and links the actual
+generated objects into the SSL regression executable. Native Windows execution
+remains a separate runtime gate.
+
+## OpenSSL notifier close-on-exec helper
+
+`zz-openssl-zzz-rio-cloexec-guard.patch` compiles the close-on-exec helper
+only when the notifier implementation uses it. The Unix and socket-pair paths
+retain the helper; Windows' normal socket implementation avoids an unused
+function under fatal compiler diagnostics. Apply the preceding OpenSSL socket,
+assembly, and compiler-selection patches first.
+
+```sh
+bazel build @openssl//:ssl //tools/build-warnings/openssl:rio_notifier_test --output_groups=compilation_outputs --platforms=//:windows_x86_64_gnullvm
+bazel test //tools/build-warnings/openssl:rio_notifier_test --platforms=//:local_linux
+just fmt-check
+just bazel-lock-check
+```
+
+The compiler regression builds the real SSL implementation and the notifier
+fixture. The runtime test initializes a notifier, checks that it starts unreadable,
+signals it, waits for readability, clears the signal, and verifies that readiness
+clears. It cleans up the notifier after either success or an assertion failure.
+Linux execution exercises socket-pair signaling; native Windows execution
+remains required for the Windows loopback-socket implementation.
+
+## V8 wasm header functions
+
+`zz-v8-zz-wasm-header-inline.patch` gives the two internal `Populate` helpers
+in V8's wasm decoder header inline definitions. Their internal linkage and
+type-population behavior remain unchanged. Clang accepts translation units
+that include the header without instantiating callers, with warnings treated
+as errors. This repair keeps V8 at 15.0.245.2 and adds no diagnostic suppression.
+The tracking issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). Apply the preceding issue-61
+build patches, including the V8 portability and stack-assembly patches, first.
+
+```sh
+bazel build //third_party/v8:wasm_header_compile_test --output_groups=compilation_outputs --platforms=//:windows_x86_64_gnullvm
+bazel build //third_party/v8:wasm_header_compile_test --output_groups=compilation_outputs --platforms=//:local_linux
+just fmt-check
+just bazel-lock-check
+```
+
+The compile regression includes the production decoder header and checks its
+interface without using either `Populate` overload. Both compilation checks
+succeed. Without the inline definitions, Windows Clang reports two
+`-Wunneeded-internal-declaration` errors. This fixture verifies header inclusion;
+it does not execute wasm decoding or establish full V8 runtime coverage.
