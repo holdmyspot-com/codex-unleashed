@@ -2444,3 +2444,26 @@ The base and prerequisites match patch 0030, including the native Meson
 fixture requires all seven supported symbols and rejects the missing symbol.
 The baseline fails at the declared-function assertion. The complete native
 voice prefix must also build on macOS and Windows.
+
+## Native GLib positional printf probe
+
+`zzzz-0034-glib-positional-printf-probe.patch` uses bounded `snprintf` and
+standard positional format spelling in GLib 2.88.3's configure probe. It
+avoids invalid C escapes and Darwin's deprecated `sprintf` diagnostic while
+preserving the positional-format capability check.
+
+The base and prerequisites match patch 0030 plus patch 0033. With a
+project-owned `TMPDIR`, run:
+
+```sh
+python3 tools/build-warnings/glib/printf_probe_test.py <prepared-glib-source> <native-cc>
+bazel test //tools/build-warnings/glib:printf_test
+just fmt-check
+just bazel-lock-check
+```
+
+The extracted configure probe must compile with `-Wall -Wextra -Werror` and
+execute successfully. The public GLib regression must print positional
+arguments as `2 3 1`. Native macOS execution remains required to establish the
+Darwin compiler and libc boundary. All five patches track
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
