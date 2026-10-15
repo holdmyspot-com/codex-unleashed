@@ -1580,7 +1580,7 @@ The recipe regressions require explicit native library placement on Unix and
 Windows. An integration comparison runs libffi 3.8.0's configure with Clang 23:
 the configured `libdir` and `toolexeclibdir` stay the same, and the unsupported
 `-print-multi-os-directory` diagnostics disappear. Native macOS acceptance also
-requires resolving the separate obsolete `-single_module` linker probe.
+requires the module-probe patch below and full platform verification.
 
 ## Ninja browse capability on Windows
 
@@ -1639,3 +1639,32 @@ callbacks receive the same start time, and completion cannot precede the start.
 The test-only baseline loses the high bit in the completion callback. The
 patched native test preserves it. Linux execution does not establish native
 Windows/MSVC acceptance; that remains a hosted-platform gate.
+
+## Native libffi Darwin module configuration
+
+`zzz-libffi-native-module-probe.patch` selects bundled libtool's documented
+`LT_MULTI_MODULE` configure-time control for the Darwin libffi recipe. The
+C/assembly shared library uses the linker's default behavior without probing
+or adding the obsolete `-single_module` flag. Capability-cache values,
+warning rejection, and dependency versions remain unchanged. The tracking
+issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice patches, including `zzz-libffi-native-library-directory.patch`.
+The control is documented directly in libffi 3.8.0's bundled
+`m4/libtool.m4`, in `_LT_REQUIRED_DARWIN_CHECKS`. Remove this workaround when
+the bundled libtool configuration omits the obsolete probe on modern Darwin.
+
+```sh
+python3 -m unittest discover -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+The recipe regression runs the bundled libtool probe with the environment
+selected by the native builder. It must complete without warning diagnostics
+and retain `capability=no`; a plain C Mach-O shared library must link with
+linker warnings fatal. Linux uses Clang and `ld64.lld` for this bounded
+cross-link check. Native macOS uses its native linker. The complete
+voice-prefix build and its consumers remain required native-platform gates.

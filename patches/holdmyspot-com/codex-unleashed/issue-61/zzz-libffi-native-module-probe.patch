@@ -1,0 +1,159 @@
+From ba5edd0cb8505e7e6cca785f805ea58a603108e7 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 11:06:10 +0000
+Subject: [PATCH] Avoid the obsolete libffi Darwin module probe
+
+Select bundled libtool LT_MULTI_MODULE configuration for the C-only libffi shared library on Darwin. Keep warning rejection and compiler/linker severity unchanged; do not seed capability-cache values or upgrade dependency versions.
+
+Regression: the actual bundled probe with the baseline recipe raises NativeBuild warning diagnostics for -single_module. The controlled recipe preserves capability=no and a plain Mach-O C shared library links with fatal linker warnings. All 25 native-build tests pass with Clang 23.1.2 and CMake 4.4.4. Linux cross-linking does not establish native Apple linker or full voice-prefix acceptance.
+---
+ third_party/voice/build_native.py             |  6 ++
+ third_party/voice/test_build_native.py        | 65 +++++++++++++++++++
+ .../voice/testdata/libffi-single-module.sh    | 41 ++++++++++++
+ 3 files changed, 112 insertions(+)
+ create mode 100644 third_party/voice/testdata/libffi-single-module.sh
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 28ea9219a..b28406558 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -466,8 +466,14 @@ class NativeBuild:
+             )
+         else:
+             ffi_flags = {name: list(flags) for name, flags in self.flags.items()}
+             if self.args.target.endswith("apple-darwin"):
++                # WORKAROUND: use libtool's documented control to omit the
++                # obsolete Darwin module flag for libffi's C shared library.
++                # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++                # Remove when bundled libtool skips its obsolete module probe.
++                environment["LT_MULTI_MODULE"] = "1"
++
+                 # Libtool's partial links need -r, which ld64.lld does not support.
+                 ffi_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
+                 environment["LTCC"] = self.quote(
+                     [str(self.toolchain["cc"]), "-fuse-ld=/usr/bin/ld"]
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 94a79b75d..30a4a9171 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -266,8 +266,73 @@ class NativeBuildTests(unittest.TestCase):
+         self.assertIn('"/usr/bin/ld"', reload_trace.stderr)
+         result = subprocess.run([build.output / "probe"], check=False)
+         self.assertEqual(result.returncode, 0)
+
++    @unittest.skipIf(os.name == "nt", "Exercises Darwin's libtool configuration")
++    def test_libffi_darwin_recipe_avoids_obsolete_module_probe(self):
++        compiler = shutil.which("clang")
++        if compiler is None:
++            self.skipTest("Requires Clang")
++        compiler_flags = ["-nostdlib"]
++        if sys.platform != "darwin":
++            if shutil.which("ld64.lld") is None:
++                self.skipTest("Requires ld64.lld for Mach-O cross-linking")
++            compiler_flags.extend(["--target=aarch64-apple-macos14", "-fuse-ld=lld"])
++        self.args.target = "aarch64-apple-darwin"
++        self.args.output = self.root / "libffi-module"
++        self.args.cc = Path(compiler)
++        self.environment["LT_MULTI_MODULE"] = ""
++        with patch("build_native.validate_target"):
++            build = NativeBuild(self.args, self.environment)
++        with (
++            patch(
++                "build_native.prepare_sources",
++                side_effect=lambda *args: (build.output / "build").mkdir(),
++            ),
++            patch.object(build, "cmake"),
++            patch.object(build, "meson"),
++            patch.object(build, "run") as run,
++        ):
++            build.build()
++        environment = next(
++            call.kwargs["environment"]
++            for call in run.call_args_list
++            if call.args[0] == "libffi-configure"
++        )
++        fixture = Path(__file__).with_name("testdata") / "libffi-single-module.sh"
++        probe_environment = {
++            **environment,
++            "LTCC": shlex.join([compiler, *compiler_flags]),
++            "LTCFLAGS": "-Werror",
++            "LDFLAGS": "",
++            "GREP": shutil.which("grep"),
++        }
++        build.run(
++            "module-probe",
++            ["/bin/sh", str(fixture)],
++            environment=probe_environment,
++        )
++        self.assertEqual(
++            (build.output / "module-probe.log").read_text(), "capability=no\n"
++        )
++        source = build.output / "shared.c"
++        source.write_text("int ffi_probe(void) { return 1; }\n")
++        library = build.output / "libffi-probe.dylib"
++        build.run(
++            "plain-shared-link",
++            [
++                compiler,
++                *compiler_flags,
++                "-Werror",
++                "-dynamiclib",
++                "-Wl,-fatal_warnings",
++                str(source),
++                "-o",
++                str(library),
++            ],
++        )
++        self.assertEqual(library.read_bytes()[:4], bytes.fromhex("cffaedfe"))
++
+     @unittest.skipIf(
+         os.name == "nt", "Windows configure arguments have a separate recipe test"
+     )
+     def test_libffi_native_prefix_uses_its_declared_library_directory(self):
+diff --git a/third_party/voice/testdata/libffi-single-module.sh b/third_party/voice/testdata/libffi-single-module.sh
+new file mode 100644
+index 000000000..60e4b0fe8
+--- /dev/null
++++ b/third_party/voice/testdata/libffi-single-module.sh
+@@ -0,0 +1,41 @@
++# libtool.m4 - Configure libtool for the host system. -*-Autoconf-*-
++#
++#   Copyright (C) 1996-2001, 2003-2019, 2021-2022 Free Software
++#   Foundation, Inc.
++#   Written by Gordon Matzigkeit, 1996
++#
++# This file is free software; the Free Software Foundation gives
++# unlimited permission to copy and/or distribute it, with or without
++# modifications, as long as this notice is preserved.
++
++# Probe from libffi 3.8.0 m4/libtool.m4 (_LT_REQUIRED_DARWIN_CHECKS).
++# The message-log descriptor is expanded as Autoconf does for configure.
++exec 9>probe-detail.log
++lt_cv_apple_cc_single_mod=no
++      if test -z "$LT_MULTI_MODULE"; then
++	# By default we will add the -single_module flag. You can override
++	# by either setting the environment variable LT_MULTI_MODULE
++	# non-empty at configure time, or by adding -multi_module to the
++	# link flags.
++	rm -rf libconftest.dylib*
++	echo "int foo(void){return 1;}" > conftest.c
++	echo "$LTCC $LTCFLAGS $LDFLAGS -o libconftest.dylib \
++-dynamiclib -Wl,-single_module conftest.c" >&9
++	$LTCC $LTCFLAGS $LDFLAGS -o libconftest.dylib \
++	  -dynamiclib -Wl,-single_module conftest.c 2>conftest.err
++        _lt_result=$?
++	# If there is a non-empty error log, and "single_module"
++	# appears in it, assume the flag caused a linker warning
++        if test -s conftest.err && $GREP single_module conftest.err; then
++	  cat conftest.err >&9
++	# Otherwise, if the output was created with a 0 exit code from
++	# the compiler, it worked.
++	elif test -f libconftest.dylib && test 0 = "$_lt_result"; then
++	  lt_cv_apple_cc_single_mod=yes
++	else
++	  cat conftest.err >&9
++	fi
++	rm -rf libconftest.dylib*
++	rm -f conftest.*
++      fi
++printf "capability=%s\n" "$lt_cv_apple_cc_single_mod"
