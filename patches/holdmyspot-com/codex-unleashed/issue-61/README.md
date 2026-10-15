@@ -1335,3 +1335,55 @@ interface without using either `Populate` overload. Both compilation checks
 succeed. Without the inline definitions, Windows Clang reports two
 `-Wunneeded-internal-declaration` errors. This fixture verifies header inclusion;
 it does not execute wasm decoding or establish full V8 runtime coverage.
+
+## Darwin libffi compiler and linker separation
+
+`zzz-libffi-darwin-linker-selection.patch` lets libffi's Autoconf compile-only
+probes run with fatal warnings while keeping Apple's native linker for normal
+and Libtool partial links. The native linker selector belongs in `LDFLAGS` and
+Libtool's `LTCC`, so compile-only commands do not receive it. Compiler and linker
+diagnostics remain enabled. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). Apply the preceding native
+voice build patches, including `zz-native-tool-executable-configuration.patch`,
+first.
+
+```sh
+cd third_party/voice
+python3 -m unittest test_build_native
+cd ../..
+just fmt-check
+just bazel-lock-check
+```
+
+With Clang on `PATH`, the regression constructs the Darwin configuration on a
+Unix host, compiles with `-Werror`, links and runs a real fixture, and checks that
+normal and partial-link driver traces select `/usr/bin/ld`. The native-builder
+suite passes. These checks exercise the host compiler; they do not substitute
+for a native Darwin build. On an Apple Silicon Mac,
+`bazel build //third_party/voice:native_prefix_macos_aarch64` verifies the complete
+libffi configure, build and install path as part of the native voice prefix.
+
+## Darwin unsigned pointer formatting
+
+`zzz-v8-darwin-pointer-format.patch` corrects V8's Darwin unsigned pointer format
+to print decimal values. The pointer-format regression from
+`zz-v8-clang-mingw-target-detection.patch` checks hexadecimal, signed decimal,
+and unsigned decimal output using V8's real headers. The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+V8 patches, including `zz-v8-clang-mingw-target-detection.patch`.
+
+```sh
+bazel test @v8//:codex_pointer_formats_test
+just fmt-check
+just bazel-lock-check
+```
+
+The expected result is a passing pointer-format test on Darwin, Linux, and
+Windows. Native Darwin execution verifies Darwin's format selection and runtime
+behavior; a Linux execution alone does not establish Darwin coverage.

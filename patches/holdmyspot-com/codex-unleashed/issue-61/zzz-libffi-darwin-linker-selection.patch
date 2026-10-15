@@ -1,0 +1,117 @@
+From 087386accf2977c739b7296a3b69b08455fc46e9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 03:43:10 -0400
+Subject: [PATCH] Keep Darwin libffi linker selection out of compile-only
+ probes
+
+Pass the native linker selector through libffi LDFLAGS and Libtool LTCC instead of CC. Autoconf compile-only checks retain fatal warnings, normal links select the native linker, and Libtool reload links retain their native -r implementation without depending on LDFLAGS.
+
+Regression: test_libffi_darwin_linker_selection_preserves_compile_only_probes fails under Clang 23.1.2 with -Werror,-Wunused-command-line-argument against the preceding 128-patch queue. The repaired builder passes the compile/link/execution probe, native linker traces for normal and reload links, and all 23 native-builder tests. Maintained just fmt-check passes. These checks execute on Linux with the Darwin configuration branch; full native Darwin acceptance remains a hosted gate.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the existing issue-61 queue prerequisites.
+Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+---
+ third_party/voice/build_native.py      |  8 ++-
+ third_party/voice/test_build_native.py | 73 ++++++++++++++++++++++++++
+ 2 files changed, 79 insertions(+), 2 deletions(-)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index c24d134db..dbf9d3fd7 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -467,5 +467,9 @@ class NativeBuild:
+         else:
++            ffi_flags = {name: list(flags) for name, flags in self.flags.items()}
+             if self.args.target.endswith("apple-darwin"):
+                 # Libtool's partial links need -r, which ld64.lld does not support.
+-                environment["CC"] += " -fuse-ld=/usr/bin/ld"
++                ffi_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
++                environment["LTCC"] = self.quote(
++                    [str(self.toolchain["cc"]), "-fuse-ld=/usr/bin/ld"]
++                )
+             for name in ("ar", "ranlib"):
+@@ -480,3 +484,3 @@ class NativeBuild:
+             # added by configure (such as -fexceptions).
+-            for name, flags in self.flags.items():
++            for name, flags in ffi_flags.items():
+                 if any(
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index bbba309fd..c56ad1dd2 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -196,2 +196,75 @@ class NativeBuildTests(unittest.TestCase):
+
++    @unittest.skipIf(os.name == "nt", "Exercises Darwin's Unix linker selection")
++    def test_libffi_darwin_linker_selection_preserves_compile_only_probes(self):
++        compiler = shutil.which("clang")
++        if compiler is None:
++            self.skipTest("Requires Clang")
++        self.args.target = "aarch64-apple-darwin"
++        self.args.output = self.root / "libffi"
++        self.args.cc = Path(compiler)
++        self.args.c_flag = ["-Werror"]
++        self.args.link_flag = [
++            "-fuse-ld=lld",
++            "-Werror",
++            "-Wl,-rpath,declared-relative-path",
++        ]
++        with patch("build_native.validate_target"):
++            build = NativeBuild(self.args, self.environment)
++        with (
++            patch(
++                "build_native.prepare_sources",
++                side_effect=lambda *args: (build.output / "build").mkdir(),
++            ),
++            patch.object(build, "cmake"),
++            patch.object(build, "meson"),
++            patch.object(build, "run") as run,
++        ):
++            build.build()
++        environment = next(
++            call.kwargs["environment"]
++            for call in run.call_args_list
++            if call.args[0] == "libffi-configure"
++        )
++        (build.output / "probe.c").write_text("int main(void) { return 0; }\n")
++        for command in (
++            "$CC $CFLAGS -c probe.c -o probe.o",
++            "$CC $LDFLAGS probe.o -o probe",
++        ):
++            result = subprocess.run(
++                ["/bin/sh", "-c", command],
++                cwd=build.output,
++                env=environment,
++                capture_output=True,
++                text=True,
++                check=False,
++            )
++            self.assertEqual(result.returncode, 0, result.stderr)
++        trace = subprocess.run(
++            ["/bin/sh", "-c", "$CC $LDFLAGS -### probe.o -o probe"],
++            cwd=build.output,
++            env=environment,
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++        self.assertEqual(trace.returncode, 0, trace.stderr)
++        self.assertIn('"/usr/bin/ld"', trace.stderr)
++        self.assertIn("declared-relative-path", trace.stderr)
++        reload_trace = subprocess.run(
++            [
++                "/bin/sh",
++                "-c",
++                "$LTCC $CFLAGS -nostdlib -Wl,-r -### probe.o -o reload.o",
++            ],
++            cwd=build.output,
++            env=environment,
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++        self.assertEqual(reload_trace.returncode, 0, reload_trace.stderr)
++        self.assertIn('"/usr/bin/ld"', reload_trace.stderr)
++        result = subprocess.run([build.output / "probe"], check=False)
++        self.assertEqual(result.returncode, 0)
++
+     @unittest.skipIf(os.name == "nt", "Exercises Autoconf's Unix flag expansion")
