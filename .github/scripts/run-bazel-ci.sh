@@ -271,7 +271,7 @@ if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
   bazel_jobs=1
   post_config_bazel_args+=("--loading_phase_threads=1")
 fi
-post_config_bazel_args+=("--jobs=${bazel_jobs}")
+post_config_bazel_args+=("--jobs=${bazel_jobs}" "--local_test_jobs=${bazel_jobs}")
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0

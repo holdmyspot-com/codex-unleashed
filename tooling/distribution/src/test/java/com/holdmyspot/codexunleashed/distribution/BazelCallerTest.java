@@ -69,7 +69,7 @@ public final class BazelCallerTest
 			environment.put("VOICE_WINDOWS_BAZEL_REPOSITORY", voiceRepository);
 			Path scripts = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().resolve("scripts");
 			String expression = "kind(\"rust_library rule\", //codex-rs/...)";
-			for (String operatingSystem : List.of("Linux", "Windows"))
+			for (String operatingSystem : List.of("Linux", "Windows", "macOS"))
 			{
 				environment.put("RUNNER_OS", operatingSystem);
 				if (operatingSystem.equals("Windows"))
@@ -95,6 +95,14 @@ public final class BazelCallerTest
 					List<String> test = arguments(root);
 					assertTrue(test.contains("test"));
 					assertEquals(test.getLast(), "//fixture:test");
+
+					String jobs = "2";
+					if (operatingSystem.equals("macOS"))
+						jobs = "1";
+					assertTrue(test.contains("--jobs=" + jobs));
+					assertTrue(test.contains("--local_test_jobs=" + jobs),
+						"Local test concurrency must respect the CI job limit; received arguments " + test);
+
 					if (operatingSystem.equals("Windows"))
 					{
 						assertTrue(test.contains("--test_env=PATH=" + windowsPath));
