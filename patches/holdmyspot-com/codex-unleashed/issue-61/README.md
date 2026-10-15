@@ -1529,3 +1529,30 @@ warning flags in Windows CL compile actions. They inspect the pointer fixture
 and the assembly library's C++ fixture without compiling their dependencies.
 Native Windows compilation remains a separate acceptance gate, including the
 assembly source and linker behavior.
+
+## Native Windows assembly
+
+`zzz-windows-msvc-assembly.patch` keeps MASM actions free of C/C++ compiler
+options, maps external include directories to MASM's include option, and makes
+assembly warnings fatal through `/WX`. C/C++ compilation retains its existing
+options. The build-warning fixtures select MASM sources for native MSVC and GNU
+sources for other drivers. Dependency versions remain unchanged. The tracking
+issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+build-warning patches.
+
+```sh
+bazel test //tools/build-warnings/assembly/native:flags_test \
+  //tools/build-warnings/assembly:native_fixture_selection_test
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regressions use rules_cc's native Windows toolchain configuration
+to check raw and preprocessed assembly arguments, fixture selection, and the
+retained C compiler options. They run without executing MSVC tools and do not
+establish native compilation. A Windows MSVC build of
+`//tools/build-warnings/assembly:compile_inputs` remains a separate acceptance
+gate for source syntax and command execution.

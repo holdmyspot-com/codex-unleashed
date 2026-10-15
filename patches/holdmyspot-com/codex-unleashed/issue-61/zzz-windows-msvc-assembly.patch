@@ -1,0 +1,322 @@
+From faf288c2e5d61de546d7b771b354a8f4bcf0bedf Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 09:57:02 +0000
+Subject: [PATCH] Use MASM-compatible native Windows assembly flags and
+ fixtures
+
+Regression: native MSVC configuration analysis fails with C/C++ compiler switches on raw and preprocessed assembly actions, and lacks /WX. The patched configuration passes the analysis regression. Native Windows execution and fresh emitted verification remain required.
+---
+ MODULE.bazel                                  |  1 +
+ patches/rules_cc_masm_action_flags.patch      | 67 ++++++++++++++++
+ tools/build-warnings/assembly/BUILD.bazel     | 21 +++--
+ .../assembly/native/BUILD.bazel               | 78 +++++++++++++++++++
+ .../assembly/native/fixture.asm               |  5 ++
+ .../assembly/native/flags_test.bzl            | 40 ++++++++++
+ .../assembly/native/preprocessed.S            |  5 ++
+ .../build-warnings/assembly/preprocessed.asm  |  8 ++
+ tools/build-warnings/assembly/raw.asm         |  5 ++
+ 9 files changed, 225 insertions(+), 5 deletions(-)
+ create mode 100644 patches/rules_cc_masm_action_flags.patch
+ create mode 100644 tools/build-warnings/assembly/native/BUILD.bazel
+ create mode 100644 tools/build-warnings/assembly/native/fixture.asm
+ create mode 100644 tools/build-warnings/assembly/native/flags_test.bzl
+ create mode 100644 tools/build-warnings/assembly/native/preprocessed.S
+ create mode 100644 tools/build-warnings/assembly/preprocessed.asm
+ create mode 100644 tools/build-warnings/assembly/raw.asm
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index b2e4865d8..fdbbd5af6 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -168,8 +168,9 @@ single_version_override(
+     patch_strip = 1,
+     patches = [
+         "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
+         "//patches:rules_cc_static_library_def_parser.patch",
++        "//patches:rules_cc_masm_action_flags.patch",
+     ],
+ )
+
+ bazel_dep(name = "rules_platform", version = "0.1.0")
+diff --git a/patches/rules_cc_masm_action_flags.patch b/patches/rules_cc_masm_action_flags.patch
+new file mode 100644
+index 000000000..b55ac375f
+--- /dev/null
++++ b/patches/rules_cc_masm_action_flags.patch
+@@ -0,0 +1,67 @@
++From 7bf802b767d85674b9362e896e80ab153316691e Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 09:55:20 +0000
++Subject: [PATCH] Keep Windows assembly options compatible with MASM
++
++---
++ .../toolchain/windows_cc_toolchain_config.bzl   | 17 +++++++++++------
++ 1 file changed, 11 insertions(+), 6 deletions(-)
++
++diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/toolchain/windows_cc_toolchain_config.bzl
++index 55b156d..02d061c 100644
++--- a/cc/private/toolchain/windows_cc_toolchain_config.bzl
+++++ b/cc/private/toolchain/windows_cc_toolchain_config.bzl
++@@ -846,8 +846,6 @@ def _impl(ctx):
++             flag_sets = [
++                 flag_set(
++                     actions = [
++-                        ACTION_NAMES.assemble,
++-                        ACTION_NAMES.preprocess_assemble,
++                         ACTION_NAMES.linkstamp_compile,
++                         ACTION_NAMES.c_compile,
++                         ACTION_NAMES.cpp_compile,
++@@ -1008,7 +1006,6 @@ def _impl(ctx):
++             flag_sets = [
++                 flag_set(
++                     actions = [
++-                        ACTION_NAMES.preprocess_assemble,
++                         ACTION_NAMES.c_compile,
++                         ACTION_NAMES.linkstamp_compile,
++                         ACTION_NAMES.cpp_compile,
++@@ -1023,7 +1020,6 @@ def _impl(ctx):
++             env_sets = [
++                 env_set(
++                     actions = [
++-                        ACTION_NAMES.preprocess_assemble,
++                         ACTION_NAMES.c_compile,
++                         ACTION_NAMES.linkstamp_compile,
++                         ACTION_NAMES.cpp_compile,
++@@ -1054,7 +1050,7 @@ def _impl(ctx):
++             name = "treat_warnings_as_errors",
++             flag_sets = [
++                 flag_set(
++-                    actions = [ACTION_NAMES.c_compile, ACTION_NAMES.cpp_compile] + all_link_actions,
+++                    actions = [ACTION_NAMES.assemble, ACTION_NAMES.preprocess_assemble, ACTION_NAMES.c_compile, ACTION_NAMES.cpp_compile] + all_link_actions,
++                     flag_groups = [flag_group(flags = ["/WX"])],
++                 ),
++             ],
++@@ -1103,9 +1099,18 @@ def _impl(ctx):
++         external_include_paths_feature = feature(
++             name = "external_include_paths",
++             flag_sets = [
+++                flag_set(
+++                    actions = [ACTION_NAMES.assemble, ACTION_NAMES.preprocess_assemble],
+++                    flag_groups = [
+++                        flag_group(
+++                            flags = ["/I%{external_include_paths}"],
+++                            iterate_over = "external_include_paths",
+++                            expand_if_available = "external_include_paths",
+++                        ),
+++                    ],
+++                ),
++                 flag_set(
++                     actions = [
++-                        ACTION_NAMES.preprocess_assemble,
++                         ACTION_NAMES.linkstamp_compile,
++                         ACTION_NAMES.c_compile,
++                         ACTION_NAMES.cpp_compile,
+diff --git a/tools/build-warnings/assembly/BUILD.bazel b/tools/build-warnings/assembly/BUILD.bazel
+index 67e1d4610..e2eb66766 100644
+--- a/tools/build-warnings/assembly/BUILD.bazel
++++ b/tools/build-warnings/assembly/BUILD.bazel
+@@ -1,11 +1,22 @@
+ load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("//tools/build-warnings/assembly/native:flags_test.bzl", "masm_fixture_selection_test")
++
++masm_fixture_selection_test(
++    name = "native_fixture_selection_test",
++    target_under_test = ":compile_inputs",
++)
+
+ cc_library(
+     name = "compile_inputs",
+-    srcs = [
+-        "frontend.c",
+-        "preprocessed.S",
+-        "raw.s",
+-    ],
++    srcs = ["frontend.c"] + select({
++        "@rules_cc//cc/compiler:msvc-cl": [
++            "preprocessed.asm",
++            "raw.asm",
++        ],
++        "//conditions:default": [
++            "preprocessed.S",
++            "raw.s",
++        ],
++    }),
+     defines = ["CODEX_ASSEMBLY_VALUE=7"],
+ )
+diff --git a/tools/build-warnings/assembly/native/BUILD.bazel b/tools/build-warnings/assembly/native/BUILD.bazel
+new file mode 100644
+index 000000000..73e2fa6fb
+--- /dev/null
++++ b/tools/build-warnings/assembly/native/BUILD.bazel
+@@ -0,0 +1,78 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc/private/toolchain:windows_cc_toolchain_config.bzl", "cc_toolchain_config")
++load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
++load(":flags_test.bzl", "masm_flags_test")
++
++filegroup(name = "empty")
++
++cc_toolchain_config(
++    name = "config",
++    abi_libc_version = "local",
++    abi_version = "local",
++    compiler = "msvc-cl",
++    cpu = "x64_windows",
++    host_system_name = "local",
++    msvc_cl_path = "cl.exe",
++    msvc_lib_path = "lib.exe",
++    msvc_link_path = "link.exe",
++    msvc_ml_path = "ml64.exe",
++    supports_parse_showincludes = True,
++    target_libc = "msvcrt",
++    target_system_name = "windows",
++    tool_paths = {
++        "gcc": "cl.exe",
++        "ld": "link.exe",
++        "ar": "lib.exe",
++        "cpp": "cl.exe",
++        "gcov": "unused",
++        "nm": "unused",
++        "objdump": "unused",
++        "strip": "unused",
++    },
++    toolchain_identifier = "native-msvc-analysis",
++)
++
++cc_toolchain(
++    name = "cc_toolchain",
++    all_files = ":empty",
++    ar_files = ":empty",
++    as_files = ":empty",
++    compiler_files = ":empty",
++    dwp_files = ":empty",
++    linker_files = ":empty",
++    objcopy_files = ":empty",
++    strip_files = ":empty",
++    supports_param_files = 1,
++    toolchain_config = ":config",
++    toolchain_identifier = "native-msvc-analysis",
++)
++
++toolchain(
++    name = "analysis_toolchain",
++    target_compatible_with = [
++        "@platforms//os:windows",
++        "@platforms//cpu:x86_64",
++    ],
++    toolchain = ":cc_toolchain",
++    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
++)
++
++cc_library(
++    name = "assembly_inputs",
++    srcs = [
++        "fixture.asm",
++        "preprocessed.S",
++    ],
++    target_compatible_with = select({
++        "@rules_cc//cc/compiler:msvc-cl": [
++            "@platforms//os:windows",
++            "@platforms//cpu:x86_64",
++        ],
++        "//conditions:default": ["@platforms//:incompatible"],
++    }),
++)
++
++masm_flags_test(
++    name = "flags_test",
++    target_under_test = ":assembly_inputs",
++)
+diff --git a/tools/build-warnings/assembly/native/fixture.asm b/tools/build-warnings/assembly/native/fixture.asm
+new file mode 100644
+index 000000000..a84e7c408
+--- /dev/null
++++ b/tools/build-warnings/assembly/native/fixture.asm
+@@ -0,0 +1,5 @@
++.code
++codex_masm_fixture PROC
++    ret
++codex_masm_fixture ENDP
++END
+diff --git a/tools/build-warnings/assembly/native/flags_test.bzl b/tools/build-warnings/assembly/native/flags_test.bzl
+new file mode 100644
+index 000000000..9e452fdc0
+--- /dev/null
++++ b/tools/build-warnings/assembly/native/flags_test.bzl
+@@ -0,0 +1,40 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _masm_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile" and any([arg.endswith("fixture.asm") or arg.endswith("preprocessed.S") for arg in action.argv])]
++    asserts.equals(env, 2, len(actions), "Both assembly input kinds generate native actions")
++    for action in actions:
++        asserts.true(env, action.argv[0].endswith("ml64.exe"), "Native assembly uses MASM")
++        incompatible = [arg for arg in action.argv if arg.startswith("/wd") or arg in ["/bigobj", "/Zm500", "/EHsc", "/showIncludes"]]
++        asserts.equals(env, [], incompatible, "MASM must not receive C/C++ compiler options")
++        asserts.true(env, "/WX" in action.argv, "MASM warnings are errors")
++    return analysistest.end(env)
++
++def _masm_fixture_selection_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile"]
++    sources = [arg.split("/")[-1] for action in actions for arg in action.argv if arg.endswith(".asm") or arg.endswith(".s") or arg.endswith(".S")]
++    asserts.equals(env, ["preprocessed.asm", "raw.asm"], sorted(sources), "Native MSVC selects MASM source fixtures")
++    c_actions = [action for action in actions if any([arg.endswith("frontend.c") for arg in action.argv])]
++    asserts.equals(env, 1, len(c_actions), "The fixture also exercises the C frontend")
++    for action in c_actions:
++        for required in ["/bigobj", "/EHsc", "/WX"]:
++            asserts.true(env, required in action.argv, "C compilation retains %s" % required)
++    return analysistest.end(env)
++
++_NATIVE_MSVC_CONFIG = {
++    "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++    "//command_line_option:extra_toolchains": [str(Label(":analysis_toolchain"))],
++    "//command_line_option:features": ["treat_warnings_as_errors"],
++}
++
++masm_flags_test = analysistest.make(
++    _masm_flags_test_impl,
++    config_settings = _NATIVE_MSVC_CONFIG,
++)
++
++masm_fixture_selection_test = analysistest.make(
++    _masm_fixture_selection_test_impl,
++    config_settings = _NATIVE_MSVC_CONFIG,
++)
+diff --git a/tools/build-warnings/assembly/native/preprocessed.S b/tools/build-warnings/assembly/native/preprocessed.S
+new file mode 100644
+index 000000000..7f45165a7
+--- /dev/null
++++ b/tools/build-warnings/assembly/native/preprocessed.S
+@@ -0,0 +1,5 @@
++.code
++codex_masm_preprocessed_fixture PROC
++    ret
++codex_masm_preprocessed_fixture ENDP
++END
+diff --git a/tools/build-warnings/assembly/preprocessed.asm b/tools/build-warnings/assembly/preprocessed.asm
+new file mode 100644
+index 000000000..f0014e8d8
+--- /dev/null
++++ b/tools/build-warnings/assembly/preprocessed.asm
+@@ -0,0 +1,8 @@
++IF CODEX_ASSEMBLY_VALUE NE 7
++    .ERR <The assembly input requires its declared definition>
++ENDIF
++.code
++codex_preprocessed_assembly_fixture PROC
++    ret
++codex_preprocessed_assembly_fixture ENDP
++END
+diff --git a/tools/build-warnings/assembly/raw.asm b/tools/build-warnings/assembly/raw.asm
+new file mode 100644
+index 000000000..fdacc3bc5
+--- /dev/null
++++ b/tools/build-warnings/assembly/raw.asm
+@@ -0,0 +1,5 @@
++.code
++codex_raw_assembly_fixture PROC
++    ret
++codex_raw_assembly_fixture ENDP
++END
