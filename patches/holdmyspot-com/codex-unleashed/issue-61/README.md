@@ -2173,3 +2173,33 @@ The Linux generation regressions require CRLF throughout launchers containing
 LF and CRLF helper substitutions, with no doubled carriage returns. Native
 Windows execution must also resolve the app-server's helper binaries and run
 the actual tests; generation checks alone do not establish that outcome.
+
+## Shared Java Bazel entry point
+
+`zzzz-0022-bazel-java-tooling-entry-point.patch` routes the upstream helper's
+command-line entry point through the configured `CODEX_UNLEASHED_TOOLING`
+launcher. This includes the maintained module-lock check. These callers use
+the same cache policy and exact Bazel JVM-warning workaround as the fork's
+other CI commands. The existing upstream fallback remains available when
+the Java tooling launcher is not configured.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0021`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+The external JVM-launcher defect is
+https://github.com/bazelbuild/bazel/issues/31786; the workaround remains
+owned by the Java launcher and filters only its exact obsolete-option message.
+
+With `CODEX_UNLEASHED_TOOLING` set to the bundled launcher, run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+(cd .github/scripts && python3 -m unittest test_run_bazel_with_buildbuddy)
+```
+
+The module-lock check must pass without the obsolete JVM-option message.
+All helper tests must pass, including exact argument forwarding, a tooling
+path containing spaces, diagnostic forwarding, the configured launcher's
+exit status, and the existing fallback behavior.

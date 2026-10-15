@@ -1,0 +1,108 @@
+From c6980649233b8584fb45d34f701069ff8ba57bbf Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:14:46 +0000
+Subject: [PATCH] Route upstream Bazel entry points through configured Java
+ tooling
+
+Use the configured Codex Unleashed Java launcher for upstream helper CLI
+calls, including MODULE lock verification. Preserve direct argv, streams,
+and child status through Bash on Windows and Unix. Keep the existing
+upstream fallback when Codex Unleashed tooling is not configured.
+
+This reaches the maintained exact JVM diagnostic filter instead of adding
+another warning suppression or changing cache selection.
+
+Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
+Prerequisites: preceding issue-61 queue through zzzz-0021.
+Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+External launcher defect: https://github.com/bazelbuild/bazel/issues/31786
+
+RED: configured tooling regression exits 1 because raw child status 91
+is observed instead of configured launcher status 37.
+GREEN: python3 -m unittest test_run_bazel_with_buildbuddy passes all 16 tests.
+Gates: just fmt-check and just bazel-lock-check pass on the fresh ordered
+queue with the actual bundled Java launcher configured; the obsolete JVM
+option warning is absent from the lock-check output.
+---
+ .github/scripts/run_bazel_with_buildbuddy.py  | 13 +++++++
+ .../scripts/test_run_bazel_with_buildbuddy.py | 36 +++++++++++++++++++
+ 2 files changed, 49 insertions(+)
+
+diff --git a/.github/scripts/run_bazel_with_buildbuddy.py b/.github/scripts/run_bazel_with_buildbuddy.py
+index 51bac9867..68932190e 100755
+--- a/.github/scripts/run_bazel_with_buildbuddy.py
++++ b/.github/scripts/run_bazel_with_buildbuddy.py
+@@ -192,6 +192,19 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
+
+
+ def main() -> None:
++    tooling = os.environ.get("CODEX_UNLEASHED_TOOLING")
++    if tooling:
++        result = subprocess.run(
++            [
++                "bash",
++                Path(tooling).as_posix(),
++                "run-bazel-with-buildbuddy",
++                *sys.argv[1:],
++            ],
++            check=False,
++        )
++        raise SystemExit(result.returncode)
++
+     config = remote_config(sys.argv[1:], os.environ)
+     if config is None:
+         print(
+diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
+index 3db617b38..f683c11f8 100644
+--- a/.github/scripts/test_run_bazel_with_buildbuddy.py
++++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
+@@ -285,6 +285,41 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+             ],
+         )
+
++    def test_main_uses_configured_java_tooling_with_exact_arguments_and_status(
++        self,
++    ) -> None:
++        with TemporaryDirectory(prefix="tooling with spaces ") as temp_dir:
++            tooling = Path(temp_dir) / "codex-tooling"
++            tooling.write_text(
++                "#!/usr/bin/env bash\n"
++                'printf "%s\\n" "$@"\n'
++                'printf "%s\\n" "fixture diagnostic" >&2\n'
++                "exit 37\n",
++                encoding="utf-8",
++            )
++            args = [
++                "-c",
++                "import sys; sys.exit(91)",
++                "--",
++                'kind("rust_library rule", //codex-rs/...)',
++            ]
++            env = os.environ.copy()
++            env["CODEX_UNLEASHED_TOOLING"] = str(tooling)
++            env["CODEX_BAZEL_BIN"] = sys.executable
++            result = subprocess.run(
++                [sys.executable, str(Path(run_bazel_with_buildbuddy.__file__)), *args],
++                env=env,
++                check=False,
++                capture_output=True,
++                text=True,
++            )
++
++            self.assertEqual(result.returncode, 37, result.stderr)
++            self.assertEqual(
++                result.stdout.splitlines(), ["run-bazel-with-buildbuddy", *args]
++            )
++            self.assertEqual(result.stderr, "fixture diagnostic\n")
++
+     def test_main_preserves_spaced_argument_and_child_exit_status(self) -> None:
+         spaced_arg = (
+             r"--test_env=PATH=C:\Program Files\PowerShell\7;C:\Program Files\Git\bin"
+@@ -294,6 +329,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+         )
+         env = os.environ.copy()
+         env["CODEX_BAZEL_BIN"] = sys.executable
++        env.pop("CODEX_UNLEASHED_TOOLING", None)
+         env.pop("BAZEL_OUTPUT_USER_ROOT", None)
+         env.pop("BUILDBUDDY_API_KEY", None)
+         env.pop("GITHUB_ACTIONS", None)
