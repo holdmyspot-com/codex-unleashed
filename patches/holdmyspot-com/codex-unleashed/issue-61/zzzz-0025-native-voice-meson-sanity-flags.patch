@@ -1,0 +1,94 @@
+From 400c4654a90da438d8ffe372048f86c6e6a7512f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 15:26:15 -0400
+Subject: [PATCH] Upgrade native voice Meson to avoid duplicated sanity flags
+
+Meson 1.12.0 repeats environment compiler and linker flags during its compiler sanity check. Darwin fatal linker diagnostics reject the duplicated runtime path. Use the released Meson 1.12.1 fix and assert exactly one runtime path in actual C/C++ sanity commands before executing the resource probe.
+
+Regression: tools/build-warnings/check-native-meson.py with the generated Linux native-prefix configuration fails on Meson 1.12.0 with two rpath arguments; the same command passes on 1.12.1 and executes the linked C/C++ probe. The retained configuration replaces only its removed, unused CMake executable with installed CMake 4.4.4. Commands and complete logs: .cat/work/temp/build-caches/meson-sanity-0rF3HR. Emitted-patch and native Darwin verification remain separate required gates.
+---
+ third_party/voice/sources.json             | 10 +++----
+ tools/build-warnings/check-native-meson.py | 34 ++++++++++++++++++++--
+ 2 files changed, 37 insertions(+), 7 deletions(-)
+
+diff --git a/third_party/voice/sources.json b/third_party/voice/sources.json
+index 3d10b9ada..6c91dda64 100644
+--- a/third_party/voice/sources.json
++++ b/third_party/voice/sources.json
+@@ -3,12 +3,12 @@
+   "sources": [
+     {
+       "name": "meson",
+-      "version": "1.12.0",
++      "version": "1.12.1",
+       "role": "build-tool",
+-      "archive": "meson-1.12.0.tar",
+-      "root": "meson-1.12.0",
+-      "url": "https://github.com/mesonbuild/meson/releases/download/1.12.0/meson-1.12.0.tar.gz",
+-      "sha256": "88afe0c20e52030218924ac37d0c81c59b4b5f3ae3752c8c6d7470c7d365886c",
++      "archive": "meson-1.12.1.tar",
++      "root": "meson-1.12.1",
++      "url": "https://github.com/mesonbuild/meson/releases/download/1.12.1/meson-1.12.1.tar.gz",
++      "sha256": "ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743",
+       "provenance": "GitHub release asset digest"
+     },
+     {
+diff --git a/tools/build-warnings/check-native-meson.py b/tools/build-warnings/check-native-meson.py
+index f1fae251d..aaff86670 100644
+--- a/tools/build-warnings/check-native-meson.py
++++ b/tools/build-warnings/check-native-meson.py
+@@ -5,6 +5,7 @@ import argparse
+ import json
+ import os
+ from pathlib import Path
++import shlex
+ import shutil
+ import subprocess
+ import sys
+@@ -31,8 +32,20 @@ def main():
+     for name in ("archives", "prefix", "receipt"):
+         configuration.pop(name)
+     linker = root / configuration.pop("ld")
+-    for name in ("cc", "cxx", "ar", "ranlib", "cmake", "make", "pkg_config", "shell"):
+-        configuration[name] = root / configuration[name]
++    for name in (
++        "cc",
++        "cxx",
++        "ar",
++        "ranlib",
++        "nm",
++        "readelf",
++        "cmake",
++        "make",
++        "pkg_config",
++        "shell",
++    ):
++        if name in configuration:
++            configuration[name] = root / configuration[name]
+
+     with tempfile.TemporaryDirectory(
+         prefix="native-meson-probe-", dir=os.environ["TMPDIR"]
+@@ -56,6 +69,23 @@ def main():
+         builder.environment["LD"] = str(linker)
+         try:
+             builder.meson("probe", [])
++            meson_log = builder.output / "build/probe/meson-logs/meson-log.txt"
++            sanity_commands = [
++                shlex.split(line.removeprefix("Sanity check compiler command line: "))
++                for line in meson_log.read_text().splitlines()
++                if line.startswith("Sanity check compiler command line: ")
++            ]
++            assert sanity_commands, "Meson must execute compiler sanity checks."
++            for command in sanity_commands:
++                runtime_paths = [
++                    argument
++                    for argument in command
++                    if argument.startswith("-Wl,-rpath,")
++                ]
++                assert len(runtime_paths) == 1, (
++                    "Meson must pass the native recipe's runtime path exactly once: "
++                    f"{runtime_paths}"
++                )
+             subprocess.run([builder.output / "build/probe/resource-probe"], check=True)
+         finally:
+             for log in sorted(builder.output.glob("*.log")):

@@ -2257,3 +2257,34 @@ The analysis regression requires the real generated transport test's explicit
 timeout. The actual transport suite must complete with every assertion passing
 on each supported native platform; an analysis pass alone does not establish
 that execution gate.
+
+## Native voice Meson sanity flags
+
+`zzzz-0025-native-voice-meson-sanity-flags.patch` selects the checksum-pinned
+[Meson 1.12.1 release](https://github.com/mesonbuild/meson/releases/tag/1.12.1)
+for native voice builds. This release fixes duplicated environment compiler
+and linker arguments in Meson's compiler sanity checks. Darwin links retain
+fatal warnings and receive the native recipe's runtime path exactly once.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native voice patches, including `native-voice-meson-resource-directory.patch`
+and `native-voice-z-symbol-tools.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+With the generated native-prefix configuration, declared tool inputs, and a
+project-owned `TMPDIR`, run:
+
+```sh
+python3 tools/build-warnings/check-native-meson.py <native-prefix-json> <execroot> <meson-source> <ninja>
+just fmt-check
+just bazel-lock-check
+```
+
+The probe requires exactly one runtime-path argument in each actual compiler
+sanity command, then executes its linked C/C++ fixture. Meson 1.12.0 fails the
+argument check; 1.12.1 passes. The probe resolves the declared symbol tools
+alongside its other executable inputs and removes its scratch outputs on exit.
+Native macOS acceptance additionally requires the complete
+`//third_party/voice:native_prefix_macos_aarch64` build; Linux probe execution
+does not establish Darwin linker behavior.
