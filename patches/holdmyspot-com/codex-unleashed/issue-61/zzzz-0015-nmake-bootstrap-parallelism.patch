@@ -1,0 +1,85 @@
+From 379df61bd8eecdcc147f0d11f2f1cce4d803cee2 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 15:54:59 +0000
+Subject: [PATCH] Respect NMake serial build support when bootstrapping Ninja
+
+The native Windows job 116473691446 in run 38747669404 rejects the CMake NMake warning caused by our unsupported --parallel argument. Build in parallel only with the supported Ninja and Unix Makefiles generators. Retain warning failures and all other compiler checks.
+
+Red: focused generator-support regression fails for the Windows bootstrap command containing --parallel; the other three generator cases pass. Green: the focused regression passes, then all 27 native-builder tests run without skips and just fmt-check and just bazel-lock-check pass (nmake-parallel-suite.log). Native Windows execution remains a hosted acceptance gate.
+---
+ third_party/voice/build_native.py      | 14 ++++-------
+ third_party/voice/test_build_native.py | 33 ++++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index b28406558..a2c2d9660 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -308,16 +308,10 @@ class NativeBuild:
+                 *options,
+             ],
+         )
+-        self.run(
+-            name + "-build",
+-            [
+-                self.toolchain["cmake"],
+-                "--build",
+-                directory,
+-                "--parallel",
+-                self.args.jobs,
+-            ],
+-        )
++        build_command = [self.toolchain["cmake"], "--build", directory]
++        if generator in ("Ninja", "Unix Makefiles"):
++            build_command.extend(["--parallel", self.args.jobs])
++        self.run(name + "-build", build_command)
+         self.run(name + "-install", [self.toolchain["cmake"], "--install", directory])
+ 
+     def meson(self, name, options):
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index d511434c4..fe5d46af6 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -487,6 +487,39 @@ class NativeBuildTests(unittest.TestCase):
+             build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
+         )
+ 
++    def test_cmake_parallel_builds_match_generator_support(self):
++        self.environment["USERPROFILE"] = str(self.root / "user profile")
++        for system, suffix in (
++            ("Windows", "pc-windows-msvc"),
++            ("Linux", "unknown-linux-gnu"),
++        ):
++            for bootstrap in (True, False):
++                with self.subTest(system=system, bootstrap=bootstrap):
++                    self.args.target = f"x86_64-{suffix}"
++                    self.args.output = self.root / f"{system}-{bootstrap}"
++                    with (
++                        patch("build_native.platform.system", return_value=system),
++                        patch("build_native.platform.machine", return_value="x86_64"),
++                    ):
++                        build = NativeBuild(self.args, self.environment)
++                    build.output.mkdir()
++                    build.sources = {"fixture": self.root}
++                    build.environment["NINJA"] = str(Path(sys.executable))
++                    with patch.object(build, "run") as run:
++                        build.cmake("fixture", [], bootstrap=bootstrap)
++                    command = run.call_args_list[1].args[1]
++                    if system == "Windows" and bootstrap:
++                        self.assertEqual(
++                            command,
++                            [
++                                build.toolchain["cmake"],
++                                "--build",
++                                build.output / "build/fixture",
++                            ],
++                        )
++                    else:
++                        self.assertEqual(command[-2:], ["--parallel", self.args.jobs])
++
+     def test_cmake_unused_project_option_remains_fatal(self):
+         cmake = shutil.which("cmake")
+         if cmake is None:
+-- 
+2.43.0
+

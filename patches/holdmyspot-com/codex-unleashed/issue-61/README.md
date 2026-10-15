@@ -1984,3 +1984,25 @@ The regression executes the actual compiled build script in its supported
 requires each Windows system library exactly once, without downloading or
 compiling a V8 archive. The complete Windows V8 link remains a required hosted
 acceptance gate.
+
+## Windows Ninja bootstrap parallelism
+
+`zzzz-0015-nmake-bootstrap-parallelism.patch` keeps the native Windows Ninja
+bootstrap free of CMake's unsupported-parallelism warning. NMake runs serially;
+the subsequent Ninja builds and Unix Makefiles bootstrap retain the configured
+parallel job count. Warning diagnostics remain fatal.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+With CMake and a native C/C++ toolchain available, run:
+
+```sh
+python3 -m unittest discover -v -s third_party/voice -p test_build_native.py
+just fmt-check
+just bazel-lock-check
+```
+
+The generator-support regression checks Windows NMake, Windows Ninja, Unix
+Makefiles, and Unix Ninja commands. The complete native Windows voice build
+remains a required hosted acceptance gate.
