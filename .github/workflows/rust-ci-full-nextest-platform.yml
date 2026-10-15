@@ -1,4 +1,4 @@
-name: Diagnose native Windows CMake paths
+name: Diagnose native Windows build recipes
 
 on:
   workflow_dispatch:
@@ -19,8 +19,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/prepare-patched-upstream
-
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -38,11 +36,10 @@ jobs:
           "TMPDIR=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TEMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Copy-Item .github/diagnostics/windows-cmake/test_build_native.py upstream/third_party/voice/test_build_native.py
 
       - name: Reproduce native Windows install path failure
         shell: pwsh
-        working-directory: upstream/third_party/voice
+        working-directory: .github/diagnostics/windows-cmake
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
@@ -60,7 +57,7 @@ jobs:
 
       - name: Verify normalized installation prefix
         shell: pwsh
-        working-directory: upstream/third_party/voice
+        working-directory: .github/diagnostics/windows-cmake
         run: |
           $ErrorActionPreference = 'Stop'
           python -c 'from pathlib import Path; p=Path("build_native.py"); s=p.read_text(); old="\"CMAKE_INSTALL_PREFIX\": str(prefix),"; new="\"CMAKE_INSTALL_PREFIX\": prefix.as_posix(),"; assert s.count(old)==1; p.write_text(s.replace(old,new))'
@@ -79,6 +76,82 @@ jobs:
           path: ${{ runner.temp }}/windows-cmake-*.log
           retention-days: 1
           if-no-files-found: ignore
+
+      - name: Restore the diagnostic recipe
+        if: always() && !cancelled()
+        shell: pwsh
+        run: git restore -- .github/diagnostics/windows-cmake/build_native.py
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  v8-guards:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .github/diagnostics/v8-guards
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare the native MSVC compile command
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $installation) { throw 'Locating the native MSVC compiler failed.' }
+          $developer = Join-Path $installation 'VC/Auxiliary/Build/vcvars64.bat'
+          @"
+          @call "$developer" >nul
+          @if errorlevel 1 exit /b %ERRORLEVEL%
+          @cl /Bv /nologo /std:c++20 /W4 /WX /I. test/codex/pointer-formats-test.cc /Fo:"%RUNNER_TEMP%/v8-warning-guards.obj" /Fe:"%RUNNER_TEMP%/v8-warning-guards.exe"
+          @exit /b %ERRORLEVEL%
+          "@ | Set-Content (Join-Path $env:RUNNER_TEMP 'compile-v8-guards.cmd')
+
+      - name: Reproduce the MSVC warning feature guard failure
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = Join-Path $env:RUNNER_TEMP 'v8-guards-red.log'
+          & $env:ComSpec /d /c (Join-Path $env:RUNNER_TEMP 'compile-v8-guards.cmd') *> $log
+          $status = $LASTEXITCODE
+          Get-Content $log
+          if ($status -eq 0) { throw 'The baseline must reproduce the MSVC guard failure.' }
+          if (-not (Select-String -Path $log -SimpleMatch 'C4067')) {
+            throw 'An unrelated compiler failure does not establish the regression.'
+          }
+
+      - name: Verify the emitted V8 patch with MSVC
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git apply --check -p3 repair.patch
+          if ($LASTEXITCODE -ne 0) { throw 'The emitted V8 patch does not apply.' }
+          git apply -p3 repair.patch
+          if ($LASTEXITCODE -ne 0) { throw 'Applying the emitted V8 patch failed.' }
+          $log = Join-Path $env:RUNNER_TEMP 'v8-guards-green.log'
+          & $env:ComSpec /d /c (Join-Path $env:RUNNER_TEMP 'compile-v8-guards.cmd') *> $log
+          $status = $LASTEXITCODE
+          Get-Content $log
+          if ($status -ne 0) { throw 'The patched V8 header failed with fatal MSVC warnings.' }
+          & (Join-Path $env:RUNNER_TEMP 'v8-warning-guards.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'The V8 pointer-format regression failed.' }
+
+      - name: Preserve native MSVC diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: v8-msvc-guards-diagnostic
+          path: ${{ runner.temp }}/v8-guards-*.log
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Restore the diagnostic sources
+        if: always() && !cancelled()
+        run: git restore -- src/base/macros.h test/codex/pointer-formats-test.cc
 
       - name: Check for a clean worktree
         if: always() && !cancelled()

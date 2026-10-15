@@ -1,0 +1,84 @@
+From 483df97a139b7d7309e66bd1cd05f31e45add7d0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 17:32:46 -0400
+Subject: [PATCH] Guard Clang warning probes before using compiler builtins
+
+MSVC and GCC cannot parse an unavailable function-like __has_warning builtin in a combined preprocessor condition. Nest the feature checks and retain each existing no-op fallback and Clang diagnostic scope. Extend the existing pointer-format regression to exercise both scopes.
+---
+ src/base/macros.h                  | 27 +++++++++++++++++----------
+ test/codex/pointer-formats-test.cc |  4 ++++
+ 2 files changed, 21 insertions(+), 10 deletions(-)
+
+diff --git a/orig/v8-15.0.245.2/src/base/macros.h b/mod/v8-15.0.245.2/src/base/macros.h
+index a61a2ab..8678f91 100644
+--- a/orig/v8-15.0.245.2/src/base/macros.h
++++ b/mod/v8-15.0.245.2/src/base/macros.h
+@@ -658,29 +658,36 @@ static_assert(V8_ENABLE_SIMD128);
+ #define END_ALLOW_MISSING_DESIGNATED_FIELD_INITIALIZERS()
+ #endif  // defined(__clang__)
+ 
++// WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
++// Keep unavailable function-like builtins out of non-Clang preprocessing.
++// Remove when V8 guards these feature checks independently upstream.
++#if defined(__clang__) && defined(__has_warning)
+ // Disable/enable -Wlifetime-safety warnings in code.
+-#if defined(__clang__) && defined(__has_warning) && \
+-    __has_warning("-Wlifetime-safety")
++#if __has_warning("-Wlifetime-safety")
+ #define START_IGNORE_LIFETIME_SAFETY_WARNINGS() \
+   _Pragma("clang diagnostic push")              \
+       _Pragma("clang diagnostic ignored \"-Wlifetime-safety\"")
+ #define END_IGNORE_LIFETIME_SAFETY_WARNINGS() _Pragma("clang diagnostic pop")
+-#else
+-#define START_IGNORE_LIFETIME_SAFETY_WARNINGS()
+-#define END_IGNORE_LIFETIME_SAFETY_WARNINGS()
+-#endif  // defined(__clang__)
++#endif  // __has_warning("-Wlifetime-safety")
+ 
+ // Disable/enable -Wreturn-stack-address warnings in code.
+-#if defined(__clang__) && defined(__has_warning) && \
+-    __has_warning("-Wreturn-stack-address")
++#if __has_warning("-Wreturn-stack-address")
+ #define START_IGNORE_RETURN_STACK_ADDRESS_WARNINGS() \
+   _Pragma("clang diagnostic push")                   \
+       _Pragma("clang diagnostic ignored \"-Wreturn-stack-address\"")
+ #define END_IGNORE_RETURN_STACK_ADDRESS_WARNINGS() \
+   _Pragma("clang diagnostic pop")
+-#else
++#endif  // __has_warning("-Wreturn-stack-address")
++#endif  // defined(__clang__) && defined(__has_warning)
++
++#ifndef START_IGNORE_LIFETIME_SAFETY_WARNINGS
++#define START_IGNORE_LIFETIME_SAFETY_WARNINGS()
++#define END_IGNORE_LIFETIME_SAFETY_WARNINGS()
++#endif
++
++#ifndef START_IGNORE_RETURN_STACK_ADDRESS_WARNINGS
+ #define START_IGNORE_RETURN_STACK_ADDRESS_WARNINGS()
+ #define END_IGNORE_RETURN_STACK_ADDRESS_WARNINGS()
+-#endif  // defined(__clang__)
++#endif
+ 
+ #endif  // V8_BASE_MACROS_H_
+diff --git a/orig/v8-15.0.245.2/test/codex/pointer-formats-test.cc b/mod/v8-15.0.245.2/test/codex/pointer-formats-test.cc
+index c49e072..85649e0 100644
+--- a/orig/v8-15.0.245.2/test/codex/pointer-formats-test.cc
++++ b/mod/v8-15.0.245.2/test/codex/pointer-formats-test.cc
+@@ -13,6 +13,8 @@ static_assert(V8_CC_MINGW == 1);
+ static_assert(V8_CC_MINGW64 == 1);
+ #endif
+ 
++START_IGNORE_LIFETIME_SAFETY_WARNINGS()
++START_IGNORE_RETURN_STACK_ADDRESS_WARNINGS()
+ int main() {
+   char output[128];
+ #if UINTPTR_MAX == UINT64_MAX
+@@ -26,3 +28,5 @@ int main() {
+                 address, std::intptr_t{-123}, std::uintptr_t{123});
+   return std::strcmp(output, expected);
+ }
++END_IGNORE_RETURN_STACK_ADDRESS_WARNINGS()
++END_IGNORE_LIFETIME_SAFETY_WARNINGS()
+-- 
+2.43.0
+
