@@ -149,6 +149,15 @@ The tests pass with CMake and the LLVM toolchain available on `PATH`; platform
 tests skip outside their supported host. The Linux native prefix builds without
 missing symbol-tool warnings. Hosted remote execution remains a separate gate.
 
+## Direct Bazel dependency versions
+
+`zzz-direct-dependency-versions.patch` pins bazel_lib to 3.7.2, matching the
+version required by the updated XZ module, and makes direct dependency version
+mismatches fatal. Apply it after `z-xz-windows-arm64-filter.patch`.
+`tools/build-warnings/check-direct-dependencies.sh` runs Bazel's resolver with
+the strict check; it must succeed without a direct dependency mismatch. The
+normal `just bazel-lock-check` also runs with this policy.
+
 ## V8 Python generator platforms
 
 `z-v8-python-platforms.patch` resolves inspector-generator dependencies for

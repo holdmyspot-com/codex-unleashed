@@ -1,0 +1,42 @@
+From 227cbbfd733e86478acffea1f80eb6d5519dfe75 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:11:21 +0000
+Subject: [PATCH] Require resolved direct Bazel dependency versions
+
+Align the direct bazel_lib pin with required version 3.7.2, the latest stable BCR version. Promote future direct-version mismatches to errors. A focused cquery fails with exit 48 against the old pin and passes after the update; the included resolver check also passes. Fresh emitted-patch verification follows in the owning CI repair goal.
+---
+ .bazelrc                                          | 1 +
+ MODULE.bazel                                      | 2 +-
+ tools/build-warnings/check-direct-dependencies.sh | 6 ++++++
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+ create mode 100755 tools/build-warnings/check-direct-dependencies.sh
+
+diff --git a/.bazelrc b/.bazelrc
+index b20365f10..a77f52164 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -1,2 +1,3 @@
+ common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
++common --check_direct_dependencies=error
+ common --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
+diff --git a/MODULE.bazel b/MODULE.bazel
+index c04ee65d7..5e14e29fd 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -2,3 +2,3 @@ module(name = "codex")
+
+-bazel_dep(name = "bazel_lib", version = "3.2.2")
++bazel_dep(name = "bazel_lib", version = "3.7.2")
+ bazel_dep(name = "bazel_skylib", version = "1.9.2")
+diff --git a/tools/build-warnings/check-direct-dependencies.sh b/tools/build-warnings/check-direct-dependencies.sh
+new file mode 100755
+index 000000000..beae00edc
+--- /dev/null
++++ b/tools/build-warnings/check-direct-dependencies.sh
+@@ -0,0 +1,6 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
++cd -- "$repo_root"
++bazel mod deps "$@" --check_direct_dependencies=error
