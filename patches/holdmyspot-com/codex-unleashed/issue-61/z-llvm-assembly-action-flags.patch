@@ -1,0 +1,417 @@
+From 754aa8048b6b067154c26491248b37e4f33802b6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 01:37:51 +0000
+Subject: [PATCH] Select LLVM options for assembler and compiler actions
+
+Keep preprocessor definitions and include paths on preprocessing actions, and source compiler, random-seed, and code-generation options on compiler actions. Preserve assembler target selection and fatal warning enforcement. Cover raw assembly, preprocessed assembly, and C in fastbuild, debug, and optimized modes through the maintained warning check.
+
+The raw assembly probe reproduces unused-command-line-argument errors with LLVM 0.8.24. Optimized mode additionally reproduces invalid optimization and macro flags. just check-build-warnings for windows_x86_64_gnullvm passes all three modes and the expected negative warning check after the repair. Native Linux and fresh emitted-patch checks follow in the owning verification record.
+---
+ MODULE.bazel                                 |   1 +
+ patches/llvm_assembly_action_flags.patch     | 287 +++++++++++++++++++
+ tools/build-warnings/assembly/BUILD.bazel    |  11 +
+ tools/build-warnings/assembly/frontend.c     |   9 +
+ tools/build-warnings/assembly/preprocessed.S |   7 +
+ tools/build-warnings/assembly/raw.s          |   4 +
+ tools/build-warnings/check.sh                |  28 +-
+ 7 files changed, 343 insertions(+), 4 deletions(-)
+ create mode 100644 patches/llvm_assembly_action_flags.patch
+ create mode 100644 tools/build-warnings/assembly/BUILD.bazel
+ create mode 100644 tools/build-warnings/assembly/frontend.c
+ create mode 100644 tools/build-warnings/assembly/preprocessed.S
+ create mode 100644 tools/build-warnings/assembly/raw.s
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 5e14e29fd..e0fd613ab 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -24,2 +24,3 @@ single_version_override(
+         "//patches:llvm_resource_directory_headers.patch",
++        "//patches:llvm_assembly_action_flags.patch",
+     ],
+diff --git a/patches/llvm_assembly_action_flags.patch b/patches/llvm_assembly_action_flags.patch
+new file mode 100644
+index 000000000..6610b691b
+--- /dev/null
++++ b/patches/llvm_assembly_action_flags.patch
+@@ -0,0 +1,287 @@
++From e553405838baf3e7b6bae273d6a767d91a064f92 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 01:38:38 +0000
++Subject: [PATCH] Select frontend options for preprocessor and compiler actions
++
++---
++ toolchain/actions/BUILD.bazel            | 21 ++++++++
++ toolchain/args/BUILD.bazel               |  6 +--
++ toolchain/args/linux/BUILD.bazel         |  8 ++--
++ toolchain/args/macos/BUILD.bazel         |  2 +-
++ toolchain/args/windows/mingw/BUILD.bazel |  2 +-
++ toolchain/features/BUILD.bazel           | 61 +++++++++++++-----------
++ toolchain/features/legacy/BUILD.bazel    | 48 +++++++++++++++----
++ 7 files changed, 101 insertions(+), 47 deletions(-)
++ create mode 100644 toolchain/actions/BUILD.bazel
++
++diff --git a/toolchain/actions/BUILD.bazel b/toolchain/actions/BUILD.bazel
++new file mode 100644
++index 0000000..c1dca98
++--- /dev/null
+++++ b/toolchain/actions/BUILD.bazel
++@@ -0,0 +1,21 @@
+++load("@rules_cc//cc/toolchains:actions.bzl", "cc_action_type_set")
+++
+++package(default_visibility = ["//visibility:public"])
+++
+++cc_action_type_set(
+++    name = "preprocessor_actions",
+++    actions = ["@rules_cc//cc/toolchains/actions:source_compile_actions"],
+++    excludes = [
+++        "@rules_cc//cc/toolchains/actions:assemble",
+++        "@rules_cc//cc/toolchains/actions:cpp_module_codegen",
+++    ],
+++)
+++
+++cc_action_type_set(
+++    name = "compiler_actions",
+++    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    excludes = [
+++        "@rules_cc//cc/toolchains/actions:assemble",
+++        "@rules_cc//cc/toolchains/actions:preprocess_assemble",
+++    ],
+++)
++diff --git a/toolchain/args/BUILD.bazel b/toolchain/args/BUILD.bazel
++index 99c8ad6..a82b2d1 100644
++--- a/toolchain/args/BUILD.bazel
+++++ b/toolchain/args/BUILD.bazel
++@@ -114,5 +114,3 @@ cc_args(
++     name = "module_map",
++-    actions = [
++-        "@rules_cc//cc/toolchains/actions:compile_actions",
++-    ],
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = select({
++@@ -295,3 +293,3 @@ cc_args(
++         "//constraints/windows/abi:msvc": _CLANG_CL_FRONTEND_ACTIONS,
++-        "//conditions:default": ["@rules_cc//cc/toolchains/actions:source_compile_actions"],
+++        "//conditions:default": ["//toolchain/actions:preprocessor_actions"],
++     }),
++diff --git a/toolchain/args/linux/BUILD.bazel b/toolchain/args/linux/BUILD.bazel
++index f1dbb75..2937ed9 100644
++--- a/toolchain/args/linux/BUILD.bazel
+++++ b/toolchain/args/linux/BUILD.bazel
++@@ -34,3 +34,3 @@ cc_args(
++     actions = [
++-        "//toolchain:source_compile_actions",
+++        "//toolchain/actions:preprocessor_actions",
++     ],
++@@ -55,3 +55,3 @@ cc_args(
++     actions = [
++-        "//toolchain:source_compile_actions",
+++        "//toolchain/actions:preprocessor_actions",
++     ],
++@@ -77,3 +77,3 @@ cc_args(
++     actions = [
++-        "//toolchain:source_compile_actions",
+++        "//toolchain/actions:preprocessor_actions",
++     ],
++@@ -130,3 +130,3 @@ cc_args(
++     actions = [
++-        "//toolchain:source_compile_actions",
+++        "//toolchain/actions:preprocessor_actions",
++     ],
++diff --git a/toolchain/args/macos/BUILD.bazel b/toolchain/args/macos/BUILD.bazel
++index 3857052..a6456f7 100644
++--- a/toolchain/args/macos/BUILD.bazel
+++++ b/toolchain/args/macos/BUILD.bazel
++@@ -59,3 +59,3 @@ cc_args(
++     actions = [
++-        "@rules_cc//cc/toolchains/actions:source_compile_actions",
+++        "//toolchain/actions:preprocessor_actions",
++     ],
++diff --git a/toolchain/args/windows/mingw/BUILD.bazel b/toolchain/args/windows/mingw/BUILD.bazel
++index 9a24c3c..c03260c 100644
++--- a/toolchain/args/windows/mingw/BUILD.bazel
+++++ b/toolchain/args/windows/mingw/BUILD.bazel
++@@ -7,3 +7,3 @@ cc_args(
++     name = "mingw_headers_include_search_paths",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     allowlist_include_directories = [
++diff --git a/toolchain/features/BUILD.bazel b/toolchain/features/BUILD.bazel
++index 98e37ca..fea496c 100644
++--- a/toolchain/features/BUILD.bazel
+++++ b/toolchain/features/BUILD.bazel
++@@ -56,11 +56,13 @@ _DEBUG_INFO_COMPILE_ACTIONS = [
++ # preprocessed assembly still needs the preprocessor-facing subset.
+++_CLANG_CL_CONFIGURATION_ACTIONS = [
+++    "@rules_cc//cc/toolchains/actions:c_compile",
+++    "@rules_cc//cc/toolchains/actions:cpp_compile",
+++    "@rules_cc//cc/toolchains/actions:linkstamp_compile",
+++    "@rules_cc//cc/toolchains/actions:preprocess_assemble",
+++    "@rules_cc//cc/toolchains/actions:cpp_header_parsing",
+++    "@rules_cc//cc/toolchains/actions:lto_backend",
+++]
+++
++ _CONFIGURATION_COMPILE_ACTIONS = select({
++-    "//constraints/windows/abi:msvc": [
++-        "@rules_cc//cc/toolchains/actions:c_compile",
++-        "@rules_cc//cc/toolchains/actions:cpp_compile",
++-        "@rules_cc//cc/toolchains/actions:linkstamp_compile",
++-        "@rules_cc//cc/toolchains/actions:preprocess_assemble",
++-        "@rules_cc//cc/toolchains/actions:cpp_header_parsing",
++-        "@rules_cc//cc/toolchains/actions:lto_backend",
++-    ],
+++    "//constraints/windows/abi:msvc": _CLANG_CL_CONFIGURATION_ACTIONS,
++     "//conditions:default": ["@rules_cc//cc/toolchains/actions:compile_actions"],
++@@ -68,2 +70,12 @@ _CONFIGURATION_COMPILE_ACTIONS = select({
++
+++_CONFIGURATION_PREPROCESSOR_ACTIONS = select({
+++    "//constraints/windows/abi:msvc": _CLANG_CL_CONFIGURATION_ACTIONS,
+++    "//conditions:default": ["//toolchain/actions:preprocessor_actions"],
+++})
+++
+++_CONFIGURATION_CODEGEN_ACTIONS = select({
+++    "//constraints/windows/abi:msvc": _CLANG_CL_CONFIGURATION_ACTIONS,
+++    "//conditions:default": ["//toolchain/actions:compiler_actions"],
+++})
+++
++ _FINAL_LINK_ACTIONS = [
++@@ -90,5 +102,4 @@ cc_args(
++     name = "no_exceptions_args",
++-    # Preserve the generic Clang behavior previously provided by --copt,
++-    # whose user_compile_flags expansion covers rules_cc compile_actions.
++-    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    # Source-language flags do not apply to assembler inputs.
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = ["-fno-exceptions"],
++@@ -104,5 +115,4 @@ cc_args(
++     name = "no_rtti_args",
++-    # Preserve the generic Clang behavior previously provided by --copt,
++-    # whose user_compile_flags expansion covers rules_cc compile_actions.
++-    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    # Source-language flags do not apply to assembler inputs.
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = ["-fno-rtti"],
++@@ -118,5 +128,4 @@ cc_args(
++     name = "omit_frame_pointer_args",
++-    # Preserve the generic Clang behavior previously provided by --copt,
++-    # including C compilation and ThinLTO backend code generation.
++-    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    # Preserve C compilation and ThinLTO backend code generation.
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = ["-fomit-frame-pointer"],
++@@ -254,3 +263,3 @@ cc_args(
++     name = "opt_optimization_level",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_CODEGEN_ACTIONS,
++     args = select({
++@@ -268,3 +277,3 @@ cc_args(
++     name = "opt_fortify",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_PREPROCESSOR_ACTIONS,
++     args = select({
++@@ -283,3 +292,3 @@ cc_args(
++     name = "opt_disable_assertions",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_PREPROCESSOR_ACTIONS,
++     args = select({
++@@ -295,3 +304,3 @@ cc_args(
++     name = "opt_function_sections",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_CODEGEN_ACTIONS,
++     args = select({
++@@ -308,3 +317,3 @@ cc_args(
++     name = "opt_data_sections",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_CODEGEN_ACTIONS,
++     args = select({
++@@ -359,3 +368,3 @@ cc_args(
++     name = "dbg_runtime_debug_define",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_PREPROCESSOR_ACTIONS,
++     args = select({
++@@ -373,3 +382,3 @@ cc_args(
++     name = "dbg_no_optimization",
++-    actions = _CONFIGURATION_COMPILE_ACTIONS,
+++    actions = _CONFIGURATION_CODEGEN_ACTIONS,
++     args = select({
++@@ -595,5 +604,3 @@ cc_args(
++     name = "module_map_home_cwd_args",
++-    actions = [
++-        "@rules_cc//cc/toolchains/actions:compile_actions",
++-    ],
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = [
++diff --git a/toolchain/features/legacy/BUILD.bazel b/toolchain/features/legacy/BUILD.bazel
++index a1ae53d..3f7486e 100644
++--- a/toolchain/features/legacy/BUILD.bazel
+++++ b/toolchain/features/legacy/BUILD.bazel
++@@ -31,3 +31,3 @@ cc_args(
++     name = "legacy_default_stack_protector",
++-    actions = ["@rules_cc//cc/toolchains/actions:source_compile_actions"],
+++    actions = ["//toolchain/actions:compiler_actions"],
++     args = select({
++@@ -52,3 +52,3 @@ cc_args(
++     name = "legacy_default_color_diagnostics",
++-    actions = ["@rules_cc//cc/toolchains/actions:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     # Enable coloring even without an attached terminal. Bazel removes the
++@@ -60,3 +60,3 @@ cc_args(
++     name = "legacy_default_frame_pointer",
++-    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+++    actions = ["//toolchain/actions:compiler_actions"],
++     # Keep stack frames for debugging, even in opt mode. Product-specific
++@@ -242,4 +242,4 @@ cc_feature_set(
++         "@rules_cc//cc/toolchains/args/linker_param_file:feature",
++-        "@rules_cc//cc/toolchains/args/preprocessor_defines:feature",
++-        "@rules_cc//cc/toolchains/args/random_seed:feature",
+++        ":preprocessor_defines",
+++        ":random_seed",
++         "@rules_cc//cc/toolchains/args/runtime_library_search_directories:feature",
++@@ -368,3 +368,3 @@ cc_args(
++     name = "includes_flags",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     args = [
++@@ -391,3 +391,3 @@ cc_args(
++     name = "quote_include_paths_flags",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     args = [
++@@ -402,3 +402,3 @@ cc_args(
++     name = "include_paths_flags",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     args = ["-I{include_paths}"],
++@@ -410,3 +410,3 @@ cc_args(
++     name = "system_include_paths_flags",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     args = [
++@@ -421,3 +421,3 @@ cc_args(
++     name = "framework_include_paths_flags",
++-    actions = ["//toolchain:source_compile_actions"],
+++    actions = ["//toolchain/actions:preprocessor_actions"],
++     args = ["-F{framework_include_paths}"],
++@@ -426 +426,29 @@ cc_args(
++ )
+++
+++cc_feature(
+++    name = "preprocessor_defines",
+++    args = [":preprocessor_defines_args"],
+++    overrides = "@rules_cc//cc/toolchains/features/legacy:preprocessor_defines",
+++)
+++
+++cc_args(
+++    name = "preprocessor_defines_args",
+++    actions = ["//toolchain/actions:preprocessor_actions"],
+++    args = ["-D{preprocessor_defines}"],
+++    format = {"preprocessor_defines": "@rules_cc//cc/toolchains/variables:preprocessor_defines"},
+++    iterate_over = "@rules_cc//cc/toolchains/variables:preprocessor_defines",
+++)
+++
+++cc_feature(
+++    name = "random_seed",
+++    args = [":random_seed_args"],
+++    overrides = "@rules_cc//cc/toolchains/features/legacy:random_seed",
+++)
+++
+++cc_args(
+++    name = "random_seed_args",
+++    actions = ["//toolchain/actions:compiler_actions"],
+++    args = ["-frandom-seed={output_file}"],
+++    format = {"output_file": "@rules_cc//cc/toolchains/variables:output_file"},
+++    requires_not_none = "@rules_cc//cc/toolchains/variables:output_file",
+++)
+diff --git a/tools/build-warnings/assembly/BUILD.bazel b/tools/build-warnings/assembly/BUILD.bazel
+new file mode 100644
+index 000000000..67e1d4610
+--- /dev/null
++++ b/tools/build-warnings/assembly/BUILD.bazel
+@@ -0,0 +1,11 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++cc_library(
++    name = "compile_inputs",
++    srcs = [
++        "frontend.c",
++        "preprocessed.S",
++        "raw.s",
++    ],
++    defines = ["CODEX_ASSEMBLY_VALUE=7"],
++)
+diff --git a/tools/build-warnings/assembly/frontend.c b/tools/build-warnings/assembly/frontend.c
+new file mode 100644
+index 000000000..e29ea0567
+--- /dev/null
++++ b/tools/build-warnings/assembly/frontend.c
+@@ -0,0 +1,9 @@
++#include <stdint.h>
++
++#if CODEX_ASSEMBLY_VALUE != 7
++#error The C input requires its declared definition
++#endif
++
++uint32_t codex_c_frontend_fixture(void) {
++    return CODEX_ASSEMBLY_VALUE;
++}
+diff --git a/tools/build-warnings/assembly/preprocessed.S b/tools/build-warnings/assembly/preprocessed.S
+new file mode 100644
+index 000000000..b34d781f4
+--- /dev/null
++++ b/tools/build-warnings/assembly/preprocessed.S
+@@ -0,0 +1,7 @@
++#if CODEX_ASSEMBLY_VALUE != 7
++#error The preprocessed assembly input requires its declared definition
++#endif
++.text
++.globl codex_preprocessed_assembly_fixture
++codex_preprocessed_assembly_fixture:
++    ret
+diff --git a/tools/build-warnings/assembly/raw.s b/tools/build-warnings/assembly/raw.s
+new file mode 100644
+index 000000000..80236ccaf
+--- /dev/null
++++ b/tools/build-warnings/assembly/raw.s
+@@ -0,0 +1,4 @@
++.text
++.globl codex_raw_assembly_fixture
++codex_raw_assembly_fixture:
++    ret
+diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
+index 4e3116372..0c0353f08 100644
+--- a/tools/build-warnings/check.sh
++++ b/tools/build-warnings/check.sh
+@@ -8,6 +8,18 @@ trap 'rm -r -- "$probe_dir"' EXIT
+
+-bazel build "$@" --nobuild --config=ci-v8 //tools/build-warnings:clean \
+-    >"$probe_dir/default-download-options.log" 2>&1
+-bazel build "$@" --nobuild --config=ci-v8 --remote_download_outputs=toplevel \
+-    //tools/build-warnings:clean >"$probe_dir/download-options.log" 2>&1
++if bazel build "$@" --nobuild --config=ci-v8 //tools/build-warnings:clean \
++    >"$probe_dir/default-download-options.log" 2>&1; then
++    :
++else
++    status=$?
++    cat -- "$probe_dir/default-download-options.log"
++    exit "$status"
++fi
++if bazel build "$@" --nobuild --config=ci-v8 --remote_download_outputs=toplevel \
++    //tools/build-warnings:clean >"$probe_dir/download-options.log" 2>&1; then
++    :
++else
++    status=$?
++    cat -- "$probe_dir/download-options.log"
++    exit "$status"
++fi
+ if grep -Eq '^WARNING:|^warning:' "$probe_dir/default-download-options.log" "$probe_dir/download-options.log"; then
+@@ -25,2 +37,10 @@ fi
+
++for compilation_mode in fastbuild dbg opt; do
++    if ! bazel build "$@" --compilation_mode="$compilation_mode" \
++        //tools/build-warnings/assembly:compile_inputs >"$probe_dir/assembly-$compilation_mode.log" 2>&1; then
++        cat -- "$probe_dir/assembly-$compilation_mode.log"
++        exit 1
++    fi
++done
++
+ if bazel build "$@" //tools/build-warnings:compiler_warning >"$probe_dir/warning.log" 2>&1; then

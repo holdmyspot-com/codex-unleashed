@@ -158,6 +158,28 @@ mismatches fatal. Apply it after `z-xz-windows-arm64-filter.patch`.
 the strict check; it must succeed without a direct dependency mismatch. The
 normal `just bazel-lock-check` also runs with this policy.
 
+## Assembly compiler arguments
+
+`z-llvm-assembly-action-flags.patch` sends preprocessing options only to inputs
+that use the preprocessor and C/C++ compiler options only to compiler actions.
+Raw assembly keeps its target, assembler, and fatal-warning options. C and
+preprocessed assembly retain their declared definitions and header search paths.
+Apply the LLVM 23, native warning policy, and remote download options patches first.
+
+```sh
+just check-build-warnings --platforms=//:windows_x86_64_gnullvm
+just check-build-warnings
+just fmt-check
+just bazel-lock-check
+```
+
+The warning check compiles raw assembly, preprocessed assembly, and C in
+fastbuild, debug, and optimized modes. Its independent deprecated-function
+fixture must still fail at the expected compiler diagnostic. Preliminary
+analysis failures print their captured log and preserve the original status.
+The Windows GNU command checks cross-compilation; native Windows execution
+and the complete release build remain separate gates.
+
 ## V8 Python generator platforms
 
 `z-v8-python-platforms.patch` resolves inspector-generator dependencies for
