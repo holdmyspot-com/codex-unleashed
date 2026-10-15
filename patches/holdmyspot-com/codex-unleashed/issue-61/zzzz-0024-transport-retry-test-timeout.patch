@@ -1,0 +1,47 @@
+From c70ad7d71881f48651d8d38dc870bac9434f6bb5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 18:56:51 +0000
+Subject: [PATCH] Give transport retry tests a bounded reconnect timeout
+
+The upstream websocket conflict regressions exercise consecutive real reconnect delays of up to 30 seconds. Preserve their assertions while overriding the downstream short default for this suite.
+
+RED: Linux GNU and musl hosted transport suites time out at 60 seconds; the added analysis regression expects moderate but observes short (transport-timeout-red.log, exit 3). GREEN: all seven timeout analysis regressions pass with --test_output=errors --test_verbose_timeout_warnings (transport-timeout-green.log, exit 0). Actual transport execution and emitted fresh-checkout formatting/lock gates remain required.
+---
+ codex-rs/app-server-transport/BUILD.bazel      | 11 +++++++++++
+ tools/build-warnings/test-timeouts/BUILD.bazel |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/codex-rs/app-server-transport/BUILD.bazel b/codex-rs/app-server-transport/BUILD.bazel
+index f6ecba680..5a58a27fe 100644
+--- a/codex-rs/app-server-transport/BUILD.bazel
++++ b/codex-rs/app-server-transport/BUILD.bazel
+@@ -1,6 +1,17 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+
+ codex_rust_crate(
+     name = "app-server-transport",
+     crate_name = "codex_app_server_transport",
++    # Conflict recovery tests exercise consecutive real reconnect waits of up to 30 seconds.
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "retry_unit_timeout_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":app-server-transport-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index ea0146c22..ce3ff6dd7 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -6,6 +6,7 @@ test_suite(
+         "//codex-rs/app-server:binary_default_test",
+         "//codex-rs/app-server:integration_override_test",
+         "//codex-rs/app-server:wine_override_test",
++        "//codex-rs/app-server-transport:retry_unit_timeout_test",
+         "//codex-rs/login:unit_override_test",
+     ],
+ )

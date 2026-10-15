@@ -2232,3 +2232,28 @@ unrelated component logs must retain their existing behavior. On native
 macOS, build `//third_party/voice:native_prefix_macos_aarch64`; a failed
 compiler probe must include its detailed Meson log. This diagnostic patch
 does not establish that the underlying native compiler failure is fixed.
+
+## Transport reconnect test timeout
+
+`zzzz-0024-transport-retry-test-timeout.patch` gives the transport unit suite
+an explicit moderate timeout. Its conflict-recovery regressions exercise
+consecutive real reconnect waits of up to 30 seconds. The short default is
+insufficient for that workload. Assertions, reconnect behavior, and verbose
+timeout diagnostics remain enabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+just fmt-check
+just bazel-lock-check
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/test-timeouts:all
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/app-server-transport:app-server-transport-unit-tests
+```
+
+The analysis regression requires the real generated transport test's explicit
+timeout. The actual transport suite must complete with every assertion passing
+on each supported native platform; an analysis pass alone does not establish
+that execution gate.
