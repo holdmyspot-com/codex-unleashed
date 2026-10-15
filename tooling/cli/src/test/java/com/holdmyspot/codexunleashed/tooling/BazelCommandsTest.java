@@ -63,7 +63,7 @@ public final class BazelCommandsTest
 	}
 
 	/**
-	 * Places Windows execution configuration after shared remote defaults.
+	 * Keeps Windows execution-platform ownership in the Windows CI configuration.
 	 *
 	 * @throws IOException if planning fails
 	 */
@@ -71,9 +71,28 @@ public final class BazelCommandsTest
 	public void windowsConfigOverridesSharedDefaults() throws IOException
 	{
 		assertEquals(command(List.of("build", "--config=ci-windows-cross", "//cli:codex"),
-			Map.of("BUILDBUDDY_API_KEY", "token")), List.of("bazel", "build", "--config=buildbuddy-generic-rbe",
+			Map.of("BUILDBUDDY_API_KEY", "token")), List.of("bazel", "build",
+				"--config=buildbuddy-generic-rbe-windows-cross",
 				"--remote_header=x-buildbuddy-api-key=token", "--remote_local_fallback", "--config=ci-windows-cross",
 				"//cli:codex"));
+	}
+
+	/**
+	 * Preserves host selection and keeps payload configuration text out of Windows platform selection.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void windowsSelectionRespectsHostAndPayload() throws IOException
+	{
+		Map<String, String> environment = Map.of("BUILDBUDDY_API_KEY", "token", "GITHUB_ACTIONS", "true",
+			"GITHUB_REPOSITORY", "openai/codex", "GITHUB_EVENT_NAME", "push");
+		assertEquals(BazelCommands.plan(List.of("build", "--config=ci-windows-cross"), environment, Path.of(".")).
+			remoteConfig().orElseThrow(), "buildbuddy-openai-rbe-windows-cross");
+		assertEquals(BazelCommands.plan(List.of("run", "--config=ci-linux", "//cli:codex", "--",
+			"--config=ci-windows-cross"), environment, Path.of(".")).remoteConfig().orElseThrow(),
+			"buildbuddy-openai-rbe");
+		assertEquals(command(List.of("build", "--config=ci-windows-cross"), Map.of()), List.of("bazel", "build"));
 	}
 
 	/**
@@ -87,7 +106,8 @@ public final class BazelCommandsTest
 		String expression = "kind(\"rust_library rule\", //codex-rs/...)";
 		for (String query : List.of("query", "cquery", "aquery"))
 			assertEquals(command(List.of(query, "--config=ci-windows-cross", "--output=label", expression),
-				Map.of("BUILDBUDDY_API_KEY", "token")), List.of("bazel", query, "--config=buildbuddy-generic-rbe",
+				Map.of("BUILDBUDDY_API_KEY", "token")), List.of("bazel", query,
+					"--config=buildbuddy-generic-rbe-windows-cross",
 					"--remote_header=x-buildbuddy-api-key=token", "--remote_local_fallback", "--config=ci-windows-cross",
 					"--output=label", expression));
 	}
@@ -248,7 +268,7 @@ public final class BazelCommandsTest
 			"BAZEL_REPOSITORY_CACHE", "managed/repository");
 		assertEquals(command(List.of("run", "--config=ci-windows-cross", "//cli:codex", "--",
 			"--disk_cache=payload"), environment), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
-				"run", "--config=buildbuddy-generic-rbe", "--remote_header=x-buildbuddy-api-key=token",
+				"run", "--config=buildbuddy-generic-rbe-windows-cross", "--remote_header=x-buildbuddy-api-key=token",
 				"--remote_local_fallback", "--config=ci-windows-cross", "//cli:codex",
 				"--repository_cache=managed/repository", "--disk_cache=", "--", "--disk_cache=payload"));
 	}

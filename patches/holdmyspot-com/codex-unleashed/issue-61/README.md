@@ -1798,10 +1798,10 @@ The full macOS Cargo release build remains a separate required gate.
 
 ## Short regression test resource declarations
 
-`zzzz-0009-regression-test-sizes.patch` declares nine short native build
+`zzzz-0009-regression-test-sizes.patch` declares eleven short native build
 regressions as small Bazel tests. It covers the assembly fixture checks,
 AWS-LC and Cargo C-standard checks, the Make C-standard check, the Ninja elapsed
-time check, and the two XZ driver checks. Verbose timeout diagnostics remain
+time check, the two V8 Windows action checks, and the two XZ driver checks. Verbose timeout diagnostics remain
 active.
 
 The declared base is `rust-v0.162.1`
@@ -1819,11 +1819,13 @@ bazel test --test_verbose_timeout_warnings --test_output=errors \
   //tools/build-warnings/cargo-c-standard:flags_test \
   //tools/build-warnings/make:standard_test \
   //tools/build-warnings/ninja:elapsed_time_test \
+  //tools/build-warnings/v8:windows_pointer_flags_test \
+  //tools/build-warnings/v8:windows_library_flags_test \
   //tools/build-warnings/xz:gnu_flags_test \
   //tools/build-warnings/xz:msvc_flags_test
 ```
 
-All nine checks pass without timing-range advisories. Required queue checks
+All eleven checks pass without timing-range advisories. Required queue checks
 remain `just fmt-check` and `just bazel-lock-check`.
 
 ## Explicit Python zip applications
@@ -1860,3 +1862,37 @@ launcher. Adding
 Windows-host default locally: the analysis assertion fails and rules_python
 reports the legacy zipapp diagnostic. The project configuration requires all
 three focused tests to pass without that diagnostic.
+
+## Windows remote execution platform ownership
+
+`zzzz-0011-windows-execution-platform-owner.patch` gives Windows cross CI one
+execution-platform selection. The BuildBuddy wrappers select the Windows
+variant of the generic or OpenAI remote configuration when
+`--config=ci-windows-cross` appears before the command's `--` separator.
+That CI configuration supplies both Linux remote workers and the native Windows
+MSVC platform. Other platforms retain the existing remote configuration.
+Cache endpoints, authentication, remote strategy, and job limits remain enabled.
+The duplicate-option diagnostic is corrected through configuration ownership;
+no diagnostic is filtered.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+From the patched checkout, run:
+
+```sh
+just test-github-scripts
+bazel build --nobuild --config=buildbuddy-generic-rbe-windows-cross \
+  --config=ci-windows-cross @llvm//runtimes/msvc:msvc_include
+just fmt-check
+just bazel-lock-check
+```
+
+Set the accepted MSVC runtime license and the normal CI BuildBuddy credentials.
+The script suite verifies generic and OpenAI host selection, separator handling,
+and the local fallback without credentials. Analysis must complete without
+duplicate `extra_execution_platforms` expansion. Local analysis with remote
+endpoints disabled verifies option expansion; the native Windows CI build and
+its cache statistics remain separate required acceptance gates.
+The fork's Maven wrapper implements the same selection; `tooling/mvnw verify`
+verifies it through the project tooling's full gate.

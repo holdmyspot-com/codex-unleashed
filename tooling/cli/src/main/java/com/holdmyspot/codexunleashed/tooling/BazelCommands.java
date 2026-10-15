@@ -18,8 +18,9 @@ import tools.jackson.databind.json.JsonMapper;
 /** Plans Bazel execution from explicit workflow evidence, credentials and cache settings. */
 public final class BazelCommands
 {
+	private static final String WINDOWS_CROSS_CONFIG = "--config=ci-windows-cross";
 	private static final Set<String> REMOTE_EXECUTION = Set.of("--config=ci-linux", "--config=ci-macos",
-		"--config=ci-v8", "--config=ci-windows-cross");
+		"--config=ci-v8", WINDOWS_CROSS_CONFIG);
 	private static final Set<String> CONTENTS_CACHE_STARTUP = Set.of("--experimental_remote_repo_contents_cache",
 		"--noexperimental_remote_repo_contents_cache");
 
@@ -92,11 +93,16 @@ public final class BazelCommands
 		List<String> configured = new ArrayList<>();
 		if (present(key))
 		{
-			String selected = "buildbuddy-generic";
+			String configurationPrefix = "buildbuddy-generic";
 			if (openai)
-				selected = "buildbuddy-openai";
+				configurationPrefix = "buildbuddy-openai";
+
+			StringBuilder configuration = new StringBuilder(configurationPrefix);
 			if (remoteExecution)
-				selected += "-rbe";
+				configuration.append("-rbe");
+			if (arguments.subList(0, separator).contains(WINDOWS_CROSS_CONFIG))
+				configuration.append("-windows-cross");
+			String selected = configuration.toString();
 			config = Optional.of(selected);
 			configured.addAll(arguments.subList(0, commandIndex + 1));
 			configured.add("--config=" + selected);

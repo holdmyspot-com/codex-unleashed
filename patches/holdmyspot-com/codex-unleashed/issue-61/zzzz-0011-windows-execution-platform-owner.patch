@@ -1,0 +1,190 @@
+From a9aab586e48afed2bf5507dcda6513349d166afa Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 14:51:43 +0000
+Subject: [PATCH] Give Windows cross CI one execution-platform owner
+
+Separate shared remote scheduling from the default Linux execution-platform list. Both BuildBuddy hosts retain their cache, BES, downloader and executor settings, while Windows cross variants leave the full platform list to ci-windows-cross. Select these variants in the upstream helper only for selectors before the payload separator.
+
+Regression: updated wrapper tests fail before implementation. just test-github-scripts passes all 91 tests afterward. Actual Bazel MSVC runtime analysis reproduces the duplicate-expansion warning with the old configuration and passes without it with the Windows variant. just fmt-check and just bazel-lock-check pass. Native Windows execution remains a hosted acceptance gate.
+---
+ .bazelrc                                      | 20 +++++++----
+ .github/scripts/run_bazel_with_buildbuddy.py  | 24 ++++++++------
+ .../scripts/test_run_bazel_with_buildbuddy.py | 33 +++++++++++++++++--
+ 3 files changed, 59 insertions(+), 18 deletions(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index a44eed97d..1abee8dd0 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -81,9 +81,13 @@ common:buildbuddy-generic --remote_cache=grpcs://remote.buildbuddy.io
+ common:buildbuddy-generic --experimental_remote_downloader=grpcs://remote.buildbuddy.io
+ 
+ # Add remote execution on the generic host.
+-common:buildbuddy-generic-rbe --config=buildbuddy-generic
++common:buildbuddy-generic-execution --config=buildbuddy-generic
++common:buildbuddy-generic-execution --remote_executor=grpcs://remote.buildbuddy.io
++common:buildbuddy-generic-rbe --config=buildbuddy-generic-execution
+ common:buildbuddy-generic-rbe --config=remote
+-common:buildbuddy-generic-rbe --remote_executor=grpcs://remote.buildbuddy.io
++# Windows cross CI supplies its complete execution-platform list.
++common:buildbuddy-generic-rbe-windows-cross --config=buildbuddy-generic-execution
++common:buildbuddy-generic-rbe-windows-cross --config=remote-base
+ 
+ # Use the OpenAI tenant for cache, BES, and downloads without remote execution.
+ common:buildbuddy-openai --bes_backend=grpcs://openai.buildbuddy.io
+@@ -92,9 +96,12 @@ common:buildbuddy-openai --remote_cache=grpcs://openai.buildbuddy.io
+ common:buildbuddy-openai --experimental_remote_downloader=grpcs://openai.buildbuddy.io
+ 
+ # Add remote execution on the OpenAI tenant.
+-common:buildbuddy-openai-rbe --config=buildbuddy-openai
++common:buildbuddy-openai-execution --config=buildbuddy-openai
++common:buildbuddy-openai-execution --remote_executor=grpcs://openai.buildbuddy.io
++common:buildbuddy-openai-rbe --config=buildbuddy-openai-execution
+ common:buildbuddy-openai-rbe --config=remote
+-common:buildbuddy-openai-rbe --remote_executor=grpcs://openai.buildbuddy.io
++common:buildbuddy-openai-rbe-windows-cross --config=buildbuddy-openai-execution
++common:buildbuddy-openai-rbe-windows-cross --config=remote-base
+ 
+ # This limits both in-flight executions and concurrent downloads. Even with high number
+ # of jobs execution will still be limited by CPU cores, so this just pays a bit of
+@@ -104,12 +111,13 @@ common --jobs=30
+ # Shared remote execution policy. The endpoint-bearing `buildbuddy-*-rbe`
+ # configurations include this group; CI configs override TestRunner below
+ # when tests must remain local on their runner.
+-common:remote --strategy=remote
++common:remote-base --strategy=remote
++common:remote-base --jobs=800
++common:remote --config=remote-base
+ # Native Mac voice actions need the local Apple tools; Linux remains remote.
+ common:macos --strategy=VoiceNativePrefix=remote,sandboxed,local
+ common:macos --strategy=VoiceNativeRuntime=remote,sandboxed,local
+ common:remote --extra_execution_platforms=//:rbe
+-common:remote --jobs=800
+ # TODO(team): Evaluate if this actually helps, zbarsky is not sure, everything seems bottlenecked on `core` either way.
+ # Enable pipelined compilation since we are not bound by local CPU count.
+ #common:remote --@rules_rust//rust/settings:pipelined_compilation
+diff --git a/.github/scripts/run_bazel_with_buildbuddy.py b/.github/scripts/run_bazel_with_buildbuddy.py
+index afbf0b656..51bac9867 100755
+--- a/.github/scripts/run_bazel_with_buildbuddy.py
++++ b/.github/scripts/run_bazel_with_buildbuddy.py
+@@ -14,13 +14,14 @@ OPENAI_REPOSITORY = "openai/codex"
+ # also select the matching remote executor endpoint.
+ GENERIC_REMOTE_CONFIG = "buildbuddy-generic"
+ OPENAI_REMOTE_CONFIG = "buildbuddy-openai"
++WINDOWS_CROSS_CONFIG = "--config=ci-windows-cross"
+ # These CI configurations require remote build execution. The wrapper supplies
+-# an RBE configuration, which also includes the common `remote` settings.
++# an RBE configuration with shared remote policy. Windows CI owns its platform list.
+ REMOTE_EXECUTION_CONFIGS = {
+     "--config=ci-linux",
+     "--config=ci-macos",
+     "--config=ci-v8",
+-    "--config=ci-windows-cross",
++    WINDOWS_CROSS_CONFIG,
+ }
+ # Honor either explicit setting so the wrapper never overrides the caller's
+ # choice when it supplies the CI default below.
+@@ -97,12 +98,16 @@ def uses_openai_host(env: Mapping[str, str]) -> bool:
+     return bool(env.get("BUILDBUDDY_API_KEY")) and is_trusted_upstream_run(env)
+ 
+ 
+-def uses_remote_execution(args: Sequence[str]) -> bool:
++def _before_separator(args: Sequence[str]) -> Sequence[str]:
+     try:
+         separator_idx = args.index("--")
+     except ValueError:
+         separator_idx = len(args)
+-    return any(arg in REMOTE_EXECUTION_CONFIGS for arg in args[:separator_idx])
++    return args[:separator_idx]
++
++
++def uses_remote_execution(args: Sequence[str]) -> bool:
++    return any(arg in REMOTE_EXECUTION_CONFIGS for arg in _before_separator(args))
+ 
+ 
+ def remote_config(args: Sequence[str], env: Mapping[str, str]) -> str | None:
+@@ -112,19 +117,18 @@ def remote_config(args: Sequence[str], env: Mapping[str, str]) -> str | None:
+     config = OPENAI_REMOTE_CONFIG if uses_openai_host(env) else GENERIC_REMOTE_CONFIG
+     if uses_remote_execution(args):
+         config += "-rbe"
++    if WINDOWS_CROSS_CONFIG in _before_separator(args):
++        config += "-windows-cross"
+     return config
+ 
+ 
+ def bazel_args_without_remote_execution(args: Sequence[str]) -> list[str]:
+     # Remote CI configs require BuildBuddy credentials. Removing them preserves
+     # the local fallback used for fork pull requests.
+-    try:
+-        separator_idx = args.index("--")
+-    except ValueError:
+-        separator_idx = len(args)
++    options = _before_separator(args)
+     return [
+-        *(arg for arg in args[:separator_idx] if arg not in REMOTE_EXECUTION_CONFIGS),
+-        *args[separator_idx:],
++        *(arg for arg in options if arg not in REMOTE_EXECUTION_CONFIGS),
++        *args[len(options) :],
+     ]
+ 
+ 
+diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
+index 522c3a41f..3db617b38 100644
+--- a/.github/scripts/test_run_bazel_with_buildbuddy.py
++++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
+@@ -91,13 +91,42 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+             ),
+             [
+                 "build",
+-                "--config=buildbuddy-generic-rbe",
++                "--config=buildbuddy-generic-rbe-windows-cross",
+                 "--remote_header=x-buildbuddy-api-key=fork-token",
+                 "--config=ci-windows-cross",
+                 "//codex-rs/cli:codex",
+             ],
+         )
+ 
++    def test_windows_configuration_respects_host_and_payload(self) -> None:
++        with TemporaryDirectory() as temp_dir:
++            env = self.github_env(temp_dir, event_name="push")
++            self.assertEqual(
++                run_bazel_with_buildbuddy.remote_config(
++                    ["build", "--config=ci-windows-cross"], env
++                ),
++                "buildbuddy-openai-rbe-windows-cross",
++            )
++            self.assertEqual(
++                run_bazel_with_buildbuddy.remote_config(
++                    [
++                        "run",
++                        "--config=ci-linux",
++                        "//cli:codex",
++                        "--",
++                        "--config=ci-windows-cross",
++                    ],
++                    env,
++                ),
++                "buildbuddy-openai-rbe",
++            )
++            self.assertEqual(
++                run_bazel_with_buildbuddy.bazel_args_with_remote_config(
++                    ["build", "--config=ci-windows-cross"], {}
++                ),
++                ["build"],
++            )
++
+     def test_query_remote_configuration_is_inserted_before_expression(self) -> None:
+         expression = 'kind("rust_library rule", //codex-rs/...)'
+         env = {"BUILDBUDDY_API_KEY": "fork-token"}
+@@ -116,7 +145,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+                     ),
+                     [
+                         command,
+-                        "--config=buildbuddy-generic-rbe",
++                        "--config=buildbuddy-generic-rbe-windows-cross",
+                         "--remote_header=x-buildbuddy-api-key=fork-token",
+                         "--config=ci-windows-cross",
+                         "--output=label",
+-- 
+2.43.0
+
