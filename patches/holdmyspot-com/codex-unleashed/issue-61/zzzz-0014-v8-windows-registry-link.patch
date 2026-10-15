@@ -1,0 +1,160 @@
+From da023146d91a5eff4d5544d0439e6822aaa708b7 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 15:51:16 +0000
+Subject: [PATCH] Propagate V8 Windows registry linkage to Rust consumers
+
+The Windows GNU V8 test link in run 38747669404 fails on RegOpenKeyEx, RegQueryValueEx and other registry imports: the C++ archive requires advapi32, but build.rs only emits winmm and dbghelp. Patch its actual metadata producer. The same omission remains in latest stable rusty_v8 152.2.0.
+
+Regression: expose only the existing compiled build script, run its supported DENO_TRYBUILD mode for four Windows triples and Linux/macOS controls, and require each Windows dependency exactly once. This does not compile or download a V8 archive. Red: v8-link-metadata-red.log exit 3, Windows advapi32 absent. Green: v8-link-metadata-gates.log exit 0, test plus just fmt-check and just bazel-lock-check pass. Full native Windows linking remains a hosted acceptance gate.
+---
+ MODULE.bazel                                  |  3 ++
+ patches/BUILD.bazel                           |  1 +
+ patches/rusty_v8_windows_registry.patch       | 14 +++++++++
+ .../v8-link-metadata/BUILD.bazel              |  8 +++++
+ .../v8-link-metadata/check-link-metadata.sh   | 29 +++++++++++++++++++
+ .../v8-link-metadata/link_metadata_test.bzl   | 24 +++++++++++++++
+ 6 files changed, 79 insertions(+)
+ create mode 100644 patches/rusty_v8_windows_registry.patch
+ create mode 100644 tools/build-warnings/v8-link-metadata/BUILD.bazel
+ create mode 100644 tools/build-warnings/v8-link-metadata/check-link-metadata.sh
+ create mode 100644 tools/build-warnings/v8-link-metadata/link_metadata_test.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index c16078c69..716c19bba 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -658,6 +658,7 @@ new_local_repository(
+ )
+ 
+ crate.annotation(
++    additive_build_file_content = 'alias(name = "link_metadata_build_script", actual = ":_bs_", visibility = ["//visibility:public"])',
+     build_script_data = [
+         "@v8_targets//:rusty_v8_archive_for_target",
+         "@v8_targets//:rusty_v8_binding_for_target",
+@@ -681,10 +682,12 @@ crate.annotation(
+         "x86_64-unknown-linux-gnu": ["v8_enable_sandbox"],
+         "x86_64-unknown-linux-musl": ["v8_enable_sandbox"],
+     },
++    extra_aliased_targets = {"v8_link_metadata_build_script": "link_metadata_build_script"},
+     gen_build_script = "on",
+     patch_args = ["-p1"],
+     patches = [
+         "//patches:rusty_v8_prebuilt_out_dir.patch",
++        "//patches:rusty_v8_windows_registry.patch",
+     ],
+ )
+ 
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index c8c198189..e6f12b16a 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -36,6 +36,7 @@ exports_files([
+     "rules_rs_workspace_package_version.patch",
+     "rules_rs_zlib_snapshot_urls.patch",
+     "rusty_v8_prebuilt_out_dir.patch",
++    "rusty_v8_windows_registry.patch",
+     "ring_windows_msvc_include_dirs.patch",
+     "tikv-jemalloc-sys_make_env.patch",
+     "tikv-jemalloc-sys_dependency_flags.patch",
+diff --git a/patches/rusty_v8_windows_registry.patch b/patches/rusty_v8_windows_registry.patch
+new file mode 100644
+index 000000000..32a2c3afc
+--- /dev/null
++++ b/patches/rusty_v8_windows_registry.patch
+@@ -0,0 +1,14 @@
++diff --git a/build.rs b/build.rs
++index 2ac5891..bf0bfca 100644
++--- a/build.rs
+++++ b/build.rs
++@@ -1010,6 +1010,9 @@ fn print_link_flags() {
++   if target_os == "windows" {
++     println!("cargo:rustc-link-lib=dylib=winmm");
++     println!("cargo:rustc-link-lib=dylib=dbghelp");
+++    // WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+++    // Remove when rusty_v8 emits the registry library required by its archive.
+++    println!("cargo:rustc-link-lib=dylib=advapi32");
++   }
++ 
++   if target_env == "msvc" {
+diff --git a/tools/build-warnings/v8-link-metadata/BUILD.bazel b/tools/build-warnings/v8-link-metadata/BUILD.bazel
+new file mode 100644
+index 000000000..4d710e6c5
+--- /dev/null
++++ b/tools/build-warnings/v8-link-metadata/BUILD.bazel
+@@ -0,0 +1,8 @@
++load(":link_metadata_test.bzl", "link_metadata_test")
++
++link_metadata_test(
++    name = "link_metadata_test",
++    size = "small",
++    build_script = "@crates//:v8_link_metadata_build_script",
++    target_compatible_with = ["@platforms//os:linux"],
++)
+diff --git a/tools/build-warnings/v8-link-metadata/check-link-metadata.sh b/tools/build-warnings/v8-link-metadata/check-link-metadata.sh
+new file mode 100644
+index 000000000..d3843101e
+--- /dev/null
++++ b/tools/build-warnings/v8-link-metadata/check-link-metadata.sh
+@@ -0,0 +1,29 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++build_script="${TEST_SRCDIR}/${TEST_WORKSPACE}/{build_script}"
++for target in x86_64-pc-windows-gnullvm aarch64-pc-windows-gnullvm x86_64-pc-windows-msvc aarch64-pc-windows-msvc x86_64-unknown-linux-gnu aarch64-apple-darwin; do
++  target_os=windows
++  target_env=gnu
++  case "$target" in
++    *-msvc) target_env=msvc ;;
++    *-linux-*) target_os=linux ;;
++    *-darwin) target_os=macos; target_env='' ;;
++  esac
++  output="$(env -u DOCS_RS -u CARGO -u GN_ARGS -u CXXSTDLIB \
++    DENO_TRYBUILD=1 TARGET="$target" CARGO_CFG_TARGET_OS="$target_os" \
++    CARGO_CFG_TARGET_ENV="$target_env" CARGO_CFG_TARGET_FEATURE=crt-static \
++    CARGO_FEATURE_USE_CUSTOM_LIBCXX=1 RUSTY_V8_SRC_BINDING_PATH=unused-binding.rs \
++    "$build_script")"
++  printf '%s\n%s\n' "$target" "$output"
++  grep -Fxq 'cargo:rustc-link-lib=static=rusty_v8' <<< "$output"
++
++  if [[ "$target_os" == windows ]]; then
++    for library in winmm dbghelp advapi32; do
++      [[ "$(grep -Fxc "cargo:rustc-link-lib=dylib=$library" <<< "$output")" == 1 ]]
++    done
++  elif grep -Eq '^cargo:rustc-link-lib=dylib=(winmm|dbghelp|advapi32)$' <<< "$output"; then
++    echo 'Windows system libraries leaked into another target.' >&2
++    exit 1
++  fi
++done
+diff --git a/tools/build-warnings/v8-link-metadata/link_metadata_test.bzl b/tools/build-warnings/v8-link-metadata/link_metadata_test.bzl
+new file mode 100644
+index 000000000..4c0bfd30d
+--- /dev/null
++++ b/tools/build-warnings/v8-link-metadata/link_metadata_test.bzl
+@@ -0,0 +1,24 @@
++"""Run the crate's actual build script without downloading a V8 archive."""
++
++def _link_metadata_test_impl(ctx):
++    executable = ctx.actions.declare_file(ctx.label.name + ".sh")
++    ctx.actions.expand_template(
++        template = ctx.file._script,
++        output = executable,
++        substitutions = {"{build_script}": ctx.executable.build_script.short_path},
++        is_executable = True,
++    )
++    runfiles = ctx.runfiles(files = [ctx.executable.build_script])
++    return [DefaultInfo(
++        executable = executable,
++        runfiles = runfiles.merge(ctx.attr.build_script[DefaultInfo].default_runfiles),
++    )]
++
++link_metadata_test = rule(
++    implementation = _link_metadata_test_impl,
++    test = True,
++    attrs = {
++        "build_script": attr.label(mandatory = True, executable = True, cfg = "exec"),
++        "_script": attr.label(default = "check-link-metadata.sh", allow_single_file = True),
++    },
++)
+-- 
+2.43.0
+

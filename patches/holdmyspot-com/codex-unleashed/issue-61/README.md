@@ -1955,3 +1955,32 @@ remains unchanged. Platform-restricted fixtures retain their targets' existing
 compatibility constraints. The executable ANSI suite verifies an actual short
 test action. The complete native platform suites remain required acceptance
 gates; one Linux suite does not establish timing headroom on Windows or macOS.
+
+## Windows V8 registry linkage
+
+`zzzz-0014-v8-windows-registry-link.patch` supplies the Windows registry library
+required by V8's native archive to Rust consumers. Windows GNU links otherwise
+fail on registry imports such as `RegOpenKeyExW` and `RegQueryValueExW`. The
+archive's C++ rules already declare `advapi32`; the crate's build script must
+also emit that dependency for Rust links. Linux and macOS metadata stay free
+of Windows system libraries.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Rusty V8 150.4.0 and 152.2.0 both omit this dependency. Remove the workaround
+when the selected crate release emits its required Windows registry library.
+
+```sh
+bazel test --platforms=//:rbe --extra_execution_platforms=//:rbe \
+  --test_output=errors --test_verbose_timeout_warnings \
+  //tools/build-warnings/v8-link-metadata:link_metadata_test
+just fmt-check
+just bazel-lock-check
+```
+
+The regression executes the actual compiled build script in its supported
+`DENO_TRYBUILD` mode for four Windows triples and Linux/macOS controls. It
+requires each Windows system library exactly once, without downloading or
+compiling a V8 archive. The complete Windows V8 link remains a required hosted
+acceptance gate.
