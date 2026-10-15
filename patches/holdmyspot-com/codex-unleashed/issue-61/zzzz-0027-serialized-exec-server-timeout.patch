@@ -1,0 +1,55 @@
+From 492d2945bdccb8862d2965953397f6ee9ac376d1 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 16:31:59 -0400
+Subject: [PATCH] Give serialized exec-server unit tests a moderate timeout
+
+The 398-test single-threaded suite exceeds the 60-second short budget on native macOS and approaches it on Linux. Keep integration-test budgets unchanged and verify the generated unit-test timeout through the existing analysis test suite.
+
+Regression: bazel test //codex-rs/exec-server:serialized_unit_timeout_test fails before the change: expected moderate, got short. After the change, bazel test //tools/build-warnings/test-timeouts:timeouts_tests passes all eight tests. Native suite execution and full platform CI remain required acceptance gates.
+---
+ codex-rs/exec-server/BUILD.bazel               | 10 ++++++++++
+ tools/build-warnings/test-timeouts/BUILD.bazel |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/codex-rs/exec-server/BUILD.bazel b/codex-rs/exec-server/BUILD.bazel
+index 0836c75b6..92c23a4e3 100644
+--- a/codex-rs/exec-server/BUILD.bazel
++++ b/codex-rs/exec-server/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load("//:defs.bzl", "codex_rust_crate")
+ load("//bazel/rules/testing/compat:exec_server_compat_test.bzl", "exec_server_compat_test")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ exports_files(
+     ["src/proto/codex.exec_server.relay.v1.rs"],
+@@ -32,6 +33,15 @@ codex_rust_crate(
+     integration_test_args = ["--test-threads=1"],
+     test_tags = ["no-sandbox"],
+     unit_test_args = ["--test-threads=1"],
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "serialized_unit_timeout_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":exec-server-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+ 
+ exec_server_compat_test(
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index ce3ff6dd7..b57f45476 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -7,6 +7,7 @@ test_suite(
+         "//codex-rs/app-server:integration_override_test",
+         "//codex-rs/app-server:wine_override_test",
+         "//codex-rs/app-server-transport:retry_unit_timeout_test",
++        "//codex-rs/exec-server:serialized_unit_timeout_test",
+         "//codex-rs/login:unit_override_test",
+     ],
+ )
+-- 
+2.43.0
+

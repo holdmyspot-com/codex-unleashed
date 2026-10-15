@@ -1,0 +1,78 @@
+From 4047e6bbcc6cf426e10eb52aaf1915f3f0995e91 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 15 Oct 2026 16:42:35 -0400
+Subject: [PATCH] Declare short deadlines for exec-server compatibility checks
+
+Current, minimum-release and stable-release compatibility checks complete in about two seconds on Linux. Set their generated workspace-root tests to short so verbose timeout diagnostics reflect the actual workload.
+
+All three analysis regressions fail before the change: expected short, got moderate. After the change, all eleven timeout analysis tests and all three compatibility executables pass. The configured Java Bazel launcher verifies the same targets with verbose timeout diagnostics and no warning output. Full platform CI remains an acceptance gate.
+---
+ .../compat/exec_server_compat_test.bzl        |  1 +
+ codex-rs/exec-server/BUILD.bazel              | 24 +++++++++++++++++++
+ .../build-warnings/test-timeouts/BUILD.bazel  |  3 +++
+ 3 files changed, 28 insertions(+)
+
+diff --git a/bazel/rules/testing/compat/exec_server_compat_test.bzl b/bazel/rules/testing/compat/exec_server_compat_test.bzl
+index 8e9f6c753..6e3bf5c5f 100644
+--- a/bazel/rules/testing/compat/exec_server_compat_test.bzl
++++ b/bazel/rules/testing/compat/exec_server_compat_test.bzl
+@@ -43,5 +43,6 @@ def exec_server_compat_test(
+             "@platforms//os:linux",
+         ],
+         test_bin = "//bazel/rules/testing/compat:exec-server-compat-test-bin",
++        timeout = "short",
+         workspace_root_marker = "//codex-rs/utils/cargo-bin:repo_root.marker",
+     )
+diff --git a/codex-rs/exec-server/BUILD.bazel b/codex-rs/exec-server/BUILD.bazel
+index 92c23a4e3..959e51bdf 100644
+--- a/codex-rs/exec-server/BUILD.bazel
++++ b/codex-rs/exec-server/BUILD.bazel
+@@ -44,6 +44,30 @@ timeout_test(
+     visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+ 
++timeout_test(
++    name = "current_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-current-version-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "minimum_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-minimum-release-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "stable_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-stable-release-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
+ exec_server_compat_test(
+     name = "exec-server-current-version-test",
+     comparison_binary = "//codex-rs/cli:codex",
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index b57f45476..c23867589 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -7,7 +7,10 @@ test_suite(
+         "//codex-rs/app-server:integration_override_test",
+         "//codex-rs/app-server:wine_override_test",
+         "//codex-rs/app-server-transport:retry_unit_timeout_test",
++        "//codex-rs/exec-server:current_compat_timeout_test",
++        "//codex-rs/exec-server:minimum_compat_timeout_test",
+         "//codex-rs/exec-server:serialized_unit_timeout_test",
++        "//codex-rs/exec-server:stable_compat_timeout_test",
+         "//codex-rs/login:unit_override_test",
+     ],
+ )
+-- 
+2.43.0
+

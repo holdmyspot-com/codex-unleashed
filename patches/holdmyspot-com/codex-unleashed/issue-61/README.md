@@ -2316,3 +2316,48 @@ streams. Run it on native Windows with Git Bash on `PATH` and no installed WSL
 distribution, as well as Linux. Linux execution alone does not establish Windows
 executable resolution. The Windows Bazel shard and Clippy jobs remain separate
 acceptance gates for the complete launcher chain.
+
+## Serialized exec-server unit-test timeout
+
+`zzzz-0027-serialized-exec-server-timeout.patch` gives exec-server's serialized
+unit suite an explicit moderate timeout. Its hundreds of tests include real
+network retry waits and require more than the short budget on native macOS.
+Integration-test budgets and verbose timeout diagnostics retain their settings.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test //tools/build-warnings/test-timeouts:timeouts_tests
+bazel test --test_output=errors --test_verbose_timeout_warnings //codex-rs/exec-server:exec-server-unit-tests
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis regression requires the real generated unit target's moderate
+timeout. The actual suite must complete with every assertion passing on each
+supported native platform; analysis alone does not establish that execution gate.
+
+## Exec-server compatibility test deadlines
+
+`zzzz-0028-exec-server-compatibility-timeouts.patch` gives the current-version,
+minimum-release, and stable-release compatibility checks short deadlines.
+These Linux-only checks complete in seconds. Verbose timeout diagnostics remain
+enabled, and the compatibility assertions retain their behavior.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+queue through `zzzz-0027`. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+```sh
+bazel test --test_output=errors --test_verbose_timeout_warnings //tools/build-warnings/test-timeouts:timeouts_tests //codex-rs/exec-server:exec-server-current-version-test //codex-rs/exec-server:exec-server-minimum-release-test //codex-rs/exec-server:exec-server-stable-release-test
+just fmt-check
+just bazel-lock-check
+```
+
+All eleven timeout analysis regressions and the three actual compatibility
+checks must pass without timing-range advisories. The focused runtime command
+requires a Linux x86-64 execution host and the pinned comparison releases.
