@@ -1425,3 +1425,28 @@ Verification requires the Intel matrix job to report an x86-64 host and build
 native target does not establish that target's coverage. GitHub's
 [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 documents the host architectures of these runner labels.
+
+## Windows OpenSSL CLI socket errors
+
+`zzz-openssl-cli-socket-sentinel.patch` preserves OpenSSL's existing `int`
+socket interface when the command-line tools mark failed or closed sockets.
+The explicit conversion of Windows' `INVALID_SOCKET` sentinel keeps fatal
+conversion diagnostics enabled, including in the optional SCTP error path.
+The tracking issue is
+[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+native dependency patches, including the OpenSSL 4.0.1 dependency and library
+socket-sentinel fixes.
+
+```sh
+tools/build-warnings/check-openssl-cli.sh
+just fmt-check
+just bazel-lock-check
+```
+
+The focused regression builds the actual Windows GNU OpenSSL CLI with fatal
+warnings. It covers the CLI source that library-only socket tests omit. The
+expected result is a successful build without socket conversion diagnostics.
+Native Windows execution and MSVC compilation remain separate platform gates.
