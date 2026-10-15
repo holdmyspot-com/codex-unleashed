@@ -1923,3 +1923,35 @@ that emits a fatal warning. It requires configure context for Libffi failures,
 preserves exit status 23, and covers unrelated steps and missing configure logs.
 This patch provides diagnosis; the native macOS build remains required to
 establish that the underlying Libffi warning is fixed.
+
+## Generated Rust test timeouts
+
+`zzzz-0013-rust-test-timeouts.patch` gives generated Rust unit, binary-unit,
+and integration tests a short timeout by default. The measured short suites
+avoid Bazel's oversized-timeout advisories. Explicit crate timeout settings
+remain authoritative, including the long core/login unit suites and
+core/app-server integration suites. Native, sharded, Windows-cross, and Wine
+wrappers inherit their corresponding crate setting. Supplying `None` retains
+Bazel's size-based default. Verbose timeout diagnostics remain enabled.
+
+The declared base is `rust-v0.162.1`
+(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+From a Linux checkout with the MSVC runtime license environment set, run:
+
+```sh
+bazel test --platforms=//:rbe --extra_execution_platforms=//:rbe \
+  --test_verbose_timeout_warnings --test_output=errors \
+  //tools/build-warnings/test-timeouts:timeouts_tests \
+  //codex-rs/ansi-escape:ansi-escape-unit-tests
+just fmt-check
+just bazel-lock-check
+```
+
+Six analysis regressions inspect the real generated targets: unit, binary-unit,
+and integration defaults, plus explicit long unit, integration, and Wine
+overrides. They live in the owning packages so production target visibility
+remains unchanged. Platform-restricted fixtures retain their targets' existing
+compatibility constraints. The executable ANSI suite verifies an actual short
+test action. The complete native platform suites remain required acceptance
+gates; one Linux suite does not establish timing headroom on Windows or macOS.
