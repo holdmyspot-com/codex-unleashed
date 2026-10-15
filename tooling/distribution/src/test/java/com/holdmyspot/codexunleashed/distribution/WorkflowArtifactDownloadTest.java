@@ -59,9 +59,9 @@ public final class WorkflowArtifactDownloadTest
 					Files.write(archive, payload);
 				Path output = work.resolve("output with spaces");
 				Path console = work.resolve("console.log");
-				ProcessBuilder builder = NativeCommands.createBuilder(List.of(
-					image.resolve("bin/codex-tooling").toString(), "download-workflow-artifact",
-					"example/project", "123", "build bundle", output.toString())).directory(work.toFile()).
+				ProcessBuilder builder = NativeCommands.scriptBuilder(
+					image.resolve("bin/codex-tooling"), "download-workflow-artifact",
+					"example/project", "123", "build bundle", output.toString()).directory(work.toFile()).
 					redirectErrorStream(true).redirectOutput(console.toFile());
 				builder.environment().put("PATH", adapters + File.pathSeparator + System.getenv("PATH"));
 				builder.environment().put("TMPDIR", captures.toString());
