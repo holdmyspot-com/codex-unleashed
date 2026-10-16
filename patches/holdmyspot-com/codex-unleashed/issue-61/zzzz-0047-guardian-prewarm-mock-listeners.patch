@@ -1,0 +1,89 @@
+From 0858de0c81e7bdbabba8f5a23dd38d6c3e1f98f6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 12:20:14 -0400
+Subject: [PATCH] Give prewarmed guardian test connections independent mock
+ listeners
+
+Native macOS job 117012089820 times out in the two routing regressions. The scripted mock accepts its next connection only after serving the first, while prewarm waits for both. Use separate listeners and aggregate their request logs. All four routing tests pass with the maintained CI stack environment (guardian-routing-green-ci-stack.log). Native and fresh emitted queue verification remain required.
+---
+ .../src/async_scorer/sampler_routing_tests.rs | 29 ++++++++++++++-----
+ 1 file changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
+index 5a94aed3e..f49e4a5e2 100644
+--- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
++++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
+@@ -40,8 +40,11 @@ impl WorkspaceRoutingResolver for UnavailableRouting {
+ async fn failed_routing_blocks_a_prewarmed_classifier_connection() -> Result<()> {
+     core_test_support::skip_if_no_network!(Ok(()));
+     let response = vec![vec![ev_assistant_message("r1", "low"), ev_completed("r1")]];
+-    let server = responses::start_websocket_server(vec![response.clone(), response]).await;
+-    let base_url = proxy_websocket_servers(&[&server, &server])
++    let servers = [
++        responses::start_websocket_server(vec![response.clone()]).await,
++        responses::start_websocket_server(vec![response]).await,
++    ];
++    let base_url = proxy_websocket_servers(&[&servers[0], &servers[1]])
+         .await?
+         .replace("/v1", "/backend-api/codex");
+     let auth =
+@@ -59,7 +62,12 @@ async fn failed_routing_blocks_a_prewarmed_classifier_connection() -> Result<()>
+         error.to_string().contains("discovery unavailable"),
+         "{error}"
+     );
+-    assert!(server.connections().iter().all(Vec::is_empty));
++    assert!(
++        servers
++            .iter()
++            .flat_map(|server| server.connections())
++            .all(|requests| requests.is_empty())
++    );
+     Ok(())
+ }
+ 
+@@ -243,7 +251,10 @@ async fn account_switch_cancels_request_opening_and_first_token_waits() -> Resul
+             accept_delay: None,
+             close_after_requests: false,
+         };
+-        let websocket = responses::start_websocket_server_with_headers(vec![stalled; 2]).await;
++        let websockets = [
++            responses::start_websocket_server_with_headers(vec![stalled.clone()]).await,
++            responses::start_websocket_server_with_headers(vec![stalled]).await,
++        ];
+         let changes = Arc::new(AuthAfterRouting {
+             initial: CodexAuth::from_external_chatgpt_tokens(
+                 token,
+@@ -266,7 +277,7 @@ async fn account_switch_cancels_request_opening_and_first_token_waits() -> Resul
+         let base_url = if transport == "http" {
+             format!("{}/v1", http.uri())
+         } else {
+-            proxy_websocket_servers(&[&websocket, &websocket]).await?
++            proxy_websocket_servers(&[&websockets[0], &websockets[1]]).await?
+         };
+         let mut config = sampler_config(base_url);
+         config.provider = create_model_provider(config.provider.info().clone(), Some(auth.clone()));
+@@ -279,7 +290,7 @@ async fn account_switch_cancels_request_opening_and_first_token_waits() -> Resul
+         tokio::pin!(sample);
+         tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
+             loop {
+-                if !opening.requests().is_empty() || websocket.connections().iter().any(|requests| !requests.is_empty()) {
++                if !opening.requests().is_empty() || websockets.iter().flat_map(|server| server.connections()).any(|requests| !requests.is_empty()) {
+                     break Ok::<(), anyhow::Error>(());
+                 }
+                 tokio::select! {
+@@ -299,7 +310,11 @@ async fn account_switch_cancels_request_opening_and_first_token_waits() -> Resul
+         );
+         assert_eq!(opening.requests().len(), usize::from(transport == "http"));
+         assert_eq!(
+-            websocket.connections().iter().map(Vec::len).sum::<usize>(),
++            websockets
++                .iter()
++                .flat_map(|server| server.connections())
++                .map(|requests| requests.len())
++                .sum::<usize>(),
+             usize::from(transport == "websocket")
+         );
+     }
+-- 
+2.43.0
+

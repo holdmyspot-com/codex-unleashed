@@ -1,0 +1,171 @@
+From 0dc393dc2e4c9034cd89506d4b91b0fe5d6a2d20 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 12:20:31 -0400
+Subject: [PATCH] Expose declared Windows DLL directories to native test
+ processes
+
+Native job 117012089532 records STATUS_DLL_NOT_FOUND before voice tests start. The DLL policy regression fails against the empty export seam while the non-DLL control passes (dll-policy-red.log). Resolve one DLL per declared directory and preserve inherited PATH. Voice integration tests use the existing launcher without new sharding or retries. Four local launcher tests pass (launcher-policy-green.log). Native Windows and fresh emitted queue acceptance remain required.
+---
+ codex-rs/voice-host/BUILD.bazel               |  1 +
+ defs.bzl                                      | 38 +++++++++++++++----
+ .../windows-launcher/BUILD.bazel              | 11 ++++++
+ .../dynamic_libraries_test.bzl                | 30 +++++++++++++++
+ 4 files changed, 72 insertions(+), 8 deletions(-)
+ create mode 100644 tools/build-warnings/windows-launcher/dynamic_libraries_test.bzl
+
+diff --git a/codex-rs/voice-host/BUILD.bazel b/codex-rs/voice-host/BUILD.bazel
+index 665141e70..9eaf1d06b 100644
+--- a/codex-rs/voice-host/BUILD.bazel
++++ b/codex-rs/voice-host/BUILD.bazel
+@@ -6,4 +6,5 @@ codex_rust_crate(
+     crate_name = "codex_voice_host",
+     crate_srcs = [],
+     unit_test_args = ["--test-threads=1"],
++    workspace_root_integration_tests = True,
+ )
+diff --git a/defs.bzl b/defs.bzl
+index bbe22f966..85504a3d9 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -128,8 +128,26 @@ def _windows_runfile_env_exports(ctx):
+         lines.append('call :resolve_runfile "{}"'.format(_runfile_logical_path(runfile)))
+         lines.append("if errorlevel 1 exit /b 1")
+         lines.append('set "{}=!resolve_runfile_result!"'.format(env_var))
++    lines.extend(windows_dynamic_library_path_exports(ctx.attr.test_bin[DefaultInfo].default_runfiles.files.to_list()))
+     return "\n".join(lines)
+ 
++def windows_dynamic_library_path_exports(runfiles):
++    """Expose each declared Windows DLL directory to the test process loader."""
++    directory_runfiles = {}
++    for runfile in runfiles:
++        if runfile.extension.lower() == "dll":
++            logical_path = _runfile_logical_path(runfile)
++            previous = directory_runfiles.get(runfile.dirname)
++            if previous == None or logical_path < previous:
++                directory_runfiles[runfile.dirname] = logical_path
++
++    lines = []
++    for directory in sorted(directory_runfiles):
++        lines.append('call :resolve_runfile "{}"'.format(directory_runfiles[directory]))
++        lines.append("if errorlevel 1 exit /b 1")
++        lines.append('for %%I in ("!resolve_runfile_result!") do set "PATH=%%~dpI;!PATH!"')
++    return lines
++
+ def _runfile_env_file(target):
+     executable = target[DefaultInfo].files_to_run.executable
+     if executable != None:
+@@ -241,6 +259,7 @@ def codex_rust_crate(
+         binary_unit_test_timeout = "short",
+         integration_test_timeout = "short",
+         integration_test_timeouts = {},
++        workspace_root_integration_tests = False,
+         test_data_extra = [],
+         test_shard_counts = {},
+         test_tags = [],
+@@ -297,6 +316,9 @@ def codex_rust_crate(
+         integration_test_timeouts: Mapping from native integration test target
+             names to timeout overrides. Windows-cross and Wine variants inherit
+             the same override. Other targets use integration_test_timeout.
++        workspace_root_integration_tests: Run unsharded integration tests through
++            the workspace-root launcher, including absolute binary paths and
++            declared Windows DLL directories. Defaults to False.
+         test_data_extra: Extra runtime data for tests.
+         test_shard_counts: Mapping from generated test target name to Bazel
+             shard count. Matching tests use native Bazel sharding on the outer
+@@ -595,12 +617,12 @@ def codex_rust_crate(
+ 
+         # There are four generated integration-test shapes:
+         #
+-        # 1. Unsharded native tests keep the plain rust_test label for minimal
+-        #    churn and the usual rules_rust Cargo-like environment.
+-        # 2. Sharded native tests split into a manual rust_test binary plus an
+-        #    outer workspace_root_test. The outer test action receives Bazel's
+-        #    sharding environment, resolves the real binary through the
+-        #    runfiles manifest, and implements stable libtest sharding itself.
++        # 1. Unsharded native tests use the plain rust_test label unless they
++        #    explicitly request the workspace-root launcher.
++        # 2. Sharded or explicitly wrapped native tests split into a manual
++        #    rust_test binary plus an outer workspace_root_test. The outer test
++        #    action receives Bazel's sharding environment, resolves the real
++        #    binary through runfiles, and implements stable libtest sharding.
+         # 3. Windows cross tests always use the workspace_root_test wrapper so
+         #    runfile env vars become Windows-native absolute paths before the
+         #    Rust process starts.
+@@ -610,7 +632,7 @@ def codex_rust_crate(
+         #    owns cleanup. The outer workspace_root_test resolves the runner,
+         #    test, and server from runfiles, sets a Cargo-like cwd, and applies
+         #    the native test's shard count.
+-        if test_shard_count:
++        if test_shard_count or workspace_root_integration_tests:
+             # This target is intentionally a binary-like helper, not the public
+             # test target. The wrapper below owns cwd setup, runfile env
+             # materialization, sharding, and flaky retry behavior.
+@@ -684,7 +706,7 @@ def codex_rust_crate(
+ 
+         if run_tests_with_wine_exec:
+             wine_test_name = test_name.removesuffix("-test") + "-wine-exec-test"
+-            native_test_binary = ":" + (integration_test_binary if test_shard_count else test_name)
++            native_test_binary = ":" + (integration_test_binary if test_shard_count or workspace_root_integration_tests else test_name)
+             wine_test_binaries = dict(wine_host_binaries)
+ 
+             wine_exec_server = wine_test_name + "-windows-exec-server"
+diff --git a/tools/build-warnings/windows-launcher/BUILD.bazel b/tools/build-warnings/windows-launcher/BUILD.bazel
+index f40c008e4..483053c91 100644
+--- a/tools/build-warnings/windows-launcher/BUILD.bazel
++++ b/tools/build-warnings/windows-launcher/BUILD.bazel
+@@ -1,5 +1,16 @@
++load(":dynamic_libraries_test.bzl", "dll_directories_test", "no_dlls_test")
+ load(":launcher_test.bzl", "launcher_fixture", "windows_launcher_test")
+ 
++dll_directories_test(
++    name = "dll_directories_test",
++    size = "small",
++)
++
++no_dlls_test(
++    name = "no_dlls_test",
++    size = "small",
++)
++
+ [launcher_fixture(
+     name = "fixture_" + line_endings,
+     crlf_substitutions = line_endings == "crlf",
+diff --git a/tools/build-warnings/windows-launcher/dynamic_libraries_test.bzl b/tools/build-warnings/windows-launcher/dynamic_libraries_test.bzl
+new file mode 100644
+index 000000000..1b04d3702
+--- /dev/null
++++ b/tools/build-warnings/windows-launcher/dynamic_libraries_test.bzl
+@@ -0,0 +1,30 @@
++"""Verify the Windows loader receives only declared DLL search directories."""
++
++load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
++load("//:defs.bzl", "windows_dynamic_library_path_exports")
++
++def _dll_directories_test_impl(ctx):
++    env = unittest.begin(ctx)
++    exports = windows_dynamic_library_path_exports([
++        struct(extension = "dll", dirname = "voice/bin", short_path = "voice/bin/glib.dll"),
++        struct(extension = "dll", dirname = "voice/bin", short_path = "voice/bin/gstreamer.dll"),
++        struct(extension = "dll", dirname = "other/bin", short_path = "other/bin/codec.dll"),
++        struct(extension = "exe", dirname = "unrelated/bin", short_path = "unrelated/bin/tool.exe"),
++    ])
++    resolutions = [line for line in exports if line.startswith("call :resolve_runfile ")]
++    path_exports = [line for line in exports if 'set "PATH=' in line]
++    asserts.equals(env, 2, len(resolutions))
++    asserts.equals(env, 2, len(path_exports))
++    asserts.true(env, all([";!PATH!" in line for line in path_exports]))
++    asserts.false(env, any(["unrelated/bin" in line for line in exports]))
++    return unittest.end(env)
++
++def _no_dlls_test_impl(ctx):
++    env = unittest.begin(ctx)
++    asserts.equals(env, [], windows_dynamic_library_path_exports([
++        struct(extension = "lib", dirname = "sdk", short_path = "sdk/import.lib"),
++    ]))
++    return unittest.end(env)
++
++dll_directories_test = unittest.make(_dll_directories_test_impl)
++no_dlls_test = unittest.make(_no_dlls_test_impl)
+-- 
+2.43.0
+

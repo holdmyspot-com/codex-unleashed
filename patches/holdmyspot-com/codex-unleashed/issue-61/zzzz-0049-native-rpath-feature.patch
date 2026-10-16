@@ -1,0 +1,129 @@
+From 55011418b022d410ee2585f8a97219064c424fcf Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 13:02:29 -0400
+Subject: [PATCH] Emit each native runtime search path once
+
+LLVM already supplies runtime_library_search_directories_workaround. Disable the original Bazel feature for target and execution builds rather than suppressing duplicate-rpath linker diagnostics.
+
+Red: macos_rpath_test generated @loader_path/fixture twice (exit 3). Green: both Darwin and Linux generated-link-argument tests pass (exit 0). Native full-matrix acceptance remains pending.
+---
+ .bazelrc                                    |  6 +++
+ tools/build-warnings/rpaths/BUILD.bazel     | 23 ++++++++
+ tools/build-warnings/rpaths/rpaths_test.bzl | 58 +++++++++++++++++++++
+ 3 files changed, 87 insertions(+)
+ create mode 100644 tools/build-warnings/rpaths/BUILD.bazel
+ create mode 100644 tools/build-warnings/rpaths/rpaths_test.bzl
+
+diff --git a/.bazelrc b/.bazelrc
+index 8931f9b4a..bb19c2857 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -18,6 +18,12 @@ common --experimental_platform_in_output_dir
+ build --features=static_link_msvcrt
+ build --host_features=static_link_msvcrt
+ 
++# WORKAROUND: https://github.com/holdmyspot-com/codex-unleashed/issues/61
++# LLVM supplies runtime_library_search_directories_workaround. Disable Bazel's
++# original feature to emit each rpath once; remove when LLVM disables it itself.
++build --features=-runtime_library_search_directories
++build --host_features=-runtime_library_search_directories
++
+ build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
+ build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
+ # Native dependencies retain their warning diagnostics without making them fatal.
+diff --git a/tools/build-warnings/rpaths/BUILD.bazel b/tools/build-warnings/rpaths/BUILD.bazel
+new file mode 100644
+index 000000000..064059f5c
+--- /dev/null
++++ b/tools/build-warnings/rpaths/BUILD.bazel
+@@ -0,0 +1,23 @@
++load(":rpaths_test.bzl", "link_probe", "linux_rpath_test", "macos_rpath_test")
++
++platform(
++    name = "macos",
++    constraint_values = [
++        "@platforms//cpu:aarch64",
++        "@platforms//os:macos",
++    ],
++)
++
++link_probe(name = "probe")
++
++linux_rpath_test(
++    name = "linux_rpath_test",
++    size = "small",
++    target_under_test = ":probe",
++)
++
++macos_rpath_test(
++    name = "macos_rpath_test",
++    size = "small",
++    target_under_test = ":probe",
++)
+diff --git a/tools/build-warnings/rpaths/rpaths_test.bzl b/tools/build-warnings/rpaths/rpaths_test.bzl
+new file mode 100644
+index 000000000..908c55fe1
+--- /dev/null
++++ b/tools/build-warnings/rpaths/rpaths_test.bzl
+@@ -0,0 +1,58 @@
++"""Verify that native linking emits each requested runtime search path once."""
++
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
++load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
++load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
++
++_LinkArgumentsInfo = provider(fields = ["arguments"])
++
++def _link_probe_impl(ctx):
++    toolchain = find_cpp_toolchain(ctx)
++    features = cc_common.configure_features(
++        ctx = ctx,
++        cc_toolchain = toolchain,
++        requested_features = ctx.features,
++        unsupported_features = ctx.disabled_features,
++    )
++    variables = cc_common.create_link_variables(
++        cc_toolchain = toolchain,
++        feature_configuration = features,
++        runtime_library_search_directories = depset(["fixture"]),
++        is_linking_dynamic_library = False,
++    )
++    arguments = cc_common.get_memory_inefficient_command_line(
++        feature_configuration = features,
++        action_name = ACTION_NAMES.cpp_link_executable,
++        variables = variables,
++    )
++    return [_LinkArgumentsInfo(arguments = arguments)]
++
++link_probe = rule(
++    implementation = _link_probe_impl,
++    fragments = ["cpp"],
++    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
++)
++
++def _rpath_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    arguments = analysistest.target_under_test(env)[_LinkArgumentsInfo].arguments
++    paths = [argument for argument in arguments if ctx.attr.expected_rpath in argument]
++    asserts.equals(env, 1, len(paths), "Link arguments: " + repr(arguments))
++    return analysistest.end(env)
++
++macos_rpath_test = analysistest.make(
++    _rpath_test_impl,
++    attrs = {"expected_rpath": attr.string(default = "@loader_path/fixture")},
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//tools/build-warnings/rpaths:macos")),
++    },
++)
++
++linux_rpath_test = analysistest.make(
++    _rpath_test_impl,
++    attrs = {"expected_rpath": attr.string(default = "$ORIGIN/fixture")},
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:rbe")),
++    },
++)
+-- 
+2.43.0
+

@@ -1,0 +1,118 @@
+From 159b9ff8639a3cfe5c1c580bd5ff2fdb99961751 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 12:20:02 -0400
+Subject: [PATCH] Follow yielded cells in settlement regression tests
+
+A forced initial yield reproduces the intended baseline panic (settled-yield-red.log). Collect output across waits under a 30-second bound, keeping settlement assertions. Focused test suite: 8 passed (settled-yield-green-final.log). Native macOS and fresh emitted queue verification remain required.
+---
+ codex-rs/code-mode-runtime/tests/settled.rs | 68 +++++++++++++++++----
+ 1 file changed, 57 insertions(+), 11 deletions(-)
+
+diff --git a/codex-rs/code-mode-runtime/tests/settled.rs b/codex-rs/code-mode-runtime/tests/settled.rs
+index d9ed6a5c7..1d8b3c028 100644
+--- a/codex-rs/code-mode-runtime/tests/settled.rs
++++ b/codex-rs/code-mode-runtime/tests/settled.rs
+@@ -10,12 +10,17 @@ use codex_code_mode_runtime::InProcessCodeModeSession;
+ use codex_code_mode_runtime::NoopCodeModeSessionDelegate;
+ use codex_code_mode_runtime::RuntimeResponse;
+ use codex_code_mode_runtime::WaitOutcome;
++use codex_code_mode_runtime::WaitRequest;
+ use pretty_assertions::assert_eq;
+ use serde_json::Value;
+ use serde_json::json;
+ 
+-#[allow(clippy::expect_used)]
+ async fn assert_output(source: &str, expected: Value) {
++    assert_output_with_yield(source, expected, 5_000).await;
++}
++
++#[allow(clippy::expect_used)]
++async fn assert_output_with_yield(source: &str, expected: Value, yield_time_ms: u64) {
+     let session = InProcessCodeModeSession::new();
+     let started = session
+         .execute(
+@@ -23,7 +28,7 @@ async fn assert_output(source: &str, expected: Value) {
+                 tool_call_id: "settled".to_string(),
+                 enabled_tools: Vec::new(),
+                 source: source.to_string(),
+-                yield_time_ms: Some(/*value*/ 5_000),
++                yield_time_ms: Some(yield_time_ms),
+                 max_output_tokens: None,
+             },
+             Arc::new(NoopCodeModeSessionDelegate),
+@@ -31,15 +36,46 @@ async fn assert_output(source: &str, expected: Value) {
+         )
+         .await
+         .expect("start cell");
+-    let response = started.initial_response().await.expect("execute cell");
+-    let RuntimeResponse::Result {
+-        content_items,
+-        error_text: None,
+-        ..
+-    } = response
+-    else {
+-        panic!("unexpected cell response: {response:?}");
+-    };
++    let content_items = tokio::time::timeout(Duration::from_secs(/*secs*/ 30), async {
++        let mut response = started.initial_response().await.expect("execute cell");
++        let mut output = Vec::new();
++        loop {
++            match response {
++                RuntimeResponse::Yielded {
++                    cell_id,
++                    content_items,
++                    ..
++                } => {
++                    output.extend(content_items);
++                    let outcome = session
++                        .wait(
++                            WaitRequest {
++                                cell_id,
++                                yield_time_ms: 5_000,
++                            },
++                            /*preempt*/ None,
++                        )
++                        .await
++                        .expect("wait for cell");
++                    let WaitOutcome::LiveCell(next_response) = outcome else {
++                        panic!("cell disappeared before completion: {outcome:?}");
++                    };
++                    response = next_response;
++                }
++                RuntimeResponse::Result {
++                    content_items,
++                    error_text: None,
++                    ..
++                } => {
++                    output.extend(content_items);
++                    break output;
++                }
++                unexpected => panic!("unexpected cell response: {unexpected:?}"),
++            }
++        }
++    })
++    .await
++    .expect("cell completion timed out");
+     let actual: Vec<Value> = content_items
+         .into_iter()
+         .map(|item| {
+@@ -52,6 +88,16 @@ async fn assert_output(source: &str, expected: Value) {
+     assert_eq!(actual, vec![expected]);
+ }
+ 
++#[tokio::test]
++async fn collects_output_after_execution_yields() {
++    assert_output_with_yield(
++        "await new Promise(resolve => setTimeout(resolve, 10)); text({status: 'complete'});",
++        json!({"status": "complete"}),
++        /*yield_time_ms*/ 0,
++    )
++    .await;
++}
++
+ #[tokio::test]
+ async fn preserves_settlement_order_before_and_during_iteration() {
+     assert_output(
+-- 
+2.43.0
+

@@ -2123,3 +2123,77 @@ inheritance, and the retained extended suite deadlines. Native CI must also
 execute the affected tests within those deadlines on each supported platform.
 Fast shards of a suite can still receive timing advisories because every shard
 shares the deadline required by its slowest supported execution.
+
+## Build-info executable runfiles
+
+`zzzz-0045-build-info-test-runfiles.patch` resolves the Codex executable through
+the maintained Cargo/Bazel binary helper in both build-info regressions. A
+logical runfile name is not a native filesystem path on manifest-only Windows.
+The version, provider, and upstream identity assertions retain their behavior.
+
+## Settlement test completion
+
+`zzzz-0046-settlement-test-yields.patch` follows yielded cells until completion
+in the settlement test helper and collects output from each response. Completion
+has a 30-second bound. Its regression forces an initial yield; all existing
+settlement-order assertions remain enabled.
+
+## Guardian prewarm test listeners
+
+`zzzz-0047-guardian-prewarm-mock-listeners.patch` gives each prewarmed connection
+its own scripted mock listener. The mock serves one connection before accepting
+the next; sharing it can deadlock prewarm before a request is sent. Assertions
+inspect the combined request logs, including cancellation and routing failures.
+
+## Windows native test DLL directories
+
+`zzzz-0048-windows-test-dll-paths.patch` adds declared DLL directories to the
+Windows test process's `PATH` before starting its executable. Each directory is
+resolved through an actual DLL runfile, preserving the inherited search path.
+Voice integration tests use the workspace-root launcher to receive these paths
+and absolute helper executable paths. This does not add shards or retries.
+
+The declared base for patches 0045–0048 is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding queue through
+patch 0044, including the branding patch's build-info tests. Apply the complete
+queue in its maintained order. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/windows-launcher:all //codex-rs/cli:cli-build_info-test //codex-rs/code-mode-runtime:code-mode-runtime-settled-test //codex-rs/ext/guardian-v2:guardian-v2-unit-tests //codex-rs/voice-host:all
+```
+
+The DLL policy and line-ending regressions pass, both build-info checks pass,
+and all settlement and guardian tests complete with their assertions enabled.
+Native Windows must also start the voice unit and integration executables
+without missing DLLs. macOS must complete the settlement and guardian suites.
+Local Linux checks do not establish those native outcomes; the full CI matrix
+and Cargo release builds remain required acceptance gates.
+
+## Native runtime search paths
+
+`zzzz-0049-native-rpath-feature.patch` selects LLVM's runtime search path
+feature for target and execution builds and disables Bazel's original feature.
+The two features otherwise emit the same rpath, causing Darwin's linker to warn
+about duplicate paths. The warning remains enabled; each requested path occurs
+once. Linux retains its relative runtime search path.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding maintained
+queue through patch 0048. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. The configuration
+workaround is removable when LLVM disables Bazel's original feature itself.
+Run these checks from the patched checkout:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/rpaths:all
+```
+
+Both generated-link-argument regressions require exactly one runtime search
+path, preserving Darwin's `@loader_path` and Linux's `$ORIGIN` spelling.
+Native macOS CI must also link and execute the voice targets without duplicate
+rpath diagnostics. Analysis checks alone do not establish that native gate.
