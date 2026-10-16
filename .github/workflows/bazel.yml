@@ -293,7 +293,9 @@ jobs:
 
   test-windows-native-main:
     if: ${{ (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 90
+    # Cold native builds include Java verification and local MSVC compilation
+    # before the full test suite; keep individual Bazel test timeouts in force.
+    timeout-minutes: 180
     runs-on: windows-2022
     name: Bazel test on windows-2022 for x86_64-pc-windows-msvc (native main)
     steps:
