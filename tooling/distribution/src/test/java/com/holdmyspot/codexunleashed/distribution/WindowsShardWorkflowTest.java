@@ -59,6 +59,7 @@ public final class WindowsShardWorkflowTest
 			Path image = root.resolve("runtime");
 			DistributionMain.main(new String[] {System.getProperty("tooling.runtime.modules"), image.toString()});
 			Map<String, String> environment = new HashMap<>(System.getenv());
+			environment.remove("MSYS2_ARG_CONV_EXCL");
 			environment.put("GITHUB_WORKSPACE", project.toString());
 			environment.put("GITHUB_SHA", "fixture-source");
 			environment.put("GITHUB_ACTIONS", "true");
@@ -82,6 +83,18 @@ public final class WindowsShardWorkflowTest
 			}
 			assertTrue(Files.readString(root.resolve("build")).contains("@v8//:codex_windows_stack_assembly_test"));
 			assertTrue(Files.readString(root.resolve("cquery")).contains("@v8//:codex_windows_stack_assembly_test"));
+			for (String boundary : java.util.List.of("build", "cquery"))
+			{
+				java.util.List<String> arguments = Arrays.asList(Files.readString(root.resolve(boundary)).split("\0", -1));
+				assertTrue(arguments.contains("--shell_executable=/bin/bash"), arguments.toString());
+				assertTrue(arguments.contains("--action_env=PATH=/usr/bin:/bin"), arguments.toString());
+				assertTrue(arguments.contains("--host_action_env=PATH=/usr/bin:/bin"), arguments.toString());
+				assertTrue(arguments.contains("--local_test_jobs=2"), arguments.toString());
+				assertEquals(Files.readString(root.resolve(boundary + "-path-conversion")),
+					"--shell_executable=;--action_env=PATH=;--host_action_env=PATH=",
+					"Linux remote-action arguments must bypass MSYS path conversion at the native child boundary");
+			}
+
 			assertTrue(Files.isRegularFile(root.resolve("callback")), Files.readString(console));
 		}
 		finally

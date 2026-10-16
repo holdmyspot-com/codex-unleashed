@@ -234,6 +234,8 @@ jobs:
           # Compile on Linux RBE workers, then execute the self-contained
           # callback probe directly on Windows without a Rust batch launcher.
           : "${BUILDBUDDY_API_KEY:?Windows GNU callback verification requires RBE}"
+          # Preserve Linux remote-action paths when Git Bash invokes the native CLI.
+          export MSYS2_ARG_CONV_EXCL='--shell_executable=;--action_env=PATH=;--host_action_env=PATH='
           stack_bazel_args=(
             --config=ci-windows-cross
             --host_platform=//:rbe
@@ -242,6 +244,7 @@ jobs:
             --action_env=PATH=/usr/bin:/bin
             --host_action_env=PATH=/usr/bin:/bin
             --jobs=2
+            --local_test_jobs=2
             --remote_download_outputs=toplevel
           )
           "$CODEX_UNLEASHED_TOOLING" run-bazel-with-buildbuddy build \

@@ -25,6 +25,8 @@ public final class WindowsStackAssemblyFixture
 		String command = Arrays.stream(arguments).filter(argument -> !argument.startsWith("-")).
 			findFirst().orElse("callback");
 		Files.writeString(evidence.resolve(command), String.join("\0", arguments));
+		Files.writeString(evidence.resolve(command + "-path-conversion"),
+			System.getenv().getOrDefault("MSYS2_ARG_CONV_EXCL", ""));
 		if (command.equals("cquery"))
 			System.out.print(System.getenv("STACK_FIXTURE_BINARY") + "\r\n");
 		if (command.equals("callback"))
