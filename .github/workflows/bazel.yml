@@ -360,6 +360,10 @@ jobs:
           cd upstream
           bazel_targets=(
             //codex-rs/code-mode-runtime:code-mode-runtime-concurrent_initialization-test
+            //codex-rs/code-mode-runtime:code-mode-runtime-unit-tests
+            //codex-rs/code-mode-runtime:code-mode-runtime-settled-test
+            //codex-rs/code-mode-host:code-mode-host-unit-tests
+            //codex-rs/code-mode-host:code-mode-host-grpc-test
           )
           bazel_test_args=(
             test
@@ -368,6 +372,9 @@ jobs:
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
             --test_tag_filters=-argument-comment-lint
             --test_verbose_timeout_warnings
+            --keep_going
+            --nocache_test_results
+            --test_output=all
             "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
             --build_metadata=TAG_windows_native_main=true
           )
@@ -380,7 +387,7 @@ jobs:
             -- \
             "${bazel_targets[@]}"
 
-      - name: Run three async unit tests directly
+      - name: Reproduce sandbox deletion confinement
         if: always() && !cancelled() && steps.prepare_bazel.outcome == 'success'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -400,87 +407,9 @@ jobs:
             --nocache_test_results \
             --test_output=all \
             "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS= \
+            --test_filter=unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots \
             -- \
-            //codex-rs/async-utils:async-utils-unit-tests
-
-      - name: Run the same async unit tests through the selection launcher
-        if: always() && !cancelled() && steps.prepare_bazel.outcome == 'success'
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd upstream
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary \
-            --print-failed-test-logs \
-            --windows-msvc-host-platform \
-            -- \
-            test \
-            --config=ci-windows-msvc \
-            --platforms=//:windows_x86_64_msvc \
-            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --nocache_test_results \
-            --test_output=all \
-            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            -- \
-            //codex-rs/async-utils:async-utils-unit-tests
-
-      - name: Compare stdio fixture startup within its existing deadline
-        if: always() && !cancelled() && steps.prepare_bazel.outcome == 'success'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $fixtureDirectory = Join-Path $env:GITHUB_WORKSPACE ('.cat/work/temp/windows-stdio-probe fixture-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
-          New-Item -ItemType Directory -Path $fixtureDirectory | Out-Null
-          $fixture = Join-Path $fixtureDirectory 'stdio-server.cmd'
-          $expected = '{"id":1,"result":{"sessionId":"stdio-test"}}'
-          $batch = @('@echo off', 'set /p request=', ('echo ' + $expected), 'set /p notification=', 'set /p finish=')
-          try {
-              Set-Content -LiteralPath $fixture -Value $batch -Encoding ascii
-              $commands = @(
-                  @{ name = 'original-powershell'; program = 'powershell'; arguments = @('-NoProfile', '-Command', ('$null = [Console]::In.ReadLine(); [Console]::Out.WriteLine(''' + $expected + '''); $null = [Console]::In.ReadLine(); Start-Sleep -Seconds 60')) },
-                  @{ name = 'cmd-batch-fixture'; program = 'cmd.exe'; arguments = @('/d', '/q', '/c', $fixture) }
-              )
-              foreach ($command in $commands) {
-                  $start = [System.Diagnostics.ProcessStartInfo]::new()
-                  $start.FileName = $command.program
-                  $start.UseShellExecute = $false
-                  $start.CreateNoWindow = $true
-                  $start.RedirectStandardInput = $true
-                  $start.RedirectStandardOutput = $true
-                  $start.RedirectStandardError = $true
-                  foreach ($argument in $command.arguments) { $start.ArgumentList.Add($argument) }
-                  $process = [System.Diagnostics.Process]::new()
-                  $process.StartInfo = $start
-                  $started = $false
-                  try {
-                      $started = $process.Start()
-                      if (-not $started) { throw ('Failed to start ' + $command.name) }
-                      $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
-                      $process.StandardInput.WriteLine('{"id":1,"method":"initialize","params":{}}')
-                      $process.StandardInput.Flush()
-                      try {
-                          $line = $process.StandardOutput.ReadLineAsync().WaitAsync([TimeSpan]::FromSeconds(1)).GetAwaiter().GetResult()
-                          if ($line -ne $expected) { throw ('Unexpected handshake from ' + $command.name + ': ' + $line) }
-                          Write-Output ($command.name + ': handshake passed in ' + $elapsed.ElapsedMilliseconds + ' ms')
-                      } catch [System.TimeoutException] {
-                          Write-Output ($command.name + ': handshake exceeded the existing 1000 ms fixture deadline')
-                      }
-                  } finally {
-                      if ($started) {
-                          if (-not $process.HasExited) { $process.Kill($true) }
-                          $process.WaitForExit()
-                          $stderr = $process.StandardError.ReadToEnd()
-                          if ($stderr.Length -gt 0) { Write-Output ($command.name + ' stderr: ' + $stderr) }
-                      }
-                      $process.Dispose()
-                  }
-              }
-          } finally {
-              Remove-Item -LiteralPath $fixtureDirectory -Recurse -Force
-          }
+            //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests
 
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
