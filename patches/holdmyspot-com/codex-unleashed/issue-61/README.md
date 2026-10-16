@@ -1993,3 +1993,11 @@ commit in Bazel's real workspace-status input. The declared input is embedded
 at compilation, so the test supports manifest-only Windows runfiles. Native
 Windows CI also requires the complete voice runtime receipt preparation to
 succeed; a Linux configuration-ordering probe does not establish that gate.
+
+### TUI unit test deadline
+
+`zzzz-0039-tui-unit-test-timeout.patch` uses four TUI unit-test shards with a
+moderate deadline. All test assertions remain enabled. The analysis regression
+`//codex-rs/tui:unit_deadline_test` checks the declared deadline and participates
+in `//tools/build-warnings/test-timeouts:tests`. Run the regression together with
+`//codex-rs/tui:tui-unit-tests`; both targets are expected to pass.
