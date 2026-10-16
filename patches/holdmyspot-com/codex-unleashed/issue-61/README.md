@@ -1968,3 +1968,28 @@ Apply this patch after the preceding issue-61 build patches on the declared
 release base. Run `just fmt-check` and `just bazel-clippy` from the checkout
 root; both commands must succeed. The Clippy check covers the generated RPC
 module, the error conversion, the selection view, and the compaction tests.
+
+## Native Windows workspace status
+
+`zzzz-0038-windows-workspace-status.patch` expands host-specific build settings
+after the unconditional build defaults. Native Windows selects the batch
+workspace-status command, so native runtime receipts receive the source commit.
+Automatic host configuration for other Bazel commands remains enabled.
+Dependency source and receipt validation remain unchanged.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
+build-configuration patches. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+bazel test --test_output=errors //tools/build-warnings/workspace-status:source_revision_test
+just fmt-check
+just bazel-lock-check
+```
+
+The regression requires exactly one 40-digit lowercase hexadecimal source
+commit in Bazel's real workspace-status input. The declared input is embedded
+at compilation, so the test supports manifest-only Windows runfiles. Native
+Windows CI also requires the complete voice runtime receipt preparation to
+succeed; a Linux configuration-ordering probe does not establish that gate.

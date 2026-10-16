@@ -1,0 +1,103 @@
+From 3eb6deaec2ab4e9413b39799f8c19d52f3de0dc4 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 05:57:47 +0000
+Subject: [PATCH] Select native Windows workspace status after build defaults
+
+Expand platform-specific build settings after unconditional build defaults,
+so Windows uses workspace-status.cmd instead of the Unix script. Retain
+automatic host configuration for non-build commands.
+
+The regression embeds the declared workspace-status input at compilation,
+supporting manifest-only Windows runfiles, and requires one source revision.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012)
+Prerequisites: preceding issue-61 build configuration patches.
+Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+
+Red: source_revision_test with the host-ordering analogue fails with zero
+source revisions (exit 3). Moving host expansion after defaults passes the
+same regression (exit 0). Evidence: workspace-status-{red,green}.log under
+linux-snapshot-repair-vuS1gm. The recorded native Windows invocation used
+the Unix status script and omitted STABLE_GIT_COMMIT. Native Windows
+confirmation remains a required hosted gate.
+---
+ .bazelrc                                       |  2 ++
+ .../workspace-status/BUILD.bazel               | 16 ++++++++++++++++
+ .../workspace-status/source_revision.rs        | 18 ++++++++++++++++++
+ .../workspace-status/workspace_status.bzl      |  6 ++++++
+ 4 files changed, 42 insertions(+)
+ create mode 100644 tools/build-warnings/workspace-status/BUILD.bazel
+ create mode 100644 tools/build-warnings/workspace-status/source_revision.rs
+ create mode 100644 tools/build-warnings/workspace-status/workspace_status.bzl
+
+diff --git a/.bazelrc b/.bazelrc
+index d3260c319..bd782a6c1 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -39,6 +39,8 @@ common --incompatible_default_to_explicit_init_py
+ common --@rules_python//python/config_settings:build_python_zip=false
+
+ common --enable_platform_specific_config
++# Expand host settings after the unconditional build defaults.
++build --enable_platform_specific_config
+ common:linux --host_platform=//:local_linux
+ common:windows --host_platform=//:local_windows
+ common --@rules_cc//cc/toolchains/args/archiver_flags:use_libtool_on_macos=False
+diff --git a/tools/build-warnings/workspace-status/BUILD.bazel b/tools/build-warnings/workspace-status/BUILD.bazel
+new file mode 100644
+index 000000000..05cf0256b
+--- /dev/null
++++ b/tools/build-warnings/workspace-status/BUILD.bazel
+@@ -0,0 +1,16 @@
++load("@rules_rust//rust:defs.bzl", "rust_test")
++load(":workspace_status.bzl", "workspace_status")
++
++workspace_status(
++    name = "status",
++    testonly = True,
++)
++
++rust_test(
++    name = "source_revision_test",
++    size = "small",
++    srcs = ["source_revision.rs"],
++    compile_data = [":status"],
++    edition = "2024",
++    rustc_env = {"WORKSPACE_STATUS_FILE": "$(execpath :status)"},
++)
+diff --git a/tools/build-warnings/workspace-status/source_revision.rs b/tools/build-warnings/workspace-status/source_revision.rs
+new file mode 100644
+index 000000000..643e73164
+--- /dev/null
++++ b/tools/build-warnings/workspace-status/source_revision.rs
+@@ -0,0 +1,18 @@
++#[test]
++fn workspace_status_contains_source_revision() {
++    let status = include_str!(env!("WORKSPACE_STATUS_FILE"));
++    let commits: Vec<_> = status
++        .lines()
++        .filter_map(|line| line.strip_prefix("STABLE_GIT_COMMIT "))
++        .collect();
++    assert_eq!(commits.len(), 1, "workspace status must contain one source revision");
++
++    let commit = commits[0];
++    assert!(
++        commit.len() == 40
++            && commit
++                .bytes()
++                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
++        "source revision must contain 40 lowercase hexadecimal digits: {commit:?}"
++    );
++}
+diff --git a/tools/build-warnings/workspace-status/workspace_status.bzl b/tools/build-warnings/workspace-status/workspace_status.bzl
+new file mode 100644
+index 000000000..d1953a6c5
+--- /dev/null
++++ b/tools/build-warnings/workspace-status/workspace_status.bzl
+@@ -0,0 +1,6 @@
++"""Expose the workspace status consumed by native runtime receipts."""
++
++def _workspace_status_impl(ctx):
++    return [DefaultInfo(files = depset([ctx.info_file]))]
++
++workspace_status = rule(implementation = _workspace_status_impl)
