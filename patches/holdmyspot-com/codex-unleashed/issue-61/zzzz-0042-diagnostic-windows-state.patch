@@ -1,0 +1,188 @@
+From 3ad6dd38e0986b82dcea4f7958480e9ec03b7d77 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 11:57:24 +0000
+Subject: [PATCH] Trace actual Windows launcher phases and sandbox permissions
+
+Diagnostic only. Preserve test assertions and product permissions. The emitted patch is restricted to the native diagnostic branch and must not enter the production queue.
+---
+ codex-rs/windows-sandbox-rs/src/token.rs      | 39 ++++++++++++++++
+ .../src/unified_exec/backends/legacy.rs       | 46 +++++++++++++++++++
+ workspace_root_test_launcher.bat.tpl          |  9 ++++
+ 3 files changed, 94 insertions(+)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/token.rs b/codex-rs/windows-sandbox-rs/src/token.rs
+index f09dabd6f..0b4643b8d 100644
+--- a/codex-rs/windows-sandbox-rs/src/token.rs
++++ b/codex-rs/windows-sandbox-rs/src/token.rs
+@@ -524,6 +524,45 @@ unsafe fn create_token_with_caps_from(
+     Ok(new_token)
+ }
+ 
++#[cfg(test)]
++pub(crate) unsafe fn query_restricted_sids_for_diagnostics(token: HANDLE) -> Result<Vec<String>> {
++    use windows_sys::Win32::Security::TokenRestrictedSids;
++
++    let mut needed = 0;
++    GetTokenInformation(
++        token,
++        TokenRestrictedSids,
++        std::ptr::null_mut(),
++        0,
++        &mut needed,
++    );
++    ensure!(needed > 0, "invalid restricted SID buffer size");
++    let mut buffer = vec![0u8; needed as usize];
++    if GetTokenInformation(
++        token,
++        TokenRestrictedSids,
++        buffer.as_mut_ptr().cast(),
++        needed,
++        &mut needed,
++    ) == 0
++    {
++        return Err(anyhow!(
++            "GetTokenInformation(TokenRestrictedSids): {}",
++            GetLastError()
++        ));
++    }
++    ensure!(
++        needed as usize <= buffer.len(),
++        "invalid restricted SID result size"
++    );
++    decode_token_groups(&buffer[..needed as usize])?
++        .into_iter()
++        .map(|group| {
++            crate::winutil::string_from_sid_bytes(&group.sid).map_err(|error| anyhow!(error))
++        })
++        .collect()
++}
++
+ #[cfg(test)]
+ #[path = "token_tests.rs"]
+ mod tests;
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/backends/legacy.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/backends/legacy.rs
+index d2bfe7941..776692978 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/backends/legacy.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/backends/legacy.rs
+@@ -107,6 +107,52 @@ fn spawn_legacy_process(
+             logs_base_dir,
+         )?,
+     };
++
++    #[cfg(test)]
++    if env_map.contains_key("OUTSIDE_DELETE") {
++        eprintln!("CODEX_SANDBOX cwd={cwd:?} command={command:?}");
++        eprintln!("CODEX_SANDBOX restricted_sids={:?}", unsafe {
++            crate::token::query_restricted_sids_for_diagnostics(h_token)
++        });
++        eprintln!("CODEX_SANDBOX token_user={:?}", unsafe {
++            crate::token::get_user_sid_bytes(h_token)
++                .map(|sid| crate::winutil::string_from_sid_bytes(&sid))
++        });
++        for capability in &security.write_root_sids {
++            eprintln!(
++                "CODEX_SANDBOX write_root={:?} sid={}",
++                capability.root, capability.sid_str
++            );
++        }
++        for key in [
++            "OUTSIDE_DELETE",
++            "WORKSPACE_DELETE",
++            "PROTECTED_GIT_DIR",
++            "TEMP",
++            "TMP",
++        ] {
++            if let Some(path) = env_map.get(key) {
++                let parent = Path::new(path).parent();
++                for target in std::iter::once(Path::new(path)).chain(parent) {
++                    let acl = std::process::Command::new("icacls.exe")
++                        .arg(target)
++                        .output();
++                    match acl {
++                        Ok(output) => eprintln!(
++                            "CODEX_SANDBOX acl key={key} path={target:?} status={} stdout={} stderr={}",
++                            output.status,
++                            String::from_utf8_lossy(&output.stdout),
++                            String::from_utf8_lossy(&output.stderr)
++                        ),
++                        Err(error) => {
++                            eprintln!("CODEX_SANDBOX acl key={key} path={target:?}: {error}")
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     let (pi, job, output_join, writer_handle, hpc, conpty_owner, desktop) = if tty {
+         let (pi, mut conpty) =
+             spawn_conpty_process_as_user(token, command, cwd, env_map, launch_desktop)?;
+diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
+index fa18c301d..7df8c0dd2 100644
+--- a/workspace_root_test_launcher.bat.tpl
++++ b/workspace_root_test_launcher.bat.tpl
+@@ -1,9 +1,11 @@
+ @echo off
+ setlocal EnableExtensions EnableDelayedExpansion
++>&2 echo CODEX_STARTUP entry !TIME!
+ 
+ call :resolve_runfile "__WORKSPACE_ROOT_MARKER__"
+ if errorlevel 1 exit /b 1
+ set "workspace_root_marker=!resolve_runfile_result!"
++>&2 echo CODEX_STARTUP marker !TIME!
+ 
+ for %%I in ("%workspace_root_marker%") do set "workspace_root_marker_dir=%%~dpI"
+ for %%I in ("%workspace_root_marker_dir%..\..") do set "workspace_root=%%~fI"
+@@ -11,8 +13,10 @@ for %%I in ("%workspace_root_marker_dir%..\..") do set "workspace_root=%%~fI"
+ call :resolve_runfile "__TEST_BIN__"
+ if errorlevel 1 exit /b 1
+ set "test_bin=!resolve_runfile_result!"
++>&2 echo CODEX_STARTUP binary !TIME!
+ 
+ __RUNFILE_ENV_EXPORTS__
++>&2 echo CODEX_STARTUP environment !TIME!
+ 
+ if not defined test_bin (
+   >&2 echo resolved test binary was lost while exporting runfile environment variables
+@@ -20,6 +24,7 @@ if not defined test_bin (
+ )
+ 
+ __WORKSPACE_ROOT_SETUP__
++>&2 echo CODEX_STARTUP workspace !TIME!
+ 
+ set "TOTAL_SHARDS=%RULES_RUST_TEST_TOTAL_SHARDS%"
+ if not defined TOTAL_SHARDS set "TOTAL_SHARDS=%TEST_TOTAL_SHARDS%"
+@@ -68,12 +73,14 @@ if errorlevel 1 goto :CREATE_TEMP_DIR
+ set "TEMP_LIST=!TEMP_DIR!\list.txt"
+ set "TEMP_SHARD_LIST=!TEMP_DIR!\shard.txt"
+ 
++>&2 echo CODEX_STARTUP list-start !TIME!
+ "%test_bin%" --list --format terse > "!TEMP_LIST!"
+ if errorlevel 1 (
+   rmdir /s /q "!TEMP_DIR!" 2>nul
+   exit /b 1
+ )
+ 
++>&2 echo CODEX_STARTUP selection-start !TIME!
+ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+   "$ErrorActionPreference = 'Stop';" ^
+   "$tests = @(Get-Content -LiteralPath $env:TEMP_LIST | Where-Object { $_.EndsWith(': test') } | ForEach-Object { $_.Substring(0, $_.Length - 6) });" ^
+@@ -90,6 +97,7 @@ if errorlevel 1 (
+   exit /b 1
+ )
+ 
++>&2 echo CODEX_STARTUP batches-start !TIME!
+ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+   "$ErrorActionPreference = 'Stop';" ^
+   "$testBin = $env:test_bin;" ^
+@@ -99,6 +107,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+   "foreach ($test in $tests) { $argChars = $test.Length + 3; if (($batch.Count -gt 0) -and ($batchChars + $argChars -gt $limit)) { Invoke-TestBatch }; $batch += $test; $batchChars += $argChars }" ^
+   "Invoke-TestBatch; if ($failed) { exit 1 }"
+ set "TEST_EXIT=%ERRORLEVEL%"
++>&2 echo CODEX_STARTUP batches-finished !TIME!
+ 
+ rmdir /s /q "!TEMP_DIR!" 2>nul
+ exit /b !TEST_EXIT!
+-- 
+2.43.0
+
