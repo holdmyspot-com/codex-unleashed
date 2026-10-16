@@ -2096,3 +2096,30 @@ preserves exit status 37, and checks Linux and credential-free controls. The
 fork's `tooling/mvnw verify` checks the same invocation through its bundled Java
 runtime. Native macOS tests, Clippy, and release verification must also finish
 without thread exhaustion; wrapper tests alone do not establish that result.
+
+## Per-suite test deadlines
+
+`zzzz-0044-per-suite-test-deadlines.patch` scopes extended integration deadlines
+to the daemon, core-all, app-server-all, and exec-all suites. Short sibling tests
+use the short default. Binary unit tests have their own short default, independent
+of the library unit-suite deadline. Wine and Windows-cross variants inherit the
+selected native integration deadline. Existing slow-suite deadlines, sharding,
+assertions, and verbose timeout diagnostics remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue
+through patch 0043. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. From the prepared
+checkout, run:
+
+```sh
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_verbose_timeout_warnings -- //tools/build-warnings/test-timeouts:timeouts_tests
+just fmt-check
+just bazel-lock-check
+```
+
+The analysis tests require short sibling and binary deadlines, short Wine
+inheritance, and the retained extended suite deadlines. Native CI must also
+execute the affected tests within those deadlines on each supported platform.
+Fast shards of a suite can still receive timing advisories because every shard
+shares the deadline required by its slowest supported execution.
