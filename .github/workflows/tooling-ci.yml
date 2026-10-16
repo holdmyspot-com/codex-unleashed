@@ -45,6 +45,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Measure launcher lookup and inspect ambient ACLs
+      - name: Compare ambient and explicit-user ACL deletion access
         shell: pwsh
         run: ./.github/diagnostics/windows-startup-probe.ps1

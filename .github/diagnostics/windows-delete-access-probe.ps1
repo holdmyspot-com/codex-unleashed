@@ -166,7 +166,7 @@ public static class RestrictedDeleteProbe {
         }
     }
 
-    public static string Run(string logonSid, string parent, string file) {
+    public static string Run(string logonSid, string parent, string file, bool primaryDeletionOnly) {
         IntPtr original = IntPtr.Zero;
         IntPtr restricted = IntPtr.Zero;
         SidAndAttributes[] sids = new SidAndAttributes[3];
@@ -187,7 +187,9 @@ public static class RestrictedDeleteProbe {
             int write = OpenError(file, 0x40000000, false);
             int deleteOpen = OpenError(file, 0x10000, false);
             int deleteChildOpen = OpenError(parent, 0x40, true);
-            int deletion = DeleteFileW(file) ? 0 : Marshal.GetLastWin32Error();
+            string deletion = "not-run";
+            if (primaryDeletionOnly == false)
+                deletion = (DeleteFileW(file) ? 0 : Marshal.GetLastWin32Error()).ToString();
             Require(RevertToSelf(), "RevertToSelf(before primary process)");
             impersonating = false;
             if (File.Exists(file) == false)
@@ -214,7 +216,8 @@ public static class RestrictedDeleteProbe {
     Write-Output 'Restricted token flags: DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED (0xD)'
     Write-Output 'Zero denotes API success; nonzero values are exact Win32 errors. This probe does not establish product confinement.'
 
-    foreach ($mode in @('ambient', 'file-delete-denied', 'parent-delete-child-denied', 'both-denied')) {
+    foreach ($mode in @('ambient', 'file-delete-denied', 'parent-delete-child-denied', 'both-denied',
+        'user-full-ambient', 'user-full-file-delete-denied', 'user-full-parent-delete-child-denied', 'user-full-both-denied')) {
         $parent = Join-Path $probeRoot $mode
         New-Item -ItemType Directory -Path $parent | Out-Null
         $file = Join-Path $parent 'outside.txt'
@@ -223,14 +226,24 @@ public static class RestrictedDeleteProbe {
         $originalFileAcl = Get-Acl -LiteralPath $file
 
         try {
-            if ($mode -eq 'file-delete-denied' -or $mode -eq 'both-denied') {
+            if ($mode.StartsWith('user-full-')) {
+                foreach ($target in @($parent, $file)) {
+                    $acl = Get-Acl -LiteralPath $target
+                    $rule = [Security.AccessControl.FileSystemAccessRule]::new($identity.User,
+                        [Security.AccessControl.FileSystemRights]::FullControl,
+                        [Security.AccessControl.AccessControlType]::Allow)
+                    $acl.AddAccessRule($rule)
+                    Set-Acl -LiteralPath $target -AclObject $acl
+                }
+            }
+            if ($mode.EndsWith('file-delete-denied') -or $mode.EndsWith('both-denied')) {
                 $acl = Get-Acl -LiteralPath $file
                 $rule = [Security.AccessControl.FileSystemAccessRule]::new($everyone,
                     [Security.AccessControl.FileSystemRights]::Delete, [Security.AccessControl.AccessControlType]::Deny)
                 $acl.AddAccessRule($rule)
                 Set-Acl -LiteralPath $file -AclObject $acl
             }
-            if ($mode -eq 'parent-delete-child-denied' -or $mode -eq 'both-denied') {
+            if ($mode.EndsWith('parent-delete-child-denied') -or $mode.EndsWith('both-denied')) {
                 $acl = Get-Acl -LiteralPath $parent
                 $rule = [Security.AccessControl.FileSystemAccessRule]::new($everyone,
                     [Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles,
@@ -238,8 +251,10 @@ public static class RestrictedDeleteProbe {
                 $acl.AddAccessRule($rule)
                 Set-Acl -LiteralPath $parent -AclObject $acl
             }
+            Write-Output ('File ACL for ' + $mode + ': ' + (Get-Acl -LiteralPath $file).Sddl)
+            Write-Output ('Parent ACL for ' + $mode + ': ' + (Get-Acl -LiteralPath $parent).Sddl)
             Write-Output ('Delete access observation: ' + $mode + ': ' +
-                [RestrictedDeleteProbe]::Run($logonSid, $parent, $file))
+                [RestrictedDeleteProbe]::Run($logonSid, $parent, $file, $mode.StartsWith('user-full-')))
             Write-Output ('Fixture remains: ' + (Test-Path -LiteralPath $file))
         } finally {
             Set-Acl -LiteralPath $parent -AclObject $originalParentAcl
