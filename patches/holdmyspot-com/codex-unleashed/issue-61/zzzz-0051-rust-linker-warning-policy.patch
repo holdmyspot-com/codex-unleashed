@@ -1,0 +1,74 @@
+From f197a312e77f3b9a373ee68ed3f710439d0912e9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 13:29:59 -0400
+Subject: [PATCH] Make Rust linker warnings fatal in Bazel
+
+The linker_messages lint explicitly ignores -Dwarnings. Deny it for target and execution Rust actions, retaining the existing native dependency warning policy.
+
+Verification: a controlled linker that emits a warning succeeds with -Dwarnings and fails with -Dlinker_messages. Both Bazel analysis regressions fail before the flags and pass after them.
+---
+ .bazelrc                                            |  2 ++
+ tools/build-warnings/llvm-driver/BUILD.bazel        | 13 +++++++++++++
+ .../llvm-driver/linker_flags_test.bzl               | 13 +++++++++++++
+ 3 files changed, 28 insertions(+)
+ create mode 100644 tools/build-warnings/llvm-driver/linker_flags_test.bzl
+
+diff --git a/.bazelrc b/.bazelrc
+index bb19c2857..406647fb3 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -26,6 +26,8 @@ build --host_features=-runtime_library_search_directories
+ 
+ build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
+ build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
++build --@rules_rust//rust/settings:extra_rustc_flag=-Dlinker_messages
++build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dlinker_messages
+ # Native dependencies retain their warning diagnostics without making them fatal.
+ # First-party native targets opt into treat_warnings_as_errors explicitly.
+ 
+diff --git a/tools/build-warnings/llvm-driver/BUILD.bazel b/tools/build-warnings/llvm-driver/BUILD.bazel
+index 8ea1a0292..46f5a3839 100644
+--- a/tools/build-warnings/llvm-driver/BUILD.bazel
++++ b/tools/build-warnings/llvm-driver/BUILD.bazel
+@@ -1,6 +1,19 @@
+ load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+ load("@bazel_skylib//rules:write_file.bzl", "write_file")
+ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_proc_macro", "rust_test")
++load(":linker_flags_test.bzl", "linker_warnings_test")
++
++linker_warnings_test(
++    name = "test_linker_warnings_test",
++    size = "small",
++    target_under_test = ":proc_macro_link_test",
++)
++
++linker_warnings_test(
++    name = "proc_macro_linker_warnings_test",
++    size = "small",
++    target_under_test = ":linked_macro",
++)
+ 
+ rust_binary(
+     name = "windows_gnullvm_link_probe",
+diff --git a/tools/build-warnings/llvm-driver/linker_flags_test.bzl b/tools/build-warnings/llvm-driver/linker_flags_test.bzl
+new file mode 100644
+index 000000000..0ed908111
+--- /dev/null
++++ b/tools/build-warnings/llvm-driver/linker_flags_test.bzl
+@@ -0,0 +1,13 @@
++"""Verify that Rust linker diagnostics receive an explicit fatal lint level."""
++
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _linker_warnings_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "Rustc"]
++    asserts.equals(env, 1, len(actions), "The fixture must have one Rust compiler/linker action")
++    for action in actions:
++        asserts.true(env, "-Dlinker_messages" in action.argv, "Rust linker warnings ignore the umbrella -Dwarnings lint")
++    return analysistest.end(env)
++
++linker_warnings_test = analysistest.make(_linker_warnings_test_impl)
+-- 
+2.43.0
+

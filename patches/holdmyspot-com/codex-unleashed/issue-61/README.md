@@ -2144,6 +2144,8 @@ settlement-order assertions remain enabled.
 its own scripted mock listener. The mock serves one connection before accepting
 the next; sharing it can deadlock prewarm before a request is sent. Assertions
 inspect the combined request logs, including cancellation and routing failures.
+Connection-log iterators use method references to satisfy the configured Clippy
+lint without relaxing the routing assertions.
 
 ## Windows native test DLL directories
 
@@ -2167,6 +2169,8 @@ bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_out
 
 The DLL policy and line-ending regressions pass, both build-info checks pass,
 and all settlement and guardian tests complete with their assertions enabled.
+Run `just bazel-clippy` to verify the listener regressions against the maintained
+lint configuration across the workspace.
 Native Windows must also start the voice unit and integration executables
 without missing DLLs. macOS must complete the settlement and guardian suites.
 Local Linux checks do not establish those native outcomes; the full CI matrix
@@ -2197,3 +2201,175 @@ Both generated-link-argument regressions require exactly one runtime search
 path, preserving Darwin's `@loader_path` and Linux's `$ORIGIN` spelling.
 Native macOS CI must also link and execute the voice targets without duplicate
 rpath diagnostics. Analysis checks alone do not establish that native gate.
+
+## V8 analysis test size
+
+`zzzz-0050-v8-analysis-test-size.patch` declares the V8 warning-policy analysis
+test small. Its subsecond execution otherwise produces Bazel's test-size
+advisory. Verbose timeout diagnostics remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0049. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/dependencies:v8_warning_policy_test
+```
+
+The analysis test passes without a test-size advisory.
+
+## Rust linker warning policy
+
+`zzzz-0051-rust-linker-warning-policy.patch` explicitly denies Rust's
+`linker_messages` lint for target and execution builds. That lint ignores the
+umbrella `-Dwarnings` option, so a successful linker can otherwise emit warnings
+without failing the Rust action. Native dependency compiler warnings retain
+their existing visible, nonfatal policy.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0050. Both patches track
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/llvm-driver:test_linker_warnings_test //tools/build-warnings/llvm-driver:proc_macro_linker_warnings_test
+```
+
+Both analysis tests require the explicit fatal linker lint in the generated
+Rust compiler actions. Full native CI remains the linking acceptance gate.
+
+## Windows native regression fixtures
+
+`zzzz-0052-windows-markdown-fixture.patch` writes the Markdown link destination
+with forward slashes. A Windows backslash before an underscore is a Markdown
+escape, so an unnormalized temporary path changes the destination the test
+renders. The relative-link and citation assertions remain enabled.
+
+`zzzz-0053-stale-updater-error-fixture.patch` expects the ownership rejection for
+a stale predecessor before considering launch or elevation errors. Both
+predecessor-record preservation assertions remain enabled.
+
+`zzzz-0054-windows-voice-negative-fixture.patch` removes the required
+`gstcoreelements.dll` plugin from the incomplete MSVC voice fixture. Windows
+stores plugins beside startup libraries, so copying startup DLLs can otherwise
+make this negative fixture complete. Helper handshakes remain possible, and
+runtime initialization must fail.
+
+## Windows sandbox integration deadline
+
+`zzzz-0055-windows-sandbox-test-deadline.patch` gives the dedicated Windows
+sandbox integration binary the same long deadline as the core integration
+suite. Its 120-second event wait exceeds the short 60-second whole-binary
+deadline. Every test and security assertion remains enabled under the queue's
+existing narrowly scoped legacy-sandbox exclusion.
+
+## Windows analysis host toolchain
+
+`zzzz-0056-windows-analysis-host-toolchain.patch` retains the analysis-only MSVC
+toolchain when XZ and OpenSSL analysis tests transition to a Windows GNU target.
+The host VFS generator otherwise resolves through the LLVM toolchain being
+analyzed and creates a dependency cycle. The fixture toolchain requires the
+MSVC ABI, so it cannot replace the GNU target compiler.
+
+The declared base for patches 0052–0056 is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0051, applied in order. They track
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. From a fresh patched
+checkout, run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/xz:msvc_flags_test //tools/build-warnings/xz:gnu_flags_test //tools/build-warnings/openssl:windows_perlasm_test
+```
+
+Native Windows MSVC CI must also run the affected regressions:
+
+```sh
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //codex-rs/tui:tui-unit-tests //codex-rs/app-server-daemon:app-server-daemon-unit-tests //codex-rs/voice-host:voice-host-installed_client-test //codex-rs/core:core-windows_sandbox-test
+```
+
+The Markdown snapshot matches, stale handoffs preserve predecessor records,
+incomplete voice runtimes reject initialization, and the sandbox suite
+completes with its assertions enabled. The analysis targets resolve without a
+host-toolchain cycle. Linux analysis and formatting checks alone do not
+establish these native outcomes; full native CI remains required.
+
+## MCP binding counter isolation
+
+`zzzz-0057-mcp-binding-counter-isolation.patch` keeps an additional tracing
+dispatcher alive while the MCP startup regression observes binding captures.
+Tracing's single-dispatcher optimization can otherwise cache the shared
+callsite as disabled when a concurrent test without a subscriber reaches it
+first. The fixture uses the same dispatcher guard as upstream's retry telemetry
+and deferred-tool-world-state tests. All startup, dormant-server, and binding
+reuse assertions remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0056. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings --test_sharding_strategy=disabled --test_filter=cached_mcp_startup_is_eager_for_root_and_lazy_for_subagents -- //codex-rs/core:core-all-test
+```
+
+The focused regression observes one shared binding during the dormant turn and
+additional captures when the server starts. Full native Windows CI also runs
+the regression concurrently with the core integration suite; a focused Linux
+run alone does not establish that native gate.
+
+## Guardian whole-suite deadline
+
+`zzzz-0058-guardian-suite-deadline.patch` gives the complete guardian unit-test
+suite a moderate deadline. Native Intel Mac execution approaches the short
+60-second limit, so the suite needs headroom for normal runtime variation.
+Every test and assertion remains enabled.
+
+Bazel's `timeout` attribute is nonconfigurable, so the suite uses one deadline
+across platforms. Faster platforms can report a moderate-test sizing advisory;
+that output remains visible. Compiler warning policy is unchanged.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0057. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //codex-rs/ext/guardian-v2:guardian-v2-unit-tests
+```
+
+The complete guardian suite passes with its existing assertions. Full native
+CI verifies the configured deadline without a diagnostic command-line override.
+
+## Selected-plugin process readiness
+
+`zzzz-0059-selected-plugin-pid-deadline.patch` lets the selected-plugin startup
+regression wait for its MCP process using the fixture's existing 20-second
+read timeout. The shared PID-file helper retains its two-second default for
+other callers. The optional-startup grace, explicit-mention barrier, tool
+availability, and analytics assertions remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0058. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings --test_sharding_strategy=disabled --test_filter=selected_plugin_mcp_startup_respects_explicit_mentions -- //codex-rs/app-server:app-server-all-test
+```
+
+All six mention and discovery variants pass with their existing assertions.
+Full native CI verifies the emitted helper change without diagnostic source
+instrumentation. The focused run can report a sizing advisory because the
+unfiltered integration suite keeps its long deadline.

@@ -1,0 +1,28 @@
+From 2da8584018716a8fd04c2b60eaa8b8c593c485d1 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 19:00:39 +0000
+Subject: [PATCH] Normalize Markdown fixture paths on Windows
+
+Backslashes before underscores are Markdown escapes, so the Windows temporary path loses its underscore and cannot resolve relative to the fixture directory. Use forward slashes for the link destination while preserving the rendering assertion.
+
+Native red: job 117096549128 fails file_citation_after_local_link_soft_break_starts_a_new_line_snapshot in three attempts. Maintained just fmt-check passes. Native green verification remains pending in the CI repair execution record.
+---
+ codex-rs/tui/src/markdown_render/file_citations_tests.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/tui/src/markdown_render/file_citations_tests.rs b/codex-rs/tui/src/markdown_render/file_citations_tests.rs
+index c5c00c64b..a80b5b02c 100644
+--- a/codex-rs/tui/src/markdown_render/file_citations_tests.rs
++++ b/codex-rs/tui/src/markdown_render/file_citations_tests.rs
+@@ -187,7 +187,7 @@ fn file_citation_after_local_link_soft_break_starts_a_new_line_snapshot() {
+     let cwd = std::env::temp_dir();
+     let markdown = format!(
+         "[first](<{}>)\n:codex-file-citation{{path=\"second.txt\"}}",
+-        cwd.join("first.txt").display(),
++        cwd.join("first.txt").to_string_lossy().replace('\\', "/"),
+     );
+     let rendered = rendered_text(&markdown, Some(&cwd));
+ 
+-- 
+2.43.0
+

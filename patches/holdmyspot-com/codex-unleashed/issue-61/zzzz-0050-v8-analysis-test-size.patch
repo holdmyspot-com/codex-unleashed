@@ -1,0 +1,24 @@
+From c732c5fbf52fe2a6d21b4a74ba6bf3285b48eaa2 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 13:14:15 -0400
+Subject: [PATCH] Size the V8 warning-policy analysis test as small
+
+Native macOS job 117012089706 warns that this 0.1-second analysis check falls outside the MODERATE range. Keep its assertions and use the small-test timeout. Focused verification passes with --test_verbose_timeout_warnings and produces no timing advisory (v8-policy-size-green.log).
+---
+ tools/build-warnings/dependencies/BUILD.bazel | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/build-warnings/dependencies/BUILD.bazel b/tools/build-warnings/dependencies/BUILD.bazel
+index a7ddb4a3b..437d6791e 100644
+--- a/tools/build-warnings/dependencies/BUILD.bazel
++++ b/tools/build-warnings/dependencies/BUILD.bazel
+@@ -2,5 +2,6 @@ load(":flags_test.bzl", "dependency_warning_flags_test")
+ 
+ dependency_warning_flags_test(
+     name = "v8_warning_policy_test",
++    size = "small",
+     target_under_test = "@v8//:core_lib_icu",
+ )
+-- 
+2.43.0
+

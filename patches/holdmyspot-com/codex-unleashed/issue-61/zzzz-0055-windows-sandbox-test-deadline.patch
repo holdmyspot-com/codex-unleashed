@@ -1,0 +1,27 @@
+From 5fdb4c242b5d7ca8c90375db17326435f4d27aec Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 19:01:17 +0000
+Subject: [PATCH] Give Windows sandbox integration tests the core test deadline
+
+The dedicated Windows sandbox binary includes a 120-second event wait, exceeding its default 60-second whole-binary timeout. Use the same long deadline as the other core integration suite while retaining every security test and assertion.
+
+Native red: job 117096549128 times out after 60.1 seconds with five of nine tests completed. Maintained just fmt-check passes. Native completion verification remains pending in the CI repair execution record.
+---
+ codex-rs/core/BUILD.bazel | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/codex-rs/core/BUILD.bazel b/codex-rs/core/BUILD.bazel
+index 56cf50cfd..534b0cf9b 100644
+--- a/codex-rs/core/BUILD.bazel
++++ b/codex-rs/core/BUILD.bazel
+@@ -27,6 +27,7 @@ codex_rust_crate(
+     integration_compile_data_extra = glob(["assets/**"]),
+     integration_test_timeouts = {
+         "core-all-test": "long",
++        "core-windows_sandbox-test": "long",
+     },
+     run_tests_with_wine_exec = True,
+     rustc_env = {
+-- 
+2.43.0
+

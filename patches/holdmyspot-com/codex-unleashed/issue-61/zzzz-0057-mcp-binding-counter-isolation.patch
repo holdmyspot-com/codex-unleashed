@@ -1,0 +1,32 @@
+From effd9ab8b2f2361e85fe8a2d466b80bac44bf4e0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 19:40:50 +0000
+Subject: [PATCH] Isolate the MCP binding counter from concurrent tracing
+ callsites
+
+Retain an additional NoSubscriber dispatcher during the scoped capture test, matching upstream retry telemetry and deferred-tool fixtures. A first call from an unsubscribed thread must not cache the shared callsite as disabled. Preserve all existing eager startup, dormant startup, binding reuse and eventual initialization assertions.
+
+Red: native Windows core integration reports zero captures instead of one on three attempts. A standalone tracing 0.1.44 / tracing-subscriber 0.3.22 probe deterministically observes zero captures and exits 101 without the guard, then one capture and exit 0 with it.
+
+Green: maintained just fmt-check and focused core-all-test pass locally (one test executed, no skips). The focused LONG-suite timing advisory is expected. Native concurrent Windows confirmation and fresh emitted-patch checks remain required. Tracks holdmyspot-com/codex-unleashed#61.
+---
+ codex-rs/core/tests/suite/mcp_tool_cache.rs | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/codex-rs/core/tests/suite/mcp_tool_cache.rs b/codex-rs/core/tests/suite/mcp_tool_cache.rs
+index 846049c62..0547178ef 100644
+--- a/codex-rs/core/tests/suite/mcp_tool_cache.rs
++++ b/codex-rs/core/tests/suite/mcp_tool_cache.rs
+@@ -589,6 +589,9 @@ async fn cached_mcp_startup_is_eager_for_root_and_lazy_for_subagents() -> anyhow
+     skip_if_no_network!(Ok(()));
+ 
+     let binding_captures = Arc::new(AtomicUsize::new(0));
++    // Keep concurrent tests without a subscriber from caching this shared callsite as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+     let _tracing = tracing_subscriber::registry()
+         .with(McpBindingCaptureCounter(Arc::clone(&binding_captures)))
+         .set_default();
+-- 
+2.43.0
+

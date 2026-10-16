@@ -1,0 +1,74 @@
+From cf7d731048ede87ccf420b58668fbe4e1bc8d8d6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 20:54:24 +0000
+Subject: [PATCH] Give selected-plugin startup its fixture readiness deadline
+
+The selected-plugin startup regression waits for an executor MCP process
+using a generic two-second PID-file deadline. All six mention/discovery
+variants fail at that deadline on native Intel Mac job 117157637027 while
+the executor remains alive. The disconnect diagnostic follows teardown.
+
+Expose a caller-supplied timeout in the test-only PID helper and use the
+fixture's existing 20-second READ_TIMEOUT for these six startup cases.
+Keep the two-second default for every existing caller. Preserve optional
+startup grace, explicit-mention barriers, tool and analytics assertions.
+
+Native diagnostic green: job 117180271287 passes all six original cases
+in 51.32 seconds after an added 20-second readiness probe preceding the
+original PID helper. Successful libtest capture hides individual probe
+timings; the emitted helper change still requires final native acceptance.
+
+Authoring green: maintained just fmt-check passes. Maintained Bazel app
+server test command executes six cases on Linux: six passed, zero failed
+or ignored, 1546 filtered, 4.30 seconds. Bazel reuses 6788 action results;
+the filtered LONG-suite sizing advisory remains visible. Fresh queue and
+full native CI remain required. Tracks codex-unleashed issue 61.
+---
+ .../tests/suite/v2/selected_capability_stack.rs          | 3 ++-
+ codex-rs/core/tests/common/process.rs                    | 9 ++++++++-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/suite/v2/selected_capability_stack.rs b/codex-rs/app-server/tests/suite/v2/selected_capability_stack.rs
+index 13c983ab9..7f6b93d6a 100644
+--- a/codex-rs/app-server/tests/suite/v2/selected_capability_stack.rs
++++ b/codex-rs/app-server/tests/suite/v2/selected_capability_stack.rs
+@@ -29,6 +29,7 @@ use codex_protocol::protocol::PLUGINS_INSTRUCTIONS_OPEN_TAG;
+ use codex_utils_absolute_path::AbsolutePathBuf;
+ use codex_utils_path_uri::PathUri;
+ use core_test_support::process::wait_for_pid_file;
++use core_test_support::process::wait_for_pid_file_with_timeout;
+ use core_test_support::responses;
+ use core_test_support::responses::ResponsesRequest;
+ use core_test_support::stdio_server_bin;
+@@ -155,7 +156,7 @@ async fn selected_plugin_mcp_startup_respects_explicit_mentions(
+     )
+     .await??;
+     let TurnStartResponse { turn } = to_response(response)?;
+-    wait_for_pid_file(&fixture.pid_file).await?;
++    wait_for_pid_file_with_timeout(&fixture.pid_file, READ_TIMEOUT).await?;
+     if explicitly_mentioned {
+         // An explicit mention must outwait the optional one-second grace.
+         tokio::time::sleep(Duration::from_secs(3)).await;
+diff --git a/codex-rs/core/tests/common/process.rs b/codex-rs/core/tests/common/process.rs
+index 82e42aac9..479944e80 100644
+--- a/codex-rs/core/tests/common/process.rs
++++ b/codex-rs/core/tests/common/process.rs
+@@ -4,7 +4,14 @@ use std::path::Path;
+ use std::time::Duration;
+ 
+ pub async fn wait_for_pid_file(path: &Path) -> anyhow::Result<String> {
+-    let pid = tokio::time::timeout(Duration::from_secs(2), async {
++    wait_for_pid_file_with_timeout(path, Duration::from_secs(2)).await
++}
++
++pub async fn wait_for_pid_file_with_timeout(
++    path: &Path,
++    timeout: Duration,
++) -> anyhow::Result<String> {
++    let pid = tokio::time::timeout(timeout, async {
+         loop {
+             if let Ok(contents) = fs::read_to_string(path) {
+                 let trimmed = contents.trim();
+-- 
+2.43.0
+

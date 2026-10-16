@@ -1,16 +1,18 @@
-From 0858de0c81e7bdbabba8f5a23dd38d6c3e1f98f6 Mon Sep 17 00:00:00 2001
+From dfe007147514a20f8e4a81e7f3f67cf1683ef8c7 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 12:20:14 -0400
+Date: Fri, 16 Oct 2026 18:13:49 +0000
 Subject: [PATCH] Give prewarmed guardian test connections independent mock
  listeners
 
-Native macOS job 117012089820 times out in the two routing regressions. The scripted mock accepts its next connection only after serving the first, while prewarm waits for both. Use separate listeners and aggregate their request logs. All four routing tests pass with the maintained CI stack environment (guardian-routing-green-ci-stack.log). Native and fresh emitted queue verification remain required.
+Native macOS job 117012089820 times out in two routing regressions because the scripted mock accepts its second connection only after serving the first, while prewarm waits for both. Use independent listeners and aggregate their request logs without changing the routing assertions.
+
+Use method references when combining connection logs, satisfying the configured Clippy method-call lint. Red: hosted jobs 117096549027 and 117096549391 reject the original three closures. Green: four routing tests pass with the maintained CI stack setting; focused Bazel guardian Clippy and maintained just fmt-check pass. The local Clippy sandbox requires writable /dev/null under the enclosing execution sandbox; no hosted sandbox setting changes.
 ---
  .../src/async_scorer/sampler_routing_tests.rs | 29 ++++++++++++++-----
  1 file changed, 22 insertions(+), 7 deletions(-)
 
 diff --git a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
-index 5a94aed3e..f49e4a5e2 100644
+index 5a94aed3e..49a946e52 100644
 --- a/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
 +++ b/codex-rs/ext/guardian-v2/src/async_scorer/sampler_routing_tests.rs
 @@ -40,8 +40,11 @@ impl WorkspaceRoutingResolver for UnavailableRouting {
@@ -35,7 +37,7 @@ index 5a94aed3e..f49e4a5e2 100644
 +    assert!(
 +        servers
 +            .iter()
-+            .flat_map(|server| server.connections())
++            .flat_map(core_test_support::responses::WebSocketTestServer::connections)
 +            .all(|requests| requests.is_empty())
 +    );
      Ok(())
@@ -67,7 +69,7 @@ index 5a94aed3e..f49e4a5e2 100644
          tokio::time::timeout(Duration::from_secs(/*secs*/ 10), async {
              loop {
 -                if !opening.requests().is_empty() || websocket.connections().iter().any(|requests| !requests.is_empty()) {
-+                if !opening.requests().is_empty() || websockets.iter().flat_map(|server| server.connections()).any(|requests| !requests.is_empty()) {
++                if !opening.requests().is_empty() || websockets.iter().flat_map(core_test_support::responses::WebSocketTestServer::connections).any(|requests| !requests.is_empty()) {
                      break Ok::<(), anyhow::Error>(());
                  }
                  tokio::select! {
@@ -78,7 +80,7 @@ index 5a94aed3e..f49e4a5e2 100644
 -            websocket.connections().iter().map(Vec::len).sum::<usize>(),
 +            websockets
 +                .iter()
-+                .flat_map(|server| server.connections())
++                .flat_map(core_test_support::responses::WebSocketTestServer::connections)
 +                .map(|requests| requests.len())
 +                .sum::<usize>(),
              usize::from(transport == "websocket")
