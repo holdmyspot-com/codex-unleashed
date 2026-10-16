@@ -141,7 +141,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != ''
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -263,7 +263,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != ''
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -391,7 +391,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != ''
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -490,7 +490,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != ''
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -585,7 +585,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != ''
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
