@@ -112,3 +112,5 @@ public static class Stub {
         if (Test-Path -LiteralPath $path) { throw "Diagnostic cleanup failed: $path" }
     }
 }
+
+& (Join-Path $env:GITHUB_WORKSPACE '.github/diagnostics/windows-delete-access-probe.ps1')
