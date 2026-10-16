@@ -49,7 +49,8 @@ respective outputs. Run the CLI build-information checks without
 The daemon fixtures use a stable installer release and package metadata that
 matches the branded executable, including its build suffix.
 Startup, voice-caption, status-copy, and update fixtures also include the branded
-header and version. Their snapshots use the default `dev` build number. Run these
+header and version. Their snapshots match the declared upstream release version
+and use the default `dev` build number. Run these
 checks without inherited terminal color overrides:
 
 ```sh

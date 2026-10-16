@@ -1,16 +1,22 @@
-From 4ee26eb7c5f8f776350c9de1de05117618d68524 Mon Sep 17 00:00:00 2001
+From 61947b3f0d993dbe5ee7a34a8193dee46262fab6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:40:53 -0400
+Date: Fri, 16 Oct 2026 01:27:17 -0400
 Subject: [PATCH] Restrict XZ stack flags to GNU Windows drivers
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
+
+Isolate the GNU analysis fixture from native MSVC extra-toolchain overrides.
+Preserve all compiler-driver assertions and production dependency sources.
+Red: run 38846595763 native MSVC job selects MASM/CL for the GNU fixture.
+Focused emitted verification and hosted native confirmation are tracked
+in the task execution record.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
  patches/xz_windows_driver_flags.patch         | 57 +++++++++++++++++++
  tools/build-warnings/xz/BUILD.bazel           | 11 ++++
- tools/build-warnings/xz/driver_flags_test.bzl | 41 +++++++++++++
- 5 files changed, 111 insertions(+)
+ tools/build-warnings/xz/driver_flags_test.bzl | 42 ++++++++++++++
+ 5 files changed, 112 insertions(+)
  create mode 100644 patches/xz_windows_driver_flags.patch
  create mode 100644 tools/build-warnings/xz/driver_flags_test.bzl
 
@@ -121,10 +127,10 @@ index fc78c6671..c5e340b0c 100644
      name = "arm64_filter_test",
 diff --git a/tools/build-warnings/xz/driver_flags_test.bzl b/tools/build-warnings/xz/driver_flags_test.bzl
 new file mode 100644
-index 000000000..5345b54f1
+index 000000000..fa19af1a0
 --- /dev/null
 +++ b/tools/build-warnings/xz/driver_flags_test.bzl
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,42 @@
 +load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
 +
 +_GNU_STACK_FLAGS = ["-fno-stack-protector", "-mno-stack-arg-probe"]
@@ -163,6 +169,7 @@ index 000000000..5345b54f1
 +    _xz_gnu_flags_test_impl,
 +    config_settings = {
 +        "//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm")),
++        "//command_line_option:extra_toolchains": [],
 +        "//command_line_option:features": ["-static_link_msvcrt", "treat_warnings_as_errors"],
 +    },
 +)

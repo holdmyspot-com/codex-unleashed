@@ -1,11 +1,13 @@
-From faf592416e1d32e3bb637d639cc2529360a0748e Mon Sep 17 00:00:00 2001
+From bcbaaf8ed730ba71d9d0ee92d24100aeb43911e5 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:02 +0000
+Date: Fri, 16 Oct 2026 01:12:13 -0400
 Subject: [PATCH] feature: Resume available parents when V2 subagents finish
 
 Refresh collaboration catalog hashes in scenarios added by rust-v0.163.0. Preserve all request history, output assertions, and snapshot headers.
 
 Red: fresh core-all-test run records snapshot mismatches in six new scenarios; all observed body differences are the collaboration schema and aggregate catalog hashes. Verification records retain the commands and results.
+
+Align both retained-output snapshots with the same collaboration catalog.
 ---
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/core/src/agent/control/completion.rs |  25 +-
@@ -41,13 +43,14 @@ Red: fresh core-all-test run records snapshot mismatches in six new scenarios; a
  ...es_context_above_compaction_threshold.snap |   4 +-
  ...ilities__custom_provider_capabilities.snap |   4 +-
  ...tained_tool_output_retention_disabled.snap |  12 +-
+ ...output_survives_compaction_and_resume.snap |   8 +-
  ...catalog_dedup__dedup_before_budgeting.snap |   4 +-
  ...3p_cache__strict_3p_mcp_catalog_cache.snap |   2 +-
  codex-rs/core/tests/suite/step_settings.rs    |   4 +
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 40 files changed, 869 insertions(+), 75 deletions(-)
+ 41 files changed, 873 insertions(+), 79 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
@@ -1627,6 +1630,46 @@ index 502a05072..4ca7bec2f 100644
            - custom/exec
            - function/wait
 @@ -90,7 +90,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap
+index af3d0a2d3..4d0f7747f 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap
+@@ -6,7 +6,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
+
+ ## Window 1
+ -- request 1 (turn) --
+-00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
++00:additional_tools/developer (3; hash=0878603fc9a589f5):
+         - namespace/functions; hash=fada4a476a3754dd
+           - custom/exec
+           - function/wait
+@@ -14,7 +14,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
+           - function/request_user_input_async
+         - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
+           - function/sleep
+-        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=2c8d6295978dbe63
++        - namespace/collaboration: Tools for spawning and managing sub-agents.; hash=83607718cfa02151
+           - function/followup_task
+           - function/interrupt_agent
+           - function/list_agents
+@@ -47,7 +47,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
+
+ ## Window 2 (after request 4: input diverged at item 06)
+ -- request 5 (turn) --
+-00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
++00:additional_tools/developer (3; hash=0878603fc9a589f5):
+         - namespace/functions; hash=fada4a476a3754dd
+           - custom/exec
+           - function/wait
+@@ -55,7 +55,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
            - function/request_user_input_async
          - namespace/clock: Tools for reading and waiting on time.; hash=f402e8c5e9b5e317
            - function/sleep

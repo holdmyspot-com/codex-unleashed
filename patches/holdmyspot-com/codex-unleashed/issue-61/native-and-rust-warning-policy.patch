@@ -1,6 +1,6 @@
-From 83eab37327bb1f3b60b775a7e66ab6a61067e693 Mon Sep 17 00:00:00 2001
+From f0e2f18eed1c0d46ef765ffab141037b183a8c16 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 01:03:04 +0000
+Date: Fri, 16 Oct 2026 01:14:32 -0400
 Subject: [PATCH] build: enforce first-party compiler warnings without blocking
  dependencies
 
@@ -10,23 +10,35 @@ a fatal first-party warning, and a visible nonfatal dependency-policy warning.
 
 Red: dependency-warning-policy-red.log rejects the dependency fixture.
 Green verification is retained in the task execution record.
+
+Apply the same warning policy to V8 build configuration, which otherwise adds
+its own -Werror. Preserve every warning flag and all third-party C++ sources.
+The action-level regression checks the production V8 compile arguments.
+Red: hosted Windows GNU jobs reject Abseil deprecations through V8 -Werror.
+Focused emitted-patch verification is retained in the task execution record.
 ---
- .bazelrc                                |  5 ++++
- MODULE.bazel                            |  1 +
- codex-rs/.cargo/config.toml             |  4 +++
- justfile                                |  6 ++++
- patches/BUILD.bazel                     |  1 +
- patches/llvm_warnings_as_errors.patch   | 35 ++++++++++++++++++++++
- tools/build-warnings/BUILD.bazel        | 21 +++++++++++++
- tools/build-warnings/check.sh           | 39 +++++++++++++++++++++++++
- tools/build-warnings/clean.c            |  3 ++
- tools/build-warnings/compiler_warning.c | 14 +++++++++
- 10 files changed, 129 insertions(+)
+ .bazelrc                                      |  5 +++
+ MODULE.bazel                                  |  2 +
+ codex-rs/.cargo/config.toml                   |  4 ++
+ justfile                                      |  6 +++
+ patches/BUILD.bazel                           |  3 ++
+ patches/llvm_warnings_as_errors.patch         | 35 +++++++++++++++++
+ patches/v8_warning_policy.patch               | 21 ++++++++++
+ tools/build-warnings/BUILD.bazel              | 21 ++++++++++
+ tools/build-warnings/check.sh                 | 39 +++++++++++++++++++
+ tools/build-warnings/clean.c                  |  3 ++
+ tools/build-warnings/compiler_warning.c       | 14 +++++++
+ tools/build-warnings/dependencies/BUILD.bazel |  6 +++
+ .../dependencies/flags_test.bzl               | 15 +++++++
+ 13 files changed, 174 insertions(+)
  create mode 100644 patches/llvm_warnings_as_errors.patch
+ create mode 100644 patches/v8_warning_policy.patch
  create mode 100644 tools/build-warnings/BUILD.bazel
  create mode 100644 tools/build-warnings/check.sh
  create mode 100644 tools/build-warnings/clean.c
  create mode 100644 tools/build-warnings/compiler_warning.c
+ create mode 100644 tools/build-warnings/dependencies/BUILD.bazel
+ create mode 100644 tools/build-warnings/dependencies/flags_test.bzl
 
 diff --git a/.bazelrc b/.bazelrc
 index b7698b896..409d1e406 100644
@@ -45,7 +57,7 @@ index b7698b896..409d1e406 100644
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index b062d1080..cfbabeebd 100644
+index b062d1080..43e4baaf7 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -18,6 +18,7 @@ single_version_override(
@@ -56,6 +68,14 @@ index b062d1080..cfbabeebd 100644
      ],
  )
 
+@@ -808,6 +809,7 @@ archive_override(
+     integrity = "sha256-Fk89PgqLTAKjhtOojRsRM9N+XCC+Ajn+zc3eQUpDQNU=",
+     patch_strip = 3,
+     patches = [
++        "//patches:v8_warning_policy.patch",
+         "//patches:v8_module_deps.patch",
+         "//patches:v8_bazel_rules.patch",
+         "//patches:v8_source_portability.patch",
 diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
 index 8a6f2c11e..bd1d67e1e 100644
 --- a/codex-rs/.cargo/config.toml
@@ -86,7 +106,7 @@ index 3614939c7..fa823fa53 100644
  install:
      rustup show active-toolchain
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 4cfe5e30c..092d29882 100644
+index 4cfe5e30c..1c31b2f14 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,5 +1,6 @@
@@ -96,6 +116,12 @@ index 4cfe5e30c..092d29882 100644
      "abseil_windows_gnullvm_thread_identity.patch",
      "bzip2_windows_stack_args.patch",
      "llvm_rusty_v8_custom_libcxx.patch",
+@@ -37,3 +38,5 @@ exports_files([
+     "xz_windows_stack_args.patch",
+     "zstd-sys_windows_msvc_include_dirs.patch",
+ ])
++
++exports_files(["v8_warning_policy.patch"])
 diff --git a/patches/llvm_warnings_as_errors.patch b/patches/llvm_warnings_as_errors.patch
 new file mode 100644
 index 000000000..a7d61213b
@@ -137,6 +163,33 @@ index 000000000..a7d61213b
 ++    ],
 ++)
 ++
+diff --git a/patches/v8_warning_policy.patch b/patches/v8_warning_policy.patch
+new file mode 100644
+index 000000000..28c8397a9
+--- /dev/null
++++ b/patches/v8_warning_policy.patch
+@@ -0,0 +1,21 @@
++From 89795f82a00454b26bdb53ef16468f165b4fe5c7 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Fri, 16 Oct 2026 01:13:01 -0400
++Subject: [PATCH] Keep dependency compiler warnings visible and nonfatal
++
++---
++ bazel/defs.bzl | 1 -
++ 1 file changed, 1 deletion(-)
++
++diff --git a/orig/v8-15.0.245.2/bazel/defs.bzl b/mod/v8-15.0.245.2/bazel/defs.bzl
++index 1281a73..eed886d 100644
++--- a/orig/v8-15.0.245.2/bazel/defs.bzl
+++++ b/mod/v8-15.0.245.2/bazel/defs.bzl
++@@ -139,7 +139,6 @@ def _default_args():
++                 "-fPIC",
++                 "-fno-strict-aliasing",
++                 "-fconstexpr-steps=2000000",
++-                "-Werror",
++                 "-Wextra",
++                 "-Wno-unneeded-internal-declaration",
++                 "-Wno-unknown-warning-option", # b/330781959
 diff --git a/tools/build-warnings/BUILD.bazel b/tools/build-warnings/BUILD.bazel
 new file mode 100644
 index 000000000..866c52255
@@ -238,3 +291,36 @@ index 000000000..97739b113
 +    codex_build_warning_probe();
 +    return 0;
 +}
+diff --git a/tools/build-warnings/dependencies/BUILD.bazel b/tools/build-warnings/dependencies/BUILD.bazel
+new file mode 100644
+index 000000000..a7ddb4a3b
+--- /dev/null
++++ b/tools/build-warnings/dependencies/BUILD.bazel
+@@ -0,0 +1,6 @@
++load(":flags_test.bzl", "dependency_warning_flags_test")
++
++dependency_warning_flags_test(
++    name = "v8_warning_policy_test",
++    target_under_test = "@v8//:core_lib_icu",
++)
+diff --git a/tools/build-warnings/dependencies/flags_test.bzl b/tools/build-warnings/dependencies/flags_test.bzl
+new file mode 100644
+index 000000000..a1ebc0d33
+--- /dev/null
++++ b/tools/build-warnings/dependencies/flags_test.bzl
+@@ -0,0 +1,15 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _dependency_warning_flags_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile"]
++    asserts.true(env, len(actions) > 0, "The dependency fixture must compile C++ sources")
++    for action in actions:
++        asserts.false(env, "-Werror" in action.argv, "Dependency warnings remain nonfatal")
++        asserts.true(env, "-Wextra" in action.argv, "Dependency warning diagnostics remain enabled")
++    return analysistest.end(env)
++
++dependency_warning_flags_test = analysistest.make(
++    _dependency_warning_flags_test_impl,
++    config_settings = {"//command_line_option:platforms": str(Label("//:rbe"))},
++)

@@ -1,15 +1,21 @@
-From 59be48172017a0529025d099f428f8534c7384cc Mon Sep 17 00:00:00 2001
+From 5290c9183cab423839b39c7cdfcb168e4893ee11 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:30:56 -0400
+Date: Fri, 16 Oct 2026 01:27:17 -0400
 Subject: [PATCH] Select OpenSSL Windows GNU Clang assembly configuration
 
 Preserve functional changes without warning-only dependency patches.
+
+Isolate the GNU analysis fixture from native MSVC extra-toolchain overrides.
+Preserve all compiler-driver assertions and production dependency sources.
+Red: run 38846595763 native MSVC job selects MASM/CL for the GNU fixture.
+Focused emitted verification and hosted native confirmation are tracked
+in the task execution record.
 ---
  MODULE.bazel                                 |  2 +-
  patches/openssl_gnu_clang_selection.patch    | 63 ++++++++++++++++++++
  tools/build-warnings/openssl/BUILD.bazel     |  8 ++-
- tools/build-warnings/openssl/inputs_test.bzl | 13 ++++
- 4 files changed, 84 insertions(+), 2 deletions(-)
+ tools/build-warnings/openssl/inputs_test.bzl | 16 +++++
+ 4 files changed, 87 insertions(+), 2 deletions(-)
  create mode 100644 patches/openssl_gnu_clang_selection.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
@@ -113,10 +119,10 @@ index a9f0e11a7..4ce254dc4 100644
  openssl_install_inputs_test(
      name = "rust_install_inputs_test",
 diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
-index 1d2e66334..593739923 100644
+index 1d2e66334..a31d1d83d 100644
 --- a/tools/build-warnings/openssl/inputs_test.bzl
 +++ b/tools/build-warnings/openssl/inputs_test.bzl
-@@ -18,3 +18,16 @@ openssl_install_inputs_test = analysistest.make(
+@@ -18,3 +18,19 @@ openssl_install_inputs_test = analysistest.make(
      _openssl_install_inputs_test_impl,
      attrs = {"install": attr.label(default = "@openssl//:gen_dir")},
  )
@@ -131,5 +137,8 @@ index 1d2e66334..593739923 100644
 +
 +openssl_windows_perlasm_test = analysistest.make(
 +    _openssl_windows_perlasm_test_impl,
-+    config_settings = {"//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm"))},
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm")),
++        "//command_line_option:extra_toolchains": [],
++    },
 +)

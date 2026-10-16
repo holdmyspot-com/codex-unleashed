@@ -14,7 +14,7 @@ Codex and project-owned tooling treat warnings as errors. Third-party dependency
 
 `formatter-warning-policy.patch` updates the existing upstream formatter wrapper and its CI callers. It requires no other downstream patch. It includes process-boundary tests and runs them in repository checks. This patch covers formatter diagnostics; the issue's other build-tool enforcement gates are separate work.
 
-`native-and-rust-warning-policy.patch` enables Cargo's warning policy, strict rustdoc diagnostics, and strict Bazel Rust target and execution-platform actions. Native compiler warning enforcement is explicit on project-owned targets. External native builds do not inherit a global `treat_warnings_as_errors` feature. The warning-policy regression checks both a fatal project warning and a successful dependency build with visible warning output. Apply the current-toolchain patch from issue #60 first, including its linker-argument compatibility adaptation.
+`native-and-rust-warning-policy.patch` enables Cargo's warning policy, strict rustdoc diagnostics, and strict Bazel Rust target and execution-platform actions. Native compiler warning enforcement is explicit on project-owned targets. External native builds do not inherit a global `treat_warnings_as_errors` feature. V8's build configuration also omits its own `-Werror`, preserving its warning flags and C++ sources. The warning-policy regression checks both a fatal project warning and a successful dependency build with visible warning output. The production V8 action regression, `bazel test //tools/build-warnings/dependencies:v8_warning_policy_test`, verifies that its compile arguments retain `-Wextra` and omit `-Werror`. Apply the current-toolchain patch from issue #60 first, including its linker-argument compatibility adaptation.
 
 The native probe first requires a clean C program to build, then requires a deprecated-function warning to fail at the compiler diagnostic. It rejects an unrelated failure as evidence of warning enforcement. Remaining build-tool and hosted-platform acceptance gates are tracked separately in the issue.
 
@@ -858,6 +858,8 @@ ELF assembly. Existing GCC, clang-cl, and MSVC selections remain supported.
 The Microsoft SDK's Winsock guard applies only to MSVC and clang-cl. GNU
 Windows builds use `WIN32_LEAN_AND_MEAN` and let MinGW define its own guard.
 The generator is visible to the downstream regression package for inspection.
+The GNU analysis fixture clears runner-specific extra toolchains so native MSVC
+CI also inspects the intended GNU compiler configuration.
 Apply the OpenSSL upgrade and native tool prerequisites first.
 
 ```sh
@@ -1177,6 +1179,8 @@ registrations account for the ordering dependency; each file contains one fix.
 - `zzzz-0001-xz-windows-driver-flags.patch` restricts GNU stack flags to
   Windows Clang, GCC, and MinGW GCC drivers. MSVC receives neither GNU flag;
   the GNU Windows configuration retains both flags.
+  Its GNU analysis fixture clears runner-specific extra toolchains so native
+  MSVC CI does not replace the compiler configuration under inspection.
 - `zzzz-0002-cargo-c-standard.patch` lets Cargo build scripts choose their C
   dialect without also exporting the toolchain's default dialect. Explicit
   compile flags, the selected runtime, and fatal warnings remain enabled.
