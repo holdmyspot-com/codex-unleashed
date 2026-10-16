@@ -119,16 +119,11 @@ jobs:
             -//third_party/v8:all
             -//codex-rs/v8-poc:v8-poc-unit-tests
           )
-          bazel_resource_args=()
-          if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            bazel_resource_args+=(--jobs=2)
-          fi
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
             --print-failed-test-logs \
             -- \
             test \
-            "${bazel_resource_args[@]}" \
             --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings \
             "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
@@ -465,17 +460,12 @@ jobs:
           while IFS= read -r target; do
             bazel_targets+=("${target}")
           done <<< "${bazel_target_lines}"
-          bazel_resource_args=()
-          if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            bazel_resource_args+=(--jobs=2)
-          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               --windows-cross-compile \
               -- \
               build \
-              "${bazel_resource_args[@]}" \
               "${bazel_clippy_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -484,7 +474,6 @@ jobs:
               --print-failed-action-summary \
               -- \
               build \
-              "${bazel_resource_args[@]}" \
               "${bazel_clippy_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -566,17 +555,12 @@ jobs:
           while IFS= read -r target; do
             bazel_targets+=("${target}")
           done <<< "${bazel_target_lines}"
-          bazel_resource_args=()
-          if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            bazel_resource_args+=(--jobs=2)
-          fi
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary \
               --windows-cross-compile \
               -- \
               build \
-              "${bazel_resource_args[@]}" \
               "${bazel_build_args[@]}" \
               -- \
               "${bazel_targets[@]}"
@@ -585,7 +569,6 @@ jobs:
               --print-failed-action-summary \
               -- \
               build \
-              "${bazel_resource_args[@]}" \
               "${bazel_build_args[@]}" \
               -- \
               "${bazel_targets[@]}"

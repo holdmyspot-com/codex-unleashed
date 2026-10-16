@@ -125,8 +125,14 @@ public final class BazelCommands
 			arguments.subList(0, separator).contains("--config=ci-macos") &&
 			Set.of("build", "test", "run", "coverage", "cquery", "aquery").contains(arguments.get(commandIndex)) &&
 			arguments.subList(commandIndex + 1, separator).stream().noneMatch(argument ->
-				argument.equals("--jobs") || argument.startsWith("--jobs=") || argument.startsWith("-j")))
-			command.add("--jobs=2");
+				argument.equals("--jobs") || argument.startsWith("--jobs=") || argument.startsWith("-j") ||
+					argument.startsWith("--local_resources=cpu=")))
+		{
+			if (config.isPresent())
+				command.add("--local_resources=cpu=2");
+			else
+				command.add("--jobs=2");
+		}
 
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPO_CONTENTS_CACHE",
 			"--repo_contents_cache=");

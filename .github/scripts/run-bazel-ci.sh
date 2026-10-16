@@ -263,15 +263,17 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUI
 fi
 
 post_config_bazel_args=()
-# The hosted runners can exhaust their native-thread limit while Bazel is
-# analyzing this repository and its cross-platform toolchains. Keep the local
-# Bazel client bounded; remote execution still provides parallel action work.
-bazel_jobs=2
+# Bound local loading, compilation and tests independently of remote actions.
+local_jobs=2
 if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
-  bazel_jobs=1
-  post_config_bazel_args+=("--loading_phase_threads=1")
+  local_jobs=1
 fi
-post_config_bazel_args+=("--jobs=${bazel_jobs}" "--local_test_jobs=${bazel_jobs}")
+post_config_bazel_args+=("--loading_phase_threads=${local_jobs}" "--local_test_jobs=${local_jobs}")
+if [[ -n "${BUILDBUDDY_API_KEY:-}" && ( "${RUNNER_OS:-}" != "Windows" || $windows_cross_compile -eq 1 ) ]]; then
+  post_config_bazel_args+=("--local_resources=cpu=${local_jobs}")
+else
+  post_config_bazel_args+=("--jobs=${local_jobs}")
+fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0

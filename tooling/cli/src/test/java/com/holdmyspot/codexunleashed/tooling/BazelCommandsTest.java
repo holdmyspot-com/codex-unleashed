@@ -329,15 +329,20 @@ public final class BazelCommandsTest
 			List<String> arguments = List.of(operation, "--config=ci-macos", "//third_party/v8:pair", "--", "--jobs=99");
 			assertEquals(command(arguments, environment), List.of("bazel", "--noexperimental_remote_repo_contents_cache",
 				operation, "--config=buildbuddy-generic-rbe", "--remote_header=x-buildbuddy-api-key=token",
-				"--remote_local_fallback", "--config=ci-macos", "//third_party/v8:pair", "--jobs=2", "--", "--jobs=99"));
+				"--remote_local_fallback", "--config=ci-macos", "//third_party/v8:pair", "--local_resources=cpu=2", "--",
+				"--jobs=99"));
 		}
 		for (List<String> option : List.of(List.of("--jobs=4"), List.of("--jobs", "4"), List.of("-j4"),
-			List.of("-j", "4")))
+			List.of("-j", "4"), List.of("--local_resources=cpu=4")))
 		{
 			List<String> arguments = new ArrayList<>(List.of("build", "--config=ci-macos"));
 			arguments.addAll(option);
 			assertFalse(command(arguments, environment).contains("--jobs=2"));
+			assertFalse(command(arguments, environment).contains("--local_resources=cpu=2"));
 		}
+		assertEquals(command(List.of("build", "--config=ci-macos"),
+			Map.of("GITHUB_ACTIONS", "true", "RUNNER_OS", "macOS")),
+			List.of("bazel", "--noexperimental_remote_repo_contents_cache", "build", "--jobs=2"));
 		assertFalse(command(List.of("build", "--config=ci-macos"), Map.of("RUNNER_OS", "macOS")).
 			contains("--jobs=2"));
 		assertFalse(command(List.of("build", "--config=ci-linux"), environment).contains("--jobs=2"));

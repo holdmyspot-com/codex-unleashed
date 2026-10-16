@@ -99,7 +99,14 @@ public final class BazelCallerTest
 					String jobs = "2";
 					if (operatingSystem.equals("macOS"))
 						jobs = "1";
-					assertTrue(test.contains("--jobs=" + jobs));
+					if (credential.isEmpty() || operatingSystem.equals("Windows"))
+						assertTrue(test.contains("--jobs=" + jobs));
+					else
+					{
+						assertFalse(test.stream().anyMatch(argument -> argument.startsWith("--jobs=")),
+							"Local runner limits must not replace remote action concurrency: " + test);
+						assertTrue(test.contains("--local_resources=cpu=" + jobs));
+					}
 					assertTrue(test.contains("--local_test_jobs=" + jobs),
 						"Local test concurrency must respect the CI job limit; received arguments " + test);
 
@@ -129,6 +136,9 @@ public final class BazelCallerTest
 							crossBuild.indexOf("--remote_local_fallback"),
 							"Linux remote actions must never fall back to the Windows host");
 						assertTrue(crossBuild.contains("--config=ci-windows-cross"));
+						assertFalse(crossBuild.stream().anyMatch(argument -> argument.startsWith("--jobs=")),
+							"Windows cross builds retain remote configuration concurrency: " + crossBuild);
+						assertTrue(crossBuild.contains("--local_resources=cpu=2"));
 						assertTrue(crossBuild.contains("--remote_header=x-buildbuddy-api-key=fixture-token"));
 						assertTrue(crossBuild.contains("--disk_cache="));
 						assertTrue(crossBuild.contains("--repository_cache=" + environment.get("BAZEL_REPOSITORY_CACHE")));
