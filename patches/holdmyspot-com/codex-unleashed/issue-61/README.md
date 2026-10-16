@@ -22,12 +22,7 @@ The native probe first requires a clean C program to build, then requires a depr
 
 `libcxx-explicit-runtime-configuration.patch` defines the custom libc++ runtime's minimum availability-header version and LLVM-libc selection as zero. These match the existing preprocessor branches and remove undefined-macro warnings. The patch includes a native configuration regression test and applies independently of the other patches.
 
-`icu-mutex-thread-safety.patch` gives ICU's mutex implementation, C wrappers, and scoped guard explicit Clang lock contracts, including the default global mutex. It releases the currency-name cache mutex on allocation failure and represents the transliterator's conditional ownership with `std::unique_lock`. Thread-safety analysis remains enabled. A focused native test exercises direct locking, C wrappers, explicit scoped guards, and the default global guard; a manual negative target verifies that unprotected writes still fail compilation. Apply the issue #60 toolchain patch and this issue's native warning policy before verification.
-
-`upgrade-llvm-23-icu-regression-values.patch` makes that fixture read and check
-each guarded value while holding its mutex. The positive test verifies the values
-without LLVM 23's unused-global errors. The negative target still fails for
-unguarded access. Apply it after `icu-mutex-thread-safety.patch`.
+`icu-mutex-thread-safety.patch` releases the currency-name cache mutex when cache-entry allocation fails. It retains this runtime fix without adding mutex annotations or refactoring ICU locks for compiler diagnostics. ICU warnings remain visible and nonfatal.
 
 `native-mingw-function-guard.patch` corrects the native x86 function macro's `#ifndef` spelling in the pinned MinGW headers and enables fatal diagnostics in import-definition preprocessing. Its regression tests compile the real header for Windows x86-64 and ARM64 and assert that native symbols remain enabled only on the corresponding architecture. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`, which provides its test directory.
 
@@ -761,8 +756,6 @@ From the patched checkout root:
 - After Cargo resolves the workspace lockfile versions, `just bazel-lock-check` passes without crate-annotation advisories, including on a cold module-extension evaluation.
 - `just check-build-warnings` passes on Unix: the clean fixture builds and the warning fixture fails at its expected diagnostic.
 - `bazel test //third_party/v8/libcxx_config:config_test` passes with both runtime configuration values explicitly defined as zero.
-- `bazel test //third_party/v8:icu_mutex_analysis_test` passes with Clang thread-safety analysis enabled, including compilation of ICU's common and internationalization libraries.
-- With the hermetic Clang toolchain, `bazel build //third_party/v8:icu_mutex_analysis_error` fails specifically because the two guarded writes require their respective mutexes. An unrelated failure does not establish this check.
 - `bazel test //tools/build-warnings:mingw_function_guard_x86_64_test //tools/build-warnings:mingw_function_guard_aarch64_test` passes without preprocessor warnings and preserves both architectures' macro expansion.
 - `bazel test //tools/build-warnings/bindgen:preprocessor_policy_test` passes all six argument-preservation and MSVC normalization regressions.
 - `bazel build //tools/build-warnings/bindgen:warning` fails specifically at `expected_bindgen_warning`, proving that a header warning is fatal during binding generation.

@@ -1,28 +1,23 @@
-From 24078866166aab2f28e7043ca33054973fc19920 Mon Sep 17 00:00:00 2001
+From 42a514e3336692c34664fe6f3b6387ccce9bee2a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 03:54:44 +0000
-Subject: [PATCH] Model ICU mutex ownership for strict Clang analysis
+Date: Fri, 16 Oct 2026 03:36:44 +0000
+Subject: [PATCH] Release the ICU currency cache lock on allocation failure
 
-Annotate ICU mutexes, C wrappers, and scoped guards without disabling thread-safety analysis. Identify the global default guard explicitly, release the currency cache mutex on allocation failure, and use standard conditional lock ownership in the transliterator.
+Keep the existing allocation-failure unlock without warning-only mutex annotations, lock refactoring, or analysis fixtures. Dependency warnings remain visible and nonfatal.
 
-TDD: bazel test //third_party/v8:icu_mutex_analysis_test fails against the original ICU headers at held-on-return and unheld-release diagnostics (icu-bazel-red.log, exit 1). The final patched test passes, including both ICU libraries (icu-bazel-unique-lock.log, exit 0). The negative target fails specifically for both unprotected guarded writes (icu-negative-analysis.log, exit 1). Materialized ICU files match all five authoring inputs byte for byte. just fmt-check passes (icu-format-final.log).
-
-Base: rust-v0.162.1, 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d. Verification prerequisites: current toolchain and native warning policy patches. Fixes holdmyspot-com/codex-unleashed#61 in the ICU scope.
+Scope verification retains the original allocation-failure hunk byte for byte. The narrowed 151-patch queue applies strictly to rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012). Nested application and maintained formatting/build gates are recorded in the owning execution receipt. Runtime fault injection is not established by patch application.
 ---
- MODULE.bazel                              |   1 +
- patches/BUILD.bazel                       |   1 +
- patches/v8_icu_mutex_annotations.patch    | 164 ++++++++++++++++++++++
- third_party/v8/BUILD.bazel                |  17 +++
- third_party/v8/icu_mutex_analysis_test.cc |  44 ++++++
- 5 files changed, 227 insertions(+)
+ MODULE.bazel                           |  1 +
+ patches/BUILD.bazel                    |  1 +
+ patches/v8_icu_mutex_annotations.patch | 32 ++++++++++++++++++++++++++
+ 3 files changed, 34 insertions(+)
  create mode 100644 patches/v8_icu_mutex_annotations.patch
- create mode 100644 third_party/v8/icu_mutex_analysis_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 0eac4d0cd..2610b8b10 100644
+index b7f1c4905..a7ff40feb 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -800,6 +800,7 @@ archive_override(
+@@ -809,6 +809,7 @@ archive_override(
          "//patches:v8_module_deps.patch",
          "//patches:v8_bazel_rules.patch",
          "//patches:v8_source_portability.patch",
@@ -31,10 +26,10 @@ index 0eac4d0cd..2610b8b10 100644
      strip_prefix = "v8-15.0.245.2",
      urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 351d64692..f3d9a5513 100644
+index afff7bc4c..4cfe5e30c 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -27,6 +27,7 @@ exports_files([
+@@ -28,6 +28,7 @@ exports_files([
      "tikv-jemalloc-sys_dependency_flags.patch",
      "v8_bazel_rules.patch",
      "v8_module_deps.patch",
@@ -44,10 +39,10 @@ index 351d64692..f3d9a5513 100644
      "windows-link.patch",
 diff --git a/patches/v8_icu_mutex_annotations.patch b/patches/v8_icu_mutex_annotations.patch
 new file mode 100644
-index 000000000..dd69ad50c
+index 000000000..0d283d793
 --- /dev/null
 +++ b/patches/v8_icu_mutex_annotations.patch
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,32 @@
 +diff --git a/mod/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
 +index 573f463..7a40699 100644
 +--- a/mod/v8-15.0.245.2/MODULE.bazel
@@ -63,46 +58,11 @@ index 000000000..dd69ad50c
 +     remote = "https://chromium.googlesource.com/chromium/deps/icu.git",
 + )
 +
-+diff --git a/mod/v8-15.0.245.2/bazel/icu_mutex/BUILD.bazel b/mod/v8-15.0.245.2/bazel/icu_mutex/BUILD.bazel
-+new file mode 100644
-+index 0000000..ba6e213
-+--- /dev/null
-++++ b/mod/v8-15.0.245.2/bazel/icu_mutex/BUILD.bazel
-+@@ -0,0 +1,5 @@
-++alias(
-++    name = "icu",
-++    actual = "@icu//:icu",
-++    visibility = ["//visibility:public"],
-++)
 +diff --git a/mod/v8-15.0.245.2/bazel/icu_mutex_annotations.patch b/mod/v8-15.0.245.2/bazel/icu_mutex_annotations.patch
 +new file mode 100644
-+index 0000000..53e083f
 +--- /dev/null
 ++++ b/mod/v8-15.0.245.2/bazel/icu_mutex_annotations.patch
-+@@ -0,0 +1,132 @@
-++diff --git a/source/common/mutex.h b/source/common/mutex.h
-++index 44b1f90..75f2ecb 100644
-++--- a/source/common/mutex.h
-+++++ b/source/common/mutex.h
-++@@ -53,12 +53,15 @@ U_NAMESPACE_BEGIN
-++   *         compiler!!
-++   */
-++
-++-class U_COMMON_API Mutex : public UMemory {
-+++class U_COMMON_API U_THREAD_SAFETY_ATTRIBUTE(scoped_lockable) Mutex : public UMemory {
-++ public:
-++-    Mutex(UMutex *mutex = nullptr) : fMutex(mutex) {
-+++    Mutex() U_THREAD_SAFETY_ATTRIBUTE(acquire_capability(UMutex::getGlobalMutex())) : fMutex(UMutex::getGlobalMutex()) {
-++         umtx_lock(fMutex);
-++     }
-++-    ~Mutex() {
-+++    Mutex(UMutex *mutex) U_THREAD_SAFETY_ATTRIBUTE(acquire_capability(mutex)) : fMutex(mutex) {
-+++        umtx_lock(fMutex);
-+++    }
-+++    ~Mutex() U_THREAD_SAFETY_ATTRIBUTE(release_capability()) {
-++         umtx_unlock(fMutex);
-++     }
-++
++@@ -0,0 +1,12 @@
 ++diff --git a/source/common/ucurr.cpp b/source/common/ucurr.cpp
 ++index cccf113..558cdc0 100644
 ++--- a/source/common/ucurr.cpp
@@ -115,181 +75,3 @@ index 000000000..dd69ad50c
 ++                 return nullptr;
 ++             }
 ++             currCache[currentCacheEntryIndex] = cacheEntry;
-++diff --git a/source/common/umutex.cpp b/source/common/umutex.cpp
-++index 0c05396..3907940 100644
-++--- a/source/common/umutex.cpp
-+++++ b/source/common/umutex.cpp
-++@@ -77,6 +77,10 @@ static void U_CALLCONV umtx_init() {
-++ U_CDECL_END
-++
-++
-+++UMutex *UMutex::getGlobalMutex() {
-+++    return &globalMutex;
-+++}
-+++
-++ std::mutex *UMutex::getMutex() {
-++     std::mutex *retPtr = fMutex.load(std::memory_order_acquire);
-++     if (retPtr == nullptr) {
-++diff --git a/source/common/umutex.h b/source/common/umutex.h
-++index 1b83324..9659197 100644
-++--- a/source/common/umutex.h
-+++++ b/source/common/umutex.h
-++@@ -216,7 +216,13 @@ template<class T> void umtx_initOnce(UInitOnce &uio, void (U_CALLCONV *fp)(T, UE
-++  *    }         // myMutex is released when lock goes out of scope.
-++  */
-++
-++-class U_COMMON_API UMutex {
-+++#if defined(__clang__)
-+++#define U_THREAD_SAFETY_ATTRIBUTE(attribute) __attribute__((attribute))
-+++#else
-+++#define U_THREAD_SAFETY_ATTRIBUTE(attribute)
-+++#endif
-+++
-+++class U_COMMON_API U_THREAD_SAFETY_ATTRIBUTE(capability("mutex")) UMutex {
-++ public:
-++     UMUTEX_CONSTEXPR UMutex() {}
-++     ~UMutex() = default;
-++@@ -226,14 +232,15 @@ public:
-++     void *operator new(size_t) = delete;
-++
-++     // requirements for C++ BasicLockable, allows UMutex to work with std::lock_guard
-++-    void lock() {
-+++    void lock() U_THREAD_SAFETY_ATTRIBUTE(acquire_capability()) {
-++         std::mutex *m = fMutex.load(std::memory_order_acquire);
-++         if (m == nullptr) { m = getMutex(); }
-++         m->lock();
-++     }
-++-    void unlock() { fMutex.load(std::memory_order_relaxed)->unlock(); }
-+++    void unlock() U_THREAD_SAFETY_ATTRIBUTE(release_capability()) { fMutex.load(std::memory_order_relaxed)->unlock(); }
-++
-++     static void cleanup();
-+++    static UMutex *getGlobalMutex();
-++
-++ private:
-++     alignas(std::mutex) char fStorage[sizeof(std::mutex)] {};
-++@@ -258,13 +265,13 @@ private:
-++  *              the global ICU mutex.  Recursive locks are an error
-++  *              and may cause a deadlock on some platforms.
-++  */
-++-U_CAPI void U_EXPORT2 umtx_lock(UMutex* mutex);
-+++U_CAPI void U_EXPORT2 umtx_lock(UMutex* mutex) U_THREAD_SAFETY_ATTRIBUTE(acquire_capability(mutex));
-++
-++ /* Unlock a mutex.
-++  * @param mutex The given mutex to be unlocked.  Pass NULL to specify
-++  *              the global ICU mutex.
-++  */
-++-U_CAPI void U_EXPORT2 umtx_unlock (UMutex* mutex);
-+++U_CAPI void U_EXPORT2 umtx_unlock (UMutex* mutex) U_THREAD_SAFETY_ATTRIBUTE(release_capability(mutex));
-++
-++
-++ U_NAMESPACE_END
-++diff --git a/source/i18n/rbt.cpp b/source/i18n/rbt.cpp
-++index f34ddc9..736a680 100644
-++--- a/source/i18n/rbt.cpp
-+++++ b/source/i18n/rbt.cpp
-++@@ -254,13 +254,14 @@ RuleBasedTransliterator::handleTransliterate(Replaceable& text, UTransPosition&
-++     // TODO(andy): Need a better scheme for handling this.
-++
-++     static UMutex transliteratorDataMutex;
-+++    std::unique_lock<UMutex> dataLock(transliteratorDataMutex, std::defer_lock);
-++     UBool needToLock;
-++     {
-++         Mutex m;
-++         needToLock = (&text != gLockedText);
-++     }
-++     if (needToLock) {
-++-        umtx_lock(&transliteratorDataMutex);  // Contention, longish waits possible here.
-+++        dataLock.lock();  // Contention, longish waits possible here.
-++         Mutex m;
-++         gLockedText = &text;
-++         lockedMutexAtThisLevel = true;
-++@@ -279,7 +280,7 @@ RuleBasedTransliterator::handleTransliterate(Replaceable& text, UTransPosition&
-++             Mutex m;
-++             gLockedText = nullptr;
-++         }
-++-        umtx_unlock(&transliteratorDataMutex);
-+++        dataLock.unlock();
-++     }
-++ }
-++
-diff --git a/third_party/v8/BUILD.bazel b/third_party/v8/BUILD.bazel
-index 7f764c625..31c110dd4 100644
---- a/third_party/v8/BUILD.bazel
-+++ b/third_party/v8/BUILD.bazel
-@@ -1,9 +1,26 @@
- load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
- load("@rules_cc//cc:cc_static_library.bzl", "cc_static_library")
-+load("@rules_cc//cc:cc_test.bzl", "cc_test")
- load("@rules_cc//cc:defs.bzl", "cc_library")
-
- package(default_visibility = ["//visibility:public"])
-
-+cc_test(
-+    name = "icu_mutex_analysis_test",
-+    size = "small",
-+    srcs = ["icu_mutex_analysis_test.cc"],
-+    deps = ["@v8//bazel/icu_mutex:icu"],
-+)
-+
-+cc_binary(
-+    name = "icu_mutex_analysis_error",
-+    srcs = ["icu_mutex_analysis_test.cc"],
-+    local_defines = ["CODEX_ICU_EXPECT_ANALYSIS_ERROR"],
-+    tags = ["manual"],
-+    deps = ["@v8//bazel/icu_mutex:icu"],
-+)
-+
- config_setting(
-     name = "platform_aarch64_unknown_linux_musl",
-     constraint_values = [
-diff --git a/third_party/v8/icu_mutex_analysis_test.cc b/third_party/v8/icu_mutex_analysis_test.cc
-new file mode 100644
-index 000000000..ea44f8301
---- /dev/null
-+++ b/third_party/v8/icu_mutex_analysis_test.cc
-@@ -0,0 +1,44 @@
-+#include "mutex.h"
-+
-+#if defined(__clang__)
-+#define ICU_TEST_GUARDED_BY(mutex) __attribute__((guarded_by(mutex)))
-+#else
-+#define ICU_TEST_GUARDED_BY(mutex)
-+#endif
-+
-+using U_NAMESPACE_QUALIFIER Mutex;
-+using U_NAMESPACE_QUALIFIER UMutex;
-+using U_NAMESPACE_QUALIFIER umtx_lock;
-+using U_NAMESPACE_QUALIFIER umtx_unlock;
-+
-+static UMutex analysis_mutex;
-+static int analysis_value ICU_TEST_GUARDED_BY(analysis_mutex);
-+static int global_analysis_value ICU_TEST_GUARDED_BY(UMutex::getGlobalMutex());
-+
-+int main() {
-+#if defined(CODEX_ICU_EXPECT_ANALYSIS_ERROR)
-+    analysis_value = 1;
-+    global_analysis_value = 1;
-+#else
-+    analysis_mutex.lock();
-+    analysis_value = 1;
-+    analysis_mutex.unlock();
-+
-+    umtx_lock(&analysis_mutex);
-+    analysis_value = 2;
-+    umtx_unlock(&analysis_mutex);
-+
-+    {
-+        Mutex lock(&analysis_mutex);
-+        analysis_value = 3;
-+    }
-+    {
-+        Mutex lock;
-+        global_analysis_value = 1;
-+    }
-+    {
-+        Mutex lock(nullptr);
-+    }
-+#endif
-+    return 0;
-+}
