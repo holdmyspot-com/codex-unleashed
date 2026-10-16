@@ -101,6 +101,12 @@ public final class BazelCallerTest
 						jobs = "1";
 					if (credential.isEmpty() || operatingSystem.equals("Windows"))
 						assertTrue(test.contains("--jobs=" + jobs));
+					else if (operatingSystem.equals("macOS"))
+					{
+						assertTrue(test.contains("--jobs=64"),
+							"Remote cache callbacks must fit the macOS native thread budget: " + test);
+						assertTrue(test.contains("--local_resources=cpu=" + jobs));
+					}
 					else
 					{
 						assertFalse(test.stream().anyMatch(argument -> argument.startsWith("--jobs=")),

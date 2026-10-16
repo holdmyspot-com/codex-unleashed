@@ -2067,3 +2067,32 @@ V8 targets listed under Concurrent V8 initialization with uncached test results;
 all must pass within their declared deadlines. Required queue checks remain
 `just fmt-check` and `just bazel-lock-check`. Linux formatting and source replay
 alone do not establish Windows execution.
+
+## macOS remote concurrency budget
+
+`zzzz-0043-macos-remote-thread-budget.patch` caps authenticated macOS Bazel CI
+commands at 64 concurrent actions. Bazel 9.3 sizes its native remote callback
+pool from `--jobs`; the 800-action remote default can exhaust native threads
+during disk-cache reads and writes on hosted macOS. Remote configuration,
+cache authentication, cache keys, and child exit status retain their behavior.
+The fork also retains its independent local compilation and test limits.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue
+through patch 0042. The tracking issue is
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. The pool sizing is
+defined in [Bazel's RemoteModule](https://github.com/bazelbuild/bazel/blob/9.3.0/src/main/java/com/google/devtools/build/lib/remote/RemoteModule.java).
+
+With an owned `TMPDIR`, run:
+
+```sh
+bash .github/scripts/test-bazel-macos-concurrency.sh
+just fmt-check
+just bazel-lock-check
+```
+
+The process-boundary regression requires the cap on authenticated macOS calls,
+preserves exit status 37, and checks Linux and credential-free controls. The
+fork's `tooling/mvnw verify` checks the same invocation through its bundled Java
+runtime. Native macOS tests, Clippy, and release verification must also finish
+without thread exhaustion; wrapper tests alone do not establish that result.

@@ -271,6 +271,11 @@ fi
 post_config_bazel_args+=("--loading_phase_threads=${local_jobs}" "--local_test_jobs=${local_jobs}")
 if [[ -n "${BUILDBUDDY_API_KEY:-}" && ( "${RUNNER_OS:-}" != "Windows" || $windows_cross_compile -eq 1 ) ]]; then
   post_config_bazel_args+=("--local_resources=cpu=${local_jobs}")
+  if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
+    # Bazel sizes its native remote callback pool from --jobs. Keep this pool
+    # within the hosted macOS runner's budget alongside cache I/O carrier threads.
+    post_config_bazel_args+=(--jobs=64)
+  fi
 else
   post_config_bazel_args+=("--jobs=${local_jobs}")
 fi

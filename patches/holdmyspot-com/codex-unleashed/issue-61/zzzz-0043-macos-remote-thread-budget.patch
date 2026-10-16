@@ -1,0 +1,77 @@
+From e7acc0261389d159996000b2dfe1c27061989d93 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 14:26:30 +0000
+Subject: [PATCH] Bound macOS remote build concurrency to the runner thread
+ budget
+
+Bazel sizes its native remote callback pool from --jobs. The 800-action remote default exhausts native threads during disk-cache reads and writes on hosted macOS. Cap the macOS remote invocation at 64 while retaining remote configuration, caching, and child exit status.
+
+Regression: test-bazel-macos-concurrency.sh fails before the change because --jobs=64 is absent, and passes after it. Other platforms and credential-free execution retain their existing choices. Native macOS full CI remains the acceptance gate for eliminating thread exhaustion.
+---
+ .github/scripts/run-bazel-ci.sh               |  6 ++++
+ .../scripts/test-bazel-macos-concurrency.sh   | 36 +++++++++++++++++++
+ 2 files changed, 42 insertions(+)
+ create mode 100644 .github/scripts/test-bazel-macos-concurrency.sh
+
+diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
+index 89f937a99..f1f520c92 100755
+--- a/.github/scripts/run-bazel-ci.sh
++++ b/.github/scripts/run-bazel-ci.sh
+@@ -263,6 +263,12 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUI
+ fi
+ 
+ post_config_bazel_args=()
++if [[ "${RUNNER_OS:-}" == "macOS" && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
++  # Bazel sizes its native remote callback pool from --jobs. Keep this pool
++  # within the hosted macOS runner's budget alongside cache I/O carrier threads.
++  post_config_bazel_args+=(--jobs=64)
++fi
++
+ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
+   has_host_platform_override=0
+   for arg in "${bazel_args[@]}"; do
+diff --git a/.github/scripts/test-bazel-macos-concurrency.sh b/.github/scripts/test-bazel-macos-concurrency.sh
+new file mode 100644
+index 000000000..01df5b156
+--- /dev/null
++++ b/.github/scripts/test-bazel-macos-concurrency.sh
+@@ -0,0 +1,36 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++fixture="$(mktemp -d)"
++trap 'rm -rf -- "$fixture"' EXIT
++cp "$(dirname "${BASH_SOURCE[0]}")/run-bazel-ci.sh" "$fixture/"
++cat > "$fixture/run_bazel_with_buildbuddy.py" <<'CHILD'
++#!/usr/bin/env bash
++printf '%s\n' "$@" > "$BAZEL_FIXTURE_ARGUMENTS"
++exit 37
++CHILD
++chmod +x "$fixture/run_bazel_with_buildbuddy.py"
++export BAZEL_FIXTURE_ARGUMENTS="$fixture/arguments"
++export TMPDIR="$fixture"
++unset BAZEL_OUTPUT_USER_ROOT BAZEL_REPO_CONTENTS_CACHE BAZEL_REPOSITORY_CACHE
++unset CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR
++
++for platform in macOS Linux; do
++  for credential in '' fixture-token; do
++    status=0
++    RUNNER_OS="$platform" BUILDBUDDY_API_KEY="$credential" \
++      bash "$fixture/run-bazel-ci.sh" -- build -- //fixture:target > "$fixture/output" 2>&1 || status=$?
++    [[ "$status" == 37 ]]
++    [[ "$(tail -n 1 "$BAZEL_FIXTURE_ARGUMENTS")" == //fixture:target ]]
++    if [[ "$platform" == macOS && -n "$credential" ]]; then
++      grep -Fx -- --config=ci-macos "$BAZEL_FIXTURE_ARGUMENTS"
++      grep -Fx -- --jobs=64 "$BAZEL_FIXTURE_ARGUMENTS"
++    else
++      if grep -Fxq -- --jobs=64 "$BAZEL_FIXTURE_ARGUMENTS"; then
++        echo 'The macOS remote concurrency cap leaked into another execution mode.' >&2
++        exit 1
++      fi
++    fi
++  done
++done
++echo 'macOS remote concurrency and child status checks passed.'
+-- 
+2.43.0
+
