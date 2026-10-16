@@ -2045,3 +2045,25 @@ just bazel-lock-check
 All five targets must pass without the native allocator initialization assertion.
 Linux verification supplements this required Windows result. The diagnostic
 branch runs focused native tests and does not establish the complete CI matrix.
+
+## Windows test launcher startup
+
+`zzzz-0042-windows-test-launcher-startup.patch` selects and batches tests in one
+PowerShell process. Filtering, ordinal ordering, deterministic shard assignment,
+long command-line batching, and child failure status retain their behavior.
+The native fixture removes its temporary files and returns success after checking
+an intentionally failing child. The native Bazel workflow runs that fixture.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue
+through patch 0041. On Windows, run:
+
+```powershell
+./tools/build-warnings/windows-launcher/selected_tests.ps1 -TempRoot $env:TEMP
+```
+
+The fixture must succeed and remove its scratch directory. Run the five native
+V8 targets listed under Concurrent V8 initialization with uncached test results;
+all must pass within their declared deadlines. Required queue checks remain
+`just fmt-check` and `just bazel-lock-check`. Linux formatting and source replay
+alone do not establish Windows execution.

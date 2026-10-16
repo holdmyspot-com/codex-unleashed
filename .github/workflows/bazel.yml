@@ -349,6 +349,10 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/test-compute-bazel-windows-path.ps1 -WorkDirectory '${{ runner.temp }}/windows-path-check'
 
+      - name: Verify Windows test launcher selection and batching
+        shell: pwsh
+        run: ./upstream/tools/build-warnings/windows-launcher/selected_tests.ps1 -TempRoot '${{ runner.temp }}'
+
       - name: bazel test //...
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
