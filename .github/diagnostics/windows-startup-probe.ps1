@@ -16,13 +16,30 @@ try {
     $templatePath = Join-Path $env:GITHUB_WORKSPACE '.github/diagnostics/workspace_root_test_launcher.bat.tpl'
     $template = [IO.File]::ReadAllText($templatePath)
     $launcher = Join-Path $probeRoot 'launcher.cmd'
-    $binary = Join-Path $probeRoot 'stub.cmd'
+    $binary = Join-Path $probeRoot 'stub.exe'
     $marker = Join-Path $probeRoot 'root/markers/BUILD.bazel'
     New-Item -ItemType Directory -Path (Split-Path -Parent $marker) | Out-Null
     [IO.File]::WriteAllText($marker, '')
-    [IO.File]::WriteAllText($binary, "@echo off`r`necho fixture test binary started`r`nexit /b 0`r`n")
+    $source = Join-Path $probeRoot 'stub.cs'
+    [IO.File]::WriteAllText($source, @'
+using System;
+public static class Stub {
+    public static int Main(string[] args) {
+        if (args.Length > 0 && args[0] == "--list") {
+            Console.WriteLine("fixture::first: test");
+            Console.WriteLine("fixture::second: test");
+            return 0;
+        }
+        Console.WriteLine("fixture test binary started: " + string.Join(" ", args));
+        return 0;
+    }
+}
+'@)
+    $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+    & $compiler /nologo /warnaserror /target:exe "/out:$binary" $source
+    if ($LASTEXITCODE -ne 0) { throw "Native fixture compilation failed: $LASTEXITCODE" }
     $template = $template.Replace('__WORKSPACE_ROOT_MARKER__', 'probe/root/BUILD.bazel')
-    $template = $template.Replace('__TEST_BIN__', 'probe/test.cmd')
+    $template = $template.Replace('__TEST_BIN__', 'probe/test.exe')
     $template = $template.Replace('__RUNFILE_ENV_EXPORTS__', '')
     $template = $template.Replace('__WORKSPACE_ROOT_SETUP__', '')
     if ($template -match '__[A-Z_]+__') { throw 'Unexpanded launcher placeholder' }
@@ -41,7 +58,7 @@ try {
     $runfiles = Join-Path $probeRoot 'runfiles'
     New-Item -ItemType Directory -Path (Join-Path $runfiles 'probe/root') | Out-Null
     Copy-Item -LiteralPath $marker -Destination (Join-Path $runfiles 'probe/root/BUILD.bazel')
-    Copy-Item -LiteralPath $binary -Destination (Join-Path $runfiles 'probe/test.cmd')
+    Copy-Item -LiteralPath $binary -Destination (Join-Path $runfiles 'probe/test.exe')
     $env:RUNFILES_DIR = $runfiles
     $watch = [Diagnostics.Stopwatch]::StartNew()
     & $env:ComSpec /d /c $launcher
@@ -57,7 +74,7 @@ try {
     for ($index = 0; $index -lt 20000; $index++) {
         $entries.Add(('filler/{0:D5} {1}' -f $index, $binary))
     }
-    $bindings = @("probe/root/BUILD.bazel $marker", "probe/test.cmd $binary")
+    $bindings = @("probe/root/BUILD.bazel $marker", "probe/test.exe $binary")
     foreach ($position in @('first', 'last')) {
         $lines = if ($position -eq 'first') { @($bindings) + $entries.ToArray() } else { $entries.ToArray() + @($bindings) }
         [IO.File]::WriteAllLines($manifest, [string[]]$lines)
@@ -69,6 +86,23 @@ try {
         Write-Output ('Manifest lookup result: ' + (@{
             position = $position
             entries = $lines.Count
+            elapsedMilliseconds = $watch.ElapsedMilliseconds
+        } | ConvertTo-Json -Compress))
+    }
+
+    $env:RUNFILES_MANIFEST_FILE = ''
+    $env:RUNFILES_DIR = $runfiles
+    foreach ($mode in @('skip-filter', 'sharded')) {
+        $env:CODEX_BAZEL_TEST_SKIP_FILTERS = if ($mode -eq 'skip-filter') { 'fixture::excluded' } else { '' }
+        $env:TEST_TOTAL_SHARDS = if ($mode -eq 'sharded') { '2' } else { '' }
+        $env:TEST_SHARD_INDEX = if ($mode -eq 'sharded') { '0' } else { '' }
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        & $env:ComSpec /d /c $launcher
+        $exit = $LASTEXITCODE
+        $watch.Stop()
+        if ($exit -ne 0) { throw "Selected-test $mode control failed: $exit" }
+        Write-Output ('Selected-test launcher result: ' + (@{
+            mode = $mode
             elapsedMilliseconds = $watch.ElapsedMilliseconds
         } | ConvertTo-Json -Compress))
     }
