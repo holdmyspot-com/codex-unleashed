@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   verify:
+    if: github.ref != 'refs/heads/ci/windows-startup-probe'
     name: Maven verification (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -35,3 +36,15 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
       - uses: dtolnay/rust-toolchain@stable
       - uses: ./.github/actions/setup-tooling
+
+  native-startup-probe:
+    if: github.ref == 'refs/heads/ci/windows-startup-probe'
+    name: Native Windows launcher and ACL diagnostics
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Measure launcher lookup and inspect ambient ACLs
+        shell: pwsh
+        run: ./.github/diagnostics/windows-startup-probe.ps1
