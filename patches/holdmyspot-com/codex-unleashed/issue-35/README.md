@@ -91,6 +91,8 @@ neighboring feature in the shared configuration schema. Then apply this series:
 5. `0005-keep-guardian-fixture-turns-explicit.patch` selects queued child-result
    delivery for the Guardian fixture that drives root turns explicitly. Its
    model responses and authorization assertions use that controlled sequence.
+6. `0006-isolate-upstream-scenario-history.patch` keeps eviction parent turns
+   explicit and checks retained history without matching tool-catalog guidance.
 
 Later patches depend on all preceding patches. The shared
 `schema/refresh-config-schema.patch` applies after the runtime patches and
@@ -111,9 +113,8 @@ Apply the complete release queue to the declared base. Run from the patched upst
 checkout root, with build outputs and caches in the project's task-owned
 build-cache directory. Each check uses a fresh task-owned temporary directory,
 so fixtures do not inherit project markers from earlier checks. Declared-base
-verification uses Rust 1.95.0, the version
-selected by that release's Rust CI. Linux verification with the release's
-sandbox-enabled V8 archive adds `--features codex-v8-poc/sandbox` to workspace
+verification uses the locally installed stable Rust toolchain. Linux verification
+with the release's sandbox-enabled V8 archive adds `--features codex-v8-poc/sandbox` to workspace
 test and Clippy commands. Scoped commands that add this feature also select
 `-p codex-v8-poc`. Each test process has a private writable checkout overlay,
 PID namespace, temporary directory, and Codex home; these fixtures preserve
@@ -144,8 +145,16 @@ The protocol check verifies that the embedded rollout schema matches the current
 message types without changing the public API exports.
 The scenario checks verify the model-visible catalog guidance. Controls for
 message-board notices, guardian handoffs, residency, authorization history,
-access-program inheritance, service tiers, root-turn attribution, and cold resume disable automatic
-child completion when they require explicit parent turns. Model-description
+access-program inheritance, service tiers, root-turn attribution, idle eviction,
+and cold resume disable automatic child completion when they require explicit parent turns. Model-description
 fixtures disable the additional completion guidance when comparing exact text.
 Selecting `codex-code-mode-host` and `codex-rmcp-client` builds the host and MCP
 server executables required by integration scenarios.
+
+The focused Bazel compatibility check preserves all four async-compaction cases
+and the eviction scenario's request count, retained mailbox, and complete history:
+
+```sh
+bazel test //codex-rs/core:core-all-test --test_filter=suite::scenarios::astra_async_compaction_keeps_work_added_after_its_snapshot
+bazel test //codex-rs/core:core-all-test --test_filter=suite::scenarios::agent_eviction::idle_eviction_preserves_worker_context_for_followup
+```

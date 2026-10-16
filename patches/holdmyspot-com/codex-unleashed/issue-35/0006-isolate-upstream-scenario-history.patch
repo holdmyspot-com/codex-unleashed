@@ -1,0 +1,50 @@
+From 650344b24aa642fadc5be7a0bd6c9bbc8bfe9043 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 03:17:50 +0000
+Subject: [PATCH] Keep upstream scenario assertions independent of background
+ notifications
+
+Match retained history outside additional_tools so catalog guidance cannot
+be mistaken for a duplicate function output. Keep eviction parent turns
+explicit, preserving the upstream request history and mailbox snapshot.
+
+Red: three focused scenarios fail on the 151-patch tree. The extra text
+match is catalog guidance rather than duplicate input. See
+issue35-scenario-isolation-stack-red.log and core-compaction-diagnostic.log.
+Green: the emitted 152-patch tree passes all four async-compaction variants,
+the eviction scenario, just fmt-check and just bazel-clippy through the
+maintained local-build helper. Logs and exit codes are recorded in
+scenario-compat-repair/{compaction,eviction,emitted-fmt,clippy}.
+---
+ codex-rs/core/tests/suite/scenarios.rs                      | 1 +
+ codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs | 5 +++++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index faa0cdbdb..b05a136d5 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -2464,6 +2464,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
+         let positions = input
+             .iter()
+             .enumerate()
++            .filter(|(_, item)| item["type"] != "additional_tools")
+             .filter_map(|(i, item)| item.to_string().contains(text).then_some(i))
+             .collect::<Vec<_>>();
+         assert_eq!(positions.len(), 1, "{text}");
+diff --git a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
+index 5f6bf67e6..0e4264812 100644
+--- a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
++++ b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
+@@ -20,6 +20,11 @@ async fn idle_eviction_preserves_worker_context_for_followup() -> Result<()> {
+         .with_extensions(Arc::new(extensions.build()))
+         .with_config(|config| {
+             configure_scenario_catalog(config);
++            // This eviction scenario drives parent turns explicitly.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("keep eviction fixture parent turns explicit");
+             config.features.enable(Feature::Collab).unwrap();
+             config.features.enable(Feature::MultiAgentV2).unwrap();
+             config
