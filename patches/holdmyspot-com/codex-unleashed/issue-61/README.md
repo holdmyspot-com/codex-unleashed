@@ -2025,3 +2025,12 @@ Both targets pass. The manual environment probe checks delivery of the host
 profile variable; the MXC unit target checks the Windows launcher behavior.
 A Linux check with an explicit Windows configuration can establish environment
 delivery but does not establish native Windows execution.
+
+## Concurrent V8 initialization diagnostic
+
+`zzzz-0041-v8-concurrent-initialization.patch` synchronizes the first isolate
+constructors in a fresh process. Run
+`bazel test //codex-rs/code-mode-runtime:code-mode-runtime-concurrent_initialization-test`.
+The expected outcome is successful concurrent isolate creation without a native
+allocator assertion. This diagnostic branch runs only the Windows reproduction;
+it does not establish the complete CI matrix.
