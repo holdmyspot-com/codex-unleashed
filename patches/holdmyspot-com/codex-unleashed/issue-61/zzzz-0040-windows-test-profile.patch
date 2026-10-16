@@ -1,0 +1,65 @@
+From 02075583c470808611536998092f88f86c9a6b02 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 07:27:20 +0000
+Subject: [PATCH] Pass Windows launcher profile location to Bazel tests
+
+Native Windows MXC runtime tests fail with missing LOCALAPPDATA in
+Bazel run 38857180821, job 116831181376. Pass the host value through
+the Windows test environment without changing dependency or product code.
+
+Add a runtime environment-delivery regression. With a Unicode host
+LOCALAPPDATA and --config=windows, --host_platform=//:local_linux,
+--workspace_status_command=./scripts/workspace-status.sh,
+--spawn_strategy=local and --strategy=TestRunner=standalone:
+  bazel test //tools/build-warnings/windows-environment:launcher_profile_test
+fails before the setting (exit 3, NotPresent) and passes after it (exit 0).
+Linux verifies config/environment delivery, not Windows MXC execution;
+//codex-rs/mxc-sandbox:mxc-sandbox-unit-tests remains a native hosted gate.
+---
+ .bazelrc                                                 | 2 ++
+ tools/build-warnings/windows-environment/BUILD.bazel     | 9 +++++++++
+ .../windows-environment/launcher_profile.rs              | 6 ++++++
+ 3 files changed, 17 insertions(+)
+ create mode 100644 tools/build-warnings/windows-environment/BUILD.bazel
+ create mode 100644 tools/build-warnings/windows-environment/launcher_profile.rs
+
+diff --git a/.bazelrc b/.bazelrc
+index bd782a6c1..e1b15563c 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -60,6 +60,8 @@ common:macos --strategy=CcConfigureMakeRule=remote,sandboxed,local
+ common:windows --test_env=SYSTEMROOT
+ common:windows --test_env=COMSPEC
+ common:windows --test_env=WINDIR
++# MXC initializes its host-owned launcher profile beneath LOCALAPPDATA.
++common:windows --test_env=LOCALAPPDATA
+ # Windows executable discovery uses PATHEXT when resolving extensionless names.
+ common:windows --test_env=PATHEXT
+ # Rust's libtest harness runs test bodies on std-spawned threads. The default
+diff --git a/tools/build-warnings/windows-environment/BUILD.bazel b/tools/build-warnings/windows-environment/BUILD.bazel
+new file mode 100644
+index 000000000..fa0c58737
+--- /dev/null
++++ b/tools/build-warnings/windows-environment/BUILD.bazel
+@@ -0,0 +1,9 @@
++load("@rules_rust//rust:defs.bzl", "rust_test")
++
++rust_test(
++    name = "launcher_profile_test",
++    size = "small",
++    srcs = ["launcher_profile.rs"],
++    edition = "2024",
++    tags = ["manual"],
++)
+diff --git a/tools/build-warnings/windows-environment/launcher_profile.rs b/tools/build-warnings/windows-environment/launcher_profile.rs
+new file mode 100644
+index 000000000..8d4f93213
+--- /dev/null
++++ b/tools/build-warnings/windows-environment/launcher_profile.rs
+@@ -0,0 +1,6 @@
++#[test]
++fn launcher_receives_host_profile_location() {
++    let profile = std::env::var("LOCALAPPDATA")
++        .expect("Windows launcher tests require the host's Unicode LOCALAPPDATA");
++    assert!(!profile.is_empty(), "the host profile location is empty");
++}

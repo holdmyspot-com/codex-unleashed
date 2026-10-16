@@ -2001,3 +2001,27 @@ moderate deadline. All test assertions remain enabled. The analysis regression
 `//codex-rs/tui:unit_deadline_test` checks the declared deadline and participates
 in `//tools/build-warnings/test-timeouts:tests`. Run the regression together with
 `//codex-rs/tui:tui-unit-tests`; both targets are expected to pass.
+
+## Windows launcher profile environment
+
+`zzzz-0040-windows-test-profile.patch` passes the host `LOCALAPPDATA` into
+Windows Bazel tests. MXC uses that directory for its host-owned launcher profile;
+its runtime tests require a nonempty Unicode value. The dependency and launcher
+implementations retain their existing behavior.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
+The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+On a native Windows runner with its normal profile environment, run:
+
+```sh
+bazel test --config=ci-windows --config=ci-windows-msvc \
+  --host_platform=//:local_windows_msvc \
+  //tools/build-warnings/windows-environment:launcher_profile_test \
+  //codex-rs/mxc-sandbox:mxc-sandbox-unit-tests
+```
+
+Both targets pass. The manual environment probe checks delivery of the host
+profile variable; the MXC unit target checks the Windows launcher behavior.
+A Linux check with an explicit Windows configuration can establish environment
+delivery but does not establish native Windows execution.
