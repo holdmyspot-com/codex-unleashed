@@ -45,6 +45,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Compare ambient and explicit-user ACL deletion access
+      - name: Verify selected Windows launcher behavior
         shell: pwsh
-        run: ./.github/diagnostics/windows-startup-probe.ps1
+        run: ./tools/build-warnings/windows-launcher/selected_tests.ps1 -TempRoot '${{ runner.temp }}'
