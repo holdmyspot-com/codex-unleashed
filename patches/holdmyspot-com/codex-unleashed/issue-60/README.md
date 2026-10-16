@@ -9,8 +9,8 @@ library's Unicode debug escaping. The build retains strict lint checks.
 ## Reference and base
 
 - Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/60
-- Upstream base: `rust-v0.162.1`, commit
-  `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
+- Upstream base: `rust-v0.163.0`, commit
+  `83086188ae0614bd882818ff1aa23f3194962012`.
 - Apply the release patch queue in repository filename order. The native MSVC
   runtime and environment patches follow this issue and preserve its toolchain
   selection. The LLVM 23 integration patch in issue #61 follows this issue

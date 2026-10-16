@@ -7,7 +7,7 @@ Rust compilation, documentation, and native compiler/linker actions treat warnin
 ## Reference and upstream base
 
 - [Canonical issue](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
-- Base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
+- Base: `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`.
 - [Upstream import-formatting tracking issue](https://github.com/rust-lang/rustfmt/issues/4991).
 
 ## Scope and dependencies
@@ -621,8 +621,8 @@ inside `_MSC_VER` guards and supplies `dbghelp` when Clang targets MinGW.
 The existing MSVC library selection and non-Windows behavior remain in use.
 Abseil stays at version `20250814.1`.
 
-The patch targets `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the earlier issue-61
+The patch targets `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the earlier issue-61
 warning-policy and Abseil patches applied. Its regression executable uses CPU
 discovery and symbolization so a successful object compilation alone cannot
 hide missing Windows link dependencies.
@@ -646,8 +646,8 @@ platforms that use CCTZ's existing C++ fallback. Explicit caller definitions
 and the native `strptime` selection remain supported. The explicit default
 allows MinGW and MSVC compilation with undefined-macro warnings as errors.
 
-The patch targets `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) after the issue-61 Abseil
+The patch targets `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) after the issue-61 Abseil
 compiler-selection patch. Its parsing regression checks a 12-hour AM input
 against the Unix epoch.
 
@@ -1319,8 +1319,8 @@ that include the header without instantiating callers, with warnings treated
 as errors. This repair keeps V8 at 15.0.245.2 and adds no diagnostic suppression.
 The tracking issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). Apply the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). Apply the preceding issue-61
 build patches, including the V8 portability and stack-assembly patches, first.
 
 ```sh
@@ -1345,8 +1345,8 @@ Libtool's `LTCC`, so compile-only commands do not receive it. Compiler and linke
 diagnostics remain enabled. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). Apply the preceding native
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). Apply the preceding native
 voice build patches, including `zz-native-tool-executable-configuration.patch`,
 first.
 
@@ -1374,8 +1374,8 @@ to print decimal values. The pointer-format regression from
 and unsigned decimal output using V8's real headers. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 patches, including `zz-v8-clang-mingw-target-detection.patch`.
 
 ```sh
@@ -1393,8 +1393,8 @@ behavior; a Linux execution alone does not establish Darwin coverage.
 `zzz-strum-direct-dependency.patch` upgrades the direct workspace `strum`
 dependency to 0.28.0, matching the selected `strum_macros` version. Cargo removes
 the two older package versions without adding or upgrading other external
-packages. The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+packages. The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 dependency patches. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
@@ -1414,8 +1414,8 @@ TUI suite remains a separate acceptance gate.
 `zzz-native-macos-test-runner.patch` selects `macos-15-intel` for the native
 `x86_64-apple-darwin` Bazel test matrix entry. The fork's corresponding workflow
 uses the same runner selection. ARM and Intel jobs retain their existing target
-cache namespaces. The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`); the runner correction applies
+cache namespaces. The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`); the runner correction applies
 independently. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
@@ -1435,8 +1435,8 @@ conversion diagnostics enabled, including in the optional SCTP error path.
 The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native dependency patches, including the OpenSSL 4.0.1 dependency and library
 socket-sentinel fixes.
 
@@ -1459,8 +1459,8 @@ architectures. The selected package versions and hashes remain unchanged.
 The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 dependency and Python bootstrap patches.
 
 ```sh
@@ -1483,8 +1483,8 @@ Bazel's declared execution-platform Python runtime and uses Python's zip
 extraction support. Package versions remain unchanged. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 build patches. The Python execution-platform patch supplies the additional
 wheel configurations needed by ARM Linux and macOS workers. These two fixes
 can apply in either order.
@@ -1511,8 +1511,8 @@ retain GNU syntax. It also exposes the existing assembly-library fixture to
 the compile-action regression. Package versions remain unchanged. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 build and inspector-runtime patches.
 
 ```sh
@@ -1539,8 +1539,8 @@ options. The build-warning fixtures select MASM sources for native MSVC and GNU
 sources for other drivers. Dependency versions remain unchanged. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 build-warning patches.
 
 ```sh
@@ -1566,8 +1566,8 @@ which Clang does not support. Compiler warnings remain fatal and dependency
 versions remain unchanged. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native voice build patches.
 
 ```sh
@@ -1591,8 +1591,8 @@ warnings when required capabilities are missing. Dependency versions remain
 unchanged. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native voice source-preparation patches.
 
 ```sh
@@ -1617,7 +1617,7 @@ its real `Builder`; the executable retains its compiler options and Windows
 preprocessor definitions. Ninja's existing build-log representation is outside
 this patch's scope.
 
-The declared base is `rust-v0.162.1` (`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`)
+The declared base is `rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`)
 with the preceding issue-61 module and build-policy patches. The nested patch
 applies to the Ninja 1.13.2 BCR source archive and its published build overlay.
 The canonical tracking issue is <https://github.com/holdmyspot-com/codex-unleashed/issues/61>.
@@ -1649,8 +1649,8 @@ or adding the obsolete `-single_module` flag. Capability-cache values,
 warning rejection, and dependency versions remain unchanged. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native voice patches, including `zzz-libffi-native-library-directory.patch`.
 The control is documented directly in libffi 3.8.0's bundled
 `m4/libtool.m4`, in `_LT_REQUIRED_DARWIN_CHECKS`. Remove this workaround when
@@ -1672,8 +1672,8 @@ voice-prefix build and its consumers remain required native-platform gates.
 ## Windows compiler flag ownership and Rust wrapper parameter files
 
 The `zzzz-0001` through `zzzz-0005` series applies in numeric order after the
-existing issue-61 queue. Its upstream base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). The series uses the existing
+existing issue-61 queue. Its upstream base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). The series uses the existing
 native MSVC analysis toolchain and dependency overrides. Adjacent patch
 registrations account for the ordering dependency; each file contains one fix.
 
@@ -1730,8 +1730,8 @@ the `crt-static` feature that matches the selected Rust runtime, avoiding
 conflicting MSVC runtime options. Explicit build-script flags and fatal-warning
 settings remain enabled. Dependency versions remain unchanged.
 
-The base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue, including the Cargo C-standard and parameter-file patches. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
@@ -1757,8 +1757,8 @@ license to every Bazel CI job. Linux analysis tests also resolve Windows runtime
 headers, so the setting applies across the CI matrix. Ordinary local builds
 continue to require the operator's license acceptance.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`). This patch changes only the Bazel
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). This patch changes only the Bazel
 workflow and applies independently of the compiler repair series. The focused
 CI check uses the LLVM module supplied by the preceding issue-61 dependency
 patches. The canonical tracking issue is
@@ -1787,8 +1787,8 @@ than 16 MiB of DWARF call-frame information, links with fatal warnings, and
 catches a Rust panic that unwinds through an assembly frame beyond the compact
 unwind offset limit. Both Apple Silicon and Intel macOS run the check.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the issue-61 fatal-warning
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the issue-61 fatal-warning
 policy. Run `bash tools/build-warnings/check-darwin-linker.sh` from the patched
 checkout with owned `TMPDIR` and `CARGO_TARGET_DIR` directories. Success requires
 both linking and panic unwinding. Non-macOS hosts return 2 rather than claiming
@@ -1804,8 +1804,8 @@ AWS-LC and Cargo C-standard checks, the Make C-standard check, the Ninja elapsed
 time check, the two V8 Windows action checks, and the two XZ driver checks. Verbose timeout diagnostics remain
 active.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 patches
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 patches
 that introduce these test targets, including `zzzz-0005-make-c-standard.patch`.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 Run the following focused check with the MSVC runtime license environment set:
@@ -1837,8 +1837,8 @@ tools, including Bazel's SHA-256 tool. The native Bazel 9 `build_python_zip`
 option is a deprecated no-op, so the patch uses its supported Starlark
 replacement. This changes the output selection rather than filtering a warning.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue,
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue,
 including the explicit initializer test. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61; the migration guide is
 https://github.com/bazel-contrib/rules_python/issues/3567.
@@ -1875,8 +1875,8 @@ Cache endpoints, authentication, remote strategy, and job limits remain enabled.
 The duplicate-option diagnostic is corrected through configuration ownership;
 no diagnostic is filtered.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 From the patched checkout, run:
 
@@ -1906,8 +1906,8 @@ install step fails, the action prints the failing step's output and the existing
 exception and failure status remain intact, including failures caused by warnings.
 An absent configure log does not replace the original failure.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding native voice
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding native voice
 warning-policy patches. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61. From the patched
 checkout, run:
@@ -1934,8 +1934,8 @@ core/app-server integration suites. Native, sharded, Windows-cross, and Wine
 wrappers inherit their corresponding crate setting. Supplying `None` retains
 Bazel's size-based default. Verbose timeout diagnostics remain enabled.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 From a Linux checkout with the MSVC runtime license environment set, run:
 
@@ -1965,8 +1965,8 @@ archive's C++ rules already declare `advapi32`; the crate's build script must
 also emit that dependency for Rust links. Linux and macOS metadata stay free
 of Windows system libraries.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 Rusty V8 150.4.0 and 152.2.0 both omit this dependency. Remove the workaround
 when the selected crate release emits its required Windows registry library.
@@ -1992,8 +1992,8 @@ bootstrap free of CMake's unsupported-parallelism warning. NMake runs serially;
 the subsequent Ninja builds and Unix Makefiles bootstrap retain the configured
 parallel job count. Warning diagnostics remain fatal.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue.
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 With CMake and a native C/C++ toolchain available, run:
 
@@ -2016,8 +2016,8 @@ library and its existing callback regression. Both sources preserve Windows
 unwind metadata. V8 declares the existing LLVM constraint dependency at the
 same selected version; no compiler warning check is disabled.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 and LLVM build patches. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 With the MSVC runtime license environment set, run:
@@ -2044,8 +2044,8 @@ for both capability probes and partial links, whose command omits
 `LDFLAGS`. A private compiler driver selects the system linker only for
 linking. Compiler warnings remain fatal.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0016`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 Run with Clang 23 available on `PATH`:
@@ -2077,8 +2077,8 @@ application order with `scripts/apply-patches.sh` on a clean release checkout;
 applying an individual patch to an already-combined tree does not establish
 that the maintained queue applies.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0017`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 Apply the complete queue before running the normal release package-version
@@ -2107,8 +2107,8 @@ policy, including discovery of the doctor's `.cmd` fixture. The safety
 regression continues to require that startup and doctor never execute the
 fixture helpers; lookup failures include the extension policy in diagnostics.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0018`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 On native Windows, run:
@@ -2130,8 +2130,8 @@ the pointer-format regression and the V8 library compile actions. It enables
 the correct language-version macro without disabling V8's C++20 requirement
 or suppressing a compiler diagnostic.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0019`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2157,8 +2157,8 @@ The generation boundary normalizes existing CRLF before adding native line
 endings, so multiline substitutions cannot introduce doubled carriage returns.
 Bash launcher expansion retains its existing behavior.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0020`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2183,8 +2183,8 @@ the same cache policy and exact Bazel JVM-warning workaround as the fork's
 other CI commands. The existing upstream fallback remains available when
 the Java tooling launcher is not configured.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0021`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 The external JVM-launcher defect is
@@ -2212,8 +2212,8 @@ temporary build cleanup. Compiler commands and their errors remain available
 for configure, build, and install failures. The original step exception and
 the existing libffi configure diagnostics remain available.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0022`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2241,8 +2241,8 @@ consecutive real reconnect waits of up to 30 seconds. The short default is
 insufficient for that workload. Assertions, reconnect behavior, and verbose
 timeout diagnostics remain enabled.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2266,8 +2266,8 @@ for native voice builds. This release fixes duplicated environment compiler
 and linker arguments in Meson's compiler sanity checks. Darwin links retain
 fatal warnings and receive the native recipe's runtime path exactly once.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native voice patches, including `native-voice-meson-resource-directory.patch`
 and `native-voice-z-symbol-tools.patch`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
@@ -2298,8 +2298,8 @@ for a bare executable name, which can select the WSL launcher rather than Git
 Bash. The bridge uses the resolved executable and retains the tooling command's
 arguments, output, and exit status. Missing Bash produces an explicit error.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with
 `zzzz-0022-bazel-python-jvm-warning-bridge.patch` and its prerequisites. The
 tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2324,8 +2324,8 @@ unit suite an explicit moderate timeout. Its hundreds of tests include real
 network retry waits and require more than the short budget on native macOS.
 Integration-test budgets and verbose timeout diagnostics retain their settings.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2347,8 +2347,8 @@ minimum-release, and stable-release compatibility checks short deadlines.
 These Linux-only checks complete in seconds. Verbose timeout diagnostics remain
 enabled, and the compatibility assertions retain their behavior.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0027`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2370,8 +2370,8 @@ explicit moderate timeout. The eight-shard suite can exceed the short budget
 on native macOS. Unit-test defaults, sharding, assertions, and verbose timeout
 diagnostics retain their behavior.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 queue through `zzzz-0028`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
@@ -2395,8 +2395,8 @@ checks so GCC and MSVC never parse unavailable `__has_warning` expressions.
 The existing pointer-format regression also exercises both diagnostic scopes.
 Compiler warnings remain fatal.
 
-The base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 V8 patches. Run `bazel test //tools/build-warnings/v8:pointer_formats_test`,
 `just fmt-check`, and `just bazel-lock-check`. Native Windows verification
 compiles and executes the same fixture with `/std:c++20 /Zc:__cplusplus /W4 /WX`.
@@ -2475,8 +2475,8 @@ for native voice Meson links and capability probes. The selector belongs only
 in `LDFLAGS`; compile-only arguments retain their existing values. Other
 platforms retain the declared LLVM linker. Fatal diagnostics remain enabled.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
 native voice queue. With the declared CMake and C/C++ tools on `PATH`, run
 `python3 -m unittest discover -s third_party/voice -p test_build_native.py`,
 `just fmt-check`, and `just bazel-lock-check`. The regression requires the
@@ -2497,8 +2497,8 @@ worker threads. Undeclared identifiers retain self-conformance. Runtime
 projection declares the exact Apple framework dependency and preserves its
 system install name. Compiler deprecation diagnostics remain fatal.
 
-The declared base is `rust-v0.162.1`
-(`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`) with the preceding issue-61 queue,
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue,
 including the GLib positional-probe and native Darwin linker repairs. GLib
 2.88.3's CoreServices UTI calls fail native macOS compilation with deprecated
 declarations treated as errors. The replacement API is documented at

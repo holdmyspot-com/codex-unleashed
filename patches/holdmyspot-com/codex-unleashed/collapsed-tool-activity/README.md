@@ -1,6 +1,6 @@
 # Collapsed tool activity
 
-- Applies to: upstream `openai/codex` `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
+- Applies to: upstream `openai/codex` `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`
 
 ## Intent
 
@@ -120,4 +120,4 @@ the declared base with its documented prerequisite applied.
 
 This is a downstream presentation feature. The patch uses upstream's
 full-screen transcript and tool-disclosure controls. Its base is
-[upstream 0.162.1](https://github.com/openai/codex/releases/tag/rust-v0.162.1).
+[upstream 0.163.0](https://github.com/openai/codex/releases/tag/rust-v0.163.0).

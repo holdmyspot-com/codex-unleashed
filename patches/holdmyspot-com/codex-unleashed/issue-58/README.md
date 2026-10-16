@@ -1,7 +1,7 @@
 # Align macOS Seatbelt metadata parameter fixtures
 
 - Issue: [codex-unleashed#58](https://github.com/holdmyspot-com/codex-unleashed/issues/58)
-- Applies to: upstream `openai/codex` `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
+- Applies to: upstream `openai/codex` `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`
 
 ## Intent
 
@@ -24,4 +24,4 @@ Both fixtures expect to pass, including actual Seatbelt execution. The maintaine
 
 ## Upstream status
 
-This is a baseline test correction against [upstream 0.162.1](https://github.com/openai/codex/releases/tag/rust-v0.162.1). The production policy is unchanged.
+This is a baseline test correction against [upstream 0.163.0](https://github.com/openai/codex/releases/tag/rust-v0.163.0). The production policy is unchanged.

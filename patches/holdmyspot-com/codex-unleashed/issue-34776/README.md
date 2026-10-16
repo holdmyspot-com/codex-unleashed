@@ -1,10 +1,10 @@
 # Responsive history replay and `/subagents` switching
 
 - Issue: [openai/codex#34776](https://github.com/openai/codex/issues/34776)
-- [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies to upstream `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
-- [defer-implicit-skill-index.patch](defer-implicit-skill-index.patch) applies independently to upstream `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`. It requires no other downstream patch.
-- [avoid-duplicate-startup-skills-refresh.patch](avoid-duplicate-startup-skills-refresh.patch) applies independently to the same `rust-v0.162.1` base. It requires no other downstream patch.
-- [background-session-skill-warmup.patch](background-session-skill-warmup.patch) applies independently to the same `rust-v0.162.1` base. It requires no other downstream patch.
+- [avoid-slow-agent-switching-and-resume.patch](avoid-slow-agent-switching-and-resume.patch) applies to upstream `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`.
+- [defer-implicit-skill-index.patch](defer-implicit-skill-index.patch) applies independently to upstream `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`. It requires no other downstream patch.
+- [avoid-duplicate-startup-skills-refresh.patch](avoid-duplicate-startup-skills-refresh.patch) applies independently to the same `rust-v0.163.0` base. It requires no other downstream patch.
+- [background-session-skill-warmup.patch](background-session-skill-warmup.patch) applies independently to the same `rust-v0.163.0` base. It requires no other downstream patch.
 
 ## Intent
 

@@ -14,8 +14,8 @@ This repair has no feature flag or project-specific configuration properties.
 
 ## Upstream base
 
-- Tag: `rust-v0.162.1`
-- Commit: `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`
+- Tag: `rust-v0.163.0`
+- Commit: `83086188ae0614bd882818ff1aa23f3194962012`
 - The patch applies independently to this base.
 
 ## Reproduction

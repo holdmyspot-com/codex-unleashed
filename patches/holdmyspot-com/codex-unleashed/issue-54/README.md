@@ -14,7 +14,7 @@ The existing public-release routing patch downloads Codex Unleashed's bundled Co
 
 ## Base and dependencies
 
-Declared base: upstream `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`, matching the current release pipeline and #35.
+Declared base: upstream `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`, matching the current release pipeline and #35.
 
 The patch applies independently to that base. Codex Unleashed's existing `branding-and-app-server-distribution/daemon-public-releases.patch` supplies repository download routing. Verification uses the complete current release patch queue, including the authorized #35 baseline repairs. The paused background terminal/task features are excluded.
 

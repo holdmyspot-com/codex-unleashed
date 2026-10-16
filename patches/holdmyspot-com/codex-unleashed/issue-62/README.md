@@ -9,7 +9,7 @@ nested I/O errors. Certificate-like text alone does not qualify as a TLS failure
 
 - Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/62
 - Rust behavior: https://github.com/rust-lang/rust/issues/101817
-- Base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
+- Base: `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`.
 
 The declared base traverses ordinary error sources, which skip the immediate
 error wrapped by `std::io::Error`. The patch checks `io::Error::get_ref()` before

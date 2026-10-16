@@ -11,8 +11,8 @@ of Anthropic's marketplace.
 ## Scope and base
 
 `offline-marketplace-migration-fixture.patch` changes only the existing test.
-It applies to `rust-v0.162.1`, commit
-`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`, without patch prerequisites.
+It applies to `rust-v0.163.0`, commit
+`83086188ae0614bd882818ff1aa23f3194962012`, without patch prerequisites.
 The release queue includes the toolchain and fixture repairs required by the
 full workspace checks.
 

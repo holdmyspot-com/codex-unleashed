@@ -8,7 +8,7 @@ when the host installs it outside `/usr/bin` or `/bin`.
 ## Issue and scope
 
 - Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/63
-- Base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
+- Base: `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`.
 
 The patch applies independently and changes only the test fixture. It binds the
 selected launcher at `/bwrap`, exposes its location on the fixture PATH, and

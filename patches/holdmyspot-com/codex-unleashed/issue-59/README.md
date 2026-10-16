@@ -7,7 +7,7 @@ Dependency verification uses the available spin 0.9.9 release instead of the yan
 ## Reference and upstream base
 
 - [Canonical issue](https://github.com/holdmyspot-com/codex-unleashed/issues/59).
-- Base: `rust-v0.162.1`, commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`.
+- Base: `rust-v0.163.0`, commit `83086188ae0614bd882818ff1aa23f3194962012`.
 - [Official registry metadata](https://index.crates.io/sp/in/spin).
 
 ## Scope and dependencies

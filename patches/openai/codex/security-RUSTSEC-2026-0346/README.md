@@ -8,7 +8,7 @@ TLS connections use Rustls 0.23.46, which addresses four security advisories.
 
 - [Canonical reference](https://rustsec.org/advisories/RUSTSEC-2026-0346.html).
 - Related advisories: [RUSTSEC-2026-0347](https://rustsec.org/advisories/RUSTSEC-2026-0347.html), [RUSTSEC-2026-0348](https://rustsec.org/advisories/RUSTSEC-2026-0348.html), and [RUSTSEC-2026-0349](https://rustsec.org/advisories/RUSTSEC-2026-0349.html).
-- Base: `rust-v0.162.1` (`092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`).
+- Base: `rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`).
 
 ## Scope
 

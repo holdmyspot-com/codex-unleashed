@@ -1,4 +1,4 @@
-From ad2f9a73269c76c990eb78f486a1cf67d2791eb0 Mon Sep 17 00:00:00 2001
+From 5e02c1e3439ff583bd663851012227f9c5334466 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 23:47:02 +0000
 Subject: [PATCH] feature: Resume available parents when V2 subagents finish
@@ -28,7 +28,7 @@ Subject: [PATCH] feature: Resume available parents when V2 subagents finish
  ...e_mode_catalog_messages_ranked_search.snap |   4 +-
  ...ed_helpers__code_mode_settled_helpers.snap |   4 +-
  ...ios__compaction__remote_slash_compact.snap |   8 +-
- ...__catalog_indirect_namespace_prefixes.snap |   4 +-
+ ...__catalog_indirect_namespace_prefixes.snap |   8 +-
  ...ource_messages__mcp_resource_messages.snap |   4 +-
  ...arios__multi_agent_catalog_parameters.snap |   4 +-
  ...ilities__custom_provider_capabilities.snap |   4 +-
@@ -38,7 +38,7 @@ Subject: [PATCH] feature: Resume available parents when V2 subagents finish
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 34 files changed, 845 insertions(+), 51 deletions(-)
+ 34 files changed, 847 insertions(+), 53 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
@@ -1323,9 +1323,20 @@ index 4e78cadff..f8ef58bd5 100644
            - function/interrupt_agent
            - function/list_agents
 diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
-index 5a09b5f5e..d9271c606 100644
+index 5a09b5f5e..a6217ad0b 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__indirect_namespace_prefixes__catalog_indirect_namespace_prefixes.snap
+@@ -15,8 +15,8 @@ Settings:
+   stream: true
+   text: {"verbosity":"low"}
+   tool_choice: "auto"
+-  tools (4; hash=1261f9f79ad97cee):
+-    - custom/exec: Exec guidance.  Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided Ja...; hash=db96605f80dbbdd7
++  tools (4; hash=bb957e3dab11aa9e):
++    - custom/exec: Exec guidance.  Run JavaScript code to orchestrate/compose tool calls - Evaluates the provided Ja...; hash=758d5da06c5a82e7
+     - function/wait: Waits on a yielded `exec` cell and returns new output or completion. - Use `wait` only after `exe...; args=[cell_id, max_tokens, terminate, yield_time_ms]; hash=6692d8f6c55be489
+     - function/request_user_input: Request user input for one to three short questions and wait for the response. This tool is only ...; args=[questions]; hash=64a729b25c424fc6
+     - web_search; hash=e214d4db1bc49e89
 @@ -49,8 +49,8 @@ Settings:
  ## Window 2 (after request 2)
  Settings: relative to window 1
