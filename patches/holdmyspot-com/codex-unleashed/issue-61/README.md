@@ -2025,3 +2025,23 @@ Both targets pass. The manual environment probe checks delivery of the host
 profile variable; the MXC unit target checks the Windows launcher behavior.
 A Linux check with an explicit Windows configuration can establish environment
 delivery but does not establish native Windows execution.
+
+## Concurrent V8 initialization
+
+`zzzz-0041-v8-concurrent-initialization.patch` completes initialization of V8's
+shared ArrayBuffer allocator inside Codex's existing `OnceLock`, before other
+threads create isolates. Dependency source remains unchanged. Its regression
+synchronizes 32 first isolate constructors in a fresh process. Apply the preceding
+issue-61 queue, including patch 0040, on the declared release base.
+
+On native Windows with the accepted MSVC runtime license, run:
+
+```sh
+bazel test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --nocache_test_results --test_output=all //codex-rs/code-mode-runtime:code-mode-runtime-concurrent_initialization-test //codex-rs/code-mode-runtime:code-mode-runtime-unit-tests //codex-rs/code-mode-runtime:code-mode-runtime-settled-test //codex-rs/code-mode-host:code-mode-host-grpc-test //codex-rs/code-mode-host:code-mode-host-unit-tests
+just fmt-check
+just bazel-lock-check
+```
+
+All five targets must pass without the native allocator initialization assertion.
+Linux verification supplements this required Windows result. The diagnostic
+branch runs focused native tests and does not establish the complete CI matrix.

@@ -1,0 +1,71 @@
+From 88da83fa07fc9a62232d8fd08b4b7ca405cb814f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 10:48:22 +0000
+Subject: [PATCH] Initialize V8's shared allocator before publishing readiness
+
+Complete the default ArrayBuffer allocator's lazy initialization inside
+Codex's existing OnceLock before concurrent isolate creation. Keep V8 and
+other dependency sources unchanged.
+
+Regression red: native Windows diagnostic run 38883554977, job
+116915762512, reproduces partition_address_space.cc(301) in the new
+32-thread integration test and three existing runtime/host targets.
+The maintained just fmt-check passes with installed stable Rust 1.99.0.
+The focused Cargo concurrency test passes on Linux using the project's
+verified V8 150.4.0 archive and bindings; this supplements native coverage.
+Native Windows green remains required before accepting this candidate.
+---
+ codex-rs/code-mode-runtime/src/v8_init.rs     |  7 ++++++
+ .../tests/concurrent_initialization.rs        | 25 +++++++++++++++++++
+ 2 files changed, 32 insertions(+)
+ create mode 100644 codex-rs/code-mode-runtime/tests/concurrent_initialization.rs
+
+diff --git a/codex-rs/code-mode-runtime/src/v8_init.rs b/codex-rs/code-mode-runtime/src/v8_init.rs
+index 016992c93..f29fbafd3 100644
+--- a/codex-rs/code-mode-runtime/src/v8_init.rs
++++ b/codex-rs/code-mode-runtime/src/v8_init.rs
+@@ -54,6 +54,13 @@ fn initialize_v8_with_mode(jit_mode: V8JitMode) -> Result<V8Initialization, Stri
+     let platform = v8::new_default_platform(0, false).make_shared();
+     v8::V8::initialize_platform(platform.clone());
+     v8::V8::initialize();
++
++    // WORKAROUND: https://issues.chromium.org/issues/342905186
++    // V8 initializes its shared ArrayBuffer allocator lazily without locking.
++    // Finish that initialization before OnceLock lets other threads create isolates.
++    // Remove when V8 initializes the allocator during isolate-group initialization.
++    drop(v8::new_default_allocator());
++
+     Ok(V8Initialization {
+         _platform: platform,
+         jit_mode,
+diff --git a/codex-rs/code-mode-runtime/tests/concurrent_initialization.rs b/codex-rs/code-mode-runtime/tests/concurrent_initialization.rs
+new file mode 100644
+index 000000000..86e0f18fb
+--- /dev/null
++++ b/codex-rs/code-mode-runtime/tests/concurrent_initialization.rs
+@@ -0,0 +1,25 @@
++use codex_code_mode_runtime::V8JitMode;
++use codex_code_mode_runtime::initialize_v8;
++use std::sync::Barrier;
++
++#[test]
++fn first_isolates_initialize_concurrently() {
++    const WORKERS: usize = 32;
++    let ready = Barrier::new(WORKERS);
++
++    std::thread::scope(|scope| {
++        let workers = (0..WORKERS)
++            .map(|_| {
++                scope.spawn(|| {
++                    initialize_v8(V8JitMode::Enabled).expect("initialize V8");
++                    ready.wait();
++                    let _isolate = v8::Isolate::new(Default::default());
++                })
++            })
++            .collect::<Vec<_>>();
++
++        for worker in workers {
++            worker.join().expect("concurrent isolate creation succeeds");
++        }
++    });
++}
