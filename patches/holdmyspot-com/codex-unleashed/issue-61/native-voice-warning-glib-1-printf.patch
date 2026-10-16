@@ -1,65 +1,16 @@
-From e6f3b4ba8b35131df6f987f5f907d776f7b3eb88 Mon Sep 17 00:00:00 2001
+From cb0abc07cec549e77437ec0d1e8cb18b9a5f11f8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 13:13:32 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Repair GLib printf fallback warning portability
 
-Track native warning enforcement in #61. Apply after the documented native
-voice prerequisites; keep all compiler and linker checks enabled.
-
-Reproduction evidence: native-glib-printf-red.log. The actual native recipe reports the
-missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
-are recorded separately; an internal authoring commit is not full CI acceptance.
+Preserve functional changes without warning-only dependency patches.
 ---
- third_party/voice/prepare_sources.py    | 32 +++++++++++++++++++++++++
- tools/build-warnings/glib/BUILD.bazel   | 14 +++++++++++
- tools/build-warnings/glib/printf_test.c | 22 +++++++++++++++++
- 3 files changed, 68 insertions(+)
+ tools/build-warnings/glib/BUILD.bazel   | 14 ++++++++++++++
+ tools/build-warnings/glib/printf_test.c | 22 ++++++++++++++++++++++
+ 2 files changed, 36 insertions(+)
  create mode 100644 tools/build-warnings/glib/BUILD.bazel
  create mode 100644 tools/build-warnings/glib/printf_test.c
 
-diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index e1ea3baf7..436435a20 100644
---- a/third_party/voice/prepare_sources.py
-+++ b/third_party/voice/prepare_sources.py
-@@ -83,6 +83,38 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
-             raise ValueError(f"Expanded source exceeds limits: {source.name}")
-         archive.extractall(destination, members=members, filter="data")
- 
-+    if source.name == "glib" and source.version == "2.88.3":
-+        # WORKAROUND: GLib's bundled gnulib has incomplete warning portability.
-+        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
-+        # Remove when its printf fallback uses the portable annotation and casts.
-+        printf = destination / source.root / "glib/gnulib/vasnprintf.c"
-+        contents = printf.read_text(encoding="utf-8")
-+        replacements = (
-+            (
-+                "#ifndef FALLTHROUGH\n"
-+                "# if __GNUC__ < 7\n"
-+                "#  define FALLTHROUGH ((void) 0)\n"
-+                "# else\n"
-+                "#  define FALLTHROUGH __attribute__ ((__fallthrough__))\n"
-+                "# endif\n"
-+                "#endif",
-+                "#ifndef FALLTHROUGH\n# define FALLTHROUGH G_GNUC_FALLTHROUGH\n#endif",
-+            ),
-+            (
-+                "#if !USE_SNPRINTF\n                    if (count >= tmp_length)",
-+                "#if !USE_SNPRINTF\n                    if ((unsigned int) count >= tmp_length)",
-+            ),
-+            (
-+                "if (count > allocated - length)",
-+                "if ((unsigned int) count > allocated - length)",
-+            ),
-+        )
-+        for original, replacement in replacements:
-+            if contents.count(original) != 1:
-+                raise ValueError("Pinned GLib printf implementation does not match")
-+            contents = contents.replace(original, replacement)
-+        printf.write_text(contents, encoding="utf-8")
-+
-     if source.name == "ninja" and source.version == "1.13.2":
-         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
-         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
 diff --git a/tools/build-warnings/glib/BUILD.bazel b/tools/build-warnings/glib/BUILD.bazel
 new file mode 100644
 index 000000000..08b8b821e

@@ -1,9 +1,9 @@
-From ba966dc8736d6ab586745f0c410975137b5946de Mon Sep 17 00:00:00 2001
+From c828c8961a48251ab1d7f8277b79600e17c11445 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 09:02:46 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Resolve V8 Python dependencies for every execution platform
 
-The extended analysis regression fails on Intel macOS and ARM Linux with no matching Python 3.11 Jinja2 wheel. Declare those wheel platforms and ARM macOS explicitly, preserving host expansion and existing Linux and Windows coverage. This changes platform availability without upgrading package versions.
+Preserve functional changes without warning-only dependency patches.
 ---
  MODULE.bazel                                  |  1 +
  patches/v8_python_execution_platforms.patch   | 25 +++++++++++++++++++
@@ -12,19 +12,13 @@ The extended analysis regression fails on Intel macOS and ARM Linux with no matc
  create mode 100644 patches/v8_python_execution_platforms.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 5a9444282..fabcaf525 100644
+index 440d6bf2c..90087cb37 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -896,8 +896,9 @@ archive_override(
-     integrity = "sha256-Fk89PgqLTAKjhtOojRsRM9N+XCC+Ajn+zc3eQUpDQNU=",
-     patch_strip = 3,
-     patches = [
+@@ -922,2 +922,3 @@ archive_override(
          "//patches:v8_module_deps.patch",
 +        "//patches:v8_python_execution_platforms.patch",
          "//patches:v8_bazel_rules.patch",
-         "//patches:v8_source_portability.patch",
-         "//patches:v8_icu_mutex_annotations.patch",
-         "//patches:v8_icu_lcid_declaration.patch",
 diff --git a/patches/v8_python_execution_platforms.patch b/patches/v8_python_execution_platforms.patch
 new file mode 100644
 index 000000000..b0dd70fe9
@@ -60,10 +54,7 @@ diff --git a/tools/build-warnings/v8/check-python-platforms.sh b/tools/build-war
 index 2826737ae..3e51fd6ff 100755
 --- a/tools/build-warnings/v8/check-python-platforms.sh
 +++ b/tools/build-warnings/v8/check-python-platforms.sh
-@@ -3,9 +3,16 @@ set -euo pipefail
-
- repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
- cd -- "$repo_root"
+@@ -6,3 +6,10 @@ cd -- "$repo_root"
 
 -for platform in //:rbe //:windows_x86_64_gnullvm; do
 +platforms=(
@@ -75,6 +66,3 @@ index 2826737ae..3e51fd6ff 100755
 +)
 +for platform in "${platforms[@]}"; do
      bazel cquery "$@" "--platforms=$platform" @v8//:code_generator
- done
-
- bazel build "$@" @v8//:generated_inspector_files

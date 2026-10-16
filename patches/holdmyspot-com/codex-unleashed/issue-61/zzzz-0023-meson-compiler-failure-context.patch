@@ -1,26 +1,9 @@
-From 9cef077688ab10a732e7753653a1a4163c2e7537 Mon Sep 17 00:00:00 2001
+From 38b302368fe6a592a4f96c0aade772e67cb25fde Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 18:30:14 +0000
+Date: Thu, 15 Oct 2026 21:21:03 -0400
 Subject: [PATCH] Preserve Meson compiler diagnostics before native voice
- cleanup
 
-Print the failing component's meson-log.txt into the Bazel action log
-before the temporary native build directory is removed. Keep the original
-step failure and the existing libffi configure context.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
-Prerequisites: preceding issue-61 queue through zzzz-0022.
-Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
-Native failure: job 116574277335 in run 38779077132 reports a failed
-proxy-libintl compiler sanity probe but loses the referenced Meson log.
-
-RED: focused configure-context regression fails in the Meson configure,
-build, and warning-only install cases because compiler detail is absent.
-GREEN: the same regression passes with original exceptions and no output
-completion markers. Missing logs and unrelated context remain covered.
-Gates: all 27 native-builder tests, just fmt-check, and just bazel-lock-check
-pass with declared CMake 4.4.4 and the cached Clang 23.1.2.
-This diagnostic repair does not yet fix the hosted compiler failure.
+Exercise failed command status with warning output. Successful warning-only commands retain their status and are covered by the visibility regression.
 ---
  third_party/voice/bazel_native.py      |  9 +++++
  third_party/voice/test_build_native.py | 46 ++++++++++++++++++--------
@@ -47,10 +30,10 @@ index 602694852..4d5be012a 100644
          with tarfile.open(prefix, "w") as archive:
              archive.add(builder.prefix, arcname=".")
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index a1e6d4fbd..f68c5f265 100644
+index b7a3970d7..e193cf8a6 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -637,14 +637,33 @@ class NativeBuildTests(unittest.TestCase):
+@@ -642,14 +642,33 @@ class NativeBuildTests(unittest.TestCase):
          )
          self.assertFalse((build.output / "built.json").exists())
 
@@ -60,12 +43,12 @@ index a1e6d4fbd..f68c5f265 100644
 +        for index, (name, status, detail, context) in enumerate(
              (
 -                ("libffi-configure", 23, "configure failed"),
--                ("libffi-build", 0, "warning: no debug symbols"),
+-                ("libffi-build", 23, "warning: no debug symbols"),
 -                ("libffi-install", 23, "install failed"),
 -                ("other-build", 23, "other failed"),
 -                ("libffi-configure", 23, None),
 +                ("libffi-configure", 23, "configure failed", "libffi/config.log"),
-+                ("libffi-build", 0, "warning: no debug symbols", "libffi/config.log"),
++                ("libffi-build", 23, "warning: no debug symbols", "libffi/config.log"),
 +                ("libffi-install", 23, "install failed", "libffi/config.log"),
 +                ("other-build", 23, "other failed", "libffi/config.log"),
 +                ("libffi-configure", 23, None, "libffi/config.log"),
@@ -78,7 +61,7 @@ index a1e6d4fbd..f68c5f265 100644
 +                ("glib-build", 23, "compile failed", "glib/meson-logs/meson-log.txt"),
 +                (
 +                    "gstreamer-install",
-+                    0,
++                    23,
 +                    "warning: Meson install diagnostic",
 +                    "gstreamer/meson-logs/meson-log.txt",
 +                ),
@@ -91,7 +74,7 @@ index a1e6d4fbd..f68c5f265 100644
              )
          ):
              with self.subTest(name=name, status=status, detail=detail):
-@@ -672,12 +691,10 @@ class NativeBuildTests(unittest.TestCase):
+@@ -677,12 +696,10 @@ class NativeBuildTests(unittest.TestCase):
 
                  def fail():
                      build.output.mkdir()
@@ -107,7 +90,7 @@ index a1e6d4fbd..f68c5f265 100644
                      build.run(
                          name,
                          [
-@@ -703,8 +720,9 @@ class NativeBuildTests(unittest.TestCase):
+@@ -708,8 +725,9 @@ class NativeBuildTests(unittest.TestCase):
                      self.assertEqual(error.exception.returncode, status)
                  self.assertIn(detail or "configure failed", stderr.getvalue())
                  self.assertEqual(

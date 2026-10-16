@@ -1,74 +1,15 @@
-From 55b293decb9fd5f6639f91e25452a306f2ff89a9 Mon Sep 17 00:00:00 2001
+From b46e832f4afa5f224d0e84b1b1fa01afc780ff99 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 00:44:32 -0400
+Date: Thu, 15 Oct 2026 21:32:39 -0400
 Subject: [PATCH] Define CCTZ strptime availability on every platform
 
-Set HAS_STRPTIME to zero on platforms using the existing C++ fallback,
-including MinGW and MSVC. Preserve explicit caller definitions and the
-native strptime branch. Keep Abseil's dependency version unchanged.
-
-Add a parsing regression that exercises the 12-hour AM conversion delegated
-to strptime, including the fallback on platforms without native strptime.
-
-RED: bazel build --platforms=//:windows_x86_64_gnullvm
-//tools/build-warnings/abseil:strptime_fallback_test exits 1 with two
--Werror,-Wundef errors for HAS_STRPTIME.
-
-GREEN: the same Windows build exits 0 with the explicit zero default.
-CONTROL: bazel test --platforms=//:rbe
-//tools/build-warnings/abseil:strptime_fallback_test exits 0, one test passes.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with
-existing issue-61 warning-policy and Abseil compiler-selection prerequisites.
-Native Windows runtime and fresh emitted patch checks remain separate gates.
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
- MODULE.bazel                                  |  1 +
- patches/abseil_cctz_strptime_default.patch    | 21 +++++++++++++++++++
- tools/build-warnings/abseil/BUILD.bazel       |  7 +++++++
- .../abseil/strptime_fallback_test.cc          | 11 ++++++++++
- 4 files changed, 40 insertions(+)
- create mode 100644 patches/abseil_cctz_strptime_default.patch
+ tools/build-warnings/abseil/BUILD.bazel               |  7 +++++++
+ tools/build-warnings/abseil/strptime_fallback_test.cc | 11 +++++++++++
+ 2 files changed, 18 insertions(+)
  create mode 100644 tools/build-warnings/abseil/strptime_fallback_test.cc
 
-diff --git a/MODULE.bazel b/MODULE.bazel
-index cec11cd78..6d4c9bb26 100644
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -95,6 +95,7 @@ single_version_override(
-         "//patches:abseil_windows_gnullvm_thread_identity.patch",
-         "//patches:abseil_lifetime_capture_by_this.patch",
-         "//patches:abseil_msvc_pragma_guards.patch",
-+        "//patches:abseil_cctz_strptime_default.patch",
-     ],
- )
-
-diff --git a/patches/abseil_cctz_strptime_default.patch b/patches/abseil_cctz_strptime_default.patch
-new file mode 100644
-index 000000000..5bdd37bf6
---- /dev/null
-+++ b/patches/abseil_cctz_strptime_default.patch
-@@ -0,0 +1,21 @@
-+From c8bd78d0f9702f64c04a072681623f86aee2cb2d Mon Sep 17 00:00:00 2001
-+From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Thu, 15 Oct 2026 00:42:53 -0400
-+Subject: [PATCH] Define the CCTZ strptime feature flag on unsupported
-+ platforms
-+
-+---
-+ absl/time/internal/cctz/src/time_zone_format.cc | 2 ++
-+ 1 file changed, 2 insertions(+)
-+
-+diff --git a/absl/time/internal/cctz/src/time_zone_format.cc b/absl/time/internal/cctz/src/time_zone_format.cc
-+index f739e02..d4dfc16 100644
-+--- a/absl/time/internal/cctz/src/time_zone_format.cc
-++++ b/absl/time/internal/cctz/src/time_zone_format.cc
-+@@ -16,4 +16,6 @@
-+ #if !defined(_MSC_VER) && !defined(__MINGW32__) && !defined(__VXWORKS__)
-+ #define HAS_STRPTIME 1  // Assume everyone else has strptime().
-++#else
-++#define HAS_STRPTIME 0
-+ #endif
-+ #endif
 diff --git a/tools/build-warnings/abseil/BUILD.bazel b/tools/build-warnings/abseil/BUILD.bazel
 index 372ca1416..9edab83ae 100644
 --- a/tools/build-warnings/abseil/BUILD.bazel

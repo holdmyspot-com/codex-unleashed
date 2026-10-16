@@ -1,29 +1,25 @@
-From 5a02ceddfd7ad9bc8ce0e155aa14d4f2417f7621 Mon Sep 17 00:00:00 2001
+From 38876ffca5a99da88cfa2e0367bbbc19b85b5ccc Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 13:13:33 +0000
-Subject: [PATCH] Keep GStreamer enum expressions compatible with glib-mkenums
+Date: Thu, 15 Oct 2026 21:23:24 -0400
+Subject: [PATCH] Keep generated GStreamer enum values complete
 
-Track native warning enforcement in #61. Apply after the documented native
-voice prerequisites; keep all compiler and linker checks enabled.
-
-Reproduction evidence: native-udmabuf-guard-green.log. The actual native recipe reports the
-missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
-are recorded separately; an internal authoring commit is not full CI acceptance.
+Preserve functional changes without warning-only dependency patches.
 ---
- third_party/voice/prepare_sources.py          | 43 +++++++++++++++++++
+ third_party/voice/prepare_sources.py          | 45 +++++++++++++++++++
  tools/build-warnings/gstreamer/BUILD.bazel    |  1 +
  .../gstreamer/enum_values_test.c              | 20 +++++++++
- 3 files changed, 64 insertions(+)
+ 3 files changed, 66 insertions(+)
  create mode 100644 tools/build-warnings/gstreamer/enum_values_test.c
 
 diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index 45bf642e7..085351d00 100644
+index 247d1d3e7..23f1d805d 100644
 --- a/third_party/voice/prepare_sources.py
 +++ b/third_party/voice/prepare_sources.py
-@@ -269,6 +269,49 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
-                     contents = contents.replace(original, replacement)
-                 implementation.write_text(contents, encoding="utf-8")
- 
+@@ -83,6 +83,51 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             raise ValueError(f"Expanded source exceeds limits: {source.name}")
+         archive.extractall(destination, members=members, filter="data")
+
++    if source.name == "gst-plugins-base" and source.version == "1.28.6":
 +        # WORKAROUND: glib-mkenums parses enum expressions one line at a time.
 +        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
 +        # Remove when the pinned generator accepts these multiline expressions.
@@ -67,21 +63,22 @@ index 45bf642e7..085351d00 100644
 +                contents.replace(original, " ".join(original.split())), encoding="utf-8"
 +            )
 +
-     if source.name == "gstreamer" and source.version == "1.28.6":
-         # WORKAROUND: these pad quarks are interned but their storage is unused.
-         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
++
+
+ def prepare_sources(archives: Path, output: Path, manifest: bytes) -> None:
+     sources = load_sources(manifest)
 diff --git a/tools/build-warnings/gstreamer/BUILD.bazel b/tools/build-warnings/gstreamer/BUILD.bazel
-index 5ffc394e3..ec2b1f31e 100644
+index 191f97912..20d92d073 100644
 --- a/tools/build-warnings/gstreamer/BUILD.bazel
 +++ b/tools/build-warnings/gstreamer/BUILD.bazel
-@@ -13,6 +13,7 @@ NATIVE_INCLUDES = [
- 
+@@ -12,6 +12,7 @@ NATIVE_INCLUDES = [
+ ]
+
  TEST_NAMES = [
-     "allocator_type_test",
 +    "enum_values_test",
      "pad_quarks_test",
-     "video_quarks_test",
  ]
+
 diff --git a/tools/build-warnings/gstreamer/enum_values_test.c b/tools/build-warnings/gstreamer/enum_values_test.c
 new file mode 100644
 index 000000000..2cbe79ca6

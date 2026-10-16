@@ -1,27 +1,23 @@
-From 39a548df0e3ba816682b25f7915eafd3b2136b46 Mon Sep 17 00:00:00 2001
+From 6270d982ebda332c245591e97836db2eb85c2362 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 01:04:33 -0400
+Date: Thu, 15 Oct 2026 21:56:25 -0400
 Subject: [PATCH] Keep V8 ICU preprocessor definitions off raw assembly actions
 
-Exercise the production V8 library macro and Windows stack assembly with a callback ABI regression. The ICU C++ fixture requires all three macros to remain defined. Preserve their target-local scope through local_defines.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the existing issue-61 queue and Clang MinGW detection prerequisite.
-
-RED: Bazel build --platforms=//:windows_x86_64_gnullvm @v8//:codex_windows_stack_assembly_test fails with the three intended unused -D argument errors. GREEN: the same full compile/link command passes after using local_defines. Evidence: v8-windows-stack-macro-{red,green}.log. Native Windows runtime and emitted fresh-checkout gates remain pending.
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
- MODULE.bazel                            |   1 +
- patches/v8_windows_stack_assembly.patch | 136 ++++++++++++++++++++++++
- tools/build-warnings/v8/BUILD.bazel     |   5 +
- 3 files changed, 142 insertions(+)
+ MODULE.bazel                            |  1 +
+ patches/v8_windows_stack_assembly.patch | 97 +++++++++++++++++++++++++
+ tools/build-warnings/v8/BUILD.bazel     |  5 ++
+ 3 files changed, 103 insertions(+)
  create mode 100644 patches/v8_windows_stack_assembly.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 6d4c9bb26..1d3bb1346 100644
+index 7b5bee433..bacd99c49 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -897,6 +897,7 @@ archive_override(
-         "//patches:v8_callback_compatibility.patch",
-         "//patches:v8_simdutf_constexpr.patch",
+         "//patches:v8_source_portability.patch",
+         "//patches:v8_icu_mutex_annotations.patch",
          "//patches:v8_clang_mingw_detection.patch",
 +        "//patches:v8_windows_stack_assembly.patch",
      ],
@@ -29,10 +25,10 @@ index 6d4c9bb26..1d3bb1346 100644
      urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/patches/v8_windows_stack_assembly.patch b/patches/v8_windows_stack_assembly.patch
 new file mode 100644
-index 000000000..98a5d97b0
+index 000000000..beb41a4f0
 --- /dev/null
 +++ b/patches/v8_windows_stack_assembly.patch
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,97 @@
 +diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
 +index 2589094..bbeb91a 100644
 +--- a/orig/v8-15.0.245.2/BUILD.bazel
@@ -79,45 +75,6 @@ index 000000000..98a5d97b0
 ++    ],
 ++    visibility = ["//visibility:public"],
 ++)
-+diff --git a/orig/v8-15.0.245.2/bazel/defs.bzl b/mod/v8-15.0.245.2/bazel/defs.bzl
-+index 19f4351..42e9637 100644
-+--- a/orig/v8-15.0.245.2/bazel/defs.bzl
-++++ b/mod/v8-15.0.245.2/bazel/defs.bzl
-+@@ -224,11 +224,11 @@ def _default_args():
-+     )
-+
-+ ENABLE_I18N_SUPPORT_DEFINES = [
-+-    "-DV8_INTL_SUPPORT",
-+-    "-DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
-++    "V8_INTL_SUPPORT",
-++    "ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
-+     # src/regexp/regexp-compiler-tonode.cc uses an unsafe ICU method and
-+     # access a character implicitly.
-+-    "-DUNISTR_FROM_CHAR_EXPLICIT=",
-++    "UNISTR_FROM_CHAR_EXPLICIT=",
-+ ]
-+
-+ def _should_emit_noicu_and_icu(noicu_srcs, noicu_deps, noicu_defines, icu_srcs, icu_deps, icu_defines):
-+@@ -268,7 +268,8 @@ def v8_binary(
-+             deps = deps + icu_deps + default.deps,
-+             includes = includes + ["icu/"] + default.includes,
-+             defines = defines + icu_defines + default.defines,
-+-            copts = copts + default.copts + ENABLE_I18N_SUPPORT_DEFINES,
-++            copts = copts + default.copts,
-++            local_defines = ENABLE_I18N_SUPPORT_DEFINES,
-+             linkopts = linkopts + default.linkopts,
-+             **kwargs
-+         )
-+@@ -325,7 +326,8 @@ def v8_library(
-+             srcs = srcs + icu_srcs,
-+             deps = deps + icu_deps + default.deps,
-+             includes = includes + ["icu/"] + default.includes,
-+-            copts = copts + default.copts + ENABLE_I18N_SUPPORT_DEFINES,
-++            copts = copts + default.copts,
-++            local_defines = ENABLE_I18N_SUPPORT_DEFINES,
-+             linkopts = linkopts + default.linkopts,
-+             alwayslink = 1,
-+             linkstatic = 1,
 +diff --git a/orig/v8-15.0.245.2/test/codex/i18n-defines-test.cc b/mod/v8-15.0.245.2/test/codex/i18n-defines-test.cc
 +new file mode 100644
 +index 0000000..666a617

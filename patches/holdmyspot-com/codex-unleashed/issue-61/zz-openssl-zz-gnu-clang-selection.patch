@@ -1,32 +1,33 @@
-From bd1fc86092a3497136824e30da69dd2b2eeb170e Mon Sep 17 00:00:00 2001
+From 59be48172017a0529025d099f428f8534c7384cc Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 06:03:49 +0000
+Date: Thu, 15 Oct 2026 21:30:56 -0400
 Subject: [PATCH] Select OpenSSL Windows GNU Clang assembly configuration
 
-The production perlasm analysis regression observes an empty assembly flavor before the selection fix and mingw64 afterwards. Test visibility is restricted to the downstream regression package. Full compilation, runtime, and fresh emitted-patch acceptance remain pending.
+Preserve functional changes without warning-only dependency patches.
 ---
- MODULE.bazel                                 |  1 +
+ MODULE.bazel                                 |  2 +-
  patches/openssl_gnu_clang_selection.patch    | 63 ++++++++++++++++++++
  tools/build-warnings/openssl/BUILD.bazel     |  8 ++-
- tools/build-warnings/openssl/inputs_test.bzl | 15 +++++
- 4 files changed, 86 insertions(+), 1 deletion(-)
+ tools/build-warnings/openssl/inputs_test.bzl | 13 ++++
+ 4 files changed, 84 insertions(+), 2 deletions(-)
  create mode 100644 patches/openssl_gnu_clang_selection.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index e871255a1..8043dcd27 100644
+index 773748b17..df230a467 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -520,6 +520,7 @@ single_version_override(
-         "//patches:openssl_windows_compiler_types.patch",
-         "//patches:openssl_socket_sentinel.patch",
-         "//patches:openssl_assembly_defines.patch",
-+        "//patches:openssl_gnu_clang_selection.patch",
-     ],
+@@ -520,7 +520,7 @@ bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
+ single_version_override(
+     module_name = "openssl",
+     patch_strip = 1,
+-    patches = [],
++    patches = ["//patches:openssl_gnu_clang_selection.patch"],
  )
 
+ inject_repo(crate, "xz")
 diff --git a/patches/openssl_gnu_clang_selection.patch b/patches/openssl_gnu_clang_selection.patch
 new file mode 100644
-index 000000000..ca29e86e8
+index 000000000..0c83b53aa
 --- /dev/null
 +++ b/patches/openssl_gnu_clang_selection.patch
 @@ -0,0 +1,63 @@
@@ -55,7 +56,7 @@ index 000000000..ca29e86e8
 +     ],
 +-    "//configs:windows_non_msvc": [
 ++    "//configs:windows_clang_cl": [
-+         "_WINSOCKAPI_=",
++         "_WINSOCKAPI_",
 +         "WIN32_LEAN_AND_MEAN",
 +     ],
 ++    "@platforms//os:windows": ["WIN32_LEAN_AND_MEAN"],
@@ -94,14 +95,14 @@ index 000000000..ca29e86e8
 +     ],
 +     visibility = ["//visibility:public"],
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
-index 0eeacbce5..db78a65aa 100644
+index a9f0e11a7..4ce254dc4 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel
 +++ b/tools/build-warnings/openssl/BUILD.bazel
 @@ -1,6 +1,12 @@
  load("@rules_cc//cc:cc_test.bzl", "cc_test")
  load("@rules_rs//rs:rust_test.bzl", "rust_test")
--load(":inputs_test.bzl", "openssl_assembly_defines_test", "openssl_install_inputs_test", "openssl_windows_defines_test")
-+load(":inputs_test.bzl", "openssl_assembly_defines_test", "openssl_install_inputs_test", "openssl_windows_defines_test", "openssl_windows_perlasm_test")
+-load(":inputs_test.bzl", "openssl_install_inputs_test")
++load(":inputs_test.bzl", "openssl_install_inputs_test", "openssl_windows_perlasm_test")
 +
 +openssl_windows_perlasm_test(
 +    name = "windows_perlasm_test",
@@ -109,24 +110,15 @@ index 0eeacbce5..db78a65aa 100644
 +    target_under_test = "@openssl//:perlasm_genfiles",
 +)
 
- openssl_assembly_defines_test(
-     name = "assembly_defines_test",
+ openssl_install_inputs_test(
+     name = "rust_install_inputs_test",
 diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
-index bebee85d4..6cfb92393 100644
+index 1d2e66334..593739923 100644
 --- a/tools/build-warnings/openssl/inputs_test.bzl
 +++ b/tools/build-warnings/openssl/inputs_test.bzl
-@@ -62,6 +62,8 @@ def _openssl_assembly_defines_test_impl(ctx):
-     asserts.true(env, len(compile_actions) > 0, "OpenSSL must also compile C sources")
-     for action in compile_actions:
-         defines = [arg[2:] for arg in action.argv if arg.startswith("-D")]
-+        asserts.equals(env, [], [define for define in defines if define.startswith("_WINSOCKAPI_")], "MinGW owns its Winsock include guard")
-+        asserts.true(env, "WIN32_LEAN_AND_MEAN" in defines, "Windows headers omit the legacy Winsock declarations")
-         for required in ["NDEBUG", "OPENSSL_SYS_WIN32", "AES_ASM", "OPENSSL_NO_BLAKE2", 'OPENSSLDIR="/etc/ssl"']:
-             asserts.true(env, required in defines, "C sources retain %s: %s" % (required, defines))
-
-@@ -77,3 +79,16 @@ openssl_assembly_defines_test = analysistest.make(
-         str(Label("@openssl//:no-blake2")): True,
-     },
+@@ -18,3 +18,16 @@ openssl_install_inputs_test = analysistest.make(
+     _openssl_install_inputs_test_impl,
+     attrs = {"install": attr.label(default = "@openssl//:gen_dir")},
  )
 +
 +def _openssl_windows_perlasm_test_impl(ctx):

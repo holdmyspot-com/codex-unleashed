@@ -1,9 +1,9 @@
-From 0a7fc7fc5edd6bae808ac31fac03d83aec8c40ab Mon Sep 17 00:00:00 2001
+From 4ee26eb7c5f8f776350c9de1de05117618d68524 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:13:00 +0000
+Date: Thu, 15 Oct 2026 21:40:53 -0400
 Subject: [PATCH] Restrict XZ stack flags to GNU Windows drivers
 
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue and native MSVC analysis fixture. RED: native compiler action checks report both GNU flags passed to MSVC. GREEN: MSVC and GNU Windows action tests pass, retaining /WX and -Werror. Evidence: windows-wrapper-gbpNjj compiler-flags-native-red.log and compiler-flags-batch-green.log. Fresh emitted patch and native Windows execution remain required acceptance gates.
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
@@ -15,11 +15,10 @@ Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing
  create mode 100644 tools/build-warnings/xz/driver_flags_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index e3bf60b50..e65a75f8e 100644
+index 4ba2a7ecf..9943e2b3b 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -511,8 +511,9 @@ single_version_override(
-     module_name = "xz",
+@@ -509,6 +509,7 @@ single_version_override(
      patch_strip = 1,
      patches = [
          "//patches:xz_windows_stack_args.patch",
@@ -27,18 +26,16 @@ index e3bf60b50..e65a75f8e 100644
          "//patches:xz_windows_arm64_filter.patch",
      ],
  )
-
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 5f156b48d..894c79b42 100644
+index 4ee15d415..e452d50cd 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  exports_files([
 +    "xz_windows_driver_flags.patch",
      "ninja_elapsed_time.patch",
      "opusic_sys_library_directories.patch",
-     "openssl_windows_compiler_types.patch",
-     "make_source_warnings.patch",
+     "make_getopt_prototypes.patch",
 diff --git a/patches/xz_windows_driver_flags.patch b/patches/xz_windows_driver_flags.patch
 new file mode 100644
 index 000000000..c4eb62da7
@@ -106,7 +103,7 @@ diff --git a/tools/build-warnings/xz/BUILD.bazel b/tools/build-warnings/xz/BUILD
 index fc78c6671..c5e340b0c 100644
 --- a/tools/build-warnings/xz/BUILD.bazel
 +++ b/tools/build-warnings/xz/BUILD.bazel
-@@ -1,5 +1,16 @@
+@@ -1,4 +1,15 @@
  load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load(":driver_flags_test.bzl", "xz_gnu_flags_test", "xz_msvc_flags_test")
 +
@@ -122,7 +119,6 @@ index fc78c6671..c5e340b0c 100644
 
  cc_test(
      name = "arm64_filter_test",
-     size = "small",
 diff --git a/tools/build-warnings/xz/driver_flags_test.bzl b/tools/build-warnings/xz/driver_flags_test.bzl
 new file mode 100644
 index 000000000..5345b54f1

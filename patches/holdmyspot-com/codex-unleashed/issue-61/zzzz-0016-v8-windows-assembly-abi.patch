@@ -1,26 +1,9 @@
-From 8d74f8e59adf8b3967f9d51bd93d4d408e33d0d6 Mon Sep 17 00:00:00 2001
+From 6bc3fc2bbcdc01d0d394864dec45b0ad4ba8d24f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 16:16:24 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Select V8 stack assembly by Windows ABI
 
-Restore the original MASM source and give the Windows GNU implementation
-its own preprocessed assembly file. Select the source with the configured
-Windows ABI and declare the existing LLVM constraint dependency in V8.
-
-Issue: https://github.com/holdmyspot-com/codex-unleashed/issues/61
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d),
-with the preceding downstream build-repair queue.
-
-Red: bazel test --test_output=errors --test_verbose_timeout_warnings
-//tools/build-warnings/v8-assembly:all exits 3: GNU analysis selects
-push_registers_masm.asm instead of push_registers_gas.S. The original
-native Windows job 116473691446 fails when ml64 assembles GNU syntax.
-
-Green: both ABI-selection regressions pass, and bazel build
---platforms=//:windows_x86_64_gnullvm
-@v8//:codex_windows_stack_assembly_library_icu compiles the actual GNU
-assembly. Maintained just fmt-check and just bazel-lock-check pass.
-Native MSVC compilation and Windows runtime acceptance remain required.
+Preserve functional changes without warning-only dependency patches.
 ---
  MODULE.bazel                                  |   1 +
  patches/BUILD.bazel                           |   1 +
@@ -33,11 +16,11 @@ Native MSVC compilation and Windows runtime acceptance remain required.
  create mode 100644 tools/build-warnings/v8-assembly/assembly_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 716c19bba..26b116059 100644
+index be66e1c51..5e32cd40a 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -929,6 +929,7 @@ archive_override(
-         "//patches:v8_wasm_header_inline.patch",
+@@ -938,6 +938,7 @@ archive_override(
+         "//patches:v8_windows_stack_assembly.patch",
          "//patches:v8_inspector_python_runtime.patch",
          "//patches:v8_msvc_driver_flags.patch",
 +        "//patches:v8_windows_assembly_abi.patch",
@@ -45,10 +28,10 @@ index 716c19bba..26b116059 100644
      strip_prefix = "v8-15.0.245.2",
      urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index e6f12b16a..e63fb5efd 100644
+index df4a114b7..530608b74 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -44,6 +44,7 @@ exports_files([
+@@ -46,6 +46,7 @@ exports_files([
      "v8_module_deps.patch",
      "v8_icu_mutex_annotations.patch",
      "v8_source_portability.patch",

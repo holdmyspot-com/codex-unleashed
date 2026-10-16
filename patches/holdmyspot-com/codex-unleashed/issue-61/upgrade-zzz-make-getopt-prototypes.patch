@@ -1,9 +1,9 @@
-From 6b5de0559a027dd46087e9a3adffa7cb04e0d848 Mon Sep 17 00:00:00 2001
+From 023958da6f0113b43aa3cba621c049668e7cd224 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 23:48:17 +0000
+Date: Thu, 15 Oct 2026 21:40:36 -0400
 Subject: [PATCH] Match Make getopt prototypes on modern Darwin compilers
 
-The Darwin Clang 23 baseline rejects the legacy declarations. Match the implemented signatures without suppressing diagnostics. Keep patch context independent of later OpenSSL exports.
+Preserve compilation fixes without warning-only source backports.
 ---
  MODULE.bazel                         |  1 +
  patches/BUILD.bazel                  |  1 +
@@ -12,24 +12,30 @@ The Darwin Clang 23 baseline rejects the legacy declarations. Match the implemen
  create mode 100644 patches/make_getopt_prototypes.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 0f0c023..079e33e 100644
+index 107760028..59ee3ef0d 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -203,2 +203,3 @@ single_version_override(
-         "//patches:make_source_warnings.patch",
+@@ -195,6 +195,7 @@ single_version_override(
+     patch_strip = 1,
+     patches = [
+         "//patches:make_compiler_warnings.patch",
 +        "//patches:make_getopt_prototypes.patch",
      ],
+ )
+
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index f955065..581f3aa 100644
+index 23fb45d62..30ef25eb7 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -3,2 +3,3 @@ exports_files([
-     "make_source_warnings.patch",
+@@ -1,4 +1,5 @@
+ exports_files([
 +    "make_getopt_prototypes.patch",
      "make_compiler_warnings.patch",
+     "rules_foreign_cc_meson_runfiles.patch",
+     "rules_foreign_cc_stable_tools.patch",
 diff --git a/patches/make_getopt_prototypes.patch b/patches/make_getopt_prototypes.patch
 new file mode 100644
-index 0000000..a9f42e1
+index 000000000..a9f42e1ca
 --- /dev/null
 +++ b/patches/make_getopt_prototypes.patch
 @@ -0,0 +1,35 @@

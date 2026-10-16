@@ -1,34 +1,32 @@
-From 0faff291c6b5c2a04526b98605e285905c548491 Mon Sep 17 00:00:00 2001
+From 208398d0574d37d46f9f6bfc9d1ea0b602f919fc Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:08 +0000
-Subject: [PATCH] Upgrade foreign build tools while enforcing compiler warnings
+Date: Thu, 15 Oct 2026 21:40:18 -0400
+Subject: [PATCH] Upgrade foreign build tools with visible, nonfatal dependency
+ warnings
 
+Retain native tool upgrades and compilation fixes without warning-only Make source backports.
 ---
- MODULE.bazel                                  |  65 +-
+ MODULE.bazel                                  |  67 +-
  MODULE.bazel.lock                             | 752 ++++++++++++++----
- patches/BUILD.bazel                           |   8 +-
+ patches/BUILD.bazel                           |   6 +-
  patches/make_compiler_warnings.patch          |  41 +
- patches/make_source_warnings.patch            |  53 ++
  patches/rules_foreign_cc_make_cppflags.patch  |  15 -
  .../rules_foreign_cc_make_msvc_stdint.patch   |  13 -
- ...rules_foreign_cc_make_warning_phases.patch | 135 ----
  patches/rules_foreign_cc_make_xcompile.patch  |  10 -
  ..._foreign_cc_meson_resource_directory.patch |  27 +-
  patches/rules_foreign_cc_meson_runfiles.patch |  29 +
  patches/rules_foreign_cc_stable_tools.patch   |  99 +++
  third_party/voice/BUILD.bazel                 |   7 +-
- third_party/voice/native.bzl                  |   8 +-
+ third_party/voice/native.bzl                  |   9 +-
  third_party/voice/windows_native.bzl          |   4 +-
  tools/build-warnings/cmake/BUILD.bazel        |  11 +
  .../build-warnings/make-bootstrap/BUILD.bazel |  16 +-
  .../make-bootstrap/warnings_test.bzl          |  17 +
  tools/build-warnings/meson/BUILD.bazel        |   5 +-
- 19 files changed, 907 insertions(+), 408 deletions(-)
+ 17 files changed, 854 insertions(+), 274 deletions(-)
  create mode 100644 patches/make_compiler_warnings.patch
- create mode 100644 patches/make_source_warnings.patch
  delete mode 100644 patches/rules_foreign_cc_make_cppflags.patch
  delete mode 100644 patches/rules_foreign_cc_make_msvc_stdint.patch
- delete mode 100644 patches/rules_foreign_cc_make_warning_phases.patch
  delete mode 100644 patches/rules_foreign_cc_make_xcompile.patch
  create mode 100644 patches/rules_foreign_cc_meson_runfiles.patch
  create mode 100644 patches/rules_foreign_cc_stable_tools.patch
@@ -36,7 +34,7 @@ Subject: [PATCH] Upgrade foreign build tools while enforcing compiler warnings
  create mode 100644 tools/build-warnings/make-bootstrap/warnings_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 4ae7ddd61..ed19a5182 100644
+index e272d5020..107760028 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -1,7 +1,7 @@
@@ -48,7 +46,7 @@ index 4ae7ddd61..ed19a5182 100644
  bazel_dep(name = "platforms", version = "1.1.0")
 
  # Expose the public protobuf rules already used transitively by rules_rs.
-@@ -186,40 +186,56 @@ single_version_override(
+@@ -176,39 +176,55 @@ single_version_override(
  )
 
  bazel_dep(name = "rules_rs", version = "0.0.96")
@@ -61,12 +59,12 @@ index 4ae7ddd61..ed19a5182 100644
 -        "//patches:rules_foreign_cc_make_cppflags.patch",
 -        "//patches:rules_foreign_cc_make_xcompile.patch",
 -        "//patches:rules_foreign_cc_make_msvc_stdint.patch",
--        "//patches:rules_foreign_cc_make_warning_phases.patch",
+-    ],
 +        "//patches:rules_foreign_cc_stable_tools.patch",
 +        "//patches:rules_foreign_cc_meson_runfiles.patch",
          "//patches:rules_foreign_cc_meson_resource_directory.patch",
-     ],
 -    version = "0.15.1",
++    ],
  )
 
 -bazel_dep(name = "rules_python", version = "1.8.0")
@@ -78,7 +76,6 @@ index 4ae7ddd61..ed19a5182 100644
 +    patch_strip = 1,
 +    patches = [
 +        "//patches:make_compiler_warnings.patch",
-+        "//patches:make_source_warnings.patch",
 +    ],
 +)
 +
@@ -93,9 +90,9 @@ index 4ae7ddd61..ed19a5182 100644
 -# native voice pkg-config bootstrap, instead of a PATH-provided Make.
 -register_toolchains("@rules_foreign_cc//toolchains:built_make_toolchain")
 -
+ foreign_cc_tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
 -register_toolchains("@rules_foreign_cc//toolchains:built_meson_toolchain")
 -
- foreign_cc_tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
 -use_repo(foreign_cc_tools, "cmake-3.31.8-windows-x86_64")
 -
 -override_repo(
@@ -112,21 +109,22 @@ index 4ae7ddd61..ed19a5182 100644
 +foreign_cc_tools.meson(
 +    mode = "source",
 +    version = "1.12.1",
-+)
+ )
 +foreign_cc_tools.ninja(
 +    mode = "binary",
 +    version = "1.13.2",
- )
++)
 +use_repo(foreign_cc_tools, "cmake-4.4.4-windows-x86_64", "rules_foreign_cc_toolchains")
 +
 +register_toolchains("@rules_foreign_cc_toolchains//:all")
 
  single_version_override(
      module_name = "rules_rs",
-@@ -551,17 +567,6 @@ crate.annotation(
+@@ -540,18 +556,6 @@ crate.annotation(
 
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+-codex_release_archive = use_extension(
 -http_archive(
 -    name = "codex_meson_src",
 -    build_file_content = """
@@ -141,6 +139,14 @@ index 4ae7ddd61..ed19a5182 100644
  http_archive(
      name = "pkgconf_src",
      build_file_content = 'filegroup(name = "all_srcs", srcs = glob(["**"]), visibility = ["//visibility:public"])',
+@@ -560,6 +564,7 @@ http_archive(
+     urls = ["https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-3.0.8.tar.gz"],
+ )
+
++codex_release_archive = use_extension(
+     "//bazel/extensions:codex_release_archive.bzl",
+     "codex_release_archive",
+ )
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index e45089e10..1e56309b2 100644
 --- a/MODULE.bazel.lock
@@ -991,26 +997,24 @@ index e45089e10..1e56309b2 100644
        "Inflector_0.11.4": "{\"dependencies\":[{\"name\":\"lazy_static\",\"optional\":true,\"req\":\"^1.2.0\"},{\"name\":\"regex\",\"optional\":true,\"req\":\"^1.1\"}],\"features\":{\"default\":[\"heavyweight\"],\"heavyweight\":[\"regex\",\"lazy_static\"],\"unstable\":[]}}",
        "addr2line_0.25.1": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.13\"},{\"features\":[\"wrap_help\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4.3.21\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"cpp_demangle\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"fallible-iterator\",\"optional\":true,\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"findshlibs\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"read\"],\"name\":\"gimli\",\"req\":\"^0.32.0\"},{\"kind\":\"dev\",\"name\":\"libtest-mimic\",\"req\":\"^0.8.1\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"read\",\"compression\"],\"name\":\"object\",\"optional\":true,\"req\":\"^0.37.0\"},{\"name\":\"rustc-demangle\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"smallvec\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"typed-arena\",\"optional\":true,\"req\":\"^2\"}],\"features\":{\"all\":[\"bin\",\"wasm\"],\"bin\":[\"loader\",\"rustc-demangle\",\"cpp_demangle\",\"fallible-iterator\",\"smallvec\",\"dep:clap\"],\"cargo-all\":[],\"default\":[\"rustc-demangle\",\"cpp_demangle\",\"loader\",\"fallible-iterator\",\"smallvec\"],\"loader\":[\"std\",\"dep:object\",\"dep:memmap2\",\"dep:typed-arena\"],\"rustc-dep-of-std\":[\"core\",\"alloc\",\"gimli/rustc-dep-of-std\"],\"std\":[\"gimli/std\"],\"wasm\":[\"object/wasm\"]}}",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 5b6d8453f..7b8677586 100644
+index fb6169ea5..23fb45d62 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,4 +1,8 @@
+@@ -1,4 +1,7 @@
  exports_files([
-+    "make_source_warnings.patch",
 +    "make_compiler_warnings.patch",
 +    "rules_foreign_cc_meson_runfiles.patch",
 +    "rules_foreign_cc_stable_tools.patch",
      "aws_lc_windows_tls.patch",
      "rules_rust_unwind_driver_selection.patch",
      "llvm_warnings_as_errors.patch",
-@@ -17,10 +21,6 @@ exports_files([
+@@ -17,9 +20,6 @@ exports_files([
      "rules_rust_windows_msvc_direct_link_args.patch",
      "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
      "rules_cc_rusty_v8_custom_libcxx.patch",
 -    "rules_foreign_cc_make_cppflags.patch",
 -    "rules_foreign_cc_make_xcompile.patch",
 -    "rules_foreign_cc_make_msvc_stdint.patch",
--    "rules_foreign_cc_make_warning_phases.patch",
      "rules_rs_build_script_deps_annotation.patch",
      "rules_rs_bindgen_preprocessor_policy.patch",
      "rules_rs_rust_debug_modes.patch",
@@ -1061,65 +1065,6 @@ index 000000000..0a6b353c1
 + ]
 +
 + _COPTS = select({
-diff --git a/patches/make_source_warnings.patch b/patches/make_source_warnings.patch
-new file mode 100644
-index 000000000..1c17d2222
---- /dev/null
-+++ b/patches/make_source_warnings.patch
-@@ -0,0 +1,53 @@
-+From 892e3372f3dea5a340ff557bd5b07a7facb64dce Mon Sep 17 00:00:00 2001
-+From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Wed, 14 Oct 2026 18:02:56 -0400
-+Subject: [PATCH] Retain Make source warning fixes with the registry module
-+
-+---
-+ src/makeint.h  | 9 ++-------
-+ src/strcache.c | 4 ++++
-+ 2 files changed, 6 insertions(+), 7 deletions(-)
-+
-+diff --git a/src/makeint.h b/src/makeint.h
-+index db89631..3245c27 100644
-+--- a/src/makeint.h
-++++ b/src/makeint.h
-+@@ -324,7 +324,5 @@ extern mode_t umask (mode_t);
-+
-+ /* Test if two strings are equal. Is this worthwhile?  Should be profiled.  */
-+-#define streq(a, b) \
-+-   ((a) == (b) || \
-+-    (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1))))
-++#define streq(a, b) (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1)))
-+
-+ /* Test if two strings are equal, but match case-insensitively on systems
-+@@ -332,8 +330,5 @@ extern mode_t umask (mode_t);
-+    filenames!  */
-+ #ifdef HAVE_CASE_INSENSITIVE_FS
-+-# define patheq(a, b) \
-+-    ((a) == (b) \
-+-     || (tolower((unsigned char)*(a)) == tolower((unsigned char)*(b)) \
-+-         && (*(a) == '\0' || !strcasecmp ((a) + 1, (b) + 1))))
-++# define patheq(a, b) (strcasecmp ((a), (b)) == 0)
-+ #else
-+ # define patheq(a, b) streq(a, b)
-+diff --git a/src/strcache.c b/src/strcache.c
-+index baa3a9f..1788391 100644
-+--- a/src/strcache.c
-++++ b/src/strcache.c
-+@@ -48,5 +48,7 @@ static struct strcache *strcache = NULL;
-+ static struct strcache *fullcache = NULL;
-+
-++#ifndef NDEBUG
-+ static unsigned long total_buffers = 0;
-++#endif
-+ static unsigned long total_strings = 0;
-+ static unsigned long total_size = 0;
-+@@ -68,5 +70,7 @@ new_cache (struct strcache **head, sc_buflen_t buflen)
-+   *head = new;
-+
-++#ifndef NDEBUG
-+   ++total_buffers;
-++#endif
-+   return new;
-+ }
 diff --git a/patches/rules_foreign_cc_make_cppflags.patch b/patches/rules_foreign_cc_make_cppflags.patch
 deleted file mode 100644
 index 96cf53df9..000000000
@@ -1160,147 +1105,6 @@ index f3af72841..000000000
 -             dist_dir = "WinRel"
 - 
 -         script = [
-diff --git a/patches/rules_foreign_cc_make_warning_phases.patch b/patches/rules_foreign_cc_make_warning_phases.patch
-deleted file mode 100644
-index af5b53a31..000000000
---- a/patches/rules_foreign_cc_make_warning_phases.patch
-+++ /dev/null
-@@ -1,135 +0,0 @@
--diff --git a/foreign_cc/built_tools/make_build.bzl b/foreign_cc/built_tools/make_build.bzl
--index 8c553fa..572cd42 100644
----- a/foreign_cc/built_tools/make_build.bzl
--+++ b/foreign_cc/built_tools/make_build.bzl
--@@ -100,7 +100,7 @@ def _make_tool_impl(ctx):
--             "--prefix=\"$$INSTALLDIR$$\"",
--         ]
--
---        install_cmd = ["./make install"]
--+        install_cmd = ['./make CFLAGS="$CFLAGS" CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" install']
--
--         xcompile_options = detect_xcompile(ctx)
--         if xcompile_options:
--@@ -112,25 +112,44 @@ def _make_tool_impl(ctx):
--                 "cp -p make \"$$INSTALLDIR$$/bin/make\"",
--             ]
--
--+        # Autoconf probes use intentionally warning-producing programs. Its
--+        # documented contract requires warning promotion after configuration:
--+        # https://lists.gnu.org/archive/html/autoconf/2020-12/msg00002.html
--+        configure_cflags = [flag for flag in non_sysroot_cflags if flag != "-Werror"]
--+        configure_ldflags = [flag for flag in non_sysroot_ldflags if flag != "-Werror"]
--+
--+        restore_warning_flags = []
--+        for variable, flags in [
--+            ("CFLAGS", non_sysroot_cflags),
--+            ("CPPFLAGS", non_sysroot_cflags),
--+            ("LDFLAGS", non_sysroot_ldflags),
--+        ]:
--+            if "-Werror" in flags:
--+                restore_warning_flags.append(
--+                    "printf '%s\\n' '" + variable + "=\"$" + variable + " -Werror\"' >> build.cfg",
--+                )
--+
--         env.update({
--             "AR": absolute_ar,
--             "ARFLAGS": _join_flags_list(ctx.workspace_name, arflags),
--             "CC": absolute_cc,
---            "CFLAGS": _join_flags_list(ctx.workspace_name, non_sysroot_cflags),
--+            "CFLAGS": _join_flags_list(ctx.workspace_name, configure_cflags),
--             # Configure's preprocessor checks need the declared header paths too.
--             "CPPFLAGS": " ".join([
--                 "$${CPPFLAGS:-}$$",
---                _join_flags_list(ctx.workspace_name, non_sysroot_cflags),
--+                _join_flags_list(ctx.workspace_name, configure_cflags),
--             ]).strip(),
--             "LD": absolute_ld,
---            "LDFLAGS": _join_flags_list(ctx.workspace_name, non_sysroot_ldflags),
--+            "LDFLAGS": _join_flags_list(ctx.workspace_name, configure_ldflags),
--         })
--
--         configure_env = " ".join(["%s=\"%s\"" % (key, value) for key, value in env.items()])
--         script = [
--             "%s ./configure %s" % (configure_env, " ".join(configure_options)),
--+        ] + restore_warning_flags + [
--             "cat build.cfg",
--             "./build.sh",
--+            ". ./build.cfg",
--         ] + install_cmd
--
--     return built_tool_rule_impl(
--diff --git a/toolchains/built_toolchains.bzl b/toolchains/built_toolchains.bzl
--index e9f2b8b..cb2815a 100644
----- a/toolchains/built_toolchains.bzl
--+++ b/toolchains/built_toolchains.bzl
--@@ -89,6 +89,8 @@ def _make_toolchain(version, register_toolchains):
--             build_file_content = _ALL_CONTENT,
--             sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3",
--             strip_prefix = "make-4.4.1",
--+            patch_args = ["-p1"],
--+            patches = [Label("//toolchains/patches:make-warning-fixes.patch")],
--             urls = [
--                 "https://mirror.bazel.build/ftpmirror.gnu.org/gnu/make/make-4.4.1.tar.gz",
--                 "http://ftpmirror.gnu.org/gnu/make/make-4.4.1.tar.gz",
--diff --git a/toolchains/patches/BUILD.bazel b/toolchains/patches/BUILD.bazel
--index e69de29..154cb81 100644
----- a/toolchains/patches/BUILD.bazel
--+++ b/toolchains/patches/BUILD.bazel
--@@ -0,0 +1 @@
--+exports_files(["make-warning-fixes.patch"])
--diff --git a/toolchains/patches/make-warning-fixes.patch b/toolchains/patches/make-warning-fixes.patch
--new file mode 100644
--index 0000000..42f15bf
----- /dev/null
--+++ b/toolchains/patches/make-warning-fixes.patch
--@@ -0,0 +1,49 @@
--+diff --git a/src/makeint.h b/src/makeint.h
--+index 61c7822..120fc91 100644
--+--- a/src/makeint.h
--++++ b/src/makeint.h
--+@@ -320,18 +320,13 @@
--+ #define ISDIGIT(c) ((unsigned) (c) - '0' <= 9)
--+
--+ /* Test if two strings are equal. Is this worthwhile?  Should be profiled.  */
--+-#define streq(a, b) \
--+-   ((a) == (b) || \
--+-    (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1))))
--++#define streq(a, b) (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1)))
--+
--+ /* Test if two strings are equal, but match case-insensitively on systems
--+    which have case-insensitive filesystems.  Should only be used for
--+    filenames!  */
--+ #ifdef HAVE_CASE_INSENSITIVE_FS
--+-# define patheq(a, b) \
--+-    ((a) == (b) \
--+-     || (tolower((unsigned char)*(a)) == tolower((unsigned char)*(b)) \
--+-         && (*(a) == '\0' || !strcasecmp ((a) + 1, (b) + 1))))
--++# define patheq(a, b) (strcasecmp ((a), (b)) == 0)
--+ #else
--+ # define patheq(a, b) streq(a, b)
--+ #endif
--+diff --git a/src/strcache.c b/src/strcache.c
--+index baa3a9f..1788391 100644
--+--- a/src/strcache.c
--++++ b/src/strcache.c
--+@@ -47,7 +47,9 @@ struct strcache {
--+ static struct strcache *strcache = NULL;
--+ static struct strcache *fullcache = NULL;
--+
--++#ifndef NDEBUG
--+ static unsigned long total_buffers = 0;
--++#endif
--+ static unsigned long total_strings = 0;
--+ static unsigned long total_size = 0;
--+
--+@@ -67,7 +69,9 @@ new_cache (struct strcache **head, sc_buflen_t buflen)
--+   new->next = *head;
--+   *head = new;
--+
--++#ifndef NDEBUG
--+   ++total_buffers;
--++#endif
--+   return new;
--+ }
--+
 diff --git a/patches/rules_foreign_cc_make_xcompile.patch b/patches/rules_foreign_cc_make_xcompile.patch
 deleted file mode 100644
 index 097e87bc1..000000000
@@ -1509,7 +1313,7 @@ index 000000000..92dfaa03d
 ++    ),
 + }
 diff --git a/third_party/voice/BUILD.bazel b/third_party/voice/BUILD.bazel
-index a3ff636c9..d66a03205 100644
+index 5c6e4e349..f774ab166 100644
 --- a/third_party/voice/BUILD.bazel
 +++ b/third_party/voice/BUILD.bazel
 @@ -87,10 +87,6 @@ toolchain(
@@ -1523,7 +1327,7 @@ index a3ff636c9..d66a03205 100644
      build_data = [
          ":pkg_config_linker",
          "@llvm//tools:llvm-ar",
-@@ -115,6 +111,7 @@ pkg_config(
+@@ -114,6 +110,7 @@ pkg_config(
      out_static_libs = [],
      postfix_script = 'mkdir -p "$$INSTALLDIR/bin"; cp "$$BUILD_TMPDIR/pkgconf" "$$INSTALLDIR/bin/pkg-config-tool"',
      tags = ["manual"],
@@ -1531,7 +1335,7 @@ index a3ff636c9..d66a03205 100644
      target_compatible_with = select({
          "@platforms//os:windows": ["@platforms//:incompatible"],
          "//conditions:default": [],
-@@ -163,7 +160,7 @@ toolchain(
+@@ -162,7 +159,7 @@ toolchain(
  toolchain(
      name = "windows_cmake_toolchain",
      exec_compatible_with = ["@platforms//os:windows"],
@@ -1541,7 +1345,7 @@ index a3ff636c9..d66a03205 100644
      visibility = ["//visibility:public"],
  )
 diff --git a/third_party/voice/native.bzl b/third_party/voice/native.bzl
-index 087c4c062..35a95d102 100644
+index 087c4c062..99d489fa4 100644
 --- a/third_party/voice/native.bzl
 +++ b/third_party/voice/native.bzl
 @@ -3,6 +3,8 @@
@@ -1553,7 +1357,7 @@ index 087c4c062..35a95d102 100644
  load("@rules_python//python:py_runtime_info.bzl", "PyRuntimeInfo")
 
  def _native_prefix_impl(ctx):
-@@ -95,6 +97,10 @@ def _native_prefix_impl(ctx):
+@@ -95,8 +97,11 @@ def _native_prefix_impl(ctx):
  native_prefix = rule(
      implementation = _native_prefix_impl,
      attrs = {
@@ -1562,9 +1366,11 @@ index 087c4c062..35a95d102 100644
 +        "set_file_prefix_map": CC_EXTERNAL_RULE_ATTRIBUTES["set_file_prefix_map"],
 +        "_set_file_prefix_map_default": CC_EXTERNAL_RULE_ATTRIBUTES["_set_file_prefix_map_default"],
          "archives": attr.label_list(allow_files = True, mandatory = True),
-         "copts": attr.string_list(),
+-        "copts": attr.string_list(),
          "target": attr.string(mandatory = True),
-@@ -106,7 +112,7 @@ native_prefix = rule(
+         "_driver": attr.label(default = "//third_party/voice:bazel_native.py", allow_single_file = True),
+         "_recipe": attr.label(default = "//third_party/voice:native_recipe"),
+@@ -106,7 +111,7 @@ native_prefix = rule(
          "_readelf": attr.label(default = "@llvm//tools:llvm-readelf", executable = True, allow_files = True, cfg = "exec"),
          "_ld": attr.label(default = "//third_party/voice:pkg_config_linker", executable = True, allow_files = True, cfg = "exec"),
          "_pkg_config": attr.label(default = "//third_party/voice:pkg_config", allow_single_file = True, cfg = "exec"),
@@ -1645,11 +1451,11 @@ index 063b4d595..120352348 100644
  )
 diff --git a/tools/build-warnings/make-bootstrap/warnings_test.bzl b/tools/build-warnings/make-bootstrap/warnings_test.bzl
 new file mode 100644
-index 000000000..060e9fd78
+index 000000000..a746aee2d
 --- /dev/null
 +++ b/tools/build-warnings/make-bootstrap/warnings_test.bzl
 @@ -0,0 +1,17 @@
-+"""Checks warning enforcement for the selected Make source build."""
++"""Checks visible, nonfatal warnings for the selected Make source build."""
 +
 +load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
 +
@@ -1661,8 +1467,8 @@ index 000000000..060e9fd78
 +    disabled = [action for action in compile_actions if "-w" in action.argv or "/w" in action.argv]
 +    asserts.equals(env, 0, len(disabled), "Make compilation must preserve compiler warnings")
 +
-+    nonfatal = [action for action in compile_actions if "-Werror" not in action.argv and "/WX" not in action.argv]
-+    asserts.equals(env, 0, len(nonfatal), "Make compiler warnings must be errors")
++    fatal = [action for action in compile_actions if "-Werror" in action.argv or "/WX" in action.argv]
++    asserts.equals(env, 0, len(fatal), "Dependency warnings must remain nonfatal")
 +    return analysistest.end(env)
 +
 +make_warnings_test = analysistest.make(_make_warnings_test_impl)

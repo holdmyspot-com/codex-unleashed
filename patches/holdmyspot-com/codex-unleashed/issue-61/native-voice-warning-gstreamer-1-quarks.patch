@@ -1,48 +1,16 @@
-From 4e4f7c45d6c3b1ef1664147b0305b88a1378b91d Mon Sep 17 00:00:00 2001
+From b3a9f5b8e33700a3bbe40a730fc4e7273b40fe22 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 13:13:33 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Remove unused GStreamer pad quark storage
 
-Track native warning enforcement in #61. Apply after the documented native
-voice prerequisites; keep all compiler and linker checks enabled.
-
-Reproduction evidence: native-glib-query-green.log. The actual native recipe reports the
-missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
-are recorded separately; an internal authoring commit is not full CI acceptance.
+Preserve functional changes without warning-only dependency patches.
 ---
- third_party/voice/prepare_sources.py          | 15 +++++++++
  tools/build-warnings/gstreamer/BUILD.bazel    | 33 +++++++++++++++++++
  .../gstreamer/pad_quarks_test.c               | 13 ++++++++
- 3 files changed, 61 insertions(+)
+ 2 files changed, 46 insertions(+)
  create mode 100644 tools/build-warnings/gstreamer/BUILD.bazel
  create mode 100644 tools/build-warnings/gstreamer/pad_quarks_test.c
 
-diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index 49ef5717d..a5cc136f8 100644
---- a/third_party/voice/prepare_sources.py
-+++ b/third_party/voice/prepare_sources.py
-@@ -189,6 +189,21 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
-             contents = contents.replace(original, replacement)
-         query.write_text(contents, encoding="utf-8")
- 
-+    if source.name == "gstreamer" and source.version == "1.28.6":
-+        # WORKAROUND: these pad quarks are interned but their storage is unused.
-+        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
-+        # Remove when GStreamer no longer stores these unused probe quarks.
-+        pad = destination / source.root / "gst/gstpad.c"
-+        contents = pad.read_text(encoding="utf-8")
-+        for name in ("buffer_quark", "buffer_list_quark", "event_quark"):
-+            declaration = f"static GQuark {name};\n"
-+            assignment = f"{name} = g_quark_from_static_string"
-+            if contents.count(declaration) != 1 or contents.count(assignment) != 1:
-+                raise ValueError(f"Pinned GStreamer pad quark does not match: {name}")
-+            contents = contents.replace(declaration, "")
-+            contents = contents.replace(assignment, "(void) g_quark_from_static_string")
-+        pad.write_text(contents, encoding="utf-8")
-+
-     if source.name == "ninja" and source.version == "1.13.2":
-         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
-         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
 diff --git a/tools/build-warnings/gstreamer/BUILD.bazel b/tools/build-warnings/gstreamer/BUILD.bazel
 new file mode 100644
 index 000000000..191f97912

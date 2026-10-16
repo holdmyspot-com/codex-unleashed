@@ -1,0 +1,87 @@
+From 9a2be823b9c3349137aaf9d07f91929e34941a3a Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 02:05:22 +0000
+Subject: [PATCH] Fix first-party Clippy diagnostics on Rust 1.99
+
+Use unborrowed closures and array chunks. Keep the rule-error conversion
+explicit and scope the async-trait false-positive exception to generated RPC
+code, without changing dependency sources.
+
+Red: hosted Bazel Clippy run 38826550870 failed these four findings;
+see hosted-linux-clippy.log in the task execution record.
+Green: the emitted 151-patch tree passes just fmt-check and just bazel-clippy
+through run-fresh.sh. See first-party-clippy-repair/fmt.log and
+first-party-clippy-repair/clippy-after-lru.log (both exit 0).
+---
+ codex-rs/config/src/thread_config/remote.rs        |  4 ++++
+ codex-rs/core/src/exec_policy.rs                   | 14 ++++++++++----
+ codex-rs/core/tests/suite/scenarios.rs             |  2 +-
+ .../tui/src/bottom_pane/list_selection_view.rs     |  2 +-
+ 4 files changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/config/src/thread_config/remote.rs b/codex-rs/config/src/thread_config/remote.rs
+index da0af3bca..5a5582182 100644
+--- a/codex-rs/config/src/thread_config/remote.rs
++++ b/codex-rs/config/src/thread_config/remote.rs
+@@ -19,6 +19,10 @@ use super::ThreadConfigSource;
+ use super::UserThreadConfig;
+ use proto::thread_config_loader_client::ThreadConfigLoaderClient;
+
++// WORKAROUND: Clippy reports double_must_use in async_trait-generated RPC code.
++// https://github.com/rust-lang/rust-clippy/issues/17529
++// Remove when the installed Clippy includes the macro-expansion fix in PR #17547.
++#[allow(clippy::double_must_use)]
+ #[path = "proto/codex.thread_config.v1.rs"]
+ mod proto;
+
+diff --git a/codex-rs/core/src/exec_policy.rs b/codex-rs/core/src/exec_policy.rs
+index 79d564e33..525accf45 100644
+--- a/codex-rs/core/src/exec_policy.rs
++++ b/codex-rs/core/src/exec_policy.rs
+@@ -267,10 +267,16 @@ pub enum ExecPolicyUpdateError {
+     JoinBlockingTask { source: tokio::task::JoinError },
+
+     #[error("failed to update in-memory rules: {source}")]
+-    AddRule {
+-        #[from]
+-        source: ExecPolicyRuleError,
+-    },
++    AddRule { source: ExecPolicyRuleError },
++}
++
++// WORKAROUND: Clippy reports redundant_field_names in thiserror-generated From code.
++// https://github.com/rust-lang/rust-clippy/issues/17525
++// Remove this implementation and restore #[from] when the installed Clippy fixes the lint.
++impl From<ExecPolicyRuleError> for ExecPolicyUpdateError {
++    fn from(source: ExecPolicyRuleError) -> Self {
++        Self::AddRule { source }
++    }
+ }
+
+ pub(crate) struct ExecPolicyManager {
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index 842ae7aea..faa0cdbdb 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -2421,7 +2421,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
+     )
+     .await?;
+     assert_eq!(compaction_events.len(), if over_budget { 4 } else { 2 });
+-    for pair in compaction_events.chunks_exact(2) {
++    for pair in compaction_events.as_chunks::<2>().0 {
+         assert_eq!((pair[0].0, pair[1].0), ("started", "completed"));
+         assert_eq!(pair[0].1, pair[1].1);
+     }
+diff --git a/codex-rs/tui/src/bottom_pane/list_selection_view.rs b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+index 19f365028..3996e8697 100644
+--- a/codex-rs/tui/src/bottom_pane/list_selection_view.rs
++++ b/codex-rs/tui/src/bottom_pane/list_selection_view.rs
+@@ -1106,7 +1106,7 @@ impl ListSelectionView {
+             None
+         }
+         .or_else(|| self.footer_note.clone());
+-        let mut lines = note.map(&wrap).unwrap_or_default();
++        let mut lines = note.map(wrap).unwrap_or_default();
+         if self.reserve_result_rows && show_selected_description {
+             let height = self
+                 .items

@@ -1,27 +1,25 @@
-From e523b8e49abc687b52f822ebfd6e902363df3cc3 Mon Sep 17 00:00:00 2001
+From fddfca89ca477af9483be2cdc5324c8462a0841c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 10:06:59 -0400
+Date: Thu, 15 Oct 2026 22:01:32 -0400
 Subject: [PATCH] Relocate transitive native SDK metadata
 
-Generate libffi, PCRE2 and zlib metadata relative to pcfiledir so Rust build scripts do not retain the native build temporary prefix. Validate every exported metadata file while retaining Bazel non-hermetic path rejection.
-
-Verification: moved-template probe fails on the preceding extraction implementation with -I/deleted/build/prefix/include and passes for all three repaired templates. The SDK rejection regression fails before the guard and passes afterward. Eleven SDK/source-preparation tests and maintained just fmt-check pass. Full emitted consumer and hosted platform checks remain required.
+Keep moved SDK metadata valid without warning-only dependency fixes.
 ---
- third_party/voice/prepare_sources.py          | 32 ++++++
+ third_party/voice/prepare_sources.py          | 33 ++++++-
  third_party/voice/sdk.py                      |  9 +-
  third_party/voice/test_sdk.py                 |  9 ++
  .../check-native-sdk-relocation.py            | 97 +++++++++++++++++++
- 4 files changed, 144 insertions(+), 3 deletions(-)
+ 4 files changed, 144 insertions(+), 4 deletions(-)
  create mode 100644 tools/build-warnings/check-native-sdk-relocation.py
 
 diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index 863a72733..6075c3e51 100644
+index 23f1d805d..2699d1826 100644
 --- a/third_party/voice/prepare_sources.py
 +++ b/third_party/voice/prepare_sources.py
 @@ -83,6 +83,38 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
              raise ValueError(f"Expanded source exceeds limits: {source.name}")
          archive.extractall(destination, members=members, filter="data")
- 
+
 +    metadata_templates = {
 +        ("libffi", "3.8.0"): ("libffi.pc.in", "@prefix@"),
 +        ("pcre2", "10.47"): ("libpcre2-8.pc.in", "@prefix@"),
@@ -54,9 +52,17 @@ index 863a72733..6075c3e51 100644
 +                )
 +        metadata.write_text(contents, encoding="utf-8")
 +
-     if source.name == "glib" and source.version == "2.88.3":
-         # WORKAROUND: GLib's bundled gnulib has incomplete warning portability.
+     if source.name == "gst-plugins-base" and source.version == "1.28.6":
+         # WORKAROUND: glib-mkenums parses enum expressions one line at a time.
          # https://github.com/holdmyspot-com/codex-unleashed/issues/61
+@@ -128,7 +160,6 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
+             )
+
+
+-
+ def prepare_sources(archives: Path, output: Path, manifest: bytes) -> None:
+     sources = load_sources(manifest)
+     # Claim a new directory exclusively; never reuse or overwrite an earlier build.
 diff --git a/third_party/voice/sdk.py b/third_party/voice/sdk.py
 index 8819ce731..f484a7ddd 100644
 --- a/third_party/voice/sdk.py
@@ -85,7 +91,7 @@ index d499a9e91..6c1c9b632 100644
 @@ -115,6 +115,15 @@ class SdkTests(unittest.TestCase):
              export_sdk(self.prefix, self.receipts, self.target, self.output)
          self.assertFalse(self.output.exists())
- 
+
 +    def test_transitive_dependency_metadata_must_be_relocatable(self):
 +        metadata = self.prefix / "lib/pkgconfig/zlib.pc"
 +        metadata.write_text(
@@ -201,6 +207,3 @@ index 000000000..a63f99df8
 +
 +if __name__ == "__main__":
 +    main()
--- 
-2.43.0
-

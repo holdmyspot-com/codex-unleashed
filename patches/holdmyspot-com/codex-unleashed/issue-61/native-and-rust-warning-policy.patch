@@ -1,20 +1,27 @@
-From 89c295000bb8b97cc28c0f0ec16165b5937ae213 Mon Sep 17 00:00:00 2001
+From 83eab37327bb1f3b60b775a7e66ab6a61067e693 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:05 +0000
-Subject: [PATCH] build: reject Rust and native compiler warnings
+Date: Fri, 16 Oct 2026 01:03:04 +0000
+Subject: [PATCH] build: enforce first-party compiler warnings without blocking
+ dependencies
 
+Keep Rust workspace and explicit native first-party warnings fatal. External
+native compilation uses the toolchain warning defaults. Verify clean code,
+a fatal first-party warning, and a visible nonfatal dependency-policy warning.
+
+Red: dependency-warning-policy-red.log rejects the dependency fixture.
+Green verification is retained in the task execution record.
 ---
  .bazelrc                                |  5 ++++
  MODULE.bazel                            |  1 +
  codex-rs/.cargo/config.toml             |  4 +++
- justfile                                |  6 +++++
+ justfile                                |  6 ++++
  patches/BUILD.bazel                     |  1 +
- patches/llvm_warnings_as_errors.patch   | 35 +++++++++++++++++++++++++
- tools/build-warnings/BUILD.bazel        | 13 +++++++++
- tools/build-warnings/check.sh           | 32 ++++++++++++++++++++++
- tools/build-warnings/clean.c            |  3 +++
- tools/build-warnings/compiler_warning.c | 14 ++++++++++
- 10 files changed, 114 insertions(+)
+ patches/llvm_warnings_as_errors.patch   | 35 ++++++++++++++++++++++
+ tools/build-warnings/BUILD.bazel        | 21 +++++++++++++
+ tools/build-warnings/check.sh           | 39 +++++++++++++++++++++++++
+ tools/build-warnings/clean.c            |  3 ++
+ tools/build-warnings/compiler_warning.c | 14 +++++++++
+ 10 files changed, 129 insertions(+)
  create mode 100644 patches/llvm_warnings_as_errors.patch
  create mode 100644 tools/build-warnings/BUILD.bazel
  create mode 100644 tools/build-warnings/check.sh
@@ -22,7 +29,7 @@ Subject: [PATCH] build: reject Rust and native compiler warnings
  create mode 100644 tools/build-warnings/compiler_warning.c
 
 diff --git a/.bazelrc b/.bazelrc
-index b7698b896..935aba345 100644
+index b7698b896..409d1e406 100644
 --- a/.bazelrc
 +++ b/.bazelrc
 @@ -17,6 +17,11 @@ common --experimental_platform_in_output_dir
@@ -31,8 +38,8 @@ index b7698b896..935aba345 100644
 
 +build --@rules_rust//rust/settings:extra_rustc_flag=-Dwarnings
 +build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Dwarnings
-+build --features=treat_warnings_as_errors
-+build --host_features=treat_warnings_as_errors
++# Native dependencies retain their warning diagnostics without making them fatal.
++# First-party native targets opt into treat_warnings_as_errors explicitly.
 +
  build --workspace_status_command=./scripts/workspace-status.sh
  build:windows --workspace_status_command=./scripts/workspace-status.cmd
@@ -132,29 +139,37 @@ index 000000000..a7d61213b
 ++
 diff --git a/tools/build-warnings/BUILD.bazel b/tools/build-warnings/BUILD.bazel
 new file mode 100644
-index 000000000..b52ae4daa
+index 000000000..866c52255
 --- /dev/null
 +++ b/tools/build-warnings/BUILD.bazel
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,21 @@
 +load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 +
 +cc_binary(
 +    name = "clean",
 +    srcs = ["clean.c"],
++    features = ["treat_warnings_as_errors"],
 +    tags = ["manual"],
 +)
 +
 +cc_binary(
 +    name = "compiler_warning",
 +    srcs = ["compiler_warning.c"],
++    features = ["treat_warnings_as_errors"],
++    tags = ["manual"],
++)
++
++cc_binary(
++    name = "dependency_warning",
++    srcs = ["compiler_warning.c"],
 +    tags = ["manual"],
 +)
 diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
 new file mode 100644
-index 000000000..1d8567daa
+index 000000000..4564221a9
 --- /dev/null
 +++ b/tools/build-warnings/check.sh
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,39 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
 +
@@ -168,6 +183,13 @@ index 000000000..1d8567daa
 +    cat -- "$probe_dir/clean.log"
 +    exit 1
 +fi
++
++# Dependency-policy targets keep warnings visible and complete successfully.
++if ! bazel build "$@" //tools/build-warnings:dependency_warning >"$probe_dir/dependency-warning.log" 2>&1; then
++    cat -- "$probe_dir/dependency-warning.log"
++    exit 1
++fi
++cat -- "$probe_dir/dependency-warning.log"
 +
 +if bazel build "$@" //tools/build-warnings:compiler_warning >"$probe_dir/warning.log" 2>&1; then
 +    cat -- "$probe_dir/warning.log"

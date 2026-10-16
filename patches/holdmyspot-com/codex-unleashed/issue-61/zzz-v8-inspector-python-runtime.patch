@@ -1,9 +1,9 @@
-From 26a284852706401680dacd557a1649917418bf07 Mon Sep 17 00:00:00 2001
+From cedd9673d820e24b5ad338ac8b013ff1a53766a2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 09:15:35 +0000
+Date: Thu, 15 Oct 2026 21:13:28 -0400
 Subject: [PATCH] Declare the Python runtime for V8 inspector code generation
 
-Regression: inspector generation fails with the hosted Runfiles dir not found error when unzip is unavailable. Launch the non-executable zipapp with the execution-platform Python runtime, including its declared files. No package versions change.
+Preserve functional changes without warning-only dependency patches.
 ---
  MODULE.bazel                                  |  1 +
  patches/v8_inspector_python_runtime.patch     | 84 +++++++++++++++++++
@@ -13,13 +13,13 @@ Regression: inspector generation fails with the hosted Runfiles dir not found er
  create mode 100755 tools/build-warnings/v8/check-inspector-runtime.sh
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index fabcaf525..bf546a8c1 100644
+index e302fdbf7..d960430d7 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -907,6 +907,7 @@ archive_override(
+@@ -925,6 +925,7 @@ archive_override(
+         "//patches:v8_icu_mutex_annotations.patch",
          "//patches:v8_clang_mingw_detection.patch",
          "//patches:v8_windows_stack_assembly.patch",
-         "//patches:v8_wasm_header_inline.patch",
 +        "//patches:v8_inspector_python_runtime.patch",
      ],
      strip_prefix = "v8-15.0.245.2",

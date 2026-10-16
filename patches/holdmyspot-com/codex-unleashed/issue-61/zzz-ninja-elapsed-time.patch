@@ -1,9 +1,9 @@
-From eb145a4002f6622dc32d2e1367de4f60989faa59 Mon Sep 17 00:00:00 2001
+From 3dd4f7a15536344cbe59c540ece4f88c10f9e634 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 10:49:54 +0000
+Date: Thu, 15 Oct 2026 21:40:52 -0400
 Subject: [PATCH] Preserve Ninja edge timing without narrowing
 
-Patch Ninja 1.13.2 without a version upgrade. The real Builder regression checks ordinary elapsed time and a start time above INT_MAX. Baseline exits 3 with 2147483648 -> -2147483648; the patched native Clang 23.1.2 test exits 0. Preserve original binary compiler flags and Windows definitions. Native MSVC remains a hosted gate.
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
  MODULE.bazel                                  | 10 +++
  patches/BUILD.bazel                           |  1 +
@@ -16,11 +16,10 @@ Patch Ninja 1.13.2 without a version upgrade. The real Builder regression checks
  create mode 100644 tools/build-warnings/ninja/elapsed_time_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index fdbbd5af6..e3bf60b50 100644
+index 803ded3b0..ab4c048af 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -199,8 +199,18 @@ single_version_override(
- )
+@@ -193,6 +193,16 @@ single_version_override(
 
  bazel_dep(name = "make", version = "4.4.1.bcr.2")
  bazel_dep(name = "ninja", version = "1.13.2")
@@ -37,18 +36,16 @@ index fdbbd5af6..e3bf60b50 100644
  bazel_dep(name = "rules_cc_autoconf", version = "0.27.0")
 
  single_version_override(
-     module_name = "make",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index b4f944c77..5f156b48d 100644
+index 3d7d3571d..4ee15d415 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  exports_files([
 +    "ninja_elapsed_time.patch",
      "opusic_sys_library_directories.patch",
-     "openssl_windows_compiler_types.patch",
-     "make_source_warnings.patch",
      "make_getopt_prototypes.patch",
+     "make_compiler_warnings.patch",
 diff --git a/patches/ninja_elapsed_time.patch b/patches/ninja_elapsed_time.patch
 new file mode 100644
 index 000000000..438f0c99b

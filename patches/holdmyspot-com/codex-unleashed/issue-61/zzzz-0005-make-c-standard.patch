@@ -1,9 +1,9 @@
-From acae43cdebfe0536ead78180e3191a558e0f5e69 Mon Sep 17 00:00:00 2001
+From f9dc00cf1354cc220c31d021f8b672099da6fbbe Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 08:36:29 -0400
+Date: Thu, 15 Oct 2026 21:40:53 -0400
 Subject: [PATCH] Select the GNU Make C dialect without a conflicting default
 
-The native MSVC action test reproduces both /std:c17 and /std:c11 before the fix and passes with exactly /std:c11 and /WX after it. Reuse the AWS-LC native C-standard assertion fixture from the preceding patch.
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
  MODULE.bazel                          |  1 +
  patches/BUILD.bazel                   |  1 +
@@ -14,30 +14,27 @@ The native MSVC action test reproduces both /std:c17 and /std:c11 before the fix
  create mode 100644 tools/build-warnings/make/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 97703d27f..2becee37f 100644
+index bdad0ef3f..e0a9ad2fd 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -219,8 +219,9 @@ single_version_override(
+@@ -215,6 +215,7 @@ single_version_override(
      patches = [
          "//patches:make_compiler_warnings.patch",
-         "//patches:make_source_warnings.patch",
          "//patches:make_getopt_prototypes.patch",
 +        "//patches:make_c_standard.patch",
      ],
  )
 
- bazel_dep(name = "rules_python", version = "2.4.2")
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index e53bd694e..1a29d72de 100644
+index e44b71933..29475a469 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
-@@ -1,5 +1,6 @@
+@@ -1,4 +1,5 @@
  exports_files([
 +    "make_c_standard.patch",
      "rules_rust_wrapper_parameter_files.patch",
      "aws_lc_c_standard.patch",
      "rules_rust_cargo_c_standard.patch",
-     "xz_windows_driver_flags.patch",
 diff --git a/patches/make_c_standard.patch b/patches/make_c_standard.patch
 new file mode 100644
 index 000000000..aacf4ac29

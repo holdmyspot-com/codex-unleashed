@@ -1,17 +1,13 @@
-From 048f51b981476bf3ec72ee696fd22543334e1e9e Mon Sep 17 00:00:00 2001
+From 461a3c13b41a9f08ed2110e5c30d04754c96ea85 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 09:32:22 +0000
-Subject: [PATCH] Build pkg-config with current pkgconf and Meson
+Date: Thu, 15 Oct 2026 21:39:26 -0400
+Subject: [PATCH] build: use current pkgconf and Meson with nonfatal dependency
 
-Replace the legacy internal GLib bootstrap with pkgconf 3.0.8. Align Meson compilation resource directories with the merged link directory for LLVM 23.
-
-Regression: the legacy pkg-config metadata probe fails in GLib configure because qclass is unused under -Werror. The patched metadata probe and a C/C++ Meson runtime probe pass.
-
-Validation: just fmt-check and just bazel-lock-check pass; actual pkgconf and C/C++ probe builds complete without warnings. Fresh emitted queue verification follows separately.
+Retain functional changes without warning-only dependency backports.
 ---
  MODULE.bazel                                  | 29 ++++++++++-
  ..._foreign_cc_meson_resource_directory.patch | 31 ++++++++++++
- third_party/voice/BUILD.bazel                 | 45 ++++++++++-------
+ third_party/voice/BUILD.bazel                 | 44 ++++++++++-------
  third_party/voice/pkg_config.bzl              | 11 +++--
  tools/build-warnings/meson/BUILD.bazel        | 48 +++++++++++++++++++
  tools/build-warnings/meson/main.cc            |  7 +++
@@ -21,7 +17,7 @@ Validation: just fmt-check and just bazel-lock-check pass; actual pkgconf and C/
  tools/build-warnings/pkg-config/BUILD.bazel   | 24 ++++++++++
  tools/build-warnings/pkg-config/private.pc    |  4 ++
  tools/build-warnings/pkg-config/probe.pc      |  7 +++
- 12 files changed, 197 insertions(+), 22 deletions(-)
+ 12 files changed, 196 insertions(+), 22 deletions(-)
  create mode 100644 patches/rules_foreign_cc_meson_resource_directory.patch
  create mode 100644 tools/build-warnings/meson/BUILD.bazel
  create mode 100644 tools/build-warnings/meson/main.cc
@@ -33,25 +29,24 @@ Validation: just fmt-check and just bazel-lock-check pass; actual pkgconf and C/
  create mode 100644 tools/build-warnings/pkg-config/probe.pc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 1c09523a0..6d4b414a1 100644
+index 542c1b1ad..7941a6377 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -190,6 +190,7 @@ single_version_override(
+@@ -185,6 +185,7 @@ single_version_override(
          "//patches:rules_foreign_cc_make_xcompile.patch",
          "//patches:rules_foreign_cc_make_msvc_stdint.patch",
-         "//patches:rules_foreign_cc_make_warning_phases.patch",
-+        "//patches:rules_foreign_cc_meson_resource_directory.patch",
      ],
++        "//patches:rules_foreign_cc_meson_resource_directory.patch",
      version = "0.15.1",
  )
-@@ -205,8 +206,15 @@ use_repo(voice_python, "python_3_12")
- # native voice pkg-config bootstrap, instead of a PATH-provided Make.
+
+@@ -200,7 +201,14 @@ use_repo(voice_python, "python_3_12")
  register_toolchains("@rules_foreign_cc//toolchains:built_make_toolchain")
 
-+register_toolchains("@rules_foreign_cc//toolchains:built_meson_toolchain")
-+
  foreign_cc_tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
 -use_repo(foreign_cc_tools, "cmake-3.31.8-windows-x86_64", "pkgconfig_src")
++register_toolchains("@rules_foreign_cc//toolchains:built_meson_toolchain")
++
 +use_repo(foreign_cc_tools, "cmake-3.31.8-windows-x86_64")
 +
 +override_repo(
@@ -61,10 +56,10 @@ index 1c09523a0..6d4b414a1 100644
 
  single_version_override(
      module_name = "rules_rs",
-@@ -526,6 +534,25 @@ crate.annotation(
-
+@@ -533,6 +541,25 @@ crate.annotation(
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+ codex_release_archive = use_extension(
 +http_archive(
 +    name = "codex_meson_src",
 +    build_file_content = """
@@ -84,9 +79,9 @@ index 1c09523a0..6d4b414a1 100644
 +    urls = ["https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-3.0.8.tar.gz"],
 +)
 +
- codex_release_archive = use_extension(
      "//bazel/extensions:codex_release_archive.bzl",
      "codex_release_archive",
+ )
 diff --git a/patches/rules_foreign_cc_meson_resource_directory.patch b/patches/rules_foreign_cc_meson_resource_directory.patch
 new file mode 100644
 index 000000000..89e81b39e
@@ -125,10 +120,10 @@ index 000000000..89e81b39e
 ++
 ++    return [link_directories[-1] if flag.startswith(prefix) else flag for flag in compile_flags]
 diff --git a/third_party/voice/BUILD.bazel b/third_party/voice/BUILD.bazel
-index b3c5f0930..119fc7e28 100644
+index 94adba1b5..5c6e4e349 100644
 --- a/third_party/voice/BUILD.bazel
 +++ b/third_party/voice/BUILD.bazel
-@@ -72,45 +72,56 @@ alias(
+@@ -72,45 +72,55 @@ alias(
      }),
  )
 
@@ -177,7 +172,6 @@ index b3c5f0930..119fc7e28 100644
 +    lib_source = "@pkgconf_src//:all_srcs",
 +    options = {
 +        "default_library": "static",
-+        "werror": "true",
 +        "with-system-includedir": "/usr/include",
 +        "with-system-libdir": "/usr/lib:/lib",
 +    },

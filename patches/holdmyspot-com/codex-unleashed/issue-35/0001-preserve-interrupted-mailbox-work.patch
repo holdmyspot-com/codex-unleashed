@@ -1,22 +1,25 @@
-From ccb9716d3fa817b998eae254383ef1fd30d2f139 Mon Sep 17 00:00:00 2001
+From bd17f669d427ff20ae0f739fe0ec5de3cfc97db2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:50:16 +0000
+Date: Fri, 16 Oct 2026 00:49:27 +0000
 Subject: [PATCH] bugfix: Preserve mailbox work across interrupted task starts
 
+Adapt the pending-input fixture to the stable ResponseItem fields.
+Red: Linux Clippy job 116735236501 reports E0063 for encrypted_content and
+status. Focused unit verification is recorded in the execution receipt.
 ---
  .../app-server-exports-stable.json.zst        | Bin 159413 -> 159485 bytes
- codex-rs/core/src/session/input_queue.rs      |  86 ++++++-
+ codex-rs/core/src/session/input_queue.rs      |  86 +++++-
  .../src/session/mailbox_retention_tests.rs    |  64 +++++
  codex-rs/core/src/session/turn_input.rs       |   3 +
  codex-rs/core/src/state/turn.rs               |   3 +
- codex-rs/core/src/tasks/mailbox_wake_tests.rs | 242 ++++++++++++++++++
+ codex-rs/core/src/tasks/mailbox_wake_tests.rs | 244 ++++++++++++++++++
  codex-rs/core/src/tasks/mod.rs                |  91 +++++--
  codex-rs/core/src/tasks/mod_tests.rs          |   3 +
  codex-rs/protocol/src/lib.rs                  |   2 +
  codex-rs/protocol/src/mailbox_wake.rs         |  19 ++
  codex-rs/protocol/src/mailbox_wake_tests.rs   |  45 ++++
  codex-rs/protocol/src/protocol.rs             |   9 +
- 12 files changed, 544 insertions(+), 23 deletions(-)
+ 12 files changed, 546 insertions(+), 23 deletions(-)
  create mode 100644 codex-rs/core/src/session/mailbox_retention_tests.rs
  create mode 100644 codex-rs/core/src/tasks/mailbox_wake_tests.rs
  create mode 100644 codex-rs/protocol/src/mailbox_wake.rs
@@ -647,10 +650,10 @@ index aa43776d8..7b8eb1532 100644
      pub(crate) has_memory_citation: bool,
 diff --git a/codex-rs/core/src/tasks/mailbox_wake_tests.rs b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 new file mode 100644
-index 000000000..f15d9436e
+index 000000000..1fbdc9052
 --- /dev/null
 +++ b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,244 @@
 +use crate::session::TurnInput;
 +use crate::session::tests::make_session_and_context_with_auth_and_config_and_rx;
 +use codex_extension_api::ExtensionRegistryBuilder;
@@ -677,6 +680,8 @@ index 000000000..f15d9436e
 +    let pending = TurnInput::ResponseItem(
 +        codex_protocol::models::ResponseItem::Message {
 +            id: None,
++            encrypted_content: None,
++            status: None,
 +            role: "user".to_string(),
 +            content: vec![codex_protocol::models::ContentItem::InputText {
 +                text: "unrelated pending input".to_string(),

@@ -1,86 +1,13 @@
-From ab5cb047ec00cdcdbb0af2065a7f38310a5c9387 Mon Sep 17 00:00:00 2001
+From c25886ac802adef88b23d84c8fb3daad7951e290 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 07:27:00 +0000
+Date: Thu, 15 Oct 2026 21:28:05 -0400
 Subject: [PATCH] Backport OpenSSL command-line unused-state fixes
 
-Backport fa5c8d1c513308e5e495f88653fc86ebc0b3113e and
-1caa35f4fbf8a968a33df8eccf1675a908889415 to the pinned OpenSSL source.
-Only declare and initialize sendfile state when kernel TLS is enabled,
-and remove the argument-count global that is never read. Preserve option
-parsing and the enabled kernel-TLS path without relaxing compiler checks.
-
-Add an executable build probe that runs the compiled CLI's version and
-server help commands, keeping network listeners out of the verification.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d)
-with the OpenSSL library backports, native warning policy, and LLVM 23.
-Red: bazel build //tools/build-warnings/openssl:cli_probe --keep_going
-rejects three unused globals under -Werror.
-Green: the same command, just fmt-check, and just bazel-lock-check pass.
-The generated probe output contains OpenSSL 3.5.4 and server usage text.
-Evidence: openssl-cli-probe-{red,green}.log, openssl-cli-fmt-check.log,
-and openssl-cli-lock-check.log in llvm-toolchain-Rkha0k.
-
-Upstream: https://github.com/openssl/openssl/pull/32821
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
- patches/openssl_unused_globals.patch     | 46 ++++++++++++++++++++++++
- tools/build-warnings/openssl/BUILD.bazel |  8 +++++
- 2 files changed, 54 insertions(+)
+ tools/build-warnings/openssl/BUILD.bazel | 8 ++++++++
+ 1 file changed, 8 insertions(+)
 
-diff --git a/patches/openssl_unused_globals.patch b/patches/openssl_unused_globals.patch
-index 0adc8340c..3a9513fc1 100644
---- a/patches/openssl_unused_globals.patch
-+++ b/patches/openssl_unused_globals.patch
-@@ -155,3 +155,49 @@ diff --git a/providers/defltprov.c b/providers/defltprov.c
-          case OSSL_FUNC_CORE_GET_PARAMS:
-              c_get_params = OSSL_FUNC_core_get_params(in);
-              break;
-+diff --git a/apps/s_server.c b/apps/s_server.c
-+--- a/apps/s_server.c
-++++ b/apps/s_server.c
-+@@ -134,8 +134,10 @@ static int keymatexportlen = 20;
-+
-+ static int async = 0;
-+
-+-static int use_sendfile = 0;
-+-static int use_zc_sendfile = 0;
-++#ifndef OPENSSL_NO_KTLS
-++static int use_sendfile;
-++static int use_zc_sendfile;
-++#endif
-+
-+ static const char *session_id_prefix = NULL;
-+
-+@@ -1778,8 +1780,10 @@ int s_server_main(int argc, char *argv[])
-+     s_quiet = 0;
-+     s_brief = 0;
-+     async = 0;
-++#ifndef OPENSSL_NO_KTLS
-+     use_sendfile = 0;
-+     use_zc_sendfile = 0;
-++#endif
-+
-+     port = OPENSSL_strdup(PORT);
-+     cctx = SSL_CONF_CTX_new();
-+diff --git a/apps/lib/opt.c b/apps/lib/opt.c
-+--- a/apps/lib/opt.c
-++++ b/apps/lib/opt.c
-+@@ -37,7 +37,6 @@ const char OPT_PARAM_STR[] = "-P";
-+
-+ /* Our state */
-+ static char **argv;
-+-static int argc;
-+ static int opt_index;
-+ static char *arg;
-+ static char *flag;
-+@@ -162,7 +161,6 @@ char *opt_getprog(void)
-+ char *opt_init(int ac, char **av, const OPTIONS *o)
-+ {
-+     /* Store state. */
-+-    argc = ac;
-+     argv = av;
-+     opt_begin();
-+     opts = o;
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
 index 9980c7ba0..fc2f72933 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel

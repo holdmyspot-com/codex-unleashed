@@ -1,67 +1,20 @@
-From 0ef7432c90e3ece90af9e437b9026f2eff45a70c Mon Sep 17 00:00:00 2001
+From 2fb57cb115b4e40f9080678997c1f06a6e1a196b Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 06:12:26 +0000
+Date: Thu, 15 Oct 2026 21:31:15 -0400
 Subject: [PATCH] Compile the OpenSSL notifier helper with its callers
 
-The focused production SSL and notifier-fixture compilation fails with set_cloexec unused before the guard and passes after it, with 518 action hits and two executions. The runtime regression checks readiness before signaling, after signaling, and after clearing. Linux runtime, Windows linking/runtime, and fresh emitted-patch acceptance remain pending.
+Preserve functional changes without warning-only dependency patches.
 ---
- MODULE.bazel                                  |  1 +
- patches/openssl_rio_cloexec_guard.patch       | 26 +++++++++++++++
  tools/build-warnings/openssl/BUILD.bazel      |  7 ++++
  .../openssl/rio_notifier_test.c               | 33 +++++++++++++++++++
- 4 files changed, 67 insertions(+)
- create mode 100644 patches/openssl_rio_cloexec_guard.patch
+ 2 files changed, 40 insertions(+)
  create mode 100644 tools/build-warnings/openssl/rio_notifier_test.c
 
-diff --git a/MODULE.bazel b/MODULE.bazel
-index 8043dcd27..159ff1e50 100644
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -521,6 +521,7 @@ single_version_override(
-         "//patches:openssl_socket_sentinel.patch",
-         "//patches:openssl_assembly_defines.patch",
-         "//patches:openssl_gnu_clang_selection.patch",
-+        "//patches:openssl_rio_cloexec_guard.patch",
-     ],
- )
-
-diff --git a/patches/openssl_rio_cloexec_guard.patch b/patches/openssl_rio_cloexec_guard.patch
-new file mode 100644
-index 000000000..126e82caf
---- /dev/null
-+++ b/patches/openssl_rio_cloexec_guard.patch
-@@ -0,0 +1,26 @@
-+From 159d560c77ad74455abb1b489d0307aeecc31e56 Mon Sep 17 00:00:00 2001
-+From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Thu, 15 Oct 2026 06:11:22 +0000
-+Subject: [PATCH] Compile the close-on-exec helper only with its notifier
-+ callers
-+
-+---
-+ ssl/rio/rio_notifier.c | 2 ++
-+ 1 file changed, 2 insertions(+)
-+
-+diff --git a/ssl/rio/rio_notifier.c b/ssl/rio/rio_notifier.c
-+index e94fccc..57b4cf7 100644
-+--- a/ssl/rio/rio_notifier.c
-++++ b/ssl/rio/rio_notifier.c
-+@@ -14,4 +14,5 @@
-+ #include "internal/rio_notifier.h"
-+
-++#if !defined(OPENSSL_SYS_WINDOWS) || RIO_NOTIFIER_METHOD == RIO_NOTIFIER_METHOD_SOCKETPAIR
-+ /*
-+  * Sets a socket as close-on-exec, except that this is a no-op if we are certain
-+@@ -26,4 +27,5 @@ static int set_cloexec(int fd)
-+ #endif
-+ }
-++#endif
-+
-+ #if defined(OPENSSL_SYS_WINDOWS)
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
-index db78a65aa..dff6a6f14 100644
+index 4ce254dc4..95ded38d2 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel
 +++ b/tools/build-warnings/openssl/BUILD.bazel
-@@ -60,6 +60,13 @@ cc_test(
+@@ -44,6 +44,13 @@ cc_test(
      deps = ["@openssl//:ssl"],
  )
 

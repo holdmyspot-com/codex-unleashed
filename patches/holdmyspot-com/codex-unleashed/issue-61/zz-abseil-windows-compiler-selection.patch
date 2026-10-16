@@ -1,28 +1,9 @@
-From bf2bda6461913bd91dedabb9f03e0f70ba3003b8 Mon Sep 17 00:00:00 2001
+From 2b2692e6bcabc6d15554e0683d65999468835e97 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 00:38:20 -0400
+Date: Thu, 15 Oct 2026 21:23:47 -0400
 Subject: [PATCH] Fix Abseil compiler selection for Windows Clang
 
-Restrict MSVC pragmas to the MSVC ABI and declare dbghelp when Clang
-targets MinGW. Preserve the existing MSVC and non-Windows selections.
-
-Add a regression executable that uses CPU discovery and symbolization,
-checking both compilation and the library's transitive link requirements.
-Keep Abseil at 20250814.1; no dependency version changes are required.
-
-RED: bazel build --platforms=//:windows_x86_64_gnullvm
-//tools/build-warnings/abseil:windows_platform_test exits 1 with six
-unknown-pragmas errors. Guarding pragmas alone then reproduces undefined
-SymSetOptions, SymInitialize and SymFromAddr references at link time.
-
-GREEN: the same Windows build exits 0 after both corrections.
-CONTROL: bazel test --platforms=//:rbe
-//tools/build-warnings/abseil:windows_platform_test exits 0, one test passes.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with
-the existing issue-61 warning policy and dependency patch prerequisites.
-Native Windows runtime and fresh emitted queue acceptance remain separate
-required gates; these authoring checks do not establish them.
+Preserve functional changes without warning-only dependency patches.
 ---
  MODULE.bazel                                  |  1 +
  patches/abseil_msvc_pragma_guards.patch       | 90 +++++++++++++++++++
@@ -33,13 +14,13 @@ required gates; these authoring checks do not establish them.
  create mode 100644 tools/build-warnings/abseil/windows_platform_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index a45a1f5b6..cec11cd78 100644
+index ac77a3695..f02e35872 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -94,6 +94,7 @@ single_version_override(
+@@ -93,6 +93,7 @@ single_version_override(
+     patch_strip = 1,
      patches = [
          "//patches:abseil_windows_gnullvm_thread_identity.patch",
-         "//patches:abseil_lifetime_capture_by_this.patch",
 +        "//patches:abseil_msvc_pragma_guards.patch",
      ],
  )

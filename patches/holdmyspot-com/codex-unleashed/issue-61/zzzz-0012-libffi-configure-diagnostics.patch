@@ -1,11 +1,9 @@
-From 1a2f89e3b8caf7fad218ab7ccc8261b282c6441d Mon Sep 17 00:00:00 2001
+From 9c62f7dc0604594021670484430e02e6fab66f53 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 15:08:10 +0000
+Date: Thu, 15 Oct 2026 21:21:03 -0400
 Subject: [PATCH] Preserve libffi configure context in Bazel failures
 
-Print the existing config.log when a libffi configure, build or install step fails, before the temporary prefix is removed. Retain the failing step output, original exception and warning policy.
-
-Red: the subprocess regression fails three assertions because configure context is absent. Green: the focused test passes all five cases, including fatal warning, nonzero exit, unrelated step and missing config.log. Fresh emitted queue verification runs the complete native recipe suite, just fmt-check and just bazel-lock-check.
+Exercise failed command status with warning output. Successful warning-only commands retain their status and are covered by the visibility regression.
 ---
  third_party/voice/bazel_native.py      | 10 +++-
  third_party/voice/test_build_native.py | 75 ++++++++++++++++++++++++++
@@ -35,12 +33,12 @@ index 584ff7037..602694852 100644
          with tarfile.open(prefix, "w") as archive:
              archive.add(builder.prefix, arcname=".")
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index 30a4a9171..d511434c4 100644
+index f52fd13f6..b133aee9a 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
 @@ -1,5 +1,7 @@
  """Check native build preconditions and subprocess failure propagation."""
- 
+
 +from contextlib import redirect_stderr
 +import io
  import json
@@ -49,20 +47,20 @@ index 30a4a9171..d511434c4 100644
 @@ -13,6 +15,7 @@ from types import SimpleNamespace
  import unittest
  from unittest.mock import patch
- 
+
 +import bazel_native
  from build_native import NativeBuild, validate_target
- 
- 
-@@ -600,6 +603,78 @@ class NativeBuildTests(unittest.TestCase):
+
+
+@@ -605,6 +608,78 @@ class NativeBuildTests(unittest.TestCase):
          )
          self.assertFalse((build.output / "built.json").exists())
- 
+
 +    def test_bazel_failure_preserves_libffi_configure_context_and_original_error(self):
 +        for index, (name, status, detail) in enumerate(
 +            (
 +                ("libffi-configure", 23, "configure failed"),
-+                ("libffi-build", 0, "warning: no debug symbols"),
++                ("libffi-build", 23, "warning: no debug symbols"),
 +                ("libffi-install", 23, "install failed"),
 +                ("other-build", 23, "other failed"),
 +                ("libffi-configure", 23, None),
@@ -133,6 +131,3 @@ index 30a4a9171..d511434c4 100644
      def test_ambient_native_discovery_variables_are_not_inherited(self):
          inherited = {
              **self.environment,
--- 
-2.43.0
-

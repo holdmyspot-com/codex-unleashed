@@ -2,7 +2,7 @@
 
 ## Intent
 
-Rust compilation, documentation, and native compiler/linker actions treat warnings as errors. Formatting checks also reject unexpected warning diagnostics, including warnings from commands that exit successfully. Stable rustfmt remains supported through a narrow exception for its unsupported `imports_granularity=Item` option, matching upstream's formatting behavior.
+Codex and project-owned tooling treat warnings as errors. Third-party dependency warnings remain nonfatal and visible; dependency source patches address compilation, security, or runtime failures. Formatting checks also reject unexpected warning diagnostics, including warnings from commands that exit successfully. Stable rustfmt remains supported through a narrow exception for its unsupported `imports_granularity=Item` option, matching upstream's formatting behavior.
 
 ## Reference and upstream base
 
@@ -14,7 +14,7 @@ Rust compilation, documentation, and native compiler/linker actions treat warnin
 
 `formatter-warning-policy.patch` updates the existing upstream formatter wrapper and its CI callers. It requires no other downstream patch. It includes process-boundary tests and runs them in repository checks. This patch covers formatter diagnostics; the issue's other build-tool enforcement gates are separate work.
 
-`native-and-rust-warning-policy.patch` enables Cargo's warning policy, strict rustdoc diagnostics, and strict Bazel Rust target and execution-platform actions. It enables `treat_warnings_as_errors` for native target and host toolchains. Hermetic LLVM supplies compiler and fatal-linker flags; native MSVC uses the existing rules_cc feature with `/WX` for compilation and linking. Apply the current-toolchain patch from issue #60 first, including its linker-argument compatibility adaptation.
+`native-and-rust-warning-policy.patch` enables Cargo's warning policy, strict rustdoc diagnostics, and strict Bazel Rust target and execution-platform actions. Native compiler warning enforcement is explicit on project-owned targets. External native builds do not inherit a global `treat_warnings_as_errors` feature. The warning-policy regression checks both a fatal project warning and a successful dependency build with visible warning output. Apply the current-toolchain patch from issue #60 first, including its linker-argument compatibility adaptation.
 
 The native probe first requires a clean C program to build, then requires a deprecated-function warning to fail at the compiler diagnostic. It rejects an unrelated failure as evidence of warning enforcement. Remaining build-tool and hosted-platform acceptance gates are tracked separately in the issue.
 
@@ -35,7 +35,7 @@ unguarded access. Apply it after `icu-mutex-thread-safety.patch`.
 
 `native-aws-lc-windows-tls.patch` backports AWS-LC's MinGW TLS-callback fix, preserving thread-exit cleanup under LLVM 22. It uses the upstream section attributes and `_tls_used` reference while retaining the MSVC path. A focused thread-exit cleanup regression participates in `just bazel-test`. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`.
 
-`native-make-bootstrap-policy.patch` follows Autoconf's supported probe contract: global `-Werror` takes effect after feature detection and remains active for GNU Make compilation, linking, and installation. It preserves the other toolchain flags and fatal linker diagnostics. It backports GNU Make's string-comparison fix and adds a test that builds the actual bootstrap tool and executes a Makefile. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`.
+`native-make-bootstrap-policy.patch` adds a runtime probe that builds the selected Make tool and executes a Makefile. It does not backport GNU Make warning fixes.
 
 `upgrade-llvm-23-windows-driver.patch` selects hermetic LLVM 0.8.24
 (LLVM 23.1.2) and aligns its direct Bazel dependencies. LLVM 23 honors Rust's
@@ -44,9 +44,7 @@ and warning-policy patches use this module's toolchain layout. Windows MSVC
 compiles use `/WX`; links also pass `/WX` to lld-link. GNU and macOS
 toolchains retain their fatal-warning flags. The merged link resource tree
 includes the selected compiler's builtin headers for foreign builds that
-combine compilation and linking flags. GNU Make's buffer counter exists
-only when its consuming assertion is enabled; release builds retain the
-computed statistics and avoid unused-counter warnings. Apply it after the issue #60
+combine compilation and linking flags. GNU Make retains its released source. Apply it after the issue #60
 toolchain patch and `native-and-rust-warning-policy.patch`.
 
 The exception matches only this complete diagnostic in the Rust formatter group:
@@ -209,55 +207,21 @@ Linux and Windows, then generates the inspector files on the execution host.
 Both analyses and generation must succeed. Native Windows execution remains a
 separate CI gate; cross-platform analysis does not establish that runtime result.
 
-## V8 legacy callback compatibility
+## Abseil public API compatibility
 
-`native-v8-callback-compatibility.patch` keeps the pinned Rust callback ABI while
-V8's transition constructors invoke deprecated internal converters. It scopes
-V8's diagnostic push/pop macros to the named and indexed compatibility
-constructor sections. `WORKAROUND` comments link the
-[callback-retirement issue](https://crbug.com/348660658) and the
-[coordinated Rusty V8 migration](https://github.com/denoland/rusty_v8/pull/2037).
-Remove the guards when the pinned Rust callbacks migrate with V8.
-
-Apply the native warning policy, LLVM 23, simdutf, and Abseil prerequisites, then
-run the focused compiler check:
+`native-abseil-lifetime-attribute.patch` registers the selected Abseil dependency and tests its public containers, status API, and mutex guards. It preserves the dependency source and annotations.
 
 ```sh
-tools/build-warnings/v8/check.sh --keep_going --output_groups=compilation_outputs
+bazel test //tools/build-warnings/abseil:lifetime_attribute_test
 ```
 
-The real binding compiles, and an unrelated deprecated call in an independent
-translation unit fails compilation. The independent probe checks restoration of
-the header's diagnostic state without inheriting the upstream binding source's
-existing suppression. The negative target is manual. This compile-only check
-does not establish V8 runtime or release-artifact correctness; the full build and
-runtime tests remain required.
-
-## Abseil lifetime attributes
-
-`native-abseil-lifetime-attribute.patch` backports
-[Abseil's lifetime-capture migration](https://github.com/abseil/abseil-cpp/commit/0784689a65b4ea1329fbc5174b8a57c88ec796a9)
-to the selected 20250814.1 dependency. It preserves the annotations, selects
-`lifetime_capture_by_this` when supported, and retains upstream's fallback for
-older compilers. Deprecated-attribute warnings remain fatal.
-
-With the native warning policy and LLVM 23 toolchain prerequisites applied:
-
-```sh
-bazel test //tools/build-warnings/abseil:lifetime_attribute_test --keep_going
-```
-
-The test compiles the public container, status, and mutex headers and executes
-exclusive, shared, and writer lock guards. It passes without deprecated-attribute
-diagnostics. It does not establish lock behavior under concurrent contention.
+The expected result is successful execution with dependency warnings nonfatal.
 
 ## V8 MinGW pointer formatting
 
 `zz-v8-clang-mingw-detection.patch` recognizes MinGW when compiling with Clang
 as well as GCC. V8 selects pointer format specifiers for the Windows GNU ABI
-rather than treating its 64-bit pointers as `long`. Compiler warnings remain
-fatal. Apply the native warning policy, LLVM 23, V8 callback compatibility,
-SIMD UTF, and V8 Python generator prerequisites before verification.
+rather than treating its 64-bit pointers as `long`. The regression checks formatted values as well as compiler compatibility. Apply the native warning policy, LLVM 23, and V8 Python generator prerequisites before verification.
 
 ```sh
 bazel build @v8//:codex_pointer_formats_test --platforms=//:windows_x86_64_gnullvm --output_groups=compilation_outputs
@@ -273,56 +237,14 @@ Windows GNU execution host for its Windows runtime gate; Linux execution and
 cross-compilation do not establish that outcome. The complete V8 build remains
 a separate acceptance gate.
 
-## SIMD UTF conversion
+## OpenSSL initialization and provider compatibility
 
-`native-simdutf-constexpr.patch` backports compile-time chunk selection from
-[simdutf PR #943](https://github.com/simdutf/simdutf/pull/943) to V8's pinned
-simdutf 7.7.0 dependency. Its Bazel build requires C++20, so the backport uses
-`if constexpr` directly. LLVM 23 discards array accesses in unreachable branches
-while array-bounds warnings remain fatal.
-
-With the native warning policy and LLVM 23 toolchain prerequisites applied:
+`native-openssl-unused-globals.patch` and `native-openssl-unused-options.patch` add public API and CLI probes without changing dependency source. The initialization test repeatedly initializes TLS and loads and unloads the base and default providers. The CLI probe runs version and server-help commands.
 
 ```sh
-bazel test @v8//tests/codex_simdutf:transcoder_test --keep_going
+bazel test //tools/build-warnings/openssl:ssl_init_test
+bazel build //tools/build-warnings/openssl:cli_probe
 ```
-
-The test passes for every implementation supported by the running processor. It
-checks multibyte UTF-8 conversion, UTF-16 contents, malformed input rejection,
-and the reported error offset. It does not execute unsupported processor kernels.
-
-## OpenSSL initialization and provider backports
-
-`native-openssl-unused-globals.patch` backports OpenSSL's library-only fixes from
-[PR #32821](https://github.com/openssl/openssl/pull/32821),
-[PR #30420](https://github.com/openssl/openssl/pull/30420), and
-[PR #31508](https://github.com/openssl/openssl/pull/31508) to the pinned 3.5.4
-source. It removes unused initialization state and keeps each provider's used
-core callback local to its initialization. Compiler warnings remain fatal.
-
-Apply the native warning policy and LLVM 23 toolchain patch before verification:
-
-```sh
-bazel test //tools/build-warnings/openssl:ssl_init_test --keep_going
-```
-
-The test passes after repeated TLS initialization and loading and unloading the
-base and default providers. Without the backports, LLVM 23 rejects unused globals
-in the pinned library. The test covers initialization and provider availability;
-it does not establish concurrent provider initialization behavior.
-
-`native-openssl-unused-options.patch` follows the library backports and carries
-the command-line fixes from PR #32821. It limits sendfile state to kernel-TLS
-builds and removes an unused argument-count global. The enabled kernel-TLS path
-and option parsing retain their behavior.
-
-```sh
-bazel build //tools/build-warnings/openssl:cli_probe --keep_going
-```
-
-The probe builds the CLI with fatal warnings, then runs its version and server
-help commands. Its output contains the pinned OpenSSL version and server usage
-text. It does not open a listener or establish a TLS connection.
 
 `upgrade-openssl.patch` selects OpenSSL 4.0.1.bcr.0, whose
 Bazel integration includes the
@@ -330,9 +252,7 @@ Bazel integration includes the
 The released integration uses the existing `opensslconf.h` source header,
 retains generated platform configuration headers, and keeps Bazel's dependency
 validation enabled. The patch updates the Rust bindings to `openssl` 0.10.81
-and `openssl-sys` 0.9.117, which support OpenSSL 4. It adapts the remaining
-library and CLI warning backports and omits the initialization-state fix
-already included in OpenSSL 4. Apply it after
+and `openssl-sys` 0.9.117, which support OpenSSL 4. The dependency source retains its released warning behavior. Apply it after
 `native-openssl-unused-globals.patch`, `native-openssl-unused-options.patch`,
 and `upgrade-llvm-23-windows-driver.patch`.
 
@@ -355,59 +275,16 @@ that the bundled OpenSSL 4 library supports hashing and TLS context creation
 through the selected bindings. The older `openssl-sys` 0.9.111 rejects
 OpenSSL 4 during its build script.
 
-## AWS-LC fork-detection state
-
-`native-aws-lc-windows-unused-fork-state.patch` backports
-[AWS-LC PR #3645](https://github.com/aws/aws-lc/pull/3645) to 5.1.0.bcr.1.
-Fork-detection test state exists only on platforms that support it; the test
-hooks remain callable elsewhere. Warning checks stay enabled. Apply it after
-`native-aws-lc-windows-tls.patch`.
-
-```sh
-bazel build @aws-lc//:crypto --platforms=//:windows_x86_64_gnullvm --output_groups=compilation_outputs --keep_going
-bazel test //tools/build-warnings/aws-lc:fork_detection_test --keep_going
-```
-
-The first check compiles the actual Windows crypto objects under LLVM 23's
-fatal warning policy. The runtime regression checks random generation before
-and after calling both test hooks. A Linux pass does not establish Windows
-runtime behavior; run the same test on a Windows execution host for that gate.
-
-## MinGW ABI alias compatibility
-
-`upgrade-llvm-23-windows-mingw-aliases.patch` backports MinGW's
-[LLVM 23 alias compatibility fix](https://github.com/mingw-w64/mingw-w64/commit/b43f781b916e8170b66bc4c6784123e53b283f8a)
-and its two diagnostic-macro prerequisites to v14.0.0. The upstream scoped
-push/pop guards preserve intentional aliases between ABI-compatible types.
-The shared guard carries a `WORKAROUND` reference to this issue, the upstream
-fix, and the removal condition. Other alias warnings remain fatal.
-
-Apply the native warning policy, MinGW function-guard, and LLVM 23 prerequisites:
-
-```sh
-tools/build-warnings/mingw/check.sh --platforms=//:windows_x86_64_gnullvm --keep_going
-```
-
-The check compiles the actual MinGW runtime objects and requires an unrelated
-alias mismatch to fail at `-Wattribute-alias`. It runs on Linux and does not
-establish Windows runtime behavior or a successful full Windows release build.
 
 ## GoogleTest Windows paths
 
-`upgrade-llvm-23-windows-test-paths.patch` removes an unreferenced private
-separator string from GoogleTest 1.17.0.bcr.2. It preserves path normalization
-and splitting while unused-constant warnings remain fatal. Apply it after the
-Abseil lifetime-attribute and LLVM 23 prerequisites.
+`upgrade-llvm-23-windows-test-paths.patch` exercises path normalization and separator handling through GoogleTest’s public API. It uses the selected GoogleTest release without source backports.
 
 ```sh
-bazel build @googletest//:gtest --platforms=//:windows_x86_64_gnullvm --output_groups=compilation_outputs --keep_going
-bazel test //tools/build-warnings/googletest:path_separator_test --keep_going
+bazel test //tools/build-warnings/googletest:path_separator_test
 ```
 
-The compiler check builds the actual Windows library objects. The runtime test
-checks separator normalization and directory/basename splitting, with Windows
-expectations selected on Windows execution hosts. A Linux pass covers its POSIX
-branch; Windows runtime acceptance remains a separate gate.
+The test passes when path normalization and splitting preserve the expected components.
 
 ## Windows static-library DEF generation
 
@@ -468,7 +345,7 @@ GNU Make 4.4.1.bcr.2, and rules_cc_autoconf 0.27.0. Apply the current issue #61
 toolchain, pkgconf, and OpenSSL prerequisites first.
 
 The toolchain uses the registry's Make source build with compiler warnings
-enabled and retains the string-comparison and assertion-counter source fixes.
+enabled and nonfatal, without string-comparison or assertion-counter source backports.
 Obsolete Make bootstrap overrides are absent. Meson's Python executable declares
 its package initializers and required runfiles without changing the repository's
 global runfiles policy. The Meson linker-resource fix remains active. The native
@@ -486,10 +363,10 @@ just fmt-check
 just bazel-lock-check
 ```
 
-The CMake probe requires version 4.4.4. The Make analysis test requires fatal
+The CMake probe requires version 4.4.4. The Make analysis test requires nonfatal
 compiler warnings and rejects `-w` and `/w`; its runtime test executes a Makefile.
 The Meson probe links and executes its C/C++ fixture. The complete Linux prefix
-builds with fatal diagnostics. Native macOS and Windows checks remain separate
+preserves visible dependency diagnostics and fails on unsuccessful build commands. Native macOS and Windows checks remain separate
 platform acceptance gates.
 
 ## Native probe execution platform
@@ -529,32 +406,6 @@ action's inputs. The cross-build checks Darwin ARM64 linking; execution of the
 resulting test remains a native macOS gate. An unsandboxed link can succeed
 without the declared input and does not establish sandbox correctness.
 
-## OpenSSL Windows compiler diagnostics
-
-`upgrade-zz-openssl-windows-diagnostics.patch` matches the Windows SDK's empty
-Winsock guard definition and preserves the const qualifier of OpenSSL's
-installation-directory string. The directory fix follows
-[OpenSSL PR #30616](https://github.com/openssl/openssl/pull/30616).
-The parameter merge passes its mutable pointer arrays explicitly to `qsort`;
-the pointed-to parameters retain their const qualification. OpenSSL documents
-MSVC's C4090 false positives in `Configurations/10-main.conf`. The source
-carries a removable `WORKAROUND` comment rather than disabling the warning.
-Apply the OpenSSL upgrade, native tool upgrades, and OpenSSL linker-input patch
-first.
-
-```sh
-bazel test //tools/build-warnings/openssl:windows_defines_test --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
-bazel test //tools/build-warnings/openssl:configuration_header_test //tools/build-warnings/openssl:ssl_init_test //tools/build-warnings/openssl:rust_bindings_test
-just fmt-check
-just bazel-lock-check
-```
-
-The analysis regression requires the empty Winsock guard in actual Windows C
-compiler arguments. Assembly actions are outside that preprocessor check.
-The library tests verify initialization, providers, hashing, and TLS context
-creation on their execution platform. Run these library tests on native Windows
-with `--config=ci-windows-msvc` for MSVC compiler and runtime acceptance;
-Linux execution and Windows-target analysis do not establish that gate.
 
 ## OpenSSL Rust library names
 
@@ -641,38 +492,13 @@ tracks adoption of the equivalent upstream corrections.
 
 ## CCTZ strptime availability
 
-`zz-cctz-strptime-availability.patch` defines `HAS_STRPTIME` as zero on
-platforms that use CCTZ's existing C++ fallback. Explicit caller definitions
-and the native `strptime` selection remain supported. The explicit default
-allows MinGW and MSVC compilation with undefined-macro warnings as errors.
-
-The patch targets `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) after the issue-61 Abseil
-compiler-selection patch. Its parsing regression checks a 12-hour AM input
-against the Unix epoch.
+`zz-cctz-strptime-availability.patch` exercises Abseil’s public time-parsing fallback without changing CCTZ source or configuration.
 
 ```sh
-bazel build --platforms=//:windows_x86_64_gnullvm //tools/build-warnings/abseil:strptime_fallback_test
-bazel test --platforms=//:rbe //tools/build-warnings/abseil:strptime_fallback_test
+bazel test //tools/build-warnings/abseil:strptime_fallback_test
 ```
 
-The Windows executable builds, and the Linux control passes using native
-`strptime`. Native Windows CI exercises parsing through the C++ fallback.
-Issue [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61)
-tracks the remaining platform build corrections.
-
-## Platform-specific warning regressions
-
-`upgrade-zz-openssl-windows-test-scope.patch` limits the MSVC compiler-argument
-fixture to Windows/MSVC targets. General Linux and macOS test sweeps do not
-materialize the MSVC SDK for this fixture. Apply the OpenSSL Windows diagnostics
-patch first. The explicit Windows analysis command above requires the selected
-Windows platform and accepted runtime license.
-
-`upgrade-zz-seatbelt-formatting.patch` passes three path-display values directly
-to Seatbelt test assertions. Formatting borrows its arguments, so these assertions
-retain their behavior without Clippy's redundant-borrow findings. Native macOS
-Clippy and sandboxing tests verify this platform-specific source.
+The test passes when the selected dependency parses the supported timestamp through its public API.
 
 ## Explicit Python package initializers
 
@@ -715,7 +541,7 @@ selection from Rust's explicit-runtime links on Darwin. Rust supplies its runtim
 archives and disables default libraries there; the unused selection otherwise
 makes LLVM 23 reject object-only Darwin links. Windows GNU retains compiler-rt
 selection because Rust's `-nolibc` pre-link arguments still require it.
-Compiler and linker warnings remain fatal.
+Project compiler and linker warnings remain fatal; dependency warnings remain visible and nonfatal.
 Apply the issue #60 toolchain patch and this issue's LLVM driver fixtures first.
 
 ```sh
@@ -765,11 +591,11 @@ The cache uses literal bracket arguments and records its settings in build
 provenance. C-only and C++-only projects can share these defaults without unused
 command-line variable warnings. Project-specific options remain `-D` arguments.
 
-`native-voice-warning-diagnostics.patch` follows that patch. Successful native
-commands fail if their logs contain compiler, linker, CMake, Meson, or GNU
-configure warning diagnostics. The receipt retains multiline warning context
-and the original command status. Commands that already fail retain their
-nonzero status.
+`native-voice-warning-diagnostics.patch` follows that patch. Native dependency
+commands retain their exit status when their logs contain compiler, linker,
+CMake, Meson, or GNU configure warnings. Warnings remain visible in the
+console, command logs, and receipt, including multiline context. Commands
+that fail retain their nonzero status.
 
 ```sh
 python3 -m unittest discover -s third_party/voice -p 'test_*.py'
@@ -779,207 +605,59 @@ bazel build //third_party/voice:native_prefix_linux_x86_64 --keep_going
 
 The regressions exercise real child processes, build C-only and C++-only CMake
 fixtures, preserve literal cache values, and require an unused project-specific
-option to remain fatal. Use the declared build tools on `PATH` and a
+option to remain visible without failing a successful command. Use the declared build tools on `PATH` and a
 project-owned `TMPDIR`. The complete native prefix and hosted platform builds
 remain separate acceptance gates.
 
-## Native Ninja bundled lexers
+## Native GLib printf compatibility
 
-`native-voice-ninja-bundled-lexers.patch` gives the checksum-verified Ninja
-1.13.2 source an explicit `NINJA_REGENERATE_LEXERS` build option. It defaults
-to `ON`, preserving lexer regeneration and its missing-tool diagnostic. The
-native voice recipe sets it to `OFF` and compiles the bundled generated lexers.
-Missing bundled files fail configuration. The `WORKAROUND` comment links this
-issue and gives the upstream removal condition.
-
-With the CMake initial-cache and native diagnostic policy prerequisites applied:
+`native-voice-warning-glib-1-printf.patch` supplies a public-API runtime probe for the checksum-pinned GLib printf implementation. It checks wide integers, padding, and long output without changing dependency source.
 
 ```sh
-python3 tools/build-warnings/check-native-ninja.py /path/to/native_prefix_linux_x86_64.json /path/to/bazel-execroot
+bazel test //tools/build-warnings/glib:printf_test
 ```
 
-Use a project-owned `TMPDIR` and an execroot whose Bazel command has finished.
-The probe builds Ninja with the real declared compiler flags and executes a
-build manifest. Its negative checks require the missing-generator warning in
-regeneration mode and a configuration error for a missing bundled lexer.
-It prints the logs and removes its extracted sources and outputs on exit.
-The complete native prefix and Windows/macOS builds remain separate gates.
-
-## Native GLib printf portability
-
-`native-voice-warning-glib-1-printf.patch` repairs GLib 2.88.3's bundled gnulib printf
-fallback. Its fall-through annotation uses GLib's compiler capability check.
-The two remaining signed return-count comparisons use unsigned counts after
-the existing negative-result error handling. Compiler warning checks remain
-enabled. The casts follow gnulib's
-[unsigned-count comparison fix](https://github.com/coreutils/gnulib/commit/857227b38e1953a9f42be3a1deb5b7b6e0c720b3)
-in the remaining fallback branches.
-
-```sh
-bazel test //tools/build-warnings/glib:printf_test --keep_going
-```
-
-The check builds the complete native prefix with fatal warnings and exercises
-GLib's public printf API with signed and unsigned 64-bit values, negative field
-width, and a large padded result. The runtime assertions cover the public API;
-compilation of the actual gnulib source establishes the fallback warning gate.
+The expected result is successful execution against the native SDK.
 
 ## Native GLib log writer
 
-`native-voice-warning-glib-2-writer.patch` backports
-[GLib's log-writer cleanup fix](https://github.com/GNOME/glib/commit/e7592a3c4ed4f3ef97f9efb804ad9637a3d4ca1c).
-The setter retains its single-call contract and accounts for the stored cleanup
-callback. Apply the native GLib printf prerequisite before verification.
+`native-voice-warning-glib-2-writer.patch` tests the public log-writer callback and user-data contract without changing GLib source.
 
 ```sh
-bazel test //tools/build-warnings/glib:log_writer_test --keep_going
+bazel test //tools/build-warnings/glib:log_writer_test
 ```
 
-The check builds the complete native prefix with fatal warnings, installs a
-custom log writer, verifies its structured message and caller data, and checks
-that caller data remains owned while the writer is installed. Hosted platform
-builds remain separate gates. Full-prefix verification requires the following
-GLib and GStreamer compatibility patches in filename order.
+The expected result is one callback with the supplied state and message.
 
-## Native GLib headers and optional tracing
+## Native GStreamer pad compatibility
 
-`native-voice-warning-glib-3-headers.patch` backports GLib's
-[sanitizer predicate conversion fix](https://github.com/GNOME/glib/commit/997154cecc465bd399b467cc5c6cb7c88c43559d)
-and [optional generated parent-class annotation](https://github.com/GNOME/glib/commit/1567250294e9666747ee63f5c6364bbceadd300b).
-The predicate returns a boolean without narrowing a long integer. Generated
-types can omit parent-class access without an unused-variable diagnostic.
-
-`native-voice-warning-glib-4-tracing.patch` backports GLib's
-[optional trace-counter annotations](https://github.com/GNOME/glib/commit/168e378526a590439faa9ce7b607203fd434ff1d).
-The counters remain available to profiling builds and do not produce unused
-variable diagnostics when profiling is disabled. Each source adaptation names
-its upstream fix and removal condition; compiler checks remain enabled.
+`native-voice-warning-gstreamer-1-quarks.patch` supplies shared native SDK test support and a pad API runtime probe. It preserves the dependency source, including its unused quark storage and option-parsing callback.
 
 ```sh
-bazel test //tools/build-warnings/glib:type_test //tools/build-warnings/glib:task_test --keep_going
+bazel test //tools/build-warnings/gstreamer:pad_quarks_test
 ```
 
-The checks compile the actual native prefix, construct and destroy a generated
-GObject type, and execute a GTask through its thread pool with a checked result.
-Compilation of GObject exercises the private sanitizer header.
+The expected result is successful execution against the native SDK.
 
-## Native GLib query compatibility
+## Native GStreamer enum generation
 
-`native-voice-warning-glib-5-query.patch` adapts GLib's
-[unused spacing-storage fix](https://github.com/GNOME/glib/commit/11de1d730e58c1f501e3a5d4c65b283fb8a26e0f).
-The pinned release continues accepting `-s` and documenting it in help. Its
-existing argument conversion remains, while unused global storage is removed.
-
-After building the native prefix, run:
+`native-voice-warning-video-2-enums.patch` keeps two enum expressions on single lines so glib-mkenums emits their public values. This fixes missing runtime enum registrations independently of warning policy.
 
 ```sh
-python3 tools/build-warnings/check-native-glib-query.py bazel-bin/third_party/voice/native_prefix_linux_x86_64/prefix.tar
+bazel test //tools/build-warnings/gstreamer:enum_values_test
 ```
 
-The Linux check executes the built utility, compares its type tree with several
-accepted spacing values, checks help, and removes its extracted prefix on exit.
+Both public flags must be present with their declared values.
 
-## Native GStreamer pad quarks and option parsing
+## Native GStreamer audio conversion
 
-`native-voice-warning-gstreamer-1-quarks.patch` removes unused pad-quark storage
-from GStreamer 1.28.6 and preserves the three string-interning calls.
-`native-voice-warning-gstreamer-2-preload.patch` compiles the plugin preload
-callback under the same option-parsing feature guard as its only caller.
-Neither change disables a compiler diagnostic.
+`native-voice-warning-z-audioconvert.patch` tests loading the built audio conversion plugin and constructing its element. It preserves the dependency source and logging category.
 
 ```sh
-bazel test //tools/build-warnings/gstreamer:pad_quarks_test --keep_going
+bazel test //tools/build-warnings/gstreamer:audio_convert_test
 ```
 
-The check builds the native prefix, constructs a source pad, and verifies that
-the buffer, buffer-list, and event quark strings remain interned.
-
-## Native GStreamer Orc selection
-
-`native-voice-warning-orc-choice.patch` reports the explicitly selected C
-fallback as a status message in both `gst-plugins-base` and `gst-plugins-good`.
-Automatic discovery that fails to find Orc
-continues emitting its warning, which the native recipe rejects.
-
-With the declared Meson source and Ninja executable, run:
-
-```sh
-python3 tools/build-warnings/check-native-orc-choice.py <native-prefix-json> <execroot> <meson-source> <ninja>
-```
-
-The check extracts the checksum-verified GStreamer dependency block and uses
-the native Meson recipe to exercise both choices. Explicit disablement succeeds;
-automatic discovery without Orc fails at the warning. The probe declares its
-minimum Meson version, overrides the recipe's global automatic-feature default
-for this comparison, prints the logs, and removes its temporary files.
-
-## Native GStreamer optional Linux allocator
-
-`native-voice-warning-udmabuf-guard.patch` gives the allocator's performance
-category the same `memfd_create` and Linux udmabuf-header guard as its only
-logging call. Type initialization calls a helper that initializes the category
-when those capabilities are available. The unsupported allocator path does
-not compile unused category storage. Compiler diagnostics remain enabled.
-
-The native-prefix build in the GStreamer regression command verifies this
-boundary with the declared kernel headers. Hosted platform builds remain
-separate acceptance gates.
-
-```sh
-bazel test //tools/build-warnings/gstreamer:allocator_type_test --keep_going
-```
-
-The Linux check initializes the allocator's type class without requiring an
-udmabuf device.
-
-## Native GStreamer audio/video metadata and enum generation
-
-`native-voice-warning-video-1-quarks.patch` removes unused audio and video encoder
-and decoder quark caches while preserving their metadata-tag string interning.
-`native-voice-warning-video-2-enums.patch` keeps two enum expressions on single
-lines so the pinned `glib-mkenums` generator parses every value. The C tokens
-and enum values remain unchanged.
-
-```sh
-bazel test //tools/build-warnings/gstreamer:video_quarks_test //tools/build-warnings/gstreamer:enum_values_test --keep_going
-```
-
-The checks initialize all four audio and video type classes, verify both metadata
-tags remain interned, and verify that the generated RTP send/receive and navigation-mask
-flag entries match their public enum values. The complete native build rejects
-generator warnings as well as compiler and linker warnings.
-
-## Native GStreamer audio conversion category
-
-`native-voice-warning-z-audioconvert.patch` removes an unused performance logging
-category from the pinned audio converter. The category has no logging callers;
-the plugin's normal debug category remains initialized. Apply it after the native
-GLib and GStreamer compatibility patches above.
-
-```sh
-bazel test //tools/build-warnings/gstreamer:audio_convert_test --keep_going
-```
-
-The Linux check builds the native prefix, loads its `audioconvert` plugin, and
-creates and destroys an audio converter element. It requires no audio hardware.
-The check covers plugin initialization; it does not exercise sample conversion.
-
-## Native GStreamer documentation selection
-
-`native-voice-warning-z-documentation.patch` reports a missing documentation cache
-generator as a status message when documentation is explicitly disabled. If the
-generator is available, its cache target remains available. Automatic discovery
-without the generator retains its warning, which the native recipe rejects.
-
-```sh
-python3 tools/build-warnings/check-native-doc-choice.py <native-prefix-json> <execroot> <meson-source> <ninja>
-```
-
-With a project-owned `TMPDIR`, the check exercises the checksum-verified
-documentation dependency block through the native Meson recipe. Disabled
-documentation succeeds; missing automatic discovery fails at its warning.
-The fixture supplies absolute GStreamer package metadata, prints its logs, and
-removes its temporary files. The complete native prefix remains a separate gate.
+The expected result is successful plugin loading and element construction on Linux.
 
 ## Native SDK dependency metadata
 
@@ -1026,31 +704,6 @@ through a directory of file symlinks. Every include and library directory stays
 inside the consuming sandbox. The complete voice-host build verifies Rust's
 metadata validation and final linking. Native Windows and macOS acceptance
 remain separate gates.
-
-## libffi Java raw implementation
-
-`native-libffi-java-raw-implementation.patch` gives libffi 3.8.0's Java raw
-entry points private implementations and preserves their public wrappers.
-Internal calls use those helpers instead of deprecated public declarations.
-The public ABI and deprecation attributes remain available. The source repair
-applies only to the checksum-verified pinned version and rejects unexpected
-function definitions. Its `WORKAROUND` comment links this issue and states the
-upstream removal condition.
-
-With a project-owned `TMPDIR`, run the focused Linux check using the pinned
-libffi archive and the selected compiler and Make executable:
-
-```sh
-tools/build-warnings/check-libffi.sh /path/to/libffi-3.8.0.tar /path/to/cc /path/to/make
-bazel build //third_party/voice:native_prefix_linux_x86_64 --keep_going
-```
-
-The focused check builds the actual shared library with fatal warnings, checks
-its exported Java raw symbols, and executes an argument-conversion round trip.
-An independent consumer must fail compilation at its public deprecation
-diagnostic. Configure and build logs must contain no warning diagnostics.
-The check removes its extracted sources and outputs on exit. Native Windows
-and macOS builds remain separate acceptance gates.
 
 ## Prost rule compatibility
 
@@ -1113,7 +766,7 @@ From the patched checkout root:
 - `bazel test //tools/build-warnings:mingw_function_guard_x86_64_test //tools/build-warnings:mingw_function_guard_aarch64_test` passes without preprocessor warnings and preserves both architectures' macro expansion.
 - `bazel test //tools/build-warnings/bindgen:preprocessor_policy_test` passes all six argument-preservation and MSVC normalization regressions.
 - `bazel build //tools/build-warnings/bindgen:warning` fails specifically at `expected_bindgen_warning`, proving that a header warning is fatal during binding generation.
-- `bazel test //tools/build-warnings/make-bootstrap:make_bootstrap_test` builds GNU Make with strict compiler/linker flags and verifies its Makefile execution. The successful bootstrap log contains no warning diagnostics.
+- `bazel test //tools/build-warnings/make-bootstrap:make_bootstrap_test` builds the selected GNU Make and verifies its Makefile execution. Dependency warnings remain visible and nonfatal.
 - `bazel test //tools/build-warnings/aws-lc:thread_test` verifies that worker-thread exit invokes its registered destructor exactly once and an unused thread does not invoke it again.
 - `bazel build //tools/build-warnings/aws-lc:thread_test --platforms=//:windows_x86_64_gnullvm` compiles and links the Windows regression executable without warnings. On a Windows execution host, run the same target with `bazel test` to verify thread-exit cleanup; cross-compilation alone does not establish that runtime outcome.
 - `bazel test //tools/build-warnings/llvm-driver:all` verifies warning-free Windows GNU linking with `-nolibc` and requires the MSVC linker to reject an intentionally triggered warning when fatal-linker warnings are enabled. These Linux-hosted driver checks do not establish Windows runtime behavior.
@@ -1127,16 +780,11 @@ The declared upstream release permits ignoring the stable-rustfmt import-layout 
 
 AWS-LC [commit `8cca33b97eb64be944a3d90406230676e8a7b931`](https://github.com/aws/aws-lc/commit/8cca33b97eb64be944a3d90406230676e8a7b931) fixes MinGW TLS callback registration. The queue retains the backport while its AWS-LC dependency lacks that fix.
 
-GNU Make [commit `63961d5d0905f69c59b44652fd33ac932f7d1c23`](https://gnu.googlesource.com/make/+/63961d5d0905f69c59b44652fd33ac932f7d1c23) removes string-pointer comparisons that trigger compiler warnings. [Autoconf's supported configuration contract](https://lists.gnu.org/archive/html/autoconf/2020-12/msg00002.html) requires applying global warning promotion after its feature probes.
+Dependency warnings remain nonfatal. Source backports are limited to compilation failures, security problems, and incorrect runtime behavior.
 
-## V8 ICU assembly arguments
+## V8 Windows stack compatibility
 
-`zz-v8-windows-stack-assembly.patch` supplies ICU preprocessor definitions
-through Bazel's `local_defines` property instead of raw compiler options.
-C++ inputs retain all three definitions and their target-local scope; raw
-assembly receives no unused preprocessor arguments. Compiler warnings remain
-fatal. Apply the existing LLVM assembly-action patch and V8 MinGW detection
-patch first. V8 remains at version `15.0.245.2`.
+`zz-v8-windows-stack-assembly.patch` exposes a bounded Windows stack-assembly fixture through V8’s production library macro. Its C++ fixture checks the existing ICU definitions; its executable checks callback arguments and stack alignment. Dependency compiler arguments retain their released behavior. Apply the existing LLVM assembly-action patch and V8 MinGW detection patch first. V8 remains at version `15.0.245.2`.
 
 ```sh
 bazel build @v8//:codex_windows_stack_assembly_test --platforms=//:windows_x86_64_gnullvm
@@ -1198,72 +846,15 @@ overriding `--@rules_python//python/config_settings:bootstrap_impl=system_python
 must fail with `Unexpected host Python bootstrap`. The regression runs on Unix;
 Windows launcher and complete platform builds remain separate acceptance gates.
 
-## ICU Windows locale mapping
-
-`zz-v8-z-icu-lcid-declarations.patch` removes an unused local declaration
-from ICU's Windows locale converter. Locale lookup, collation handling, and
-reverse mapping retain their existing behavior; unused-variable warnings
-remain fatal. ICU stays at V8's pinned commit
-`a86a32e67b8d1384b33f8fa48c83a6079b86f8cd`.
-Apply the issue #61 ICU mutex annotations and preceding V8 patches first.
-
-```sh
-bazel build //third_party/v8:icu_lcid_test --platforms=//:windows_x86_64_gnullvm
-bazel test //third_party/v8:icu_lcid_test --platforms=//:rbe
-just fmt-check
-just bazel-lock-check
-```
-
-The regression checks the US English LCID, German phonebook collation, and
-reverse conversion to `en_US`. The Windows command compiles and links the
-actual ICU library. Run the test on a native Windows execution host to verify
-its Windows API path; Linux execution covers the table-based control only.
-
 ## OpenSSL socket error sentinels
 
-`zz-openssl-socket-sentinel.patch` makes Windows' invalid-socket conversion
-explicit at OpenSSL's existing `int` socket ABI. BIO, the notifier, and QUIC
-retain the `-1` error sentinel without implicit constant-conversion warnings.
-OpenSSL stays at `4.0.1.bcr.0`. Apply the OpenSSL Windows diagnostics patch
-and its prerequisites first.
+`zz-openssl-socket-sentinel.patch` checks invalid-socket errors through OpenSSL’s public BIO API without changing socket sentinel expressions in dependency source.
 
 ```sh
-bazel build //tools/build-warnings/openssl:socket_error_test --platforms=//:windows_x86_64_gnullvm
-bazel test //tools/build-warnings/openssl:socket_error_test --platforms=//:local_linux
-just fmt-check
-just bazel-lock-check
+bazel test //tools/build-warnings/openssl:socket_error_test
 ```
 
-The regression opens and closes a UDP socket, then checks that invalid socket
-creation and acceptance return `-1` and populate OpenSSL's error queue. The
-Windows build compiles the actual BIO, notifier, and QUIC implementations with
-fatal warnings. Native Windows execution remains required for runtime acceptance;
-the public BIO assertions do not exercise every internal notifier or QUIC path.
-The assembly-argument patch below is also required for the full Windows build.
-
-## OpenSSL assembly preprocessor definitions
-
-`zz-openssl-z-assembly-defines.patch` supplies common, platform, and feature
-macros through Bazel's `local_defines` instead of raw compiler options. C and
-preprocessed assembly retain the definitions; raw assembly receives no unused
-preprocessor arguments. The definitions remain private to OpenSSL, and compiler
-warnings remain fatal. Apply the socket-sentinel patch and the existing LLVM
-assembly-action patch first. Dependency versions remain unchanged.
-
-```sh
-bazel test //tools/build-warnings/openssl:assembly_defines_test --platforms=//:local_linux
-bazel build //tools/build-warnings/openssl:socket_error_test //tools/build-warnings/openssl:ssl_init_test --platforms=//:windows_x86_64_gnullvm
-bazel test //tools/build-warnings/openssl:socket_error_test //tools/build-warnings/openssl:ssl_init_test --platforms=//:local_linux
-just fmt-check
-just bazel-lock-check
-```
-
-The analysis regression inspects the production Windows GNU compiler actions.
-It requires raw assembly without `-D` arguments, C compilation with the platform
-and explicitly selected feature macros, and no export of private macros through
-the library's compilation interface. The executable tests verify BIO socket
-errors, TLS initialization, and provider loading on their execution host. Native
-Windows execution and complete release builds remain separate acceptance gates.
+The regression requires invalid socket operations to report the expected failure and error queue.
 
 ## OpenSSL Windows GNU Clang selection
 
@@ -1274,7 +865,7 @@ ELF assembly. Existing GCC, clang-cl, and MSVC selections remain supported.
 The Microsoft SDK's Winsock guard applies only to MSVC and clang-cl. GNU
 Windows builds use `WIN32_LEAN_AND_MEAN` and let MinGW define its own guard.
 The generator is visible to the downstream regression package for inspection.
-Apply the OpenSSL assembly-definition patch first.
+Apply the OpenSSL upgrade and native tool prerequisites first.
 
 ```sh
 bazel test //tools/build-warnings/openssl:windows_perlasm_test --platforms=//:local_linux
@@ -1290,51 +881,13 @@ remains a separate runtime gate.
 
 ## OpenSSL notifier close-on-exec helper
 
-`zz-openssl-zzz-rio-cloexec-guard.patch` compiles the close-on-exec helper
-only when the notifier implementation uses it. The Unix and socket-pair paths
-retain the helper; Windows' normal socket implementation avoids an unused
-function under fatal compiler diagnostics. Apply the preceding OpenSSL socket,
-assembly, and compiler-selection patches first.
+`zz-openssl-zzz-rio-cloexec-guard.patch` exercises notifier signaling, readiness, and clearing through OpenSSL’s public API. It leaves the dependency’s unused helper unchanged.
 
 ```sh
-bazel build @openssl//:ssl //tools/build-warnings/openssl:rio_notifier_test --output_groups=compilation_outputs --platforms=//:windows_x86_64_gnullvm
-bazel test //tools/build-warnings/openssl:rio_notifier_test --platforms=//:local_linux
-just fmt-check
-just bazel-lock-check
+bazel test //tools/build-warnings/openssl:rio_notifier_test
 ```
 
-The compiler regression builds the real SSL implementation and the notifier
-fixture. The runtime test initializes a notifier, checks that it starts unreadable,
-signals it, waits for readability, clears the signal, and verifies that readiness
-clears. It cleans up the notifier after either success or an assertion failure.
-Linux execution exercises socket-pair signaling; native Windows execution
-remains required for the Windows loopback-socket implementation.
-
-## V8 wasm header functions
-
-`zz-v8-zz-wasm-header-inline.patch` gives the two internal `Populate` helpers
-in V8's wasm decoder header inline definitions. Their internal linkage and
-type-population behavior remain unchanged. Clang accepts translation units
-that include the header without instantiating callers, with warnings treated
-as errors. This repair keeps V8 at 15.0.245.2 and adds no diagnostic suppression.
-The tracking issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
-
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`). Apply the preceding issue-61
-build patches, including the V8 portability and stack-assembly patches, first.
-
-```sh
-bazel build //third_party/v8:wasm_header_compile_test --output_groups=compilation_outputs --platforms=//:windows_x86_64_gnullvm
-bazel build //third_party/v8:wasm_header_compile_test --output_groups=compilation_outputs --platforms=//:local_linux
-just fmt-check
-just bazel-lock-check
-```
-
-The compile regression includes the production decoder header and checks its
-interface without using either `Populate` overload. Both compilation checks
-succeed. Without the inline definitions, Windows Clang reports two
-`-Wunneeded-internal-declaration` errors. This fixture verifies header inclusion;
-it does not execute wasm decoding or establish full V8 runtime coverage.
+The regression passes when signaling makes the notifier ready and clearing resets it.
 
 ## Darwin libffi compiler and linker separation
 
@@ -1426,30 +979,6 @@ native target does not establish that target's coverage. GitHub's
 [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 documents the host architectures of these runner labels.
 
-## Windows OpenSSL CLI socket errors
-
-`zzz-openssl-cli-socket-sentinel.patch` preserves OpenSSL's existing `int`
-socket interface when the command-line tools mark failed or closed sockets.
-The explicit conversion of Windows' `INVALID_SOCKET` sentinel keeps fatal
-conversion diagnostics enabled, including in the optional SCTP error path.
-The tracking issue is
-[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
-
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-native dependency patches, including the OpenSSL 4.0.1 dependency and library
-socket-sentinel fixes.
-
-```sh
-tools/build-warnings/check-openssl-cli.sh
-just fmt-check
-just bazel-lock-check
-```
-
-The focused regression builds the actual Windows GNU OpenSSL CLI with fatal
-warnings. It covers the CLI source that library-only socket tests omit. The
-expected result is a successful build without socket conversion diagnostics.
-Native Windows execution and MSVC compilation remain separate platform gates.
 
 ## V8 Python execution platforms
 
@@ -1562,7 +1091,7 @@ gate for source syntax and command execution.
 `zzz-libffi-native-library-directory.patch` uses libffi's supported
 `--disable-multi-os-directory` option for the native voice prefix. Libraries
 install in the declared `lib` directory without invoking GCC's multilib query,
-which Clang does not support. Compiler warnings remain fatal and dependency
+which Clang does not support. Project warnings remain fatal and dependency
 versions remain unchanged. The tracking issue is
 [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
@@ -1581,31 +1110,6 @@ Windows. An integration comparison runs libffi 3.8.0's configure with Clang 23:
 the configured `libdir` and `toolexeclibdir` stay the same, and the unsupported
 `-print-multi-os-directory` diagnostics disappear. Native macOS acceptance also
 requires the module-probe patch below and full platform verification.
-
-## Ninja browse capability on Windows
-
-`zzz-ninja-windows-browse.patch` excludes Windows targets from Ninja's Unix
-browse-mode probes. Windows builds use the supported configuration without
-that Unix-only feature. Unix targets retain their probes, browse support, and
-warnings when required capabilities are missing. Dependency versions remain
-unchanged. The tracking issue is
-[#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
-
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-native voice source-preparation patches.
-
-```sh
-python3 -m unittest discover -s third_party/voice -p test_prepare_sources.py
-just fmt-check
-just bazel-lock-check
-```
-
-With CMake available, the regression executes the pinned browse configuration
-after source preparation. Windows must avoid Unix probes, a supported Unix
-target must retain browse support, and missing Unix capabilities must still
-produce a warning. These configuration checks do not establish native Windows
-compilation; the hosted voice-prefix build remains a separate acceptance gate.
 
 ## Ninja elapsed edge times
 
@@ -2042,7 +1546,7 @@ assembler and runtime outcomes.
 selection out of Libtool's compile-only invocations. Libtool uses `LTCC`
 for both capability probes and partial links, whose command omits
 `LDFLAGS`. A private compiler driver selects the system linker only for
-linking. Compiler warnings remain fatal.
+linking. Project warnings remain fatal; dependency warnings remain visible and nonfatal.
 
 The declared base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
@@ -2430,44 +1934,6 @@ The new regression must install its marker beneath a prefix containing spaces.
 The baseline fails with `Invalid character escape`. Required queue checks are
 `just fmt-check` and `just bazel-lock-check`.
 
-## Native Meson header symbols
-
-`zzzz-0033-native-meson-header-symbols.patch` repairs the checksum-pinned
-Meson 1.12.1 C header-symbol probe. Value probes explicitly discard their
-result; type probes use a pointer declaration. Functions, variables, macros,
-enums, and incomplete types remain detectable with fatal compiler warnings.
-Missing symbols remain unavailable. No compiler diagnostic is suppressed.
-
-The base and prerequisites match patch 0030, including the native Meson
-1.12.1 upgrade. Run the native Meson recipe probe documented above,
-`just fmt-check`, and `just bazel-lock-check`. Its separate header-symbol
-fixture requires all seven supported symbols and rejects the missing symbol.
-The baseline fails at the declared-function assertion. The complete native
-voice prefix must also build on macOS and Windows.
-
-## Native GLib positional printf probe
-
-`zzzz-0034-glib-positional-printf-probe.patch` uses bounded `snprintf` and
-standard positional format spelling in GLib 2.88.3's configure probe. It
-avoids invalid C escapes and Darwin's deprecated `sprintf` diagnostic while
-preserving the positional-format capability check.
-
-The base and prerequisites match patch 0030 plus patch 0033. With a
-project-owned `TMPDIR`, run:
-
-```sh
-python3 tools/build-warnings/glib/printf_probe_test.py <prepared-glib-source> <native-cc>
-bazel test //tools/build-warnings/glib:printf_test
-just fmt-check
-just bazel-lock-check
-```
-
-The extracted configure probe must compile with `-Wall -Wextra -Werror` and
-execute successfully. The public GLib regression must print positional
-arguments as `2 3 1`. Native macOS execution remains required to establish the
-Darwin compiler and libc boundary. All five patches track
-https://github.com/holdmyspot-com/codex-unleashed/issues/61.
-
 ## Native Meson Darwin linker selection
 
 `zzzz-0035-native-meson-darwin-linker.patch` selects the native Darwin linker
@@ -2486,39 +1952,22 @@ acceptance additionally requires the native Meson probe and complete voice
 prefix. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
-## Native GLib macOS content types
+## Rust 1.99 first-party Clippy compatibility
 
-`zzzz-0036-glib-macos-content-types.patch` uses Apple's UniformTypeIdentifiers
-API in the pinned GLib macOS content-type backend. MIME conversions, filename
-guesses, type relationships, descriptions, and fallback values retain their
-GIO interfaces. Each Objective-C lookup owns an autorelease pool and copies
-returned strings before draining it, including calls from ordinary GLib
-worker threads. Undeclared identifiers retain self-conformance. Runtime
-projection declares the exact Apple framework dependency and preserves its
-system install name. Compiler deprecation diagnostics remain fatal.
+`zzzz-0037-first-party-clippy.patch` keeps handwritten Codex code compatible
+with fatal Clippy diagnostics. Selection notes pass their wrapping closure by
+value, and compaction tests iterate over array chunks. The exec-policy error
+conversion uses an explicit implementation with field shorthand while
+preserving its error variant and source. Dependency sources remain unchanged.
 
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue,
-including the GLib positional-probe and native Darwin linker repairs. GLib
-2.88.3's CoreServices UTI calls fail native macOS compilation with deprecated
-declarations treated as errors. The replacement API is documented at
-https://developer.apple.com/documentation/uniformtypeidentifiers/uttypereference?language=objc.
-The tracking issue is
-https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+The generated RPC module alone permits `clippy::double_must_use` because
+`async_trait` produces the redundant attribute. The exception has a WORKAROUND
+comment linking [Clippy #17529](https://github.com/rust-lang/rust-clippy/issues/17529)
+and a removal condition tied to the installed Clippy. The explicit error
+conversion similarly identifies
+[Clippy #17525](https://github.com/rust-lang/rust-clippy/issues/17525).
 
-Run these checks from the patched checkout:
-
-```sh
-python3 -m unittest discover -s third_party/voice -p test_prepare_sources.py
-python3 -m unittest discover -s third_party/voice -p test_macos_runtime.py
-just fmt-check
-just bazel-lock-check
-bazel test //tools/build-warnings/glib:content_type_test
-```
-
-The source-preparation and maintained checks must pass. The content-type test
-requires native macOS execution and exercises the installed GIO library from
-a worker thread. It verifies MIME round trips, valid and undeclared type
-relationships, executable classification, descriptions, dynamic filename
-types, XML and text exceptions, and volume and folder detection. Other
-platforms mark this macOS-specific target incompatible.
+Apply this patch after the preceding issue-61 build patches on the declared
+release base. Run `just fmt-check` and `just bazel-clippy` from the checkout
+root; both commands must succeed. The Clippy check covers the generated RPC
+module, the error conversion, the selection view, and the compaction tests.

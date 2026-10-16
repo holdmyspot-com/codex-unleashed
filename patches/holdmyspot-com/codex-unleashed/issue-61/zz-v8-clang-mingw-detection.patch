@@ -1,4 +1,4 @@
-From 0b7e5705ddad25a807ed74a7861dce5f1465e515 Mon Sep 17 00:00:00 2001
+From a12a7f3d3038f336ee07f0142733519e2becbd99 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 04:06:13 +0000
 Subject: [PATCH] Fix V8 pointer formatting for Clang targeting MinGW
@@ -13,13 +13,13 @@ The focused regression includes actual V8 headers without linking unused V8 impl
  create mode 100644 tools/build-warnings/v8/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 0d1d86baf..a45a1f5b6 100644
+index 10ff6cf98..9fa0d77e1 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -894,6 +894,7 @@ archive_override(
+@@ -912,6 +912,7 @@ archive_override(
+         "//patches:v8_bazel_rules.patch",
+         "//patches:v8_source_portability.patch",
          "//patches:v8_icu_mutex_annotations.patch",
-         "//patches:v8_callback_compatibility.patch",
-         "//patches:v8_simdutf_constexpr.patch",
 +        "//patches:v8_clang_mingw_detection.patch",
      ],
      strip_prefix = "v8-15.0.245.2",

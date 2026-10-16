@@ -1,21 +1,19 @@
-From 379df61bd8eecdcc147f0d11f2f1cce4d803cee2 Mon Sep 17 00:00:00 2001
+From f7442e592e0131724b39c2e6833b46c468669c8a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 15:54:59 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Respect NMake serial build support when bootstrapping Ninja
 
-The native Windows job 116473691446 in run 38747669404 rejects the CMake NMake warning caused by our unsupported --parallel argument. Build in parallel only with the supported Ninja and Unix Makefiles generators. Retain warning failures and all other compiler checks.
-
-Red: focused generator-support regression fails for the Windows bootstrap command containing --parallel; the other three generator cases pass. Green: the focused regression passes, then all 27 native-builder tests run without skips and just fmt-check and just bazel-lock-check pass (nmake-parallel-suite.log). Native Windows execution remains a hosted acceptance gate.
+Preserve functional changes without warning-only dependency patches.
 ---
  third_party/voice/build_native.py      | 14 ++++-------
  third_party/voice/test_build_native.py | 33 ++++++++++++++++++++++++++
  2 files changed, 37 insertions(+), 10 deletions(-)
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index b28406558..a2c2d9660 100644
+index 15da46495..718d72580 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -308,16 +308,10 @@ class NativeBuild:
+@@ -309,16 +309,10 @@ class NativeBuild:
                  *options,
              ],
          )
@@ -34,16 +32,16 @@ index b28406558..a2c2d9660 100644
 +            build_command.extend(["--parallel", self.args.jobs])
 +        self.run(name + "-build", build_command)
          self.run(name + "-install", [self.toolchain["cmake"], "--install", directory])
- 
+
      def meson(self, name, options):
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index d511434c4..fe5d46af6 100644
+index f553a54de..c71eb6e1e 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
 @@ -487,6 +487,39 @@ class NativeBuildTests(unittest.TestCase):
              build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
          )
- 
+
 +    def test_cmake_parallel_builds_match_generator_support(self):
 +        self.environment["USERPROFILE"] = str(self.root / "user profile")
 +        for system, suffix in (
@@ -77,9 +75,6 @@ index d511434c4..fe5d46af6 100644
 +                    else:
 +                        self.assertEqual(command[-2:], ["--parallel", self.args.jobs])
 +
-     def test_cmake_unused_project_option_remains_fatal(self):
+     def test_cmake_unused_project_option_remains_visible(self):
          cmake = shutil.which("cmake")
          if cmake is None:
--- 
-2.43.0
-

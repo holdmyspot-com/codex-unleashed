@@ -1,50 +1,15 @@
-From 471b1913115c23dddfb0e07197db5c240046015c Mon Sep 17 00:00:00 2001
+From 84df35b9c22b53da866314316130cb763310efc5 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 13:13:32 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Backport GLib log-writer data cleanup
 
-Track native warning enforcement in #61. Apply after the documented native
-voice prerequisites; keep all compiler and linker checks enabled.
-
-Reproduction evidence: native-glib-writer-red.log. The actual native recipe reports the
-missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
-are recorded separately; an internal authoring commit is not full CI acceptance.
+Preserve functional changes without warning-only dependency patches.
 ---
- third_party/voice/prepare_sources.py        | 18 ++++++++++++
  tools/build-warnings/glib/BUILD.bazel       | 13 +++++++++
  tools/build-warnings/glib/log_writer_test.c | 31 +++++++++++++++++++++
- 3 files changed, 62 insertions(+)
+ 2 files changed, 44 insertions(+)
  create mode 100644 tools/build-warnings/glib/log_writer_test.c
 
-diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index 436435a20..75cfab0c4 100644
---- a/third_party/voice/prepare_sources.py
-+++ b/third_party/voice/prepare_sources.py
-@@ -115,6 +115,24 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
-             contents = contents.replace(original, replacement)
-         printf.write_text(contents, encoding="utf-8")
- 
-+        # WORKAROUND: backport GLib's log-writer data cleanup.
-+        # https://github.com/GNOME/glib/commit/e7592a3c4ed4f3ef97f9efb804ad9637a3d4ca1c
-+        # Remove when the selected GLib release includes this commit.
-+        messages = destination / source.root / "glib/gmessages.c"
-+        contents = messages.read_text(encoding="utf-8")
-+        original = (
-+            "  log_writer_func = func;\n"
-+            "  log_writer_user_data = user_data;\n"
-+            "  log_writer_user_data_free = user_data_free;"
-+        )
-+        replacement = (
-+            "  if (log_writer_user_data_free != NULL && log_writer_user_data != NULL)\n"
-+            "    log_writer_user_data_free (log_writer_user_data);\n\n" + original
-+        )
-+        if contents.count(original) != 1:
-+            raise ValueError("Pinned GLib log-writer implementation does not match")
-+        messages.write_text(contents.replace(original, replacement), encoding="utf-8")
-+
-     if source.name == "ninja" and source.version == "1.13.2":
-         # WORKAROUND: the pinned Ninja lacks an explicit bundled-lexer mode.
-         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
 diff --git a/tools/build-warnings/glib/BUILD.bazel b/tools/build-warnings/glib/BUILD.bazel
 index 08b8b821e..889c05223 100644
 --- a/tools/build-warnings/glib/BUILD.bazel

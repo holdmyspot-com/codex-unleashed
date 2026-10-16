@@ -1,56 +1,23 @@
-From 39f0d547171da86858f2e5608aa20270d230ed7a Mon Sep 17 00:00:00 2001
+From 282ae1937a4ee429570e2746202fb776c11d5016 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 13:13:33 +0000
+Date: Thu, 15 Oct 2026 21:16:55 -0400
 Subject: [PATCH] Remove the unused GStreamer audio conversion category
 
-Track native warning enforcement in #61. Apply after the documented native
-voice prerequisites; keep all compiler and linker checks enabled.
-
-Reproduction evidence: native-media-compatibility-green.log. The actual native recipe reports the
-missing outcome under LLVM 23. Runtime and fresh emitted-queue acceptance
-are recorded separately; an internal authoring commit is not full CI acceptance.
+Preserve functional changes without warning-only dependency patches.
 ---
- third_party/voice/prepare_sources.py          | 16 ++++++++++++
  tools/build-warnings/gstreamer/BUILD.bazel    | 16 ++++++++++++
  .../gstreamer/audio_convert_test.c            | 26 +++++++++++++++++++
- 3 files changed, 58 insertions(+)
+ 2 files changed, 42 insertions(+)
  create mode 100644 tools/build-warnings/gstreamer/audio_convert_test.c
 
-diff --git a/third_party/voice/prepare_sources.py b/third_party/voice/prepare_sources.py
-index 085351d00..3dd136fa1 100644
---- a/third_party/voice/prepare_sources.py
-+++ b/third_party/voice/prepare_sources.py
-@@ -312,6 +312,22 @@ def extract_source(source: Source, archives: Path, destination: Path) -> None:
-                 contents.replace(original, " ".join(original.split())), encoding="utf-8"
-             )
- 
-+        # WORKAROUND: audioconvert's performance category has no logging callers.
-+        # https://github.com/holdmyspot-com/codex-unleashed/issues/61
-+        # Remove when GStreamer removes this unused category upstream.
-+        converter = destination / source.root / "gst/audioconvert/gstaudioconvert.c"
-+        contents = converter.read_text(encoding="utf-8")
-+        for original in (
-+            "GST_DEBUG_CATEGORY_STATIC (GST_CAT_PERFORMANCE);\n",
-+            '  GST_DEBUG_CATEGORY_GET (GST_CAT_PERFORMANCE, "GST_PERFORMANCE");',
-+        ):
-+            if contents.count(original) != 1:
-+                raise ValueError(
-+                    "Pinned GStreamer audio converter category does not match"
-+                )
-+            contents = contents.replace(original, "")
-+        converter.write_text(contents, encoding="utf-8")
-+
-     if source.name == "gstreamer" and source.version == "1.28.6":
-         # WORKAROUND: these pad quarks are interned but their storage is unused.
-         # https://github.com/holdmyspot-com/codex-unleashed/issues/61
 diff --git a/tools/build-warnings/gstreamer/BUILD.bazel b/tools/build-warnings/gstreamer/BUILD.bazel
-index ec2b1f31e..44f9b361d 100644
+index 20d92d073..5e7aaaf86 100644
 --- a/tools/build-warnings/gstreamer/BUILD.bazel
 +++ b/tools/build-warnings/gstreamer/BUILD.bazel
 @@ -11,6 +11,22 @@ NATIVE_INCLUDES = [
      ]
  ]
- 
+
 +cc_test(
 +    name = "audio_convert_test",
 +    size = "small",
@@ -68,8 +35,8 @@ index ec2b1f31e..44f9b361d 100644
 +)
 +
  TEST_NAMES = [
-     "allocator_type_test",
      "enum_values_test",
+     "pad_quarks_test",
 diff --git a/tools/build-warnings/gstreamer/audio_convert_test.c b/tools/build-warnings/gstreamer/audio_convert_test.c
 new file mode 100644
 index 000000000..c34fedd9d

@@ -1,166 +1,20 @@
-From 07f379529477468e83f9297a3eb6c584186fd5b1 Mon Sep 17 00:00:00 2001
+From 369ab88c1bad79ef8a4e05183b6595390f7d8913 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 01:50:40 -0400
+Date: Thu, 15 Oct 2026 21:29:47 -0400
 Subject: [PATCH] Preserve OpenSSL invalid sockets at its int ABI
 
-Add the socket_error_test public BIO regression and make socket sentinel conversions explicit in BIO, RIO, and QUIC. The unfixed Windows GNU LLVM build fails with 12 constant-conversion errors. This private staging commit remains pending combined Windows compilation, Linux runtime, and fresh emitted-patch verification.
+Preserve functional changes without warning-only dependency patches.
 ---
- MODULE.bazel                                  |   1 +
- patches/openssl_socket_sentinel.patch         | 125 ++++++++++++++++++
- tools/build-warnings/openssl/BUILD.bazel      |   7 +
- .../openssl/socket_error_test.c               |  34 +++++
- 4 files changed, 167 insertions(+)
- create mode 100644 patches/openssl_socket_sentinel.patch
+ tools/build-warnings/openssl/BUILD.bazel      |  7 ++++
+ .../openssl/socket_error_test.c               | 34 +++++++++++++++++++
+ 2 files changed, 41 insertions(+)
  create mode 100644 tools/build-warnings/openssl/socket_error_test.c
 
-diff --git a/MODULE.bazel b/MODULE.bazel
-index a1618bbf6..853795989 100644
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -518,6 +518,7 @@ single_version_override(
-     patches = [
-         "//patches:openssl_unused_globals.patch",
-         "//patches:openssl_windows_compiler_types.patch",
-+        "//patches:openssl_socket_sentinel.patch",
-     ],
- )
-
-diff --git a/patches/openssl_socket_sentinel.patch b/patches/openssl_socket_sentinel.patch
-new file mode 100644
-index 000000000..521a67cdc
---- /dev/null
-+++ b/patches/openssl_socket_sentinel.patch
-@@ -0,0 +1,125 @@
-+From fa2898ff924af1807b0821a8e93ca328eed32ff9 Mon Sep 17 00:00:00 2001
-+From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Thu, 15 Oct 2026 01:50:16 -0400
-+Subject: [PATCH] Make invalid socket conversions explicit at the OpenSSL int
-+ ABI
-+
-+---
-+ crypto/bio/bio_sock.c   | 8 ++++----
-+ crypto/bio/bio_sock2.c  | 8 ++++----
-+ ssl/quic/quic_reactor.c | 4 ++--
-+ ssl/rio/rio_notifier.c  | 8 ++++----
-+ 4 files changed, 14 insertions(+), 14 deletions(-)
-+
-+diff --git a/crypto/bio/bio_sock.c b/crypto/bio/bio_sock.c
-+index 5b793b9..4458f87 100644
-+--- a/crypto/bio/bio_sock.c
-++++ b/crypto/bio/bio_sock.c
-+@@ -254,10 +254,10 @@ int BIO_socket_ioctl(int fd, long type, void *arg)
-+ int BIO_get_accept_socket(char *host, int bind_mode)
-+ {
-+-    int s = INVALID_SOCKET;
-++    int s = (int)INVALID_SOCKET;
-+     char *h = NULL, *p = NULL;
-+     BIO_ADDRINFO *res = NULL;
-+
-+     if (!BIO_parse_hostserv(host, &h, &p, BIO_PARSE_PRIO_SERV))
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+
-+     if (BIO_sock_init() != 1)
-+@@ -270,5 +270,5 @@ int BIO_get_accept_socket(char *host, int bind_mode)
-+              BIO_ADDRINFO_protocol(res), 0))
-+         == INVALID_SOCKET) {
-+-        s = INVALID_SOCKET;
-++        s = (int)INVALID_SOCKET;
-+         goto err;
-+     }
-+@@ -277,5 +277,5 @@ int BIO_get_accept_socket(char *host, int bind_mode)
-+             bind_mode ? BIO_SOCK_REUSEADDR : 0)) {
-+         BIO_closesocket(s);
-+-        s = INVALID_SOCKET;
-++        s = (int)INVALID_SOCKET;
-+     }
-+
-+diff --git a/crypto/bio/bio_sock2.c b/crypto/bio/bio_sock2.c
-+index a9face3..b52b9d0 100644
-+--- a/crypto/bio/bio_sock2.c
-++++ b/crypto/bio/bio_sock2.c
-+@@ -45,5 +45,5 @@ int BIO_socket(int domain, int socktype, int protocol, int options)
-+
-+     if (BIO_sock_init() != 1)
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+
-+     sock = socket(domain, socktype, protocol);
-+@@ -52,5 +52,5 @@ int BIO_socket(int domain, int socktype, int protocol, int options)
-+             "calling socket()");
-+         ERR_raise(ERR_LIB_BIO, BIO_R_UNABLE_TO_CREATE_SOCKET);
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+@@ -432,10 +432,10 @@ int BIO_accept_ex(int accept_sock, BIO_ADDR *addr_, int options)
-+             ERR_raise(ERR_LIB_BIO, BIO_R_ACCEPT_ERROR);
-+         }
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+     if (!BIO_socket_nbio(accepted_sock, (options & BIO_SOCK_NONBLOCK) != 0)) {
-+         closesocket(accepted_sock);
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+diff --git a/ssl/quic/quic_reactor.c b/ssl/quic/quic_reactor.c
-+index c30bc3c..f55c1c0 100644
-+--- a/ssl/quic/quic_reactor.c
-++++ b/ssl/quic/quic_reactor.c
-+@@ -404,5 +404,5 @@ static int poll_descriptor_to_fd(const BIO_POLL_DESCRIPTOR *d, int *fd)
-+ {
-+     if (d == NULL || d->type == BIO_POLL_DESCRIPTOR_TYPE_NONE) {
-+-        *fd = INVALID_SOCKET;
-++        *fd = (int)INVALID_SOCKET;
-+         return 1;
-+     }
-+@@ -510,5 +510,5 @@ int ossl_quic_reactor_block_until_pred(QUIC_REACTOR *rtor,
-+     notifier_fd
-+         = (rtor->have_notifier ? ossl_rio_notifier_as_fd(&rtor->notifier)
-+-                               : INVALID_SOCKET);
-++                               : (int)INVALID_SOCKET);
-+
-+     for (;;) {
-+diff --git a/ssl/rio/rio_notifier.c b/ssl/rio/rio_notifier.c
-+index 0d84880..e94fccc 100644
-+--- a/ssl/rio/rio_notifier.c
-++++ b/ssl/rio/rio_notifier.c
-+@@ -130,5 +130,5 @@ static int create_socket(int domain, int socktype, int protocol)
-+         ERR_raise_data(ERR_LIB_SYS, err,
-+             "calling WSASocketA() = %d", err);
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+@@ -138,5 +138,5 @@ static int create_socket(int domain, int socktype, int protocol)
-+             "calling setsockopt()");
-+         BIO_closesocket(fd);
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+@@ -150,5 +150,5 @@ static int create_socket(int domain, int socktype, int protocol)
-+         ERR_raise_data(ERR_LIB_SYS, get_last_sys_error(),
-+             "calling BIO_socket()");
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+
-+@@ -161,5 +161,5 @@ static int create_socket(int domain, int socktype, int protocol)
-+             "calling set_cloexec()");
-+         BIO_closesocket(fd);
-+-        return INVALID_SOCKET;
-++        return (int)INVALID_SOCKET;
-+     }
-+ #endif
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
-index 6d12c016c..c2d9a0d48 100644
+index af8b303d0..a9f0e11a7 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel
 +++ b/tools/build-warnings/openssl/BUILD.bazel
-@@ -41,6 +41,13 @@ cc_test(
+@@ -31,6 +31,13 @@ cc_test(
      deps = ["@openssl//:ssl"],
  )
 

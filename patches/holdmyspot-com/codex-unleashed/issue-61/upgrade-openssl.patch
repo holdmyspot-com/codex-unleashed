@@ -1,56 +1,39 @@
-From 94c8fc19f28320d3f022da70d9b34b669fbdafbe Mon Sep 17 00:00:00 2001
+From c63f7ce08d501c836016b5dede16b46b658199ba Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 21:16:24 +0000
+Date: Thu, 15 Oct 2026 21:28:06 -0400
 Subject: [PATCH] Use latest stable OpenSSL and compatible Rust bindings
 
-Upgrade the Bazel integration to 4.0.1.bcr.0 and Rust openssl/openssl-sys
-to 0.10.81/0.9.117. Keep the source-header regression and add a Rust
-runtime regression covering the bundled library, hashing, and TLS setup.
-Drop the crypto/init.c backport already present in OpenSSL 4.0.1.
-
-Base: rust-v0.162.1, 092d3acd6bec3e3a14bdc7e7a2810ab628ab759d.
-Prerequisites: preceding issue-61 native warning patches.
-
-Red: the Rust regression against OpenSSL 4.0.1 with openssl-sys 0.9.111
-fails in its build script because it rejects OpenSSL version 40000010.
-Green: the same regression with openssl 0.10.81 and openssl-sys 0.9.117
-passes. Compiler outputs are isolated between baseline and candidate.
-The uncached native configuration-header and TLS/provider runtime tests
-also pass, and the CLI version/help probe builds and executes.
-
-Focused verification:
-bazel test //tools/build-warnings/openssl:configuration_header_test
-  //tools/build-warnings/openssl:ssl_init_test
-  //tools/build-warnings/openssl:rust_bindings_test
-  //tools/build-warnings/openssl:cli_probe
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
- MODULE.bazel                                  |   2 +-
- MODULE.bazel.lock                             |  12 +-
- codex-rs/Cargo.lock                           |   9 +-
- patches/openssl_unused_globals.patch          | 205 +++++++-----------
- tools/build-warnings/openssl/BUILD.bazel      |  16 ++
- .../openssl/configuration_header_test.c       |   6 +
- .../openssl/rust_bindings_test.rs             |  17 ++
- 7 files changed, 133 insertions(+), 134 deletions(-)
+ MODULE.bazel                                    |  2 +-
+ MODULE.bazel.lock                               | 12 ++++++------
+ codex-rs/Cargo.lock                             |  9 ++++-----
+ tools/build-warnings/openssl/BUILD.bazel        | 16 ++++++++++++++++
+ .../openssl/configuration_header_test.c         |  6 ++++++
+ .../openssl/rust_bindings_test.rs               | 17 +++++++++++++++++
+ 6 files changed, 50 insertions(+), 12 deletions(-)
  create mode 100644 tools/build-warnings/openssl/configuration_header_test.c
  create mode 100644 tools/build-warnings/openssl/rust_bindings_test.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index c08937b78..00fa714c6 100644
+index f00f84366..aa9c93b29 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -488,5 +488,5 @@ crate.annotation(
+@@ -492,7 +492,7 @@ crate.annotation(
+     deps = ["@xz//:lzma"],
  )
 
 -bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
 +bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
  single_version_override(
      module_name = "openssl",
+     patch_strip = 1,
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 40c03388f..66834a8e9 100644
+index 49ff7ece4..e45089e10 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
-@@ -104,6 +104,6 @@
+@@ -103,8 +103,8 @@
+     "https://bcr.bazel.build/modules/llvm/0.8.24/source.json": "924ed48858c1c081698f1992c7b489434375de901c47b7046e203459840cb544",
      "https://bcr.bazel.build/modules/llvm/0.8.9/MODULE.bazel": "9e35ff5bcac996f9edc1b44b8f8baa58c7855e742c5608b07d925dcdbe642100",
      "https://bcr.bazel.build/modules/nlohmann_json/3.6.1/MODULE.bazel": "6f7b417dcc794d9add9e556673ad25cb3ba835224290f4f848f8e2db1e1fca74",
 -    "https://bcr.bazel.build/modules/openssl/3.5.4.bcr.0/MODULE.bazel": "0f6b8f20b192b9ff0781406256150bcd46f19e66d807dcb0c540548439d6fc35",
@@ -59,7 +42,9 @@ index 40c03388f..66834a8e9 100644
 +    "https://bcr.bazel.build/modules/openssl/4.0.1.bcr.0/source.json": "e2689ff963fd358f0f7db300f41cc684e5fb596972f2508030338efea1e298e9",
      "https://bcr.bazel.build/modules/package_metadata/0.0.3/MODULE.bazel": "77890552ecea9e284b5424c9de827a58099348763a4359e975c359a83d4faa83",
      "https://bcr.bazel.build/modules/package_metadata/0.0.7/MODULE.bazel": "7adb03933fc8401f495800cf4eafcff0edc6da0ff55c7db223ef69d19f689486",
-@@ -204,6 +204,6 @@
+     "https://bcr.bazel.build/modules/package_metadata/0.0.7/source.json": "50639625e937b56115012674c797cca7a05a96b4878c87d803c13dc2b31de8a0",
+@@ -203,8 +203,8 @@
+     "https://bcr.bazel.build/modules/rules_license/0.0.7/MODULE.bazel": "088fbeb0b6a419005b89cf93fe62d9517c0a2b8bb56af3244af65ecfe37e7d5d",
      "https://bcr.bazel.build/modules/rules_license/1.0.0/MODULE.bazel": "a7fda60eefdf3d8c827262ba499957e4df06f659330bbe6cdbdb975b768bb65c",
      "https://bcr.bazel.build/modules/rules_license/1.0.0/source.json": "a52c89e54cc311196e478f8382df91c15f7a2bfdf4c6cd0e2675cc2ff0b56efb",
 -    "https://bcr.bazel.build/modules/rules_perl/0.5.0/MODULE.bazel": "1bff473031644dfb23bd57abe3befe9780f003f0d2156b082527a5c477008792",
@@ -68,7 +53,9 @@ index 40c03388f..66834a8e9 100644
 +    "https://bcr.bazel.build/modules/rules_perl/1.1.2/source.json": "6facc4dceb7d8eeb54f712399b9b933d5498e1906deffc06e66b5526c85ebe27",
      "https://bcr.bazel.build/modules/rules_pkg/0.7.0/MODULE.bazel": "df99f03fc7934a4737122518bb87e667e62d780b610910f0447665a7e2be62dc",
      "https://bcr.bazel.build/modules/rules_pkg/1.0.1/MODULE.bazel": "5b1df97dbc29623bccdf2b0dcd0f5cb08e2f2c9050aab1092fd39a41e82686ff",
-@@ -1432,6 +1432,6 @@
+     "https://bcr.bazel.build/modules/rules_pkg/1.0.1/source.json": "bd82e5d7b9ce2d31e380dd9f50c111d678c3bdaca190cb76b0e1c71b05e1ba8a",
+@@ -1432,8 +1432,8 @@
+       "openssl-probe_0.1.6": "{\"dependencies\":[],\"features\":{}}",
        "openssl-probe_0.2.1": "{\"dependencies\":[],\"features\":{}}",
        "openssl-src_300.6.1+3.6.3": "{\"dependencies\":[{\"name\":\"cc\",\"req\":\"^1.0.79\"}],\"features\":{\"camellia\":[],\"default\":[],\"force-engine\":[],\"idea\":[],\"ktls\":[],\"legacy\":[],\"no-dso\":[],\"seed\":[],\"ssl3\":[],\"weak-crypto\":[]}}",
 -      "openssl-sys_0.9.111": "{\"dependencies\":[{\"features\":[\"ssl\",\"bindgen\"],\"name\":\"aws-lc-fips-sys\",\"optional\":true,\"req\":\"^0.13\"},{\"features\":[\"ssl\"],\"name\":\"aws-lc-sys\",\"optional\":true,\"req\":\"^0.27\"},{\"features\":[\"experimental\"],\"kind\":\"build\",\"name\":\"bindgen\",\"optional\":true,\"req\":\"^0.72.0\"},{\"name\":\"bssl-sys\",\"optional\":true,\"req\":\"^0.1.0\"},{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.61\"},{\"name\":\"libc\",\"req\":\"^0.2\"},{\"features\":[\"legacy\"],\"kind\":\"build\",\"name\":\"openssl-src\",\"optional\":true,\"req\":\"^300.2.0\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.9\"},{\"kind\":\"build\",\"name\":\"vcpkg\",\"req\":\"^0.2.8\"}],\"features\":{\"aws-lc\":[\"dep:aws-lc-sys\"],\"aws-lc-fips\":[\"dep:aws-lc-fips-sys\"],\"unstable_boringssl\":[\"bssl-sys\"],\"vendored\":[\"openssl-src\"]}}",
@@ -77,11 +64,13 @@ index 40c03388f..66834a8e9 100644
 +      "openssl_0.10.81": "{\"dependencies\":[{\"name\":\"bitflags\",\"req\":\"^2.2.1\"},{\"name\":\"cfg-if\",\"req\":\"^1.0\"},{\"name\":\"ffi\",\"package\":\"openssl-sys\",\"req\":\"^0.9.117\"},{\"name\":\"foreign-types\",\"req\":\"^0.3.1\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4\"},{\"name\":\"libc\",\"req\":\"^0.2\"},{\"name\":\"openssl-macros\",\"req\":\"^0.1.1\"}],\"features\":{\"aws-lc\":[\"ffi/aws-lc\"],\"aws-lc-fips\":[\"ffi/aws-lc-fips\"],\"bindgen\":[\"ffi/bindgen\"],\"default\":[],\"unstable_boringssl\":[\"ffi/unstable_boringssl\"],\"v101\":[],\"v102\":[],\"v110\":[],\"v111\":[],\"vendored\":[\"ffi/vendored\"]}}",
        "opentelemetry-appender-tracing_0.31.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.21\"},{\"kind\":\"dev\",\"name\":\"log\",\"req\":\"^0.4.21\"},{\"default_features\":false,\"features\":[\"logs\"],\"name\":\"opentelemetry\",\"req\":\"^0.31\"},{\"default_features\":false,\"features\":[\"logs\"],\"kind\":\"dev\",\"name\":\"opentelemetry-stdout\",\"req\":\"^0.31\"},{\"default_features\":false,\"features\":[\"logs\",\"testing\",\"internal-logs\"],\"kind\":\"dev\",\"name\":\"opentelemetry_sdk\",\"req\":\"^0.31\"},{\"features\":[\"flamegraph\",\"criterion\"],\"kind\":\"dev\",\"name\":\"pprof\",\"req\":\"^0.14\",\"target\":\"cfg(not(target_os = \\\"windows\\\"))\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"req\":\">=0.1.40\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\">=0.1.40\"},{\"default_features\":false,\"name\":\"tracing-core\",\"req\":\">=0.1.33\"},{\"name\":\"tracing-log\",\"optional\":true,\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"tracing-log\",\"req\":\"^0.2\"},{\"name\":\"tracing-opentelemetry\",\"optional\":true,\"req\":\"^0.32\"},{\"default_features\":false,\"features\":[\"registry\",\"std\"],\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"env-filter\",\"registry\",\"std\",\"fmt\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3\"}],\"features\":{\"default\":[],\"experimental_metadata_attributes\":[\"dep:tracing-log\"],\"experimental_use_tracing_span_context\":[\"tracing-opentelemetry\"],\"spec_unstable_logs_enabled\":[\"opentelemetry/spec_unstable_logs_enabled\"]}}",
        "opentelemetry-http_0.31.0": "{\"dependencies\":[{\"name\":\"async-trait\",\"req\":\"^0.1\"},{\"name\":\"bytes\",\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"http\",\"req\":\"^1.1\"},{\"name\":\"http-body-util\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"hyper\",\"optional\":true,\"req\":\"^1.3\"},{\"features\":[\"client-legacy\",\"http1\",\"http2\"],\"name\":\"hyper-util\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"features\":[\"trace\"],\"name\":\"opentelemetry\",\"req\":\"^0.31\"},{\"default_features\":false,\"name\":\"reqwest\",\"optional\":true,\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"time\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"default\":[\"internal-logs\"],\"hyper\":[\"dep:http-body-util\",\"dep:hyper\",\"dep:hyper-util\",\"dep:tokio\"],\"internal-logs\":[\"opentelemetry/internal-logs\"],\"reqwest\":[\"dep:reqwest\"],\"reqwest-blocking\":[\"dep:reqwest\",\"reqwest/blocking\"],\"reqwest-rustls\":[\"dep:reqwest\",\"reqwest/rustls-tls-native-roots\"],\"reqwest-rustls-webpki-roots\":[\"dep:reqwest\",\"reqwest/rustls-tls-webpki-roots\"]}}",
+       "opentelemetry-otlp_0.31.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-trait\",\"req\":\"^0.1\"},{\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.1.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"http\",\"optional\":true,\"req\":\"^1.1\"},{\"default_features\":false,\"name\":\"opentelemetry\",\"req\":\"^0.31\"},{\"default_features\":false,\"name\":\"opentelemetry-http\",\"optional\":true,\"req\":\"^0.31\"},{\"default_features\":false,\"name\":\"opentelemetry-proto\",\"req\":\"^0.31\"},{\"default_features\":false,\"name\":\"opentelemetry_sdk\",\"req\":\"^0.31\"},{\"default_features\":false,\"features\":[\"trace\",\"testing\"],\"kind\":\"dev\",\"name\":\"opentelemetry_sdk\",\"req\":\"^0.31\"},{\"name\":\"prost\",\"optional\":true,\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"reqwest\",\"optional\":true,\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"temp-env\",\"req\":\"^0.3.6\"},{\"default_features\":false,\"name\":\"thiserror\",\"req\":\"^2\"},{\"default_features\":false,\"features\":[\"sync\",\"rt\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1\"},{\"default_features\":false,\"features\":[\"macros\",\"rt-multi-thread\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"features\":[\"net\"],\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"tonic\",\"optional\":true,\"req\":\"^0.14.1\"},{\"default_features\":false,\"features\":[\"router\",\"server\"],\"kind\":\"dev\",\"name\":\"tonic\",\"req\":\"^0.14.1\"},{\"default_features\":false,\"name\":\"tracing\",\"optional\":true,\"req\":\">=0.1.40\"},{\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"}],\"features\":{\"default\":[\"http-proto\",\"reqwest-blocking-client\",\"trace\",\"metrics\",\"logs\",\"internal-logs\"],\"grpc-tonic\":[\"tonic\",\"prost\",\"http\",\"tokio\",\"opentelemetry-proto/gen-tonic\"],\"gzip-http\":[\"flate2\"],\"gzip-tonic\":[\"tonic/gzip\"],\"http-json\":[\"serde_json\",\"prost\",\"opentelemetry-http\",\"opentelemetry-proto/gen-tonic-messages\",\"opentelemetry-proto/with-serde\",\"http\",\"trace\",\"metrics\"],\"http-proto\":[\"prost\",\"opentelemetry-http\",\"opentelemetry-proto/gen-tonic-messages\",\"http\",\"trace\",\"metrics\"],\"hyper-client\":[\"opentelemetry-http/hyper\"],\"integration-testing\":[\"tonic\",\"prost\",\"tokio/full\",\"trace\",\"logs\"],\"internal-logs\":[\"tracing\",\"opentelemetry_sdk/internal-logs\",\"opentelemetry-http/internal-logs\"],\"logs\":[\"opentelemetry/logs\",\"opentelemetry_sdk/logs\",\"opentelemetry-proto/logs\"],\"metrics\":[\"opentelemetry/metrics\",\"opentelemetry_sdk/metrics\",\"opentelemetry-proto/metrics\"],\"reqwest-blocking-client\":[\"reqwest/blocking\",\"opentelemetry-http/reqwest-blocking\"],\"reqwest-client\":[\"reqwest\",\"opentelemetry-http/reqwest\"],\"reqwest-rustls\":[\"reqwest\",\"opentelemetry-http/reqwest-rustls\"],\"reqwest-rustls-webpki-roots\":[\"reqwest\",\"opentelemetry-http/reqwest-rustls-webpki-roots\"],\"serialize\":[\"serde\",\"serde_json\"],\"tls\":[\"tonic/tls-ring\"],\"tls-roots\":[\"tls\",\"tonic/tls-native-roots\"],\"tls-webpki-roots\":[\"tls\",\"tonic/tls-webpki-roots\"],\"trace\":[\"opentelemetry/trace\",\"opentelemetry_sdk/trace\",\"opentelemetry-proto/trace\"],\"zstd-http\":[\"zstd\"],\"zstd-tonic\":[\"tonic/zstd\"]}}",
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 8f7c8029c..2dce92f41 100644
+index 3caeead36..c48f6c895 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
-@@ -11091,7 +11091,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
+@@ -11082,15 +11082,14 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
+
  [[package]]
  name = "openssl"
 -version = "0.10.75"
@@ -91,13 +80,15 @@ index 8f7c8029c..2dce92f41 100644
 +checksum = "77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45"
  dependencies = [
   "bitflags 2.13.1",
-@@ -11099,5 +11099,4 @@ dependencies = [
+  "cfg-if",
   "foreign-types",
   "libc",
 - "once_cell",
   "openssl-macros",
   "openssl-sys",
-@@ -11138,7 +11137,7 @@ dependencies = [
+ ]
+@@ -11129,9 +11128,9 @@ dependencies = [
+
  [[package]]
  name = "openssl-sys"
 -version = "0.9.111"
@@ -107,289 +98,12 @@ index 8f7c8029c..2dce92f41 100644
 +checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
  dependencies = [
   "cc",
-diff --git a/patches/openssl_unused_globals.patch b/patches/openssl_unused_globals.patch
-index 3a9513fc1..97837d80f 100644
---- a/patches/openssl_unused_globals.patch
-+++ b/patches/openssl_unused_globals.patch
-@@ -1,10 +1,64 @@
-+From ffc2e7b6a813ccadccf18e45f47cd663a3c62fe4 Mon Sep 17 00:00:00 2001
-+From: Gili Tzabari <cowwoc2020@gmail.com>
-+Date: Wed, 14 Oct 2026 21:00:45 +0000
-+Subject: [PATCH] Retain required LLVM 23 source fixes on OpenSSL 4.0.1
-+
-+---
-+ apps/lib/opt.c        | 2 --
-+ apps/s_server.c       | 8 ++++++--
-+ crypto/bn/bn_lib.c    | 8 --------
-+ providers/baseprov.c  | 8 +-------
-+ providers/defltprov.c | 8 +-------
-+ ssl/ssl_init.c        | 2 --
-+ 6 files changed, 8 insertions(+), 28 deletions(-)
-+
-+diff --git a/apps/lib/opt.c b/apps/lib/opt.c
-+index 8c3b3a9..286290c 100644
-+--- a/apps/lib/opt.c
-++++ b/apps/lib/opt.c
-+@@ -37,5 +37,4 @@ const char OPT_PARAM_STR[] = "-P";
-+ /* Our state */
-+ static char **argv;
-+-static int argc;
-+ static int opt_index;
-+ static char *arg;
-+@@ -162,5 +161,4 @@ char *opt_init(int ac, char **av, const OPTIONS *o)
-+ {
-+     /* Store state. */
-+-    argc = ac;
-+     argv = av;
-+     opt_begin();
-+diff --git a/apps/s_server.c b/apps/s_server.c
-+index 22b4edc..79589f3 100644
-+--- a/apps/s_server.c
-++++ b/apps/s_server.c
-+@@ -134,6 +134,8 @@ static int keymatexportlen = 20;
-+ static int async = 0;
-+
-+-static int use_sendfile = 0;
-+-static int use_zc_sendfile = 0;
-++#ifndef OPENSSL_NO_KTLS
-++static int use_sendfile;
-++static int use_zc_sendfile;
-++#endif
-+
-+ static const char *session_id_prefix = NULL;
-+@@ -1768,6 +1770,8 @@ int s_server_main(int argc, char *argv[])
-+     s_brief = 0;
-+     async = 0;
-++#ifndef OPENSSL_NO_KTLS
-+     use_sendfile = 0;
-+     use_zc_sendfile = 0;
-++#endif
-+
-+     port = OPENSSL_strdup(PORT);
- diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-+index 618c59c..0689f1a 100644
- --- a/crypto/bn/bn_lib.c
- +++ b/crypto/bn/bn_lib.c
--@@ -28,39 +28,31 @@
--  * 8 - 256 == 8192
-+@@ -29,11 +29,7 @@
-   */
-  static int bn_limit_bits = 0;
---static int bn_limit_num = 8;    /* (1<<bn_limit_bits) */
-+-static int bn_limit_num = 8; /* (1<<bn_limit_bits) */
-  static int bn_limit_bits_low = 0;
- -static int bn_limit_num_low = 8; /* (1<<bn_limit_bits_low) */
-@@ -15,7 +69,5 @@ diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-
-  void BN_set_params(int mult, int high, int low, int mont)
-- {
--     if (mult >= 0) {
--         if (mult > (int)(sizeof(int) * 8) - 1)
-+@@ -43,5 +39,4 @@ void BN_set_params(int mult, int high, int low, int mont)
-              mult = sizeof(int) * 8 - 1;
-          bn_limit_bits = mult;
-@@ -23,5 +75,5 @@ diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-      }
-      if (high >= 0) {
--         if (high > (int)(sizeof(int) * 8) - 1)
-+@@ -49,5 +44,4 @@ void BN_set_params(int mult, int high, int low, int mont)
-              high = sizeof(int) * 8 - 1;
-          bn_limit_bits_high = high;
-@@ -29,5 +81,5 @@ diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-      }
-      if (low >= 0) {
--         if (low > (int)(sizeof(int) * 8) - 1)
-+@@ -55,5 +49,4 @@ void BN_set_params(int mult, int high, int low, int mont)
-              low = sizeof(int) * 8 - 1;
-          bn_limit_bits_low = low;
-@@ -35,5 +87,5 @@ diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-      }
-      if (mont >= 0) {
--         if (mont > (int)(sizeof(int) * 8) - 1)
-+@@ -61,5 +54,4 @@ void BN_set_params(int mult, int high, int low, int mont)
-              mont = sizeof(int) * 8 - 1;
-          bn_limit_bits_mont = mont;
-@@ -41,61 +93,9 @@ diff --git a/crypto/bn/bn_lib.c b/crypto/bn/bn_lib.c
-      }
-  }
--
--diff --git a/ssl/ssl_init.c b/ssl/ssl_init.c
----- a/ssl/ssl_init.c
--+++ b/ssl/ssl_init.c
--@@ -19,7 +19,6 @@
-- static int stopped;
--
-- static CRYPTO_ONCE ssl_base = CRYPTO_ONCE_STATIC_INIT;
---static int ssl_base_inited = 0;
-- DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
-- {
-- #ifndef OPENSSL_NO_COMP
--@@ -33,7 +32,6 @@ DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
-- #endif
--     ssl_sort_cipher_list();
--     OSSL_TRACE(INIT, "ossl_init_ssl_base: SSL_add_ssl_module()\n");
---    ssl_base_inited = 1;
--     return 1;
-- }
--
--diff --git a/crypto/init.c b/crypto/init.c
----- a/crypto/init.c
--+++ b/crypto/init.c
--@@ -178,27 +178,24 @@ DEFINE_RUN_ONCE_STATIC_ALT(ossl_init_no_add_all_digests,
-- }
--
-- static CRYPTO_ONCE config = CRYPTO_ONCE_STATIC_INIT;
---static int config_inited = 0;
-- static const OPENSSL_INIT_SETTINGS *conf_settings = NULL;
-- DEFINE_RUN_ONCE_STATIC(ossl_init_config)
-- {
--     int ret = ossl_config_int(NULL);
--
---    config_inited = 1;
--     return ret;
-- }
-- DEFINE_RUN_ONCE_STATIC_ALT(ossl_init_config_settings, ossl_init_config)
-- {
--     int ret = ossl_config_int(conf_settings);
--
---    config_inited = 1;
--     return ret;
-- }
-- DEFINE_RUN_ONCE_STATIC_ALT(ossl_init_no_config, ossl_init_config)
-- {
--     OSSL_TRACE(INIT, "ossl_no_config_int()\n");
--     ossl_no_config_int();
---    config_inited = 1;
--+
--     return 1;
-- }
--
- diff --git a/providers/baseprov.c b/providers/baseprov.c
-+index 16d2f91..f517e5a 100644
- --- a/providers/baseprov.c
- +++ b/providers/baseprov.c
--@@ -29,10 +29,6 @@ static OSSL_FUNC_provider_gettable_params_fn base_gettable_params;
-- static OSSL_FUNC_provider_get_params_fn base_get_params;
-+@@ -30,8 +30,4 @@ static OSSL_FUNC_provider_get_params_fn base_get_params;
-  static OSSL_FUNC_provider_query_operation_fn base_query;
-
-@@ -106,7 +106,5 @@ diff --git a/providers/baseprov.c b/providers/baseprov.c
-  /* Parameters we provide to the core */
-  static const OSSL_PARAM base_param_types[] = {
--     OSSL_PARAM_DEFN(OSSL_PROV_PARAM_NAME, OSSL_PARAM_UTF8_PTR, NULL, 0),
--@@ -139,15 +135,13 @@ int ossl_base_provider_init(const OSSL_CORE_HANDLE *handle,
--     void **provctx)
-+@@ -140,4 +136,5 @@ int ossl_base_provider_init(const OSSL_CORE_HANDLE *handle,
-  {
-      OSSL_FUNC_core_get_libctx_fn *c_get_libctx = NULL;
-@@ -114,6 +112,5 @@ diff --git a/providers/baseprov.c b/providers/baseprov.c
-      BIO_METHOD *corebiometh;
-
--     if (!ossl_prov_bio_from_dispatch(in))
--         return 0;
-+@@ -146,7 +143,4 @@ int ossl_base_provider_init(const OSSL_CORE_HANDLE *handle,
-      for (; in->function_id != 0; in++) {
-          switch (in->function_id) {
-@@ -123,10 +120,9 @@ diff --git a/providers/baseprov.c b/providers/baseprov.c
-          case OSSL_FUNC_CORE_GET_PARAMS:
-              c_get_params = OSSL_FUNC_core_get_params(in);
--             break;
- diff --git a/providers/defltprov.c b/providers/defltprov.c
-+index d19d6ec..db9f847 100644
- --- a/providers/defltprov.c
- +++ b/providers/defltprov.c
--@@ -34,10 +34,6 @@ static OSSL_FUNC_provider_query_operation_fn deflt_query;
-- #define ALGC(NAMES, FUNC, CHECK) { { NAMES, "provider=default", FUNC }, CHECK }
-+@@ -35,8 +35,4 @@ static OSSL_FUNC_provider_query_operation_fn deflt_query;
-  #define ALG(NAMES, FUNC) ALGC(NAMES, FUNC, NULL)
-
-@@ -137,7 +133,5 @@ diff --git a/providers/defltprov.c b/providers/defltprov.c
-  /* Parameters we provide to the core */
-  static const OSSL_PARAM deflt_param_types[] = {
--     OSSL_PARAM_DEFN(OSSL_PROV_PARAM_NAME, OSSL_PARAM_UTF8_PTR, NULL, 0),
--@@ -799,16 +795,14 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
--                                void **provctx)
-+@@ -797,4 +793,5 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
-  {
-      OSSL_FUNC_core_get_libctx_fn *c_get_libctx = NULL;
-@@ -145,7 +139,5 @@ diff --git a/providers/defltprov.c b/providers/defltprov.c
-      BIO_METHOD *corebiometh;
-
--     if (!ossl_prov_bio_from_dispatch(in)
--             || !ossl_prov_seeding_from_dispatch(in))
--         return 0;
-+@@ -804,7 +801,4 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
-      for (; in->function_id != 0; in++) {
-          switch (in->function_id) {
-@@ -155,49 +147,18 @@ diff --git a/providers/defltprov.c b/providers/defltprov.c
-          case OSSL_FUNC_CORE_GET_PARAMS:
-              c_get_params = OSSL_FUNC_core_get_params(in);
--             break;
--diff --git a/apps/s_server.c b/apps/s_server.c
----- a/apps/s_server.c
--+++ b/apps/s_server.c
--@@ -134,8 +134,10 @@ static int keymatexportlen = 20;
--
-- static int async = 0;
--
---static int use_sendfile = 0;
---static int use_zc_sendfile = 0;
--+#ifndef OPENSSL_NO_KTLS
--+static int use_sendfile;
--+static int use_zc_sendfile;
--+#endif
--
-- static const char *session_id_prefix = NULL;
--
--@@ -1778,8 +1780,10 @@ int s_server_main(int argc, char *argv[])
--     s_quiet = 0;
--     s_brief = 0;
--     async = 0;
--+#ifndef OPENSSL_NO_KTLS
--     use_sendfile = 0;
--     use_zc_sendfile = 0;
--+#endif
--
--     port = OPENSSL_strdup(PORT);
--     cctx = SSL_CONF_CTX_new();
--diff --git a/apps/lib/opt.c b/apps/lib/opt.c
----- a/apps/lib/opt.c
--+++ b/apps/lib/opt.c
--@@ -37,7 +37,6 @@ const char OPT_PARAM_STR[] = "-P";
-+diff --git a/ssl/ssl_init.c b/ssl/ssl_init.c
-+index 1e92658..101c513 100644
-+--- a/ssl/ssl_init.c
-++++ b/ssl/ssl_init.c
-+@@ -21,5 +21,4 @@ static int stopped;
-
-- /* Our state */
-- static char **argv;
---static int argc;
-- static int opt_index;
-- static char *arg;
-- static char *flag;
--@@ -162,7 +161,6 @@ char *opt_getprog(void)
-- char *opt_init(int ac, char **av, const OPTIONS *o)
-+ static CRYPTO_ONCE ssl_base = CRYPTO_ONCE_STATIC_INIT;
-+-static int ssl_base_inited = 0;
-+ DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
-  {
--     /* Store state. */
---    argc = ac;
--     argv = av;
--     opt_begin();
--     opts = o;
-+@@ -35,5 +34,4 @@ DEFINE_RUN_ONCE_STATIC(ossl_init_ssl_base)
-+     ssl_sort_cipher_list();
-+     OSSL_TRACE(INIT, "ossl_init_ssl_base: SSL_add_ssl_module()\n");
-+-    ssl_base_inited = 1;
-+     return 1;
-+ }
+  "libc",
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
 index fc2f72933..70e504c00 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel
 +++ b/tools/build-warnings/openssl/BUILD.bazel
-@@ -1,3 +1,19 @@
+@@ -1,4 +1,20 @@
  load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("@rules_rs//rs:rust_test.bzl", "rust_test")
 +
@@ -409,6 +123,7 @@ index fc2f72933..70e504c00 100644
 +)
 
  cc_test(
+     name = "ssl_init_test",
 diff --git a/tools/build-warnings/openssl/configuration_header_test.c b/tools/build-warnings/openssl/configuration_header_test.c
 new file mode 100644
 index 000000000..868132a99

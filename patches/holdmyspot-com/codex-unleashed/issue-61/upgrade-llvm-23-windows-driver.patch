@@ -1,36 +1,9 @@
-From 9dbdc27abb67e52e8a26e452f265c3174e73bb8c Mon Sep 17 00:00:00 2001
+From 377a609d8c74bc329d3503cf9ff09c9309c58b4b Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 05:57:12 +0000
+Date: Thu, 15 Oct 2026 21:38:57 -0400
 Subject: [PATCH] Use LLVM 23 for strict Windows Rust links
 
-Select hermetic LLVM 0.8.24 and align the direct Bazel dependencies selected
-by its graph. Rebase the custom libc++, ARM64 MinGW runtime, and native
-warning features to its toolchain layout. Keep MSVC compile and linker
-warnings fatal using their driver-specific options.
-
-Include focused Windows GNU -nolibc and MSVC linker-warning regressions.
-The latter checks both the warning-only control and fatal-warning case.
-
-Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the
-preceding release patch queue applied.
-Red: bazel test //tools/build-warnings/llvm-driver:windows_nolibc_driver_test
-with LLVM 22.1.8 exits 1 for unused -nolibc under -Werror.
-Green: bazel test //tools/build-warnings/llvm-driver:all with LLVM 23.1.2
-exits 0; both included regressions pass.
-Maintained just bazel-lock-update and just bazel-lock-check exit 0.
-Focused evidence: .cat/work/temp/llvm-toolchain-Rkha0k/
-Follow-up red: the emitted LLVM 23 GNU Make bootstrap initially fails
-configuration because the combined link resource directory lacks stddef.h.
-Expand the compiler DirectoryInfo into files before resource filtering.
-The bootstrap then exposes a GNU Make counter read only by assert; compile
-that counter only when assertions are enabled. The same maintained Bazel
-Make bootstrap target now builds and executes successfully without warnings.
-
-Full native, emitted-patch, release-platform, and hosted cache acceptance
-remain separate required gates.
-
-Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/60
-Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
  MODULE.bazel                                  | 11 +--
  MODULE.bazel.lock                             | 36 ++++++----
@@ -38,16 +11,15 @@ Refs: https://github.com/holdmyspot-com/codex-unleashed/issues/61
  patches/llvm_rusty_v8_custom_libcxx.patch     | 65 +++++++-----------
  patches/llvm_warnings_as_errors.patch         | 42 +++++++++---
  patches/llvm_windows_arm64_powl.patch         | 25 ++++---
- ...rules_foreign_cc_make_warning_phases.patch | 34 ++++++++--
  tools/build-warnings/llvm-driver/BUILD.bazel  | 67 +++++++++++++++++++
  tools/build-warnings/llvm-driver/entry.c      |  1 +
- 9 files changed, 217 insertions(+), 85 deletions(-)
+ 8 files changed, 188 insertions(+), 80 deletions(-)
  create mode 100644 patches/llvm_resource_directory_headers.patch
  create mode 100644 tools/build-warnings/llvm-driver/BUILD.bazel
  create mode 100644 tools/build-warnings/llvm-driver/entry.c
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 90f189f48..8e1096d57 100644
+index 65b24ca8c..20884ba69 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -6,7 +6,7 @@ bazel_dep(name = "platforms", version = "1.1.0")
@@ -67,7 +39,7 @@ index 90f189f48..8e1096d57 100644
      ],
  )
 
-@@ -144,8 +145,8 @@ osx.frameworks(names = [
+@@ -147,8 +148,8 @@ osx.libraries(names = [
  use_repo(osx, "macos_sdk")
 
  # Needed to disable xcode...
@@ -87,7 +59,7 @@ index 90f189f48..8e1096d57 100644
 
  voice_python = use_extension("@rules_python//python/extensions:python.bzl", "python")
  voice_python.defaults(python_version = "3.11")
-@@ -366,7 +367,7 @@ crate.from_cargo(
+@@ -378,7 +379,7 @@ crate.from_cargo(
      ],
  )
 
@@ -97,7 +69,7 @@ index 90f189f48..8e1096d57 100644
  crate.annotation(
      # Daemon tests repeatedly hash large CLI binaries, even in fastbuild mode.
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index c3a89a807..b215f1b9f 100644
+index d7c7bb862..49ff7ece4 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -24,7 +24,8 @@
@@ -474,65 +446,6 @@ index 0fd33c976..1c9f4d687 100644
 +     ],
 +     data = [
 +         "//runtimes/mingw:mingw_crt_library_search_directory",
-diff --git a/patches/rules_foreign_cc_make_warning_phases.patch b/patches/rules_foreign_cc_make_warning_phases.patch
-index 2e72234dd..af5b53a31 100644
---- a/patches/rules_foreign_cc_make_warning_phases.patch
-+++ b/patches/rules_foreign_cc_make_warning_phases.patch
-@@ -68,7 +68,7 @@ index e9f2b8b..cb2815a 100644
-              sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3",
-              strip_prefix = "make-4.4.1",
- +            patch_args = ["-p1"],
--+            patches = [Label("//toolchains/patches:make-string-comparison.patch")],
-++            patches = [Label("//toolchains/patches:make-warning-fixes.patch")],
-              urls = [
-                  "https://mirror.bazel.build/ftpmirror.gnu.org/gnu/make/make-4.4.1.tar.gz",
-                  "http://ftpmirror.gnu.org/gnu/make/make-4.4.1.tar.gz",
-@@ -77,13 +77,13 @@ index e69de29..154cb81 100644
- --- a/toolchains/patches/BUILD.bazel
- +++ b/toolchains/patches/BUILD.bazel
- @@ -0,0 +1 @@
--+exports_files(["make-string-comparison.patch"])
--diff --git a/toolchains/patches/make-string-comparison.patch b/toolchains/patches/make-string-comparison.patch
-++exports_files(["make-warning-fixes.patch"])
-+diff --git a/toolchains/patches/make-warning-fixes.patch b/toolchains/patches/make-warning-fixes.patch
- new file mode 100644
- index 0000000..42f15bf
- --- /dev/null
--+++ b/toolchains/patches/make-string-comparison.patch
--@@ -0,0 +1,25 @@
-++++ b/toolchains/patches/make-warning-fixes.patch
-+@@ -0,0 +1,49 @@
- +diff --git a/src/makeint.h b/src/makeint.h
- +index 61c7822..120fc91 100644
- +--- a/src/makeint.h
-@@ -109,3 +109,27 @@ index 0000000..42f15bf
- + #else
- + # define patheq(a, b) streq(a, b)
- + #endif
-++diff --git a/src/strcache.c b/src/strcache.c
-++index baa3a9f..1788391 100644
-++--- a/src/strcache.c
-+++++ b/src/strcache.c
-++@@ -47,7 +47,9 @@ struct strcache {
-++ static struct strcache *strcache = NULL;
-++ static struct strcache *fullcache = NULL;
-++
-+++#ifndef NDEBUG
-++ static unsigned long total_buffers = 0;
-+++#endif
-++ static unsigned long total_strings = 0;
-++ static unsigned long total_size = 0;
-++
-++@@ -67,7 +69,9 @@ new_cache (struct strcache **head, sc_buflen_t buflen)
-++   new->next = *head;
-++   *head = new;
-++
-+++#ifndef NDEBUG
-++   ++total_buffers;
-+++#endif
-++   return new;
-++ }
-++
 diff --git a/tools/build-warnings/llvm-driver/BUILD.bazel b/tools/build-warnings/llvm-driver/BUILD.bazel
 new file mode 100644
 index 000000000..260dd6659

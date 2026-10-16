@@ -27,25 +27,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-pnpm
-      - name: Record native process availability before Maven
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
-          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 8 Name, Id, Handles, WorkingSet64
-          git --version
-          rustc -Vv
+      - uses: dtolnay/rust-toolchain@stable
       - uses: ./.github/actions/setup-tooling
-      - name: Record native process availability after Maven
-        if: always()
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
-          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 8 Name, Id, Handles, WorkingSet64
-          git --version
-          rustc -Vv
