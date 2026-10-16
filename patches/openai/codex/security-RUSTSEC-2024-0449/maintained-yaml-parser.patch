@@ -1,14 +1,17 @@
-From b4bd82e4ff40250a29dfc7d78195bebdd00cc48a Mon Sep 17 00:00:00 2001
+From 3e16346d963a022824450bbff351f8cde59b9aa0 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:13 +0000
+Date: Thu, 15 Oct 2026 23:59:52 +0000
 Subject: [PATCH] Replace unmaintained YAML dependency with maintained
  compatible fork
 
+Remove obsolete unsafe-libyaml exceptions from both cargo-deny and cargo-audit after migrating all users. The maintained strict cargo-deny command fails with advisory-not-detected before removal and passes after removal; no advisory suppression is added.
 ---
- MODULE.bazel.lock   |  4 ++--
- codex-rs/Cargo.lock | 46 ++++++++++++++++++++++-----------------------
- codex-rs/Cargo.toml |  2 +-
- 3 files changed, 26 insertions(+), 26 deletions(-)
+ MODULE.bazel.lock          |  4 ++--
+ codex-rs/.cargo/audit.toml |  1 -
+ codex-rs/Cargo.lock        | 46 +++++++++++++++++++-------------------
+ codex-rs/Cargo.toml        |  2 +-
+ codex-rs/deny.toml         |  1 -
+ 5 files changed, 26 insertions(+), 28 deletions(-)
 
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
 index 4bc2ccc96..64c0ae184 100644
@@ -46,6 +49,18 @@ index 4bc2ccc96..64c0ae184 100644
        "yansi_1.0.1": "{\"dependencies\":[{\"name\":\"is-terminal\",\"optional\":true,\"req\":\"^0.4.11\"}],\"features\":{\"_nightly\":[],\"alloc\":[],\"default\":[\"std\"],\"detect-env\":[\"std\"],\"detect-tty\":[\"is-terminal\",\"std\"],\"hyperlink\":[\"std\"],\"std\":[\"alloc\"]}}",
        "yasna_0.6.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bit-vec\",\"optional\":true,\"req\":\"^0.9.1\"},{\"default_features\":false,\"name\":\"num-bigint\",\"optional\":true,\"req\":\"^0.4\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"num-traits\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.1\"}],\"features\":{\"default\":[],\"std\":[\"bit-vec?/std\",\"time?/std\"]}}",
        "yoke-derive_0.8.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.61\"},{\"name\":\"quote\",\"req\":\"^1.0.44\"},{\"features\":[\"fold\"],\"name\":\"syn\",\"req\":\"^2.0.21\"},{\"name\":\"synstructure\",\"req\":\"^0.13.0\"}],\"features\":{}}",
+diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
+index 37f74fc09..2ef6294be 100644
+--- a/codex-rs/.cargo/audit.toml
++++ b/codex-rs/.cargo/audit.toml
+@@ -2,7 +2,6 @@
+ # Reviewed 2026-07-02. Keep this list in sync with ../deny.toml.
+ ignore = [
+     "RUSTSEC-2024-0388", # derivative 2.2.0 via starlark/starlark_syntax; upstream crate is unmaintained
+-    "RUSTSEC-2024-0449", # unsafe-libyaml via serde_yaml in skills, ext/skills, core-plugins, external-agent-migration; remove when migrated off serde_yaml/unsafe-libyaml
+     "RUSTSEC-2025-0057", # fxhash 0.2.1 via starlark_map/bm25; upstream crate is unmaintained
+     "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
+     "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
 index f8a81750e..f7b50787d 100644
 --- a/codex-rs/Cargo.lock
@@ -185,3 +200,15 @@ index 613f046c9..c80eac410 100644
  serial_test = "3.2.0"
  sha1 = "0.10.6"
  scopeguard = "1.2.0"
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index f977ea199..ebf692aa3 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -73,7 +73,6 @@ ignore = [
+     # Reviewed 2026-07-02. Keep this list in sync with .cargo/audit.toml.
+     # Each exception must identify the dependency path and removal condition.
+     { id = "RUSTSEC-2024-0388", reason = "derivative is unmaintained; pulled in via starlark/starlark_syntax v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
+-    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml 0.2.11 is unmaintained; pulled in via serde_yaml 0.9 by skills, ext/skills, core-plugins, and external-agent-migration; no patched release; remove when these users migrate off serde_yaml/unsafe-libyaml" },
+     { id = "RUSTSEC-2025-0057", reason = "fxhash is unmaintained; pulled in via starlark_map under starlark v0.14.2 used by execpolicy/cli/core and bm25 used by core; remove when upstream dependencies drop fxhash" },
+     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in via starlark/v8 used by execpolicy/code-mode; no fixed release yet" },
+     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
