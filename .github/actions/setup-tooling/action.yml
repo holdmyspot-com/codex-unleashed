@@ -20,9 +20,9 @@ runs:
         distribution: ${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}
         java-version: '27'
 
-    - name: Cache Maven dependencies and wrapper
+    - name: Restore Maven dependencies and wrapper
       id: dependencies
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: |
           ${{ github.workspace }}/.cat/work/temp/build-caches/maven/repository
@@ -35,6 +35,15 @@ runs:
       id: build
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/setup.sh"
+
+    - name: Save verified Maven dependencies and wrapper
+      if: always() && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outputs.cache-primary-key != '' && steps.dependencies.outputs.cache-hit != 'true'
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          ${{ github.workspace }}/.cat/work/temp/build-caches/maven/repository
+          ${{ github.workspace }}/.cat/work/temp/build-caches/maven/home/wrapper
+        key: ${{ steps.dependencies.outputs.cache-primary-key }}
 
     - name: Report Maven dependency cache
       if: always()
