@@ -1,15 +1,55 @@
-From 3ad6dd38e0986b82dcea4f7958480e9ec03b7d77 Mon Sep 17 00:00:00 2001
+From 6a0e57b33bc4856c3ab53fba91d0023a797bbb4e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 11:57:24 +0000
-Subject: [PATCH] Trace actual Windows launcher phases and sandbox permissions
+Date: Fri, 16 Oct 2026 08:58:41 -0400
+Subject: [PATCH] Diagnose Windows child tokens and remove duplicate launcher
+ startup
 
-Diagnostic only. Preserve test assertions and product permissions. The emitted patch is restricted to the native diagnostic branch and must not enter the production queue.
+Diagnostic branch only. The original runtime and host unit targets time out before tests start in native run 38897557084. Keep filtering, deterministic sharding, command-line batching and failure aggregation in one PowerShell process. Add native fixture coverage for preserved behavior and query the actual spawned sandbox child token without changing permissions or assertions. Maintained just fmt-check passes; native behavior validation remains required. Do not merge token tracing or timing markers into production.
 ---
- codex-rs/windows-sandbox-rs/src/token.rs      | 39 ++++++++++++++++
- .../src/unified_exec/backends/legacy.rs       | 46 +++++++++++++++++++
- workspace_root_test_launcher.bat.tpl          |  9 ++++
- 3 files changed, 94 insertions(+)
+ codex-rs/windows-sandbox-rs/src/process.rs    | 25 ++++++
+ codex-rs/windows-sandbox-rs/src/token.rs      | 39 +++++++++
+ .../src/unified_exec/backends/legacy.rs       | 46 +++++++++++
+ .../windows-launcher/selected_tests.ps1       | 81 +++++++++++++++++++
+ workspace_root_test_launcher.bat.tpl          | 17 ++--
+ 5 files changed, 196 insertions(+), 12 deletions(-)
+ create mode 100644 tools/build-warnings/windows-launcher/selected_tests.ps1
 
+diff --git a/codex-rs/windows-sandbox-rs/src/process.rs b/codex-rs/windows-sandbox-rs/src/process.rs
+index 36be9377d..64d6d98a9 100644
+--- a/codex-rs/windows-sandbox-rs/src/process.rs
++++ b/codex-rs/windows-sandbox-rs/src/process.rs
+@@ -194,6 +194,31 @@ pub unsafe fn create_process_as_user(
+         return Err(std::io::Error::from_raw_os_error(err)).context(msg);
+     }
+ 
++    #[cfg(test)]
++    if env_map.contains_key("OUTSIDE_DELETE") {
++        let mut child_token = std::ptr::null_mut();
++        if windows_sys::Win32::System::Threading::OpenProcessToken(
++            pi.hProcess,
++            windows_sys::Win32::Security::TOKEN_QUERY,
++            &mut child_token,
++        ) == 0
++        {
++            eprintln!("CODEX_SANDBOX child_token_error={}", GetLastError());
++        } else {
++            eprintln!(
++                "CODEX_SANDBOX child_pid={} restricted_sids={:?}",
++                pi.dwProcessId,
++                crate::token::query_restricted_sids_for_diagnostics(child_token)
++            );
++            eprintln!(
++                "CODEX_SANDBOX child_user={:?}",
++                crate::token::get_user_sid_bytes(child_token)
++                    .map(|sid| crate::winutil::string_from_sid_bytes(&sid))
++            );
++            CloseHandle(child_token);
++        }
++    }
++
+     Ok(CreatedProcess {
+         process_info: pi,
+         startup_info: si.StartupInfo,
 diff --git a/codex-rs/windows-sandbox-rs/src/token.rs b/codex-rs/windows-sandbox-rs/src/token.rs
 index f09dabd6f..0b4643b8d 100644
 --- a/codex-rs/windows-sandbox-rs/src/token.rs
@@ -117,66 +157,140 @@ index d2bfe7941..776692978 100644
      let (pi, job, output_join, writer_handle, hpc, conpty_owner, desktop) = if tty {
          let (pi, mut conpty) =
              spawn_conpty_process_as_user(token, command, cwd, env_map, launch_desktop)?;
+diff --git a/tools/build-warnings/windows-launcher/selected_tests.ps1 b/tools/build-warnings/windows-launcher/selected_tests.ps1
+new file mode 100644
+index 000000000..8c325ebc6
+--- /dev/null
++++ b/tools/build-warnings/windows-launcher/selected_tests.ps1
+@@ -0,0 +1,81 @@
++param([Parameter(Mandatory = $true)][string]$TempRoot)
++
++$ErrorActionPreference = 'Stop'
++$root = Join-Path $TempRoot ('selected-launcher-' + [Guid]::NewGuid())
++New-Item -ItemType Directory -Path $root | Out-Null
++try {
++    $source = Join-Path $root 'fixture.cs'
++    $binary = Join-Path $root 'fixture.exe'
++    [IO.File]::WriteAllText($source, @'
++using System;
++using System.IO;
++public static class Fixture {
++    public static int Main(string[] args) {
++        if (args.Length > 0 && args[0] == "--list") {
++            foreach (string name in File.ReadAllLines(Environment.GetEnvironmentVariable("FIXTURE_NAMES")))
++                Console.WriteLine(name + ": test");
++            return 0;
++        }
++        int result = 0;
++        foreach (string name in args) {
++            if (name == "--exact") continue;
++            File.AppendAllText(Environment.GetEnvironmentVariable("FIXTURE_OUTPUT"), name + Environment.NewLine);
++            if (name == "fixture::fails") result = 1;
++        }
++        return result;
++    }
++}
++'@)
++    $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
++    & $compiler /nologo /warnaserror /target:exe "/out:$binary" $source
++    if ($LASTEXITCODE -ne 0) { throw "Fixture compilation failed: $LASTEXITCODE" }
++
++    $runfiles = Join-Path $root 'runfiles'
++    New-Item -ItemType Directory -Path (Join-Path $runfiles 'probe/root') | Out-Null
++    [IO.File]::WriteAllText((Join-Path $runfiles 'probe/root/BUILD.bazel'), '')
++    Copy-Item -LiteralPath $binary -Destination (Join-Path $runfiles 'fixture.exe')
++    $template = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../../../workspace_root_test_launcher.bat.tpl'))
++    $template = $template.Replace('__WORKSPACE_ROOT_MARKER__', 'probe/root/BUILD.bazel').Replace('__TEST_BIN__', 'fixture.exe').Replace('__RUNFILE_ENV_EXPORTS__', '').Replace('__WORKSPACE_ROOT_SETUP__', '')
++    $launcher = Join-Path $root 'launcher.cmd'
++    [IO.File]::WriteAllText($launcher, $template.Replace("`r`n", "`n").Replace("`n", "`r`n"))
++    $env:RUNFILES_DIR = $runfiles
++    $env:TEST_SRCDIR = ''
++    $env:TEST_WORKSPACE = ''
++    $env:TESTBRIDGE_TEST_ONLY = ''
++    $env:RULES_RUST_TEST_TOTAL_SHARDS = ''
++    $env:RULES_RUST_TEST_SHARD_INDEX = ''
++    $env:TEST_SHARD_STATUS_FILE = ''
++    $env:TEST_TMPDIR = $root
++    $env:FIXTURE_NAMES = Join-Path $root 'names.txt'
++    $env:FIXTURE_OUTPUT = Join-Path $root 'output.txt'
++    $env:CODEX_BAZEL_TEST_SKIP_FILTERS = 'fixture::excluded'
++    $names = @('fixture::excluded', 'fixture::first', 'fixture::second')
++    $names += @(0..99 | ForEach-Object { 'fixture::long_' + ('x' * 100) + $_ })
++    [IO.File]::WriteAllLines($env:FIXTURE_NAMES, [string[]]$names)
++    $expected = @($names | Where-Object { $_ -ne 'fixture::excluded' } | Sort-Object)
++
++    foreach ($mode in @('unsharded', 'sharded')) {
++        $combined = @()
++        $shards = if ($mode -eq 'sharded') { 2 } else { 1 }
++        $env:TEST_TOTAL_SHARDS = if ($mode -eq 'sharded') { '2' } else { '' }
++        for ($index = 0; $index -lt $shards; $index++) {
++            $env:TEST_SHARD_INDEX = [string]$index
++            [IO.File]::WriteAllText($env:FIXTURE_OUTPUT, '')
++            & $env:ComSpec /d /c $launcher
++            if ($LASTEXITCODE -ne 0) { throw "$mode launcher failed: $LASTEXITCODE" }
++            $combined += [IO.File]::ReadAllLines($env:FIXTURE_OUTPUT)
++        }
++        if (Compare-Object $expected @($combined | Sort-Object)) {
++            throw "$mode launcher omitted, duplicated, or incorrectly selected tests"
++        }
++    }
++
++    $env:TEST_TOTAL_SHARDS = ''
++    [IO.File]::WriteAllLines($env:FIXTURE_NAMES, [string[]]@('fixture::fails'))
++    & $env:ComSpec /d /c $launcher
++    if ($LASTEXITCODE -eq 0) { throw 'Launcher discarded the failing test exit status' }
++    Write-Output 'Selected launcher preserves filtering, shard coverage, long argument batching, and failure status.'
++} finally {
++    Remove-Item -LiteralPath $root -Recurse -Force
++    if (Test-Path -LiteralPath $root) { throw "Fixture cleanup failed: $root" }
++}
 diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
-index fa18c301d..7df8c0dd2 100644
+index fa18c301d..b27afaff2 100644
 --- a/workspace_root_test_launcher.bat.tpl
 +++ b/workspace_root_test_launcher.bat.tpl
-@@ -1,9 +1,11 @@
+@@ -1,5 +1,6 @@
  @echo off
  setlocal EnableExtensions EnableDelayedExpansion
 +>&2 echo CODEX_STARTUP entry !TIME!
  
  call :resolve_runfile "__WORKSPACE_ROOT_MARKER__"
  if errorlevel 1 exit /b 1
- set "workspace_root_marker=!resolve_runfile_result!"
-+>&2 echo CODEX_STARTUP marker !TIME!
- 
- for %%I in ("%workspace_root_marker%") do set "workspace_root_marker_dir=%%~dpI"
- for %%I in ("%workspace_root_marker_dir%..\..") do set "workspace_root=%%~fI"
-@@ -11,8 +13,10 @@ for %%I in ("%workspace_root_marker_dir%..\..") do set "workspace_root=%%~fI"
- call :resolve_runfile "__TEST_BIN__"
- if errorlevel 1 exit /b 1
- set "test_bin=!resolve_runfile_result!"
-+>&2 echo CODEX_STARTUP binary !TIME!
- 
- __RUNFILE_ENV_EXPORTS__
-+>&2 echo CODEX_STARTUP environment !TIME!
- 
- if not defined test_bin (
-   >&2 echo resolved test binary was lost while exporting runfile environment variables
-@@ -20,6 +24,7 @@ if not defined test_bin (
- )
- 
- __WORKSPACE_ROOT_SETUP__
-+>&2 echo CODEX_STARTUP workspace !TIME!
- 
- set "TOTAL_SHARDS=%RULES_RUST_TEST_TOTAL_SHARDS%"
- if not defined TOTAL_SHARDS set "TOTAL_SHARDS=%TEST_TOTAL_SHARDS%"
-@@ -68,12 +73,14 @@ if errorlevel 1 goto :CREATE_TEMP_DIR
+@@ -66,7 +67,6 @@ set "TEMP_DIR=%TEMP_ROOT%\workspace_root_test_sharding_!RANDOM!_!RANDOM!_!RANDOM
+ mkdir "!TEMP_DIR!" 2>nul
+ if errorlevel 1 goto :CREATE_TEMP_DIR
  set "TEMP_LIST=!TEMP_DIR!\list.txt"
- set "TEMP_SHARD_LIST=!TEMP_DIR!\shard.txt"
+-set "TEMP_SHARD_LIST=!TEMP_DIR!\shard.txt"
  
-+>&2 echo CODEX_STARTUP list-start !TIME!
  "%test_bin%" --list --format terse > "!TEMP_LIST!"
  if errorlevel 1 (
-   rmdir /s /q "!TEMP_DIR!" 2>nul
+@@ -74,6 +74,7 @@ if errorlevel 1 (
    exit /b 1
  )
  
-+>&2 echo CODEX_STARTUP selection-start !TIME!
++>&2 echo CODEX_STARTUP selection-and-batches-start !TIME!
  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
    "$ErrorActionPreference = 'Stop';" ^
    "$tests = @(Get-Content -LiteralPath $env:TEMP_LIST | Where-Object { $_.EndsWith(': test') } | ForEach-Object { $_.Substring(0, $_.Length - 6) });" ^
-@@ -90,6 +97,7 @@ if errorlevel 1 (
-   exit /b 1
- )
- 
-+>&2 echo CODEX_STARTUP batches-start !TIME!
- powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-   "$ErrorActionPreference = 'Stop';" ^
+@@ -83,22 +84,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+   "if (-not [string]::IsNullOrEmpty($env:CODEX_BAZEL_TEST_SKIP_FILTERS)) { $skipFilters = @($env:CODEX_BAZEL_TEST_SKIP_FILTERS -split ',' | Where-Object { $_ -ne '' }) };" ^
+   "if ($hasShards) { $totalShards = [uint32]$env:TOTAL_SHARDS; $shardIndex = [uint32]$env:SHARD_INDEX };" ^
+   "$fnvPrime = [uint64]16777619; $u32Mask = [uint64]4294967295;" ^
+-  "foreach ($test in $tests) { $skip = $false; foreach ($filter in $skipFilters) { if ($test.Contains($filter)) { $skip = $true; break } }; if ($skip) { continue }; if ($hasShards) { $hash = [uint32]2166136261; foreach ($byte in [Text.Encoding]::UTF8.GetBytes($test)) { $hash = [uint32](([uint64]($hash -bxor $byte) * $fnvPrime) -band $u32Mask) }; if (($hash %% $totalShards) -eq $shardIndex) { $test } } else { $test } }" ^
+-  > "!TEMP_SHARD_LIST!"
+-if errorlevel 1 (
+-  rmdir /s /q "!TEMP_DIR!" 2>nul
+-  exit /b 1
+-)
+-
+-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+-  "$ErrorActionPreference = 'Stop';" ^
++  "$selectedTests = @(foreach ($test in $tests) { $skip = $false; foreach ($filter in $skipFilters) { if ($test.Contains($filter)) { $skip = $true; break } }; if ($skip) { continue }; if ($hasShards) { $hash = [uint32]2166136261; foreach ($byte in [Text.Encoding]::UTF8.GetBytes($test)) { $hash = [uint32](([uint64]($hash -bxor $byte) * $fnvPrime) -band $u32Mask) }; if (($hash %% $totalShards) -eq $shardIndex) { $test } } else { $test } });" ^
    "$testBin = $env:test_bin;" ^
-@@ -99,6 +107,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-   "foreach ($test in $tests) { $argChars = $test.Length + 3; if (($batch.Count -gt 0) -and ($batchChars + $argChars -gt $limit)) { Invoke-TestBatch }; $batch += $test; $batchChars += $argChars }" ^
+-  "$tests = @(Get-Content -LiteralPath $env:TEMP_SHARD_LIST);" ^
+   "$failed = $false; $limit = 7000; $batch = @(); $batchChars = $testBin.Length + 8;" ^
+   "function Invoke-TestBatch { if ($script:batch.Count -eq 0) { return }; & $script:testBin @script:batch '--exact'; if ($LASTEXITCODE -ne 0) { $script:failed = $true }; $script:batch = @(); $script:batchChars = $script:testBin.Length + 8 }" ^
+-  "foreach ($test in $tests) { $argChars = $test.Length + 3; if (($batch.Count -gt 0) -and ($batchChars + $argChars -gt $limit)) { Invoke-TestBatch }; $batch += $test; $batchChars += $argChars }" ^
++  "foreach ($test in $selectedTests) { $argChars = $test.Length + 3; if (($batch.Count -gt 0) -and ($batchChars + $argChars -gt $limit)) { Invoke-TestBatch }; $batch += $test; $batchChars += $argChars }" ^
    "Invoke-TestBatch; if ($failed) { exit 1 }"
  set "TEST_EXIT=%ERRORLEVEL%"
 +>&2 echo CODEX_STARTUP batches-finished !TIME!

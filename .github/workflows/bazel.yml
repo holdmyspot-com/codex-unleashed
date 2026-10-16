@@ -351,6 +351,10 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/test-compute-bazel-windows-path.ps1 -WorkDirectory '${{ runner.temp }}/windows-path-check'
 
+      - name: Verify selected Windows launcher behavior
+        shell: pwsh
+        run: ./upstream/tools/build-warnings/windows-launcher/selected_tests.ps1 -TempRoot '${{ runner.temp }}'
+
       - name: Reproduce concurrent first-use allocator initialization
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
