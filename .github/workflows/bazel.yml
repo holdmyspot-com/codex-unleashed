@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   test:
-    timeout-minutes: 90
+    # Cold macOS setup and compilation share this allowance with the full suite.
+    timeout-minutes: ${{ startsWith(matrix.os, 'macos-') && 180 || 90 }}
     strategy:
       fail-fast: false
       matrix:
