@@ -38,7 +38,10 @@ public static class RestrictedDeleteProbe {
     private static extern bool DeleteFileW(string path);
 
     private static void Require(bool result, string operation) {
-        if (!result) throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
+        if (!result) {
+            int error = Marshal.GetLastWin32Error();
+            throw new Win32Exception(error, operation + " failed with Win32 error " + error);
+        }
     }
 
     private static int OpenError(string path, uint access, bool directory) {
@@ -82,7 +85,7 @@ public static class RestrictedDeleteProbe {
         bool impersonating = false;
         try {
             Require(OpenProcessToken(GetCurrentProcess(), 0xE, out original), "OpenProcessToken");
-            string[] values = { "S-1-15-3-1024-111-222-333-444", logonSid, "S-1-1-0" };
+            string[] values = { "S-1-5-21-111111111-222222222-333333333-4444", logonSid, "S-1-1-0" };
             for (int index = 0; index < values.Length; index++) {
                 sids[index].Attributes = 0;
                 Require(ConvertStringSidToSidW(values[index], out sids[index].Sid), "ConvertStringSidToSidW");
