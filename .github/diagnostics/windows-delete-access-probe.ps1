@@ -11,12 +11,17 @@ using System.Runtime.InteropServices;
 public static class RestrictedDeleteProbe {
     [StructLayout(LayoutKind.Sequential)]
     private struct SidAndAttributes { public IntPtr Sid; public uint Attributes; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TokenGroupsFirst { public uint Count; public SidAndAttributes First; }
 
     [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
     [DllImport("kernel32.dll", SetLastError=true)] private static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr memory);
     [DllImport("advapi32.dll", SetLastError=true)]
     private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError=true)]
+    private static extern bool GetTokenInformation(IntPtr token, int informationClass,
+        IntPtr information, uint size, out uint required);
     [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     private static extern bool ConvertStringSidToSidW(string text, out IntPtr sid);
     [DllImport("advapi32.dll", SetLastError=true)]
@@ -42,6 +47,32 @@ public static class RestrictedDeleteProbe {
         if (handle == new IntPtr(-1)) return Marshal.GetLastWin32Error();
         Require(CloseHandle(handle), "CloseHandle(file)");
         return 0;
+    }
+
+    public static string LogonSid() {
+        IntPtr token = IntPtr.Zero;
+        IntPtr buffer = IntPtr.Zero;
+        try {
+            Require(OpenProcessToken(GetCurrentProcess(), 8, out token), "OpenProcessToken(logon SID)");
+            uint required;
+            bool sized = GetTokenInformation(token, 28, IntPtr.Zero, 0, out required);
+            if (sized || Marshal.GetLastWin32Error() != 122)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "GetTokenInformation(TokenLogonSid) size");
+            int offset = Marshal.OffsetOf(typeof(TokenGroupsFirst), "First").ToInt32();
+            if (required < offset + Marshal.SizeOf(typeof(SidAndAttributes)))
+                throw new InvalidOperationException("TokenLogonSid buffer is too small");
+            buffer = Marshal.AllocHGlobal(checked((int)required));
+            Require(GetTokenInformation(token, 28, buffer, required, out required), "GetTokenInformation(TokenLogonSid)");
+            if (Marshal.ReadInt32(buffer) != 1)
+                throw new InvalidOperationException("TokenLogonSid did not return exactly one group");
+            SidAndAttributes group = Marshal.PtrToStructure<SidAndAttributes>(IntPtr.Add(buffer, offset));
+            if (group.Sid == IntPtr.Zero || (group.Attributes & 0xC0000000u) != 0xC0000000u)
+                throw new InvalidOperationException("TokenLogonSid did not return a logon group");
+            return new System.Security.Principal.SecurityIdentifier(group.Sid).Value;
+        } finally {
+            if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
+            if (token != IntPtr.Zero) Require(CloseHandle(token), "CloseHandle(logon SID token)");
+        }
     }
 
     public static string Run(string logonSid, string parent, string file) {
@@ -80,8 +111,7 @@ public static class RestrictedDeleteProbe {
 '@
 
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $logonSids = @($identity.Groups | Where-Object { $_.Value.StartsWith('S-1-5-5-') })
-    if ($logonSids.Count -ne 1) { throw "Expected one logon SID; found $($logonSids.Count)" }
+    $logonSid = [RestrictedDeleteProbe]::LogonSid()
     $everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
     Write-Output ('Restricted token probe identity: ' + $identity.User.Value)
     Write-Output 'Restricted token flags: DISABLE_MAX_PRIVILEGE | LUA_TOKEN | WRITE_RESTRICTED (0xD)'
@@ -112,7 +142,7 @@ public static class RestrictedDeleteProbe {
                 Set-Acl -LiteralPath $parent -AclObject $acl
             }
             Write-Output ('Delete access observation: ' + $mode + ': ' +
-                [RestrictedDeleteProbe]::Run($logonSids[0].Value, $parent, $file))
+                [RestrictedDeleteProbe]::Run($logonSid, $parent, $file))
             Write-Output ('Fixture remains: ' + (Test-Path -LiteralPath $file))
         } finally {
             Set-Acl -LiteralPath $parent -AclObject $originalParentAcl
