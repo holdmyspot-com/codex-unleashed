@@ -1,0 +1,1062 @@
+From bd17733936dfda889e0cf93bb0225d0402b987bb Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 21:43:31 +0000
+Subject: [PATCH] Upgrade direct zbus and isolate Secret Service retirement
+ notices
+
+Use zbus 6 for TUI reduced-motion settings with the Tokio backend and
+wire variant API. Keep Secret Service credentials supported while its
+upstream zbus migration is pending. A WORKAROUND links PR 122 and limits
+advisory exceptions to the three retired standalone crates.
+
+Refresh Cargo and Bazel resolution. The required Tokio update deprecates
+AsyncFd::new, so register the owned PTY and pidfd descriptors through the
+replacement API with explicit lifetime safety guarantees.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012)
+Prerequisites: preceding issue-61 dependency-policy patches.
+
+Red: the all-features dependency graph with the original deny policy
+fails exactly RUSTSEC-2026-0370, RUSTSEC-2026-0371 and RUSTSEC-2026-0372.
+Green: the maintained all-features cargo-deny check passes, preserving
+visible duplicate-version notices and enforcing stale-exception checks.
+The complete queue's formatter and Bazel lock check pass in the authoring
+tree. Emitted-queue and TUI/PTY suite results are recorded separately in
+the owning task's acceptance record.
+
+Fresh emitted queue: all 187 patches apply and 9,361 tracked files match
+the tested source, excluding documented workspace version normalization.
+Fresh formatting, Bazel lock and full dependency checks pass.
+TUI/PTY libraries compile with first-party warnings fatal. All 62 PTY
+tests pass. The complete run has 5,802 passing and 50 failing tests;
+36 failures pass after clearing terminal variables and shortening TMPDIR.
+Fourteen local TUI failures remain for hosted-environment verification;
+the complete local suite is not claimed as passing.
+---
+ MODULE.bazel.lock                            |   9 +-
+ codex-rs/.cargo/audit.toml                   |   6 +
+ codex-rs/Cargo.lock                          | 250 ++++++++++++-------
+ codex-rs/deny.toml                           |   6 +
+ codex-rs/tui/Cargo.toml                      |   3 +-
+ codex-rs/tui/src/system_motion.rs            |   2 +-
+ codex-rs/utils/pty/src/spawn_helper_tests.rs |   3 +-
+ codex-rs/utils/pty/src/unix_io.rs            |   8 +-
+ 8 files changed, 193 insertions(+), 94 deletions(-)
+
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index e0e0cbcaa..79ecc5529 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -1264,7 +1264,6 @@
+       "bitflags_1.3.2": "{\"dependencies\":[{\"name\":\"compiler_builtins\",\"optional\":true,\"req\":\"^0.1.2\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.3\"}],\"features\":{\"default\":[],\"example_generated\":[],\"rustc-dep-of-std\":[\"core\",\"compiler_builtins\"]}}",
+       "bitflags_2.11.0": "{\"dependencies\":[{\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"arbitrary\",\"req\":\"^1.0\"},{\"name\":\"bytemuck\",\"optional\":true,\"req\":\"^1.12\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"bytemuck\",\"req\":\"^1.12.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde_lib\",\"package\":\"serde\",\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.19\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.18\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"zerocopy\",\"req\":\"^0.8\"}],\"features\":{\"example_generated\":[],\"serde\":[\"serde_core\"],\"std\":[]}}",
+       "bitflags_2.11.1": "{\"dependencies\":[{\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"arbitrary\",\"req\":\"^1.0\"},{\"name\":\"bytemuck\",\"optional\":true,\"req\":\"^1.12\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"bytemuck\",\"req\":\"^1.12.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde_lib\",\"package\":\"serde\",\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.19\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.18\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"zerocopy\",\"req\":\"^0.8\"}],\"features\":{\"example_generated\":[],\"serde\":[\"serde_core\"],\"std\":[]}}",
+-      "bitflags_2.13.1": "{\"dependencies\":[{\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"arbitrary\",\"req\":\"^1.0\"},{\"name\":\"bytemuck\",\"optional\":true,\"req\":\"^1.12\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"bytemuck\",\"req\":\"^1.12.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde_lib\",\"package\":\"serde\",\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.19\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.18\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"zerocopy\",\"req\":\"^0.8\"}],\"features\":{\"example_generated\":[],\"serde\":[\"serde_core\"],\"std\":[]}}",
+       "bitflags_2.13.2": "{\"dependencies\":[{\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"arbitrary\",\"req\":\"^1.0\"},{\"name\":\"bytemuck\",\"optional\":true,\"req\":\"^1.12\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"bytemuck\",\"req\":\"^1.12.2\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde_lib\",\"package\":\"serde\",\"req\":\"^1.0.103\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.19\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.18\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"zerocopy\",\"req\":\"^0.8\"}],\"features\":{\"example_generated\":[],\"serde\":[\"serde_core\"],\"std\":[]}}",
+       "blake2_0.10.6": "{\"dependencies\":[{\"features\":[\"mac\"],\"name\":\"digest\",\"req\":\"^0.10.3\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"digest\",\"req\":\"^0.10.3\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.2.2\"}],\"features\":{\"default\":[\"std\"],\"reset\":[],\"simd\":[],\"simd_asm\":[\"simd_opt\"],\"simd_opt\":[\"simd\"],\"size_opt\":[],\"std\":[\"digest/std\"]}}",
+       "blake3_1.8.2": "{\"dependencies\":[{\"name\":\"arrayref\",\"req\":\"^0.3.5\"},{\"default_features\":false,\"name\":\"arrayvec\",\"req\":\"^0.7.4\"},{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.1.12\"},{\"name\":\"cfg-if\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"ciborium\",\"req\":\"^0.2.2\"},{\"default_features\":false,\"name\":\"constant_time_eq\",\"req\":\"^0.3.1\"},{\"features\":[\"mac\"],\"name\":\"digest\",\"optional\":true,\"req\":\"^0.10.1\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4.2\"},{\"kind\":\"dev\",\"name\":\"hmac\",\"req\":\"^0.12.0\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"page_size\",\"req\":\"^0.6.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9.0\"},{\"kind\":\"dev\",\"name\":\"rand_chacha\",\"req\":\"^0.9.0\"},{\"name\":\"rayon-core\",\"optional\":true,\"req\":\"^1.12.1\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.107\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.8.0\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"default\":[\"std\"],\"digest\":[\"dep:digest\"],\"mmap\":[\"std\",\"dep:memmap2\"],\"neon\":[],\"no_avx2\":[],\"no_avx512\":[],\"no_neon\":[],\"no_sse2\":[],\"no_sse41\":[],\"prefer_intrinsics\":[],\"pure\":[],\"rayon\":[\"dep:rayon-core\"],\"std\":[],\"traits-preview\":[\"dep:digest\"],\"wasm32_simd\":[],\"zeroize\":[\"dep:zeroize\",\"arrayvec/zeroize\"]}}",
+@@ -2231,6 +2230,7 @@
+       "smol_str_0.3.5": "{\"dependencies\":[{\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.3\"},{\"default_features\":false,\"name\":\"borsh\",\"optional\":true,\"req\":\"^1.4.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9.2\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"serde\":[\"dep:serde_core\"],\"std\":[\"serde_core?/std\",\"borsh?/std\"]}}",
+       "socket2_0.5.10": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2.171\",\"target\":\"cfg(unix)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Networking_WinSock\",\"Win32_System_IO\",\"Win32_System_Threading\",\"Win32_System_WindowsProgramming\"],\"name\":\"windows-sys\",\"req\":\"^0.52\",\"target\":\"cfg(windows)\"}],\"features\":{\"all\":[]}}",
+       "socket2_0.6.3": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2.172\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"Win32_Foundation\",\"Win32_Networking_WinSock\",\"Win32_System_IO\",\"Win32_System_Threading\",\"Win32_System_WindowsProgramming\"],\"name\":\"windows-sys\",\"req\":\">=0.60, <0.62\",\"target\":\"cfg(windows)\"}],\"features\":{\"all\":[]}}",
++      "socket2_0.6.5": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2.172\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"Win32_Foundation\",\"Win32_Networking_WinSock\",\"Win32_System_IO\",\"Win32_System_Threading\",\"Win32_System_WindowsProgramming\"],\"name\":\"windows-sys\",\"req\":\">=0.60, <0.62\",\"target\":\"cfg(windows)\"}],\"features\":{\"all\":[]}}",
+       "sonora-aec3_0.2.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.11\"},{\"name\":\"sonora-common-audio\",\"req\":\"^0.2.0\"},{\"name\":\"sonora-fft\",\"req\":\"^0.2.0\"},{\"name\":\"sonora-simd\",\"req\":\"^0.2.0\"},{\"kind\":\"dev\",\"name\":\"test-strategy\",\"req\":\"^0.4\"}],\"features\":{}}",
+       "sonora-agc2_0.2.0": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"bytemuck\",\"req\":\"^1\"},{\"features\":[\"debug\"],\"name\":\"derive_more\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.11\"},{\"name\":\"sonora-common-audio\",\"req\":\"^0.2.0\"},{\"name\":\"sonora-fft\",\"req\":\"^0.2.0\"},{\"name\":\"sonora-simd\",\"req\":\"^0.2.0\"},{\"kind\":\"dev\",\"name\":\"test-strategy\",\"req\":\"^0.4\"},{\"name\":\"tracing\",\"req\":\"^0.1\"}],\"features\":{}}",
+       "sonora-common-audio_0.2.0": "{\"dependencies\":[{\"features\":[\"debug\"],\"name\":\"derive_more\",\"req\":\"^2\"},{\"name\":\"sonora-simd\",\"req\":\"^0.2.0\"}],\"features\":{}}",
+@@ -2343,7 +2343,7 @@
+       "tokio-util_0.7.17": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.0\"},{\"name\":\"bytes\",\"req\":\"^1.5.0\"},{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.0\"},{\"name\":\"futures-core\",\"req\":\"^0.3.0\"},{\"name\":\"futures-io\",\"optional\":true,\"req\":\"^0.3.0\"},{\"name\":\"futures-sink\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3.5\"},{\"name\":\"futures-util\",\"optional\":true,\"req\":\"^0.3.0\"},{\"default_features\":false,\"name\":\"hashbrown\",\"optional\":true,\"req\":\"^0.15.0\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"^0.12.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\"},{\"name\":\"slab\",\"optional\":true,\"req\":\"^0.4.4\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\"},{\"features\":[\"sync\"],\"name\":\"tokio\",\"req\":\"^1.28.0\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.29\"}],\"features\":{\"__docs_rs\":[\"futures-util\"],\"codec\":[],\"compat\":[\"futures-io\"],\"default\":[],\"full\":[\"codec\",\"compat\",\"io-util\",\"time\",\"net\",\"rt\",\"join-map\"],\"io\":[],\"io-util\":[\"io\",\"tokio/rt\",\"tokio/io-util\"],\"join-map\":[\"rt\",\"hashbrown\"],\"net\":[\"tokio/net\"],\"rt\":[\"tokio/rt\",\"tokio/sync\",\"futures-util\"],\"time\":[\"tokio/time\",\"slab\"]}}",
+       "tokio-util_0.7.18": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3.0\"},{\"name\":\"bytes\",\"req\":\"^1.5.0\"},{\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.0\"},{\"name\":\"futures-core\",\"req\":\"^0.3.0\"},{\"name\":\"futures-io\",\"optional\":true,\"req\":\"^0.3.0\"},{\"name\":\"futures-sink\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3.5\"},{\"name\":\"futures-util\",\"optional\":true,\"req\":\"^0.3.0\"},{\"default_features\":false,\"name\":\"hashbrown\",\"optional\":true,\"req\":\"^0.15.0\"},{\"features\":[\"futures\",\"checkpoint\"],\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"^0.12.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\"},{\"name\":\"slab\",\"optional\":true,\"req\":\"^0.4.4\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\"},{\"features\":[\"sync\"],\"name\":\"tokio\",\"req\":\"^1.44.0\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.29\"}],\"features\":{\"__docs_rs\":[\"futures-util\"],\"codec\":[],\"compat\":[\"futures-io\"],\"default\":[],\"full\":[\"codec\",\"compat\",\"io-util\",\"time\",\"net\",\"rt\",\"join-map\"],\"io\":[],\"io-util\":[\"io\",\"tokio/rt\",\"tokio/io-util\"],\"join-map\":[\"rt\",\"hashbrown\"],\"net\":[\"tokio/net\"],\"rt\":[\"tokio/rt\",\"tokio/sync\",\"futures-util\"],\"time\":[\"tokio/time\",\"slab\"]}}",
+       "tokio_1.50.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3\"},{\"name\":\"backtrace\",\"optional\":true,\"req\":\"^0.3.58\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"bytes\",\"optional\":true,\"req\":\"^1.2.1\"},{\"features\":[\"async-await\"],\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"futures-concurrency\",\"req\":\"^7.6.3\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"name\":\"io-uring\",\"optional\":true,\"req\":\"^0.7.11\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"features\":[\"futures\",\"checkpoint\"],\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"name\":\"mio\",\"optional\":true,\"req\":\"^1.0.1\"},{\"default_features\":false,\"features\":[\"os-poll\",\"os-ext\"],\"name\":\"mio\",\"optional\":true,\"req\":\"^1.0.1\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"tokio\"],\"kind\":\"dev\",\"name\":\"mio-aio\",\"req\":\"^1\",\"target\":\"cfg(target_os = \\\"freebsd\\\")\"},{\"kind\":\"dev\",\"name\":\"mockall\",\"req\":\"^0.13.0\"},{\"default_features\":false,\"features\":[\"aio\",\"fs\",\"socket\"],\"kind\":\"dev\",\"name\":\"nix\",\"req\":\"^0.29.0\",\"target\":\"cfg(unix)\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\",\"target\":\"cfg(not(all(target_family = \\\"wasm\\\", target_os = \\\"unknown\\\")))\"},{\"name\":\"signal-hook-registry\",\"optional\":true,\"req\":\"^1.1.1\",\"target\":\"cfg(unix)\"},{\"name\":\"slab\",\"optional\":true,\"req\":\"^0.4.9\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"all\"],\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"socket2\",\"req\":\"^0.6.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"name\":\"tokio-macros\",\"optional\":true,\"req\":\"~2.6.0\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4.0\"},{\"features\":[\"rt\"],\"kind\":\"dev\",\"name\":\"tokio-util\",\"req\":\"^0.7\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.29\",\"target\":\"cfg(tokio_unstable)\"},{\"kind\":\"dev\",\"name\":\"tracing-mock\",\"req\":\"=0.1.0-beta.1\",\"target\":\"cfg(all(tokio_unstable, target_has_atomic = \\\"64\\\"))\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3.0\",\"target\":\"cfg(all(target_family = \\\"wasm\\\", not(target_os = \\\"wasi\\\")))\"},{\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Security_Authorization\"],\"kind\":\"dev\",\"name\":\"windows-sys\",\"req\":\"^0.61\",\"target\":\"cfg(windows)\"}],\"features\":{\"default\":[],\"fs\":[],\"full\":[\"fs\",\"io-util\",\"io-std\",\"macros\",\"net\",\"parking_lot\",\"process\",\"rt\",\"rt-multi-thread\",\"signal\",\"sync\",\"time\"],\"io-std\":[],\"io-uring\":[\"dep:io-uring\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"dep:slab\"],\"io-util\":[\"bytes\"],\"macros\":[\"tokio-macros\"],\"net\":[\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"socket2\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_Security\",\"windows-sys/Win32_Storage_FileSystem\",\"windows-sys/Win32_System_Pipes\",\"windows-sys/Win32_System_SystemServices\"],\"process\":[\"bytes\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Threading\",\"windows-sys/Win32_System_WindowsProgramming\"],\"rt\":[],\"rt-multi-thread\":[\"rt\"],\"signal\":[\"libc\",\"mio/os-poll\",\"mio/net\",\"mio/os-ext\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Console\"],\"sync\":[],\"taskdump\":[\"dep:backtrace\"],\"test-util\":[\"rt\",\"sync\",\"time\"],\"time\":[]}}",
+-      "tokio_1.52.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3\"},{\"name\":\"backtrace\",\"optional\":true,\"req\":\"^0.3.58\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.58\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"bytes\",\"optional\":true,\"req\":\"^1.2.1\"},{\"features\":[\"async-await\"],\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"futures-concurrency\",\"req\":\"^7.6.3\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"name\":\"io-uring\",\"optional\":true,\"req\":\"^0.7.11\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(target_os = \\\"wasi\\\")\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"features\":[\"futures\",\"checkpoint\"],\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"name\":\"mio\",\"optional\":true,\"req\":\"^1.2.0\"},{\"default_features\":false,\"features\":[\"os-poll\",\"os-ext\"],\"name\":\"mio\",\"optional\":true,\"req\":\"^1.2.0\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"tokio\"],\"kind\":\"dev\",\"name\":\"mio-aio\",\"req\":\"^2\",\"target\":\"cfg(target_os = \\\"freebsd\\\")\"},{\"kind\":\"dev\",\"name\":\"mockall\",\"req\":\"^0.13.0\"},{\"default_features\":false,\"features\":[\"aio\",\"fs\",\"socket\"],\"kind\":\"dev\",\"name\":\"nix\",\"req\":\"^0.31.0\",\"target\":\"cfg(unix)\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\",\"target\":\"cfg(not(all(target_family = \\\"wasm\\\", target_os = \\\"unknown\\\")))\"},{\"name\":\"signal-hook-registry\",\"optional\":true,\"req\":\"^1.1.1\",\"target\":\"cfg(unix)\"},{\"name\":\"slab\",\"optional\":true,\"req\":\"^0.4.9\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"all\"],\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6.3\",\"target\":\"cfg(any(not(target_family = \\\"wasm\\\"), all(target_os = \\\"wasi\\\", not(target_env = \\\"p1\\\"))))\"},{\"kind\":\"dev\",\"name\":\"socket2\",\"req\":\"^0.6.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"name\":\"tokio-macros\",\"optional\":true,\"req\":\"~2.7.0\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4.0\"},{\"features\":[\"rt\"],\"kind\":\"dev\",\"name\":\"tokio-util\",\"req\":\"^0.7\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.29\",\"target\":\"cfg(tokio_unstable)\"},{\"kind\":\"dev\",\"name\":\"tracing-mock\",\"req\":\"=0.1.0-beta.1\",\"target\":\"cfg(all(tokio_unstable, target_has_atomic = \\\"64\\\"))\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3.0\",\"target\":\"cfg(all(target_family = \\\"wasm\\\", not(target_os = \\\"wasi\\\")))\"},{\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Security_Authorization\"],\"kind\":\"dev\",\"name\":\"windows-sys\",\"req\":\"^0.61\",\"target\":\"cfg(windows)\"}],\"features\":{\"default\":[],\"fs\":[],\"full\":[\"fs\",\"io-util\",\"io-std\",\"macros\",\"net\",\"parking_lot\",\"process\",\"rt\",\"rt-multi-thread\",\"signal\",\"sync\",\"time\"],\"io-std\":[],\"io-uring\":[\"dep:io-uring\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"dep:slab\"],\"io-util\":[\"bytes\"],\"macros\":[\"tokio-macros\"],\"net\":[\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"socket2\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_Security\",\"windows-sys/Win32_Storage_FileSystem\",\"windows-sys/Win32_System_Pipes\",\"windows-sys/Win32_System_SystemServices\"],\"process\":[\"bytes\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Threading\",\"windows-sys/Win32_System_WindowsProgramming\"],\"rt\":[],\"rt-multi-thread\":[\"rt\"],\"signal\":[\"libc\",\"mio/os-poll\",\"mio/net\",\"mio/os-ext\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Console\"],\"sync\":[],\"taskdump\":[\"dep:backtrace\"],\"test-util\":[\"rt\",\"sync\",\"time\"],\"time\":[]}}",
++      "tokio_1.53.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-stream\",\"req\":\"^0.3\"},{\"name\":\"backtrace\",\"optional\":true,\"req\":\"^0.3.58\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.58\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"bytes\",\"optional\":true,\"req\":\"^1.2.1\"},{\"features\":[\"async-await\"],\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"futures-concurrency\",\"req\":\"^7.6.3\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3.31\"},{\"default_features\":false,\"name\":\"io-uring\",\"optional\":true,\"req\":\"^0.7.11\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(target_os = \\\"wasi\\\")\"},{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.168\",\"target\":\"cfg(unix)\"},{\"features\":[\"futures\",\"checkpoint\"],\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"name\":\"mio\",\"optional\":true,\"req\":\"^1.2.0\"},{\"default_features\":false,\"features\":[\"os-poll\",\"os-ext\"],\"name\":\"mio\",\"optional\":true,\"req\":\"^1.2.0\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"tokio\"],\"kind\":\"dev\",\"name\":\"mio-aio\",\"req\":\"^2\",\"target\":\"cfg(target_os = \\\"freebsd\\\")\"},{\"kind\":\"dev\",\"name\":\"mockall\",\"req\":\"^0.13.0\"},{\"default_features\":false,\"features\":[\"aio\",\"fs\",\"socket\"],\"kind\":\"dev\",\"name\":\"nix\",\"req\":\"^0.31.0\",\"target\":\"cfg(unix)\"},{\"name\":\"parking_lot\",\"optional\":true,\"req\":\"^0.12.0\"},{\"name\":\"pin-project-lite\",\"req\":\"^0.2.11\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\",\"target\":\"cfg(not(all(target_family = \\\"wasm\\\", target_os = \\\"unknown\\\")))\"},{\"name\":\"signal-hook-registry\",\"optional\":true,\"req\":\"^1.1.1\",\"target\":\"cfg(unix)\"},{\"name\":\"slab\",\"optional\":true,\"req\":\"^0.4.9\",\"target\":\"cfg(all(tokio_unstable, target_os = \\\"linux\\\"))\"},{\"features\":[\"all\"],\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6.3\",\"target\":\"cfg(any(not(target_family = \\\"wasm\\\"), all(target_os = \\\"wasi\\\", not(target_env = \\\"p1\\\"))))\"},{\"kind\":\"dev\",\"name\":\"socket2\",\"req\":\"^0.6.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\",\"target\":\"cfg(not(target_family = \\\"wasm\\\"))\"},{\"name\":\"tokio-macros\",\"optional\":true,\"req\":\"~2.7.0\"},{\"kind\":\"dev\",\"name\":\"tokio-stream\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"tokio-test\",\"req\":\"^0.4.0\"},{\"features\":[\"rt\"],\"kind\":\"dev\",\"name\":\"tokio-util\",\"req\":\"^0.7\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.29\",\"target\":\"cfg(tokio_unstable)\"},{\"kind\":\"dev\",\"name\":\"tracing-mock\",\"req\":\"=0.1.0-beta.1\",\"target\":\"cfg(all(tokio_unstable, target_has_atomic = \\\"64\\\"))\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3.0\",\"target\":\"cfg(all(target_family = \\\"wasm\\\", not(target_os = \\\"wasi\\\")))\"},{\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Foundation\",\"Win32_Security_Authorization\"],\"kind\":\"dev\",\"name\":\"windows-sys\",\"req\":\"^0.61\",\"target\":\"cfg(windows)\"}],\"features\":{\"default\":[],\"fs\":[],\"full\":[\"fs\",\"io-util\",\"io-std\",\"macros\",\"net\",\"parking_lot\",\"process\",\"rt\",\"rt-multi-thread\",\"signal\",\"sync\",\"time\"],\"io-std\":[],\"io-uring\":[\"dep:io-uring\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"dep:slab\"],\"io-util\":[\"bytes\"],\"macros\":[\"tokio-macros\"],\"net\":[\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"socket2\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_Security\",\"windows-sys/Win32_Storage_FileSystem\",\"windows-sys/Win32_System_Pipes\",\"windows-sys/Win32_System_SystemServices\"],\"process\":[\"bytes\",\"libc\",\"mio/os-poll\",\"mio/os-ext\",\"mio/net\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Threading\",\"windows-sys/Win32_System_WindowsProgramming\"],\"rt\":[],\"rt-multi-thread\":[\"rt\"],\"schedule-latency\":[],\"signal\":[\"libc\",\"mio/os-poll\",\"mio/net\",\"mio/os-ext\",\"signal-hook-registry\",\"windows-sys/Win32_Foundation\",\"windows-sys/Win32_System_Console\"],\"sync\":[],\"taskdump\":[\"dep:backtrace\"],\"test-util\":[\"rt\",\"sync\",\"time\"],\"time\":[]}}",
+       "toml_0.5.11": "{\"dependencies\":[{\"name\":\"indexmap\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"serde\",\"req\":\"^1.0.97\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[],\"preserve_order\":[\"indexmap\"]}}",
+       "toml_0.9.11+spec-1.1.0": "{\"dependencies\":[{\"name\":\"anstream\",\"optional\":true,\"req\":\"^0.6.20\"},{\"name\":\"anstyle\",\"optional\":true,\"req\":\"^1.0.11\"},{\"default_features\":false,\"name\":\"foldhash\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.11.4\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.225\"},{\"kind\":\"dev\",\"name\":\"serde-untagged\",\"req\":\"^0.1.9\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.225\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.145\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_spanned\",\"req\":\"^1.0.4\"},{\"kind\":\"dev\",\"name\":\"snapbox\",\"req\":\"^0.6.21\"},{\"kind\":\"dev\",\"name\":\"toml-test-data\",\"req\":\"^2.3.3\"},{\"features\":[\"snapshot\"],\"kind\":\"dev\",\"name\":\"toml-test-harness\",\"req\":\"^1.3.3\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_datetime\",\"req\":\"^0.7.5\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_parser\",\"optional\":true,\"req\":\"^1.0.6\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_writer\",\"optional\":true,\"req\":\"^1.0.6\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.5.0\"},{\"default_features\":false,\"name\":\"winnow\",\"optional\":true,\"req\":\"^0.7.13\"}],\"features\":{\"debug\":[\"std\",\"toml_parser?/debug\",\"dep:anstream\",\"dep:anstyle\"],\"default\":[\"std\",\"serde\",\"parse\",\"display\"],\"display\":[\"dep:toml_writer\"],\"fast_hash\":[\"preserve_order\",\"dep:foldhash\"],\"parse\":[\"dep:toml_parser\",\"dep:winnow\"],\"preserve_order\":[\"dep:indexmap\",\"std\"],\"serde\":[\"dep:serde_core\",\"toml_datetime/serde\",\"serde_spanned/serde\"],\"std\":[\"indexmap?/std\",\"serde_core?/std\",\"toml_parser?/std\",\"toml_writer?/std\",\"toml_datetime/std\",\"serde_spanned/std\"],\"unbounded\":[]}}",
+       "toml_1.0.6+spec-1.1.0": "{\"dependencies\":[{\"name\":\"anstream\",\"optional\":true,\"req\":\"^0.6.20\"},{\"name\":\"anstyle\",\"optional\":true,\"req\":\"^1.0.11\"},{\"default_features\":false,\"name\":\"foldhash\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"indexmap\",\"optional\":true,\"req\":\"^2.11.4\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.225\"},{\"kind\":\"dev\",\"name\":\"serde-untagged\",\"req\":\"^0.1.9\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.225\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.145\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde_spanned\",\"req\":\"^1.0.4\"},{\"kind\":\"dev\",\"name\":\"snapbox\",\"req\":\"^0.6.21\"},{\"kind\":\"dev\",\"name\":\"toml-test-data\",\"req\":\"^2.3.3\"},{\"features\":[\"snapshot\"],\"kind\":\"dev\",\"name\":\"toml-test-harness\",\"req\":\"^1.3.3\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_datetime\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_parser\",\"optional\":true,\"req\":\"^1.0.9\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"toml_writer\",\"optional\":true,\"req\":\"^1.0.6\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.5.0\"},{\"default_features\":false,\"name\":\"winnow\",\"optional\":true,\"req\":\"^0.7.13\"}],\"features\":{\"debug\":[\"std\",\"toml_parser?/debug\",\"dep:anstream\",\"dep:anstyle\"],\"default\":[\"std\",\"serde\",\"parse\",\"display\"],\"display\":[\"dep:toml_writer\"],\"fast_hash\":[\"preserve_order\",\"dep:foldhash\"],\"parse\":[\"dep:toml_parser\",\"dep:winnow\"],\"preserve_order\":[\"dep:indexmap\",\"std\"],\"serde\":[\"dep:serde_core\",\"toml_datetime/serde\",\"serde_spanned/serde\"],\"std\":[\"indexmap?/std\",\"serde_core?/std\",\"toml_parser?/std\",\"toml_writer?/std\",\"toml_datetime/std\",\"serde_spanned/std\"],\"unbounded\":[]}}",
+@@ -2582,8 +2582,12 @@
+       "yoke-derive_0.8.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.61\"},{\"name\":\"quote\",\"req\":\"^1.0.44\"},{\"features\":[\"fold\"],\"name\":\"syn\",\"req\":\"^2.0.21\"},{\"name\":\"synstructure\",\"req\":\"^0.13.0\"}],\"features\":{}}",
+       "yoke_0.8.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.0.3\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.220\"},{\"default_features\":false,\"name\":\"stable_deref_trait\",\"req\":\"^1.2.0\"},{\"default_features\":false,\"name\":\"yoke-derive\",\"optional\":true,\"req\":\"^0.8.2\"},{\"default_features\":false,\"name\":\"zerofrom\",\"optional\":true,\"req\":\"^0.1.6\"}],\"features\":{\"alloc\":[\"stable_deref_trait/alloc\",\"zerofrom/alloc\"],\"default\":[\"alloc\",\"zerofrom\"],\"derive\":[\"dep:yoke-derive\",\"zerofrom/derive\"],\"serde\":[],\"zerofrom\":[\"dep:zerofrom\"]}}",
+       "zbus_4.4.0": "{\"dependencies\":[{\"name\":\"async-broadcast\",\"req\":\"^0.7.0\"},{\"name\":\"async-executor\",\"optional\":true,\"req\":\"^1.11.0\"},{\"name\":\"async-fs\",\"optional\":true,\"req\":\"^2.1.2\"},{\"name\":\"async-io\",\"optional\":true,\"req\":\"^2.3.2\"},{\"name\":\"async-lock\",\"optional\":true,\"req\":\"^3.3.0\"},{\"name\":\"async-process\",\"req\":\"^2.2.2\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"name\":\"async-recursion\",\"req\":\"^1.1.1\",\"target\":\"cfg(any(target_os = \\\"macos\\\", windows))\"},{\"name\":\"async-task\",\"optional\":true,\"req\":\"^4.7.1\"},{\"name\":\"async-trait\",\"req\":\"^0.1.80\"},{\"name\":\"blocking\",\"optional\":true,\"req\":\"^1.6.0\"},{\"kind\":\"dev\",\"name\":\"doc-comment\",\"req\":\"^0.3.3\"},{\"features\":[\"serde\"],\"name\":\"enumflags2\",\"req\":\"^0.7.9\"},{\"name\":\"event-listener\",\"req\":\"^5.3.0\"},{\"name\":\"futures-core\",\"req\":\"^0.3.30\"},{\"name\":\"futures-sink\",\"req\":\"^0.3.30\"},{\"default_features\":false,\"features\":[\"sink\",\"std\"],\"name\":\"futures-util\",\"req\":\"^0.3.30\"},{\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.30\"},{\"name\":\"hex\",\"req\":\"^0.4.3\"},{\"default_features\":false,\"features\":[\"socket\",\"uio\",\"user\"],\"name\":\"nix\",\"req\":\"^0.29\",\"target\":\"cfg(unix)\"},{\"kind\":\"dev\",\"name\":\"ntest\",\"req\":\"^0.9.2\"},{\"name\":\"ordered-stream\",\"req\":\"^0.2\"},{\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"features\":[\"std\"],\"name\":\"sha1\",\"req\":\"^0.10.6\"},{\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.10.1\"},{\"default_features\":false,\"features\":[\"trace\"],\"kind\":\"dev\",\"name\":\"test-log\",\"req\":\"^0.2.16\"},{\"features\":[\"rt\",\"net\",\"time\",\"fs\",\"io-util\",\"process\",\"sync\",\"tracing\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.37.0\"},{\"features\":[\"macros\",\"rt-multi-thread\",\"fs\",\"io-util\",\"net\",\"sync\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.37.0\"},{\"name\":\"tokio-vsock\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"default_features\":false,\"features\":[\"env-filter\",\"fmt\",\"ansi\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3.18\"},{\"name\":\"uds_windows\",\"req\":\"^1.1.0\",\"target\":\"cfg(windows)\"},{\"name\":\"vsock\",\"optional\":true,\"req\":\"^0.5.0\"},{\"features\":[\"Win32_Foundation\",\"Win32_Security_Authorization\",\"Win32_System_Memory\",\"Win32_Networking\",\"Win32_Networking_WinSock\",\"Win32_NetworkManagement\",\"Win32_NetworkManagement_IpHelper\",\"Win32_System_Threading\"],\"name\":\"windows-sys\",\"req\":\"^0.52\",\"target\":\"cfg(windows)\"},{\"name\":\"xdg-home\",\"req\":\"^1.1.0\"},{\"name\":\"zbus_macros\",\"req\":\"=4.4.0\"},{\"name\":\"zbus_names\",\"req\":\"^3.0\"},{\"kind\":\"dev\",\"name\":\"zbus_xml\",\"req\":\"^4.0.0\"},{\"default_features\":false,\"features\":[\"enumflags2\"],\"name\":\"zvariant\",\"req\":\"^4.2.0\"}],\"features\":{\"async-io\":[\"dep:async-io\",\"async-executor\",\"async-task\",\"async-lock\",\"async-fs\",\"blocking\",\"futures-util/io\"],\"bus-impl\":[\"p2p\"],\"chrono\":[\"zvariant/chrono\"],\"default\":[\"async-io\"],\"heapless\":[\"zvariant/heapless\"],\"option-as-array\":[\"zvariant/option-as-array\"],\"p2p\":[],\"time\":[\"zvariant/time\"],\"tokio\":[\"dep:tokio\"],\"tokio-vsock\":[\"dep:tokio-vsock\",\"tokio\"],\"url\":[\"zvariant/url\"],\"uuid\":[\"zvariant/uuid\"],\"vsock\":[\"dep:vsock\",\"dep:async-io\"]}}",
++      "zbus_6.0.0": "{\"dependencies\":[{\"features\":[\"serde\"],\"name\":\"arrayvec\",\"optional\":true,\"req\":\"^0.7.4\"},{\"kind\":\"dev\",\"name\":\"async-executor\",\"req\":\"^1.11.0\"},{\"kind\":\"dev\",\"name\":\"async-io\",\"req\":\"^2.3.2\"},{\"kind\":\"dev\",\"name\":\"async-task\",\"req\":\"^4.7.1\"},{\"name\":\"async-trait\",\"optional\":true,\"req\":\"^0.1.80\"},{\"name\":\"bitflags\",\"optional\":true,\"req\":\"^2.13.2\"},{\"kind\":\"dev\",\"name\":\"bitflags\",\"req\":\"^2.13.2\"},{\"name\":\"camino\",\"optional\":true,\"req\":\"^1.1.9\"},{\"default_features\":false,\"features\":[\"serde\"],\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4.38\"},{\"default_features\":false,\"features\":[\"serde\",\"serde\",\"alloc\"],\"kind\":\"dev\",\"name\":\"chrono\",\"req\":\"^0.4.38\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"package\":\"codspeed-criterion-compat\",\"req\":\"^5.0.0\"},{\"kind\":\"dev\",\"name\":\"doc-comment\",\"req\":\"^0.3.3\"},{\"name\":\"endi\",\"req\":\"^1.1.0\"},{\"name\":\"futures-core\",\"optional\":true,\"req\":\"^0.3.30\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"futures-lite\",\"req\":\"^2.6.0\"},{\"default_features\":false,\"features\":[\"io\",\"async-await-macro\",\"async-await\"],\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.31\"},{\"features\":[\"serde\"],\"name\":\"heapless\",\"optional\":true,\"req\":\"^0.9.0\"},{\"name\":\"hex\",\"optional\":true,\"req\":\"^0.4.3\"},{\"default_features\":false,\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2\",\"target\":\"cfg(unix)\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"ntest\",\"req\":\"^0.10.0\"},{\"name\":\"ordered-stream\",\"optional\":true,\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"polling\",\"req\":\"^3.11.0\"},{\"default_features\":false,\"features\":[\"net\",\"process\",\"std\"],\"name\":\"rustix\",\"optional\":true,\"req\":\"^1.1.2\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"name\":\"serde_bytes\",\"optional\":true,\"req\":\"^0.11.14\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.116\"},{\"name\":\"serde_repr\",\"optional\":true,\"req\":\"^0.1.19\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6.5\",\"target\":\"cfg(not(target_os = \\\"wasi\\\"))\"},{\"kind\":\"dev\",\"name\":\"socket2\",\"req\":\"^0.6.5\"},{\"kind\":\"dev\",\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.10.1\"},{\"default_features\":false,\"features\":[\"trace\"],\"kind\":\"dev\",\"name\":\"test-log\",\"req\":\"^0.2.16\"},{\"features\":[\"serde\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.36\"},{\"features\":[\"rt\",\"net\",\"time\",\"sync\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.53.3\"},{\"features\":[\"process\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.53.3\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"features\":[\"macros\",\"rt-multi-thread\",\"fs\",\"io-util\",\"net\",\"sync\",\"time\",\"test-util\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.53.3\"},{\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.40\"},{\"kind\":\"dev\",\"name\":\"tracing\",\"req\":\"^0.1.40\"},{\"default_features\":false,\"features\":[\"env-filter\",\"fmt\",\"ansi\"],\"kind\":\"dev\",\"name\":\"tracing-subscriber\",\"req\":\"^0.3.18\"},{\"name\":\"uds_windows\",\"optional\":true,\"req\":\"^1.1.0\",\"target\":\"cfg(windows)\"},{\"features\":[\"serde\"],\"name\":\"url\",\"optional\":true,\"req\":\"^2.5.0\"},{\"features\":[\"serde\"],\"name\":\"uuid\",\"optional\":true,\"req\":\"^1.8.0\"},{\"features\":[\"Win32_Foundation\",\"Win32_Security_Authorization\",\"Win32_System_Memory\",\"Win32_System_WindowsProgramming\",\"Win32_Networking\",\"Win32_Networking_WinSock\",\"Win32_NetworkManagement\",\"Win32_NetworkManagement_IpHelper\",\"Win32_System_IO\",\"Win32_System_Threading\"],\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61\",\"target\":\"cfg(windows)\"},{\"name\":\"winnow\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"zbus_macros\",\"req\":\"^6.0.0\"},{\"name\":\"zbus_utils\",\"req\":\"^6.0.0\"},{\"features\":[\"serde\"],\"name\":\"zcheapstr\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"name\":\"zruntime\",\"optional\":true,\"req\":\"^0.2.0\"}],\"features\":{\"arrayvec\":[\"dep:arrayvec\"],\"bus-impl\":[\"p2p\"],\"camino\":[\"dep:camino\"],\"chrono\":[\"dep:chrono\"],\"comms\":[\"dep:bitflags\",\"zbus_macros/comms\",\"dep:serde_repr\",\"dep:futures-core\",\"dep:hex\",\"dep:ordered-stream\",\"dep:zruntime\",\"zruntime/broadcast\",\"zruntime/lock\",\"zruntime/unblock\",\"dep:async-trait\",\"dep:rustix\",\"dep:libc\",\"dep:windows-sys\",\"dep:uds_windows\",\"dep:socket2\",\"dep:uuid\"],\"default\":[\"default-rt\",\"proxy\",\"service\",\"object-manager\",\"tracing\"],\"default-rt\":[\"comms\",\"zruntime/runtime\",\"zruntime/helper\",\"zruntime/tcp\",\"zruntime/unix\",\"zruntime/process\"],\"heapless\":[\"dep:heapless\"],\"ibus\":[\"comms\",\"tokio?/process\"],\"object-manager\":[\"service\"],\"option-as-array\":[],\"p2p\":[\"comms\",\"uuid?/v4\"],\"proxy\":[\"comms\",\"zbus_macros/proxy\"],\"serde_bytes\":[\"dep:serde_bytes\"],\"service\":[\"comms\",\"zbus_macros/service\"],\"time\":[\"dep:time\"],\"tokio\":[\"comms\",\"dep:tokio\"],\"tokio-multithread\":[\"tokio\",\"tokio/rt-multi-thread\"],\"tracing\":[\"dep:tracing\",\"tokio?/tracing\",\"zruntime?/tracing\"],\"unixexec\":[\"comms\",\"tokio?/process\"],\"url\":[\"dep:url\"],\"uuid\":[\"dep:uuid\"]}}",
+       "zbus_macros_4.4.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"async-io\",\"req\":\"^2.3.2\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.30\"},{\"name\":\"proc-macro-crate\",\"req\":\"^3.1.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.15\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"features\":[\"extra-traits\",\"fold\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.64\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.93\"},{\"name\":\"zvariant_utils\",\"req\":\"=2.1.0\"}],\"features\":{}}",
++      "zbus_macros_6.0.0": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.31\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"kind\":\"dev\",\"name\":\"serde_repr\",\"req\":\"^0.1.19\"},{\"features\":[\"extra-traits\",\"full\",\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^3.0\"},{\"name\":\"zbus_utils\",\"req\":\"^6.0.0\"}],\"features\":{\"comms\":[\"syn/fold\"],\"default\":[\"comms\",\"proxy\",\"service\"],\"proxy\":[\"comms\"],\"service\":[\"comms\"]}}",
+       "zbus_names_3.0.0": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0\"},{\"name\":\"static_assertions\",\"req\":\"^1.1.0\"},{\"default_features\":false,\"features\":[\"enumflags2\"],\"name\":\"zvariant\",\"req\":\"^4.0.0\"}],\"features\":{}}",
++      "zbus_utils_6.0.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.81\"},{\"name\":\"quote\",\"req\":\"^1.0.36\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.200\"},{\"features\":[\"extra-traits\",\"full\"],\"name\":\"syn\",\"req\":\"^3.0\"},{\"name\":\"winnow\",\"req\":\"^1.0\"}],\"features\":{\"default\":[],\"gvariant\":[]}}",
++      "zcheapstr_1.1.0": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"default\":[],\"serde\":[\"dep:serde\"]}}",
+       "zerocopy-derive_0.8.37": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"dissimilar\",\"req\":\"^1.0.9\"},{\"kind\":\"dev\",\"name\":\"prettyplease\",\"req\":\"=0.2.17\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.1\"},{\"kind\":\"dev\",\"name\":\"proc-macro2\",\"req\":\"=1.0.80\"},{\"name\":\"quote\",\"req\":\"^1.0.40\"},{\"kind\":\"dev\",\"name\":\"quote\",\"req\":\"=1.0.40\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"static_assertions\",\"req\":\"^1.1\"},{\"features\":[\"full\"],\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"features\":[\"visit\"],\"kind\":\"dev\",\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"=1.0.89\"}],\"features\":{}}",
+       "zerocopy-derive_0.8.48": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"dissimilar\",\"req\":\"^1.0.9\"},{\"kind\":\"dev\",\"name\":\"prettyplease\",\"req\":\"=0.2.17\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.1\"},{\"name\":\"quote\",\"req\":\"^1.0.40\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"static_assertions\",\"req\":\"^1.1\"},{\"features\":[\"full\"],\"name\":\"syn\",\"req\":\"^2.0.46\"},{\"features\":[\"visit\"],\"kind\":\"dev\",\"name\":\"syn\",\"req\":\"^2.0.46\"}],\"features\":{}}",
+       "zerocopy_0.8.37": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"elain\",\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.11\"},{\"default_features\":false,\"features\":[\"small_rng\"],\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"static_assertions\",\"req\":\"^1.1\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"=1.0.89\"},{\"name\":\"zerocopy-derive\",\"req\":\"=0.8.37\",\"target\":\"cfg(any())\"},{\"name\":\"zerocopy-derive\",\"optional\":true,\"req\":\"=0.8.37\"},{\"kind\":\"dev\",\"name\":\"zerocopy-derive\",\"req\":\"=0.8.37\"}],\"features\":{\"__internal_use_only_features_that_work_on_stable\":[\"alloc\",\"derive\",\"simd\",\"std\"],\"alloc\":[],\"derive\":[\"zerocopy-derive\"],\"float-nightly\":[],\"simd\":[],\"simd-nightly\":[\"simd\"],\"std\":[\"alloc\"]}}",
+@@ -2604,6 +2608,7 @@
+       "zmij_1.0.21": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\",\"target\":\"cfg(not(miri))\"},{\"name\":\"no-panic\",\"optional\":true,\"req\":\"^0.1.36\"},{\"kind\":\"dev\",\"name\":\"num-bigint\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"num-integer\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"num_cpus\",\"req\":\"^1.8\"},{\"kind\":\"dev\",\"name\":\"opt-level\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"ryu\",\"req\":\"^1\"}],\"features\":{}}",
+       "zoneinfo64_0.3.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"calendrical_calculations\",\"req\":\"^0.2.4\"},{\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"chrono-tz\",\"req\":\"^0.10.4\"},{\"default_features\":false,\"name\":\"icu_locale_core\",\"req\":\"^2.2.0\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"default_features\":false,\"features\":[\"tzdb-bundle-always\",\"std\"],\"kind\":\"dev\",\"name\":\"jiff\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"potential_utf\",\"req\":\"^0.1.3\"},{\"default_features\":false,\"name\":\"resb\",\"req\":\"^0.1.2\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.220\"}],\"features\":{\"chrono\":[\"dep:chrono\"]}}",
+       "zopfli_0.8.3": "{\"dependencies\":[{\"name\":\"bumpalo\",\"req\":\"^3.19.0\"},{\"default_features\":false,\"name\":\"crc32fast\",\"optional\":true,\"req\":\"^1.5.0\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.28\"},{\"kind\":\"dev\",\"name\":\"miniz_oxide\",\"req\":\"^0.8.9\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.7.0\"},{\"kind\":\"dev\",\"name\":\"proptest-derive\",\"req\":\"^0.6.0\"},{\"default_features\":false,\"name\":\"simd-adler32\",\"optional\":true,\"req\":\"^0.3.7\"}],\"features\":{\"default\":[\"gzip\",\"std\",\"zlib\"],\"gzip\":[\"dep:crc32fast\"],\"nightly\":[\"crc32fast?/nightly\"],\"std\":[\"crc32fast?/std\",\"dep:log\",\"simd-adler32?/std\"],\"zlib\":[\"dep:simd-adler32\"]}}",
++      "zruntime_0.2.0": "{\"dependencies\":[{\"features\":[\"async\"],\"kind\":\"dev\",\"name\":\"criterion\",\"package\":\"codspeed-criterion-compat\",\"req\":\"^5.0.2\"},{\"default_features\":false,\"features\":[\"std\",\"executor\"],\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3.34\"},{\"default_features\":false,\"name\":\"futures-core\",\"optional\":true,\"req\":\"^0.3.34\"},{\"name\":\"futures-io\",\"optional\":true,\"req\":\"^0.3.34\"},{\"kind\":\"dev\",\"name\":\"ntest\",\"req\":\"^0.9.5\"},{\"default_features\":false,\"features\":[\"event\",\"pipe\",\"std\",\"time\"],\"name\":\"rustix\",\"optional\":true,\"req\":\"^1.1.5\",\"target\":\"cfg(any(unix, target_os = \\\"wasi\\\"))\"},{\"features\":[\"thread\"],\"kind\":\"dev\",\"name\":\"rustix\",\"req\":\"^1.1.5\",\"target\":\"cfg(target_os = \\\"linux\\\")\"},{\"name\":\"socket2\",\"optional\":true,\"req\":\"^0.6.5\",\"target\":\"cfg(not(all(target_os = \\\"wasi\\\", target_env = \\\"p1\\\")))\"},{\"features\":[\"all\"],\"kind\":\"dev\",\"name\":\"socket2\",\"req\":\"^0.6.5\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"tracing\",\"optional\":true,\"req\":\"^0.1.44\"},{\"kind\":\"dev\",\"name\":\"uds_windows\",\"req\":\"^1.2.1\",\"target\":\"cfg(windows)\"},{\"features\":[\"Win32_Networking_WinSock\"],\"name\":\"windows-sys\",\"optional\":true,\"req\":\"^0.61.2\",\"target\":\"cfg(windows)\"}],\"features\":{\"broadcast\":[\"event\",\"dep:futures-core\"],\"default\":[\"runtime\",\"event\",\"tracing\"],\"event\":[],\"fs\":[\"dep:futures-io\",\"dep:futures-core\"],\"helper\":[\"runtime\"],\"lock\":[\"event\"],\"mpmc\":[\"event\",\"dep:futures-core\"],\"process\":[\"runtime\",\"unblock\",\"rustix?/process\",\"windows-sys?/Win32_Foundation\",\"windows-sys?/Win32_System_Threading\"],\"runtime\":[\"dep:rustix\",\"dep:windows-sys\",\"dep:futures-core\",\"dep:futures-io\"],\"tcp\":[\"runtime\",\"dep:socket2\",\"rustix?/net\"],\"tracing\":[\"dep:tracing\"],\"udp\":[\"runtime\"],\"unblock\":[\"dep:futures-io\",\"dep:futures-core\"],\"unix\":[\"runtime\",\"dep:socket2\",\"rustix?/net\"]}}",
+       "zstd-safe_7.2.4": "{\"dependencies\":[{\"default_features\":false,\"name\":\"zstd-sys\",\"req\":\"^2.0.15\"}],\"features\":{\"arrays\":[],\"bindgen\":[\"zstd-sys/bindgen\"],\"debug\":[\"zstd-sys/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-sys/experimental\"],\"fat-lto\":[\"zstd-sys/fat-lto\"],\"legacy\":[\"zstd-sys/legacy\"],\"no_asm\":[\"zstd-sys/no_asm\"],\"pkg-config\":[\"zstd-sys/pkg-config\"],\"seekable\":[\"zstd-sys/seekable\"],\"std\":[\"zstd-sys/std\"],\"thin\":[\"zstd-sys/thin\"],\"thin-lto\":[\"zstd-sys/thin-lto\"],\"zdict_builder\":[\"zstd-sys/zdict_builder\"],\"zstdmt\":[\"zstd-sys/zstdmt\"]}}",
+       "zstd-sys_2.0.16+zstd.1.5.7": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"runtime\"],\"kind\":\"build\",\"name\":\"bindgen\",\"optional\":true,\"req\":\"^0.72\"},{\"features\":[\"parallel\"],\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.45\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.28\"}],\"features\":{\"debug\":[],\"default\":[\"legacy\",\"zdict_builder\",\"bindgen\"],\"experimental\":[],\"fat-lto\":[],\"legacy\":[],\"no_asm\":[],\"no_wasm_shim\":[],\"non-cargo\":[],\"pkg-config\":[],\"seekable\":[],\"std\":[],\"thin\":[],\"thin-lto\":[],\"zdict_builder\":[],\"zstdmt\":[]}}",
+       "zstd_0.13.3": "{\"dependencies\":[{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"^4.0\"},{\"kind\":\"dev\",\"name\":\"humansize\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"partial-io\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"zstd-safe\",\"req\":\"^7.1.0\"}],\"features\":{\"arrays\":[\"zstd-safe/arrays\"],\"bindgen\":[\"zstd-safe/bindgen\"],\"debug\":[\"zstd-safe/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-safe/experimental\"],\"fat-lto\":[\"zstd-safe/fat-lto\"],\"legacy\":[\"zstd-safe/legacy\"],\"no_asm\":[\"zstd-safe/no_asm\"],\"pkg-config\":[\"zstd-safe/pkg-config\"],\"thin\":[\"zstd-safe/thin\"],\"thin-lto\":[\"zstd-safe/thin-lto\"],\"wasm\":[],\"zdict_builder\":[\"zstd-safe/zdict_builder\"],\"zstdmt\":[\"zstd-safe/zstdmt\"]}}",
+diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
+index 37f74fc09..6ef2c7d63 100644
+--- a/codex-rs/.cargo/audit.toml
++++ b/codex-rs/.cargo/audit.toml
+@@ -6,6 +6,12 @@ ignore = [
+     "RUSTSEC-2025-0057", # fxhash 0.2.1 via starlark_map/bm25; upstream crate is unmaintained
+     "RUSTSEC-2024-0436", # paste 1.0.15 via starlark/v8; upstream crate is unmaintained
+     "RUSTSEC-2023-0089", # atomic-polyfill via postcard/heapless/pagable; upstream crate is unmaintained
++    # WORKAROUND: https://github.com/open-source-cooperative/secret-service-rs/pull/122
++    # Secret Service still uses zbus 4 and its retired standalone crates.
++    # Remove these exceptions when the credential dependencies adopt zbus 6.
++    "RUSTSEC-2026-0370", # zvariant via secret-service/keyring
++    "RUSTSEC-2026-0371", # zbus_names via secret-service/keyring
++    "RUSTSEC-2026-0372", # zvariant_derive via secret-service/keyring
+     "RUSTSEC-2025-0141", # bincode via syntect; remove when syntect drops or updates it
+     "RUSTSEC-2026-0118", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
+     "RUSTSEC-2026-0119", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index f8a81750e..b25c6a61e 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -172,7 +172,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "812947049edcd670a82cd5c73c3661d2e58468577ba8489de58e1a73c04cbd5d"
+ dependencies = [
+  "alsa-sys",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "libc",
+ ]
+@@ -1275,7 +1275,7 @@ version = "0.72.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cexpr",
+  "clang-sys",
+  "itertools 0.13.0",
+@@ -1336,9 +1336,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+
+ [[package]]
+ name = "bitflags"
+-version = "2.13.1"
++version = "2.13.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
++checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+ dependencies = [
+  "serde_core",
+ ]
+@@ -4771,7 +4771,7 @@ dependencies = [
+ name = "codex-tools"
+ version = "0.0.0"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "codex-code-mode",
+  "codex-connectors",
+  "codex-extension-items",
+@@ -4915,7 +4915,7 @@ dependencies = [
+  "windows-sys 0.61.2",
+  "winsplit",
+  "wiremock",
+- "zbus",
++ "zbus 6.0.0",
+ ]
+
+ [[package]]
+@@ -5683,7 +5683,7 @@ version = "0.14.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7d5d7dca3ebcf65a035582c9ad4385371a9d9ee6537474d2a278f4e1e475bb58"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "libc",
+  "objc2-audio-toolbox",
+  "objc2-core-audio",
+@@ -5826,7 +5826,7 @@ name = "crossterm"
+ version = "0.29.0"
+ source = "git+https://github.com/openai-oss-forks/crossterm?rev=ed1cdab335221515706178d68495bba2aed1924f#ed1cdab335221515706178d68495bba2aed1924f"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "crossterm_winapi",
+  "derive_more 2.1.1",
+  "futures-core",
+@@ -6513,7 +6513,7 @@ version = "0.3.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "89a09f22a6c6069a18470eb92d2298acf25463f14256d24778e1230d789a2aec"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+ ]
+
+@@ -6571,7 +6571,7 @@ checksum = "6e39034cee21a2f5bbb66ba0e3689819c4bb5d00382a282006e802a7ffa6c41d"
+ dependencies = [
+  "cfg-if",
+  "libc",
+- "socket2 0.6.3",
++ "socket2 0.6.5",
+  "windows-sys 0.60.2",
+ ]
+
+@@ -7109,7 +7109,7 @@ version = "25.12.19"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "rustc_version",
+ ]
+
+@@ -7691,7 +7691,7 @@ version = "0.17.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "441a300bc3645a1f45cba495b9175f90f47256ce43f2ee161da0031e3ac77c92"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bstr",
+  "gix-path",
+  "libc",
+@@ -7837,7 +7837,7 @@ version = "0.24.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b03e6cd88cc0dc1eafa1fddac0fb719e4e74b6ea58dd016e71125fde4a326bee"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bstr",
+  "gix-features",
+  "gix-path",
+@@ -7885,7 +7885,7 @@ version = "0.49.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1bae54ab14e4e74d5dda60b82ea7afad7c8eb3be68283d6d5f29bd2e6d47fff7"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bstr",
+  "filetime",
+  "fnv",
+@@ -7950,7 +7950,7 @@ version = "0.29.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6ea064c7595eea08fdd01c70748af747d9acc40f727b61f4c8a2145a5c5fc28c"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "gix-commitgraph",
+  "gix-date",
+  "gix-hash",
+@@ -8048,7 +8048,7 @@ version = "0.16.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f89611f13544ca5ebeb68a502673814ef57200df60c24a61c2ce7b96f612f08b"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bstr",
+  "gix-attributes",
+  "gix-config-value",
+@@ -8131,7 +8131,7 @@ version = "0.43.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7c08f1ec5d1e6a524f8ba291c41f0ccaef64e48ed0e8cf790b3461cae45f6d3d"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bstr",
+  "gix-commitgraph",
+  "gix-date",
+@@ -8165,7 +8165,7 @@ version = "0.13.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "bf82ae037de9c62850ce67beaa92ec8e3e17785ea307cdde7618edc215603b4f"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "gix-path",
+  "libc",
+  "windows-sys 0.61.2",
+@@ -8263,7 +8263,7 @@ version = "0.55.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "963dc2afcdb611092aa587c3f9365e749ac0a0892ff27662dbc75f26c953fbec"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "gix-commitgraph",
+  "gix-date",
+  "gix-hash",
+@@ -8366,7 +8366,7 @@ version = "0.22.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "ddbcf514bd1881fc1b960e4e52b4e82873f4da3bceddbd58d42827b508888100"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "futures-channel",
+  "futures-core",
+  "futures-executor",
+@@ -9057,7 +9057,7 @@ dependencies = [
+  "libc",
+  "percent-encoding",
+  "pin-project-lite",
+- "socket2 0.6.3",
++ "socket2 0.5.10",
+  "system-configuration",
+  "tokio",
+  "tower-service",
+@@ -9485,7 +9485,7 @@ version = "0.11.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "inotify-sys",
+  "libc",
+ ]
+@@ -9852,7 +9852,7 @@ dependencies = [
+  "security-framework 2.11.1",
+  "security-framework 3.5.1",
+  "windows-sys 0.60.2",
+- "zbus",
++ "zbus 4.4.0",
+  "zeroize",
+ ]
+
+@@ -9977,7 +9977,7 @@ version = "0.1.12"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "libc",
+  "redox_syscall 0.7.0",
+ ]
+@@ -9999,7 +9999,7 @@ version = "0.3.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3f50e8f47623268b5407192d26876c4d7f89d686ca130fdc53bced4814cd29f8"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+ ]
+
+ [[package]]
+@@ -10029,7 +10029,7 @@ version = "0.2.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "761e49ec5fd8a5a463f9b84e877c373d888935b71c6be78f3767fe2ae6bed18e"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "libc",
+ ]
+
+@@ -10452,7 +10452,7 @@ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c3f42e7bbe13d351b6bead8286a43aac9534b82bd3cc43e47037f012ebfd62d4"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "jni-sys 0.3.1",
+  "log",
+  "ndk-sys",
+@@ -10490,7 +10490,7 @@ version = "0.28.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "cfg_aliases 0.1.1",
+  "libc",
+@@ -10502,7 +10502,7 @@ version = "0.29.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "cfg_aliases 0.2.1",
+  "libc",
+@@ -10515,7 +10515,7 @@ version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "cfg_aliases 0.2.1",
+  "libc",
+@@ -10527,7 +10527,7 @@ version = "0.31.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "cfg_aliases 0.2.1",
+  "libc",
+@@ -10571,7 +10571,7 @@ version = "8.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "fsevent-sys",
+  "inotify",
+  "kqueue",
+@@ -10589,7 +10589,7 @@ version = "2.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+ ]
+
+ [[package]]
+@@ -10793,7 +10793,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-core-graphics",
+  "objc2-foundation",
+@@ -10805,7 +10805,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6948501a91121d6399b79abaa33a8aa4ea7857fe019f341b8c23ad6e81b79b08"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "libc",
+  "objc2",
+  "objc2-core-audio",
+@@ -10820,7 +10820,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "13a380031deed8e99db00065c45937da434ca987c034e13b87e4441f9e4090be"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-foundation",
+ ]
+@@ -10831,7 +10831,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "73ad74d880bb43877038da939b7427bba67e9dd42004a18b809ba7d87cee241c"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-foundation",
+ ]
+@@ -10855,7 +10855,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "5a89f2ec274a0cf4a32642b2991e8b351a404d290da87bb6a9a9d8632490bd1c"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+ ]
+
+@@ -10875,7 +10875,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "block2",
+  "dispatch2",
+  "libc",
+@@ -10888,7 +10888,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "dispatch2",
+  "objc2",
+  "objc2-core-foundation",
+@@ -10921,7 +10921,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-core-foundation",
+  "objc2-core-graphics",
+@@ -10939,7 +10939,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "block2",
+  "libc",
+  "objc2",
+@@ -10952,7 +10952,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-core-foundation",
+ ]
+@@ -10973,7 +10973,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "96c1358452b371bf9f104e21ec536d37a650eb10f7ee379fff67d2e08d537f1f"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "objc2",
+  "objc2-core-foundation",
+  "objc2-foundation",
+@@ -10985,7 +10985,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "block2",
+  "objc2",
+  "objc2-cloud-kit",
+@@ -11059,7 +11059,7 @@ version = "6.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "336b9c63443aceef14bea841b899035ae3abe89b7c486aaf4c5bd8aafedac3f0"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "libc",
+  "once_cell",
+  "onig_sys",
+@@ -11087,7 +11087,7 @@ version = "0.10.81"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "foreign-types",
+  "libc",
+@@ -11693,7 +11693,7 @@ version = "0.18.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "97baced388464909d42d89643fe4361939af9b7ce7a31ee32a168f832a70f2a0"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "crc32fast",
+  "fdeflate",
+  "flate2",
+@@ -11949,7 +11949,7 @@ version = "1.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "bee689443a2bd0a16ab0348b52ee43e3b2d1b1f931c8aa5c9f8de4c86fbe8c40"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "num-traits",
+  "rand 0.9.3",
+  "rand_chacha 0.9.0",
+@@ -12124,7 +12124,7 @@ version = "0.10.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "76979bea66e7875e7509c4ec5300112b316af87fa7a252ca91c448b32dfe3993"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "memchr",
+  "pulldown-cmark-escape",
+  "unicase",
+@@ -12195,7 +12195,7 @@ dependencies = [
+  "quinn-udp 0.5.14",
+  "rustc-hash",
+  "rustls",
+- "socket2 0.6.3",
++ "socket2 0.5.10",
+  "thiserror 2.0.18",
+  "tokio",
+  "tracing",
+@@ -12233,7 +12233,7 @@ dependencies = [
+  "cfg_aliases 0.2.1",
+  "libc",
+  "once_cell",
+- "socket2 0.6.3",
++ "socket2 0.5.10",
+  "tracing",
+  "windows-sys 0.60.2",
+ ]
+@@ -12247,7 +12247,7 @@ dependencies = [
+  "cfg_aliases 0.2.1",
+  "libc",
+  "log",
+- "socket2 0.6.3",
++ "socket2 0.5.10",
+  "windows-sys 0.52.0",
+ ]
+
+@@ -12344,7 +12344,7 @@ checksum = "453d60af031e23af2d48995e41b17023f6150044738680508b63671f8d7417dd"
+ dependencies = [
+  "ahash",
+  "base64 0.22.1",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "chrono",
+  "const_format",
+  "csv",
+@@ -12504,7 +12504,7 @@ dependencies = [
+  "rama-utils",
+  "serde",
+  "sha2 0.10.9",
+- "socket2 0.6.3",
++ "socket2 0.6.5",
+  "tokio",
+ ]
+
+@@ -12737,7 +12737,7 @@ version = "0.1.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cbb175c433c8e28a809d1f5773a2ae96e68c0ce40db865cbab1020bf33ae479c"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "compact_str",
+  "critical-section",
+  "hashbrown 0.17.1",
+@@ -12813,7 +12813,7 @@ version = "0.3.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "66e3d19bcc9130ca376277d93b60767ff121ace3be06f5f95f81dd68956407d1"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "hashbrown 0.17.1",
+  "indoc",
+  "instability",
+@@ -12868,7 +12868,7 @@ version = "0.5.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+ ]
+
+ [[package]]
+@@ -12877,7 +12877,7 @@ version = "0.7.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "49f3fe0889e69e2ae9e41f4d6c4c0181701d00e4697b356fb1f74173a5e0ee27"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+ ]
+
+ [[package]]
+@@ -13304,7 +13304,7 @@ dependencies = [
+  "log",
+  "rtc-shared",
+  "sansio",
+- "socket2 0.6.3",
++ "socket2 0.6.5",
+ ]
+
+ [[package]]
+@@ -13543,7 +13543,7 @@ version = "0.38.44"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "errno",
+  "libc",
+  "linux-raw-sys 0.4.15",
+@@ -13556,7 +13556,7 @@ version = "1.1.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "errno",
+  "libc",
+  "linux-raw-sys 0.12.1",
+@@ -13652,7 +13652,7 @@ version = "14.0.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7803e8936da37efd9b6d4478277f4b2b9bb5cdb37a113e8d63222e58da647e63"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "cfg-if",
+  "clipboard-win",
+  "fd-lock",
+@@ -13905,7 +13905,7 @@ dependencies = [
+  "rand 0.8.6",
+  "serde",
+  "sha2 0.10.9",
+- "zbus",
++ "zbus 4.4.0",
+ ]
+
+ [[package]]
+@@ -13914,7 +13914,7 @@ version = "2.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "core-foundation 0.9.4",
+  "core-foundation-sys",
+  "libc",
+@@ -13927,7 +13927,7 @@ version = "3.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b3297343eaf830f66ede390ea39da1d462b6b0c1b000f420d0a83f898bbbe6ef"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "core-foundation 0.10.1",
+  "core-foundation-sys",
+  "libc",
+@@ -14438,9 +14438,9 @@ dependencies = [
+
+ [[package]]
+ name = "socket2"
+-version = "0.6.3"
++version = "0.6.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
++checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
+ dependencies = [
+  "libc",
+  "windows-sys 0.60.2",
+@@ -14644,7 +14644,7 @@ version = "0.9.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "90b8020fe17c5f2c245bfa2505d7ef59c5604839527c740266ad2214acebea27"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "byteorder",
+  "bytes",
+  "chrono",
+@@ -14675,7 +14675,7 @@ checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
+ dependencies = [
+  "atoi",
+  "base64 0.22.1",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "byteorder",
+  "chrono",
+  "crc",
+@@ -15029,7 +15029,7 @@ version = "0.6.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "95ec293b5f288383b72a7bffcade6b2860b642cf66f28b3bd5967349a49938b1"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bytemuck",
+  "lazy_static",
+  "log",
+@@ -15186,7 +15186,7 @@ version = "0.7.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "core-foundation 0.9.4",
+  "system-configuration-sys",
+ ]
+@@ -15304,7 +15304,7 @@ version = "0.3.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "parking_lot",
+  "rustix 1.1.4",
+  "signal-hook",
+@@ -15366,7 +15366,7 @@ checksum = "4676b37242ccbd1aabf56edb093a4827dc49086c0ffd764a5705899e0f35f8f7"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "fancy-regex 0.11.0",
+  "filedescriptor",
+  "finl_unicode",
+@@ -15663,9 +15663,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+ [[package]]
+ name = "tokio"
+-version = "1.52.3"
++version = "1.53.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
++checksum = "ce3335fa71841cda333a58d7615b03901380ecf09d59b3296d21f8bbac0dde4e"
+ dependencies = [
+  "bytes",
+  "libc",
+@@ -15673,8 +15673,9 @@ dependencies = [
+  "parking_lot",
+  "pin-project-lite",
+  "signal-hook-registry",
+- "socket2 0.6.3",
++ "socket2 0.6.5",
+  "tokio-macros",
++ "tracing",
+  "windows-sys 0.61.2",
+ ]
+
+@@ -15893,7 +15894,7 @@ dependencies = [
+  "percent-encoding",
+  "pin-project",
+  "rustls-native-certs",
+- "socket2 0.6.3",
++ "socket2 0.6.5",
+  "sync_wrapper",
+  "tokio",
+  "tokio-rustls",
+@@ -15968,7 +15969,7 @@ version = "0.6.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "bytes",
+  "futures-util",
+  "http 1.4.0",
+@@ -16498,7 +16499,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "42a978ff11f15b24e5c05a7123cf2b68f41e763546699781a924ef4e2cf43a49"
+ dependencies = [
+  "bindgen",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "fslock",
+  "gzip-header",
+  "home",
+@@ -16750,7 +16751,7 @@ version = "0.244.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "hashbrown 0.15.5",
+  "indexmap 2.14.0",
+  "semver",
+@@ -16775,7 +16776,7 @@ version = "0.31.12"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b8e6faa537fbb6c186cb9f1d41f2f811a4120d1b57ec61f50da451a0c5122bec"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "rustix 1.1.4",
+  "wayland-backend",
+  "wayland-scanner",
+@@ -16787,7 +16788,7 @@ version = "0.32.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "baeda9ffbcfc8cd6ddaade385eaf2393bd2115a69523c735f12242353c3df4f3"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "wayland-backend",
+  "wayland-client",
+  "wayland-scanner",
+@@ -16799,7 +16800,7 @@ version = "0.3.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e9597cdf02cf0c34cd5823786dce6b5ae8598f05c2daf5621b6e178d4f7345f3"
+ dependencies = [
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "wayland-backend",
+  "wayland-client",
+  "wayland-protocols",
+@@ -17507,6 +17508,9 @@ name = "winnow"
+ version = "1.0.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
++dependencies = [
++ "memchr",
++]
+
+ [[package]]
+ name = "winreg"
+@@ -17630,7 +17634,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
+ dependencies = [
+  "anyhow",
+- "bitflags 2.13.1",
++ "bitflags 2.13.2",
+  "indexmap 2.14.0",
+  "log",
+  "serde",
+@@ -17870,11 +17874,40 @@ dependencies = [
+  "uds_windows",
+  "windows-sys 0.52.0",
+  "xdg-home",
+- "zbus_macros",
++ "zbus_macros 4.4.0",
+  "zbus_names",
+  "zvariant",
+ ]
+
++[[package]]
++name = "zbus"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "266223222c9d81e5966455a9da0783e35d56a7ccab79a03c2366b2d98f8fc8a9"
++dependencies = [
++ "async-trait",
++ "bitflags 2.13.2",
++ "endi",
++ "futures-core",
++ "hex",
++ "libc",
++ "ordered-stream",
++ "rustix 1.1.4",
++ "serde",
++ "serde_repr",
++ "socket2 0.6.5",
++ "tokio",
++ "tracing",
++ "uds_windows",
++ "uuid",
++ "windows-sys 0.61.2",
++ "winnow 1.0.4",
++ "zbus_macros 6.0.0",
++ "zbus_utils",
++ "zcheapstr",
++ "zruntime",
++]
++
+ [[package]]
+ name = "zbus_macros"
+ version = "4.4.0"
+@@ -17888,6 +17921,18 @@ dependencies = [
+  "zvariant_utils",
+ ]
+
++[[package]]
++name = "zbus_macros"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "69191782481ef4e0ac88ca487347c52e08bb85cceb2a163b79f7281fe5be0a3c"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.3",
++ "zbus_utils",
++]
++
+ [[package]]
+ name = "zbus_names"
+ version = "3.0.0"
+@@ -17899,6 +17944,28 @@ dependencies = [
+  "zvariant",
+ ]
+
++[[package]]
++name = "zbus_utils"
++version = "6.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c27a055b114bd9fc3686e90f62bd1fe612d523fc5f620bac3b1d2f42d3f6cab8"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "serde",
++ "syn 3.0.3",
++ "winnow 1.0.4",
++]
++
++[[package]]
++name = "zcheapstr"
++version = "1.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d1afec51604565183aeb5c54c20aeab286120d4e4460f7f76e3e8bb8c0d99473"
++dependencies = [
++ "serde",
++]
++
+ [[package]]
+ name = "zerocopy"
+ version = "0.8.37"
+@@ -18068,6 +18135,17 @@ dependencies = [
+  "simd-adler32",
+ ]
+
++[[package]]
++name = "zruntime"
++version = "0.2.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "467fd80a2014d186319f14b81aef027aa466712f355c90158a0e6b39de60726d"
++dependencies = [
++ "futures-core",
++ "futures-io",
++ "tracing",
++]
++
+ [[package]]
+ name = "zstd"
+ version = "0.13.3"
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index f977ea199..0076e9736 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -77,6 +77,12 @@ ignore = [
+     { id = "RUSTSEC-2025-0057", reason = "fxhash is unmaintained; pulled in via starlark_map under starlark v0.14.2 used by execpolicy/cli/core and bm25 used by core; remove when upstream dependencies drop fxhash" },
+     { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in via starlark/v8 used by execpolicy/code-mode; no fixed release yet" },
+     { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill is unmaintained; pulled in via postcard/heapless/pagable under starlark v0.14.2 used by execpolicy/cli/core; no fixed starlark release yet" },
++    # WORKAROUND: https://github.com/open-source-cooperative/secret-service-rs/pull/122
++    # Secret Service still uses zbus 4 and its retired standalone crates.
++    # Remove these exceptions when the credential dependencies adopt zbus 6.
++    { id = "RUSTSEC-2026-0370", reason = "zvariant remains via secret-service/keyring and zbus 4; remove when the credential dependencies adopt zbus 6" },
++    { id = "RUSTSEC-2026-0371", reason = "zbus_names remains via secret-service/keyring and zbus 4; remove when the credential dependencies adopt zbus 6" },
++    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive remains via secret-service/keyring and zbus 4; remove when the credential dependencies adopt zbus 6" },
+     # TODO(fcoury): remove this exception when syntect drops bincode, or updates to a version that fixes the vulnerability.
+     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
+     { id = "RUSTSEC-2026-0118", reason = "hickory-proto v0.25.2 is pulled in via rama-dns/rama-tcp used by codex-network-proxy; DNSSEC features are not enabled; remove when rama updates to hickory 0.26.1 or hickory-net" },
+diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
+index 8bc9ef24f..3634aaea6 100644
+--- a/codex-rs/tui/Cargo.toml
++++ b/codex-rs/tui/Cargo.toml
+@@ -146,8 +146,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
+ objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSDateFormatter", "NSFormatter", "NSLocale", "NSString"] }
+
+ [target.'cfg(target_os = "linux")'.dependencies]
+-# Keep the same executor features as the credential store, which also uses zbus.
+-zbus = "4.4.0"
++zbus = { version = "6.0.0", default-features = false, features = ["tokio", "proxy", "tracing"] }
+
+ [target.'cfg(windows)'.dependencies]
+ which = { workspace = true }
+diff --git a/codex-rs/tui/src/system_motion.rs b/codex-rs/tui/src/system_motion.rs
+index b11c64332..1b4fefd1a 100644
+--- a/codex-rs/tui/src/system_motion.rs
++++ b/codex-rs/tui/src/system_motion.rs
+@@ -60,7 +60,7 @@ async fn detect() -> Option<MotionMode> {
+         )
+         .await
+         .ok()?;
+-        let value: zbus::zvariant::OwnedValue = proxy
++        let value: zbus::wire::OwnedVariant = proxy
+             .call("ReadOne", &("org.freedesktop.appearance", "reduced-motion"))
+             .await
+             .ok()?;
+diff --git a/codex-rs/utils/pty/src/spawn_helper_tests.rs b/codex-rs/utils/pty/src/spawn_helper_tests.rs
+index 49a7738ee..6ac0d511f 100644
+--- a/codex-rs/utils/pty/src/spawn_helper_tests.rs
++++ b/codex-rs/utils/pty/src/spawn_helper_tests.rs
+@@ -162,7 +162,8 @@ async fn helper_target_dies_when_parent_is_killed() -> anyhow::Result<()> {
+         .expect("child reports its PID after verifying PDEATHSIG")
+         .parse::<libc::pid_t>()?;
+     // The fixture child waits on the cleanup pipe while its parent is alive.
+-    let child = tokio::io::unix::AsyncFd::new(open_pidfd(pid)?)?;
++    // SAFETY: AsyncFd owns this pidfd until it is dropped; its inner descriptor is never replaced.
++    let child = unsafe { tokio::io::unix::AsyncFd::register(open_pidfd(pid)?) }?;
+     parent.kill().await?;
+     let stopped = tokio::time::timeout(Duration::from_secs(5), child.readable()).await;
+     drop(cleanup);
+diff --git a/codex-rs/utils/pty/src/unix_io.rs b/codex-rs/utils/pty/src/unix_io.rs
+index 315c2b656..9e0a9bc49 100644
+--- a/codex-rs/utils/pty/src/unix_io.rs
++++ b/codex-rs/utils/pty/src/unix_io.rs
+@@ -35,8 +35,12 @@ impl PtyIo {
+         // Async tasks can be aborted even when a detached child keeps the PTY open
+         // or the output channel is full; blocking read/send tasks cannot.
+         // AsyncFd panics if the current runtime has no I/O driver.
+-        let fd = std::panic::catch_unwind(move || AsyncFd::new(File::from(fd)))
+-            .map_err(|_| io::Error::other("PTY I/O requires a Tokio runtime with I/O enabled"))??;
++        let fd = std::panic::catch_unwind(move || {
++            // SAFETY: File owns the duplicated descriptor for the registration lifetime.
++            // PtyIo only shares immutable references and never replaces the underlying File.
++            unsafe { AsyncFd::register(File::from(fd)) }
++        })
++        .map_err(|_| io::Error::other("PTY I/O requires a Tokio runtime with I/O enabled"))??;
+         Ok(Self { fd: Arc::new(fd) })
+     }
+
+--
+2.43.0

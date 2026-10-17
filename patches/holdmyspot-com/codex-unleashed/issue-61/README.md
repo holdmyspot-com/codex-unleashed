@@ -91,6 +91,32 @@ The dependency check passes without stale-policy findings. Reintroducing an
 unused policy entry fails the corresponding check. Advisory, license, dependency
 ban, and source checks remain enabled.
 
+### Zbus and Secret Service maintenance
+
+`zzzz-0070-zbus-6-advisories.patch` upgrades the TUI's direct zbus dependency
+to 6.0.0 with its Tokio client backend and uses the maintained wire variant
+API for reduced-motion settings. Its required Tokio update uses the maintained
+`AsyncFd::register` API for PTY and pidfd registration, preserving descriptor
+ownership for the registration lifetime. The credential store retains its
+supported Secret Service backend and existing credentials.
+
+Cargo deny and Cargo audit temporarily ignore only RUSTSEC-2026-0370,
+RUSTSEC-2026-0371, and RUSTSEC-2026-0372 for the retired standalone crates
+still required through Secret Service and keyring. Each configuration links
+[Secret Service PR #122](https://github.com/open-source-cooperative/secret-service-rs/pull/122)
+with a `WORKAROUND` comment. Remove these exceptions when the credential
+dependencies adopt zbus 6. Other advisory checks remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
+dependency-policy patches. Apply the complete queue, resolve workspace package
+versions, and run the Cargo deny command above, `just fmt-check`, and
+`just bazel-lock-check`. Run
+`just test -p codex-tui -p codex-utils-pty --lib` to verify accessibility
+behavior and PTY descriptor handling. The expected
+result is successful checks with the three retirement notices acknowledged;
+unrelated advisories and stale exceptions remain failures.
+
 ### Rustls Bazel metadata
 
 `rustls-bazel-metadata.patch` refreshes the Rustls crate fact in
