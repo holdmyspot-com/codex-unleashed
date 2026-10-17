@@ -611,6 +611,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   native-probe-mac:
+    if: github.ref_name == 'ci/gov-cloud-causal-probe'
     # Preserve the native compilation budget and individual test deadlines.
     timeout-minutes: ${{ startsWith(matrix.os, 'macos-') && 180 || 90 }}
     strategy:
@@ -715,11 +716,21 @@ jobs:
           key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
 
   native-probe-windows:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref_name == 'ci/windows-failure-loop'
     # Preserve the native compilation budget and individual test deadlines.
     timeout-minutes: 180
     runs-on: windows-2022
-    name: Windows credential export failure probe
+    name: Windows focused failure loop (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: corrupt-board-recovery
+            target: //codex-rs/app-server:app-server-all-test
+            test: suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled
+          - label: subagent-stop-hook
+            target: //codex-rs/core:core-all-test
+            test: suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents
     steps:
       - uses: actions/checkout@v6
         with:
@@ -728,10 +739,6 @@ jobs:
       - uses: ./.github/actions/prepare-patched-upstream
         with:
           upstream-ref: ${{ inputs.upstream_ref }}
-
-      - name: Apply temporary native failure diagnostics
-        shell: bash
-        run: git -C upstream apply --unidiff-zero --check ../.github/diagnostics/native-failures.patch && git -C upstream apply --unidiff-zero ../.github/diagnostics/native-failures.patch
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -744,46 +751,58 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run the credential export regression with diagnostics
+      - name: Loop only the failing Windows regression until its first failure
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          REGRESSION_TARGET: ${{ matrix.target }}
+          REGRESSION_TEST: ${{ matrix.test }}
         shell: bash
         run: |
           set -euo pipefail
           cd upstream
-          bazel_targets=(
-            //codex-rs/model-provider:model-provider-unit-tests
-          )
-          bazel_test_args=(
-            test
-            --config=ci-windows-msvc
-            --platforms=//:windows_x86_64_msvc
-            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
-            --test_tag_filters=-argument-comment-lint
-            --test_filter=shared_bedrock_auth_refresh_is_reused_only_for_matching_configuration
-            --test_verbose_timeout_warnings
-            --test_output=all
-            --test_env=RUST_BACKTRACE=1
-            --test_env=RUST_LIB_BACKTRACE=1
-            --test_env=RUST_TEST_NOCAPTURE=1
-            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
-            --build_metadata=TAG_native_failure_probe=true
-          )
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary \
-            --print-failed-test-logs \
-            --windows-msvc-host-platform \
-            -- \
-            "${bazel_test_args[@]}" \
-            -- \
-            "${bazel_targets[@]}"
+          attempt=0
+          mkdir -p "${GITHUB_WORKSPACE}/.cat/work/temp"
+          attempt_log=$(mktemp "${GITHUB_WORKSPACE}/.cat/work/temp/windows-attempt-XXXXXX")
+          trap 'rm -f -- "$attempt_log"' EXIT
+          while :; do
+            attempt=$((attempt + 1))
+            echo "Focused Windows attempt $attempt: $REGRESSION_TEST"
+            if "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary \
+              --print-failed-test-logs \
+              --windows-msvc-host-platform \
+              -- \
+              test \
+              --config=ci-windows-msvc \
+              --platforms=//:windows_x86_64_msvc \
+              --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+              --test_tag_filters=-argument-comment-lint \
+              --test_sharding_strategy=disabled \
+              --test_output=all \
+              --nocache_test_results \
+              --test_arg=--exact \
+              "--test_arg=$REGRESSION_TEST" \
+              --test_arg=--nocapture \
+              --test_env=RUST_BACKTRACE=1 \
+              --test_env=RUST_LIB_BACKTRACE=0 \
+              "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+              -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
+              rg -q 'running 1 test' "$attempt_log"
+              rg -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
+              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+            else
+              status=$?
+              echo "Stopped at Windows attempt $attempt with exit $status"
+              exit "$status"
+            fi
+          done
 
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
-          name: bazel-execution-logs-probe-windows-x86_64-pc-windows-msvc
+          name: bazel-execution-logs-probe-windows-${{ matrix.label }}-x86_64-pc-windows-msvc
           path: ${{ runner.temp }}/bazel-execution-logs
           retention-days: 1
           if-no-files-found: ignore
