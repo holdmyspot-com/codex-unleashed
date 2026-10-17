@@ -2373,3 +2373,56 @@ All six mention and discovery variants pass with their existing assertions.
 Full native CI verifies the emitted helper change without diagnostic source
 instrumentation. The focused run can report a sizing advisory because the
 unfiltered integration suite keeps its long deadline.
+
+## Sharded core integration deadline
+
+`zzzz-0060-core-shard-deadline.patch` gives the sharded core integration suite
+Bazel's moderate five-minute deadline. The separate Windows sandbox suite keeps
+its long deadline. The core integration assertions and 16-shard layout remain
+enabled, and Wine execution inherits the same integration deadline.
+
+Bazel's `timeout` attribute is nonconfigurable, so native platforms share this
+deadline. Faster shards can report a short-test sizing advisory; that output
+remains visible. Compiler warning policy is unchanged.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0059. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test -- //tools/build-warnings/test-timeouts:timeouts_tests
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //codex-rs/core:core-all-test
+```
+
+The timeout analysis suite verifies the generated deadline. Full native CI
+runs every core integration shard within the configured deadline.
+
+## GovCloud quit test
+
+`zzzz-0061-gov-cloud-quit-pty.patch` handles the pseudo-terminal closing while
+Codex quits the GovCloud guidance screen. Only the quit scenario accepts an
+input `EIO`, and only after the child exits successfully within the original
+interaction deadline. Other input failures and unsuccessful or late child exits
+remain test failures. The acknowledgment, saved-configuration, and restart
+assertions remain enabled. Product behavior is unchanged.
+
+The unmodified upstream test can fail intermittently on Intel macOS when it
+repeats input after quitting closes the pseudo-terminal. The declared base is
+`rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained
+queue through patch 0060. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+just test -p codex-tui --test all gov_cloud_startup_persists_only_acknowledgment
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=all --runs_per_test=5 --nocache_test_results -- //codex-rs/tui:tui-all-test
+```
+
+The focused regression verifies quit without saving, acknowledgment persistence,
+and suppression on restart. The repeated native suite verifies the emitted
+repair alongside the existing TUI integration tests without diagnostic source
+instrumentation. Full native CI remains the platform acceptance gate.
