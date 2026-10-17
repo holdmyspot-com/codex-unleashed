@@ -1,0 +1,52 @@
+From 836b73ffe3791d49db651f6292306551063a3688 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 00:59:32 +0000
+Subject: [PATCH] Match the sharded core integration deadline to native
+ runtimes
+
+The sharded core suite completes within 149 seconds on Intel macOS, 114 seconds on Linux/Wine, and 81 seconds in retained Windows execution. Use the moderate five-minute deadline rather than the long fifteen-minute category that produces sizing warnings. Keep the separate Windows sandbox deadline, shard count and test assertions.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012), with the maintained queue through patch 0059. The timeout regression fails before the change (Expected moderate, got long; exit 3) and all 21 timeout analysis tests pass afterward (exit 0). Command: bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --jobs=4 --spawn_strategy=local -- //tools/build-warnings/test-timeouts:timeouts_tests. Local executor avoids nested linux-sandbox /dev/null permission errors. Records: core-shard-deadline-red-local.log and core-shard-deadline-green-shared.log in the active CI repair work.
+---
+ codex-rs/core/BUILD.bazel                      | 11 ++++++++++-
+ tools/build-warnings/test-timeouts/BUILD.bazel |  1 +
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/core/BUILD.bazel b/codex-rs/core/BUILD.bazel
+index 534b0cf9b..533353fb5 100644
+--- a/codex-rs/core/BUILD.bazel
++++ b/codex-rs/core/BUILD.bazel
+@@ -26,7 +26,7 @@ codex_rust_crate(
+     ],
+     integration_compile_data_extra = glob(["assets/**"]),
+     integration_test_timeouts = {
+-        "core-all-test": "long",
++        "core-all-test": "moderate",
+         "core-windows_sandbox-test": "long",
+     },
+     run_tests_with_wine_exec = True,
+@@ -59,3 +59,12 @@ timeout_test(
+     target_under_test = ":core-mcp_trace_propagation-test",
+     visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
++
++timeout_test(
++    name = "sharded_integration_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":core-all-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index 8b3c33642..aefe38a49 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -12,6 +12,7 @@ test_suite(
+         "//codex-rs/cli:daemon_deadline_test",
+         "//codex-rs/cli:fast_integration_deadline_test",
+         "//codex-rs/core:fast_integration_deadline_test",
++        "//codex-rs/core:sharded_integration_deadline_test",
+         "//codex-rs/exec:fast_integration_deadline_test",
+         "//codex-rs/exec:integration_deadline_test",
+         "//codex-rs/exec-server:current_compat_timeout_test",

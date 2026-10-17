@@ -2373,3 +2373,29 @@ All six mention and discovery variants pass with their existing assertions.
 Full native CI verifies the emitted helper change without diagnostic source
 instrumentation. The focused run can report a sizing advisory because the
 unfiltered integration suite keeps its long deadline.
+
+## Sharded core integration deadline
+
+`zzzz-0060-core-shard-deadline.patch` gives the sharded core integration suite
+Bazel's moderate five-minute deadline. The separate Windows sandbox suite keeps
+its long deadline. The core integration assertions and 16-shard layout remain
+enabled, and Wine execution inherits the same integration deadline.
+
+Bazel's `timeout` attribute is nonconfigurable, so native platforms share this
+deadline. Faster shards can report a short-test sizing advisory; that output
+remains visible. Compiler warning policy is unchanged.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0059. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test -- //tools/build-warnings/test-timeouts:timeouts_tests
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //codex-rs/core:core-all-test
+```
+
+The timeout analysis suite verifies the generated deadline. Full native CI
+runs every core integration shard within the configured deadline.
