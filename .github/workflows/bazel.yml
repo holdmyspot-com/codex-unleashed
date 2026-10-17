@@ -969,3 +969,23 @@ jobs:
           path: .cat/work/temp/native-log-recovery
           retention-days: 1
           if-no-files-found: ignore
+
+  inspect-clean-baseline:
+    if: github.ref_name == 'ci/baseline-observation'
+    runs-on: ubuntu-24.04
+    name: Inspect existing clean upstream build and test records
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Query BuildBuddy without rerunning builds or tests
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: node .github/diagnostics/inspect-clean-baseline.mjs
+      - uses: actions/upload-artifact@v6
+        if: always() && !cancelled()
+        with:
+          name: clean-baseline-observation
+          path: .cat/work/temp/clean-baseline-observation
+          retention-days: 1
+          if-no-files-found: ignore

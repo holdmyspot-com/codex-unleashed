@@ -1,0 +1,11 @@
+{
+  "runId": 39001296354,
+  "workflowHead": "914b594429a44b6e54b5a305dd1901246b84ceac",
+  "commit": "83086188ae0614bd882818ff1aa23f3194962012",
+  "startedAt": "2026-10-17T04:06:14Z",
+  "tests": [
+    "suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled",
+    "suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents",
+    "suite::rmcp_client::stdio_image_responses_resize_large_image"
+  ]
+}
