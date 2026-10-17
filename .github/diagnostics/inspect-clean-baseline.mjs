@@ -28,19 +28,19 @@ async function inspectBaseline(apiKey, context) {
   } while (pageToken);
 
   const sinceUsec = BigInt(Date.parse(context.startedAt)) * 1000n;
-  const latest = new Map();
-  for (const invocation of invocations) {
+  const matching = invocations.filter(invocation => {
     const createdUsec = BigInt(invocation.createdAtUsec ?? '0');
     const metadata = invocation.buildMetadata ?? [];
-    if (createdUsec < sinceUsec || !metadata.some(item => item.key === 'TAG_clean_upstream_native' && item.value === 'true')) continue;
-    const complete = invocation.invocationStatus === 'COMPLETE_INVOCATION_STATUS' || invocation.invocationStatus === 1;
-    const key = JSON.stringify([invocation.host, invocation.pattern, complete]);
-    const previous = latest.get(key);
-    if (!previous || BigInt(previous.createdAtUsec ?? '0') < createdUsec) latest.set(key, invocation);
-  }
-
+    return createdUsec >= sinceUsec && metadata.some(item => item.key === 'TAG_clean_upstream_native' && item.value === 'true');
+  });
+  matching.sort((left, right) => {
+    const leftUsec = BigInt(left.createdAtUsec ?? '0');
+    const rightUsec = BigInt(right.createdAtUsec ?? '0');
+    return leftUsec === rightUsec ? 0 : leftUsec > rightUsec ? -1 : 1;
+  });
+  const seenTests = new Set();
   const selected = [];
-  for (const invocation of latest.values()) {
+  for (const invocation of matching) {
     const invocationId = invocation.id?.invocationId;
     if (!invocationId) throw new Error('Selected invocation has no invocation ID.');
     const record = {
@@ -70,9 +70,19 @@ async function inspectBaseline(apiKey, context) {
         }
       }
     }
+    for (const log of record.testLogs) if (log.test) seenTests.add(log.test);
     selected.push(record);
+    if (context.tests.every(test => seenTests.has(test))) break;
   }
-  const result = {observedAt: new Date().toISOString(), context, matchingInvocations: latest.size, selected};
+  const result = {
+    observedAt: new Date().toISOString(), context, matchingInvocations: matching.length,
+    invocationSummary: matching.map(invocation => ({
+      invocationId: invocation.id?.invocationId, pattern: invocation.pattern,
+      status: invocation.invocationStatus, success: invocation.success,
+      createdAtUsec: invocation.createdAtUsec, updatedAtUsec: invocation.updatedAtUsec,
+    })),
+    selected,
+  };
   await fs.writeFile(`${output}/observation.json`, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result, null, 2));
 }
