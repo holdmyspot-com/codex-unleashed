@@ -42,27 +42,31 @@ public final class PackageSourceBuildsTest
 	{
 		try (Fixture fixture = Fixture.create())
 		{
-			fixture.prepareCargo();
-			try (PrintStream output = new PrintStream(fixture.trace, true, StandardCharsets.UTF_8))
+			fixture.reportFailure(() ->
 			{
-				PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(fixture.request(PackageVariant.APP_SERVER,
-					PackageSourceBuilds.Inputs.empty(), "dev", Map.of("V8_FROM_SOURCE", "1")), output);
-				Path expected = fixture.cache.resolve("cargo-target/" + fixture.target.triple() + "/debug");
-				assertEquals(built.entrypoint(), expected.resolve("codex-app-server" + fixture.target.executableSuffix()));
-				assertEquals(built.codeModeHost(),
-					expected.resolve("codex-code-mode-host" + fixture.target.executableSuffix()));
-				fixture.checkResources(built, expected);
-				assertTrue(Files.isRegularFile(built.entrypoint()));
-				assertTrue(Files.isRegularFile(built.codeModeHost()));
-				StringBuilder helperArguments = new StringBuilder();
-				for (String helper : fixture.helpers())
-					helperArguments.append(" --bin ").append(helper);
-				assertEquals(fixture.trace.toString(StandardCharsets.UTF_8),
-					"+ cargo build --target " + fixture.target.triple() + " --profile dev --bin codex-app-server " +
-						"--bin codex-code-mode-host" + helperArguments + System.lineSeparator());
-				assertFalse(Files.exists(fixture.workspace.resolve("codex-rs/target")));
-				assertFalse(Files.exists(fixture.cache.resolve("rusty-v8")));
-			}
+				fixture.prepareCargo();
+				try (PrintStream output = new PrintStream(fixture.trace, true, StandardCharsets.UTF_8))
+				{
+					PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(fixture.request(PackageVariant.APP_SERVER,
+						PackageSourceBuilds.Inputs.empty(), "dev", Map.of("V8_FROM_SOURCE", "1")), output);
+					Path expected = fixture.cache.resolve("cargo-target/" + fixture.target.triple() + "/debug");
+					assertEquals(built.entrypoint(), expected.resolve("codex-app-server" + fixture.target.executableSuffix()));
+					assertEquals(built.codeModeHost(),
+						expected.resolve("codex-code-mode-host" + fixture.target.executableSuffix()));
+					fixture.checkResources(built, expected);
+					assertTrue(Files.isRegularFile(built.entrypoint()));
+					assertTrue(Files.isRegularFile(built.codeModeHost()));
+					StringBuilder helperArguments = new StringBuilder();
+					for (String helper : fixture.helpers())
+						helperArguments.append(" --bin ").append(helper);
+					assertEquals(fixture.trace.toString(StandardCharsets.UTF_8),
+						"+ " + fixture.cargo() + " build --target " + fixture.target.triple() +
+							" --profile dev --bin codex-app-server " +
+							"--bin codex-code-mode-host" + helperArguments + System.lineSeparator());
+					assertFalse(Files.exists(fixture.workspace.resolve("codex-rs/target")));
+					assertFalse(Files.exists(fixture.cache.resolve("rusty-v8")));
+				}
+			});
 		}
 	}
 
@@ -76,45 +80,48 @@ public final class PackageSourceBuildsTest
 	{
 		try (Fixture fixture = Fixture.create())
 		{
-			fixture.prepareCargo();
-			Path entrypoint = Files.write(fixture.root.resolve("prebuilt-entrypoint"), new byte[] {1});
-			Path host = Files.write(fixture.root.resolve("prebuilt-host"), new byte[] {2});
-			Optional<Path> prebuiltHost = Optional.of(host);
-			if (fixture.helpers().isEmpty())
-				prebuiltHost = Optional.empty();
-			PackageSourceBuilds.Inputs inputs = new PackageSourceBuilds.Inputs(Optional.of(entrypoint), prebuiltHost,
-				Optional.empty(), Optional.empty(), Optional.empty());
-			for (String target : List.of("../../relative-target", fixture.root.resolve("absolute-target").toString()))
+			fixture.reportFailure(() ->
 			{
-				fixture.trace.reset();
-				try (PrintStream output = new PrintStream(fixture.trace, true, StandardCharsets.UTF_8))
+				fixture.prepareCargo();
+				Path entrypoint = Files.write(fixture.root.resolve("prebuilt-entrypoint"), new byte[] {1});
+				Path host = Files.write(fixture.root.resolve("prebuilt-host"), new byte[] {2});
+				Optional<Path> prebuiltHost = Optional.of(host);
+				if (fixture.helpers().isEmpty())
+					prebuiltHost = Optional.empty();
+				PackageSourceBuilds.Inputs inputs = new PackageSourceBuilds.Inputs(Optional.of(entrypoint), prebuiltHost,
+					Optional.empty(), Optional.empty(), Optional.empty());
+				for (String target : List.of("../../relative-target", fixture.root.resolve("absolute-target").toString()))
 				{
-					Map<String, String> overrides = new HashMap<>(Map.of("CARGO_TARGET_DIR", target,
-						"RUSTY_V8_ARCHIVE", "only-one-override"));
-					if (fixture.helpers().isEmpty())
-						overrides.put("V8_FROM_SOURCE", "1");
-					PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(fixture.request(PackageVariant.CODEX,
-						inputs, "dev-small", overrides), output);
-					assertEquals(built.entrypoint(), entrypoint.toRealPath());
-					Path selected = Path.of(target);
-					if (!selected.isAbsolute())
-						selected = fixture.workspace.resolve("codex-rs").resolve(selected);
-					Path directory = selected.resolve(fixture.target.triple() + "/dev-small");
-					Path expectedHost = host.toRealPath();
-					if (fixture.helpers().isEmpty())
-						expectedHost = directory.resolve("codex-code-mode-host").toRealPath();
-					assertEquals(built.codeModeHost().toRealPath(), expectedHost);
-					fixture.checkResources(built, directory);
-					List<String> missing = fixture.helpers();
-					if (missing.isEmpty())
-						missing = List.of("codex-code-mode-host");
-					StringBuilder arguments = new StringBuilder();
-					for (String binary : missing)
-						arguments.append(" --bin ").append(binary);
-					assertEquals(fixture.trace.toString(StandardCharsets.UTF_8), "+ cargo build --target " +
-						fixture.target.triple() + " --profile dev-small" + arguments + System.lineSeparator());
+					fixture.trace.reset();
+					try (PrintStream output = new PrintStream(fixture.trace, true, StandardCharsets.UTF_8))
+					{
+						Map<String, String> overrides = new HashMap<>(Map.of("CARGO_TARGET_DIR", target,
+							"RUSTY_V8_ARCHIVE", "only-one-override"));
+						if (fixture.helpers().isEmpty())
+							overrides.put("V8_FROM_SOURCE", "1");
+						PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(fixture.request(PackageVariant.CODEX,
+							inputs, "dev-small", overrides), output);
+						assertEquals(built.entrypoint(), entrypoint.toRealPath());
+						Path selected = Path.of(target);
+						if (!selected.isAbsolute())
+							selected = fixture.workspace.resolve("codex-rs").resolve(selected);
+						Path directory = selected.resolve(fixture.target.triple() + "/dev-small");
+						Path expectedHost = host.toRealPath();
+						if (fixture.helpers().isEmpty())
+							expectedHost = directory.resolve("codex-code-mode-host").toRealPath();
+						assertEquals(built.codeModeHost().toRealPath(), expectedHost);
+						fixture.checkResources(built, directory);
+						List<String> missing = fixture.helpers();
+						if (missing.isEmpty())
+							missing = List.of("codex-code-mode-host");
+						StringBuilder arguments = new StringBuilder();
+						for (String binary : missing)
+							arguments.append(" --bin ").append(binary);
+						assertEquals(fixture.trace.toString(StandardCharsets.UTF_8), "+ " + fixture.cargo() + " build --target " +
+							fixture.target.triple() + " --profile dev-small" + arguments + System.lineSeparator());
+					}
 				}
-			}
+			});
 		}
 	}
 
@@ -129,22 +136,29 @@ public final class PackageSourceBuildsTest
 		try (Fixture fixture = Fixture.create(); PrintStream output =
 			new PrintStream(fixture.trace, true, StandardCharsets.UTF_8))
 		{
-			Path binary = Files.write(fixture.root.resolve("binary"), new byte[] {1});
-			PackageSourceBuilds.Inputs complete = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
-				Optional.of(binary), Optional.empty(), Optional.empty());
-			PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(
-				fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, complete, "release", Map.of()), output);
-			assertEquals(built.entrypoint(), binary.toRealPath());
-			assertEquals(fixture.trace.size(), 0);
-			assertFalse(Files.exists(fixture.cache));
-			PackageSourceBuilds.Inputs unsupported = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
-				Optional.of(binary), Optional.of(binary), Optional.empty());
-			expectThrows(IOException.class, () -> PackageSourceBuilds.build(
-				fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, unsupported, "release", Map.of()), output));
-			fixture.prepareCargo();
-			Files.writeString(fixture.workspace.resolve("codex-rs/src/bin/codex.rs"), "invalid Rust source");
-			expectThrows(IOException.class, () -> PackageSourceBuilds.build(fixture.request(PackageVariant.CODEX,
-				PackageSourceBuilds.Inputs.empty(), "dev", Map.of("V8_FROM_SOURCE", "1")), output));
+			fixture.reportFailure(() ->
+			{
+				Path binary = Files.write(fixture.root.resolve("binary"), new byte[] {1});
+				PackageSourceBuilds.Inputs complete = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
+					Optional.of(binary), Optional.empty(), Optional.empty());
+				PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(
+					fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, complete, "release", Map.of()), output);
+				assertEquals(built.entrypoint(), binary.toRealPath());
+				assertEquals(fixture.trace.size(), 0);
+				assertFalse(Files.exists(fixture.cache));
+				PackageSourceBuilds.Inputs unsupported = new PackageSourceBuilds.Inputs(Optional.of(binary),
+					Optional.of(binary), Optional.of(binary), Optional.of(binary), Optional.empty());
+				expectThrows(IOException.class, () -> PackageSourceBuilds.build(
+					fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, unsupported, "release", Map.of()),
+					output));
+				fixture.prepareCargo();
+				Files.writeString(fixture.workspace.resolve("codex-rs/src/bin/codex.rs"), "invalid Rust source");
+				IOException failure = expectThrows(IOException.class, () -> PackageSourceBuilds.build(
+					fixture.request(PackageVariant.CODEX, PackageSourceBuilds.Inputs.empty(), "dev",
+						Map.of("V8_FROM_SOURCE", "1")), output));
+				assertEquals(failure.getMessage(), "Cargo package build failed with status 101");
+				assertTrue(Files.readString(fixture.root.resolve("cargo.log")).contains("invalid Rust source"));
+			});
 		}
 	}
 
@@ -180,6 +194,20 @@ public final class PackageSourceBuildsTest
 				PackageTarget.WINDOWS_X86, initial.variant(), directory, initial.options()), output));
 			assertFalse(Files.exists(fixture.cache));
 		}
+	}
+
+	/**
+	 * Runs assertions that can access fixture files and real Cargo builds.
+	 */
+	@FunctionalInterface
+	private interface Assertions
+	{
+		/**
+		 * Runs the test body.
+		 *
+		 * @throws IOException if fixture access or building fails
+		 */
+		void run() throws IOException;
 	}
 
 	/**
@@ -228,6 +256,21 @@ public final class PackageSourceBuildsTest
 		 */
 		private void prepareCargo() throws IOException
 		{
+			Path adapter = Files.writeString(root.resolve("quiet-cargo.rs"), """
+				use std::{env, fs::OpenOptions, io, process::{self, Command}};
+				fn main() -> io::Result<()> {
+				    let log = OpenOptions::new().create(true).append(true)
+				        .open(env::var_os("PACKAGE_TEST_CARGO_LOG").expect("test log path"))?;
+				    let status = Command::new("cargo").args(env::args_os().skip(1))
+				        .stdout(log.try_clone()?).stderr(log).status()?;
+				    process::exit(status.code().unwrap_or(1));
+				}
+				""");
+			SystemCommands.Result compiled = SystemCommands.capture(List.of("rustc", "--edition=2024", "-Dwarnings",
+				"--crate-name", "quiet_cargo", adapter.toString(), "-o", cargo().toString()), root, root);
+			if (compiled.status() != 0)
+				throw new IOException("Cannot compile the Cargo output adapter: " + compiled.stdout() + compiled.stderr());
+
 			Path binaries = Files.createDirectories(workspace.resolve("codex-rs/src/bin"));
 			Files.writeString(workspace.resolve("codex-rs/Cargo.toml"), """
 				[package]
@@ -241,6 +284,47 @@ public final class PackageSourceBuildsTest
 			for (String name : List.of("codex", "codex-app-server", "codex-code-mode-host", "bwrap",
 				"codex-command-runner", "codex-windows-sandbox-setup"))
 				Files.writeString(binaries.resolve(name + ".rs"), "fn main() { println!(\"source fixture\"); }\n");
+		}
+
+		/**
+		 * Locates the native adapter that preserves Cargo arguments, environment, and status while capturing its output.
+		 *
+		 * @return the executable path
+		 */
+		private Path cargo()
+		{
+			return root.resolve("quiet-cargo" + target.executableSuffix());
+		}
+
+		/**
+		 * Attaches this test's complete Cargo diagnostics to an unexpected failure before fixture cleanup.
+		 *
+		 * @param assertions the test body, including expected failures
+		 * @throws IOException if the body or diagnostic access fails
+		 */
+		private void reportFailure(Assertions assertions) throws IOException
+		{
+			try
+			{
+				assertions.run();
+			}
+			catch (IOException | RuntimeException | Error failure)
+			{
+				try
+				{
+					Path log = root.resolve("cargo.log");
+					String diagnostics = "Cargo did not produce output.";
+					if (Files.exists(log))
+						diagnostics = Files.readString(log);
+					failure.addSuppressed(new IOException("Cargo fixture diagnostics:" + System.lineSeparator() +
+						trace.toString(StandardCharsets.UTF_8) + diagnostics));
+				}
+				catch (IOException diagnosticFailure)
+				{
+					failure.addSuppressed(diagnosticFailure);
+				}
+				throw failure;
+			}
 		}
 
 		/**
@@ -280,8 +364,10 @@ public final class PackageSourceBuildsTest
 			environment.put("CARGO_NET_OFFLINE", "true");
 			environment.put("XDG_CACHE_HOME", root.resolve("xdg").toString());
 			environment.put("TMPDIR", System.getProperty("java.io.tmpdir"));
+			environment.put("PACKAGE_TEST_CARGO_LOG", root.resolve("cargo.log").toString());
 			environment.putAll(overrides);
-			PackageSourceBuilds.Options options = new PackageSourceBuilds.Options("cargo", profile, cache, environment,
+			PackageSourceBuilds.Options options = new PackageSourceBuilds.Options(cargo().toString(), profile, cache,
+				environment,
 				URI.create("https://github.com/openai/codex/releases/download/"));
 			return new PackageSourceBuilds.Request(workspace, selectedTarget, variant, inputs, options);
 		}
