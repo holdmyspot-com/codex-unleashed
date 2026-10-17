@@ -83,6 +83,58 @@ runs:
         path: ${{ steps.checkout.outputs.runtime }}
         key: ${{ steps.runtime.outputs.cache-primary-key }}
 
+    - name: Recheck verified runtime cache after saving
+      id: runtime_after_save
+      if: success() && steps.runtime.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ steps.checkout.outputs.runtime }}
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+
+    # A concurrent writer reserves the key before its completed upload becomes visible.
+    - name: Wait for concurrent runtime cache upload (1/3)
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true'
+      shell: bash
+      run: sleep 5
+
+    - name: Recheck concurrent runtime cache upload (1/3)
+      id: runtime_upload_1
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ steps.checkout.outputs.runtime }}
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+
+    - name: Wait for concurrent runtime cache upload (2/3)
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true' && steps.runtime_upload_1.outputs.cache-hit != 'true'
+      shell: bash
+      run: sleep 10
+
+    - name: Recheck concurrent runtime cache upload (2/3)
+      id: runtime_upload_2
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true' && steps.runtime_upload_1.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ steps.checkout.outputs.runtime }}
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+
+    - name: Wait for concurrent runtime cache upload (3/3)
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true' && steps.runtime_upload_1.outputs.cache-hit != 'true' && steps.runtime_upload_2.outputs.cache-hit != 'true'
+      shell: bash
+      run: sleep 20
+
+    - name: Recheck concurrent runtime cache upload (3/3)
+      id: runtime_upload_3
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_after_save.outputs.cache-hit != 'true' && steps.runtime_upload_1.outputs.cache-hit != 'true' && steps.runtime_upload_2.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ steps.checkout.outputs.runtime }}
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+
     - name: Require verified runtime cache creation
       if: success() && steps.runtime.outputs.cache-hit != 'true'
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
