@@ -1,21 +1,24 @@
-From ab01ebc8044bea141aa6446840122972f017fa00 Mon Sep 17 00:00:00 2001
+From 3dbaffcfdc8994c886b2785ee69f4d2528d25b8d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:02 +0000
+Date: Sat, 17 Oct 2026 08:58:31 +0000
 Subject: [PATCH] Make resumed conversations available during skill discovery
 
+Preserve the existing background skill discovery and watch-registration behavior. Keep a second tracing dispatch alive in the five observer tests so concurrent untraced calls cannot disable their shared span callsites. Assertions and deadlines remain unchanged.
+
+The original independent patch tree differs only by the 15 tracing-guard lines. The authoring queue and a fresh candidate checkout pass maintained just fmt-check. Native validation and emitted queue acceptance are tracked separately by the CI repair task.
 ---
  .../request_processors/thread_lifecycle.rs    |  73 +++++-
  .../request_processors/thread_processor.rs    |  11 +-
  .../src/request_processors/turn_processor.rs  |   1 +
- codex-rs/app-server/src/thread_state.rs       |  54 +++++
- .../app-server/tests/suite/v2/skills_list.rs  |  69 ++++++
+ codex-rs/app-server/src/thread_state.rs       |  54 ++++
+ .../app-server/tests/suite/v2/skills_list.rs  |  69 +++++
  codex-rs/core/src/session/mod.rs              |   4 +-
- .../core/src/session/resume_warmup_tests.rs   | 228 ++++++++++++++++++
- codex-rs/core/src/session/session.rs          |  70 ++++--
+ .../core/src/session/resume_warmup_tests.rs   | 243 ++++++++++++++++++
+ codex-rs/core/src/session/session.rs          |  70 +++--
  codex-rs/core/src/session/tests.rs            |   4 +
- codex-rs/core/src/session/turn_context.rs     |  60 +++--
+ codex-rs/core/src/session/turn_context.rs     |  60 ++++-
  codex-rs/core/tests/suite/skills_extension.rs |  24 ++
- 11 files changed, 551 insertions(+), 47 deletions(-)
+ 11 files changed, 566 insertions(+), 47 deletions(-)
  create mode 100644 codex-rs/core/src/session/resume_warmup_tests.rs
 
 diff --git a/codex-rs/app-server/src/request_processors/thread_lifecycle.rs b/codex-rs/app-server/src/request_processors/thread_lifecycle.rs
@@ -37,7 +40,7 @@ index a7754975b..448ca5bfe 100644
 @@ -136,6 +139,13 @@ pub(super) enum EnsureConversationListenerResult {
      ConnectionClosed,
  }
-
+ 
 +/// Determines when skill watches become ready relative to session publication.
 +pub(super) enum SkillWatchStartup {
 +    BeforeAvailability,
@@ -230,7 +233,7 @@ index 6dfe969ab..52fa71cbb 100644
 @@ -146,6 +146,20 @@ impl ThreadState {
          (listener_command_rx, self.listener_generation)
      }
-
+ 
 +    /// Installs watches only while the listener that requested them remains active.
 +    /// A result from a replaced or closed listener is dropped without changing its successor.
 +    pub(crate) fn set_listener_watch_registration(
@@ -251,7 +254,7 @@ index 6dfe969ab..52fa71cbb 100644
 @@ -272,6 +286,46 @@ mod tests {
      use codex_utils_absolute_path::AbsolutePathBuf;
      use pretty_assertions::assert_eq;
-
+ 
 +    #[test]
 +    fn late_skill_watches_only_install_for_the_active_listener_generation() {
 +        let mut state = ThreadState {
@@ -315,7 +318,7 @@ index a72104a0b..d59d1f03f 100644
 @@ -55,6 +59,71 @@ use wiremock::matchers::query_param_is_missing;
  const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
  const WATCHER_TIMEOUT: Duration = Duration::from_secs(20);
-
+ 
 +#[tokio::test]
 +async fn cold_resume_refreshes_skill_metadata_after_watches_are_ready() -> Result<()> {
 +    skip_if_remote!(
@@ -408,10 +411,10 @@ index a541c5529..da54fafce 100644
                      .await;
 diff --git a/codex-rs/core/src/session/resume_warmup_tests.rs b/codex-rs/core/src/session/resume_warmup_tests.rs
 new file mode 100644
-index 000000000..1f94d1cd6
+index 000000000..0a25f481d
 --- /dev/null
 +++ b/codex-rs/core/src/session/resume_warmup_tests.rs
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,243 @@
 +use super::make_session_and_context;
 +use crate::session::*;
 +use codex_history::ResumedHistory;
@@ -440,6 +443,9 @@ index 000000000..1f94d1cd6
 +
 +#[tokio::test]
 +async fn resumed_history_does_not_discover_skills_before_restoration() {
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
 +    let (session, _) = make_session_and_context().await;
 +    let calls = SkillDiscoveryCalls::default();
 +    let subscriber = tracing_subscriber::registry().with(calls.clone());
@@ -462,6 +468,9 @@ index 000000000..1f94d1cd6
 +
 +#[tokio::test]
 +async fn forked_history_does_not_discover_skills_before_restoration() {
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
 +    let (session, _) = make_session_and_context().await;
 +    let calls = SkillDiscoveryCalls::default();
 +    let subscriber = tracing_subscriber::registry().with(calls.clone());
@@ -479,6 +488,9 @@ index 000000000..1f94d1cd6
 +
 +#[tokio::test]
 +async fn execution_context_still_discovers_skills() {
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
 +    let (session, _) = make_session_and_context().await;
 +    let skill_root = tempfile::tempdir().expect("skill root");
 +    let skill_dir = skill_root.path().join("resume-demo");
@@ -560,6 +572,9 @@ index 000000000..1f94d1cd6
 +
 +#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 +async fn session_is_available_during_skill_warmup_and_first_context_waits() {
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
 +    let discovery = PausedSkillDiscovery::default();
 +    let _release_on_drop = ReleaseDiscoveryOnDrop(discovery.clone());
 +    let subscriber = tracing_subscriber::registry().with(discovery.clone());
@@ -626,6 +641,9 @@ index 000000000..1f94d1cd6
 +
 +#[tokio::test]
 +async fn failed_skill_warmup_does_not_skip_execution_discovery() {
++    // Keep a second dispatch alive so concurrent untraced tests cannot cache shared callsites as disabled.
++    let _interest_cache_guard =
++        tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
 +    let (session, _) = make_session_and_context().await;
 +    let discovery = tokio::spawn(async { panic!("injected startup discovery failure") });
 +    *session.startup_skill_warmup.lock().await = Some(
@@ -657,7 +675,7 @@ index a617d9367..b23cb5925 100644
 +/// Shared startup discovery completion; its last owner aborts unfinished work on drop.
 +pub(super) type StartupSkillWarmup =
 +    Shared<BoxFuture<'static, Result<(), Arc<tokio::task::JoinError>>>>;
-
+ 
  type McpToolApprovalMetadataMap =
      HashMap<(String, String), std::sync::Weak<McpToolApprovalContext>>;
 @@ -87,6 +94,8 @@ pub(crate) struct Session {
@@ -672,7 +690,7 @@ index a617d9367..b23cb5925 100644
 @@ -626,6 +635,11 @@ pub(crate) struct AppServerClientMetadata {
      pub(crate) client_version: Option<String>,
  }
-
+ 
 +#[tracing::instrument(
 +    name = "session_init.plugin_skill_warmup",
 +    skip_all,
@@ -807,7 +825,7 @@ index 40cf7657a..a6f9c6fd0 100644
 @@ -394,6 +394,10 @@ enum TurnContextBuildMode {
      /// shared model/multi-agent metadata.
      StartupPrewarm,
-
+ 
 +    /// Restores recorded history and model metadata without discovering skills or plugins.
 +    /// Must not capture or execute a step.
 +    RestoreHistory,
@@ -892,7 +910,7 @@ index 40cf7657a..a6f9c6fd0 100644
 @@ -1434,6 +1459,13 @@ impl Session {
          self.new_default_turn_for(TurnContextBuildMode::Full).await
      }
-
+ 
 +    /// Captures the metadata needed to restore history without waiting for skill discovery.
 +    /// This context must not be used to capture or execute a step.
 +    pub(crate) async fn new_history_restoration_context(&self) -> Arc<TurnContext> {
@@ -918,7 +936,7 @@ index d3ca22f43..32e11429f 100644
 @@ -2867,6 +2868,29 @@ async fn production_turn_warns_and_omits_unreadable_host_skill() -> Result<()> {
          .with_config(configure_catalog_test);
      let test = builder.build_with_auto_env(&server).await?;
-
+ 
 +    // Capture the catalog before deleting a known skill; session availability precedes discovery.
 +    let plugins = test.thread_manager.plugins_manager();
 +    let plugins_input = test.config.plugins_config_input();
@@ -945,3 +963,6 @@ index d3ca22f43..32e11429f 100644
      std::fs::remove_file(&missing_skill_path)?;
      test.codex
          .start_or_steer_turn(TurnInputRequest::user_input(vec![
+-- 
+2.43.0
+

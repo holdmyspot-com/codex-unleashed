@@ -91,6 +91,20 @@ just test -p codex-core --lib -E 'test(resume_warmup_tests)'
 
 The checks expect session availability while skill discovery is paused, an early execution context to wait for discovery, and resume/fork reconstruction to avoid skill scans. Execution still discovers skills. Cancelling a waiting context preserves the warmup for a later request, and a failed warmup retains normal execution discovery.
 
+The span-based warmup tests retain a second tracing dispatch so parallel
+untraced tests cannot disable their shared callsites. Their assertions,
+deadlines, and production behavior remain unchanged. Verify the observers
+alongside the other core unit tests on native Windows, without adding libtest
+arguments that bypass the launcher's shard selection:
+
+```sh
+bash .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_output=all --nocache_test_results --flaky_test_attempts=1 -- //codex-rs/core:core-unit-tests
+```
+
+All six warmup tests and the remaining core unit tests must pass. The patch
+applies independently to the declared upstream base; this native check uses the
+maintained build-compatibility queue and its newest toolchains.
+
 For watcher lifecycle checks, run:
 
 ```sh
