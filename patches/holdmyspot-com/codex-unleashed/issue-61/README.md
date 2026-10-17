@@ -2593,3 +2593,34 @@ The daemon lifecycle suite runs 14 tests and the startup suite runs 12 tests.
 Both suites must execute and pass with their full payloads and assertions.
 Full native CI remains the release acceptance gate. The fixture concurrency
 setting does not require a production app-server change.
+
+## Windows profile fixture unload
+
+`zzzz-0069-windows-profile-unload-polling.patch` lets the native profile
+cleanup fixture wait while Windows finishes deleting its registry hive.
+`ERROR_KEY_DELETED` means the key is marked for deletion; it does not mean
+that unloading is complete. The fixture keeps its existing deadline and
+polling interval, closes successfully opened handles, and reports other
+registry errors immediately. All account and profile deletion assertions
+remain enabled.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0068. This test fixture repair tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. The registry
+behavior is documented in [Windows system error codes](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-)
+and [RegDeleteKeyExW](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regdeletekeyexw).
+
+Run from the patched checkout on an elevated native Windows runner:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs --windows-msvc-host-platform -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_sharding_strategy=disabled --flaky_test_attempts=1 --nocache_test_results --test_output=all --test_arg=profile_cleanup_preserves_account_until_profile_can_be_deleted -- //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests
+```
+
+The selected regression must execute and pass. The fixture requires permission
+to create its disposable local account; a non-elevated skip does not verify
+profile cleanup. Full native CI remains the release acceptance gate. This
+patch does not change production sandbox permissions or deletion behavior.
