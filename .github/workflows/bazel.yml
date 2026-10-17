@@ -67,7 +67,27 @@ jobs:
           target: x86_64-pc-windows-msvc
           cache-scope: clean-upstream-native-windows
 
-      - name: Build and loop only the selected upstream regression
+      - name: Build the selected original upstream test binary
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          REGRESSION_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only)" = codex-rs/Cargo.lock
+          test -z "$(git ls-files --others --exclude-standard)"
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --windows-msvc-host-platform \
+            -- \
+            build \
+            --config=ci-windows-msvc \
+            --platforms=//:windows_x86_64_msvc \
+            "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
+            --build_metadata=TAG_clean_upstream_native=true \
+            -- "$REGRESSION_TARGET"
+
+      - name: Loop only the selected original upstream regression
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           REGRESSION_TARGET: ${{ matrix.target }}
@@ -75,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git diff --name-only)" = codex-rs/Cargo.lock
+          git diff --exit-code -- . ":(exclude)codex-rs/Cargo.lock" ":(exclude)MODULE.bazel.lock"
           test -z "$(git ls-files --others --exclude-standard)"
           attempt_log=$(mktemp "${RUNNER_TEMP}/clean-upstream-attempt-XXXXXX")
           trap 'rm -f -- "$attempt_log"' EXIT
@@ -107,6 +127,9 @@ jobs:
               grep -q 'running 1 test' "$attempt_log"
               grep -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
               grep -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+              if [[ "$attempt" -eq 1 ]]; then
+                echo "::notice title=Clean upstream regression executed::$REGRESSION_TEST passed its first uncached execution."
+              fi
             else
               status=$?
               echo "Stopped at clean upstream attempt $attempt with exit $status"
