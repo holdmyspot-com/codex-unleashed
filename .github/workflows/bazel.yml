@@ -1,4 +1,4 @@
-name: Clean upstream native baseline
+name: Clean upstream SQLite regression
 
 on:
   workflow_dispatch:
@@ -12,26 +12,29 @@ concurrency:
 
 jobs:
   windows-baseline:
-    if: github.ref_name == 'ci/clean-upstream-baseline'
+    if: github.ref_name == 'ci/sqlite-clean-regression'
     runs-on: windows-2025
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: corrupt-board-recovery
-            target: //codex-rs/app-server:app-server-all-test
-            test: suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled
-          - label: subagent-stop-hook
-            target: //codex-rs/core:core-all-test
-            test: suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents
-          - label: mcp-large-image
-            target: //codex-rs/core:core-all-test
-            test: suite::rmcp_client::stdio_image_responses_resize_large_image
+          - label: corrupt-file-release
+            target: //codex-rs/state:state-unit-tests
+            test: sqlite::tests::open_read_write_pool_releases_corrupt_file_before_returning
     name: Clean upstream Windows (${{ matrix.label }})
     steps:
-      # The workflow comes from the fork. Source, local actions, and pins come
-      # from upstream; only generated workspace lock versions are normalized.
+      # Only the regression test is transferred to original upstream sources.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Retain the test-only fixture before upstream checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/diagnostics/sqlite-file-release-test-only.patch "$RUNNER_TEMP/sqlite-file-release-test-only.patch"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: openai/codex
@@ -45,6 +48,15 @@ jobs:
           test "$(git rev-parse HEAD)" = 83086188ae0614bd882818ff1aa23f3194962012
           test -z "$(git status --porcelain)"
           cat .bazelversion codex-rs/rust-toolchain.toml
+
+      - name: Apply only the corruption-release regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index "$RUNNER_TEMP/sqlite-file-release-test-only.patch"
+          test "$(git diff --cached --name-only)" = codex-rs/state/src/sqlite_tests.rs
+          git diff --exit-code HEAD -- codex-rs/state/src/sqlite.rs
+          git diff --cached --stat
 
       - name: Normalize release-tag workspace lock versions
         shell: bash
@@ -84,7 +96,7 @@ jobs:
             --config=ci-windows-msvc \
             --platforms=//:windows_x86_64_msvc \
             "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_native=true \
+            --build_metadata=TAG_clean_upstream_sqlite_regression=true \
             -- "$REGRESSION_TARGET"
 
       - name: Loop only the selected original upstream regression
@@ -95,7 +107,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code -- . ":(exclude)codex-rs/Cargo.lock" ":(exclude)MODULE.bazel.lock"
+          git diff --exit-code HEAD -- . ":(exclude)codex-rs/Cargo.lock" ":(exclude)MODULE.bazel.lock" ":(exclude)codex-rs/state/src/sqlite_tests.rs"
           test -z "$(git ls-files --others --exclude-standard)"
           attempt_log=$(mktemp "${RUNNER_TEMP}/clean-upstream-attempt-XXXXXX")
           trap 'rm -f -- "$attempt_log"' EXIT
@@ -122,7 +134,7 @@ jobs:
               --test_env=RUST_BACKTRACE=1 \
               --test_env=RUST_LIB_BACKTRACE=0 \
               "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-              --build_metadata=TAG_clean_upstream_native=true \
+              --build_metadata=TAG_clean_upstream_sqlite_regression=true \
               -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
               grep -q 'running 1 test' "$attempt_log"
               grep -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"

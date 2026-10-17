@@ -1,0 +1,33 @@
+diff --git a/codex-rs/state/src/sqlite_tests.rs b/codex-rs/state/src/sqlite_tests.rs
+index 327031b90..8b61ce991 100644
+--- a/codex-rs/state/src/sqlite_tests.rs
++++ b/codex-rs/state/src/sqlite_tests.rs
+@@ -122,3 +122,28 @@ async fn open_read_write_pool_preserves_wal_conversion_lock_error() -> anyhow::R
+         .await;
+     Ok(())
+ }
++
++#[tokio::test]
++async fn open_read_write_pool_releases_corrupt_file_before_returning() -> anyhow::Result<()> {
++    let sqlite_home = crate::runtime::test_support::unique_temp_dir();
++    tokio::fs::create_dir_all(&sqlite_home).await?;
++    let _cleanup = scopeguard::guard(sqlite_home.clone(), |sqlite_home| {
++        let _ = std::fs::remove_dir_all(sqlite_home);
++    });
++    let sqlite = SqliteConfig::new_for_testing(sqlite_home.as_path().abs());
++    let database = sqlite.logs_db_path();
++    let corrupt = b"not a SQLite database";
++    std::fs::write(&database, corrupt)?;
++
++    let error = sqlite
++        .open_read_write_pool(&database)
++        .await
++        .expect_err("corrupt storage must preserve its initialization error");
++    assert!(crate::is_sqlite_corruption_error(&error));
++
++    // Recovery must be able to move the file immediately, including on Windows.
++    let backup = database.with_extension("backup");
++    std::fs::rename(&database, &backup)?;
++    assert_eq!(std::fs::read(&backup)?, corrupt);
++    Ok(())
++}
