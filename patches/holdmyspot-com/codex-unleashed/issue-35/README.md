@@ -93,6 +93,10 @@ neighboring feature in the shared configuration schema. Then apply this series:
    model responses and authorization assertions use that controlled sequence.
 6. `0006-isolate-upstream-scenario-history.patch` keeps eviction parent turns
    explicit and checks retained history without matching tool-catalog guidance.
+7. `0007-scope-eviction-fixture-commands.patch` matches scripted eviction
+   commands only after their user prompt reaches the model and completes
+   automatic parent wakes independently. Mailbox and retained-history assertions
+   run with background subagent notifications enabled.
 
 Later patches depend on all preceding patches. The shared
 `schema/refresh-config-schema.patch` applies after the runtime patches and
@@ -129,6 +133,7 @@ just test -p codex-core -p codex-code-mode-host -p codex-rmcp-client -E 'test(su
 just test -p codex-core -p codex-code-mode-host -p codex-rmcp-client -E 'test(child_turn_start_preserves_root_attribution) | test(background_subagent_)'
 just test -p codex-core -p codex-protocol -p codex-features -p codex-goal-extension -p codex-app-server -p codex-code-mode-host -p codex-rmcp-client
 just test -p codex-app-server -E 'test(app_server_resumes_parent_after_background_child_finishes) | test(thread_goal_lifecycle_emits_analytics_and_clear_deletes_goal)'
+just test -p codex-app-server -E 'test(v2_child_idle_eviction_preserves_mail_and_followup_context)'
 just test
 ```
 
@@ -141,6 +146,11 @@ without an active goal. Package-default test selection also builds the standalon
 app-server executable used by the integration fixture. Required
 formatting and package checks must pass on a fresh application of the emitted
 patch before the patch is accepted.
+The idle-child app-server check keeps automatic completion notifications enabled.
+Its scripted tool calls require their matching user prompt; background parent
+wakes receive separate completion responses. Each explicit parent turn succeeds,
+queue-only mail starts no extra child turn, and the resumed child receives both
+unread mail and follow-up exactly once alongside its retained assistant history.
 The protocol check verifies that the embedded rollout schema matches the current
 message types without changing the public API exports.
 The scenario checks verify the model-visible catalog guidance. Controls for

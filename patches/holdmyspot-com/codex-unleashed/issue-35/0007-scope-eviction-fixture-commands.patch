@@ -1,0 +1,116 @@
+From 4876ace8d49e3ad3bbd943c545a6724eb71d36e6 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 07:13:08 +0000
+Subject: [PATCH] Keep idle-eviction mock responses scoped to submitted
+ commands
+
+Match each scripted collaboration call only after its corresponding user
+prompt enters the request. Complete background parent wakes through a
+lower-priority repeating mock, keeping automatic subagent notifications
+enabled. Require each explicit parent turn to complete successfully and
+retain the original exact-once mailbox and restored-history assertions.
+
+Red: native Windows job 117314405917 records an automatic completion wake
+consuming the send_message mock before the corresponding user request.
+The user turn receives HTTP 404 and unread mail is absent on child resume.
+Focused native verification and fresh emitted-patch checks remain pending.
+---
+ .../tests/suite/v2/thread_unsubscribe.rs      | 45 ++++++++++++++-----
+ 1 file changed, 35 insertions(+), 10 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
+index 289859b26..56ed5c5be 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
+@@ -532,6 +532,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+     MockResponsesConfig::new(&server.uri())
+         .with_model("gpt-5.5")
+         .enable_feature(Feature::MultiAgentV2)
++        .disable_feature(Feature::EnableRequestCompression)
+         .with_root_config("thread_unload_delay_secs = 0")
+         .write(codex_home.path())?;
+     write_models_cache(codex_home.path()).await?;
+@@ -541,6 +542,16 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+         .await?;
+     let parent = mcp.start_thread(ThreadStartParams::default()).await?.thread;
+     let mut child_id = None;
++    // Completion wakes can arrive between the explicitly submitted parent turns.
++    wiremock::Mock::given(wiremock::matchers::method("POST"))
++        .and(wiremock::matchers::path_regex(".*/responses$"))
++        .and(wiremock::matchers::header("thread-id", parent.id.clone()))
++        .respond_with(responses::sse_response(responses::sse(vec![
++            responses::ev_completed("parent-done"),
++        ])))
++        .with_priority(10)
++        .mount(&server)
++        .await;
+ 
+     for (tool, args) in [
+         (
+@@ -559,9 +570,27 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+         ),
+     ] {
+         let call_id = format!("idle-eviction-{tool}");
++        let parent_id = parent.id.clone();
++        let prompt = format!("Run {tool}");
+         let _call = responses::mount_sse_once_match(
+             &server,
+-            wiremock::matchers::header("thread-id", parent.id.clone()),
++            move |request: &wiremock::Request| {
++                let body: serde_json::Value =
++                    serde_json::from_slice(&request.body).expect("responses request");
++                request
++                    .headers
++                    .get("thread-id")
++                    .is_some_and(|id| id == parent_id.as_str())
++                    && body["input"].as_array().is_some_and(|input| {
++                        input.iter().any(|item| {
++                            item["type"] == "message"
++                                && item["role"] == "user"
++                                && item["content"].as_array().is_some_and(|content| {
++                                    content.iter().any(|part| part["text"] == prompt)
++                                })
++                        })
++                    })
++            },
+             responses::sse(vec![
+                 responses::ev_function_call_with_namespace(
+                     &call_id,
+@@ -573,14 +602,6 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             ]),
+         )
+         .await;
+-        let _parent_done = responses::mount_sse_once_match(
+-            &server,
+-            move |request: &wiremock::Request| {
+-                String::from_utf8_lossy(&request.body).contains(&call_id)
+-            },
+-            responses::sse(vec![responses::ev_completed("parent-done")]),
+-        )
+-        .await;
+         if tool != "send_message" {
+             let parent_id = parent.id.clone();
+             let _child = responses::mount_sse_once_match(
+@@ -601,7 +622,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             )
+             .await;
+         }
+-        timeout(
++        let completed = timeout(
+             DEFAULT_READ_TIMEOUT,
+             mcp.start_turn_and_wait_for_completion(TurnStartParams {
+                 thread_id: parent.id.clone(),
+@@ -613,6 +634,10 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             }),
+         )
+         .await??;
++        assert_eq!(
++            completed.turn.status,
++            codex_app_server_protocol::TurnStatus::Completed
++        );
+ 
+         if tool != "send_message" {
+             let completed = timeout(
+-- 
+2.43.0
+
