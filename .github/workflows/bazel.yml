@@ -728,6 +728,9 @@ jobs:
           - label: subagent-stop-hook
             target: //codex-rs/core:core-all-test
             test: suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents
+          - label: mcp-large-image
+            target: //codex-rs/core:core-all-test
+            test: suite::rmcp_client::stdio_image_responses_resize_large_image
     steps:
       - uses: actions/checkout@v6
         with:
