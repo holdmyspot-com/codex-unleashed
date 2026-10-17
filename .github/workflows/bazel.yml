@@ -684,9 +684,9 @@ jobs:
               "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
               -- \
               //codex-rs/tui:tui-all-test 2>&1 | tee "$attempt_log"; then
-              rg -q 'running 1 test$' "$attempt_log"
-              rg -q 'test suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment \.\.\. ok$' "$attempt_log"
-              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+              grep -q 'running 1 test$' "$attempt_log"
+              grep -q 'test suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment \.\.\. ok$' "$attempt_log"
+              grep -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
             else
               status=$?
               echo "Stopped at GovCloud attempt $attempt with exit $status"
@@ -784,9 +784,9 @@ jobs:
               --test_env=RUST_LIB_BACKTRACE=0 \
               "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
               -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
-              rg -q 'running 1 test' "$attempt_log"
-              rg -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
-              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+              grep -q 'running 1 test' "$attempt_log"
+              grep -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
+              grep -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
             else
               status=$?
               echo "Stopped at Windows attempt $attempt with exit $status"
@@ -893,9 +893,9 @@ jobs:
               --test_env=RUST_LIB_BACKTRACE=0 \
               "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
               -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
-              rg -q 'running 1 test' "$attempt_log"
-              rg -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
-              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+              grep -q 'running 1 test' "$attempt_log"
+              grep -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
+              grep -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
             else
               status=$?
               echo "Stopped at Windows attempt $attempt with exit $status"
