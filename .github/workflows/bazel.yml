@@ -1,21 +1,18 @@
-name: Clean upstream native full suites
+name: Clean upstream Intel Mac feedback comparison
 
 on:
   workflow_dispatch:
 
-env:
-  BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
-
 concurrency:
-  group: clean-upstream-baseline-${{ github.ref_name }}
+  group: clean-upstream-feedback-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  windows-baseline:
-    if: github.ref_name == 'ci/clean-upstream-full-windows'
-    runs-on: windows-2025
+  feedback-baseline:
+    if: github.ref_name == 'ci/clean-upstream-feedback-mac'
+    runs-on: macos-15-intel
     timeout-minutes: 180
-    name: Clean upstream Windows core and app-server suites
+    name: Clean upstream Intel Mac feedback suite
     steps:
       # The workflow comes from the fork. Source, local actions, and pins come
       # from upstream; only generated workspace lock versions are normalized.
@@ -51,29 +48,10 @@ jobs:
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
-          target: x86_64-pc-windows-msvc
-          cache-scope: clean-upstream-native-windows
+          target: x86_64-apple-darwin
+          cache-scope: clean-upstream-native-mac
 
-      - name: Build the original upstream regression suites
-        env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git diff --name-only)" = codex-rs/Cargo.lock
-          test -z "$(git ls-files --others --exclude-standard)"
-          ./.github/scripts/run-bazel-ci.sh \
-            --print-failed-action-summary \
-            --windows-msvc-host-platform \
-            -- \
-            build \
-            --config=ci-windows-msvc \
-            --platforms=//:windows_x86_64_msvc \
-            "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_full_suites=true \
-            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
-
-      - name: Execute complete original upstream core and app-server suites
+      - name: Execute five uncached complete upstream feedback suites
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -84,26 +62,25 @@ jobs:
           ./.github/scripts/run-bazel-ci.sh \
             --print-failed-action-summary \
             --print-failed-test-logs \
-            --windows-msvc-host-platform \
             -- \
             test \
-            --config=ci-windows-msvc \
-            --platforms=//:windows_x86_64_msvc \
             --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings \
-            --test_output=errors \
+            --test_output=all \
+            --runs_per_test=5 \
+            --flaky_test_attempts=1 \
             --nocache_test_results \
             --test_env=RUST_BACKTRACE=1 \
             --test_env=RUST_LIB_BACKTRACE=0 \
             "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_full_suites=true \
-            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
+            --build_metadata=TAG_clean_upstream_feedback=true \
+            -- //codex-rs/feedback:feedback-unit-tests
 
       - name: Upload upstream execution logs
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: clean-upstream-windows-full-suites
+          name: clean-upstream-mac-feedback
           path: ${{ runner.temp }}/bazel-execution-logs
           retention-days: 1
           if-no-files-found: ignore
