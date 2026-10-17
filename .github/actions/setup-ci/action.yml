@@ -17,6 +17,20 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Remove unused Apple simulator runtimes (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcrun simctl delete all
+        xcrun simctl runtime delete all
+        df -h /
+
+        printf '%s\n' '#include <CoreFoundation/CoreFoundation.h>' \
+          'int main(void) { return 0; }' |
+          xcrun --sdk macosx clang -Werror \
+            -isysroot "$(xcrun --sdk macosx --show-sdk-path)" -x c -fsyntax-only -
+
     # setup-ci expects either this step or the Unix fallback below to define
     # CI_BUILD_ROOT. Windows puts it on a Dev Drive because Cargo and Bazel
     # spend significant time reading and writing build/cache trees.

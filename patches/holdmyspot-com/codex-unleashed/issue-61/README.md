@@ -2650,3 +2650,22 @@ The selected regression must execute and pass. The fixture requires permission
 to create its disposable local account; a non-elevated skip does not verify
 profile cleanup. Full native CI remains the release acceptance gate. This
 patch does not change production sandbox permissions or deletion behavior.
+
+### macOS build disk space
+
+`zzzz-0071-macos-simulator-cleanup.patch` removes unused Apple simulator
+devices and runtimes before desktop macOS builds. It preserves the selected
+Xcode SDK and Cargo, Bazel, and tooling caches. It applies independently
+to the declared upstream base. The project CI action mirrors the patch.
+
+A full native Bazel test job can exhaust the runner disk while the unused
+mobile simulator runtimes occupy more than 50 GiB. The cleanup uses
+`xcrun simctl delete all` and `xcrun simctl runtime delete all`, then prints
+available disk space. Its embedded regression probe compiles a
+CoreFoundation translation unit with `-Werror` against the active macOS SDK.
+The expected outcome is reclaimed space with desktop compilation intact.
+
+Run the maintained Bazel workflow on both macOS architectures for full native
+acceptance. Its setup action runs the cleanup and SDK probe before the build;
+compiler warnings remain fatal for project-owned targets. Linux and Windows
+do not run the macOS cleanup.

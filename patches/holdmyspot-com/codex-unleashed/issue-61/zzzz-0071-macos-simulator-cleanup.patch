@@ -1,0 +1,46 @@
+From 9dbf63df69a2c006793adac899ef431c1bed0c96 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 22:30:05 +0000
+Subject: [PATCH] fix(ci): reclaim unused simulator runtimes before desktop
+ macOS builds
+
+Delete simulator devices and runtimes through Apple's supported simctl API,
+leaving the active Xcode SDK and build caches in place. Compile a native SDK
+probe after cleanup to verify that desktop compilation remains available.
+
+Red: hosted Bazel job 117512154600 fails with System.IO.IOException:
+No space left on device; a fresh macos-15 worker has 43 GiB available.
+Green: native probe run 39074773533 frees 56 GiB (99 GiB available),
+and the CoreFoundation compile probe passes with -Werror.
+Full repaired native Bazel acceptance remains a separate required gate.
+---
+ .github/actions/setup-ci/action.yml | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/.github/actions/setup-ci/action.yml b/.github/actions/setup-ci/action.yml
+index b9a42ac34..92b0c641d 100644
+--- a/.github/actions/setup-ci/action.yml
++++ b/.github/actions/setup-ci/action.yml
+@@ -11,6 +11,20 @@ outputs:
+ runs:
+   using: composite
+   steps:
++    - name: Remove unused Apple simulator runtimes (macOS)
++      if: runner.os == 'macOS'
++      shell: bash
++      run: |
++        set -euo pipefail
++        xcrun simctl delete all
++        xcrun simctl runtime delete all
++        df -h /
++
++        printf '%s\n' '#include <CoreFoundation/CoreFoundation.h>' \
++          'int main(void) { return 0; }' |
++          xcrun --sdk macosx clang -Werror \
++            -isysroot "$(xcrun --sdk macosx --show-sdk-path)" -x c -fsyntax-only -
++
+     # setup-ci expects either this step or the Unix fallback below to define
+     # CI_BUILD_ROOT. Windows uses a Dev Drive because Cargo and Bazel
+     # spend significant time reading and writing build/cache trees.
+--
+2.43.0
