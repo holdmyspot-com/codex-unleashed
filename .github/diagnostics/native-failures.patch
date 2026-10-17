@@ -1,111 +1,20 @@
-diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
-index 664b2e1d6..cfb053555 100644
---- a/codex-rs/cli/tests/worktree.rs
-+++ b/codex-rs/cli/tests/worktree.rs
-@@ -149,0 +150,5 @@ async fn worktree_start_and_fork(backend: &str) -> anyhow::Result<()> {
-+    let diagnostic_started = std::time::Instant::now();
-+    eprintln!(
-+        "NATIVE_PROBE worktree {backend} {:?}: setup starting",
-+        diagnostic_started.elapsed()
-+    );
-@@ -271,0 +277 @@ trust_level = "trusted"
-+            eprintln!("NATIVE_PROBE worktree: daemon stop starting");
-@@ -272,0 +279 @@ trust_level = "trusted"
-+            eprintln!("NATIVE_PROBE worktree: daemon stop completed");
-@@ -318,0 +326,4 @@ trust_level = "trusted"
+diff --git a/codex-rs/tui/tests/suite/external_editor_tests.rs b/codex-rs/tui/tests/suite/external_editor_tests.rs
+index fe5f019f8..7c47eff4f 100644
+--- a/codex-rs/tui/tests/suite/external_editor_tests.rs
++++ b/codex-rs/tui/tests/suite/external_editor_tests.rs
+@@ -19,0 +20 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
++        eprintln!("NATIVE_PROBE editor: scenario fullscreen={fullscreen} output={editor_output:?}");
+@@ -52,0 +54,4 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
 +        eprintln!(
-+            "NATIVE_PROBE worktree {backend} {:?}: scenario fork={fork} explicit_cd={explicit_cd} analytics={analytics} auth_failure={auth_failure}",
-+            diagnostic_started.elapsed()
++            "NATIVE_PROBE editor: Ctrl-G sent; screen:\n{}",
++            terminal.screen_contents()
 +        );
-@@ -452,0 +464,4 @@ trust_level = "trusted"
-+        eprintln!(
-+            "NATIVE_PROBE worktree {backend} {:?}: PTY spawned",
-+            diagnostic_started.elapsed()
-+        );
-@@ -489,0 +505,5 @@ trust_level = "trusted"
-+        eprintln!(
-+            "NATIVE_PROBE worktree {backend} {:?}: model wait completed outer_ok={}",
-+            diagnostic_started.elapsed(),
-+            observed.is_ok()
-+        );
-diff --git a/codex-rs/memories/write/src/startup_tests.rs b/codex-rs/memories/write/src/startup_tests.rs
-index 1f2cb94f6..cb06ff4f3 100644
---- a/codex-rs/memories/write/src/startup_tests.rs
-+++ b/codex-rs/memories/write/src/startup_tests.rs
-@@ -212,0 +213 @@ async fn memories_startup_phase2_scopes_stop_hooks() -> anyhow::Result<()> {
-+    let diagnostic_started = std::time::Instant::now();
-@@ -218,0 +220,4 @@ async fn memories_startup_phase2_scopes_stop_hooks() -> anyhow::Result<()> {
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: start pin_hooks={pin_hooks} managed_response={managed_response:?}",
-+            diagnostic_started.elapsed()
-+        );
-@@ -310,0 +316,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: trigger startup",
-+            diagnostic_started.elapsed()
-+        );
-@@ -312,0 +322,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: phase2 request received",
-+            diagnostic_started.elapsed()
-+        );
-@@ -325,0 +339,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: phase2 outcome checked",
-+            diagnostic_started.elapsed()
-+        );
-@@ -345,0 +363,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+            eprintln!(
-+                "NATIVE_PROBE memory {:?}: parent turn completed",
-+                diagnostic_started.elapsed()
-+            );
-@@ -349,0 +371,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: shutdown starting",
-+            diagnostic_started.elapsed()
-+        );
-@@ -350,0 +376,4 @@ elif kind == "stop" and Path(json.load(sys.stdin)["cwd"]).name == "memories":
-+        eprintln!(
-+            "NATIVE_PROBE memory {:?}: shutdown completed",
-+            diagnostic_started.elapsed()
-+        );
-diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
-index f8f0790dd..cb9c8ab21 100644
---- a/codex-rs/model-provider/src/provider.rs
-+++ b/codex-rs/model-provider/src/provider.rs
-@@ -982,0 +983,2 @@ mod tests {
-+        let export_trace = fixture.path().join("export.trace");
-+        let export_started = std::time::Instant::now();
-@@ -1002 +1004,3 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
--                    "@echo off\r\n>> \"%~1\" echo 1\r\n",
-+                    "@echo off\r\n",
-+                    ">> \"%~dp0export.trace\" echo %TIME% counter=\"%~1\" gate=\"%~2\"\r\n",
-+                    ">> \"%~1\" echo 1\r\n",
-@@ -1003,0 +1008 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
-+                    ">> \"%~dp0export.trace\" echo %TIME% gate-observed\r\n",
-@@ -1004,0 +1010 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
-+                    ">> \"%~dp0export.trace\" echo %TIME% credentials-written\r\n",
-@@ -1038 +1044 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
--                result = &mut first_refresh => panic!("export should wait for its gate: {result:?}"),
-+                result = &mut first_refresh => panic!("export should wait for its gate: {result:?}; elapsed={:?}; trace={:?}", export_started.elapsed(), std::fs::read_to_string(&export_trace)),
-@@ -1045,0 +1052,5 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
-+        eprintln!(
-+            "NATIVE_PROBE credential export {:?}: counter observed; trace={:?}",
-+            export_started.elapsed(),
-+            std::fs::read_to_string(&export_trace)
-+        );
-@@ -1052,0 +1064,5 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
-+        eprintln!(
-+            "NATIVE_PROBE credential export {:?}: gate written; exists={}",
-+            export_started.elapsed(),
-+            export_gate.exists()
-+        );
-@@ -1053,0 +1070,5 @@ printf '%s\n' '{"AccessKeyId":"exported","SecretAccessKey":"secret"}'
-+        eprintln!(
-+            "NATIVE_PROBE credential export {:?}: results={first_result:?}, {second_result:?}; trace={:?}",
-+            export_started.elapsed(),
-+            std::fs::read_to_string(&export_trace)
-+        );
+@@ -61 +66,2 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
+-            "editor did not start"
++            "editor did not start (fullscreen={fullscreen}, output={editor_output:?}); screen:\n{}",
++            terminal.screen_contents()
+@@ -62,0 +69 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
++        eprintln!("NATIVE_PROBE editor: ready file observed");
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
 index 645f115c3..669437140 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
@@ -127,34 +36,53 @@ index 645f115c3..669437140 100644
 +        self.master
 +            .flush()
 +            .context("flush focus-test pseudo-terminal input")?;
-diff --git a/third_party/voice/macos_runtime.py b/third_party/voice/macos_runtime.py
-index 38fdf009d..44a2ce2a7 100644
---- a/third_party/voice/macos_runtime.py
-+++ b/third_party/voice/macos_runtime.py
-@@ -8,0 +9 @@ import sys
-+import time
-@@ -31,2 +32,5 @@ def run(command):
--    return subprocess.check_output(
--        command, text=True, stderr=subprocess.STDOUT, timeout=30
-+    started = time.monotonic()
-+    print(
-+        f"NATIVE_PROBE runtime start load={os.getloadavg()} command={command!r}",
-+        file=sys.stderr,
-+        flush=True,
-@@ -33,0 +38,10 @@ def run(command):
-+    try:
-+        return subprocess.check_output(
-+            command, text=True, stderr=subprocess.STDOUT, timeout=30
-+        )
-+    finally:
-+        print(
-+            f"NATIVE_PROBE runtime finish elapsed={time.monotonic() - started:.3f}s load={os.getloadavg()} command={command!r}",
-+            file=sys.stderr,
-+            flush=True,
-+        )
-@@ -36,0 +51,5 @@ def inspect(path, target):
-+    print(
-+        f"NATIVE_PROBE runtime inspect target={target} bytes={path.stat().st_size} path={path}",
-+        file=sys.stderr,
-+        flush=True,
-+    )
+diff --git a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
+index ee79c7ca5..00529fc04 100644
+--- a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
++++ b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
+@@ -30 +30 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
+-        loop {
++        'interaction: loop {
+@@ -32 +32,22 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
+-            terminal.write_input(if action == "quit" { b"q" } else { b"\r" })?;
++            if let Err(error) = terminal.write_input(if action == "quit" { b"q" } else { b"\r" }) {
++                let closed_pty = error
++                    .downcast_ref::<std::io::Error>()
++                    .is_some_and(|error| error.raw_os_error() == Some(libc::EIO));
++                if action == "quit" && closed_pty {
++                    // Quitting can close the PTY before the next repeated key. Require the
++                    // child to exit successfully within the existing interaction deadline.
++                    loop {
++                        if let Some(status) = terminal.child.try_wait()? {
++                            ensure!(status.success(), "quit exited with {status}");
++                            break 'interaction;
++                        }
++                        if Instant::now() >= deadline {
++                            return Err(error.context(
++                                "quit closed the PTY but the child did not exit before the interaction deadline",
++                            ));
++                        }
++                        std::thread::sleep(Duration::from_millis(/*millis*/ 10));
++                    }
++                }
++                return Err(error);
++            }
+diff --git a/codex-rs/tui/tests/suite/reconnect.rs b/codex-rs/tui/tests/suite/reconnect.rs
+index e32aba616..7bc2f0bd4 100644
+--- a/codex-rs/tui/tests/suite/reconnect.rs
++++ b/codex-rs/tui/tests/suite/reconnect.rs
+@@ -18,0 +19 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++    eprintln!("NATIVE_PROBE reconnect: setup starting");
+@@ -88,0 +90,4 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++                eprintln!(
++                    "NATIVE_PROBE reconnect server: connection={connection} method={}",
++                    request.method
++                );
+@@ -204,0 +210 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++    eprintln!("NATIVE_PROBE reconnect: spawning PTY");
+@@ -207,0 +214 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++    eprintln!("NATIVE_PROBE reconnect: startup complete");
+@@ -216,0 +224 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++        eprintln!("NATIVE_PROBE reconnect: waiting for {expected:?}");
+@@ -225,0 +234 @@ async fn automatic_reconnect_restores_draft_and_routes_new_notifications() -> Re
++        eprintln!("NATIVE_PROBE reconnect: observed {expected:?}");

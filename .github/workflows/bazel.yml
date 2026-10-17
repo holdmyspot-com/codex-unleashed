@@ -655,10 +655,7 @@ jobs:
           set -euo pipefail
           cd upstream
           bazel_targets=(
-            //codex-rs/memories/write:write-unit-tests
             //codex-rs/tui:tui-all-test
-            //codex-rs/cli:cli-worktree-test
-            //codex-rs/core:core-all-test
           )
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary \
@@ -669,7 +666,7 @@ jobs:
             --test_verbose_timeout_warnings \
             --test_output=all \
             --test_env=RUST_BACKTRACE=1 \
-            --test_env=RUST_LIB_BACKTRACE=1 \
+            --test_env=RUST_LIB_BACKTRACE=0 \
             --test_env=RUST_TEST_NOCAPTURE=1 \
             "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
             -- \
@@ -694,6 +691,7 @@ jobs:
           key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
 
   native-probe-windows:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Preserve the native compilation budget and individual test deadlines.
     timeout-minutes: 180
     runs-on: windows-2022
