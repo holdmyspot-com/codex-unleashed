@@ -846,18 +846,34 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ inputs.upstream_ref }}
-
-      - name: Verify emitted repair source identity
+      - name: Prepare and verify emitted repair before Java setup
         shell: bash
         run: |
           set -euo pipefail
+          git -c core.autocrlf=false clone --depth 1 --branch rust-v0.163.0 https://github.com/openai/codex.git upstream
+          git -C upstream config core.autocrlf false
           [[ "$(git -C upstream rev-parse HEAD)" == 83086188ae0614bd882818ff1aa23f3194962012 ]]
-          git -C upstream add -f -A
-          [[ "$(git -C upstream write-tree)" == 0f33543039c834b99558859db73d816e55412793 ]]
-          git -C upstream diff --cached --stat
+          git -C upstream config --get core.filemode
+          mapfile -t patch_files < <(find patches -type f -name '*.patch' | LC_ALL=C sort)
+          [[ "${#patch_files[@]}" -eq 178 ]]
+          for patch_file in "${patch_files[@]}"; do
+            if LC_ALL=C grep -q $'\r' "$patch_file"; then
+              echo "ERROR: patch is not LF-normalized: $patch_file" >&2
+              exit 1
+            fi
+            git -C upstream apply --index "$GITHUB_WORKSPACE/$patch_file"
+          done
+          actual_tree=$(git -C upstream write-tree)
+          echo "Emitted source tree: $actual_tree"
+          [[ "$actual_tree" == 0f33543039c834b99558859db73d816e55412793 ]]
+          echo "CACHE_UPSTREAM_PREFIX=upstream-rust-v0.163.0-" >> "$GITHUB_ENV"
+
+      # Maven tooling source is identical to the fully verified production
+      # candidate. Skip its passing unit tests only for this focused Rust probe.
+      - name: Set up Java tooling for focused diagnostics
+        uses: ./.github/actions/setup-tooling
+        env:
+          MAVEN_ARGS: -ntp -DskipTests
 
       - name: Prepare Bazel CI
         id: prepare_bazel
