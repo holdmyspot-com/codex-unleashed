@@ -83,6 +83,13 @@ case "${RUNNER_OS:-}" in
     ;;
 esac
 
+# Prints failed-attempt log tails from reported paths or the configured output root.
+# Arguments:
+#   $1: Captured Bazel console output containing failed test labels and log paths.
+# Output:
+#   Grouped log tails, or the missing path when a log is unavailable.
+# Side effects:
+#   Queries Bazel for the test output root using the selected configuration.
 print_bazel_test_log_tails() {
   local console_log="$1"
   local testlogs_dir
@@ -99,9 +106,9 @@ print_bazel_test_log_tails() {
   # Only pass flags that affect Bazel's output-root selection or repository
   # lookup. Test/build-only flags such as execution logs or remote download
   # mode can make `bazel info` fail, which would hide the real test log path.
-  for arg in "${post_config_bazel_args[@]}"; do
+  for arg in "${bazel_args[@]}" "${post_config_bazel_args[@]}"; do
     case "$arg" in
-      --host_platform=* | --repo_contents_cache=* | --repository_cache=*)
+      --config=* | --platforms=* | --host_platform=* | --repo_contents_cache=* | --repository_cache=*)
         bazel_info_args+=("$arg")
         ;;
     esac
@@ -117,7 +124,7 @@ print_bazel_test_log_tails() {
     failed_targets+=("$target")
   done < <(
     grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
-      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+) failed:.*#\1#' \
+      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+).* failed:.*#\1#' \
       | sort -u
   )
 
@@ -129,21 +136,28 @@ print_bazel_test_log_tails() {
   for target in "${failed_targets[@]}"; do
     local rel_path="${target#//}"
     rel_path="${rel_path/://}"
-    local test_log="${testlogs_dir}/${rel_path}/test.log"
-    local reported_test_log
-    reported_test_log="$(grep -F "FAIL: ${target} " "$console_log" | sed -nE 's#.* \(see (.*[\\/]test\.log)\).*#\1#p' | head -n 1 || true)"
-    if [[ -n "$reported_test_log" ]]; then
-      reported_test_log="${reported_test_log//\\//}"
-      test_log="$reported_test_log"
+    local test_logs=()
+    local test_log
+    while IFS= read -r test_log; do
+      test_logs+=("${test_log//\\//}")
+    done < <(
+      grep -F "FAIL: ${target} " "$console_log" \
+        | sed -nE 's#.* \(see (.*[\\/](test|attempt_[0-9]+)\.log)\).*#\1#p' \
+        | sort -u
+    )
+    if [[ ${#test_logs[@]} -eq 0 ]]; then
+      test_logs+=("${testlogs_dir}/${rel_path}/test.log")
     fi
 
-    echo "::group::Bazel test log tail for ${target}"
-    if [[ -f "$test_log" ]]; then
-      tail -n 200 "$test_log"
-    else
-      echo "Missing test log: $test_log"
-    fi
-    echo "::endgroup::"
+    for test_log in "${test_logs[@]}"; do
+      echo "::group::Bazel test log tail for ${target}: ${test_log}"
+      if [[ -f "$test_log" ]]; then
+        tail -n 200 "$test_log"
+      else
+        echo "Missing test log: $test_log"
+      fi
+      echo "::endgroup::"
+    done
   done
 }
 

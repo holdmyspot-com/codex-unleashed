@@ -611,7 +611,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   native-probe-mac:
-    if: github.ref_name == 'ci/gov-cloud-causal-probe'
+    if: github.ref_name == 'ci/native-repair-verification'
     # Preserve the native compilation budget and individual test deadlines.
     timeout-minutes: ${{ startsWith(matrix.os, 'macos-') && 180 || 90 }}
     strategy:
@@ -621,7 +621,7 @@ jobs:
           - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
-    name: Upstream GovCloud PTY causal probe
+    name: Patched GovCloud focused native verification
     steps:
       - uses: actions/checkout@v6
         with:
@@ -632,18 +632,15 @@ jobs:
           # The local Codex patch stack is based on this upstream revision.
           # Advance it only when the product patches have been rebased.
           upstream-ref: ${{ inputs.upstream_ref }}
-          apply-patches: "false"
 
-      - name: Verify and instrument the original upstream GovCloud test
+      - name: Verify emitted repair source identity
         shell: bash
         run: |
           set -euo pipefail
           [[ "$(git -C upstream rev-parse HEAD)" == 83086188ae0614bd882818ff1aa23f3194962012 ]]
-          git -C upstream diff --exit-code
-          node .github/diagnostics/gov-cloud-pty-probe.mjs upstream
-          git -C upstream diff --stat
-          cat upstream/.bazelversion
-          cat upstream/codex-rs/rust-toolchain.toml
+          git -C upstream add -A
+          [[ "$(git -C upstream write-tree)" == 0f33543039c834b99558859db73d816e55412793 ]]
+          git -C upstream diff --cached --stat
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -656,7 +653,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Loop only the original GovCloud test until its first failure
+      - name: Verify only the patched GovCloud test in five independent executions
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -667,7 +664,7 @@ jobs:
           mkdir -p "${GITHUB_WORKSPACE}/.cat/work/temp"
           attempt_log=$(mktemp "${GITHUB_WORKSPACE}/.cat/work/temp/gov-cloud-attempt-XXXXXX")
           trap 'rm -f -- "$attempt_log"' EXIT
-          while :; do
+          while [[ "$attempt" -lt 5 ]]; do
             attempt=$((attempt + 1))
             echo "GovCloud focused attempt $attempt"
             if "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \

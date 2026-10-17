@@ -1,0 +1,85 @@
+From 218aacacf87c0a5247915888893ef5ff657c201e Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 03:17:32 +0000
+Subject: [PATCH] Close failed SQLite startup connections before returning
+ their errors
+
+The native Windows thread-delete regression fails in run 38990149742 job 117270522725 when corruption recovery encounters a sharing violation. The initializer cancels SQLx opening on its first callback error, leaving SQLite worker cleanup asynchronous. Retain that connection in the private startup pool and await pool closure before returning its original error. Preserve normal errors for later lazy connections.
+
+Add focused corruption-release coverage. Fresh patched checkout formatting and all four pool initialization tests pass locally, including lock-error and existing-mode preservation. Native pre-fix repetition and post-fix verification remain required.
+---
+ codex-rs/state/src/sqlite.rs       | 18 ++++++++++--------
+ codex-rs/state/src/sqlite_tests.rs | 25 +++++++++++++++++++++++++
+ 2 files changed, 35 insertions(+), 8 deletions(-)
+
+diff --git a/codex-rs/state/src/sqlite.rs b/codex-rs/state/src/sqlite.rs
+index e35a074d6..a06e63403 100644
+--- a/codex-rs/state/src/sqlite.rs
++++ b/codex-rs/state/src/sqlite.rs
+@@ -394,20 +394,22 @@ impl SqliteConfig {
+                             Ok(())
+                         }
+                         .await;
+-                        result.map_err(|error| match init_error_tx.try_send(error) {
+-                            // The opener owns the original error and cancels connection retries.
+-                            Ok(()) => Error::PoolClosed,
++                        result.or_else(|error| match init_error_tx.try_send(error) {
++                            // Keep the failed startup connection owned by the pool so the
++                            // opener can await its close before returning the original error.
++                            Ok(()) => Ok(()),
+                             // After opening, lazy connections retain SQLx's normal error handling.
+-                            Err(error) => error.into_inner(),
++                            Err(error) => Err(error.into_inner()),
+                         })
+                     })
+                 },
+             );
+-            tokio::select! {
+-                biased;
+-                Some(error) = init_error_rx.recv() => Err(error),
+-                result = pool_options.connect_with(options.clone()) => result,
++            let pool = pool_options.connect_with(options.clone()).await?;
++            if let Ok(error) = init_error_rx.try_recv() {
++                pool.close().await;
++                return Err(error);
+             }
++            Ok(pool)
+         };
+         let pool = connect().await?;
+         let validation_result = self
+diff --git a/codex-rs/state/src/sqlite_tests.rs b/codex-rs/state/src/sqlite_tests.rs
+index 327031b90..8b61ce991 100644
+--- a/codex-rs/state/src/sqlite_tests.rs
++++ b/codex-rs/state/src/sqlite_tests.rs
+@@ -122,3 +122,28 @@ async fn open_read_write_pool_preserves_wal_conversion_lock_error() -> anyhow::R
+         .await;
+     Ok(())
+ }
++
++#[tokio::test]
++async fn open_read_write_pool_releases_corrupt_file_before_returning() -> anyhow::Result<()> {
++    let sqlite_home = crate::runtime::test_support::unique_temp_dir();
++    tokio::fs::create_dir_all(&sqlite_home).await?;
++    let _cleanup = scopeguard::guard(sqlite_home.clone(), |sqlite_home| {
++        let _ = std::fs::remove_dir_all(sqlite_home);
++    });
++    let sqlite = SqliteConfig::new_for_testing(sqlite_home.as_path().abs());
++    let database = sqlite.logs_db_path();
++    let corrupt = b"not a SQLite database";
++    std::fs::write(&database, corrupt)?;
++
++    let error = sqlite
++        .open_read_write_pool(&database)
++        .await
++        .expect_err("corrupt storage must preserve its initialization error");
++    assert!(crate::is_sqlite_corruption_error(&error));
++
++    // Recovery must be able to move the file immediately, including on Windows.
++    let backup = database.with_extension("backup");
++    std::fs::rename(&database, &backup)?;
++    assert_eq!(std::fs::read(&backup)?, corrupt);
++    Ok(())
++}
+-- 
+2.43.0
+
