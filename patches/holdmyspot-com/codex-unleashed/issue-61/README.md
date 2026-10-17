@@ -2506,6 +2506,20 @@ save and guard it with a preceding lookup using the same key and path. Linux
 Bazel CI runs this check. The hosted workflow has the same guard and its Maven
 regression checks the YAML bindings.
 
+`zzzz-0067-sdk-cache-save-preflight.patch` applies the same lookup and miss
+guard to the SDK workflow, whose repository cache is shared with the Bazel
+producers. It requires `zzzz-0064-bazel-cache-save-preflight.patch` for the
+maintained policy regression. SDK CI runs that regression with its own workflow:
+
+```sh
+bash .github/scripts/test-bazel-cache-save.sh .github/workflows/sdk.yml
+just fmt-check
+```
+
+The SDK check verifies one cache producer. Missing caches and lookup failures
+still attempt a save; an exact cache created during SDK execution skips saving.
+Simultaneous first-writer reservations remain best-effort cache operations.
+
 ## Timeout test logs
 
 `zzzz-0065-bazel-timeout-test-logs.patch` prints log tails for Bazel `TIMEOUT`

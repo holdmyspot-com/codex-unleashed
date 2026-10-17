@@ -59,6 +59,10 @@ jobs:
           target: x86_64-unknown-linux-gnu
           cache-scope: sdk
 
+      - name: Check Bazel repository cache save policy
+        shell: bash
+        run: bash .github/scripts/test-bazel-cache-save.sh .github/workflows/sdk.yml
+
       - name: Build patched Codex package binaries for SDK tests
         id: build_bazel
         env:
@@ -130,8 +134,18 @@ jobs:
           # Jest's five-second per-test default on a cold GitHub runner.
           pnpm --dir upstream/sdk/typescript exec jest --testTimeout=30000
 
-      - name: Save Bazel repository cache
+      - name: Recheck Bazel repository cache before saving
+        id: repository_cache_before_save
         if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.setup_bazel.outputs.repository-cache-path }}
+          key: ${{ steps.setup_bazel.outputs.repository-cache-key }}
+          lookup-only: true
+
+      - name: Save Bazel repository cache
+        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true' && steps.repository_cache_before_save.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
