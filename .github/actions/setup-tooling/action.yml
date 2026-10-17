@@ -15,13 +15,37 @@ runs:
         node-version: 22
 
     - name: Set up JDK 27
+      id: jdk
       uses: actions/setup-java@v5
       with:
         distribution: ${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}
         java-version: '27'
 
+    - name: Locate tooling checkout
+      id: checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        project_root="$(CDPATH='' cd -- "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        workspace_root="$(CDPATH='' cd -- "$GITHUB_WORKSPACE" && pwd)"
+        case "$project_root" in
+          "$workspace_root") relative_root=. ;;
+          "$workspace_root"/*) relative_root="./${project_root#"$workspace_root"/}" ;;
+          *) echo 'ERROR: tooling checkout must be inside GITHUB_WORKSPACE.' >&2; exit 1 ;;
+        esac
+        printf 'root=%s\n' "$relative_root" >> "$GITHUB_OUTPUT"
+
+    - name: Restore verified tooling runtime
+      id: runtime
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        # Verification exercises the workflow and script consumers as well as the Java sources.
+        key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
+
     - name: Restore Maven dependencies and wrapper
       id: dependencies
+      if: steps.runtime.outputs.cache-hit != 'true'
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: |
@@ -34,7 +58,25 @@ runs:
     - name: Build tooling runtime
       id: build
       shell: bash
+      env:
+        TOOLING_RUNTIME_CACHE_HIT: ${{ steps.runtime.outputs.cache-hit }}
       run: bash "$GITHUB_ACTION_PATH/setup.sh"
+
+    - name: Recheck verified runtime cache before saving
+      id: runtime_before_save
+      if: success() && steps.runtime.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+
+    - name: Save verified tooling runtime
+      if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_before_save.outputs.cache-hit != 'true'
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
 
     - name: Recheck Maven dependency cache before saving
       id: dependencies_before_save
@@ -61,5 +103,9 @@ runs:
       shell: bash
       env:
         CACHE_HIT: ${{ steps.dependencies.outputs.cache-hit }}
+        RUNTIME_CACHE_HIT: ${{ steps.runtime.outputs.cache-hit }}
       run: |
-        printf '\nMaven dependency cache exact match: %s\n' "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+        printf '\nVerified tooling runtime cache exact match: %s\n' "${RUNTIME_CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+        if [[ "$RUNTIME_CACHE_HIT" != true ]]; then
+          printf '\nMaven dependency cache exact match: %s\n' "${CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+        fi

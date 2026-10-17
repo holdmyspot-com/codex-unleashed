@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Builds and verifies the checkout's tooling before publishing its launcher path.
+# Verifies tooling on a cache miss and probes its runtime before publishing the launcher path.
 set -euo pipefail
 
 : "${GITHUB_ACTION_PATH:?GITHUB_ACTION_PATH is required}"
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 project_root="$(CDPATH= cd -- "$GITHUB_ACTION_PATH/../../.." && pwd)"
-"$project_root/tooling/mvnw" -q verify </dev/null
+if [[ "${TOOLING_RUNTIME_CACHE_HIT:-false}" != true ]]; then
+  "$project_root/tooling/mvnw" -q verify </dev/null
+fi
 
 launcher="$project_root/tooling/bin/codex-tooling"
 probe="$("$launcher" next-release-build-number rust-v0.0.0 </dev/null)"
