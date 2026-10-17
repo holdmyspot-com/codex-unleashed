@@ -2399,3 +2399,87 @@ bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_out
 
 The timeout analysis suite verifies the generated deadline. Full native CI
 runs every core integration shard within the configured deadline.
+
+## GovCloud quit test
+
+`zzzz-0061-gov-cloud-quit-pty.patch` handles the pseudo-terminal closing while
+Codex quits the GovCloud guidance screen. Only the quit scenario accepts an
+input `EIO`, and only after at least one successful quit-key write and a
+successful child exit within the original interaction deadline. Other input
+failures and unsuccessful or late child exits remain test failures. The acknowledgment, saved-configuration, and restart
+assertions remain enabled. Product behavior is unchanged.
+
+The unmodified upstream test can fail intermittently on Intel macOS with an
+input `EIO`: repeated quit input can reach the closed terminal after a successful
+child exit. The test requires the configuration to remain unchanged on quit.
+The declared base is
+`rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained
+queue through patch 0060. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+just test -p codex-tui --test all gov_cloud_startup_persists_only_acknowledgment
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=all --runs_per_test=5 --nocache_test_results --test_arg=--exact --test_arg=suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment --test_arg=--nocapture -- //codex-rs/tui:tui-all-test
+```
+
+The focused regression verifies quit without saving, acknowledgment persistence,
+and suppression on restart. The repeated native check executes only this
+regression without diagnostic source instrumentation. Full native CI remains
+the platform acceptance gate.
+
+## SQLite startup failure cleanup
+
+`zzzz-0062-sqlite-startup-close.patch` closes the private startup pool before
+returning an initialization error. Corruption recovery can immediately move the
+failed database, including on Windows. The original initialization error,
+existing database settings, and error handling for later lazy connections remain
+unchanged. SQLx itself is unchanged.
+
+The native Windows thread-deletion regression can encounter a sharing violation
+while moving a corrupt database after failed initialization. SQLx's hard-close
+path drops the SQLite connection without awaiting its worker's termination.
+The patch retains startup ownership until ordinary pool closure completes.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0061. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+just test -p codex-state open_read_write_pool
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs --windows-msvc-host-platform -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_sharding_strategy=disabled --nocache_test_results --test_output=all --test_arg=--exact --test_arg=suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled --test_arg=--nocapture -- //codex-rs/app-server:app-server-all-test
+```
+
+The four focused state tests verify fresh and existing database settings,
+preservation of the original lock error, and immediate corruption-file release.
+The native Windows integration check verifies corruption recovery through the
+app-server protocol.
+
+## Failed Bazel attempt logs
+
+`zzzz-0063-bazel-failed-test-logs.patch` prints the tail of every retry log
+reported for a failed test. It recognizes sharded error labels and uses the
+selected configuration and platform when locating a fallback log. The original
+Bazel failure status remains the command's exit status.
+
+The regression covers retry paths containing spaces, Windows CRLF output,
+shard annotations, fallback configuration, and preservation of failure status.
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0062. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run on Linux:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --nocache_test_results --test_output=all -- //tools/build-warnings/bazel-ci-logs:failed_logs_test
+```
+
+For a nested local host whose Linux namespace denies access to `/dev/null`, add
+`--spawn_strategy=processwrapper-sandbox` to the focused Bazel command. Native CI
+uses its normal sandbox. All fixture checks must pass and the test must execute,
+rather than only report a cached result.

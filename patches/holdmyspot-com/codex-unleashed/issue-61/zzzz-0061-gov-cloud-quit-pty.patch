@@ -1,0 +1,55 @@
+From 5fda1f78a96ef6a5be94aca665ae93049e4fe827 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 16 Oct 2026 22:54:57 -0400
+Subject: [PATCH] Accept successful GovCloud quit when repeated input reaches a
+ closed PTY
+
+The unmodified rust-v0.163.0 GovCloud test reproduces EIO on Intel macOS after repeated quit input. Failure-only instrumentation in run 38994495508 records failing writes 4935 and 1878, both with the child already exited successfully and config unchanged. Require a prior successful input and successful child exit within the original deadline before accepting quit EIO. Keep all acknowledgment, persistence, and restart assertions.
+
+Author formatting: maintained run-local-rust helper with just fmt-check passes. Earlier emitted candidate passes focused local test and five native repetitions; the added prior-input guard still requires fresh emitted-patch verification.
+---
+ .../tests/suite/gov_cloud_guidance_tests.rs   | 27 +++++++++++++++++--
+ 1 file changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
+index ee79c7ca5..2692ce4ad 100644
+--- a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
++++ b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
+@@ -27,9 +27,32 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
+         terminal.wait_for_screen("Using Codex with AWS GovCloud")?;
+         let original = std::fs::read_to_string(&path)?;
+         let deadline = Instant::now() + STARTUP_TIMEOUT;
+-        loop {
++        let mut input_sent = false;
++        'interaction: loop {
+             // Startup drains pending keys after drawing the guidance; retry until it handles one.
+-            terminal.write_input(if action == "quit" { b"q" } else { b"\r" })?;
++            if let Err(error) = terminal.write_input(if action == "quit" { b"q" } else { b"\r" }) {
++                let closed_pty = error
++                    .downcast_ref::<std::io::Error>()
++                    .is_some_and(|error| error.raw_os_error() == Some(libc::EIO));
++                if action == "quit" && input_sent && closed_pty {
++                    // Quitting can close the PTY before the next repeated key. Require the
++                    // child to exit successfully within the existing interaction deadline.
++                    loop {
++                        if let Some(status) = terminal.child.try_wait()? {
++                            ensure!(status.success(), "quit exited with {status}");
++                            break 'interaction;
++                        }
++                        if Instant::now() >= deadline {
++                            return Err(error.context(
++                                "quit closed the PTY but the child did not exit before the interaction deadline",
++                            ));
++                        }
++                        std::thread::sleep(Duration::from_millis(/*millis*/ 10));
++                    }
++                }
++                return Err(error);
++            }
++            input_sent = true;
+             terminal.read_output(Duration::from_millis(/*millis*/ 50))?;
+             if action == "quit" {
+                 if let Some(status) = terminal.child.try_wait()? {
+-- 
+2.43.0
+
