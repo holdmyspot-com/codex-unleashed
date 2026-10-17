@@ -620,7 +620,7 @@ jobs:
           - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
-    name: Patched GovCloud Intel macOS comparison
+    name: Upstream GovCloud PTY causal probe
     steps:
       - uses: actions/checkout@v6
         with:
@@ -631,18 +631,16 @@ jobs:
           # The local Codex patch stack is based on this upstream revision.
           # Advance it only when the product patches have been rebased.
           upstream-ref: ${{ inputs.upstream_ref }}
-          apply-patches: "true"
+          apply-patches: "false"
 
-      - name: Verify the emitted production patch tree
+      - name: Verify and instrument the original upstream GovCloud test
         shell: bash
         run: |
           set -euo pipefail
-          git -C upstream rev-parse HEAD
-          git -C upstream add --all
-          actual_tree="$(git -C upstream write-tree)"
-          printf 'Patched source tree: %s\n' "$actual_tree"
-          [[ "$actual_tree" == b4c9b854d0bd5523976f1b5f8cf09d223ea23e77 ]]
+          [[ "$(git -C upstream rev-parse HEAD)" == 83086188ae0614bd882818ff1aa23f3194962012 ]]
           git -C upstream diff --exit-code
+          node .github/diagnostics/gov-cloud-pty-probe.mjs upstream
+          git -C upstream diff --stat
           cat upstream/.bazelversion
           cat upstream/codex-rs/rust-toolchain.toml
 
@@ -657,7 +655,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Repeat the emitted GovCloud repair with the TUI suite
+      - name: Repeat the original GovCloud test with failure-only PTY diagnostics
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
