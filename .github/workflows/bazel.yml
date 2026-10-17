@@ -638,7 +638,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(git -C upstream rev-parse HEAD)" == 83086188ae0614bd882818ff1aa23f3194962012 ]]
-          git -C upstream add -A
+          git -C upstream add -f -A
           [[ "$(git -C upstream write-tree)" == 0f33543039c834b99558859db73d816e55412793 ]]
           git -C upstream diff --cached --stat
 
