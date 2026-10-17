@@ -13,7 +13,7 @@ concurrency:
 jobs:
   windows-baseline:
     if: github.ref_name == 'ci/clean-upstream-baseline'
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 180
     strategy:
       fail-fast: false
