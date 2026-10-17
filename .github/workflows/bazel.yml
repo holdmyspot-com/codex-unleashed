@@ -620,7 +620,7 @@ jobs:
           - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
-    name: Intel macOS failure probes
+    name: Unpatched upstream Intel macOS TUI comparison
     steps:
       - uses: actions/checkout@v6
         with:
@@ -631,10 +631,17 @@ jobs:
           # The local Codex patch stack is based on this upstream revision.
           # Advance it only when the product patches have been rebased.
           upstream-ref: ${{ inputs.upstream_ref }}
+          apply-patches: "false"
 
-      - name: Apply temporary native failure diagnostics
+      - name: Verify the unpatched comparison source
         shell: bash
-        run: git -C upstream apply --unidiff-zero --check ../.github/diagnostics/native-failures.patch && git -C upstream apply --unidiff-zero ../.github/diagnostics/native-failures.patch
+        run: |
+          set -euo pipefail
+          git -C upstream rev-parse HEAD
+          git -C upstream diff --exit-code
+          git -C upstream diff --cached --exit-code
+          cat upstream/.bazelversion
+          cat upstream/codex-rs/rust-toolchain.toml
 
       - name: Prepare Bazel CI
         id: prepare_bazel
@@ -647,7 +654,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run failing Intel macOS suites with diagnostics
+      - name: Repeat the unpatched upstream TUI suite
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -665,6 +672,8 @@ jobs:
             --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings \
             --test_output=all \
+            --runs_per_test=5 \
+            --nocache_test_results \
             --test_env=RUST_BACKTRACE=1 \
             --test_env=RUST_LIB_BACKTRACE=0 \
             --test_env=RUST_TEST_NOCAPTURE=1 \
