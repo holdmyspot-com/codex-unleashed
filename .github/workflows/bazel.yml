@@ -920,3 +920,23 @@ jobs:
         with:
           path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
           key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
+
+  recover-native-test-logs:
+    if: github.ref_name == 'ci/native-log-recovery'
+    runs-on: ubuntu-24.04
+    name: Retrieve retained Windows core attempt logs
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Fetch retained BuildBuddy logs
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: node .github/diagnostics/recover-native-test-logs.mjs
+      - uses: actions/upload-artifact@v6
+        if: always() && !cancelled()
+        with:
+          name: windows-core-retained-attempt-logs
+          path: .cat/work/temp/native-log-recovery
+          retention-days: 1
+          if-no-files-found: ignore
