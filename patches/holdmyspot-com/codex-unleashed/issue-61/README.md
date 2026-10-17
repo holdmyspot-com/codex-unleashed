@@ -2566,3 +2566,30 @@ All 22 policy tests must execute and pass. The feedback regression verifies a
 `//codex-rs/feedback:feedback-unit-tests` as part of the full release gate.
 For a nested Linux host that denies the normal sandbox access to `/dev/null`,
 add `--spawn_strategy=processwrapper-sandbox` to the focused policy command.
+
+## macOS daemon fixture concurrency
+
+`zzzz-0068-macos-daemon-fixture-concurrency.patch` runs CLI integration tests
+one at a time on macOS. Packaged daemon fixtures each create independent copies
+of the full CLI, so their combined disk use can exhaust a native runner. The
+setting uses the generated Rust test arguments for both direct and wrapped
+test targets. Other platforms use their normal integration-test concurrency.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0067. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. Run on each native
+macOS architecture from the patched checkout. Cargo metadata reconciles local
+package versions in the release lockfile, matching `prepare-bazel-ci`:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_sharding_strategy=disabled --flaky_test_attempts=1 --nocache_test_results --test_output=all -- //codex-rs/cli:cli-app_server_daemon-test //codex-rs/cli:cli-daemon_startup-test
+```
+
+The daemon lifecycle suite runs 14 tests and the startup suite runs 12 tests.
+Both suites must execute and pass with their full payloads and assertions.
+Full native CI remains the release acceptance gate. The fixture concurrency
+setting does not require a production app-server change.

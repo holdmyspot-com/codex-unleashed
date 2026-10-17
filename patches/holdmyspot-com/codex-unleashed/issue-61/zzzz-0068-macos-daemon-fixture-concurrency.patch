@@ -1,0 +1,40 @@
+From 94f06bf94693f1b9fdc3a78c182474b6d2124670 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 13:55:16 +0000
+Subject: [PATCH] fix(ci): bound macOS daemon fixture disk usage
+
+Run macOS CLI integration tests one at a time so packaged daemon fixtures
+do not materialize independent full CLI copies concurrently. Keep the
+existing test payloads, assertions and timeouts, and retain normal test
+concurrency on other platforms.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012) with queue through 0067.
+Red: full Bazel run 39022737141, ARM job 117367848543, two packaged daemon
+tests fail with No space left on device (os error 28).
+Green: native run 39036837568 executes 14 packaged/lifecycle tests and 12
+daemon startup tests on each macOS architecture, all passing. Generated
+target query confirms both CLI labels receive --test-threads=1.
+Maintained just fmt-check passes. Fresh emitted and full CI gates remain pending.
+---
+ codex-rs/cli/BUILD.bazel | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/codex-rs/cli/BUILD.bazel b/codex-rs/cli/BUILD.bazel
+index 8d57048a5..f89edd3a6 100644
+--- a/codex-rs/cli/BUILD.bazel
++++ b/codex-rs/cli/BUILD.bazel
+@@ -11,6 +11,11 @@ codex_rust_crate(
+     extra_binaries = [
+         "//codex-rs/bwrap:bwrap",
+     ],
++    # Packaged daemon fixtures each materialize independent copies of the CLI.
++    integration_test_args = select({
++        "@platforms//os:macos": ["--test-threads=1"],
++        "//conditions:default": [],
++    }),
+     integration_test_timeouts = {
+         "cli-app_server_daemon-test": "moderate",
+     },
+-- 
+2.43.0
+
