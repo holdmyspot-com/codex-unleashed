@@ -811,3 +811,112 @@ jobs:
         with:
           path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
           key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
+
+  native-verify-windows:
+    if: github.ref_name == 'ci/windows-repair-verification'
+    # Preserve the native compilation budget and individual test deadlines.
+    timeout-minutes: 180
+    runs-on: windows-2022
+    name: Windows SQLite repair verification (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: corrupt-board-recovery
+            target: //codex-rs/app-server:app-server-all-test
+            test: suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled
+          - label: corrupt-file-release
+            target: //codex-rs/state:state-unit-tests
+            test: sqlite::tests::open_read_write_pool_releases_corrupt_file_before_returning
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref }}
+
+      - name: Verify emitted repair source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git -C upstream rev-parse HEAD)" == 83086188ae0614bd882818ff1aa23f3194962012 ]]
+          git -C upstream add -f -A
+          [[ "$(git -C upstream write-tree)" == 0f33543039c834b99558859db73d816e55412793 ]]
+          git -C upstream diff --cached --stat
+
+      - name: Prepare Bazel CI
+        id: prepare_bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify only the repaired Windows regression in five independent executions
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          REGRESSION_TARGET: ${{ matrix.target }}
+          REGRESSION_TEST: ${{ matrix.test }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          attempt=0
+          mkdir -p "${GITHUB_WORKSPACE}/.cat/work/temp"
+          attempt_log=$(mktemp "${GITHUB_WORKSPACE}/.cat/work/temp/windows-attempt-XXXXXX")
+          trap 'rm -f -- "$attempt_log"' EXIT
+          while [[ "$attempt" -lt 5 ]]; do
+            attempt=$((attempt + 1))
+            echo "Focused Windows attempt $attempt: $REGRESSION_TEST"
+            if "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary \
+              --print-failed-test-logs \
+              --windows-msvc-host-platform \
+              -- \
+              test \
+              --config=ci-windows-msvc \
+              --platforms=//:windows_x86_64_msvc \
+              --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+              --test_tag_filters=-argument-comment-lint \
+              --test_sharding_strategy=disabled \
+              --test_output=all \
+              --nocache_test_results \
+              --test_arg=--exact \
+              "--test_arg=$REGRESSION_TEST" \
+              --test_arg=--nocapture \
+              --test_env=RUST_BACKTRACE=1 \
+              --test_env=RUST_LIB_BACKTRACE=0 \
+              "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+              -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
+              rg -q 'running 1 test' "$attempt_log"
+              rg -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
+              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+            else
+              status=$?
+              echo "Stopped at Windows attempt $attempt with exit $status"
+              exit "$status"
+            fi
+          done
+
+      - name: Upload Bazel execution logs
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: bazel-execution-logs-verify-windows-${{ matrix.label }}-x86_64-pc-windows-msvc
+          path: ${{ runner.temp }}/bazel-execution-logs
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Save Bazel repository cache
+        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
+          key: ${{ steps.prepare_bazel.outputs.repository-cache-key }}
