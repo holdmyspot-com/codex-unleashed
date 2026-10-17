@@ -2483,3 +2483,25 @@ For a nested local host whose Linux namespace denies access to `/dev/null`, add
 `--spawn_strategy=processwrapper-sandbox` to the focused Bazel command. Native CI
 uses its normal sandbox. All fixture checks must pass and the test must execute,
 rather than only report a cached result.
+
+### Bazel repository cache save preflight
+
+`zzzz-0064-bazel-cache-save-preflight.patch` checks the exact repository cache
+identity immediately before saving, using the cache action's download-free
+lookup. A cache created by another producer skips archive creation. A missing
+cache, or a lookup service error, retains the save attempt. This avoids redundant
+compression exhausting a runner's remaining disk space after a long build.
+It does not serialize simultaneous first writers.
+
+Apply the earlier workflow prerequisites through
+`zzzz-0063-bazel-failed-test-logs.patch` on the declared upstream base. Run:
+
+```sh
+bash .github/scripts/test-bazel-cache-save.sh
+just fmt-check
+```
+
+The policy check requires every repository cache producer to retain a miss
+save and guard it with a preceding lookup using the same key and path. Linux
+Bazel CI runs this check. The hosted workflow has the same guard and its Maven
+regression checks the YAML bindings.

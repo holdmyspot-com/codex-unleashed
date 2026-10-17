@@ -152,6 +152,41 @@ public final class BazelPreparationTest
 	}
 
 	/**
+	 * Rechecks immutable cache availability before archiving after another producer finishes.
+	 *
+	 * @throws IOException if the maintained workflow cannot be read
+	 */
+	@Test
+	public void skipsExistingRepositoryArchive() throws IOException
+	{
+		Path workflow = action().getParent().getParent().getParent().resolve("workflows/bazel.yml");
+		JsonNode jobs = YAMLMapper.builder().build().readTree(Files.readString(workflow)).path("jobs");
+		int saves = 0;
+		for (JsonNode job : jobs)
+		{
+			JsonNode lookup = null;
+			for (JsonNode step : job.path("steps"))
+			{
+				if (step.path("id").asString().equals("repository_cache_before_save"))
+					lookup = step;
+				if (step.path("name").asString().equalsIgnoreCase("Save Bazel repository cache"))
+				{
+					++saves;
+					assertTrue(lookup != null, "Cache saves must recheck after the build");
+					assertTrue(lookup.path("uses").asString().startsWith("actions/cache/restore@"));
+					assertTrue(lookup.path("with").path("lookup-only").asBoolean());
+					assertEquals(lookup.path("with").path("key"), step.path("with").path("key"));
+					assertEquals(lookup.path("with").path("path"), step.path("with").path("path"));
+					assertTrue(step.path("if").asString().contains(
+						"steps.repository_cache_before_save.outputs.cache-hit != 'true'"),
+						"A true miss must save; an exact hit must skip archive creation");
+				}
+			}
+		}
+		assertTrue(saves > 0, "The workflow must retain cache producers");
+	}
+
+	/**
 	 * Locates the maintained action from the Maven-provided release workflow locator.
 	 *
 	 * @return project Bazel preparation action
