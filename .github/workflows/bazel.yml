@@ -737,6 +737,16 @@ jobs:
         with:
           upstream-ref: ${{ inputs.upstream_ref }}
 
+      - name: Restore original SQLite behavior for the baseline loop
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream add -f -A
+          [[ "$(git -C upstream write-tree)" == 0f33543039c834b99558859db73d816e55412793 ]]
+          git -C upstream apply -R "${GITHUB_WORKSPACE}/patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0062-sqlite-startup-close.patch"
+          git -C upstream add -f -A
+          [[ "$(git -C upstream write-tree)" == 9b4c308d2b95395d56da989166bd9ad5a9970419 ]]
+
       - name: Prepare Bazel CI
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
