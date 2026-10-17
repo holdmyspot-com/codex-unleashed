@@ -1,0 +1,49 @@
+From c62781c671b856497ad9e17ef0a09009fcfc61fa Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 08:01:58 +0000
+Subject: [PATCH] Restore the upstream feedback upload test deadline
+
+The shared short unit-test deadline reduced feedback from upstream moderate (300 seconds) to 60 seconds. Preserve the large payload integrity assertions and restore moderate specifically for feedback, with an analysis regression in the timeout policy suite.
+
+Red: maintained run-bazel-ci.sh test //codex-rs/feedback:large_upload_deadline_test exits 3: expected moderate, got short. Green: same wrapper test //tools/build-warnings/test-timeouts:timeouts_tests runs all 22 tests uncached and passes. Maintained just fmt-check passes. Original native macOS feedback suite passes five runs; repaired full native acceptance remains pending.
+---
+ codex-rs/feedback/BUILD.bazel                  | 10 ++++++++++
+ tools/build-warnings/test-timeouts/BUILD.bazel |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/codex-rs/feedback/BUILD.bazel b/codex-rs/feedback/BUILD.bazel
+index a53efd5f7..151af2e7a 100644
+--- a/codex-rs/feedback/BUILD.bazel
++++ b/codex-rs/feedback/BUILD.bazel
+@@ -1,6 +1,16 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "feedback",
+     crate_name = "codex_feedback",
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "large_upload_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":feedback-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+index aefe38a49..ff140d662 100644
+--- a/tools/build-warnings/test-timeouts/BUILD.bazel
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -19,6 +19,7 @@ test_suite(
+         "//codex-rs/exec-server:minimum_compat_timeout_test",
+         "//codex-rs/exec-server:serialized_unit_timeout_test",
+         "//codex-rs/exec-server:stable_compat_timeout_test",
++        "//codex-rs/feedback:large_upload_deadline_test",
+         "//codex-rs/login:unit_override_test",
+         "//codex-rs/tui:fast_binary_deadline_test",
+         "//codex-rs/tui:unit_deadline_test",
+-- 
+2.43.0
+

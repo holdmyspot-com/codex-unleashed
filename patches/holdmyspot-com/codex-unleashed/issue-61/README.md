@@ -2527,3 +2527,28 @@ bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test -- //tools
 The regression expects all four failure and timeout scenarios to print their
 fixture logs and return the original Bazel exit status. Full CI remains the
 hosted acceptance gate.
+
+## Feedback upload test deadline
+
+`zzzz-0066-feedback-upload-deadline.patch` retains upstream's five-minute
+(`moderate`) deadline for the feedback unit suite. Its large-payload upload
+integrity tests keep their full payloads and assertions. Other unit suites keep
+the shared short deadline unless they declare their own override.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0065, including the shared timeout policy and its analysis-test support.
+The patch tracks https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Run from the patched checkout:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --nocache_test_results --test_output=errors -- //tools/build-warnings/test-timeouts:timeouts_tests
+```
+
+All 22 policy tests must execute and pass. The feedback regression verifies a
+`moderate` timeout on the generated test target. Native macOS CI must also run
+`//codex-rs/feedback:feedback-unit-tests` as part of the full release gate.
+For a nested Linux host that denies the normal sandbox access to `/dev/null`,
+add `--spawn_strategy=processwrapper-sandbox` to the focused policy command.
