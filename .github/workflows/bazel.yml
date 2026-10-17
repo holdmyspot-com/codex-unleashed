@@ -655,32 +655,46 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Repeat the original GovCloud test with failure-only PTY diagnostics
+      - name: Loop only the original GovCloud test until its first failure
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           cd upstream
-          bazel_targets=(
-            //codex-rs/tui:tui-all-test
-          )
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary \
-            --print-failed-test-logs \
-            -- \
-            test \
-            --test_tag_filters=-argument-comment-lint \
-            --test_verbose_timeout_warnings \
-            --test_output=all \
-            --runs_per_test=5 \
-            --nocache_test_results \
-            --test_env=RUST_BACKTRACE=1 \
-            --test_env=RUST_LIB_BACKTRACE=0 \
-            --test_env=RUST_TEST_NOCAPTURE=1 \
-            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            -- \
-            "${bazel_targets[@]}"
+          attempt=0
+          mkdir -p "${GITHUB_WORKSPACE}/.cat/work/temp"
+          attempt_log=$(mktemp "${GITHUB_WORKSPACE}/.cat/work/temp/gov-cloud-attempt-XXXXXX")
+          trap 'rm -f -- "$attempt_log"' EXIT
+          while :; do
+            attempt=$((attempt + 1))
+            echo "GovCloud focused attempt $attempt"
+            if "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary \
+              --print-failed-test-logs \
+              -- \
+              test \
+              --test_tag_filters=-argument-comment-lint \
+              --test_verbose_timeout_warnings \
+              --test_output=all \
+              --nocache_test_results \
+              --test_arg=--exact \
+              --test_arg=suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment \
+              --test_arg=--nocapture \
+              --test_env=RUST_BACKTRACE=1 \
+              --test_env=RUST_LIB_BACKTRACE=0 \
+              "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+              -- \
+              //codex-rs/tui:tui-all-test 2>&1 | tee "$attempt_log"; then
+              rg -q 'running 1 test$' "$attempt_log"
+              rg -q 'test suite::focus_palette::gov_cloud_guidance::gov_cloud_startup_persists_only_acknowledgment \.\.\. ok$' "$attempt_log"
+              rg -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
+            else
+              status=$?
+              echo "Stopped at GovCloud attempt $attempt with exit $status"
+              exit "$status"
+            fi
+          done
 
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
