@@ -26,6 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           git show HEAD:patches/holdmyspot-com/codex-unleashed/issue-34776/background-session-skill-warmup.patch > "${RUNNER_TEMP}/background-session-skill-warmup.patch"
+          cp .github/scripts/stabilize-warmup-tracing.cjs "${RUNNER_TEMP}/stabilize-warmup-tracing.cjs"
           printf '%s  %s\n' df3aece2d8ed12cbaf2df73ea2c8dea9a8f38e0c421da022def5f66ef4bd1592 "${RUNNER_TEMP}/background-session-skill-warmup.patch" | sha256sum --check
 
       # Source, local actions, and toolchain pins come from upstream.
@@ -62,6 +63,8 @@ jobs:
         run: |
           set -euo pipefail
           git apply --index "${RUNNER_TEMP}/background-session-skill-warmup.patch"
+          node "${RUNNER_TEMP}/stabilize-warmup-tracing.cjs" .
+          git add codex-rs/core/src/session/resume_warmup_tests.rs
           git diff --cached --stat
           git diff --cached --check
           test "$(git diff --name-only)" = codex-rs/Cargo.lock
