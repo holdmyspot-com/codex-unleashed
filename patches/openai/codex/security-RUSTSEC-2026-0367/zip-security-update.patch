@@ -1,0 +1,1088 @@
+From 2a54ee83e96ce757a802e4c6869348ad3d8fc7a9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 17 Oct 2026 05:27:59 -0400
+Subject: [PATCH] fix(plugins): update ZIP dependency past extraction
+ advisories
+
+ZIP 2.4.2 fails the maintained dependency audit for RUSTSEC-2026-0367,
+RUSTSEC-2026-0368, and RUSTSEC-2026-0369. Select ZIP 9.0.4, adapt the
+archive reader API, and refresh Cargo and Bazel dependency metadata.
+
+Allow the bzip2 license only for the replacement libbz2-rs-sys backend;
+its redistribution conditions match the bundled libbzip2 it replaces.
+Retain ZIP default compression features and all advisory checks.
+
+Rebase the Windows zstd-sys header overlay onto the upgraded dependency.
+Its target_is_msvc helper already handles symbol visibility, so retain
+only the header search paths that remain necessary.
+
+Red: CI 39019780120 job 117359126898 rejects ZIP 2.4.2 for all three
+advisories. The local full audit additionally rejects libbz2-rs-sys
+before its crate-specific license allowance.
+Green: cargo deny --manifest-path codex-rs/Cargo.toml --all-features
+check --deny unmatched-source --deny license-not-encountered
+--deny unused-wrapper --deny advisory-not-detected passes.
+just test -p codex-core-plugins: 478 passed, zero skipped.
+just fmt-check and just bazel-lock-check pass.
+
+Bazel dependency analysis reproduces the stale overlay failure and passes
+with the narrowed overlay; no compile result is inferred from analysis.
+Fresh emitted queue: exact tree equality, 478 plugin tests, formatting,
+full audit, and lock verification pass.
+
+This is an intermediate source checkpoint. Fresh emitted-patch and
+hosted platform verification remain required before promotion.
+---
+ MODULE.bazel.lock                             |  25 +-
+ codex-rs/Cargo.lock                           | 296 ++++++++++--------
+ codex-rs/Cargo.toml                           |   2 +-
+ codex-rs/core-plugins/src/startup_sync.rs     |  11 +-
+ codex-rs/deny.toml                            |   2 +
+ .../zstd-sys_windows_msvc_include_dirs.patch  |  25 +-
+ 6 files changed, 199 insertions(+), 162 deletions(-)
+
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index 114915af2..8f0ab6d1c 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -1156,6 +1156,7 @@
+       "aead_0.5.2": "{\"dependencies\":[{\"default_features\":false,\"name\":\"arrayvec\",\"optional\":true,\"req\":\"^0.7\"},{\"name\":\"blobby\",\"optional\":true,\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"bytes\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"crypto-common\",\"req\":\"^0.1.4\"},{\"default_features\":false,\"name\":\"generic-array\",\"req\":\"^0.14\"},{\"default_features\":false,\"name\":\"heapless\",\"optional\":true,\"req\":\"^0.7\"}],\"features\":{\"alloc\":[],\"default\":[\"rand_core\"],\"dev\":[\"blobby\"],\"getrandom\":[\"crypto-common/getrandom\",\"rand_core\"],\"rand_core\":[\"crypto-common/rand_core\"],\"std\":[\"alloc\",\"crypto-common/std\"],\"stream\":[]}}",
+       "aes-gcm_0.10.3": "{\"dependencies\":[{\"default_features\":false,\"name\":\"aead\",\"req\":\"^0.5\"},{\"default_features\":false,\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"aead\",\"req\":\"^0.5\"},{\"name\":\"aes\",\"optional\":true,\"req\":\"^0.8\"},{\"name\":\"cipher\",\"req\":\"^0.4\"},{\"name\":\"ctr\",\"req\":\"^0.9\"},{\"default_features\":false,\"name\":\"ghash\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.3\"},{\"default_features\":false,\"name\":\"subtle\",\"req\":\"^2\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1\"}],\"features\":{\"alloc\":[\"aead/alloc\"],\"arrayvec\":[\"aead/arrayvec\"],\"default\":[\"aes\",\"alloc\",\"getrandom\"],\"getrandom\":[\"aead/getrandom\",\"rand_core\"],\"heapless\":[\"aead/heapless\"],\"rand_core\":[\"aead/rand_core\"],\"std\":[\"aead/std\",\"alloc\"],\"stream\":[\"aead/stream\"]}}",
+       "aes_0.8.4": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1\"},{\"name\":\"cipher\",\"req\":\"^0.4.2\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"cipher\",\"req\":\"^0.4.2\"},{\"name\":\"cpufeatures\",\"req\":\"^0.2\",\"target\":\"cfg(any(target_arch = \\\"aarch64\\\", target_arch = \\\"x86_64\\\", target_arch = \\\"x86\\\"))\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"aarch64\"],\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.5.6\",\"target\":\"cfg(all(aes_armv8, target_arch = \\\"aarch64\\\"))\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.6.0\",\"target\":\"cfg(not(all(aes_armv8, target_arch = \\\"aarch64\\\")))\"}],\"features\":{\"hazmat\":[]}}",
++      "aes_0.9.3": "{\"dependencies\":[{\"name\":\"cipher\",\"req\":\"^0.5\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"cipher\",\"req\":\"^0.5\"},{\"name\":\"cpubits\",\"req\":\"^0.1\"},{\"name\":\"cpufeatures\",\"req\":\"^0.3\",\"target\":\"cfg(any(target_arch = \\\"aarch64\\\", target_arch = \\\"x86_64\\\", target_arch = \\\"x86\\\"))\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.9\"}],\"features\":{\"hazmat\":[]}}",
+       "age-core_0.12.0": "{\"dependencies\":[{\"name\":\"base64\",\"req\":\"^0.22\"},{\"name\":\"bech32\",\"req\":\"^0.11\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"chacha20poly1305\",\"req\":\"^0.10\"},{\"name\":\"cookie-factory\",\"req\":\"^0.3.1\"},{\"name\":\"hkdf\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"hpke\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"alloc\",\"p256\"],\"kind\":\"dev\",\"name\":\"hpke\",\"req\":\"^0.12\"},{\"name\":\"io_tee\",\"req\":\"^0.1.1\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"nom\",\"req\":\"^8\"},{\"name\":\"rand\",\"req\":\"^0.8\"},{\"name\":\"secrecy\",\"req\":\"^0.10\"},{\"name\":\"sha2\",\"req\":\"^0.10\"},{\"name\":\"tempfile\",\"optional\":true,\"req\":\"^3.2.0\"}],\"features\":{\"plugin\":[\"tempfile\"],\"unstable\":[]}}",
+       "age_0.12.1": "{\"dependencies\":[{\"name\":\"aes\",\"optional\":true,\"req\":\"^0.8\"},{\"name\":\"aes-gcm\",\"optional\":true,\"req\":\"^0.10\"},{\"name\":\"age-core\",\"req\":\"^0.12.0\"},{\"name\":\"base64\",\"req\":\"^0.22\"},{\"name\":\"bcrypt-pbkdf\",\"optional\":true,\"req\":\"^0.10\"},{\"name\":\"bech32\",\"req\":\"^0.11\"},{\"name\":\"cbc\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"chacha20poly1305\",\"req\":\"^0.10\"},{\"features\":[\"alloc\"],\"name\":\"cipher\",\"req\":\"^0.4.3\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"console\",\"optional\":true,\"req\":\"^0.16\"},{\"name\":\"cookie-factory\",\"req\":\"^0.3.1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"criterion-cycles-per-byte\",\"req\":\"^0.6\",\"target\":\"cfg(any(target_arch = \\\"x86\\\", target_arch = \\\"x86_64\\\"))\"},{\"name\":\"ctr\",\"optional\":true,\"req\":\"^0.9\"},{\"name\":\"curve25519-dalek\",\"optional\":true,\"req\":\"^4\"},{\"kind\":\"dev\",\"name\":\"flate2\",\"req\":\"^1\"},{\"name\":\"futures\",\"optional\":true,\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"futures-test\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4\"},{\"name\":\"hkdf\",\"req\":\"^0.12\"},{\"name\":\"hmac\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"alloc\",\"p256\"],\"name\":\"hpke\",\"req\":\"^0.12\"},{\"features\":[\"fluent-system\"],\"name\":\"i18n-embed\",\"req\":\"^0.16\"},{\"features\":[\"fluent-system\",\"desktop-requester\"],\"kind\":\"dev\",\"name\":\"i18n-embed\",\"req\":\"^0.16\"},{\"name\":\"i18n-embed-fl\",\"req\":\"^0.10\"},{\"name\":\"is-terminal\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"lazy_static\",\"req\":\"^1\"},{\"name\":\"memchr\",\"optional\":true,\"req\":\"^2.5\"},{\"features\":[\"deterministic\"],\"name\":\"ml-kem\",\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"nom\",\"req\":\"^8\"},{\"name\":\"num-traits\",\"optional\":true,\"req\":\"^0.2\"},{\"default_features\":false,\"features\":[\"arithmetic\"],\"name\":\"p256\",\"req\":\"^0.13\"},{\"name\":\"pin-project\",\"req\":\"^1\"},{\"name\":\"pinentry\",\"optional\":true,\"req\":\"^0.8\"},{\"features\":[\"criterion\",\"flamegraph\"],\"kind\":\"dev\",\"name\":\"pprof\",\"req\":\"^0.13\",\"target\":\"cfg(unix)\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\"},{\"name\":\"rand\",\"req\":\"^0.8\"},{\"name\":\"rpassword\",\"optional\":true,\"req\":\"^7\"},{\"default_features\":false,\"name\":\"rsa\",\"optional\":true,\"req\":\"^0.9\"},{\"name\":\"rust-embed\",\"req\":\"^8\"},{\"default_features\":false,\"name\":\"scrypt\",\"req\":\"^0.11\"},{\"name\":\"sha2\",\"req\":\"^0.10\"},{\"name\":\"sha3\",\"req\":\"^0.10\"},{\"name\":\"subtle\",\"req\":\"^2.6\"},{\"kind\":\"dev\",\"name\":\"test-case\",\"req\":\"^3\"},{\"features\":[\"macros\",\"rt-multi-thread\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1\"},{\"features\":[\"Window\",\"Performance\"],\"name\":\"web-sys\",\"optional\":true,\"req\":\"^0.3\"},{\"name\":\"which\",\"optional\":true,\"req\":\"^8\",\"target\":\"cfg(any(unix, windows))\"},{\"name\":\"wsl\",\"optional\":true,\"req\":\"^0.1\",\"target\":\"cfg(any(unix, windows))\"},{\"features\":[\"static_secrets\"],\"name\":\"x25519-dalek\",\"req\":\"^2\"},{\"name\":\"zeroize\",\"req\":\"^1\"}],\"features\":{\"armor\":[],\"async\":[\"futures\",\"memchr\"],\"cli-common\":[\"console\",\"is-terminal\",\"pinentry\",\"rpassword\"],\"default\":[],\"plugin\":[\"age-core/plugin\",\"which\",\"wsl\"],\"ssh\":[\"aes\",\"aes-gcm\",\"bcrypt-pbkdf\",\"cbc\",\"ctr\",\"curve25519-dalek\",\"num-traits\",\"rsa\"],\"unstable\":[\"age-core/unstable\"]}}",
+       "ahash_0.8.12": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1.0\"},{\"name\":\"const-random\",\"optional\":true,\"req\":\"^0.1.17\"},{\"features\":[\"html_reports\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.2\"},{\"kind\":\"dev\",\"name\":\"fnv\",\"req\":\"^1.0.5\"},{\"kind\":\"dev\",\"name\":\"fxhash\",\"req\":\"^0.2.1\"},{\"name\":\"getrandom\",\"optional\":true,\"req\":\"^0.3.1\"},{\"kind\":\"dev\",\"name\":\"hashbrown\",\"req\":\"^0.14.3\"},{\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"^0.4.2\"},{\"kind\":\"dev\",\"name\":\"no-panic\",\"req\":\"^0.1.10\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"once_cell\",\"req\":\"^1.18.0\",\"target\":\"cfg(not(all(target_arch = \\\"arm\\\", target_os = \\\"none\\\")))\"},{\"kind\":\"dev\",\"name\":\"pcg-mwc\",\"req\":\"^0.2.1\"},{\"name\":\"portable-atomic\",\"optional\":true,\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.5\"},{\"kind\":\"dev\",\"name\":\"seahash\",\"req\":\"^4.0\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.117\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.59\"},{\"kind\":\"dev\",\"name\":\"smallvec\",\"req\":\"^1.13.1\"},{\"kind\":\"build\",\"name\":\"version_check\",\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"simd\"],\"name\":\"zerocopy\",\"req\":\"^0.8.24\"}],\"features\":{\"atomic-polyfill\":[\"dep:portable-atomic\",\"once_cell/critical-section\"],\"compile-time-rng\":[\"const-random\"],\"default\":[\"std\",\"runtime-rng\"],\"nightly-arm-aes\":[],\"no-rng\":[],\"runtime-rng\":[\"getrandom\"],\"std\":[]}}",
+@@ -1181,7 +1182,6 @@
+       "anyhow_1.0.102": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.6\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"syn\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"thiserror\",\"req\":\"^2\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"backtrace\":[],\"default\":[\"std\"],\"std\":[]}}",
+       "anyhow_1.0.103": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"futures\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.6\"},{\"features\":[\"full\"],\"kind\":\"dev\",\"name\":\"syn\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"thiserror\",\"req\":\"^2\"},{\"features\":[\"diff\"],\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.108\"}],\"features\":{\"backtrace\":[],\"default\":[\"std\"],\"std\":[]}}",
+       "approx_0.5.1": "{\"dependencies\":[{\"name\":\"num-complex\",\"optional\":true,\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"req\":\"^0.2.0\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+-      "arbitrary_1.4.2": "{\"dependencies\":[{\"name\":\"derive_arbitrary\",\"optional\":true,\"req\":\"~1.4.0\"},{\"kind\":\"dev\",\"name\":\"exhaustigen\",\"req\":\"^0.1.0\"}],\"features\":{\"derive\":[\"derive_arbitrary\"]}}",
+       "arboard_3.6.1": "{\"dependencies\":[{\"features\":[\"std\"],\"name\":\"clipboard-win\",\"req\":\"^5.3.1\",\"target\":\"cfg(windows)\"},{\"kind\":\"dev\",\"name\":\"env_logger\",\"req\":\"^0.10.2\"},{\"default_features\":false,\"features\":[\"png\"],\"name\":\"image\",\"optional\":true,\"req\":\"^0.25\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"},{\"default_features\":false,\"features\":[\"tiff\"],\"name\":\"image\",\"optional\":true,\"req\":\"^0.25\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"png\",\"bmp\"],\"name\":\"image\",\"optional\":true,\"req\":\"^0.25\",\"target\":\"cfg(windows)\"},{\"name\":\"log\",\"req\":\"^0.4\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"},{\"name\":\"log\",\"req\":\"^0.4\",\"target\":\"cfg(windows)\"},{\"name\":\"objc2\",\"req\":\"^0.6.0\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"objc2-core-graphics\",\"NSPasteboard\",\"NSPasteboardItem\",\"NSImage\"],\"name\":\"objc2-app-kit\",\"req\":\"^0.3.0\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"CFCGTypes\"],\"name\":\"objc2-core-foundation\",\"optional\":true,\"req\":\"^0.3.0\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"CGImage\",\"CGColorSpace\",\"CGDataProvider\"],\"name\":\"objc2-core-graphics\",\"optional\":true,\"req\":\"^0.3.0\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"NSArray\",\"NSString\",\"NSEnumerator\",\"NSGeometry\",\"NSValue\"],\"name\":\"objc2-foundation\",\"req\":\"^0.3.0\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"name\":\"parking_lot\",\"req\":\"^0.12\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"},{\"name\":\"percent-encoding\",\"req\":\"^2.3.1\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"},{\"features\":[\"Win32_Foundation\",\"Win32_Storage_FileSystem\",\"Win32_System_DataExchange\",\"Win32_System_Memory\",\"Win32_System_Ole\",\"Win32_UI_Shell\"],\"name\":\"windows-sys\",\"req\":\">=0.52.0, <0.61.0\",\"target\":\"cfg(windows)\"},{\"name\":\"wl-clipboard-rs\",\"optional\":true,\"req\":\"^0.9.0\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"},{\"name\":\"x11rb\",\"req\":\"^0.13\",\"target\":\"cfg(all(unix, not(any(target_os=\\\"macos\\\", target_os=\\\"android\\\", target_os=\\\"emscripten\\\"))))\"}],\"features\":{\"core-graphics\":[\"dep:objc2-core-graphics\"],\"default\":[\"image-data\"],\"image\":[\"dep:image\"],\"image-data\":[\"dep:objc2-core-graphics\",\"dep:objc2-core-foundation\",\"image\",\"windows-sys\",\"core-graphics\"],\"wayland-data-control\":[\"wl-clipboard-rs\"],\"windows-sys\":[\"windows-sys/Win32_Graphics_Gdi\"],\"wl-clipboard-rs\":[\"dep:wl-clipboard-rs\"]}}",
+       "arc-swap_1.9.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"adaptive-barrier\",\"req\":\"~1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"~0.7\"},{\"kind\":\"dev\",\"name\":\"crossbeam-utils\",\"req\":\"~0.8\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14\"},{\"kind\":\"dev\",\"name\":\"num_cpus\",\"req\":\"~1\"},{\"kind\":\"dev\",\"name\":\"once_cell\",\"req\":\"~1\"},{\"kind\":\"dev\",\"name\":\"parking_lot\",\"req\":\"~0.12\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\"},{\"name\":\"rustversion\",\"req\":\"^1\"},{\"features\":[\"rc\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.130\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.177\"}],\"features\":{\"experimental-strategies\":[],\"experimental-thread-local\":[],\"internal-test-strategies\":[],\"weak\":[]}}",
+       "arrayref_0.3.9": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"}],\"features\":{}}",
+@@ -1290,8 +1290,7 @@
+       "bytes-utils_0.1.4": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bytes\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"either\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.12\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.144\"}],\"features\":{\"default\":[\"std\"],\"serde\":[\"dep:serde\",\"bytes/serde\"],\"std\":[\"bytes/default\"]}}",
+       "bytes_1.11.1": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"require-cas\"],\"name\":\"extra-platforms\",\"optional\":true,\"package\":\"portable-atomic\",\"req\":\"^1.3\"},{\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.60\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "bytes_1.12.1": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"require-cas\"],\"name\":\"extra-platforms\",\"optional\":true,\"package\":\"portable-atomic\",\"req\":\"^1.3\"},{\"kind\":\"dev\",\"name\":\"loom\",\"req\":\"^0.7\",\"target\":\"cfg(loom)\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.60\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+-      "bzip2-sys_0.1.13+1.0.8": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.9\"}],\"features\":{\"__disabled\":[],\"static\":[]}}",
+-      "bzip2_0.5.2": "{\"dependencies\":[{\"name\":\"bzip2-sys\",\"optional\":true,\"req\":\"^0.1.13\"},{\"default_features\":false,\"features\":[\"rust-allocator\",\"semver-prefix\"],\"name\":\"libbz2-rs-sys\",\"optional\":true,\"req\":\"^0.1.3\"},{\"features\":[\"quickcheck1\"],\"kind\":\"dev\",\"name\":\"partial-io\",\"req\":\"^0.5.4\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"}],\"features\":{\"default\":[\"dep:bzip2-sys\"],\"libbz2-rs-sys\":[\"dep:libbz2-rs-sys\",\"bzip2-sys?/__disabled\"],\"static\":[\"bzip2-sys?/static\"]}}",
++      "bzip2_0.6.1": "{\"dependencies\":[{\"name\":\"bzip2-sys\",\"optional\":true,\"req\":\"^0.1.13\"},{\"default_features\":false,\"features\":[\"rust-allocator\"],\"name\":\"libbz2-rs-sys\",\"optional\":true,\"req\":\"^0.2.1\"},{\"features\":[\"quickcheck1\"],\"kind\":\"dev\",\"name\":\"partial-io\",\"req\":\"^0.5.4\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"}],\"features\":{\"bzip2-sys\":[\"dep:bzip2-sys\"],\"default\":[\"dep:libbz2-rs-sys\"],\"static\":[\"bzip2-sys?/static\"]}}",
+       "cached_0.56.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"ahash\",\"optional\":true,\"req\":\"^0.8\"},{\"features\":[\"attributes\"],\"kind\":\"dev\",\"name\":\"async-std\",\"req\":\"^1.6\"},{\"name\":\"async-trait\",\"optional\":true,\"req\":\"^0.1\"},{\"name\":\"cached_proc_macro\",\"optional\":true,\"req\":\"^0.25.0\"},{\"name\":\"cached_proc_macro_types\",\"optional\":true,\"req\":\"^0.1.1\"},{\"kind\":\"dev\",\"name\":\"copy_dir\",\"req\":\"^0.1.3\"},{\"name\":\"directories\",\"optional\":true,\"req\":\"^6.0\"},{\"default_features\":false,\"name\":\"futures\",\"optional\":true,\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"googletest\",\"req\":\"^0.11.0\"},{\"default_features\":false,\"features\":[\"inline-more\"],\"name\":\"hashbrown\",\"req\":\"^0.15\"},{\"name\":\"once_cell\",\"req\":\"^1\"},{\"name\":\"r2d2\",\"optional\":true,\"req\":\"^0.8\"},{\"features\":[\"r2d2\"],\"name\":\"redis\",\"optional\":true,\"req\":\"^0.32\"},{\"name\":\"rmp-serde\",\"optional\":true,\"req\":\"^1.1\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"},{\"name\":\"serde_json\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"serial_test\",\"req\":\"^3\"},{\"name\":\"sled\",\"optional\":true,\"req\":\"^0.34\"},{\"kind\":\"dev\",\"name\":\"smartstring\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.10.1\"},{\"name\":\"thiserror\",\"req\":\"^2\"},{\"features\":[\"macros\",\"time\",\"sync\",\"parking_lot\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"web-time\",\"req\":\"^1.1.0\"}],\"features\":{\"ahash\":[\"dep:ahash\",\"hashbrown/default\"],\"async\":[\"futures\",\"tokio\",\"async-trait\"],\"async_tokio_rt_multi_thread\":[\"async\",\"tokio/rt-multi-thread\"],\"default\":[\"proc_macro\",\"ahash\"],\"disk_store\":[\"sled\",\"serde\",\"rmp-serde\",\"directories\"],\"proc_macro\":[\"cached_proc_macro\",\"cached_proc_macro_types\"],\"redis_ahash\":[\"redis_store\",\"redis/ahash\"],\"redis_async_std\":[\"redis_store\",\"async\",\"redis/aio\",\"redis/async-std-comp\",\"redis/tls\",\"redis/async-std-tls-comp\"],\"redis_connection_manager\":[\"redis_store\",\"redis/connection-manager\"],\"redis_store\":[\"redis\",\"r2d2\",\"serde\",\"serde_json\"],\"redis_tokio\":[\"redis_store\",\"async\",\"redis/aio\",\"redis/tokio-comp\",\"redis/tls\",\"redis/tokio-native-tls-comp\"],\"wasm\":[]}}",
+       "cached_proc_macro_0.25.0": "{\"dependencies\":[{\"name\":\"darling\",\"req\":\"^0.20.8\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.49\"},{\"name\":\"quote\",\"req\":\"^1.0.6\"},{\"name\":\"syn\",\"req\":\"^2.0.52\"}],\"features\":{}}",
+       "cached_proc_macro_types_0.1.1": "{\"dependencies\":[],\"features\":{}}",
+@@ -1320,6 +1319,7 @@
+       "chunked_transfer_1.5.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3\"}],\"features\":{}}",
+       "cidr_0.3.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"features\":[\"net\"],\"name\":\"bitstring\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.210\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.27\"},{\"kind\":\"dev\",\"name\":\"version-sync\",\"req\":\"^0.9.1\"}],\"features\":{\"bitstring\":[\"dep:bitstring\"],\"default\":[\"std\"],\"no_unsafe\":[],\"serde\":[\"dep:serde\"],\"std\":[]}}",
+       "cipher_0.4.4": "{\"dependencies\":[{\"name\":\"blobby\",\"optional\":true,\"req\":\"^0.3\"},{\"name\":\"crypto-common\",\"req\":\"^0.1.6\"},{\"name\":\"inout\",\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.5\"}],\"features\":{\"alloc\":[],\"block-padding\":[\"inout/block-padding\"],\"dev\":[\"blobby\"],\"rand_core\":[\"crypto-common/rand_core\"],\"std\":[\"alloc\",\"crypto-common/std\",\"inout/std\"]}}",
++      "cipher_0.5.2": "{\"dependencies\":[{\"name\":\"blobby\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"block-buffer\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"common\",\"package\":\"crypto-common\",\"req\":\"^0.2.2\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"name\":\"inout\",\"req\":\"^0.2.2\"},{\"default_features\":false,\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.8\"}],\"features\":{\"alloc\":[],\"block-padding\":[\"inout/block-padding\"],\"dev\":[\"blobby\"],\"getrandom\":[\"common/getrandom\"],\"rand_core\":[\"common/rand_core\"],\"stream-wrapper\":[\"block-buffer\"],\"zeroize\":[\"dep:zeroize\",\"common/zeroize\",\"block-buffer?/zeroize\"]}}",
+       "clang-sys_1.8.1": "{\"dependencies\":[{\"name\":\"glob\",\"req\":\"^0.3\"},{\"kind\":\"build\",\"name\":\"glob\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"glob\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"lazy_static\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.39\"},{\"name\":\"libloading\",\"optional\":true,\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\">=3.0.0, <3.7.0\"}],\"features\":{\"clang_10_0\":[\"clang_9_0\"],\"clang_11_0\":[\"clang_10_0\"],\"clang_12_0\":[\"clang_11_0\"],\"clang_13_0\":[\"clang_12_0\"],\"clang_14_0\":[\"clang_13_0\"],\"clang_15_0\":[\"clang_14_0\"],\"clang_16_0\":[\"clang_15_0\"],\"clang_17_0\":[\"clang_16_0\"],\"clang_18_0\":[\"clang_17_0\"],\"clang_3_5\":[],\"clang_3_6\":[\"clang_3_5\"],\"clang_3_7\":[\"clang_3_6\"],\"clang_3_8\":[\"clang_3_7\"],\"clang_3_9\":[\"clang_3_8\"],\"clang_4_0\":[\"clang_3_9\"],\"clang_5_0\":[\"clang_4_0\"],\"clang_6_0\":[\"clang_5_0\"],\"clang_7_0\":[\"clang_6_0\"],\"clang_8_0\":[\"clang_7_0\"],\"clang_9_0\":[\"clang_8_0\"],\"libcpp\":[],\"runtime\":[\"libloading\"],\"static\":[]}}",
+       "clap_4.5.58": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"automod\",\"req\":\"^1.0.14\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"clap-cargo\",\"req\":\"^0.15.0\"},{\"default_features\":false,\"name\":\"clap_builder\",\"req\":\"=4.5.58\"},{\"name\":\"clap_derive\",\"optional\":true,\"req\":\"=4.5.55\"},{\"kind\":\"dev\",\"name\":\"jiff\",\"req\":\"^0.2.3\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.15\"},{\"kind\":\"dev\",\"name\":\"semver\",\"req\":\"^1.0.26\"},{\"kind\":\"dev\",\"name\":\"shlex\",\"req\":\"^1.3.0\"},{\"features\":[\"term-svg\"],\"kind\":\"dev\",\"name\":\"snapbox\",\"req\":\"^0.6.16\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.91\"},{\"default_features\":false,\"features\":[\"color-auto\",\"diff\",\"examples\"],\"kind\":\"dev\",\"name\":\"trycmd\",\"req\":\"^0.15.3\"}],\"features\":{\"cargo\":[\"clap_builder/cargo\"],\"color\":[\"clap_builder/color\"],\"debug\":[\"clap_builder/debug\",\"clap_derive?/debug\"],\"default\":[\"std\",\"color\",\"help\",\"usage\",\"error-context\",\"suggestions\"],\"deprecated\":[\"clap_builder/deprecated\",\"clap_derive?/deprecated\"],\"derive\":[\"dep:clap_derive\"],\"env\":[\"clap_builder/env\"],\"error-context\":[\"clap_builder/error-context\"],\"help\":[\"clap_builder/help\"],\"std\":[\"clap_builder/std\"],\"string\":[\"clap_builder/string\"],\"suggestions\":[\"clap_builder/suggestions\"],\"unicode\":[\"clap_builder/unicode\"],\"unstable-derive-ui-tests\":[],\"unstable-doc\":[\"clap_builder/unstable-doc\",\"derive\"],\"unstable-ext\":[\"clap_builder/unstable-ext\"],\"unstable-markdown\":[\"clap_derive/unstable-markdown\"],\"unstable-styles\":[\"clap_builder/unstable-styles\"],\"unstable-v5\":[\"clap_builder/unstable-v5\",\"clap_derive?/unstable-v5\",\"deprecated\"],\"usage\":[\"clap_builder/usage\"],\"wrap_help\":[\"clap_builder/wrap_help\"]}}",
+       "clap_4.6.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"automod\",\"req\":\"^1.0.16\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"clap-cargo\",\"req\":\"^0.15.2\"},{\"default_features\":false,\"name\":\"clap_builder\",\"req\":\"=4.6.0\"},{\"name\":\"clap_derive\",\"optional\":true,\"req\":\"=4.6.0\"},{\"kind\":\"dev\",\"name\":\"jiff\",\"req\":\"^0.2.23\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0.22\"},{\"kind\":\"dev\",\"name\":\"semver\",\"req\":\"^1.0.27\"},{\"kind\":\"dev\",\"name\":\"shlex\",\"req\":\"^1.3.0\"},{\"features\":[\"term-svg\"],\"kind\":\"dev\",\"name\":\"snapbox\",\"req\":\"^1.1.0\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.116\"},{\"default_features\":false,\"features\":[\"color-auto\",\"diff\",\"examples\"],\"kind\":\"dev\",\"name\":\"trycmd\",\"req\":\"^1.1.1\"}],\"features\":{\"cargo\":[\"clap_builder/cargo\"],\"color\":[\"clap_builder/color\"],\"debug\":[\"clap_builder/debug\",\"clap_derive?/debug\"],\"default\":[\"std\",\"color\",\"help\",\"usage\",\"error-context\",\"suggestions\"],\"deprecated\":[\"clap_builder/deprecated\",\"clap_derive?/deprecated\"],\"derive\":[\"dep:clap_derive\"],\"env\":[\"clap_builder/env\"],\"error-context\":[\"clap_builder/error-context\"],\"help\":[\"clap_builder/help\"],\"std\":[\"clap_builder/std\"],\"string\":[\"clap_builder/string\"],\"suggestions\":[\"clap_builder/suggestions\"],\"unicode\":[\"clap_builder/unicode\"],\"unstable-derive-ui-tests\":[],\"unstable-doc\":[\"clap_builder/unstable-doc\",\"derive\"],\"unstable-ext\":[\"clap_builder/unstable-ext\"],\"unstable-markdown\":[\"clap_derive/unstable-markdown\"],\"unstable-styles\":[\"clap_builder/unstable-styles\"],\"unstable-v5\":[\"clap_builder/unstable-v5\",\"clap_derive?/unstable-v5\",\"deprecated\"],\"usage\":[\"clap_builder/usage\"],\"wrap_help\":[\"clap_builder/wrap_help\"]}}",
+@@ -1351,10 +1351,12 @@
+       "condtype_1.3.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"cfg-if\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"libc\",\"req\":\"^0.2.141\"}],\"features\":{}}",
+       "console_0.15.11": "{\"dependencies\":[{\"name\":\"encode_unicode\",\"req\":\"^1\",\"target\":\"cfg(windows)\"},{\"name\":\"libc\",\"req\":\"^0.2.99\"},{\"name\":\"once_cell\",\"req\":\"^1.8\"},{\"default_features\":false,\"features\":[\"std\",\"bit-set\",\"break-dead-code\"],\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1.4.2\"},{\"name\":\"unicode-width\",\"optional\":true,\"req\":\"^0.2\"},{\"features\":[\"Win32_Foundation\",\"Win32_System_Console\",\"Win32_Storage_FileSystem\",\"Win32_UI_Input_KeyboardAndMouse\"],\"name\":\"windows-sys\",\"req\":\"^0.59\",\"target\":\"cfg(windows)\"}],\"features\":{\"ansi-parsing\":[],\"default\":[\"unicode-width\",\"ansi-parsing\"],\"windows-console-colors\":[\"ansi-parsing\"]}}",
+       "const-hex_1.17.0": "{\"dependencies\":[{\"name\":\"cfg-if\",\"req\":\"^1\"},{\"name\":\"cpufeatures\",\"req\":\"^0.2\",\"target\":\"cfg(any(target_arch = \\\"x86\\\", target_arch = \\\"x86_64\\\"))\"},{\"kind\":\"dev\",\"name\":\"divan\",\"package\":\"codspeed-divan-compat\",\"req\":\"^3\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"faster-hex\",\"req\":\"^0.10.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"hex\",\"req\":\"~0.4.2\"},{\"default_features\":false,\"name\":\"proptest\",\"optional\":true,\"req\":\"^1.4\"},{\"kind\":\"dev\",\"name\":\"rustc-hex\",\"req\":\"^2.1\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0\"}],\"features\":{\"__fuzzing\":[\"dep:proptest\",\"std\"],\"alloc\":[\"serde_core?/alloc\",\"proptest?/alloc\"],\"core-error\":[],\"default\":[\"std\"],\"force-generic\":[],\"hex\":[],\"nightly\":[],\"portable-simd\":[],\"serde\":[\"dep:serde_core\"],\"std\":[\"serde_core?/std\",\"proptest?/std\",\"alloc\"]}}",
++      "const-oid_0.10.2": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.4\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"regex\",\"req\":\"^1\"}],\"features\":{\"db\":[]}}",
+       "const-oid_0.9.6": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.2\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.3\"}],\"features\":{\"db\":[],\"std\":[]}}",
+       "const_format_0.2.35": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"arrayvec\",\"req\":\"^0.7.0\"},{\"name\":\"const_format_proc_macros\",\"req\":\"=0.2.34\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"fastrand\",\"req\":\"^1.3.5\"},{\"default_features\":false,\"name\":\"konst\",\"optional\":true,\"req\":\"^0.2.13\"}],\"features\":{\"__debug\":[\"const_format_proc_macros/debug\"],\"__docsrs\":[],\"__inline_const_pat_tests\":[\"__test\",\"fmt\"],\"__only_new_tests\":[\"__test\"],\"__test\":[],\"all\":[\"fmt\",\"derive\",\"rust_1_64\",\"assert\"],\"assert\":[\"assertc\"],\"assertc\":[\"fmt\",\"assertcp\"],\"assertcp\":[\"rust_1_51\"],\"const_generics\":[\"rust_1_51\"],\"constant_time_as_str\":[\"fmt\"],\"default\":[],\"derive\":[\"fmt\",\"const_format_proc_macros/derive\"],\"fmt\":[\"rust_1_83\"],\"more_str_macros\":[\"rust_1_64\"],\"nightly_const_generics\":[\"const_generics\"],\"rust_1_51\":[],\"rust_1_64\":[\"rust_1_51\",\"konst\",\"konst/rust_1_64\"],\"rust_1_83\":[\"rust_1_64\"]}}",
+       "const_format_proc_macros_0.2.34": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"fastrand\",\"req\":\"^1.3.4\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.19\"},{\"name\":\"quote\",\"req\":\"^1.0.7\"},{\"default_features\":false,\"features\":[\"parsing\",\"proc-macro\"],\"name\":\"syn\",\"optional\":true,\"req\":\"^1.0.38\"},{\"name\":\"unicode-xid\",\"req\":\"^0.2\"}],\"features\":{\"all\":[\"derive\"],\"debug\":[\"syn/extra-traits\"],\"default\":[],\"derive\":[\"syn\",\"syn/derive\",\"syn/printing\"]}}",
+       "constant_time_eq_0.3.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"count_instructions\",\"req\":\"^0.1.3\"},{\"features\":[\"cargo_bench_support\",\"html_reports\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.1\"}],\"features\":{\"count_instructions_test\":[]}}",
++      "constant_time_eq_0.6.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"count_instructions\",\"req\":\"^0.2.0\"},{\"features\":[\"cargo_bench_support\",\"html_reports\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8.0\"},{\"kind\":\"build\",\"name\":\"rustversion\",\"req\":\"^1.0.6\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "convert_case_0.10.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5\"},{\"name\":\"unicode-segmentation\",\"req\":\"^1.9.0\"}],\"features\":{}}",
+       "convert_case_0.6.0": "{\"dependencies\":[{\"name\":\"rand\",\"optional\":true,\"req\":\"^0.7\"},{\"kind\":\"dev\",\"name\":\"strum\",\"req\":\"^0.18.0\"},{\"kind\":\"dev\",\"name\":\"strum_macros\",\"req\":\"^0.18.0\"},{\"name\":\"unicode-segmentation\",\"req\":\"^1.9.0\"}],\"features\":{\"random\":[\"rand\"]}}",
+       "cookie-factory_0.3.3": "{\"dependencies\":[{\"features\":[\"attributes\"],\"kind\":\"dev\",\"name\":\"async-std\",\"req\":\"^1.9.0\"},{\"name\":\"futures\",\"optional\":true,\"req\":\"^0.3.16\"},{\"kind\":\"dev\",\"name\":\"maplit\",\"req\":\"^1.0\"}],\"features\":{\"async\":[\"futures\"],\"default\":[\"std\",\"async\"],\"std\":[]}}",
+@@ -1366,6 +1368,7 @@
+       "core_maths_0.1.1": "{\"dependencies\":[{\"name\":\"libm\",\"req\":\"^0.2\"}],\"features\":{}}",
+       "coreaudio-rs_0.14.2": "{\"dependencies\":[{\"name\":\"bitflags\",\"req\":\"^2.10\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"bitflags\",\"libc\",\"objc2-core-foundation\",\"objc2-core-audio\",\"objc2-core-audio-types\",\"AUComponent\",\"AudioCodec\",\"AudioComponent\",\"AudioFormat\",\"AudioOutputUnit\",\"AudioUnitProperties\",\"AudioServices\",\"AudioSession\"],\"name\":\"objc2-audio-toolbox\",\"optional\":true,\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"objc2-avf-audio\",\"req\":\"^0.3.2\",\"target\":\"cfg(any(target_os = \\\"ios\\\", target_os = \\\"tvos\\\", target_os = \\\"visionos\\\"))\"},{\"default_features\":false,\"features\":[\"std\",\"objc2-core-audio-types\",\"AudioHardware\",\"AudioHardwareDeprecated\"],\"name\":\"objc2-core-audio\",\"optional\":true,\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"std\",\"bitflags\",\"CoreAudioBaseTypes\"],\"name\":\"objc2-core-audio-types\",\"optional\":true,\"req\":\"^0.3\"},{\"default_features\":false,\"features\":[\"std\",\"CFString\"],\"name\":\"objc2-core-foundation\",\"optional\":true,\"req\":\"^0.3\"}],\"features\":{\"audio_toolbox\":[\"dep:objc2-audio-toolbox\",\"dep:objc2-core-foundation\",\"dep:objc2-core-audio\",\"dep:objc2-core-audio-types\"],\"audio_unit\":[\"audio_toolbox\"],\"core_audio\":[\"dep:objc2-core-audio\",\"dep:objc2-core-audio-types\"],\"core_midi\":[],\"default\":[\"audio_toolbox\",\"core_audio\"],\"open_al\":[]}}",
+       "cpal_0.18.2": "{\"dependencies\":[{\"name\":\"alsa\",\"req\":\"^0.11\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"name\":\"alsa-sys\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0\"},{\"name\":\"asio-sys\",\"optional\":true,\"req\":\"^0.4.0\",\"target\":\"cfg(target_os = \\\"windows\\\")\"},{\"default_features\":false,\"name\":\"audio_thread_priority\",\"optional\":true,\"req\":\"^0.35\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"default_features\":false,\"name\":\"audio_thread_priority\",\"optional\":true,\"req\":\"^0.35\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"default_features\":false,\"name\":\"audio_thread_priority\",\"optional\":true,\"req\":\"^0.35\",\"target\":\"cfg(target_os = \\\"windows\\\")\"},{\"name\":\"block2\",\"req\":\"^0.6\",\"target\":\"cfg(any(target_os = \\\"ios\\\", target_os = \\\"tvos\\\", target_os = \\\"visionos\\\"))\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\">=4.6, <5\"},{\"default_features\":false,\"features\":[\"core_audio\",\"audio_toolbox\"],\"name\":\"coreaudio-rs\",\"req\":\"^0.14.2\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"name\":\"dasp_sample\",\"req\":\"^0.11\"},{\"name\":\"futures\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"name\":\"futures-channel\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"futures-util\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"kind\":\"dev\",\"name\":\"hound\",\"req\":\"^3.5\"},{\"name\":\"jack\",\"optional\":true,\"req\":\"^0.13.5\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"name\":\"jack\",\"optional\":true,\"req\":\"^0.13.5\",\"target\":\"cfg(target_os = \\\"macos\\\")\"},{\"name\":\"jack\",\"optional\":true,\"req\":\"^0.13.5\",\"target\":\"cfg(target_os = \\\"windows\\\")\"},{\"name\":\"jni\",\"req\":\"^0.22\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"js-sys\",\"req\":\"^0.3\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"mach2\",\"req\":\"^0.6\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"default_features\":false,\"features\":[\"audio\",\"api-level-26\"],\"name\":\"ndk\",\"req\":\"^0.9\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"ndk-context\",\"req\":\"^0.1\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"num-derive\",\"req\":\"^0.4\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"num-traits\",\"req\":\"^0.2\",\"target\":\"cfg(target_os = \\\"android\\\")\"},{\"name\":\"num-traits\",\"optional\":true,\"req\":\"^0.2\",\"target\":\"cfg(target_os = \\\"windows\\\")\"},{\"name\":\"objc2\",\"req\":\"^0.6\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"AUComponent\",\"AudioUnitProperties\"],\"name\":\"objc2-audio-toolbox\",\"req\":\"^0.3\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"AVAudioSession\",\"AVAudioSessionTypes\"],\"name\":\"objc2-avf-audio\",\"req\":\"^0.3\",\"target\":\"cfg(any(target_os = \\\"ios\\\", target_os = \\\"tvos\\\", target_os = \\\"visionos\\\"))\"},{\"default_features\":false,\"features\":[\"std\",\"AudioHardware\",\"AudioHardwareDeprecated\",\"objc2\",\"objc2-foundation\"],\"name\":\"objc2-core-audio\",\"req\":\"^0.3\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"CoreAudioBaseTypes\"],\"name\":\"objc2-core-audio-types\",\"req\":\"^0.3\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"name\":\"objc2-core-foundation\",\"req\":\"^0.3.1\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"default_features\":false,\"features\":[\"std\",\"NSArray\",\"NSString\",\"NSValue\"],\"name\":\"objc2-foundation\",\"req\":\"^0.3\",\"target\":\"cfg(target_vendor = \\\"apple\\\")\"},{\"features\":[\"block2\",\"NSDictionary\",\"NSNotification\",\"NSOperation\"],\"name\":\"objc2-foundation\",\"req\":\"^0.3\",\"target\":\"cfg(any(target_os = \\\"ios\\\", target_os = \\\"tvos\\\", target_os = \\\"visionos\\\"))\"},{\"features\":[\"v0_3_53\"],\"name\":\"pipewire\",\"optional\":true,\"req\":\"^0.10\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"name\":\"portable-atomic\",\"optional\":true,\"req\":\"^1\",\"target\":\"cfg(not(target_has_atomic = \\\"64\\\"))\"},{\"name\":\"pulseaudio\",\"optional\":true,\"req\":\"^0.3\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"dragonfly\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"kind\":\"dev\",\"name\":\"ringbuf\",\"req\":\"^0.4\"},{\"name\":\"wasm-bindgen\",\"optional\":true,\"req\":\"^0.2\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"name\":\"wasm-bindgen-futures\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"features\":[\"AudioContext\",\"AudioContextOptions\",\"AudioBuffer\",\"AudioBufferSourceNode\",\"AudioNode\",\"AudioDestinationNode\",\"Window\",\"AudioContextState\"],\"name\":\"web-sys\",\"req\":\"^0.3\",\"target\":\"cfg(all(target_arch = \\\"wasm32\\\", target_os = \\\"unknown\\\"))\"},{\"features\":[\"Win32_Media\",\"Win32_Media_Audio\",\"Win32_Foundation\",\"Win32_Devices_Properties\",\"Win32_Media_KernelStreaming\",\"Win32_System_Com_StructuredStorage\",\"Win32_System_Threading\",\"Win32_System_Performance\",\"Win32_Security\",\"Win32_System_SystemServices\",\"Win32_System_Variant\",\"Win32_Media_Multimedia\",\"Win32_UI_Shell_PropertiesSystem\"],\"name\":\"windows\",\"req\":\"^0.62\",\"target\":\"cfg(target_os = \\\"windows\\\")\"},{\"name\":\"windows-core\",\"req\":\"^0.62\",\"target\":\"cfg(target_os = \\\"windows\\\")\"}],\"features\":{\"asio\":[\"dep:asio-sys\",\"dep:num-traits\"],\"audioworklet\":[\"dep:futures-channel\",\"dep:futures-util\",\"wasm-bindgen\",\"web-sys/Blob\",\"web-sys/BlobPropertyBag\",\"web-sys/Url\",\"web-sys/AudioWorklet\",\"web-sys/AudioWorkletNode\",\"web-sys/AudioWorkletNodeOptions\"],\"custom\":[],\"default\":[],\"jack\":[\"dep:jack\"],\"pipewire\":[\"dep:pipewire\"],\"pulseaudio\":[\"dep:pulseaudio\",\"dep:futures\",\"dep:portable-atomic\"],\"realtime\":[\"dep:audio_thread_priority\",\"dep:alsa-sys\"],\"realtime-dbus\":[\"realtime\",\"audio_thread_priority/with_dbus\"],\"wasm-bindgen\":[\"dep:wasm-bindgen\",\"dep:wasm-bindgen-futures\",\"dep:futures-channel\",\"dep:futures-util\"]}}",
++      "cpubits_0.1.1": "{\"dependencies\":[],\"features\":{}}",
+       "cpufeatures_0.2.17": "{\"dependencies\":[{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"aarch64-linux-android\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"aarch64\\\", target_os = \\\"linux\\\"))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"aarch64\\\", target_vendor = \\\"apple\\\"))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"loongarch64\\\", target_os = \\\"linux\\\"))\"}],\"features\":{}}",
+       "cpufeatures_0.3.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"aarch64\\\", target_os = \\\"android\\\"))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"aarch64\\\", target_os = \\\"linux\\\"))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"aarch64\\\", target_vendor = \\\"apple\\\"))\"},{\"default_features\":false,\"name\":\"libc\",\"req\":\"^0.2.155\",\"target\":\"cfg(all(target_arch = \\\"loongarch64\\\", target_os = \\\"linux\\\"))\"}],\"features\":{}}",
+       "crc-catalog_2.4.0": "{\"dependencies\":[],\"features\":{}}",
+@@ -1426,7 +1429,6 @@
+       "deranged_0.5.5": "{\"dependencies\":[{\"name\":\"deranged-macros\",\"optional\":true,\"req\":\"=0.3.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"optional\":true,\"req\":\"^0.2.15\"},{\"default_features\":false,\"name\":\"powerfmt\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"default_features\":false,\"name\":\"rand08\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"kind\":\"dev\",\"name\":\"rand08\",\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"default_features\":false,\"name\":\"rand09\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.9.0\"},{\"kind\":\"dev\",\"name\":\"rand09\",\"package\":\"rand\",\"req\":\"^0.9.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.86\"}],\"features\":{\"alloc\":[],\"default\":[],\"macros\":[\"dep:deranged-macros\"],\"num\":[\"dep:num-traits\"],\"powerfmt\":[\"dep:powerfmt\"],\"quickcheck\":[\"dep:quickcheck\",\"alloc\"],\"rand\":[\"rand08\",\"rand09\"],\"rand08\":[\"dep:rand08\"],\"rand09\":[\"dep:rand09\"],\"serde\":[\"dep:serde_core\"]}}",
+       "deranged_0.5.8": "{\"dependencies\":[{\"name\":\"deranged-macros\",\"optional\":true,\"req\":\"=0.3.0\"},{\"default_features\":false,\"name\":\"num-traits\",\"optional\":true,\"req\":\"^0.2.15\"},{\"default_features\":false,\"name\":\"powerfmt\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"default_features\":false,\"name\":\"rand010\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.10.0\"},{\"kind\":\"dev\",\"name\":\"rand010\",\"package\":\"rand\",\"req\":\"^0.10.0\"},{\"default_features\":false,\"name\":\"rand08\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"kind\":\"dev\",\"name\":\"rand08\",\"package\":\"rand\",\"req\":\"^0.8.4\"},{\"default_features\":false,\"name\":\"rand09\",\"optional\":true,\"package\":\"rand\",\"req\":\"^0.9.0\"},{\"kind\":\"dev\",\"name\":\"rand09\",\"package\":\"rand\",\"req\":\"^0.9.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.86\"}],\"features\":{\"alloc\":[],\"default\":[],\"macros\":[\"dep:deranged-macros\"],\"num\":[\"dep:num-traits\"],\"powerfmt\":[\"dep:powerfmt\"],\"quickcheck\":[\"dep:quickcheck\",\"alloc\"],\"rand\":[\"rand08\",\"rand09\",\"rand010\"],\"rand010\":[\"dep:rand010\"],\"rand08\":[\"dep:rand08\"],\"rand09\":[\"dep:rand09\"],\"serde\":[\"dep:serde_core\"]}}",
+       "derivative_2.2.0": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"visit\",\"extra-traits\"],\"name\":\"syn\",\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.18, < 1.0.23\"}],\"features\":{\"use_core\":[]}}",
+-      "derive_arbitrary_1.4.2": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"features\":[\"derive\",\"parsing\",\"extra-traits\"],\"name\":\"syn\",\"req\":\"^2\"}],\"features\":{}}",
+       "derive_more-impl_1.0.0": "{\"dependencies\":[{\"name\":\"convert_case\",\"optional\":true,\"req\":\"^0.6\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.13.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"kind\":\"build\",\"name\":\"rustc_version\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"syn\",\"req\":\"^2.0.45\"},{\"name\":\"unicode-xid\",\"optional\":true,\"req\":\"^0.2.2\"}],\"features\":{\"add\":[],\"add_assign\":[],\"as_ref\":[\"syn/extra-traits\",\"syn/visit\"],\"constructor\":[],\"debug\":[\"syn/extra-traits\",\"dep:unicode-xid\"],\"default\":[],\"deref\":[],\"deref_mut\":[],\"display\":[\"syn/extra-traits\",\"dep:unicode-xid\"],\"error\":[\"syn/extra-traits\"],\"from\":[\"syn/extra-traits\"],\"from_str\":[],\"full\":[\"add\",\"add_assign\",\"as_ref\",\"constructor\",\"debug\",\"deref\",\"deref_mut\",\"display\",\"error\",\"from\",\"from_str\",\"index\",\"index_mut\",\"into\",\"into_iterator\",\"is_variant\",\"mul\",\"mul_assign\",\"not\",\"sum\",\"try_from\",\"try_into\",\"try_unwrap\",\"unwrap\"],\"index\":[],\"index_mut\":[],\"into\":[\"syn/extra-traits\"],\"into_iterator\":[],\"is_variant\":[\"dep:convert_case\"],\"mul\":[\"syn/extra-traits\"],\"mul_assign\":[\"syn/extra-traits\"],\"not\":[\"syn/extra-traits\"],\"sum\":[],\"testing-helpers\":[\"dep:rustc_version\"],\"try_from\":[],\"try_into\":[\"syn/extra-traits\"],\"try_unwrap\":[\"dep:convert_case\"],\"unwrap\":[\"dep:convert_case\"]}}",
+       "derive_more-impl_2.1.1": "{\"dependencies\":[{\"name\":\"convert_case\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0\"},{\"name\":\"quote\",\"req\":\"^1.0\"},{\"kind\":\"build\",\"name\":\"rustc_version\",\"req\":\"^0.4\"},{\"name\":\"syn\",\"req\":\"^2.0.45\"},{\"name\":\"unicode-xid\",\"optional\":true,\"req\":\"^0.2.2\"}],\"features\":{\"add\":[\"syn/extra-traits\",\"syn/visit\"],\"add_assign\":[\"syn/extra-traits\",\"syn/visit\"],\"as_ref\":[\"syn/extra-traits\",\"syn/visit\"],\"constructor\":[],\"debug\":[\"syn/extra-traits\",\"dep:unicode-xid\"],\"default\":[],\"deref\":[],\"deref_mut\":[],\"display\":[\"syn/extra-traits\",\"dep:unicode-xid\",\"dep:convert_case\"],\"eq\":[\"syn/extra-traits\",\"syn/visit\"],\"error\":[\"syn/extra-traits\"],\"from\":[\"syn/extra-traits\"],\"from_str\":[\"syn/full\",\"syn/visit\",\"dep:convert_case\"],\"full\":[\"add\",\"add_assign\",\"as_ref\",\"constructor\",\"debug\",\"deref\",\"deref_mut\",\"display\",\"eq\",\"error\",\"from\",\"from_str\",\"index\",\"index_mut\",\"into\",\"into_iterator\",\"is_variant\",\"mul\",\"mul_assign\",\"not\",\"sum\",\"try_from\",\"try_into\",\"try_unwrap\",\"unwrap\"],\"index\":[],\"index_mut\":[],\"into\":[\"syn/extra-traits\",\"syn/visit-mut\"],\"into_iterator\":[],\"is_variant\":[\"dep:convert_case\"],\"mul\":[\"syn/extra-traits\",\"syn/visit\"],\"mul_assign\":[\"syn/extra-traits\",\"syn/visit\"],\"not\":[\"syn/extra-traits\"],\"sum\":[],\"testing-helpers\":[\"syn/full\"],\"try_from\":[],\"try_into\":[\"syn/extra-traits\",\"syn/full\",\"syn/visit-mut\"],\"try_unwrap\":[\"dep:convert_case\"],\"unwrap\":[\"dep:convert_case\"]}}",
+       "derive_more_1.0.0": "{\"dependencies\":[{\"name\":\"derive_more-impl\",\"req\":\"=1.0.0\"},{\"kind\":\"build\",\"name\":\"rustc_version\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"rustversion\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"static_assertions\",\"req\":\"^1.1\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1.0.56\"}],\"features\":{\"add\":[\"derive_more-impl/add\"],\"add_assign\":[\"derive_more-impl/add_assign\"],\"as_ref\":[\"derive_more-impl/as_ref\"],\"constructor\":[\"derive_more-impl/constructor\"],\"debug\":[\"derive_more-impl/debug\"],\"default\":[\"std\"],\"deref\":[\"derive_more-impl/deref\"],\"deref_mut\":[\"derive_more-impl/deref_mut\"],\"display\":[\"derive_more-impl/display\"],\"error\":[\"derive_more-impl/error\"],\"from\":[\"derive_more-impl/from\"],\"from_str\":[\"derive_more-impl/from_str\"],\"full\":[\"add\",\"add_assign\",\"as_ref\",\"constructor\",\"debug\",\"deref\",\"deref_mut\",\"display\",\"error\",\"from\",\"from_str\",\"index\",\"index_mut\",\"into\",\"into_iterator\",\"is_variant\",\"mul\",\"mul_assign\",\"not\",\"sum\",\"try_from\",\"try_into\",\"try_unwrap\",\"unwrap\"],\"index\":[\"derive_more-impl/index\"],\"index_mut\":[\"derive_more-impl/index_mut\"],\"into\":[\"derive_more-impl/into\"],\"into_iterator\":[\"derive_more-impl/into_iterator\"],\"is_variant\":[\"derive_more-impl/is_variant\"],\"mul\":[\"derive_more-impl/mul\"],\"mul_assign\":[\"derive_more-impl/mul_assign\"],\"not\":[\"derive_more-impl/not\"],\"std\":[],\"sum\":[\"derive_more-impl/sum\"],\"testing-helpers\":[\"derive_more-impl/testing-helpers\",\"dep:rustc_version\"],\"try_from\":[\"derive_more-impl/try_from\"],\"try_into\":[\"derive_more-impl/try_into\"],\"try_unwrap\":[\"derive_more-impl/try_unwrap\"],\"unwrap\":[\"derive_more-impl/unwrap\"]}}",
+@@ -1740,6 +1742,7 @@
+       "inotify-sys_0.1.5": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2\"}],\"features\":{}}",
+       "inotify_0.11.0": "{\"dependencies\":[{\"name\":\"bitflags\",\"req\":\"^2\"},{\"name\":\"futures-core\",\"optional\":true,\"req\":\"^0.3.1\"},{\"kind\":\"dev\",\"name\":\"futures-util\",\"req\":\"^0.3.1\"},{\"name\":\"inotify-sys\",\"req\":\"^0.1.3\"},{\"name\":\"libc\",\"req\":\"^0.2\"},{\"kind\":\"dev\",\"name\":\"maplit\",\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.1.0\"},{\"features\":[\"net\"],\"name\":\"tokio\",\"optional\":true,\"req\":\"^1.0.1\"},{\"features\":[\"macros\",\"rt-multi-thread\"],\"kind\":\"dev\",\"name\":\"tokio\",\"req\":\"^1.0.1\"}],\"features\":{\"default\":[\"stream\"],\"stream\":[\"futures-core\",\"tokio\"]}}",
+       "inout_0.1.4": "{\"dependencies\":[{\"name\":\"block-padding\",\"optional\":true,\"req\":\"^0.3\"},{\"name\":\"generic-array\",\"req\":\"^0.14\"}],\"features\":{\"std\":[\"block-padding/std\"]}}",
++      "inout_0.2.4": "{\"dependencies\":[{\"name\":\"block-padding\",\"optional\":true,\"req\":\"^0.4.2\"},{\"name\":\"hybrid-array\",\"req\":\"^0.4\"}],\"features\":{}}",
+       "insta_1.46.3": "{\"dependencies\":[{\"features\":[\"derive\",\"env\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4.1\"},{\"default_features\":false,\"name\":\"console\",\"optional\":true,\"req\":\"^0.15.4\"},{\"name\":\"csv\",\"optional\":true,\"req\":\"^1.1.6\"},{\"name\":\"globset\",\"optional\":true,\"req\":\"^0.4.6\"},{\"name\":\"once_cell\",\"req\":\"^1.20.2\"},{\"name\":\"pest\",\"optional\":true,\"req\":\"^2.1.3\"},{\"name\":\"pest_derive\",\"optional\":true,\"req\":\"^2.1.0\"},{\"default_features\":false,\"features\":[\"std\",\"unicode\"],\"name\":\"regex\",\"optional\":true,\"req\":\"^1.6.0\"},{\"name\":\"ron\",\"optional\":true,\"req\":\"^0.12.0\"},{\"kind\":\"dev\",\"name\":\"rustc_version\",\"req\":\"^0.4.0\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.117\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.117\"},{\"features\":[\"inline\"],\"name\":\"similar\",\"req\":\"^2.1.0\"},{\"kind\":\"dev\",\"name\":\"similar-asserts\",\"req\":\"^1.4.2\"},{\"name\":\"tempfile\",\"req\":\"^3\"},{\"features\":[\"serde\",\"parse\",\"display\"],\"name\":\"toml_edit\",\"optional\":true,\"req\":\"^0.23.0\"},{\"name\":\"toml_writer\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"walkdir\",\"optional\":true,\"req\":\"^2.3.1\"}],\"features\":{\"_cargo_insta_internal\":[\"clap\"],\"colors\":[\"console\"],\"csv\":[\"dep:csv\",\"serde\"],\"default\":[\"colors\"],\"filters\":[\"regex\"],\"glob\":[\"walkdir\",\"globset\"],\"json\":[\"serde\"],\"redactions\":[\"pest\",\"pest_derive\",\"serde\"],\"ron\":[\"dep:ron\",\"serde\"],\"toml\":[\"dep:toml_edit\",\"dep:toml_writer\",\"serde\"],\"yaml\":[\"serde\"]}}",
+       "instability_0.3.11": "{\"dependencies\":[{\"name\":\"darling\",\"req\":\"^0.23\"},{\"name\":\"indoc\",\"req\":\"^2\"},{\"kind\":\"dev\",\"name\":\"pretty_assertions\",\"req\":\"^1.4\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.86\"},{\"name\":\"quote\",\"req\":\"^1.0.25\"},{\"features\":[\"derive\",\"full\"],\"name\":\"syn\",\"req\":\"^2.0.15\"}],\"features\":{}}",
+       "intl-memoizer_0.5.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"fluent-langneg\",\"req\":\"^0.13\"},{\"kind\":\"dev\",\"name\":\"intl_pluralrules\",\"req\":\"^7.0\"},{\"name\":\"type-map\",\"req\":\"^0.5\"},{\"name\":\"unic-langid\",\"req\":\"^0.9\"}],\"features\":{}}",
+@@ -1787,6 +1790,7 @@
+       "lazy_static_1.5.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"doc-comment\",\"req\":\"^0.3.1\"},{\"default_features\":false,\"features\":[\"once\"],\"name\":\"spin\",\"optional\":true,\"req\":\"^0.9.8\"},{\"kind\":\"dev\",\"name\":\"trybuild\",\"req\":\"^1\"}],\"features\":{\"spin_no_std\":[\"spin\"]}}",
+       "leb128_0.2.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.1\"}],\"features\":{\"nightly\":[]}}",
+       "leb128fmt_0.1.0": "{\"dependencies\":[],\"features\":{\"alloc\":[],\"default\":[\"std\"],\"std\":[]}}",
++      "libbz2-rs-sys_0.2.5": "{\"dependencies\":[{\"name\":\"libc\",\"optional\":true,\"req\":\"^0.2\"}],\"features\":{\"__internal-fuzz-disable-checksum\":[],\"c-allocator\":[\"dep:libc\"],\"custom-prefix\":[\"export-symbols\"],\"default\":[\"std\",\"stdio\"],\"export-symbols\":[],\"rust-allocator\":[],\"semver-prefix\":[\"export-symbols\"],\"std\":[\"rust-allocator\"],\"stdio\":[\"dep:libc\"],\"testing-prefix\":[\"export-symbols\"]}}",
+       "libc_0.2.183": "{\"dependencies\":[{\"name\":\"rustc-std-workspace-core\",\"optional\":true,\"req\":\"^1.0.1\"}],\"features\":{\"align\":[],\"const-extern-fn\":[],\"default\":[\"std\"],\"extra_traits\":[],\"rustc-dep-of-std\":[\"align\",\"rustc-std-workspace-core\"],\"std\":[],\"use_std\":[\"std\"]}}",
+       "libc_0.2.186": "{\"dependencies\":[{\"name\":\"rustc-std-workspace-core\",\"optional\":true,\"req\":\"^1.0.1\"}],\"features\":{\"align\":[],\"const-extern-fn\":[],\"default\":[\"std\"],\"extra_traits\":[],\"rustc-dep-of-std\":[\"align\",\"rustc-std-workspace-core\"],\"std\":[],\"use_std\":[\"std\"]}}",
+       "libdbus-sys_0.2.7": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"cc\",\"optional\":true,\"req\":\"^1.0.78\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"optional\":true,\"req\":\"^0.3\"}],\"features\":{\"default\":[\"pkg-config\"],\"vendored\":[\"cc\"]}}",
+@@ -1819,8 +1823,7 @@
+       "lru-slab_0.1.2": "{\"dependencies\":[],\"features\":{}}",
+       "lru_0.18.2": "{\"dependencies\":[{\"name\":\"hashbrown\",\"optional\":true,\"req\":\"^0.17.0\"},{\"kind\":\"dev\",\"name\":\"scoped_threadpool\",\"req\":\"0.1.*\"},{\"kind\":\"dev\",\"name\":\"stats_alloc\",\"req\":\"0.1.*\"}],\"features\":{\"default\":[\"hashbrown\"],\"nightly\":[\"hashbrown\",\"hashbrown/nightly\"]}}",
+       "lsp-types_0.97.0": "{\"dependencies\":[{\"name\":\"bitflags\",\"req\":\"^1.0.1\"},{\"name\":\"fluent-uri\",\"req\":\"^0.1.4\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.34\"},{\"name\":\"serde_json\",\"req\":\"^1.0.50\"},{\"name\":\"serde_repr\",\"req\":\"^0.1\"}],\"features\":{\"default\":[],\"proposed\":[]}}",
+-      "lzma-rs_0.3.0": "{\"dependencies\":[{\"name\":\"byteorder\",\"req\":\"^1.4.3\"},{\"name\":\"crc\",\"req\":\"^3.0.0\"},{\"name\":\"env_logger\",\"optional\":true,\"req\":\"^0.9.0\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.17\"},{\"kind\":\"dev\",\"name\":\"rust-lzma\",\"req\":\"^0.5\"}],\"features\":{\"enable_logging\":[\"env_logger\",\"log\"],\"raw_decoder\":[],\"stream\":[]}}",
+-      "lzma-sys_0.1.20": "{\"dependencies\":[{\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.34\"},{\"name\":\"libc\",\"req\":\"^0.2.51\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.14\"}],\"features\":{\"static\":[]}}",
++      "lzma-rust2_0.22.0": "{\"dependencies\":[{\"features\":[\"html_reports\"],\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"=0.7\"},{\"features\":[\"static\"],\"kind\":\"dev\",\"name\":\"liblzma\",\"req\":\"^0.4\"},{\"name\":\"sha2\",\"optional\":true,\"req\":\"^0.11\"}],\"features\":{\"default\":[\"std\",\"encoder\",\"optimization\",\"lzip\",\"xz\"],\"encoder\":[],\"lzip\":[],\"optimization\":[],\"std\":[],\"xz\":[\"sha2\"]}}",
+       "mac_address_1.1.8": "{\"dependencies\":[{\"features\":[\"net\"],\"name\":\"nix\",\"req\":\"^0.29\",\"target\":\"cfg(any(target_os = \\\"linux\\\", target_os = \\\"macos\\\", target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\", target_os = \\\"openbsd\\\", target_os = \\\"android\\\", target_os = \\\"illumos\\\"))\"},{\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.198\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.59\"},{\"kind\":\"dev\",\"name\":\"serde_test\",\"req\":\"^1.0.117\"},{\"features\":[\"winerror\",\"ws2def\",\"iphlpapi\"],\"name\":\"winapi\",\"req\":\"^0.3\",\"target\":\"cfg(windows)\"}],\"features\":{}}",
+       "mach2_0.6.0": "{\"dependencies\":[],\"features\":{\"default\":[],\"unstable\":[]}}",
+       "maplit_1.0.2": "{\"dependencies\":[],\"features\":{}}",
+@@ -1948,6 +1951,7 @@
+       "pastey_0.2.1": "{\"dependencies\":[],\"features\":{}}",
+       "pathdiff_0.2.3": "{\"dependencies\":[{\"name\":\"camino\",\"optional\":true,\"req\":\"^1.0.5\"},{\"kind\":\"dev\",\"name\":\"cfg-if\",\"req\":\"^1.0.0\"}],\"features\":{}}",
+       "pbkdf2_0.12.2": "{\"dependencies\":[{\"features\":[\"mac\"],\"name\":\"digest\",\"req\":\"^0.10.7\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.4.0\"},{\"default_features\":false,\"name\":\"hmac\",\"optional\":true,\"req\":\"^0.12\"},{\"kind\":\"dev\",\"name\":\"hmac\",\"req\":\"^0.12\"},{\"default_features\":false,\"features\":[\"rand_core\"],\"name\":\"password-hash\",\"optional\":true,\"req\":\"^0.5\"},{\"name\":\"rayon\",\"optional\":true,\"req\":\"^1.7\"},{\"default_features\":false,\"name\":\"sha1\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.10\"},{\"default_features\":false,\"name\":\"sha2\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"streebog\",\"req\":\"^0.10\"}],\"features\":{\"default\":[\"hmac\"],\"parallel\":[\"rayon\",\"std\"],\"simple\":[\"hmac\",\"password-hash\",\"sha2\"],\"std\":[\"password-hash/std\"]}}",
++      "pbkdf2_0.13.0": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"belt-hash\",\"req\":\"^0.2\"},{\"features\":[\"mac\"],\"name\":\"digest\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"hmac\",\"optional\":true,\"req\":\"^0.13\"},{\"kind\":\"dev\",\"name\":\"hmac\",\"req\":\"^0.13\"},{\"name\":\"kdf\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"features\":[\"base64\"],\"name\":\"mcf\",\"optional\":true,\"req\":\"^0.6\"},{\"default_features\":false,\"name\":\"password-hash\",\"optional\":true,\"req\":\"^0.6\"},{\"kind\":\"dev\",\"name\":\"sha1\",\"req\":\"^0.11\"},{\"default_features\":false,\"name\":\"sha2\",\"optional\":true,\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"sha2\",\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"streebog\",\"req\":\"^0.11\"}],\"features\":{\"alloc\":[\"mcf?/alloc\",\"password-hash?/alloc\"],\"default\":[\"hmac\"],\"getrandom\":[\"password-hash/getrandom\"],\"kdf\":[\"sha2\",\"dep:kdf\"],\"mcf\":[\"sha2\",\"password-hash\",\"dep:mcf\"],\"phc\":[\"password-hash/phc\",\"sha2\"],\"rand_core\":[\"password-hash/rand_core\"],\"sha2\":[\"hmac\",\"dep:sha2\"]}}",
+       "pem-rfc7468_0.7.0": "{\"dependencies\":[{\"name\":\"base64ct\",\"req\":\"^1.4\"}],\"features\":{\"alloc\":[\"base64ct/alloc\"],\"std\":[\"alloc\",\"base64ct/std\"]}}",
+       "pem_3.0.6": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"base64\",\"req\":\"^0.22.0\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.3.0\"},{\"default_features\":false,\"features\":[\"std\"],\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1\"}],\"features\":{\"default\":[\"std\"],\"serde\":[\"dep:serde_core\"],\"std\":[\"base64/std\",\"serde_core?/std\"]}}",
+       "percent-encoding_2.3.2": "{\"dependencies\":[],\"features\":{\"alloc\":[],\"default\":[\"std\"],\"std\":[\"alloc\"]}}",
+@@ -1986,6 +1990,7 @@
+       "potential_utf_0.1.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"default_features\":false,\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"name\":\"writeable\",\"optional\":true,\"req\":\"^0.6.0\"},{\"default_features\":false,\"name\":\"zerovec\",\"optional\":true,\"req\":\"^0.11.3\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\",\"writeable/alloc\",\"zerovec?/alloc\"],\"databake\":[\"dep:databake\"],\"default\":[\"alloc\"],\"serde\":[\"dep:serde_core\"],\"writeable\":[\"dep:writeable\"],\"zerovec\":[\"dep:zerovec\"]}}",
+       "potential_utf_0.1.5": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"default_features\":false,\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"name\":\"writeable\",\"optional\":true,\"req\":\"^0.6.1\"},{\"default_features\":false,\"name\":\"zerovec\",\"optional\":true,\"req\":\"^0.11.6\"}],\"features\":{\"alloc\":[\"serde_core?/alloc\",\"writeable/alloc\",\"zerovec?/alloc\"],\"databake\":[\"dep:databake\"],\"default\":[\"alloc\"],\"serde\":[\"dep:serde_core\"],\"writeable\":[\"dep:writeable\"],\"zerovec\":[\"dep:zerovec\"]}}",
+       "powerfmt_0.2.0": "{\"dependencies\":[{\"name\":\"powerfmt-macros\",\"optional\":true,\"req\":\"=0.1.0\"}],\"features\":{\"alloc\":[],\"default\":[\"std\",\"macros\"],\"macros\":[\"dep:powerfmt-macros\"],\"std\":[\"alloc\"]}}",
++      "ppmd-rust_1.5.0": "{\"dependencies\":[],\"features\":{\"default\":[],\"unstable-tagged-offsets\":[]}}",
+       "ppv-lite86_0.2.21": "{\"dependencies\":[{\"features\":[\"simd\"],\"name\":\"zerocopy\",\"req\":\"^0.8.23\"}],\"features\":{\"default\":[\"std\"],\"no_simd\":[],\"simd\":[],\"std\":[]}}",
+       "predicates-core_1.0.9": "{\"dependencies\":[],\"features\":{}}",
+       "predicates-tree_1.0.12": "{\"dependencies\":[{\"features\":[\"color\"],\"kind\":\"dev\",\"name\":\"predicates\",\"req\":\"^3.1\"},{\"name\":\"predicates-core\",\"req\":\"^1.0\"},{\"name\":\"termtree\",\"req\":\"^0.5.0\"}],\"features\":{}}",
+@@ -2392,6 +2397,7 @@
+       "two-face_0.5.1": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"cargo-lock\",\"req\":\"^10.1.0\"},{\"kind\":\"dev\",\"name\":\"insta\",\"req\":\"^1.44.3\"},{\"default_features\":false,\"features\":[\"read\"],\"kind\":\"dev\",\"name\":\"object\",\"req\":\"^0.36.7\"},{\"name\":\"serde\",\"req\":\"^1.0.228\"},{\"name\":\"serde_derive\",\"req\":\"^1.0.228\"},{\"kind\":\"dev\",\"name\":\"similar\",\"req\":\"^2.7.0\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"strum\",\"req\":\"^0.26.3\"},{\"default_features\":false,\"features\":[\"dump-load\",\"parsing\"],\"name\":\"syntect\",\"req\":\"^5.3.0\"},{\"default_features\":false,\"features\":[\"html\"],\"kind\":\"dev\",\"name\":\"syntect\",\"req\":\"^5.3.0\"},{\"kind\":\"dev\",\"name\":\"toml\",\"req\":\"^0.8.23\"},{\"default_features\":false,\"features\":[\"std\",\"xxhash64\"],\"kind\":\"dev\",\"name\":\"twox-hash\",\"req\":\"^2.1.2\"}],\"features\":{\"default\":[\"syntect-onig\"],\"syntect-default-fancy\":[\"syntect-fancy\",\"syntect/default-fancy\"],\"syntect-default-onig\":[\"syntect-onig\",\"syntect/default-onig\"],\"syntect-fancy\":[\"syntect/regex-fancy\"],\"syntect-onig\":[\"syntect/regex-onig\"]}}",
+       "twoway_0.1.8": "{\"dependencies\":[{\"name\":\"galil-seiferas\",\"optional\":true,\"req\":\"^0.1.1\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.7.0\"},{\"features\":[\"unstable\"],\"name\":\"jetscii\",\"optional\":true,\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"macro-attr\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"memchr\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"newtype_derive\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"odds\",\"req\":\"^0.2.26\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.3.10\"},{\"name\":\"unchecked-index\",\"optional\":true,\"req\":\"^0.2.2\"}],\"features\":{\"all\":[\"jetscii\",\"pcmp\",\"pattern\",\"test-set\"],\"benchmarks\":[\"galil-seiferas\",\"pattern\",\"unchecked-index\"],\"default\":[\"use_std\"],\"pattern\":[],\"pcmp\":[\"unchecked-index\"],\"test-set\":[],\"use_std\":[\"memchr/use_std\"]}}",
+       "type-map_0.5.1": "{\"dependencies\":[{\"name\":\"rustc-hash\",\"req\":\"^2\"}],\"features\":{}}",
++      "typed-path_0.12.3": "{\"dependencies\":[],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+       "typeid_1.0.3": "{\"dependencies\":[],\"features\":{}}",
+       "typenum_1.20.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"scale-info\",\"optional\":true,\"req\":\"^1.0\"}],\"features\":{\"const-generics\":[],\"i128\":[],\"scale_info\":[\"scale-info/derive\"],\"strict\":[]}}",
+       "ucd-trie_0.1.7": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"once_cell\",\"req\":\"^1\"}],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+@@ -2575,7 +2581,6 @@
+       "xattr_1.6.1": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2.150\",\"target\":\"cfg(any(target_os = \\\"freebsd\\\", target_os = \\\"netbsd\\\"))\"},{\"default_features\":false,\"features\":[\"fs\",\"std\"],\"name\":\"rustix\",\"req\":\"^1.0.0\",\"target\":\"cfg(any(target_os = \\\"android\\\", target_os = \\\"linux\\\", target_os = \\\"macos\\\", target_os = \\\"hurd\\\"))\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3\"}],\"features\":{\"default\":[\"unsupported\"],\"unsupported\":[]}}",
+       "xdg-home_1.3.0": "{\"dependencies\":[{\"name\":\"libc\",\"req\":\"^0.2\",\"target\":\"cfg(unix)\"},{\"features\":[\"Win32_Foundation\",\"Win32_UI_Shell\",\"Win32_System_Com\"],\"name\":\"windows-sys\",\"req\":\"^0.59\",\"target\":\"cfg(windows)\"}],\"features\":{}}",
+       "xmlparser_0.13.6": "{\"dependencies\":[],\"features\":{\"default\":[\"std\"],\"std\":[]}}",
+-      "xz2_0.1.7": "{\"dependencies\":[{\"name\":\"futures\",\"optional\":true,\"req\":\"^0.1.26\"},{\"name\":\"lzma-sys\",\"req\":\"^0.1.18\"},{\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0.1\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.8.0\"},{\"kind\":\"dev\",\"name\":\"tokio-core\",\"req\":\"^0.1.17\"},{\"name\":\"tokio-io\",\"optional\":true,\"req\":\"^0.1.12\"}],\"features\":{\"static\":[\"lzma-sys/static\"],\"tokio\":[\"tokio-io\",\"futures\"]}}",
+       "yaml_serde_0.10.7": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.79\"},{\"default_features\":false,\"name\":\"indexmap\",\"req\":\"^2.2.1\"},{\"kind\":\"dev\",\"name\":\"indoc\",\"req\":\"^2.0\"},{\"name\":\"itoa\",\"req\":\"^1.0\"},{\"name\":\"libyaml-rs\",\"req\":\"^0.3\"},{\"name\":\"ryu\",\"req\":\"^1.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"serde\",\"req\":\"^1.0.195\"},{\"kind\":\"dev\",\"name\":\"serde_derive\",\"req\":\"^1.0.195\"}],\"features\":{\"default\":[\"std\"],\"std\":[\"serde/std\",\"indexmap/std\"]}}",
+       "yansi_1.0.1": "{\"dependencies\":[{\"name\":\"is-terminal\",\"optional\":true,\"req\":\"^0.4.11\"}],\"features\":{\"_nightly\":[],\"alloc\":[],\"default\":[\"std\"],\"detect-env\":[\"std\"],\"detect-tty\":[\"is-terminal\",\"std\"],\"hyperlink\":[\"std\"],\"std\":[\"alloc\"]}}",
+       "yasna_0.6.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"bit-vec\",\"optional\":true,\"req\":\"^0.9.1\"},{\"default_features\":false,\"name\":\"num-bigint\",\"optional\":true,\"req\":\"^0.4\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"num-traits\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.1\"}],\"features\":{\"default\":[],\"std\":[\"bit-vec?/std\",\"time?/std\"]}}",
+@@ -2597,7 +2602,7 @@
+       "zerotrie_0.2.4": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"default_features\":false,\"name\":\"displaydoc\",\"req\":\"^0.2.3\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"icu_locale_core\",\"req\":\"^2.2.0\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"litemap\",\"optional\":true,\"req\":\"^0.8.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"rand_pcg\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"rmp-serde\",\"req\":\"^1.2.0\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.220\"},{\"default_features\":false,\"name\":\"serde_core\",\"optional\":true,\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"yoke\",\"optional\":true,\"req\":\"^0.8.2\"},{\"default_features\":false,\"name\":\"zerofrom\",\"optional\":true,\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"zerovec\",\"optional\":true,\"req\":\"^0.11.6\"}],\"features\":{\"alloc\":[\"zerovec?/alloc\"],\"databake\":[\"dep:databake\",\"zerovec?/databake\"],\"default\":[],\"dense\":[\"dep:zerovec\"],\"litemap\":[\"dep:litemap\",\"alloc\"],\"serde\":[\"dep:serde_core\",\"dep:litemap\",\"alloc\",\"litemap/serde\",\"zerovec?/serde\"],\"yoke\":[\"dep:yoke\"],\"zerofrom\":[\"dep:zerofrom\"],\"zerovec\":[\"dep:zerovec\"]}}",
+       "zerovec-derive_0.11.3": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"name\":\"proc-macro2\",\"req\":\"^1.0.61\"},{\"name\":\"quote\",\"req\":\"^1.0.44\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"features\":[\"extra-traits\"],\"name\":\"syn\",\"req\":\"^2.0.21\"}],\"features\":{}}",
+       "zerovec_0.11.6": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"bincode\",\"req\":\"^1.3.1\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.5.0\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"databake\",\"optional\":true,\"req\":\"^0.2.0\"},{\"features\":[\"wasm_js\"],\"kind\":\"dev\",\"name\":\"getrandom\",\"req\":\"^0.3\"},{\"kind\":\"dev\",\"name\":\"iai\",\"req\":\"^0.1.1\"},{\"features\":[\"json\"],\"kind\":\"dev\",\"name\":\"insta\",\"req\":\"^1.43.2\"},{\"default_features\":false,\"features\":[\"use-std\"],\"kind\":\"dev\",\"name\":\"postcard\",\"req\":\"^1.0.3\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"rand_distr\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"rand_pcg\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"rmp-serde\",\"req\":\"^1.2.0\"},{\"default_features\":false,\"name\":\"schemars\",\"optional\":true,\"req\":\"^1.0.4\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.220\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"serde\",\"req\":\"^1.0.220\"},{\"kind\":\"dev\",\"name\":\"serde_json\",\"req\":\"^1.0.45\"},{\"default_features\":false,\"features\":[\"xxhash64\"],\"name\":\"twox-hash\",\"optional\":true,\"req\":\"^2.0.0\"},{\"default_features\":false,\"name\":\"yoke\",\"optional\":true,\"req\":\"^0.8.2\"},{\"default_features\":false,\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"yoke\",\"req\":\"^0.8.2\"},{\"default_features\":false,\"name\":\"zerofrom\",\"req\":\"^0.1.6\"},{\"default_features\":false,\"name\":\"zerovec-derive\",\"optional\":true,\"req\":\"^0.11.3\"}],\"features\":{\"alloc\":[\"serde?/alloc\"],\"databake\":[\"dep:databake\"],\"derive\":[\"dep:zerovec-derive\"],\"hashmap\":[\"dep:twox-hash\",\"alloc\"],\"schemars\":[\"dep:schemars\",\"alloc\"],\"serde\":[\"dep:serde\"],\"std\":[],\"yoke\":[\"dep:yoke\"]}}",
+-      "zip_2.4.2": "{\"dependencies\":[{\"name\":\"aes\",\"optional\":true,\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"anyhow\",\"req\":\"^1.0.95\"},{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"req\":\"^1.4.1\",\"target\":\"cfg(fuzzing)\"},{\"kind\":\"dev\",\"name\":\"bencher\",\"req\":\"^0.1.5\"},{\"name\":\"bzip2\",\"optional\":true,\"req\":\"^0.5.0\"},{\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"=4.4.18\"},{\"name\":\"constant_time_eq\",\"optional\":true,\"req\":\"^0.3\"},{\"name\":\"crc32fast\",\"req\":\"^1.4\"},{\"name\":\"crossbeam-utils\",\"req\":\"^0.8.21\",\"target\":\"cfg(any(all(target_arch = \\\"arm\\\", target_pointer_width = \\\"32\\\"), target_arch = \\\"mips\\\", target_arch = \\\"powerpc\\\"))\"},{\"name\":\"deflate64\",\"optional\":true,\"req\":\"^0.1.9\"},{\"default_features\":false,\"name\":\"displaydoc\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.0\"},{\"features\":[\"wasm_js\",\"std\"],\"name\":\"getrandom\",\"optional\":true,\"req\":\"^0.3.1\"},{\"features\":[\"wasm_js\",\"std\"],\"kind\":\"dev\",\"name\":\"getrandom\",\"req\":\"^0.3.1\"},{\"features\":[\"reset\"],\"name\":\"hmac\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"indexmap\",\"req\":\"^2\"},{\"default_features\":false,\"name\":\"lzma-rs\",\"optional\":true,\"req\":\"^0.3\"},{\"name\":\"memchr\",\"req\":\"^2.7\"},{\"default_features\":false,\"name\":\"nt-time\",\"optional\":true,\"req\":\"^0.10.6\"},{\"name\":\"pbkdf2\",\"optional\":true,\"req\":\"^0.12\"},{\"name\":\"sha1\",\"optional\":true,\"req\":\"^0.10\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.15\"},{\"name\":\"thiserror\",\"req\":\"^2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.37\"},{\"default_features\":false,\"features\":[\"formatting\",\"macros\"],\"kind\":\"dev\",\"name\":\"time\",\"req\":\"^0.3.37\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.5\"},{\"name\":\"xz2\",\"optional\":true,\"req\":\"^0.1.7\"},{\"features\":[\"zeroize_derive\"],\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.8\"},{\"name\":\"zopfli\",\"optional\":true,\"req\":\"^0.8\"},{\"default_features\":false,\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.13\"}],\"features\":{\"_all-features\":[],\"_deflate-any\":[],\"aes-crypto\":[\"aes\",\"constant_time_eq\",\"hmac\",\"pbkdf2\",\"sha1\",\"getrandom\",\"zeroize\"],\"chrono\":[\"chrono/default\"],\"default\":[\"aes-crypto\",\"bzip2\",\"deflate64\",\"deflate\",\"lzma\",\"time\",\"zstd\",\"xz\"],\"deflate\":[\"flate2/rust_backend\",\"deflate-zopfli\",\"deflate-flate2\"],\"deflate-flate2\":[\"_deflate-any\"],\"deflate-miniz\":[\"deflate\",\"deflate-flate2\"],\"deflate-zlib\":[\"flate2/zlib\",\"deflate-flate2\"],\"deflate-zlib-ng\":[\"flate2/zlib-ng\",\"deflate-flate2\"],\"deflate-zopfli\":[\"zopfli\",\"_deflate-any\"],\"lzma\":[\"lzma-rs/stream\"],\"nt-time\":[\"dep:nt-time\"],\"unreserved\":[],\"xz\":[\"dep:xz2\"]}}",
++      "zip_9.0.4": "{\"dependencies\":[{\"name\":\"aes\",\"optional\":true,\"req\":\"^0.9\"},{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.4\"},{\"kind\":\"dev\",\"name\":\"bencher\",\"req\":\"^0.1\"},{\"name\":\"bitstream-io\",\"optional\":true,\"req\":\"^4.9\"},{\"default_features\":false,\"name\":\"bzip2\",\"optional\":true,\"req\":\"^0.6\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4.27\"},{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"^4.4.18\"},{\"name\":\"constant_time_eq\",\"optional\":true,\"req\":\"^0.6.1\"},{\"name\":\"crc32fast\",\"req\":\"^1.5\"},{\"name\":\"deflate64\",\"optional\":true,\"req\":\"^0.1.10\"},{\"default_features\":false,\"name\":\"flate2\",\"optional\":true,\"req\":\"^1.1\"},{\"default_features\":false,\"name\":\"getrandom\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"wasm_js\"],\"name\":\"getrandom\",\"optional\":true,\"req\":\"^0.4\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"default_features\":false,\"features\":[\"wasm_js\"],\"kind\":\"dev\",\"name\":\"getrandom\",\"req\":\"^0.4\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"features\":[\"zeroize\"],\"name\":\"hmac\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"indexmap\",\"req\":\"^2\"},{\"name\":\"jiff\",\"optional\":true,\"req\":\"^0.2.4\"},{\"default_features\":false,\"features\":[\"std\",\"encoder\",\"optimization\",\"xz\"],\"name\":\"lzma-rust2\",\"optional\":true,\"req\":\"^0.22.0\"},{\"name\":\"memchr\",\"req\":\"^2.7\"},{\"default_features\":false,\"features\":[\"fs\"],\"name\":\"nix\",\"req\":\"^0.31.3\",\"target\":\"cfg(any(target_os = \\\"macos\\\", target_os = \\\"freebsd\\\", target_os = \\\"openbsd\\\", target_os = \\\"netbsd\\\", target_os = \\\"dragonfly\\\"))\"},{\"default_features\":false,\"name\":\"nt-time\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"pbkdf2\",\"optional\":true,\"req\":\"^0.13\"},{\"name\":\"ppmd-rust\",\"optional\":true,\"req\":\"^1.5\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.10.3\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"kind\":\"dev\",\"name\":\"rayon\",\"req\":\"^1.11\"},{\"name\":\"sha1\",\"optional\":true,\"req\":\"^0.11\"},{\"kind\":\"dev\",\"name\":\"tempfile\",\"req\":\"^3.15\",\"target\":\"cfg(not(miri))\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.47\",\"target\":\"cfg(not(target_arch = \\\"wasm32\\\"))\"},{\"default_features\":false,\"features\":[\"std\",\"wasm-bindgen\"],\"name\":\"time\",\"optional\":true,\"req\":\"^0.3.47\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"features\":[\"formatting\",\"macros\"],\"kind\":\"dev\",\"name\":\"time\",\"req\":\"^0.3.47\"},{\"name\":\"typed-path\",\"req\":\"^0.12\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.5\"},{\"kind\":\"dev\",\"name\":\"wasm-bindgen-test\",\"req\":\"^0.3.56\",\"target\":\"cfg(target_arch = \\\"wasm32\\\")\"},{\"name\":\"zeroize\",\"optional\":true,\"req\":\"^1.8\"},{\"name\":\"zopfli\",\"optional\":true,\"req\":\"^0.8.3\"},{\"default_features\":false,\"name\":\"zstd\",\"optional\":true,\"req\":\"^0.14.0\"}],\"features\":{\"_arbitrary\":[\"dep:arbitrary\"],\"_bzip2_any\":[],\"_deflate-any\":[],\"_miri_compatible_features\":[\"bzip2\",\"chrono\",\"deflate-flate2\",\"flate2/rust_backend\",\"deflate-zopfli\",\"jiff-02\",\"legacy-zip\",\"lzma\",\"nt-time\",\"ppmd\",\"unreserved\",\"xz\",\"time\"],\"aes-crypto\":[\"dep:aes\",\"dep:constant_time_eq\",\"getrandom/std\",\"dep:hmac\",\"dep:pbkdf2\",\"dep:sha1\",\"dep:zeroize\"],\"bzip2\":[\"dep:bzip2\",\"bzip2/default\",\"_bzip2_any\"],\"bzip2-rs\":[\"dep:bzip2\",\"bzip2/bzip2-sys\",\"_bzip2_any\"],\"chrono\":[\"dep:chrono\"],\"default\":[\"aes-crypto\",\"bzip2\",\"deflate64\",\"deflate\",\"lzma\",\"ppmd\",\"time\",\"zstd\",\"xz\"],\"deflate\":[\"deflate-zopfli\",\"deflate-flate2-zlib-rs\"],\"deflate-flate2\":[\"_deflate-any\",\"dep:flate2\"],\"deflate-flate2-zlib\":[\"deflate-flate2\",\"flate2/zlib\"],\"deflate-flate2-zlib-ng\":[\"deflate-flate2\",\"flate2/zlib-ng\"],\"deflate-flate2-zlib-ng-compat\":[\"deflate-flate2\",\"flate2/zlib-ng-compat\"],\"deflate-flate2-zlib-rs\":[\"deflate-flate2\",\"flate2/zlib-rs\"],\"deflate-zopfli\":[\"dep:zopfli\",\"_deflate-any\"],\"jiff-02\":[\"dep:jiff\"],\"legacy-zip\":[\"bitstream-io\"],\"lzma\":[\"dep:lzma-rust2\"],\"nt-time\":[\"dep:nt-time\"],\"ppmd\":[\"dep:ppmd-rust\"],\"time\":[\"dep:time\"],\"unreserved\":[],\"xz\":[\"dep:lzma-rust2\"],\"zstd\":[\"dep:zstd\"]}}",
+       "zlib-rs_0.5.5": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.3.2\"},{\"kind\":\"dev\",\"name\":\"memoffset\",\"req\":\"^0.9.1\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0.3\"}],\"features\":{\"ZLIB_DEBUG\":[],\"__internal-fuzz\":[\"arbitrary\"],\"__internal-fuzz-disable-checksum\":[],\"__internal-test\":[\"quickcheck\"],\"avx512\":[\"vpclmulqdq\"],\"c-allocator\":[],\"default\":[\"std\",\"c-allocator\"],\"rust-allocator\":[],\"std\":[\"rust-allocator\"],\"vpclmulqdq\":[]}}",
+       "zlib-rs_0.6.3": "{\"dependencies\":[{\"features\":[\"derive\"],\"name\":\"arbitrary\",\"optional\":true,\"req\":\"^1.0\"},{\"kind\":\"dev\",\"name\":\"crc32fast\",\"req\":\"^1.3.2\"},{\"kind\":\"dev\",\"name\":\"memoffset\",\"req\":\"^0.9.1\"},{\"default_features\":false,\"name\":\"quickcheck\",\"optional\":true,\"req\":\"^1.0.3\"},{\"default_features\":false,\"kind\":\"dev\",\"name\":\"quickcheck\",\"req\":\"^1.0.3\"}],\"features\":{\"ZLIB_DEBUG\":[],\"__internal-api\":[],\"__internal-fuzz\":[\"arbitrary\"],\"__internal-fuzz-disable-checksum\":[],\"__internal-test\":[\"quickcheck\"],\"avx512\":[\"vpclmulqdq\"],\"c-allocator\":[],\"default\":[\"std\",\"c-allocator\"],\"rust-allocator\":[],\"std\":[\"rust-allocator\"],\"vpclmulqdq\":[]}}",
+       "zmij_1.0.19": "{\"dependencies\":[{\"default_features\":false,\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.8\",\"target\":\"cfg(not(miri))\"},{\"name\":\"no-panic\",\"optional\":true,\"req\":\"^0.1.36\"},{\"kind\":\"dev\",\"name\":\"num-bigint\",\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"num-integer\",\"req\":\"^0.1\"},{\"kind\":\"dev\",\"name\":\"num_cpus\",\"req\":\"^1.8\"},{\"kind\":\"dev\",\"name\":\"opt-level\",\"req\":\"^1\"},{\"kind\":\"dev\",\"name\":\"rand\",\"req\":\"^0.9\"},{\"kind\":\"dev\",\"name\":\"ryu\",\"req\":\"^1\"}],\"features\":{}}",
+@@ -2605,8 +2610,10 @@
+       "zoneinfo64_0.3.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"calendrical_calculations\",\"req\":\"^0.2.4\"},{\"name\":\"chrono\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"chrono-tz\",\"req\":\"^0.10.4\"},{\"default_features\":false,\"name\":\"icu_locale_core\",\"req\":\"^2.2.0\"},{\"kind\":\"dev\",\"name\":\"itertools\",\"req\":\"^0.14.0\"},{\"default_features\":false,\"features\":[\"tzdb-bundle-always\",\"std\"],\"kind\":\"dev\",\"name\":\"jiff\",\"req\":\"^0.2\"},{\"default_features\":false,\"name\":\"potential_utf\",\"req\":\"^0.1.3\"},{\"default_features\":false,\"name\":\"resb\",\"req\":\"^0.1.2\"},{\"default_features\":false,\"features\":[\"derive\"],\"name\":\"serde\",\"req\":\"^1.0.220\"}],\"features\":{\"chrono\":[\"dep:chrono\"]}}",
+       "zopfli_0.8.3": "{\"dependencies\":[{\"name\":\"bumpalo\",\"req\":\"^3.19.0\"},{\"default_features\":false,\"name\":\"crc32fast\",\"optional\":true,\"req\":\"^1.5.0\"},{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.28\"},{\"kind\":\"dev\",\"name\":\"miniz_oxide\",\"req\":\"^0.8.9\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.7.0\"},{\"kind\":\"dev\",\"name\":\"proptest-derive\",\"req\":\"^0.6.0\"},{\"default_features\":false,\"name\":\"simd-adler32\",\"optional\":true,\"req\":\"^0.3.7\"}],\"features\":{\"default\":[\"gzip\",\"std\",\"zlib\"],\"gzip\":[\"dep:crc32fast\"],\"nightly\":[\"crc32fast?/nightly\"],\"std\":[\"crc32fast?/std\",\"dep:log\",\"simd-adler32?/std\"],\"zlib\":[\"dep:simd-adler32\"]}}",
+       "zstd-safe_7.2.4": "{\"dependencies\":[{\"default_features\":false,\"name\":\"zstd-sys\",\"req\":\"^2.0.15\"}],\"features\":{\"arrays\":[],\"bindgen\":[\"zstd-sys/bindgen\"],\"debug\":[\"zstd-sys/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-sys/experimental\"],\"fat-lto\":[\"zstd-sys/fat-lto\"],\"legacy\":[\"zstd-sys/legacy\"],\"no_asm\":[\"zstd-sys/no_asm\"],\"pkg-config\":[\"zstd-sys/pkg-config\"],\"seekable\":[\"zstd-sys/seekable\"],\"std\":[\"zstd-sys/std\"],\"thin\":[\"zstd-sys/thin\"],\"thin-lto\":[\"zstd-sys/thin-lto\"],\"zdict_builder\":[\"zstd-sys/zdict_builder\"],\"zstdmt\":[\"zstd-sys/zstdmt\"]}}",
+-      "zstd-sys_2.0.16+zstd.1.5.7": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"runtime\"],\"kind\":\"build\",\"name\":\"bindgen\",\"optional\":true,\"req\":\"^0.72\"},{\"features\":[\"parallel\"],\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.45\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.28\"}],\"features\":{\"debug\":[],\"default\":[\"legacy\",\"zdict_builder\",\"bindgen\"],\"experimental\":[],\"fat-lto\":[],\"legacy\":[],\"no_asm\":[],\"no_wasm_shim\":[],\"non-cargo\":[],\"pkg-config\":[],\"seekable\":[],\"std\":[],\"thin\":[],\"thin-lto\":[],\"zdict_builder\":[],\"zstdmt\":[]}}",
++      "zstd-safe_8.2.0": "{\"dependencies\":[{\"default_features\":false,\"name\":\"zstd-sys\",\"req\":\"^2.1.2\"}],\"features\":{\"arrays\":[],\"bindgen\":[\"zstd-sys/bindgen\"],\"cmake\":[\"zstd-sys/cmake\"],\"debug\":[\"zstd-sys/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-sys/experimental\"],\"fat-lto\":[\"zstd-sys/fat-lto\"],\"legacy\":[\"zstd-sys/legacy\"],\"no_asm\":[\"zstd-sys/no_asm\"],\"pkg-config\":[\"zstd-sys/pkg-config\"],\"seekable\":[\"zstd-sys/seekable\"],\"std\":[\"zstd-sys/std\"],\"thin\":[\"zstd-sys/thin\"],\"thin-lto\":[\"zstd-sys/thin-lto\"],\"vendored\":[\"zstd-sys/vendored\"],\"with-rust-allocator\":[\"experimental\"],\"zdict_builder\":[\"zstd-sys/zdict_builder\"],\"zstdmt\":[\"zstd-sys/zstdmt\"]}}",
++      "zstd-sys_2.1.2+zstd.1.5.7": "{\"dependencies\":[{\"default_features\":false,\"features\":[\"runtime\"],\"kind\":\"build\",\"name\":\"bindgen\",\"optional\":true,\"req\":\"^0.73.2\"},{\"features\":[\"parallel\"],\"kind\":\"build\",\"name\":\"cc\",\"req\":\"^1.0.45\"},{\"kind\":\"build\",\"name\":\"cmake\",\"optional\":true,\"req\":\"^0.1\"},{\"kind\":\"build\",\"name\":\"pkg-config\",\"req\":\"^0.3.28\"}],\"features\":{\"cmake\":[\"dep:cmake\"],\"debug\":[],\"default\":[\"legacy\",\"zdict_builder\"],\"experimental\":[],\"fat-lto\":[],\"legacy\":[],\"no_asm\":[],\"no_wasm_shim\":[],\"non-cargo\":[],\"pkg-config\":[],\"seekable\":[],\"std\":[],\"thin\":[],\"thin-lto\":[],\"vendored\":[],\"zdict_builder\":[],\"zstdmt\":[]}}",
+       "zstd_0.13.3": "{\"dependencies\":[{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"^4.0\"},{\"kind\":\"dev\",\"name\":\"humansize\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"partial-io\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"zstd-safe\",\"req\":\"^7.1.0\"}],\"features\":{\"arrays\":[\"zstd-safe/arrays\"],\"bindgen\":[\"zstd-safe/bindgen\"],\"debug\":[\"zstd-safe/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-safe/experimental\"],\"fat-lto\":[\"zstd-safe/fat-lto\"],\"legacy\":[\"zstd-safe/legacy\"],\"no_asm\":[\"zstd-safe/no_asm\"],\"pkg-config\":[\"zstd-safe/pkg-config\"],\"thin\":[\"zstd-safe/thin\"],\"thin-lto\":[\"zstd-safe/thin-lto\"],\"wasm\":[],\"zdict_builder\":[\"zstd-safe/zdict_builder\"],\"zstdmt\":[\"zstd-safe/zstdmt\"]}}",
++      "zstd_0.14.3": "{\"dependencies\":[{\"features\":[\"derive\"],\"kind\":\"dev\",\"name\":\"clap\",\"req\":\"^4.0\"},{\"kind\":\"dev\",\"name\":\"humansize\",\"req\":\"^2.0\"},{\"kind\":\"dev\",\"name\":\"partial-io\",\"req\":\"^0.5\"},{\"kind\":\"dev\",\"name\":\"walkdir\",\"req\":\"^2.2\"},{\"default_features\":false,\"features\":[\"std\"],\"name\":\"zstd-safe\",\"req\":\"^8.2.0\"}],\"features\":{\"arrays\":[\"zstd-safe/arrays\"],\"bindgen\":[\"zstd-safe/bindgen\"],\"cmake\":[\"zstd-safe/cmake\"],\"debug\":[\"zstd-safe/debug\"],\"default\":[\"legacy\",\"arrays\",\"zdict_builder\"],\"doc-cfg\":[],\"experimental\":[\"zstd-safe/experimental\"],\"fat-lto\":[\"zstd-safe/fat-lto\"],\"legacy\":[\"zstd-safe/legacy\"],\"no_asm\":[\"zstd-safe/no_asm\"],\"pkg-config\":[\"zstd-safe/pkg-config\"],\"thin\":[\"zstd-safe/thin\"],\"thin-lto\":[\"zstd-safe/thin-lto\"],\"vendored\":[\"zstd-safe/vendored\"],\"wasm\":[],\"with-rust-allocator\":[\"zstd-safe/with-rust-allocator\"],\"zdict_builder\":[\"zstd-safe/zdict_builder\"],\"zstdmt\":[\"zstd-safe/zstdmt\"]}}",
+       "zune-core_0.4.12": "{\"dependencies\":[{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4.17\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0.52\"}],\"features\":{\"std\":[]}}",
+       "zune-core_0.5.1": "{\"dependencies\":[{\"name\":\"log\",\"optional\":true,\"req\":\"^0.4\"},{\"name\":\"serde\",\"optional\":true,\"req\":\"^1.0\"}],\"features\":{\"std\":[]}}",
+       "zune-jpeg_0.4.21": "{\"dependencies\":[{\"name\":\"zune-core\",\"req\":\"^0.4\"}],\"features\":{\"default\":[\"x86\",\"neon\",\"std\"],\"log\":[\"zune-core/log\"],\"neon\":[],\"std\":[\"zune-core/std\"],\"x86\":[]}}",
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index e1567bc9b..6a649fa73 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -44,10 +44,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
+ dependencies = [
+  "cfg-if",
+- "cipher",
++ "cipher 0.4.4",
+  "cpufeatures 0.2.17",
+ ]
+ 
++[[package]]
++name = "aes"
++version = "0.9.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "35f0f96ce78e38c3dc6d8948aa8163d06385be74000f3c7a95bf1eef35d3ea32"
++dependencies = [
++ "cipher 0.5.2",
++ "cpubits",
++ "cpufeatures 0.3.0",
++]
++
+ [[package]]
+ name = "aes-gcm"
+ version = "0.10.3"
+@@ -55,8 +66,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
+ dependencies = [
+  "aead",
+- "aes",
+- "cipher",
++ "aes 0.8.4",
++ "cipher 0.4.4",
+  "ctr",
+  "ghash",
+  "subtle",
+@@ -72,7 +83,7 @@ dependencies = [
+  "base64 0.22.1",
+  "bech32",
+  "chacha20poly1305",
+- "cipher",
++ "cipher 0.4.4",
+  "cookie-factory",
+  "hkdf 0.12.4",
+  "hmac 0.12.1",
+@@ -254,7 +265,7 @@ version = "1.1.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
+ dependencies = [
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -265,7 +276,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
+ dependencies = [
+  "anstyle",
+  "once_cell_polyfill",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -333,15 +344,6 @@ dependencies = [
+  "num-traits",
+ ]
+ 
+-[[package]]
+-name = "arbitrary"
+-version = "1.4.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
+-dependencies = [
+- "derive_arbitrary",
+-]
+-
+ [[package]]
+ name = "arboard"
+ version = "3.6.1"
+@@ -1362,7 +1364,7 @@ dependencies = [
+  "arrayvec",
+  "cc",
+  "cfg-if",
+- "constant_time_eq",
++ "constant_time_eq 0.3.1",
+  "digest 0.10.7",
+  "rayon-core",
+ ]
+@@ -1383,6 +1385,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
+ dependencies = [
+  "hybrid-array 0.4.12",
++ "zeroize",
+ ]
+ 
+ [[package]]
+@@ -1535,21 +1538,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "bzip2"
+-version = "0.5.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "49ecfb22d906f800d4fe833b6282cf4dc1c298f5057ca0b5445e5c209735ca47"
+-dependencies = [
+- "bzip2-sys",
+-]
+-
+-[[package]]
+-name = "bzip2-sys"
+-version = "0.1.13+1.0.8"
++version = "0.6.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "225bff33b2141874fe80d71e07d6eec4f85c5c216453dd96388240f96e1acc14"
++checksum = "f3a53fac24f34a81bc9954b5d6cfce0c21e18ec6959f44f56e8e90e4bb7c346c"
+ dependencies = [
+- "cc",
+- "pkg-config",
++ "libbz2-rs-sys",
+ ]
+ 
+ [[package]]
+@@ -1619,7 +1612,7 @@ version = "0.1.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "26b52a9543ae338f279b96b0b9fed9c8093744685043739079ce85cd58f289a6"
+ dependencies = [
+- "cipher",
++ "cipher 0.4.4",
+ ]
+ 
+ [[package]]
+@@ -1641,7 +1634,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9ae3c82e4355234767756212c570e29833699ab63e6ffd161887314cc5b43847"
+ dependencies = [
+  "aead",
+- "cipher",
++ "cipher 0.4.4",
+  "ctr",
+  "subtle",
+ ]
+@@ -1690,7 +1683,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
+ dependencies = [
+  "cfg-if",
+- "cipher",
++ "cipher 0.4.4",
+  "cpufeatures 0.2.17",
+ ]
+ 
+@@ -1713,7 +1706,7 @@ checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
+ dependencies = [
+  "aead",
+  "chacha20 0.9.1",
+- "cipher",
++ "cipher 0.4.4",
+  "poly1305",
+  "zeroize",
+ ]
+@@ -1762,10 +1755,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
+ dependencies = [
+  "crypto-common 0.1.7",
+- "inout",
++ "inout 0.1.4",
+  "zeroize",
+ ]
+ 
++[[package]]
++name = "cipher"
++version = "0.5.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c"
++dependencies = [
++ "crypto-common 0.2.2",
++ "inout 0.2.4",
++]
++
+ [[package]]
+ name = "clang-sys"
+ version = "1.8.1"
+@@ -2269,7 +2272,7 @@ dependencies = [
+  "tracing",
+  "ts-rs",
+  "uuid",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -2601,7 +2604,7 @@ dependencies = [
+  "which 8.0.0",
+  "windows-sys 0.61.2",
+  "wiremock",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -3067,7 +3070,7 @@ dependencies = [
+  "whoami 1.6.1",
+  "windows-sys 0.61.2",
+  "wiremock",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -3219,7 +3222,7 @@ dependencies = [
+  "uuid",
+  "walkdir",
+  "wiremock",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -3636,7 +3639,7 @@ dependencies = [
+  "tracing",
+  "uuid",
+  "wiremock",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -3749,7 +3752,7 @@ dependencies = [
+  "tracing-opentelemetry",
+  "tracing-subscriber",
+  "windows-sys 0.61.2",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -4503,7 +4506,7 @@ dependencies = [
+  "tokio",
+  "tracing",
+  "uuid",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -4764,7 +4767,7 @@ dependencies = [
+  "tokio",
+  "tracing",
+  "uuid",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -5293,7 +5296,7 @@ dependencies = [
+  "base64 0.22.1",
+  "clap",
+  "codex-utils-absolute-path",
+- "constant_time_eq",
++ "constant_time_eq 0.3.1",
+  "hmac 0.12.1",
+  "http 1.4.0",
+  "jsonwebtoken",
+@@ -5513,6 +5516,12 @@ version = "0.9.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+ 
++[[package]]
++name = "const-oid"
++version = "0.10.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
++
+ [[package]]
+ name = "const_format"
+ version = "0.2.35"
+@@ -5539,6 +5548,15 @@ version = "0.3.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
+ 
++[[package]]
++name = "constant_time_eq"
++version = "0.6.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
++dependencies = [
++ "rustversion",
++]
++
+ [[package]]
+ name = "convert_case"
+ version = "0.6.0"
+@@ -5674,7 +5692,7 @@ dependencies = [
+  "tracing-subscriber",
+  "walkdir",
+  "wiremock",
+- "zstd",
++ "zstd 0.13.3",
+ ]
+ 
+ [[package]]
+@@ -5721,6 +5739,12 @@ dependencies = [
+  "windows-core 0.62.2",
+ ]
+ 
++[[package]]
++name = "cpubits"
++version = "0.1.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "15b85f9c39137c3a891689859392b1bd49812121d0d61c9caf00d46ed5ce06ae"
++
+ [[package]]
+ name = "cpufeatures"
+ version = "0.2.17"
+@@ -5907,7 +5931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b9d6cf87adf719ddf43a805e92c6870a531aedda35ff640442cbaf8674e141e1"
+ dependencies = [
+  "aead",
+- "cipher",
++ "cipher 0.4.4",
+  "generic-array",
+  "poly1305",
+  "salsa20",
+@@ -5978,7 +6002,7 @@ version = "0.9.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
+ dependencies = [
+- "cipher",
++ "cipher 0.4.4",
+ ]
+ 
+ [[package]]
+@@ -6198,7 +6222,7 @@ version = "4.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
+ dependencies = [
+- "aes",
++ "aes 0.8.4",
+  "block-padding",
+  "cbc",
+  "dbus",
+@@ -6273,7 +6297,7 @@ version = "0.7.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+ dependencies = [
+- "const-oid",
++ "const-oid 0.9.6",
+  "pem-rfc7468",
+  "zeroize",
+ ]
+@@ -6327,17 +6351,6 @@ dependencies = [
+  "syn 1.0.109",
+ ]
+ 
+-[[package]]
+-name = "derive_arbitrary"
+-version = "1.4.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn 2.0.117",
+-]
+-
+ [[package]]
+ name = "derive_more"
+ version = "1.0.0"
+@@ -6417,7 +6430,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+ dependencies = [
+  "block-buffer 0.10.4",
+- "const-oid",
++ "const-oid 0.9.6",
+  "crypto-common 0.1.7",
+  "subtle",
+ ]
+@@ -6429,8 +6442,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
+ dependencies = [
+  "block-buffer 0.12.0",
++ "const-oid 0.10.2",
+  "crypto-common 0.2.2",
+  "ctutils",
++ "zeroize",
+ ]
+ 
+ [[package]]
+@@ -6493,7 +6508,7 @@ dependencies = [
+  "libc",
+  "option-ext",
+  "redox_users 0.5.2",
+- "windows-sys 0.59.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -6850,7 +6865,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+ dependencies = [
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -7443,11 +7458,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+ dependencies = [
+  "cfg-if",
+- "js-sys",
+  "libc",
+  "r-efi 5.3.0",
+  "wasip2",
+- "wasm-bindgen",
+ ]
+ 
+ [[package]]
+@@ -7502,7 +7515,7 @@ dependencies = [
+  "gobject-sys",
+  "libc",
+  "system-deps",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -9509,6 +9522,15 @@ dependencies = [
+  "generic-array",
+ ]
+ 
++[[package]]
++name = "inout"
++version = "0.2.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3ce983bb6fb399067d101fbfc9e74174e07e9f29a2bc679efefeb8c645819c3f"
++dependencies = [
++ "hybrid-array 0.4.12",
++]
++
+ [[package]]
+ name = "insta"
+ version = "1.46.3"
+@@ -9614,7 +9636,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+ dependencies = [
+  "hermit-abi",
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -9680,7 +9702,7 @@ dependencies = [
+  "portable-atomic",
+  "portable-atomic-util",
+  "serde_core",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -9940,6 +9962,12 @@ version = "0.1.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
+ 
++[[package]]
++name = "libbz2-rs-sys"
++version = "0.2.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
++
+ [[package]]
+ name = "libc"
+ version = "0.2.186"
+@@ -10167,24 +10195,12 @@ dependencies = [
+ ]
+ 
+ [[package]]
+-name = "lzma-rs"
+-version = "0.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "297e814c836ae64db86b36cf2a557ba54368d03f6afcd7d947c266692f71115e"
+-dependencies = [
+- "byteorder",
+- "crc",
+-]
+-
+-[[package]]
+-name = "lzma-sys"
+-version = "0.1.20"
++name = "lzma-rust2"
++version = "0.22.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5fda04ab3764e6cde78b9974eec4f779acaba7c4e84b36eca3cf77c581b85d27"
++checksum = "7277c9742229dc25243236d578b6471a798c554512c6f6a04365ec2e87c2a3bb"
+ dependencies = [
+- "cc",
+- "libc",
+- "pkg-config",
++ "sha2 0.11.0",
+ ]
+ 
+ [[package]]
+@@ -10604,7 +10620,7 @@ version = "0.50.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+ dependencies = [
+- "windows-sys 0.59.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -11320,7 +11336,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+ dependencies = [
+  "libc",
+- "windows-sys 0.48.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -11491,6 +11507,16 @@ dependencies = [
+  "hmac 0.12.1",
+ ]
+ 
++[[package]]
++name = "pbkdf2"
++version = "0.13.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "112d82ceb8c5bf524d9af484d4e4970c9fd5a0cc15ba14ad93dccd28873b0629"
++dependencies = [
++ "digest 0.11.3",
++ "hmac 0.13.0",
++]
++
+ [[package]]
+ name = "pem"
+ version = "3.0.6"
+@@ -11810,6 +11836,12 @@ version = "0.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+ 
++[[package]]
++name = "ppmd-rust"
++version = "1.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "196a7c80b9a7652aba7cc070827516c2abe4ccdf53d128e1944003cf5726cff1"
++
+ [[package]]
+ name = "ppv-lite86"
+ version = "0.2.21"
+@@ -12254,7 +12286,7 @@ dependencies = [
+  "libc",
+  "log",
+  "socket2 0.6.3",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -13228,7 +13260,7 @@ version = "0.20.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "03a1be8a58a72a257c233ad9a2f92130c15994e02f7a1981379fdebbe0d8761a"
+ dependencies = [
+- "aes",
++ "aes 0.8.4",
+  "bytecheck",
+  "byteorder",
+  "bytes",
+@@ -13383,7 +13415,7 @@ version = "0.20.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "dae32667b8c9f15223172ce27471e02791e2b401de559b3ea02a6ec93ff280e0"
+ dependencies = [
+- "aes",
++ "aes 0.8.4",
+  "aes-gcm",
+  "bitflags 1.3.2",
+  "bytes",
+@@ -13405,7 +13437,7 @@ version = "0.20.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "413d48daef797c98c12ff91988abac36d44c81974f0a4b0658549174230819cd"
+ dependencies = [
+- "aes",
++ "aes 0.8.4",
+  "byteorder",
+  "bytes",
+  "ctr",
+@@ -13566,7 +13598,7 @@ dependencies = [
+  "errno",
+  "libc",
+  "linux-raw-sys 0.12.1",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -13625,7 +13657,7 @@ dependencies = [
+  "security-framework 3.5.1",
+  "security-framework-sys",
+  "webpki-root-certs",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -13686,7 +13718,7 @@ version = "0.10.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "97a22f5af31f73a954c10289c93e8a50cc23d971e80ee446f1f6f7137a088213"
+ dependencies = [
+- "cipher",
++ "cipher 0.4.4",
+ ]
+ 
+ [[package]]
+@@ -13852,7 +13884,7 @@ version = "0.11.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
+ dependencies = [
+- "pbkdf2",
++ "pbkdf2 0.12.2",
+  "salsa20",
+  "sha2 0.10.9",
+ ]
+@@ -13901,7 +13933,7 @@ version = "4.0.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e4d35ad99a181be0a60ffcbe85d680d98f87bdc4d7644ade319b87076b9dbfd4"
+ dependencies = [
+- "aes",
++ "aes 0.8.4",
+  "cbc",
+  "futures-util",
+  "generic-array",
+@@ -14436,7 +14468,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
+ dependencies = [
+  "libc",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15245,7 +15277,7 @@ dependencies = [
+  "getrandom 0.4.2",
+  "once_cell",
+  "rustix 1.1.4",
+- "windows-sys 0.52.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15301,7 +15333,7 @@ dependencies = [
+  "parking_lot",
+  "rustix 1.1.4",
+  "signal-hook",
+- "windows-sys 0.60.2",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -15579,6 +15611,7 @@ checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+ dependencies = [
+  "deranged",
+  "itoa",
++ "js-sys",
+  "libc",
+  "num-conv",
+  "num_threads",
+@@ -16265,6 +16298,12 @@ dependencies = [
+  "rustc-hash",
+ ]
+ 
++[[package]]
++name = "typed-path"
++version = "0.12.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
++
+ [[package]]
+ name = "typeid"
+ version = "1.0.3"
+@@ -17046,7 +17085,7 @@ version = "0.1.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
+ dependencies = [
+- "windows-sys 0.48.0",
++ "windows-sys 0.61.2",
+ ]
+ 
+ [[package]]
+@@ -17776,15 +17815,6 @@ version = "0.13.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
+ 
+-[[package]]
+-name = "xz2"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "388c44dc09d76f1536602ead6d325eb532f5c122f17782bd57fb47baeeb767e2"
+-dependencies = [
+- "lzma-sys",
+-]
+-
+ [[package]]
+ name = "yaml_serde"
+ version = "0.10.7"
+@@ -17997,32 +18027,30 @@ dependencies = [
+ 
+ [[package]]
+ name = "zip"
+-version = "2.4.2"
++version = "9.0.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "fabe6324e908f85a1c52063ce7aa26b68dcb7eb6dbc83a2d148403c9bc3eba50"
++checksum = "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+ dependencies = [
+- "aes",
+- "arbitrary",
++ "aes 0.9.3",
+  "bzip2",
+- "constant_time_eq",
++ "constant_time_eq 0.6.1",
+  "crc32fast",
+- "crossbeam-utils",
+  "deflate64",
+- "displaydoc",
+  "flate2",
+- "getrandom 0.3.4",
+- "hmac 0.12.1",
++ "getrandom 0.4.2",
++ "hmac 0.13.0",
+  "indexmap 2.14.0",
+- "lzma-rs",
++ "lzma-rust2",
+  "memchr",
+- "pbkdf2",
+- "sha1 0.10.6",
+- "thiserror 2.0.18",
++ "nix 0.31.3",
++ "pbkdf2 0.13.0",
++ "ppmd-rust",
++ "sha1 0.11.0",
+  "time",
+- "xz2",
++ "typed-path",
+  "zeroize",
+  "zopfli",
+- "zstd",
++ "zstd 0.14.3",
+ ]
+ 
+ [[package]]
+@@ -18074,7 +18102,16 @@ version = "0.13.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+ dependencies = [
+- "zstd-safe",
++ "zstd-safe 7.2.4",
++]
++
++[[package]]
++name = "zstd"
++version = "0.14.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
++dependencies = [
++ "zstd-safe 8.2.0",
+ ]
+ 
+ [[package]]
+@@ -18086,11 +18123,20 @@ dependencies = [
+  "zstd-sys",
+ ]
+ 
++[[package]]
++name = "zstd-safe"
++version = "8.2.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ded520f16b29e1a9b771c722221b2b0a0398c2316d9bb3c42b458a5414d7434b"
++dependencies = [
++ "zstd-sys",
++]
++
+ [[package]]
+ name = "zstd-sys"
+-version = "2.0.16+zstd.1.5.7"
++version = "2.1.2+zstd.1.5.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
++checksum = "481ada9c543b2323cbb7bbdbb5249177fbf0188ed959ed2c15e4b22421c84ed3"
+ dependencies = [
+  "cc",
+  "pkg-config",
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index c80eac410..b5a50360a 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -549,7 +549,7 @@ whoami = "1.6.1"
+ wildmatch = "2.6.1"
+ winapi-util = "0.1.11"
+ windows-sys = "0.61.2"
+-zip = "2.4.2"
++zip = "9.0.4"
+ zstd = "0.13"
+ 
+ wiremock = "0.6"
+diff --git a/codex-rs/core-plugins/src/startup_sync.rs b/codex-rs/core-plugins/src/startup_sync.rs
+index b366cf9e4..4f7436826 100644
+--- a/codex-rs/core-plugins/src/startup_sync.rs
++++ b/codex-rs/core-plugins/src/startup_sync.rs
+@@ -1049,7 +1049,7 @@ fn extract_zipball_to_dir(bytes: &[u8], destination: &Path) -> Result<(), String
+         let Some(relative_path) = entry.enclosed_name() else {
+             return Err(format!(
+                 "curated plugins zip entry `{}` escapes extraction root",
+-                entry.name()
++                String::from_utf8_lossy(entry.name_raw())
+             ));
+         };
+ 
+@@ -1106,7 +1106,10 @@ fn extract_zipball_to_dir(bytes: &[u8], destination: &Path) -> Result<(), String
+ }
+ 
+ #[cfg(unix)]
+-fn apply_zip_permissions(entry: &zip::read::ZipFile<'_>, output_path: &Path) -> Result<(), String> {
++fn apply_zip_permissions<R: std::io::Read + ?Sized>(
++    entry: &zip::read::ZipFile<'_, R>,
++    output_path: &Path,
++) -> Result<(), String> {
+     use std::os::unix::fs::PermissionsExt;
+ 
+     let Some(mode) = entry.unix_mode() else {
+@@ -1121,8 +1124,8 @@ fn apply_zip_permissions(entry: &zip::read::ZipFile<'_>, output_path: &Path) ->
+ }
+ 
+ #[cfg(not(unix))]
+-fn apply_zip_permissions(
+-    _entry: &zip::read::ZipFile<'_>,
++fn apply_zip_permissions<R: std::io::Read + ?Sized>(
++    _entry: &zip::read::ZipFile<'_, R>,
+     _output_path: &Path,
+ ) -> Result<(), String> {
+     Ok(())
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index ebf692aa3..20ac78eec 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -148,6 +148,8 @@ confidence-threshold = 0.8
+ # Allow 1 or more licenses on a per-crate basis, so that particular licenses
+ # aren't accepted for every possible crate as with the normal allow list
+ exceptions = [
++    # The ZIP bzip2 backend retains the bundled libbzip2 redistribution terms.
++    { allow = ["bzip2-1.0.6"], crate = "libbz2-rs-sys" },
+     # Each entry is the crate and version constraint, and its specific allow
+     # list
+     #{ allow = ["Zlib"], crate = "adler32" },
+diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
+index c45a360a4..d595b3bcd 100644
+--- a/patches/zstd-sys_windows_msvc_include_dirs.patch
++++ b/patches/zstd-sys_windows_msvc_include_dirs.patch
+@@ -1,20 +1,11 @@
+ diff --git a/build.rs b/build.rs
+-index 912a3bf..e078f0e 100644
+ --- a/build.rs
+ +++ b/build.rs
+-@@ -85,6 +85,7 @@ fn flag_if_supported_with_fallbacks(config: &mut cc::Build, flags: &[&str]) {
+- }
+- 
+- fn compile_zstd() {
+-+    let target = env::var("TARGET").unwrap_or_default();
+-     let mut config = cc::Build::new();
+- 
+-     // Search the following directories for C files to add to the compilation.
+-@@ -164,6 +165,16 @@ fn compile_zstd() {
++@@ -350,6 +350,16 @@ fn compile_zstd() {
+      // Some extra parameters
+      config.include("zstd/lib/");
+      config.include("zstd/lib/common");
+-+    if target.contains("msvc") {
+++    if target_is_msvc() {
+ +        config.include("zstd/lib/compress");
+ +        config.include("zstd/lib/decompress");
+ +        #[cfg(feature = "zdict_builder")]
+@@ -27,15 +18,3 @@ index 912a3bf..e078f0e 100644
+      config.warnings(false);
+  
+      config.define("ZSTD_LIB_DEPRECATED", Some("0"));
+-@@ -210,7 +221,9 @@ fn compile_zstd() {
+- 
+-     // Hide symbols from resulting library,
+-     // so we can be used with another zstd-linking lib.
+--    // See https://github.com/gyscos/zstd-rs/issues/58
+--    config.flag("-fvisibility=hidden");
+-+    // See https://github.com/gyscos/zstd-rs/issues/58.
+-+    if !target.contains("msvc") {
+-+        config.flag("-fvisibility=hidden");
+-+    }
+-     config.define("XXH_PRIVATE_API", Some(""));
+-     config.define("ZSTDLIB_VISIBILITY", Some(""));
+-- 
+2.43.0
+
