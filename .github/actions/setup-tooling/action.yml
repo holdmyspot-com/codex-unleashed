@@ -34,7 +34,11 @@ runs:
           *) echo 'ERROR: tooling checkout must be inside GITHUB_WORKSPACE.' >&2; exit 1 ;;
         esac
         printf 'root=%s\n' "$relative_root" >> "$GITHUB_OUTPUT"
-        printf 'runtime=%s/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime\n' "$project_root" >> "$GITHUB_OUTPUT"
+        runtime="$project_root/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+        if [[ "${RUNNER_OS:-}" == Windows ]]; then
+          runtime="$(cygpath --windows "$runtime")"
+        fi
+        printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
 
     - name: Restore verified tooling runtime
       id: runtime
