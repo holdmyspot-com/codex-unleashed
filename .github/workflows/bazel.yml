@@ -1,4 +1,4 @@
-name: Clean upstream native full suites
+name: Isolated Windows skill warmup comparison
 
 on:
   workflow_dispatch:
@@ -7,18 +7,28 @@ env:
   BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
 
 concurrency:
-  group: clean-upstream-baseline-${{ github.ref_name }}
+  group: isolated-warmup-baseline-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   windows-baseline:
-    if: github.ref_name == 'ci/clean-upstream-full-windows'
-    runs-on: windows-2025
+    if: github.ref_name == 'ci/isolated-warmup-windows'
+    runs-on: windows-2022
     timeout-minutes: 180
-    name: Clean upstream Windows core and app-server suites
+    name: Windows core unit suite with only skill warmup patch
     steps:
-      # The workflow comes from the fork. Source, local actions, and pins come
-      # from upstream; only generated workspace lock versions are normalized.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Retain the single patch before checking out upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show HEAD:patches/holdmyspot-com/codex-unleashed/issue-34776/background-session-skill-warmup.patch > "${RUNNER_TEMP}/background-session-skill-warmup.patch"
+          printf '%s  %s\n' df3aece2d8ed12cbaf2df73ea2c8dea9a8f38e0c421da022def5f66ef4bd1592 "${RUNNER_TEMP}/background-session-skill-warmup.patch" | sha256sum --check
+
+      # Source, local actions, and toolchain pins come from upstream.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: openai/codex
@@ -47,6 +57,16 @@ jobs:
           cmp "$expected_lock" codex-rs/Cargo.lock
           git diff --stat -- codex-rs/Cargo.lock
 
+      - name: Apply only the independently supported skill warmup patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index "${RUNNER_TEMP}/background-session-skill-warmup.patch"
+          git diff --cached --stat
+          git diff --cached --check
+          test "$(git diff --name-only)" = codex-rs/Cargo.lock
+          test -z "$(git ls-files --others --exclude-standard)"
+
       - name: Prepare original upstream Bazel CI
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
@@ -54,7 +74,7 @@ jobs:
           target: x86_64-pc-windows-msvc
           cache-scope: clean-upstream-native-windows
 
-      - name: Build the original upstream regression suites
+      - name: Build the isolated skill warmup core unit suite
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -70,10 +90,10 @@ jobs:
             --config=ci-windows-msvc \
             --platforms=//:windows_x86_64_msvc \
             "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_full_suites=true \
-            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
+            --build_metadata=TAG_isolated_skill_warmup=true \
+            -- //codex-rs/core:core-unit-tests
 
-      - name: Execute complete original upstream core and app-server suites
+      - name: Execute all eight core unit shards with the isolated warmup patch
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
@@ -91,19 +111,19 @@ jobs:
             --platforms=//:windows_x86_64_msvc \
             --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings \
-            --test_output=errors \
+            --test_output=all \
             --nocache_test_results \
             --test_env=RUST_BACKTRACE=1 \
             --test_env=RUST_LIB_BACKTRACE=0 \
             "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_full_suites=true \
-            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
+            --build_metadata=TAG_isolated_skill_warmup=true \
+            -- //codex-rs/core:core-unit-tests
 
       - name: Upload upstream execution logs
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: clean-upstream-windows-full-suites
+          name: isolated-warmup-windows-core-unit
           path: ${{ runner.temp }}/bazel-execution-logs
           retention-days: 1
           if-no-files-found: ignore
