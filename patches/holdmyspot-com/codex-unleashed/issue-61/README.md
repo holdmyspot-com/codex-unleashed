@@ -2505,3 +2505,25 @@ The policy check requires every repository cache producer to retain a miss
 save and guard it with a preceding lookup using the same key and path. Linux
 Bazel CI runs this check. The hosted workflow has the same guard and its Maven
 regression checks the YAML bindings.
+
+## Timeout test logs
+
+`zzzz-0065-bazel-timeout-test-logs.patch` prints log tails for Bazel `TIMEOUT`
+records as well as `FAIL` records. Reported retry paths support CRLF and spaces;
+summary-only timeouts use the configured test-output root. The wrapper preserves
+Bazel's original failing exit status.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with
+`zzzz-0063-bazel-failed-test-logs.patch` and its documented prerequisites.
+The patch tracks https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+Run from the patched checkout:
+
+```sh
+just fmt-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test -- //tools/build-warnings/bazel-ci-logs:failed_logs_test
+```
+
+The regression expects all four failure and timeout scenarios to print their
+fixture logs and return the original Bazel exit status. Full CI remains the
+hosted acceptance gate.
