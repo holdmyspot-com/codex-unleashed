@@ -180,6 +180,9 @@ public final class BazelPreparationTest
 					assertTrue(step.path("if").asString().contains(
 						"steps.repository_cache_before_save.outputs.cache-hit != 'true'"),
 						"A true miss must save; an exact hit must skip archive creation");
+					if (job == jobs.path("test-windows-shard"))
+						assertTrue(step.path("if").asString().contains("matrix.shard == 1"),
+							"Only one Windows shard may create their shared immutable repository archive");
 				}
 			}
 		}

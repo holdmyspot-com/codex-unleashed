@@ -281,9 +281,10 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
+      # All shards restore the shared key; shard 1 creates its immutable archive.
       - name: Recheck Bazel repository cache before saving
         id: repository_cache_before_save
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
+        if: always() && !cancelled() && matrix.shard == 1 && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
@@ -292,7 +293,7 @@ jobs:
           lookup-only: true
 
       - name: Save Bazel repository cache
-        if: always() && !cancelled() && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true' && steps.repository_cache_before_save.outputs.cache-hit != 'true'
+        if: always() && !cancelled() && matrix.shard == 1 && steps.prepare_bazel.outputs.repository-cache-key != '' && steps.prepare_bazel.outputs.repository-cache-hit != 'true' && steps.repository_cache_before_save.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
