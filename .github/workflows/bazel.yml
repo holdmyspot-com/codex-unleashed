@@ -1,4 +1,4 @@
-name: Clean upstream native baseline
+name: Clean upstream native full suites
 
 on:
   workflow_dispatch:
@@ -12,23 +12,10 @@ concurrency:
 
 jobs:
   windows-baseline:
-    if: github.ref_name == 'ci/clean-upstream-baseline'
+    if: github.ref_name == 'ci/clean-upstream-full-windows'
     runs-on: windows-2025
     timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: corrupt-board-recovery
-            target: //codex-rs/app-server:app-server-all-test
-            test: suite::v2::thread_delete::thread_delete_recovers_only_corrupt_board_with_feature_disabled
-          - label: subagent-stop-hook
-            target: //codex-rs/core:core-all-test
-            test: suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents
-          - label: mcp-large-image
-            target: //codex-rs/core:core-all-test
-            test: suite::rmcp_client::stdio_image_responses_resize_large_image
-    name: Clean upstream Windows (${{ matrix.label }})
+    name: Clean upstream Windows core and app-server suites
     steps:
       # The workflow comes from the fork. Source, local actions, and pins come
       # from upstream; only generated workspace lock versions are normalized.
@@ -67,10 +54,9 @@ jobs:
           target: x86_64-pc-windows-msvc
           cache-scope: clean-upstream-native-windows
 
-      - name: Build the selected original upstream test binary
+      - name: Build the original upstream regression suites
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          REGRESSION_TARGET: ${{ matrix.target }}
         shell: bash
         run: |
           set -euo pipefail
@@ -84,64 +70,40 @@ jobs:
             --config=ci-windows-msvc \
             --platforms=//:windows_x86_64_msvc \
             "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-            --build_metadata=TAG_clean_upstream_native=true \
-            -- "$REGRESSION_TARGET"
+            --build_metadata=TAG_clean_upstream_full_suites=true \
+            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
 
-      - name: Loop only the selected original upstream regression
+      - name: Execute complete original upstream core and app-server suites
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-          REGRESSION_TARGET: ${{ matrix.target }}
-          REGRESSION_TEST: ${{ matrix.test }}
         shell: bash
         run: |
           set -euo pipefail
           git diff --exit-code -- . ":(exclude)codex-rs/Cargo.lock" ":(exclude)MODULE.bazel.lock"
           test -z "$(git ls-files --others --exclude-standard)"
-          attempt_log=$(mktemp "${RUNNER_TEMP}/clean-upstream-attempt-XXXXXX")
-          trap 'rm -f -- "$attempt_log"' EXIT
-          attempt=0
-          while :; do
-            attempt=$((attempt + 1))
-            echo "Clean upstream attempt $attempt: $REGRESSION_TEST"
-            if ./.github/scripts/run-bazel-ci.sh \
-              --print-failed-action-summary \
-              --print-failed-test-logs \
-              --windows-msvc-host-platform \
-              -- \
-              test \
-              --config=ci-windows-msvc \
-              --platforms=//:windows_x86_64_msvc \
-              --test_tag_filters=-argument-comment-lint \
-              --test_verbose_timeout_warnings \
-              --test_sharding_strategy=disabled \
-              --test_output=all \
-              --nocache_test_results \
-              --test_arg=--exact \
-              "--test_arg=$REGRESSION_TEST" \
-              --test_arg=--nocapture \
-              --test_env=RUST_BACKTRACE=1 \
-              --test_env=RUST_LIB_BACKTRACE=0 \
-              "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
-              --build_metadata=TAG_clean_upstream_native=true \
-              -- "$REGRESSION_TARGET" 2>&1 | tee "$attempt_log"; then
-              grep -q 'running 1 test' "$attempt_log"
-              grep -Fq "test $REGRESSION_TEST ... ok" "$attempt_log"
-              grep -q 'test result: ok\. 1 passed; 0 failed;' "$attempt_log"
-              if [[ "$attempt" -eq 1 ]]; then
-                echo "::notice title=Clean upstream regression executed::$REGRESSION_TEST passed its first uncached execution."
-              fi
-            else
-              status=$?
-              echo "Stopped at clean upstream attempt $attempt with exit $status"
-              exit "$status"
-            fi
-          done
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --windows-msvc-host-platform \
+            -- \
+            test \
+            --config=ci-windows-msvc \
+            --platforms=//:windows_x86_64_msvc \
+            --test_tag_filters=-argument-comment-lint \
+            --test_verbose_timeout_warnings \
+            --test_output=errors \
+            --nocache_test_results \
+            --test_env=RUST_BACKTRACE=1 \
+            --test_env=RUST_LIB_BACKTRACE=0 \
+            "--build_metadata=COMMIT_SHA=$(git rev-parse HEAD)" \
+            --build_metadata=TAG_clean_upstream_full_suites=true \
+            -- //codex-rs/core:core-all-test //codex-rs/app-server:app-server-all-test
 
       - name: Upload upstream execution logs
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: clean-upstream-windows-${{ matrix.label }}
+          name: clean-upstream-windows-full-suites
           path: ${{ runner.temp }}/bazel-execution-logs
           retention-days: 1
           if-no-files-found: ignore
