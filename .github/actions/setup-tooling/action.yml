@@ -36,8 +36,19 @@ runs:
       shell: bash
       run: bash "$GITHUB_ACTION_PATH/setup.sh"
 
-    - name: Save verified Maven dependencies and wrapper
+    - name: Recheck Maven dependency cache before saving
+      id: dependencies_before_save
       if: always() && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outputs.cache-primary-key != '' && steps.dependencies.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          ${{ github.workspace }}/.cat/work/temp/build-caches/maven/repository
+          ${{ github.workspace }}/.cat/work/temp/build-caches/maven/home/wrapper
+        key: ${{ steps.dependencies.outputs.cache-primary-key }}
+        lookup-only: true
+
+    - name: Save verified Maven dependencies and wrapper
+      if: always() && !cancelled() && steps.build.outcome == 'success' && steps.dependencies.outputs.cache-primary-key != '' && steps.dependencies.outputs.cache-hit != 'true' && steps.dependencies_before_save.outputs.cache-hit != 'true'
       uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: |
