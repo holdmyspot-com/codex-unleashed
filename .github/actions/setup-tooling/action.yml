@@ -34,12 +34,13 @@ runs:
           *) echo 'ERROR: tooling checkout must be inside GITHUB_WORKSPACE.' >&2; exit 1 ;;
         esac
         printf 'root=%s\n' "$relative_root" >> "$GITHUB_OUTPUT"
+        printf 'runtime=%s/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime\n' "$project_root" >> "$GITHUB_OUTPUT"
 
     - name: Restore verified tooling runtime
       id: runtime
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
-        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        path: ${{ steps.checkout.outputs.runtime }}
         # Verification exercises the workflow and script consumers as well as the Java sources.
         key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
 
@@ -67,7 +68,7 @@ runs:
       if: success() && steps.runtime.outputs.cache-hit != 'true'
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
-        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        path: ${{ steps.checkout.outputs.runtime }}
         key: ${{ steps.runtime.outputs.cache-primary-key }}
         lookup-only: true
 
@@ -75,8 +76,17 @@ runs:
       if: success() && steps.runtime.outputs.cache-hit != 'true' && steps.runtime_before_save.outputs.cache-hit != 'true'
       uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
-        path: ${{ github.action_path }}/../../../.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+        path: ${{ steps.checkout.outputs.runtime }}
         key: ${{ steps.runtime.outputs.cache-primary-key }}
+
+    - name: Require verified runtime cache creation
+      if: success() && steps.runtime.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: ${{ steps.checkout.outputs.runtime }}
+        key: ${{ steps.runtime.outputs.cache-primary-key }}
+        lookup-only: true
+        fail-on-cache-miss: true
 
     - name: Recheck Maven dependency cache before saving
       id: dependencies_before_save
