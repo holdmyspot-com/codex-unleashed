@@ -20,6 +20,7 @@ None. Each feature patch registers and documents its own properties:
 - [Expanded diff previews README.md](../issue-47390/README.md)
 - [Collapsed tool activity README.md](../collapsed-tool-activity/README.md)
 - [Background subagent completion README.md](../issue-35/README.md)
+- [Readable command previews README.md](../issue-70/README.md)
 
 ## Dependencies and application order
 

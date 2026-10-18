@@ -1,22 +1,31 @@
-From 3ff8aab6cc3f834c186285ce83753cbaecef836a Mon Sep 17 00:00:00 2001
+From 69d88dd3ad2b27bbf672cac5cd3c2b51246efd79 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 17:30:57 +0000
+Date: Sun, 18 Oct 2026 14:17:05 +0000
 Subject: [PATCH] Publish the canonical combined configuration schema
 
-Base: openai/codex rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d). Prerequisite: the complete preceding runtime and build patch queue. scripts/apply-patches.sh applies this shared generated fixture last.
+Base: openai/codex rust-v0.163.0
+(83086188ae0614bd882818ff1aa23f3194962012). Prerequisite: the complete
+preceding runtime and build patch queue, including issue70.
+scripts/apply-patches.sh applies this shared generated fixture after the
+runtime feature patches.
 
-The real schema CLI regression resolves binaries and resources through the maintained cargo-bin helpers, so manifest-only Windows runfiles are usable. Register its dev-dependency here rather than depending on schema changes before this patch applies. Preserve exact byte and semantic fixture comparisons, including CRLF normalization.
+Include unleashed_readable_commands in both feature-property locations.
+The previous combined fixture omits the newly registered boolean; the real
+schema CLI emits it. Preserve byte and semantic fixture comparisons, Cargo
+and Bazel resource resolution, and Windows CRLF normalization.
 
-Regression evidence: native jobs 116473691446 and 116520488151 reproduce unresolved paths; the complete schema test pair passes with these resolvers. Full ordered-queue application is the release preparation gate.
+The schema CLI regression resolves binaries and resources through the
+maintained cargo-bin helpers so manifest-only Windows runfiles are usable.
+Its dev-dependency belongs to this schema patch.
 ---
  codex-rs/config-schema/Cargo.toml             |  5 ++
  .../config-schema/tests/codex_unleashed.rs    | 50 +++++++++++++++++++
- codex-rs/core/config.schema.json              | 35 ++++++++++---
- 3 files changed, 84 insertions(+), 6 deletions(-)
+ codex-rs/core/config.schema.json              | 37 ++++++++++++--
+ 3 files changed, 88 insertions(+), 4 deletions(-)
  create mode 100644 codex-rs/config-schema/tests/codex_unleashed.rs
 
 diff --git a/codex-rs/config-schema/Cargo.toml b/codex-rs/config-schema/Cargo.toml
-index ec6458bd3..ef08a6c63 100644
+index ec6458b..ef08a6c 100644
 --- a/codex-rs/config-schema/Cargo.toml
 +++ b/codex-rs/config-schema/Cargo.toml
 @@ -15,3 +15,8 @@ workspace = true
@@ -30,7 +39,7 @@ index ec6458bd3..ef08a6c63 100644
 +tempfile = { workspace = true }
 diff --git a/codex-rs/config-schema/tests/codex_unleashed.rs b/codex-rs/config-schema/tests/codex_unleashed.rs
 new file mode 100644
-index 000000000..b4dc38386
+index 0000000..b4dc383
 --- /dev/null
 +++ b/codex-rs/config-schema/tests/codex_unleashed.rs
 @@ -0,0 +1,50 @@
@@ -85,10 +94,10 @@ index 000000000..b4dc38386
 +    );
 +}
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 607d1948d..a6c69ff10 100644
+index d8a6a03..9363320 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -629,6 +629,21 @@
+@@ -646,6 +646,21 @@
        },
        "type": "object"
      },
@@ -110,16 +119,18 @@ index 607d1948d..a6c69ff10 100644
      "ComputerUseConfigToml": {
        "additionalProperties": false,
        "properties": {
-@@ -1235,13 +1250,13 @@
+@@ -1276,13 +1291,16 @@
              "unleashed_background_subagents": {
                "type": "boolean"
              },
--            "unleashed_expanded_diff_previews": {
 +            "unleashed_collapsed_tool_activity": {
++              "type": "boolean"
++            },
+             "unleashed_expanded_diff_previews": {
                "type": "boolean"
              },
 -            "use_agent_identity": {
-+            "unleashed_expanded_diff_previews": {
++            "unleashed_readable_commands": {
                "type": "boolean"
              },
 -            "unleashed_collapsed_tool_activity": {
@@ -127,7 +138,7 @@ index 607d1948d..a6c69ff10 100644
                "type": "boolean"
              },
              "use_legacy_landlock": {
-@@ -6879,6 +6894,14 @@
+@@ -7008,6 +7026,14 @@
        ],
        "description": "Cloud-owned feature settings."
      },
@@ -142,16 +153,18 @@ index 607d1948d..a6c69ff10 100644
      "compact_prompt": {
        "description": "Compact prompt used for history compaction.",
        "type": "string"
-@@ -7463,13 +7486,13 @@
+@@ -7616,13 +7642,16 @@
          "unleashed_background_subagents": {
            "type": "boolean"
          },
--        "unleashed_expanded_diff_previews": {
 +        "unleashed_collapsed_tool_activity": {
++          "type": "boolean"
++        },
+         "unleashed_expanded_diff_previews": {
            "type": "boolean"
          },
 -        "use_agent_identity": {
-+        "unleashed_expanded_diff_previews": {
++        "unleashed_readable_commands": {
            "type": "boolean"
          },
 -        "unleashed_collapsed_tool_activity": {

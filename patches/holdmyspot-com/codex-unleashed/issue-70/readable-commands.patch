@@ -1,0 +1,1741 @@
+From d546dac3473a65eacbeb996f7d574dcf57809d07 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 18 Oct 2026 14:29:09 +0000
+Subject: [PATCH] feat(tui): keep command previews readable and expandable
+
+Preserve executable names and exact command copy payloads while sharing
+mouse and configured keyboard disclosure state. Enable
+unleashed_readable_commands by default; keep legacy rendering on opt-out.
+
+Refs: holdmyspot-com/codex-unleashed#70
+Base: openai/codex rust-v0.163.0
+(83086188ae0614bd882818ff1aa23f3194962012).
+Queue-context prerequisite: the existing patch queue at downstream
+64897f4247469148d5ea88261696536e06cef539. The independent upstream
+contribution variant includes its own schema and requires no other patches.
+The shared schema patch supplies the combined fixture for this queue variant.
+
+TDD: three standalone upstream regressions fail before implementation.
+The emitted standalone variant passes just fmt-check and all 18 focused
+feature checks on a fresh upstream checkout. Queue integration adds coverage
+for grouped historical command presentation alongside collapsed activity.
+---
+ codex-rs/features/src/lib.rs                  |   8 +
+ codex-rs/features/src/tests.rs                |  15 +
+ .../tui/src/chatwidget/command_lifecycle.rs   |  27 +-
+ codex-rs/tui/src/chatwidget/tests/helpers.rs  |   5 +
+ .../chatwidget/tests/history_projection.rs    |  86 +++++
+ codex-rs/tui/src/exec_cell/compact.rs         |  40 +++
+ codex-rs/tui/src/exec_cell/mod.rs             |   2 +
+ codex-rs/tui/src/exec_cell/model.rs           |  35 +-
+ codex-rs/tui/src/exec_cell/preview.rs         | 224 ++++++++++++
+ codex-rs/tui/src/exec_cell/readable.rs        |  80 +++++
+ codex-rs/tui/src/exec_cell/render.rs          |  21 ++
+ codex-rs/tui/src/exec_cell/transcript.rs      |  18 +-
+ .../tui/src/terminal_hyperlinks/source.rs     |   4 +
+ codex-rs/tui/src/thread_transcript.rs         |  17 +-
+ codex-rs/tui/src/thread_transcript/tools.rs   |  20 +-
+ .../tui/src/thread_transcript/tools_tests.rs  |  78 ++++-
+ codex-rs/tui/src/transcript_view.rs           |  14 +-
+ codex-rs/tui/src/transcript_view/commands.rs  |  92 +++++
+ .../tui/src/transcript_view/disclosure.rs     |   2 +-
+ codex-rs/tui/src/transcript_view/footer.rs    |   7 +
+ codex-rs/tui/src/transcript_view/input.rs     |   8 +
+ codex-rs/tui/src/transcript_view/layout.rs    |  28 ++
+ codex-rs/tui/src/transcript_view/text.rs      |  37 ++
+ codex-rs/tui/src/transcript_view_tests.rs     | 327 ++++++++++++++++++
+ 24 files changed, 1185 insertions(+), 10 deletions(-)
+ create mode 100644 codex-rs/tui/src/exec_cell/preview.rs
+ create mode 100644 codex-rs/tui/src/exec_cell/readable.rs
+ create mode 100644 codex-rs/tui/src/transcript_view/commands.rs
+
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index 8b11d1c..9324d0f 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -93,6 +93,8 @@ impl Stage {
+ /// Unique features toggled via configuration.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ pub enum Feature {
++    /// Keep command paths and arguments readable with local command/output disclosure.
++    UnleashedReadableCommands,
+     /// Expand patch diffs in the owned fullscreen transcript.
+     UnleashedExpandedDiffPreviews,
+     /// Preview consumer five-hour and weekly allowance history.
+@@ -1023,6 +1025,12 @@ pub struct FeatureSpec {
+ }
+ 
+ pub const FEATURES: &[FeatureSpec] = &[
++    FeatureSpec {
++        id: Feature::UnleashedReadableCommands,
++        key: "unleashed_readable_commands",
++        stage: Stage::Stable,
++        default_enabled: true,
++    },
+     FeatureSpec {
+         id: Feature::UnleashedExpandedDiffPreviews,
+         key: "unleashed_expanded_diff_previews",
+diff --git a/codex-rs/features/src/tests.rs b/codex-rs/features/src/tests.rs
+index a58781b..3f2e15c 100644
+--- a/codex-rs/features/src/tests.rs
++++ b/codex-rs/features/src/tests.rs
+@@ -914,3 +914,18 @@ fn unleashed_collapsed_tool_activity_is_enabled_by_default_and_can_be_disabled()
+     )]));
+     assert!(!features.enabled(feature));
+ }
++
++#[test]
++fn unleashed_readable_commands_defaults_on_and_accepts_explicit_disable() {
++    let mut features = Features::with_defaults();
++    assert!(features.enabled(Feature::UnleashedReadableCommands));
++    assert_eq!(
++        feature_for_key("unleashed_readable_commands"),
++        Some(Feature::UnleashedReadableCommands)
++    );
++    features.apply_map(&BTreeMap::from([(
++        "unleashed_readable_commands".to_owned(),
++        false,
++    )]));
++    assert!(!features.enabled(Feature::UnleashedReadableCommands));
++}
+diff --git a/codex-rs/tui/src/chatwidget/command_lifecycle.rs b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
+index 069c12f..4251320 100644
+--- a/codex-rs/tui/src/chatwidget/command_lifecycle.rs
++++ b/codex-rs/tui/src/chatwidget/command_lifecycle.rs
+@@ -253,6 +253,11 @@ impl ChatWidget {
+         else {
+             return;
+         };
++        let original_command = command.clone();
++        let readable = self
++            .config
++            .features
++            .enabled(codex_features::Feature::UnleashedReadableCommands);
+         let (command, parsed_cmd) =
+             command_execution_command_and_parsed(&command, &command_actions);
+         // Ensure the status indicator is visible while the command runs.
+@@ -301,7 +306,7 @@ impl ChatWidget {
+ 
+             self.transcript.active_cell = Some(Box::new(
+                 new_active_exec_command(
+-                    id,
++                    id.clone(),
+                     command,
+                     parsed_cmd,
+                     source,
+@@ -313,6 +318,15 @@ impl ChatWidget {
+             self.bump_active_cell_revision();
+         }
+ 
++        if let Some(cell) = self
++            .transcript
++            .active_cell
++            .as_mut()
++            .and_then(|cell| cell.as_any_mut().downcast_mut::<ExecCell>())
++        {
++            cell.set_readable_commands(readable);
++            cell.retain_command_source(&id, original_command);
++        }
+         self.request_redraw();
+     }
+ 
+@@ -350,6 +364,11 @@ impl ChatWidget {
+         else {
+             return;
+         };
++        let original_command = command.clone();
++        let readable = self
++            .config
++            .features
++            .enabled(codex_features::Feature::UnleashedReadableCommands);
+         let event_command = split_command_string(&command);
+         let event_parsed = command_actions
+             .into_iter()
+@@ -429,6 +448,7 @@ impl ChatWidget {
+                     .as_mut()
+                     .and_then(|c| c.as_any_mut().downcast_mut::<ExecCell>())
+                 {
++                    cell.retain_command_source(&id, original_command);
+                     let completed = cell.complete_call(&id, output, duration);
+                     debug_assert!(completed, "active exec cell should contain {id}");
+                     if cell.should_flush() {
+@@ -449,6 +469,8 @@ impl ChatWidget {
+                     self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
+                 )
+                 .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
++                orphan.set_readable_commands(readable);
++                orphan.retain_command_source(&id, original_command);
+                 let completed = orphan.complete_call(&id, output, duration);
+                 debug_assert!(completed, "new orphan exec cell should contain {id}");
+                 self.app_event_tx
+@@ -465,6 +487,8 @@ impl ChatWidget {
+                     self.local_settings.tui.animations && self.local_settings.tui.effects.progress,
+                 )
+                 .with_collapsed_tool_activity(self.config.collapsed_tool_activity_enabled());
++                cell.set_readable_commands(readable);
++                cell.retain_command_source(&id, original_command.clone());
+                 let completed = cell.complete_call(&id, output, duration);
+                 debug_assert!(completed, "new exec cell should contain {id}");
+                 if let Some(active) = self
+@@ -478,6 +502,7 @@ impl ChatWidget {
+                 {
+                     // Replayed commands have completion events without matching starts.
+                     active.group.calls.extend(cell.group.calls);
++                    active.retain_command_source(&id, original_command);
+                     self.bump_active_cell_revision();
+                     self.request_redraw();
+                 } else {
+diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+index c9c23e6..74bafd4 100644
+--- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
++++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+@@ -25,6 +25,11 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
+     config.cwd = PathBuf::from(test_path_display("/tmp/project")).abs();
+     config.config_layer_stack = ConfigLayerStack::default();
+     config.startup_warnings.clear();
++    // Generic fixtures exercise legacy presentation; readable-command cases opt in explicitly.
++    config
++        .features
++        .disable(codex_features::Feature::UnleashedReadableCommands)
++        .expect("legacy rendering fixture permits opt-out");
+     (codex_home, config)
+ }
+ 
+diff --git a/codex-rs/tui/src/chatwidget/tests/history_projection.rs b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
+index 30674a7..0a91df4 100644
+--- a/codex-rs/tui/src/chatwidget/tests/history_projection.rs
++++ b/codex-rs/tui/src/chatwidget/tests/history_projection.rs
+@@ -385,3 +385,89 @@ fn take_history_cells(
+         })
+         .collect()
+ }
++
++#[tokio::test]
++async fn readable_command_preview_protocol_source_survives_live_and_replay() {
++    let original = "'/plugins/CAT path/very/long/cache/bin/run-part' <<'EOF'\nprintf '%s\\n' 'a b' > '/reports/long path/result.txt'\nEOF\n";
++    for enabled in [true, false] {
++        let (mut chat, mut rx, _ops) = make_chatwidget_manual(None).await;
++        if enabled {
++            chat.config
++                .features
++                .enable(codex_features::Feature::UnleashedReadableCommands)
++                .expect("readable rendering fixture permits opt-in");
++        }
++        drain_insert_history(&mut rx);
++        let mut item = AppServerThreadItem::CommandExecution {
++            id: "readable-protocol".into(),
++            plugin_id: None,
++            script_path: None,
++            model_context: None,
++            sandbox_type: None,
++            command: original.into(),
++            cwd: chat.config.cwd.clone().into(),
++            process_id: None,
++            source: ExecCommandSource::Agent,
++            status: AppServerCommandExecutionStatus::InProgress,
++            command_actions: Vec::new(),
++            aggregated_output: None,
++            exit_code: None,
++            duration_ms: None,
++        };
++        let check = |cell: &dyn HistoryCell| {
++            let lines = cell.compact_hyperlink_lines(48);
++            let sources: Vec<_> = lines
++                .iter()
++                .filter_map(|line| line.source.as_ref())
++                .filter_map(|source| source.command.as_deref())
++                .collect();
++            if enabled {
++                assert!(!sources.is_empty());
++                assert!(sources.iter().all(|source| *source == original));
++                assert!(
++                    lines
++                        .iter()
++                        .map(|line| line.line.to_string())
++                        .collect::<Vec<_>>()
++                        .join("\n")
++                        .contains("run-part'")
++                );
++            } else {
++                assert!(sources.is_empty());
++            }
++        };
++        chat.handle_command_execution_started_now(item.clone());
++        check(chat.transcript.active_cell.as_deref().unwrap());
++        if let AppServerThreadItem::CommandExecution {
++            status,
++            aggregated_output,
++            exit_code,
++            duration_ms,
++            ..
++        } = &mut item
++        {
++            *status = AppServerCommandExecutionStatus::Completed;
++            *aggregated_output = Some("retained output\n".into());
++            *exit_code = Some(0);
++            *duration_ms = Some(5);
++        }
++        chat.handle_command_execution_completed_now(item.clone());
++        let completed = std::iter::from_fn(|| rx.try_recv().ok())
++            .filter_map(|event| match event {
++                AppEvent::InsertHistoryCell(cell) if !cell.activity_ids().is_empty() => Some(cell),
++                _ => None,
++            })
++            .collect::<Vec<_>>();
++        assert_eq!(completed.len(), 1);
++        check(completed[0].as_ref());
++        let projected = thread_items_to_transcript_cells(
++            chat.thread_id,
++            &chat.config.cwd,
++            [item],
++            RawReasoningVisibility::Hidden,
++            Some(&chat.config),
++        );
++        assert_eq!(projected.len(), 1);
++        check(projected[0].as_ref());
++    }
++}
+diff --git a/codex-rs/tui/src/exec_cell/compact.rs b/codex-rs/tui/src/exec_cell/compact.rs
+index f8fe1bb..1ca5d88 100644
+--- a/codex-rs/tui/src/exec_cell/compact.rs
++++ b/codex-rs/tui/src/exec_cell/compact.rs
+@@ -66,6 +66,9 @@ impl ExecCell {
+     }
+ 
+     pub(super) fn compact_command_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        if self.readable_commands {
++            return self.readable_command_lines(width);
++        }
+         let [call] = self.group.calls.as_slice() else {
+             return Vec::new();
+         };
+@@ -130,3 +133,40 @@ impl ExecCell {
+         lines
+     }
+ }
++
++#[cfg(test)]
++mod readable_commands_tests {
++    use crate::exec_cell::new_active_exec_command;
++    use codex_app_server_protocol::CommandExecutionSource;
++
++    #[test]
++    fn readable_command_preview_preserves_long_executable_and_arguments() {
++        let cell = new_active_exec_command(
++            "readable-command".to_owned(),
++            vec![
++                "/home/gili/codex-unleashed/home/.codex/plugins/cache/cat/cat/1.0/bin/run-part"
++                    .to_owned(),
++                "--verbose".to_owned(),
++                "--output".to_owned(),
++                "/home/gili/codex-unleashed/workspace/reports/verification.txt".to_owned(),
++            ],
++            Vec::new(),
++            CommandExecutionSource::Agent,
++            None,
++            false,
++        );
++        let cell = cell.with_readable_commands(true);
++        let lines = cell.compact_command_lines(48);
++        let text = lines
++            .iter()
++            .map(|line| line.line.to_string())
++            .collect::<Vec<_>>()
++            .join("\n");
++
++        assert!(text.contains("run-part"), "{text}");
++        assert!(text.contains("--verbose"), "{text}");
++        assert!(text.contains("--output"), "{text}");
++        assert!(text.contains("verification.txt"), "{text}");
++        assert!(lines.iter().all(|line| line.line.width() <= 48));
++    }
++}
+diff --git a/codex-rs/tui/src/exec_cell/mod.rs b/codex-rs/tui/src/exec_cell/mod.rs
+index 5c93f90..54599a8 100644
+--- a/codex-rs/tui/src/exec_cell/mod.rs
++++ b/codex-rs/tui/src/exec_cell/mod.rs
+@@ -1,6 +1,8 @@
+ mod compact;
+ mod live_output;
+ mod model;
++mod preview;
++mod readable;
+ mod render;
+ mod tool_activity;
+ mod transcript;
+diff --git a/codex-rs/tui/src/exec_cell/model.rs b/codex-rs/tui/src/exec_cell/model.rs
+index 47c0b38..be78de8 100644
+--- a/codex-rs/tui/src/exec_cell/model.rs
++++ b/codex-rs/tui/src/exec_cell/model.rs
+@@ -78,6 +78,9 @@ pub(crate) struct ExecCall {
+ #[derive(Debug)]
+ pub(crate) struct ExecCell {
+     pub(crate) group: ActivityGroup<ExecCall>,
++    pub(super) readable_commands: bool,
++    /// Verbatim protocol source, before argv normalization loses quoting and newlines.
++    command_sources: std::collections::BTreeMap<String, String>,
+     animations_enabled: bool,
+     pub(super) collapsed_tool_activity: bool,
+     pub(super) activity_started_at: Instant,
+@@ -88,6 +91,8 @@ impl ExecCell {
+         let activity_started_at = call.start_time.unwrap_or_else(Instant::now);
+         Self {
+             group: ActivityGroup::new(vec![call]),
++            readable_commands: false,
++            command_sources: std::collections::BTreeMap::new(),
+             animations_enabled,
+             collapsed_tool_activity: false,
+             activity_started_at,
+@@ -111,6 +116,32 @@ impl ExecCell {
+         self.collapsed_tool_activity || self.is_exploring_cell()
+     }
+ 
++    /// Select the command presentation independently of grouping and tool execution.
++    pub(crate) fn with_readable_commands(mut self, enabled: bool) -> Self {
++        self.readable_commands = enabled;
++        self
++    }
++
++    /// Apply the configured presentation to a live group after construction.
++    pub(crate) fn set_readable_commands(&mut self, enabled: bool) {
++        self.readable_commands = enabled;
++    }
++
++    /// Retain exact source for a tracked call without changing its parsed execution arguments.
++    pub(crate) fn retain_command_source(&mut self, call_id: &str, source: String) {
++        if self.group.calls.iter().any(|call| call.call_id == call_id) {
++            self.command_sources.insert(call_id.to_owned(), source);
++        }
++    }
++
++    /// Return protocol source when available, otherwise the canonical rendering of known argv.
++    pub(super) fn command_source(&self, call: &ExecCall) -> Cow<'_, str> {
++        match self.command_sources.get(&call.call_id) {
++            Some(source) => Cow::Borrowed(source),
++            None => Cow::Owned(crate::exec_command::escape_command(&call.command)),
++        }
++    }
++
+     pub(crate) fn add_call(
+         &mut self,
+         call_id: String,
+@@ -156,12 +187,14 @@ impl ExecCell {
+             self.group.calls.len(),
+         );
+         self.group.details = newer.group.details;
++        self.command_sources.append(&mut newer.command_sources);
+         self.group.calls.append(&mut newer.group.calls);
+         Ok(())
+     }
+ 
+     /// Preserve live clocks and pending output when a validated older page extends exploration.
+-    pub(crate) fn prepend(&mut self, older: Self) {
++    pub(crate) fn prepend(&mut self, mut older: Self) {
++        self.command_sources.append(&mut older.command_sources);
+         self.group.prepend(older.group);
+     }
+ 
+diff --git a/codex-rs/tui/src/exec_cell/preview.rs b/codex-rs/tui/src/exec_cell/preview.rs
+new file mode 100644
+index 0000000..8b6b442
+--- /dev/null
++++ b/codex-rs/tui/src/exec_cell/preview.rs
+@@ -0,0 +1,224 @@
++//! Shell-source previews that preserve argument boundaries and executable filenames.
++
++use codex_shell_command::bash::try_parse_shell;
++use ratatui::style::Style;
++use ratatui::text::Line;
++use ratatui::text::Span;
++use unicode_segmentation::UnicodeSegmentation;
++use unicode_width::UnicodeWidthStr;
++
++/// Wrap a shell source preview, shortening only over-width path directory prefixes.
++///
++/// Shell syntax comes from Codex's parser. Invalid syntax remains literal text; display
++/// abbreviations never modify the original command retained by the owning execution cell.
++pub fn command_preview(source: &str, width: usize) -> Vec<Line<'static>> {
++    let width = width.max(1);
++    let mut atoms = Vec::new();
++    if let Some(tree) = try_parse_shell(source)
++        && !tree.root_node().has_error()
++    {
++        let mut cursor = tree.walk();
++        let mut covered = 0;
++        loop {
++            let node = cursor.node();
++            if node.start_byte() >= covered
++                && matches!(
++                    node.kind(),
++                    "command_name" | "word" | "string" | "raw_string" | "concatenation"
++                )
++            {
++                atoms.push((node.byte_range(), node.kind() == "command_name"));
++                covered = node.end_byte();
++            }
++            if cursor.goto_first_child() {
++                continue;
++            }
++            while !cursor.goto_next_sibling() {
++                if !cursor.goto_parent() {
++                    return preview_atoms(source, width, atoms);
++                }
++            }
++        }
++    }
++    preview_atoms(source, width, atoms)
++}
++
++/// Lay out parser-selected atoms and untouched source between them in source order.
++fn preview_atoms(
++    source: &str,
++    width: usize,
++    atoms: Vec<(std::ops::Range<usize>, bool)>,
++) -> Vec<Line<'static>> {
++    let mut parts = Vec::new();
++    let mut offset = 0;
++    for (range, executable) in atoms {
++        if range.start > offset {
++            parts.push((&source[offset..range.start], false, false));
++        }
++        offset = range.end;
++        parts.push((&source[range], executable, true));
++    }
++    if offset < source.len() {
++        parts.push((&source[offset..], false, false));
++    }
++    let mut lines = Vec::new();
++    let mut current = Line::default();
++    for (part, executable, atom) in parts {
++        let display = if atom {
++            abbreviated_path(part, width)
++        } else {
++            part.to_owned()
++        };
++        for (index, logical) in display.split('\n').enumerate() {
++            if index > 0 {
++                lines.push(std::mem::take(&mut current));
++            }
++            if atom && current.width() > 0 && current.width() + logical.width() > width {
++                lines.push(std::mem::take(&mut current));
++            }
++            let directory_end = if atom {
++                logical.rfind(['/', '\\']).map(|end| end + 1)
++            } else {
++                None
++            };
++            let mut byte = 0;
++            for grapheme in logical.graphemes(true) {
++                if current.width() + grapheme.width() > width && current.width() > 0 {
++                    lines.push(std::mem::take(&mut current));
++                }
++                let style = if directory_end.is_some_and(|end| byte < end) {
++                    Style::default().dim()
++                } else if executable {
++                    Style::default().bold()
++                } else {
++                    Style::default()
++                };
++                current.push_span(Span::styled(grapheme.to_owned(), style));
++                byte += grapheme.len();
++            }
++        }
++    }
++    if current.width() > 0 || lines.is_empty() {
++        lines.push(current);
++    }
++    lines
++}
++
++/// Retain the filename, leading identity and as much trailing directory context as fits.
++fn abbreviated_path(value: &str, width: usize) -> String {
++    if value.width() <= width || value.contains('\n') {
++        return value.to_owned();
++    }
++    let path = value.trim_matches(['\'', '"']);
++    if !(path.starts_with('/')
++        || path.starts_with("./")
++        || path.starts_with("../")
++        || path.starts_with("~/")
++        || path.as_bytes().get(1) == Some(&b':'))
++    {
++        return value.to_owned();
++    }
++    let Some(last) = path.rfind(['/', '\\']) else {
++        return value.to_owned();
++    };
++    let start = value.len() - value.trim_start_matches(['\'', '"']).len();
++    let end = value.trim_end_matches(['\'', '"']).len();
++    let prefix = &value[..start];
++    let suffix = &value[end..];
++    let mut tail = &path[last..];
++    let first_end = path[1..]
++        .find(['/', '\\'])
++        .map(|index| index + 1)
++        .unwrap_or(0);
++    let head = &path[..first_end];
++    let mut result = format!("{prefix}{head}/…{tail}{suffix}");
++    if result.width() > width {
++        result = format!("{prefix}…{tail}{suffix}");
++    }
++    for (index, _) in path[..last].rmatch_indices(['/', '\\']) {
++        let candidate = format!("{prefix}{head}/…{}{suffix}", &path[index..]);
++        if candidate.width() > width {
++            break;
++        }
++        tail = &path[index..];
++        result = format!("{prefix}{head}/…{tail}{suffix}");
++    }
++    result
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use ratatui::style::Modifier;
++
++    fn text(lines: &[Line<'_>]) -> String {
++        lines
++            .iter()
++            .map(ToString::to_string)
++            .collect::<Vec<_>>()
++            .join("\n")
++    }
++
++    #[test]
++    fn readable_command_preview_paths_preserve_filename_quotes_and_terminal_width() {
++        for width in [24, 40, 80] {
++            let source = "'/plugins/CAT path/very/long/cache/directory/bin/run-part' --output '/reports/very/long/directory/検証.txt' --verbose";
++            let lines = command_preview(source, width);
++            assert!(lines.iter().all(|line| line.width() <= width));
++            let rendered = text(&lines);
++            assert!(rendered.contains("run-part'"), "{rendered}");
++            assert!(rendered.contains("検証.txt'"), "{rendered}");
++            assert!(rendered.contains("--output"));
++            assert!(rendered.contains("--verbose"));
++        }
++    }
++
++    #[test]
++    fn readable_command_preview_fitting_paths_and_invalid_syntax_remain_literal() {
++        for source in ["/usr/bin/echo 'a b'", "printf '%s\\n' 'unterminated"] {
++            assert_eq!(text(&command_preview(source, 100)), source);
++        }
++    }
++
++    #[test]
++    fn readable_command_preview_same_basename_keeps_leading_identity() {
++        let first = text(&command_preview(
++            "/alpha/really/long/cache/bin/codex --help",
++            28,
++        ));
++        let second = text(&command_preview(
++            "/bravo/really/long/cache/bin/codex --help",
++            28,
++        ));
++        assert_ne!(first, second);
++        assert!(first.contains("codex"));
++        assert!(second.contains("codex"));
++    }
++
++    #[test]
++    fn readable_command_preview_shell_structure_and_oversized_argument_remain_inspectable() {
++        let source = "run-part <<'EOF'\nprintf '%s\\n' 'a b'\ngit diff --stat\nEOF";
++        assert_eq!(text(&command_preview(source, 100)), source);
++        let argument = "abcdefghijklmnopqrstuvwxyz0123456789";
++        let rendered = text(&command_preview(&format!("echo {argument}"), 12));
++        assert!(rendered.replace('\n', "").contains(argument));
++    }
++
++    #[test]
++    fn readable_command_preview_styles_executable_and_directories_without_losing_plain_text() {
++        let lines = command_preview("/usr/bin/echo --verbose", 80);
++        assert_eq!(text(&lines), "/usr/bin/echo --verbose");
++        assert!(
++            lines
++                .iter()
++                .flat_map(|line| &line.spans)
++                .any(|span| span.style.add_modifier.contains(Modifier::BOLD))
++        );
++        assert!(
++            lines
++                .iter()
++                .flat_map(|line| &line.spans)
++                .any(|span| span.style.add_modifier.contains(Modifier::DIM))
++        );
++    }
++}
+diff --git a/codex-rs/tui/src/exec_cell/readable.rs b/codex-rs/tui/src/exec_cell/readable.rs
+new file mode 100644
+index 0000000..e358f9d
+--- /dev/null
++++ b/codex-rs/tui/src/exec_cell/readable.rs
+@@ -0,0 +1,80 @@
++//! Readable command previews share exact copy payloads with their expanded presentation.
++
++use super::model::ExecCell;
++use super::preview::command_preview;
++use crate::history_cell::activity_preview::DETAIL_PREVIEW_LINES;
++use crate::history_cell::activity_preview::clipped_line;
++use crate::terminal_hyperlinks::HyperlinkLine;
++use crate::terminal_hyperlinks::LogicalLineSource;
++use codex_ansi_escape::ansi_escape_line;
++use codex_shell_command::bash::extract_bash_command;
++use ratatui::style::Stylize;
++use ratatui::text::Line;
++use std::sync::Arc;
++
++impl ExecCell {
++    /// Render every grouped call in order, retaining only the existing output-tail budget.
++    pub(super) fn readable_command_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        let mut lines = Vec::new();
++        for call in self.iter_calls() {
++            if call.is_unified_exec_interaction() {
++                continue;
++            }
++            let failed = call.output.as_ref().filter(|output| output.exit_code != 0);
++            let title = if let Some(output) = failed {
++                format!("Failed (exit {})", output.exit_code)
++            } else if call.duration.is_none() {
++                "Running".to_owned()
++            } else if call.is_user_shell_command() {
++                "You ran".to_owned()
++            } else {
++                "Ran".to_owned()
++            };
++            let marker = if failed.is_some() {
++                "•".red()
++            } else {
++                "•".dim()
++            };
++            let header = Line::from(vec![marker, " ".into(), title.bold(), " ".into()]);
++            let indent = header.width().min(usize::from(width).saturating_sub(1));
++            let available = usize::from(width).saturating_sub(indent).max(1);
++            let original: Arc<str> = self.command_source(call).into_owned().into();
++            let preview = if let Some((_, script)) = extract_bash_command(&call.command) {
++                let wrapper = crate::exec_command::escape_command(
++                    &call.command[..call.command.len().saturating_sub(1)],
++                );
++                let mut preview = command_preview(&wrapper, available);
++                preview.extend(command_preview(script, available));
++                preview
++            } else {
++                command_preview(&original, available)
++            };
++            for (index, mut line) in preview.into_iter().enumerate() {
++                line.spans.splice(
++                    0..0,
++                    if index == 0 && header.width() < usize::from(width) {
++                        header.spans.clone()
++                    } else {
++                        vec![" ".repeat(indent).into()]
++                    },
++                );
++                let mut source = LogicalLineSource::from_line(&line);
++                source.command = Some(Arc::clone(&original));
++                let mut rendered = HyperlinkLine::from(line);
++                rendered.source = Some(source);
++                lines.push(rendered);
++            }
++            if let Some(output) = &call.output {
++                let mut tail: Vec<_> = output.lines().rev().take(DETAIL_PREVIEW_LINES).collect();
++                tail.reverse();
++                for (index, raw) in tail.into_iter().enumerate() {
++                    let mut line = ansi_escape_line(raw.as_ref());
++                    line.spans
++                        .insert(0, if index == 0 { "  └ " } else { "    " }.dim());
++                    lines.push(clipped_line(line, width));
++                }
++            }
++        }
++        lines
++    }
++}
+diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
+index de7524d..2507404 100644
+--- a/codex-rs/tui/src/exec_cell/render.rs
++++ b/codex-rs/tui/src/exec_cell/render.rs
+@@ -225,6 +225,13 @@ impl HistoryCell for ExecCell {
+     }
+ 
+     fn activity_disclosure(&self, width: u16) -> Option<ActivityDisclosure> {
++        if self.readable_commands
++            && self
++                .iter_calls()
++                .any(|call| !call.is_unified_exec_interaction())
++        {
++            return Some(ActivityDisclosure::Generic);
++        }
+         if self.collapsed_tool_activity {
+             return Some(ActivityDisclosure::ToolActivity);
+         }
+@@ -243,6 +250,13 @@ impl HistoryCell for ExecCell {
+     }
+ 
+     fn compact_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        if self.readable_commands
++            && self
++                .iter_calls()
++                .any(|call| !call.is_unified_exec_interaction())
++        {
++            return self.readable_command_lines(width);
++        }
+         if self.collapsed_tool_activity {
+             return self.tool_activity_lines(width);
+         }
+@@ -283,6 +297,13 @@ impl HistoryCell for ExecCell {
+     }
+ 
+     fn display_hyperlink_lines(&self, width: u16) -> Vec<HyperlinkLine> {
++        if self.readable_commands
++            && self
++                .iter_calls()
++                .any(|call| !call.is_unified_exec_interaction())
++        {
++            return self.readable_command_lines(width);
++        }
+         if self.collapsed_tool_activity {
+             return self.tool_activity_lines(width);
+         }
+diff --git a/codex-rs/tui/src/exec_cell/transcript.rs b/codex-rs/tui/src/exec_cell/transcript.rs
+index 43ed4ce..ac11bc6 100644
+--- a/codex-rs/tui/src/exec_cell/transcript.rs
++++ b/codex-rs/tui/src/exec_cell/transcript.rs
+@@ -24,10 +24,24 @@ impl ExecCell {
+             if i > 0 {
+                 lines.push("".into());
+             }
+-            let script = strip_bash_lc_and_escape(&call.command);
++            let script = if self.readable_commands {
++                self.command_source(call).into_owned()
++            } else {
++                strip_bash_lc_and_escape(&call.command)
++            };
+             let highlighted_script = highlight_bash_to_lines(&script);
++            let mut command_lines = plain_hyperlink_lines(highlighted_script);
++            if self.readable_commands {
++                let original: std::sync::Arc<str> = script.into();
++                for line in &mut command_lines {
++                    let mut source =
++                        crate::terminal_hyperlinks::LogicalLineSource::from_line(&line.line);
++                    source.command = Some(std::sync::Arc::clone(&original));
++                    line.source = Some(source);
++                }
++            }
+             let cmd_display = adaptive_wrap_hyperlink_lines(
+-                &plain_hyperlink_lines(highlighted_script),
++                &command_lines,
+                 RtOptions::new(width as usize)
+                     .initial_indent("$ ".magenta().into())
+                     .subsequent_indent("    ".into()),
+diff --git a/codex-rs/tui/src/terminal_hyperlinks/source.rs b/codex-rs/tui/src/terminal_hyperlinks/source.rs
+index 92039bf..96ce5f7 100644
+--- a/codex-rs/tui/src/terminal_hyperlinks/source.rs
++++ b/codex-rs/tui/src/terminal_hyperlinks/source.rs
+@@ -24,6 +24,8 @@ pub(crate) enum LineWrapPolicy {
+ pub(crate) struct LogicalLineSource {
+     pub(crate) text: Arc<str>,
+     pub(crate) copy: Option<Arc<crate::markdown_copy::CopyLine>>,
++    /// Exact command payload for block copying, separate from abbreviated display text.
++    pub(crate) command: Option<Arc<str>>,
+     /// Literal user text remains prose when copied alongside rendered Markdown.
+     pub(crate) copy_as_prose: bool,
+     /// Span styles share the text's byte coordinates, including whitespace omitted by wrapping.
+@@ -46,6 +48,7 @@ impl LogicalLineSource {
+         Self {
+             text: text.into(),
+             copy: None,
++            command: None,
+             copy_as_prose: false,
+             styles: vec![(0..end, Style::default())].into(),
+             line_style: Style::default(),
+@@ -106,6 +109,7 @@ impl LogicalLineSource {
+         Self {
+             text: Arc::clone(&self.text),
+             copy: self.copy.clone(),
++            command: self.command.clone(),
+             copy_as_prose: self.copy_as_prose,
+             styles: Arc::clone(&self.styles),
+             line_style: self.line_style,
+diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
+index a323124..644ee47 100644
+--- a/codex-rs/tui/src/thread_transcript.rs
++++ b/codex-rs/tui/src/thread_transcript.rs
+@@ -143,6 +143,11 @@ pub(crate) fn thread_items_to_transcript_cells(
+             });
+     let mut cells: TranscriptCells = Vec::new();
+     let mut pending = None;
++    let readable_commands = config.is_some_and(|config| {
++        config
++            .features
++            .enabled(codex_features::Feature::UnleashedReadableCommands)
++    });
+     for item in items {
+         if matches!(item, ThreadItem::Reasoning { .. })
+             && let Some(group) = &mut pending
+@@ -160,7 +165,13 @@ pub(crate) fn thread_items_to_transcript_cells(
+             }
+             continue;
+         }
+-        if let Some(cell) = tools::historical_tool_fallback(&item) {
++        let readable_command = readable_commands
++            && matches!(&item,
++            ThreadItem::CommandExecution {
++                status: codex_app_server_protocol::CommandExecutionStatus::Completed | codex_app_server_protocol::CommandExecutionStatus::Failed,
++                source, ..
++            } if *source != codex_app_server_protocol::CommandExecutionSource::UnifiedExecInteraction);
++        if !readable_command && let Some(cell) = tools::historical_tool_fallback(&item) {
+             PendingActivity::flush(&mut pending, &mut cells);
+             cells.push(Arc::new(cell));
+             continue;
+@@ -193,7 +204,9 @@ pub(crate) fn thread_items_to_transcript_cells(
+                 if matches!(pending, Some(PendingActivity::Computer(_))) {
+                     PendingActivity::flush(&mut pending, &mut cells);
+                 }
+-                if let Some(command) = tools::CommandHistory::from_item(item) {
++                if let Some(command) =
++                    tools::CommandHistory::from_item_with_readable_commands(item, readable_commands)
++                {
+                     let newer = command.into_cell().with_collapsed_tool_activity(
+                         config.is_some_and(Config::collapsed_tool_activity_enabled),
+                     );
+diff --git a/codex-rs/tui/src/thread_transcript/tools.rs b/codex-rs/tui/src/thread_transcript/tools.rs
+index 73e80d6..e396759 100644
+--- a/codex-rs/tui/src/thread_transcript/tools.rs
++++ b/codex-rs/tui/src/thread_transcript/tools.rs
+@@ -118,6 +118,7 @@ fn replay_command_args(command: &str) -> Option<Vec<String>> {
+ }
+ 
+ pub(crate) struct CommandHistory {
++    original_command: Option<String>,
+     pub(crate) id: String,
+     pub(crate) command: Vec<String>,
+     pub(crate) parsed: Vec<ParsedCommand>,
+@@ -129,6 +130,14 @@ pub(crate) struct CommandHistory {
+ 
+ impl CommandHistory {
+     pub(crate) fn from_item(item: ThreadItem) -> Option<Self> {
++        Self::from_item_with_readable_commands(item, false)
++    }
++
++    /// Retain noncanonical source for presentation only when readable commands are enabled.
++    pub(crate) fn from_item_with_readable_commands(
++        item: ThreadItem,
++        readable: bool,
++    ) -> Option<Self> {
+         let ThreadItem::CommandExecution {
+             id,
+             command,
+@@ -156,7 +165,12 @@ impl CommandHistory {
+         };
+         Some(Self {
+             id,
+-            command: replay_command_args(&command)?,
++            command: if readable {
++                crate::exec_command::split_command_string(&command)
++            } else {
++                replay_command_args(&command)?
++            },
++            original_command: readable.then_some(command),
+             parsed: command_actions
+                 .into_iter()
+                 .map(codex_app_server_protocol::CommandAction::into_core)
+@@ -178,6 +192,10 @@ impl CommandHistory {
+             /*interaction_input*/ None,
+             /*animations_enabled*/ false,
+         );
++        if let Some(original) = self.original_command {
++            cell = cell.with_readable_commands(true);
++            cell.retain_command_source(&self.id, original);
++        }
+         let completed = cell.complete_call(&self.id, output, self.duration);
+         debug_assert!(completed, "new exec cell should contain {}", self.id);
+         cell
+diff --git a/codex-rs/tui/src/thread_transcript/tools_tests.rs b/codex-rs/tui/src/thread_transcript/tools_tests.rs
+index 0c4c5c4..16fcb70 100644
+--- a/codex-rs/tui/src/thread_transcript/tools_tests.rs
++++ b/codex-rs/tui/src/thread_transcript/tools_tests.rs
+@@ -351,7 +351,7 @@ async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_fa
+     ] {
+         let home = tempfile::tempdir().unwrap();
+         std::fs::write(home.path().join(codex_config::CONFIG_TOML_FILE), contents).unwrap();
+-        let config = crate::legacy_core::config::ConfigBuilder::default()
++        let mut config = crate::legacy_core::config::ConfigBuilder::default()
+             .codex_home(home.path().to_path_buf())
+             .fallback_cwd(Some(home.path().to_path_buf()))
+             .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
+@@ -359,6 +359,10 @@ async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_fa
+             .build()
+             .await
+             .unwrap();
++        config
++            .features
++            .disable(codex_features::Feature::UnleashedReadableCommands)
++            .expect("legacy summary fixture permits opting out of readable commands");
+         let mut items = Vec::new();
+         for index in 0..3 {
+             let mut item = command_item(CommandExecutionStatus::Completed);
+@@ -404,3 +408,75 @@ async fn unleashed_collapsed_tool_activity_resume_retains_commands_output_and_fa
+         );
+     }
+ }
++
++#[tokio::test]
++async fn readable_command_preview_keeps_grouped_resume_commands_inspectable() {
++    let home = tempfile::tempdir().unwrap();
++    std::fs::write(
++        home.path().join(codex_config::CONFIG_TOML_FILE),
++        "[codex_unleashed]\ncollapsed_tool_activity = true\n",
++    )
++    .unwrap();
++    let mut config = crate::legacy_core::config::ConfigBuilder::default()
++        .codex_home(home.path().to_path_buf())
++        .fallback_cwd(Some(home.path().to_path_buf()))
++        .loader_overrides(codex_config::LoaderOverrides::without_managed_config_for_tests())
++        .strict_config(true)
++        .build()
++        .await
++        .unwrap();
++    assert!(
++        config
++            .features
++            .enabled(codex_features::Feature::UnleashedReadableCommands)
++    );
++    let items: Vec<_> = (0..3)
++        .map(|index| {
++            let mut item = command_item(CommandExecutionStatus::Completed);
++            if let ThreadItem::CommandExecution { id, exit_code, .. } = &mut item {
++                *id = format!("readable-resumed-{index}");
++                *exit_code = Some(if index == 1 { 1 } else { 0 });
++            }
++            item
++        })
++        .collect();
++    for readable in [true, false] {
++        if !readable {
++            config
++                .features
++                .disable(codex_features::Feature::UnleashedReadableCommands)
++                .expect("fixture permits legacy summary rendering");
++        }
++        let cells = thread_items_to_transcript_cells(
++            None,
++            &test_path_buf("/workspace").abs(),
++            items.clone(),
++            RawReasoningVisibility::Hidden,
++            Some(&config),
++        );
++        assert_eq!(cells.len(), 1);
++        assert_eq!(cells[0].activity_ids().len(), 3);
++        let compact = cells[0]
++            .display_lines(80)
++            .iter()
++            .map(ToString::to_string)
++            .collect::<Vec<_>>()
++            .join("\n");
++        if readable {
++            assert_eq!(compact.matches("cargo check").count(), 3);
++            assert_eq!(compact.matches("output line 12").count(), 3);
++            assert!(compact.contains("Failed (exit 1)"));
++        } else {
++            assert!(compact.contains("Ran 3 shell commands"));
++            assert!(!compact.contains("output line"));
++        }
++        let expanded = cells[0]
++            .transcript_lines(80)
++            .iter()
++            .map(ToString::to_string)
++            .collect::<Vec<_>>()
++            .join("\n");
++        assert_eq!(expanded.matches("output line 1\n").count(), 3);
++        assert_eq!(expanded.matches("output line 12").count(), 3);
++    }
++}
+diff --git a/codex-rs/tui/src/transcript_view.rs b/codex-rs/tui/src/transcript_view.rs
+index 7ba2278..40c3c07 100644
+--- a/codex-rs/tui/src/transcript_view.rs
++++ b/codex-rs/tui/src/transcript_view.rs
+@@ -7,6 +7,7 @@
+ 
+ mod activity;
+ mod bookmark;
++mod commands;
+ mod composer_gap;
+ mod copy_mode;
+ mod disclosure;
+@@ -117,6 +118,9 @@ pub(crate) struct TranscriptView {
+     position: Position,
+     follow_control: follow_control::FollowControl,
+     copy_feedback: Option<composer_gap::CopyFeedback>,
++    command_hover: Option<ratatui::layout::Position>,
++    /// A release click must still address the command and position pressed before any redraw.
++    command_press: Option<(ratatui::layout::Position, Vec<String>)>,
+     composer_tip: Option<(Rect, HyperlinkLine)>,
+     turn_tip_key: Option<EntryKey>,
+     cache: LayoutCache,
+@@ -157,6 +161,8 @@ impl Default for TranscriptView {
+             position: Position::Latest,
+             follow_control: follow_control::FollowControl::default(),
+             copy_feedback: None,
++            command_hover: None,
++            command_press: None,
+             composer_tip: None,
+             turn_tip_key: None,
+             cache: LayoutCache::default(),
+@@ -350,8 +356,14 @@ impl TranscriptView {
+             .disclosure
+             .keymap
+             .primary_hint(crate::keymap::KeymapContext::Global, "open_transcript");
++        let command_shortcut = self
++            .disclosure
++            .keymap
++            .primary_hint(crate::keymap::KeymapContext::Global, "focus_activity");
+         let changed = self.sync_live_layout(width, key, |width| {
+-            lines(width).map(|lines| layout::activity_layout(lines, width, expanded, shortcut))
++            lines(width).map(|lines| {
++                layout::activity_layout(lines, width, expanded, shortcut, command_shortcut)
++            })
+         });
+         if self.disclosure.turn_running
+             && self
+diff --git a/codex-rs/tui/src/transcript_view/commands.rs b/codex-rs/tui/src/transcript_view/commands.rs
+new file mode 100644
+index 0000000..5cc1a72
+--- /dev/null
++++ b/codex-rs/tui/src/transcript_view/commands.rs
+@@ -0,0 +1,92 @@
++//! Command disclosure uses stationary release clicks and the existing keyboard expansion state.
++
++use super::*;
++use crossterm::event::MouseButton;
++use crossterm::event::MouseEvent;
++use crossterm::event::MouseEventKind;
++use ratatui::layout::Position as ScreenPosition;
++
++impl TranscriptView {
++    /// Resolve only displayed command rows, excluding separators and auxiliary live text.
++    pub(super) fn command_at(&self, point: ScreenPosition) -> Option<(Vec<String>, bool)> {
++        if self.detailed || self.mode != HistoryRenderMode::Rich || !self.area.contains(point) {
++            return None;
++        }
++        let visible = self.visible.get(usize::from(point.y - self.area.y))?;
++        let end = visible.layout.command_source_end?;
++        if (visible.layout.separated && visible.row == 0)
++            || visible.layout.position_at(visible.row, 0) > end
++            || visible.activity_ids.is_empty()
++        {
++            return None;
++        }
++        Some((
++            visible.activity_ids.to_vec(),
++            visible.layout.command_expanded,
++        ))
++    }
++
++    /// Observe gestures without intercepting selection until a stationary release is established.
++    pub(super) fn handle_command_mouse(
++        &mut self,
++        event: MouseEvent,
++        cells: &[Arc<dyn HistoryCell>],
++        interactive: bool,
++    ) -> Option<ViewAction> {
++        let point = ScreenPosition::new(event.column, event.row);
++        match event.kind {
++            MouseEventKind::Moved if interactive => {
++                let hover = self.command_at(point).map(|_| point);
++                let changed = self.command_hover != hover;
++                self.command_hover = hover;
++                changed.then_some(ViewAction::Changed)
++            }
++            MouseEventKind::Down(MouseButton::Left) => {
++                self.command_press = (interactive && event.modifiers.is_empty())
++                    .then(|| self.command_at(point))
++                    .flatten()
++                    .map(|(ids, _)| (point, ids));
++                None
++            }
++            MouseEventKind::Up(MouseButton::Left) => {
++                let (pressed, ids) = self.command_press.take()?;
++                let stationary = self.selection.as_ref().is_some_and(|selection| {
++                    !selection.moved
++                        && selection.pointer == Some(point)
++                        && selection.start.key == selection.end.key
++                        && selection.start.offset == selection.end.offset
++                });
++                if !interactive || !event.modifiers.is_empty() || point != pressed || !stationary {
++                    return None;
++                }
++                let (current, _) = self.command_at(point)?;
++                if current != ids {
++                    return None;
++                }
++                let index = self.canonical_activity_index(cells, &ids)?;
++                self.end_selection(cells);
++                self.toggle_activity(cells, index);
++                Some(ViewAction::Changed)
++            }
++            MouseEventKind::Drag(_)
++            | MouseEventKind::ScrollUp
++            | MouseEventKind::ScrollDown
++            | MouseEventKind::ScrollLeft
++            | MouseEventKind::ScrollRight => {
++                self.command_press = None;
++                None
++            }
++            _ => None,
++        }
++    }
++
++    /// Present the hover action through the footer without inserting selectable output rows.
++    pub(super) fn command_hover_hint(&self) -> Option<&'static str> {
++        let (_, expanded) = self.command_at(self.command_hover?)?;
++        Some(if expanded {
++            "Click anywhere in this section to collapse"
++        } else {
++            "Click to expand command and output"
++        })
++    }
++}
+diff --git a/codex-rs/tui/src/transcript_view/disclosure.rs b/codex-rs/tui/src/transcript_view/disclosure.rs
+index ba49496..4f80890 100644
+--- a/codex-rs/tui/src/transcript_view/disclosure.rs
++++ b/codex-rs/tui/src/transcript_view/disclosure.rs
+@@ -329,7 +329,7 @@ impl TranscriptView {
+         true
+     }
+ 
+-    fn toggle_activity(&mut self, cells: &[Arc<dyn HistoryCell>], index: usize) {
++    pub(super) fn toggle_activity(&mut self, cells: &[Arc<dyn HistoryCell>], index: usize) {
+         let ids = self.activity_ids(cells, index);
+         if ids.is_empty() {
+             return;
+diff --git a/codex-rs/tui/src/transcript_view/footer.rs b/codex-rs/tui/src/transcript_view/footer.rs
+index 191e339..5d0725c 100644
+--- a/codex-rs/tui/src/transcript_view/footer.rs
++++ b/codex-rs/tui/src/transcript_view/footer.rs
+@@ -84,6 +84,13 @@ impl TranscriptView {
+                 is_interactive: false,
+             });
+         }
++        if !pending && let Some(hint) = self.command_hover_hint() {
++            return Some(TranscriptFooter {
++                text: Line::from(hint).dim().into(),
++                cursor_column: None,
++                is_interactive: true,
++            });
++        }
+         if self.is_activity_focused() && !pending {
+             return self.disclosure_footer(width);
+         }
+diff --git a/codex-rs/tui/src/transcript_view/input.rs b/codex-rs/tui/src/transcript_view/input.rs
+index 0ac7635..17213dc 100644
+--- a/codex-rs/tui/src/transcript_view/input.rs
++++ b/codex-rs/tui/src/transcript_view/input.rs
+@@ -252,6 +252,11 @@ impl TranscriptView {
+         cells: &[Arc<dyn HistoryCell>],
+         mode: MouseMode,
+     ) -> Option<ViewAction> {
++        if let Some(action) =
++            self.handle_command_mouse(event, cells, mode == MouseMode::Interactive)
++        {
++            return Some(action);
++        }
+         let pointer_changed =
+             if mode == MouseMode::Interactive && event.kind == MouseEventKind::Moved {
+                 let point = (event.column, event.row);
+@@ -482,6 +487,9 @@ impl TranscriptView {
+     ) -> Option<ViewAction> {
+         if mode == MouseMode::Interactive
+             && event.modifiers.is_empty()
++            && self
++                .command_at(ScreenPosition::new(event.column, event.row))
++                .is_none()
+             && self.toggle_disclosure_at(cells, event.column, event.row)
+         {
+             return Some(ViewAction::Changed);
+diff --git a/codex-rs/tui/src/transcript_view/layout.rs b/codex-rs/tui/src/transcript_view/layout.rs
+index bcf6e41..230592d 100644
+--- a/codex-rs/tui/src/transcript_view/layout.rs
++++ b/codex-rs/tui/src/transcript_view/layout.rs
+@@ -26,11 +26,34 @@ pub(super) fn activity_layout(
+     width: u16,
+     expanded: bool,
+     shortcut: Option<ShortcutHint>,
++    command_shortcut: Option<ShortcutHint>,
+ ) -> TextLayout {
+     let has_details = !lines.activity.is_empty() && (expanded || lines.disclosure.is_some());
+     let source_offset = (!lines.auxiliary.is_empty())
+         .then(|| TextLayout::new(lines.activity.clone(), width).text().len());
+     lines.activity.extend(lines.auxiliary);
++    if lines.activity.iter().any(|line| {
++        line.source
++            .as_ref()
++            .is_some_and(|source| source.command.is_some())
++    }) {
++        let layout = TextLayout::new(lines.activity, width);
++        let source_end = source_offset.unwrap_or_else(|| layout.text().len());
++        let mut label = if expanded {
++            "− Show less".to_owned()
++        } else {
++            "Click to expand command and output".to_owned()
++        };
++        if !expanded && let Some(shortcut) = command_shortcut {
++            let hint = format!(" · {} to select", shortcut.display_label());
++            if Line::from(format!("{label}{hint}")).width() + 4 <= usize::from(width) {
++                label.push_str(&hint);
++            }
++        }
++        return layout
++            .with_disclosure_control_at(label, source_end)
++            .with_command_section(source_end, expanded);
++    }
+     let mut layout = TextLayout::new(lines.activity, width);
+     if lines.disclosure == Some(ActivityDisclosure::ToolActivity) {
+         layout.disclosure = true;
+@@ -203,6 +226,10 @@ impl TranscriptView {
+             .disclosure
+             .keymap
+             .primary_hint(KeymapContext::Global, "open_transcript");
++        let command_shortcut = self
++            .disclosure
++            .keymap
++            .primary_hint(KeymapContext::Global, "focus_activity");
+         Some(self.cache.get(cell, width, presentation, || {
+             if expand_patch_diff {
+                 TextLayout::new(cell.expanded_hyperlink_lines(width), width)
+@@ -220,6 +247,7 @@ impl TranscriptView {
+                     width,
+                     expanded,
+                     shortcut,
++                    command_shortcut,
+                 )
+             } else {
+                 TextLayout::new(
+diff --git a/codex-rs/tui/src/transcript_view/text.rs b/codex-rs/tui/src/transcript_view/text.rs
+index 3b2439b..b79f5eb 100644
+--- a/codex-rs/tui/src/transcript_view/text.rs
++++ b/codex-rs/tui/src/transcript_view/text.rs
+@@ -8,6 +8,7 @@
+ 
+ use std::borrow::Cow;
+ use std::ops::Range;
++use std::sync::Arc;
+ 
+ #[path = "text_logical.rs"]
+ mod logical;
+@@ -48,6 +49,9 @@ pub(super) struct TextLayout {
+     width: u16,
+     pub(super) separated: bool,
+     pub(super) disclosure: bool,
++    /// End of a command section, excluding following auxiliary activity.
++    pub(super) command_source_end: Option<usize>,
++    pub(super) command_expanded: bool,
+     pub(super) tool_activity: Option<super::tool_activity::ToolActivityPresentation>,
+     disclosure_control: Option<DisclosureControl>,
+ }
+@@ -72,6 +76,28 @@ struct TextRow {
+ impl TextLayout {
+     pub(super) fn copy_block_ranges(&self) -> Vec<(Range<usize>, &'static str, Option<String>)> {
+         let mut ranges = Vec::new();
++        let mut command: Option<(Range<usize>, Arc<str>)> = None;
++        let mut offset = 0;
++        for line in &self.logical {
++            let end = offset + line.origin.range.len();
++            let original = line.origin.command.as_ref();
++            if let Some((range, source)) = command.take() {
++                if original.is_some_and(|original| Arc::ptr_eq(original, &source)) {
++                    command = Some((range.start..end, source));
++                } else {
++                    ranges.push((range, "Command", Some(source.to_string())));
++                }
++            }
++            if command.is_none()
++                && let Some(source) = original
++            {
++                command = Some((offset..end, Arc::clone(source)));
++            }
++            offset = end + 1;
++        }
++        if let Some((range, source)) = command {
++            ranges.push((range, "Command", Some(source.to_string())));
++        }
+         for (label, code) in [("Code block", true), ("Blockquote", false)] {
+             let mut active: Option<(Range<usize>, Option<std::sync::Arc<str>>)> = None;
+             let mut offset = 0;
+@@ -134,6 +160,8 @@ impl TextLayout {
+     /// Reflow the same displayed content revision, retaining styles, links and disclosure label.
+     pub(super) fn rewrap(&self, width: u16) -> Self {
+         let mut layout = Self::from_logical(self.logical.clone(), width);
++        layout.command_source_end = self.command_source_end;
++        layout.command_expanded = self.command_expanded;
+         layout.tool_activity = self.tool_activity;
+         layout.disclosure = self.disclosure;
+         if let Some(control) = &self.disclosure_control {
+@@ -153,6 +181,13 @@ impl TextLayout {
+         self.with_disclosure_control_at(label, source_offset)
+     }
+ 
++    /// Mark release-click geometry without including unrelated following text.
++    pub(super) fn with_command_section(mut self, source_end: usize, expanded: bool) -> Self {
++        self.command_source_end = Some(source_end);
++        self.command_expanded = expanded;
++        self
++    }
++
+     /// Place a control after an activity, before any following auxiliary source text.
+     pub(super) fn with_disclosure_control_at(
+         mut self,
+@@ -509,6 +544,8 @@ impl TextLayout {
+             width,
+             separated: false,
+             disclosure: false,
++            command_source_end: None,
++            command_expanded: false,
+             tool_activity: None,
+             disclosure_control: None,
+         }
+diff --git a/codex-rs/tui/src/transcript_view_tests.rs b/codex-rs/tui/src/transcript_view_tests.rs
+index fbaec28..b195742 100644
+--- a/codex-rs/tui/src/transcript_view_tests.rs
++++ b/codex-rs/tui/src/transcript_view_tests.rs
+@@ -63,6 +63,245 @@ pub(super) fn text(buffer: &Buffer) -> String {
+         .join("\n")
+ }
+ 
++#[test]
++fn readable_command_preview_click_waits_for_release_and_expands_output() {
++    let mut command = crate::exec_cell::new_active_exec_command(
++        "readable-click".into(),
++        vec!["echo".into(), "retained command".into()],
++        Vec::new(),
++        codex_app_server_protocol::CommandExecutionSource::Agent,
++        None,
++        false,
++    );
++    command = command.with_readable_commands(true);
++    assert!(command.complete_call(
++        "readable-click",
++        crate::exec_cell::CommandOutput::new(
++            0,
++            "first output\nsecond output\nthird output\nfourth output\nlast output\n".into()
++        ),
++        std::time::Duration::from_secs(1),
++    ));
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
++    let mut view = TranscriptView::default();
++    let collapsed = render(&mut view, &cells, 80, 20);
++    assert!(!text(&collapsed).contains("first output"));
++    let mouse = |kind| MouseEvent {
++        kind,
++        column: 20,
++        row: 0,
++        modifiers: KeyModifiers::NONE,
++    };
++
++    view.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left)), &cells);
++    let pressed = render(&mut view, &cells, 80, 20);
++    assert!(!text(&pressed).contains("first output"));
++    view.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left)), &cells);
++    let expanded = render(&mut view, &cells, 80, 20);
++
++    assert!(
++        text(&expanded).contains("first output"),
++        "{}",
++        text(&expanded)
++    );
++}
++
++#[test]
++fn readable_command_preview_advertises_expansion() {
++    let command = crate::exec_cell::new_active_exec_command(
++        "readable-hint".into(),
++        vec!["echo".into(), "hello".into()],
++        Vec::new(),
++        codex_app_server_protocol::CommandExecutionSource::Agent,
++        None,
++        false,
++    );
++    let command = command.with_readable_commands(true);
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
++    let mut view = TranscriptView::default();
++    let collapsed = render(&mut view, &cells, 80, 20);
++
++    assert!(text(&collapsed).contains("Click to expand command and output"));
++}
++
++/// A completed command with hidden output exercises disclosure rather than an empty control.
++fn readable_test_command(id: &str, original: &str) -> crate::exec_cell::ExecCell {
++    let mut command = crate::exec_cell::new_active_exec_command(
++        id.into(),
++        vec!["bash".into(), "-lc".into(), original.into()],
++        Vec::new(),
++        codex_app_server_protocol::CommandExecutionSource::Agent,
++        None,
++        false,
++    )
++    .with_readable_commands(true);
++    command.retain_command_source(id, original.into());
++    assert!(command.complete_call(
++        id,
++        crate::exec_cell::CommandOutput::new(
++            0,
++            "first output\nsecond output\nthird output\nfourth output\nlast output\n".into()
++        ),
++        std::time::Duration::ZERO,
++    ));
++    command
++}
++
++#[test]
++fn readable_command_preview_copy_preserves_original_source_in_both_presentations() {
++    let original = "'/plugins/CAT path/bin/run-part' <<'EOF'\nprintf '%s\\n' 'a b' > '/reports/long path/result.txt'\nEOF\n";
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(readable_test_command("copy", original))];
++    let mut view = TranscriptView::default();
++    for expanded in [false, true] {
++        render(&mut view, &cells, 48, 30);
++        let layout = view.base_layout(&cells, 0).unwrap();
++        let commands: Vec<_> = layout
++            .copy_block_ranges()
++            .into_iter()
++            .filter(|(_, label, _)| *label == "Command")
++            .map(|(_, _, payload)| payload.unwrap())
++            .collect();
++        assert_eq!(commands, vec![original.to_owned()]);
++        if !expanded {
++            view.handle_key(KeyCode::F(4).into(), &cells);
++            view.handle_key(KeyCode::Right.into(), &cells);
++        }
++    }
++}
++
++#[test]
++fn readable_command_preview_keyboard_and_mouse_share_state_after_resize() {
++    let cells: Vec<Arc<dyn HistoryCell>> =
++        vec![Arc::new(readable_test_command("keys", "echo 'a b'"))];
++    let mut view = TranscriptView::default();
++    render(&mut view, &cells, 80, 25);
++    view.handle_key(KeyCode::F(4).into(), &cells);
++    assert!(view.is_activity_focused());
++    view.handle_key(KeyCode::Right.into(), &cells);
++    assert!(text(&render(&mut view, &cells, 48, 25)).contains("first output"));
++    assert!(view.is_activity_focused());
++    view.handle_key(KeyCode::Left.into(), &cells);
++    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++    view.handle_key(KeyCode::Enter.into(), &cells);
++    let expanded = render(&mut view, &cells, 80, 25);
++    assert!(text(&expanded).contains("first output"));
++    view.handle_key(KeyCode::Esc.into(), &cells);
++    assert!(!view.is_activity_focused());
++    // Clicking an output row collapses the same activity expanded by the keyboard.
++    let row = (0..expanded.area.height)
++        .find(|row| {
++            (0..expanded.area.width)
++                .map(|column| expanded[(column, *row)].symbol())
++                .collect::<String>()
++                .contains("first output")
++        })
++        .unwrap();
++    for kind in [
++        MouseEventKind::Down(MouseButton::Left),
++        MouseEventKind::Up(MouseButton::Left),
++    ] {
++        view.handle_mouse(
++            MouseEvent {
++                kind,
++                column: 20,
++                row,
++                modifiers: KeyModifiers::NONE,
++            },
++            &cells,
++        );
++    }
++    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++}
++
++#[test]
++fn readable_command_preview_drag_selects_without_expanding() {
++    let cells: Vec<Arc<dyn HistoryCell>> =
++        vec![Arc::new(readable_test_command("drag", "echo hello"))];
++    let mut view = TranscriptView::default();
++    render(&mut view, &cells, 80, 25);
++    for (kind, column) in [
++        (MouseEventKind::Down(MouseButton::Left), 10),
++        (MouseEventKind::Drag(MouseButton::Left), 20),
++        (MouseEventKind::Up(MouseButton::Left), 20),
++    ] {
++        view.handle_mouse(
++            MouseEvent {
++                kind,
++                column,
++                row: 0,
++                modifiers: KeyModifiers::NONE,
++            },
++            &cells,
++        );
++    }
++    assert!(!text(&render(&mut view, &cells, 80, 25)).contains("first output"));
++    assert!(
++        view.selection
++            .as_ref()
++            .is_some_and(|selection| selection.moved)
++    );
++}
++
++#[test]
++fn readable_command_preview_hover_explains_collapse() {
++    let cells: Vec<Arc<dyn HistoryCell>> =
++        vec![Arc::new(readable_test_command("hover", "echo hello"))];
++    let mut view = TranscriptView::default();
++    render(&mut view, &cells, 80, 25);
++    view.handle_key(KeyCode::F(4).into(), &cells);
++    view.handle_key(KeyCode::Right.into(), &cells);
++    render(&mut view, &cells, 80, 25);
++    view.handle_mouse(
++        MouseEvent {
++            kind: MouseEventKind::Moved,
++            column: 20,
++            row: 0,
++            modifiers: KeyModifiers::NONE,
++        },
++        &cells,
++    );
++    let footer = view
++        .footer(
++            80,
++            crate::motion::MotionMode::from_animations_enabled(false),
++        )
++        .unwrap();
++    assert!(
++        footer
++            .text
++            .to_string()
++            .contains("Click anywhere in this section to collapse")
++    );
++}
++
++#[test]
++fn readable_command_preview_focus_hint_uses_configured_binding() {
++    let cells: Vec<Arc<dyn HistoryCell>> =
++        vec![Arc::new(readable_test_command("remap", "echo hello"))];
++    let config =
++        serde_json::from_value(serde_json::json!({"global": {"focus_activity": "f12"}})).unwrap();
++    let keymap = crate::keymap::RuntimeKeymap::from_config(&config).unwrap();
++    let mut view = TranscriptView::default();
++    view.set_keymap_bindings(&keymap);
++    let collapsed = text(&render(&mut view, &cells, 100, 25));
++    assert!(collapsed.contains("f12 to select"), "{collapsed}");
++    assert!(!collapsed.contains("f4"));
++    view.handle_key(KeyCode::F(12).into(), &cells);
++    assert!(view.is_activity_focused());
++    view.handle_key(KeyCode::Right.into(), &cells);
++    assert!(text(&render(&mut view, &cells, 100, 25)).contains("first output"));
++}
++
++#[test]
++fn readable_command_preview_disabled_preserves_legacy_disclosure() {
++    let command = readable_test_command("disabled", "echo hello").with_readable_commands(false);
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
++    let mut view = TranscriptView::default();
++    let collapsed = text(&render(&mut view, &cells, 80, 25));
++    assert!(!collapsed.contains("Click to expand"));
++    assert!(collapsed.contains("+ 2 lines"));
++}
++
+ #[test]
+ fn page_keys_follow_pager_scroll_bindings() {
+     let cells = [cell(
+@@ -1355,3 +1594,91 @@ fn unleashed_collapsed_tool_activity_live_output_count_and_narrow_failure_stay_v
+     );
+     assert!(raw.contains("failure details"));
+ }
++
++#[test]
++fn readable_command_preview_streaming_completion_and_resize_preserve_focus() {
++    let mut command = crate::exec_cell::new_active_exec_command(
++        "stream".into(),
++        vec!["echo".into(), "hello".into()],
++        Vec::new(),
++        codex_app_server_protocol::CommandExecutionSource::Agent,
++        None,
++        false,
++    )
++    .with_readable_commands(true);
++    command.retain_command_source("stream", "echo 'hello'".into());
++    assert!(command.append_output(
++        "stream",
++        "first output\nsecond output\nthird output\nfourth output\n"
++    ));
++    let mut view = TranscriptView::default();
++    let sync = |view: &mut TranscriptView, command: &crate::exec_cell::ExecCell, width| {
++        let expanded = view.sync_live_activity(&[], command.activity_ids());
++        view.sync_live_activity_tail(width, None, expanded, |width| {
++            Some(ActivityTranscriptLines {
++                activity: if expanded {
++                    command.expanded_hyperlink_lines(width)
++                } else {
++                    command.compact_hyperlink_lines(width)
++                },
++                auxiliary: Vec::new(),
++                disclosure: command.activity_disclosure(width),
++            })
++        });
++    };
++    sync(&mut view, &command, 80);
++    assert!(!text(&render(&mut view, &[], 80, 25)).contains("first output"));
++    view.handle_key(KeyCode::F(4).into(), &[]);
++    view.handle_key(KeyCode::Right.into(), &[]);
++    sync(&mut view, &command, 80);
++    assert!(text(&render(&mut view, &[], 80, 25)).contains("first output"));
++    assert!(command.append_output("stream", "arriving output\n"));
++    sync(&mut view, &command, 48);
++    let streamed = text(&render(&mut view, &[], 48, 25));
++    assert!(streamed.contains("first output"));
++    assert!(streamed.contains("arriving output"));
++    assert!(view.is_activity_focused());
++    assert!(command.complete_call(
++        "stream",
++        crate::exec_cell::CommandOutput::new(
++            0,
++            "first output\nsecond output\nthird output\nfourth output\narriving output\n".into(),
++        ),
++        std::time::Duration::ZERO
++    ));
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![Arc::new(command)];
++    view.sync_live_activity(&cells, Vec::new());
++    view.sync_live_tail(48, None, |_| None);
++    let completed = text(&render(&mut view, &cells, 48, 25));
++    assert!(completed.contains("first output"));
++    assert!(completed.contains("arriving output"));
++    assert!(view.is_activity_focused());
++    view.handle_key(KeyCode::Left.into(), &cells);
++    assert!(!text(&render(&mut view, &cells, 48, 25)).contains("first output"));
++}
++
++#[test]
++fn readable_command_preview_up_down_select_independent_sections() {
++    let cells: Vec<Arc<dyn HistoryCell>> = vec![
++        Arc::new(readable_test_command("first", "echo first")),
++        Arc::new(readable_test_command("second", "echo second")),
++    ];
++    let mut view = TranscriptView::default();
++    render(&mut view, &cells, 80, 30);
++    view.handle_key(KeyCode::F(4).into(), &cells);
++    assert_eq!(view.disclosure.focused, Some(cells[1].activity_ids()));
++    view.handle_key(KeyCode::Up.into(), &cells);
++    assert_eq!(view.disclosure.focused, Some(cells[0].activity_ids()));
++    view.handle_key(KeyCode::Right.into(), &cells);
++    assert!(view.disclosure.is_expanded(&cells[0].activity_ids()));
++    assert!(!view.disclosure.is_expanded(&cells[1].activity_ids()));
++    view.handle_key(KeyCode::Down.into(), &cells);
++    assert_eq!(view.disclosure.focused, Some(cells[1].activity_ids()));
++    view.handle_key(KeyCode::Enter.into(), &cells);
++    assert!(view.disclosure.is_expanded(&cells[0].activity_ids()));
++    assert!(view.disclosure.is_expanded(&cells[1].activity_ids()));
++    view.handle_key(KeyCode::Up.into(), &cells);
++    view.handle_key(KeyCode::Left.into(), &cells);
++    assert!(!view.disclosure.is_expanded(&cells[0].activity_ids()));
++    assert!(view.disclosure.is_expanded(&cells[1].activity_ids()));
++}
+-- 
+2.43.0
+
