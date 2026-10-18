@@ -15,7 +15,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 /**
- * Executes the maintained Cargo Shear workflow with an isolated checkout and a Java tool fixture.
+ * Executes the maintained Cargo Shear command with an isolated checkout and a Java tool fixture.
  */
 public final class CargoShearWorkflowTest
 {
@@ -53,8 +53,7 @@ public final class CargoShearWorkflowTest
 			Path image = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
 			Path captures = Files.createDirectory(root.resolve("captures"));
-			Path workflow = Path.of(System.getProperty("tooling.release.workflow")).resolveSibling("rust-ci.yml");
-			String command = WorkflowCommands.readStepCommand(workflow, "cargo_shear", "cargo shear") +
+			String command = "\"$CODEX_UNLEASHED_TOOLING\" check-cargo-shear upstream" +
 				" --cargo-shear \"$CARGO_SHEAR_TEST_EXECUTABLE\"";
 			for (int scenario = 0; scenario < 3; ++scenario)
 			{

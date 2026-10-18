@@ -28,7 +28,7 @@ bb remote \
   --env=GIT_REPO_DEFAULT_BRANCH=main \
   --env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
   --env=BUILDBUDDY_CI_TASK --env=BUILDBUDDY_CI_TARGET --env=UPSTREAM_REF \
-  --env=GITHUB_SHA --env=GITHUB_REPOSITORY --env=GITHUB_RUN_ID \
+  --env=GITHUB_ACTIONS --env=GITHUB_SHA --env=GITHUB_REPOSITORY --env=GITHUB_RUN_ID \
   --script='bash .github/scripts/buildbuddy-ci.sh'
 task_status=$?
 set -e

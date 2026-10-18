@@ -104,8 +104,17 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         ;;
       bazel-clippy|bazel-verify-release)
         cd upstream
+        wrapper_flags=()
+        if [[ "$BUILDBUDDY_CI_TARGET" == x86_64-pc-windows-gnullvm ]]; then
+          wrapper_flags+=(--windows-cross-compile)
+        fi
         if [[ "$BUILDBUDDY_CI_TASK" == bazel-clippy ]]; then
-          target_lines="$(./scripts/list-bazel-clippy-targets.sh)"
+          if [[ "$BUILDBUDDY_CI_TARGET" == x86_64-pc-windows-gnullvm ]]; then
+            # Target discovery selects Windows helpers independently of this Linux client's OS.
+            target_lines="$(RUNNER_OS=Windows ./scripts/list-bazel-clippy-targets.sh --windows-cross-compile)"
+          else
+            target_lines="$(./scripts/list-bazel-clippy-targets.sh)"
+          fi
           flags=(--config=clippy --build_metadata=TAG_job=clippy)
         else
           target_lines="$(bash ./scripts/list-bazel-release-targets.sh)"
@@ -114,8 +123,11 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
             --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no
             --build_metadata=TAG_job=verify-release-build --build_metadata=TAG_rust_debug_assertions=off)
         fi
+        if [[ "$BUILDBUDDY_CI_TARGET" == x86_64-pc-windows-gnullvm ]]; then
+          flags+=(--skip_incompatible_explicit_targets)
+        fi
         mapfile -t targets <<< "$target_lines"
-        "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary -- build \
+        "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary "${wrapper_flags[@]}" -- build \
           "${flags[@]}" "--build_metadata=COMMIT_SHA=$GITHUB_SHA" -- "${targets[@]}"
         ;;
       v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
@@ -129,8 +141,9 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         "$project_root/.github/scripts/run-bazel-ci.sh" --remote-download-toplevel -- build \
           "--build_metadata=COMMIT_SHA=$GITHUB_SHA" --build_metadata=TAG_job=sdk -- \
           //codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host
-        mapfile -t binaries < <("$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=files -- \
-          'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' | grep -E '^(/|bazel-out/)')
+        query_output="$("$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=files -- \
+          'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)')"
+        mapfile -t binaries < <(printf '%s\n' "$query_output" | grep -E '^(/|bazel-out/)')
         if [[ ${#binaries[@]} != 2 ]]; then
           printf 'Expected both Codex package binaries; found %s.\n' "${#binaries[@]}" >&2
           exit 1

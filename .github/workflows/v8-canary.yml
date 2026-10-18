@@ -43,7 +43,7 @@ jobs:
   build:
     name: Build ${{ matrix.variant }} ${{ matrix.target }}
     needs: metadata
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner == 'ubuntu-24.04-arm' && matrix.target != 'aarch64-unknown-linux-gnu' && 'ubuntu-24.04' || matrix.runner }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -138,11 +138,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Build and stage Linux V8 on BuildBuddy
+        if: runner.os == 'Linux'
+        id: remote
+        uses: ./.github/actions/run-buildbuddy
+        with:
+          task: ${{ matrix.sandbox && 'v8-sandbox' || 'v8-release' }}
+          target: ${{ matrix.target }}
+          upstream-ref: ${{ inputs.upstream_ref }}
+          api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+
       - uses: ./.github/actions/prepare-patched-upstream
+        if: runner.os != 'Linux' || matrix.target == 'aarch64-unknown-linux-gnu'
         with:
           upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Prepare Bazel CI
+        if: runner.os != 'Linux'
         id: prepare_bazel
         uses: ./.github/actions/prepare-bazel-ci
         with:
@@ -150,12 +162,15 @@ jobs:
           cache-scope: v8-canary-build
 
       - uses: actions/setup-python@v6
+        if: runner.os != 'Linux'
         with:
           python-version: "3.12"
 
       - uses: dtolnay/rust-toolchain@stable
+        if: runner.os != 'Linux' || matrix.target == 'aarch64-unknown-linux-gnu'
 
       - name: Build Bazel V8 release pair
+        if: runner.os != 'Linux'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           PLATFORM: ${{ matrix.platform }}
@@ -190,6 +205,7 @@ jobs:
             --remote_download_outputs=toplevel
 
       - name: Stage release pair
+        if: runner.os != 'Linux'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           BAZEL_CONFIG: ${{ matrix.bazel_config }}
@@ -215,7 +231,18 @@ jobs:
           fi
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . stage-release-pair "${stage_args[@]}"
 
+      - name: Prepare native ARM smoke artifacts
+        if: runner.os == 'Linux' && matrix.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
+        env:
+          REMOTE_ARTIFACT_DIRECTORY: ${{ steps.remote.outputs.artifact-directory }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p "upstream/dist/$TARGET"
+          cp "$REMOTE_ARTIFACT_DIRECTORY"/v8-dist/* "upstream/dist/$TARGET/"
+
       - name: Smoke test staged artifact with Cargo
+        if: runner.os != 'Linux' || matrix.target == 'aarch64-unknown-linux-gnu'
         env:
           SANDBOX: ${{ matrix.sandbox }}
           TARGET: ${{ matrix.target }}
@@ -254,11 +281,12 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: v8-canary-${{ needs.metadata.outputs.v8_version }}-${{ matrix.variant }}-${{ matrix.target }}
-          path: upstream/dist/${{ matrix.target }}/*
+          path: ${{ runner.os == 'Linux' && format('{0}/v8-dist/*', steps.remote.outputs.artifact-directory) || format('upstream/dist/{0}/*', matrix.target) }}
           retention-days: 1
+          if-no-files-found: error
 
       - name: Save Bazel repository cache
-        if: ${{ always() && !cancelled() }}
+        if: ${{ always() && !cancelled() && runner.os != 'Linux' }}
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
