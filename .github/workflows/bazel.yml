@@ -21,6 +21,22 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
+  prepare-macos-tooling:
+    name: Prepare verified tooling for ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    uses: ./.github/workflows/prepare-tooling.yml
+    with:
+      runner: ${{ matrix.os }}
+
+  prepare-windows-tooling:
+    name: Prepare verified tooling for Windows
+    uses: ./.github/workflows/prepare-tooling.yml
+    with:
+      runner: windows-2022
+
   test-linux:
     name: Bazel test on BuildBuddy for Linux x86-64
     uses: ./.github/workflows/buildbuddy-ci.yml
@@ -56,6 +72,7 @@ jobs:
     secrets: inherit
 
   test:
+    needs: prepare-macos-tooling
     # Cold macOS setup and compilation share this allowance with the full suite.
     timeout-minutes: ${{ startsWith(matrix.os, 'macos-') && 180 || 90 }}
     strategy:
@@ -83,6 +100,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
+          require-tooling-cache: 'true'
           # The local Codex patch stack is based on this upstream revision.
           # Advance it only when the product patches have been rebased.
           upstream-ref: ${{ inputs.upstream_ref }}
@@ -221,7 +239,7 @@ jobs:
 
   test-windows-callback:
     name: Execute Windows GNU callback on Windows
-    needs: test-windows-shard
+    needs: [test-windows-shard, prepare-windows-tooling]
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -230,6 +248,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/prepare-patched-upstream
         with:
+          require-tooling-cache: 'true'
           upstream-ref: ${{ inputs.upstream_ref }}
       - name: Test BuildBuddy Bazel wrapper
         shell: pwsh
@@ -260,6 +279,7 @@ jobs:
           fi
 
   test-windows-native-main:
+    needs: prepare-windows-tooling
     if: ${{ (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
     # Cold native builds include Java verification and local MSVC compilation
     # before the full test suite; keep individual Bazel test timeouts in force.
@@ -273,6 +293,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
+          require-tooling-cache: 'true'
           upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Prepare Bazel CI
@@ -390,6 +411,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   clippy:
+    needs: prepare-macos-tooling
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -406,6 +428,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
+          require-tooling-cache: 'true'
           upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Prepare Bazel CI
@@ -495,6 +518,7 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   verify-release-build:
+    needs: prepare-macos-tooling
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -511,6 +535,7 @@ jobs:
 
       - uses: ./.github/actions/prepare-patched-upstream
         with:
+          require-tooling-cache: 'true'
           upstream-ref: ${{ inputs.upstream_ref }}
 
       - name: Prepare Bazel CI

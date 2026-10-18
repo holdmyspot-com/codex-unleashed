@@ -2,6 +2,10 @@ name: prepare-patched-upstream
 description: Clone upstream Codex and apply local patches.
 
 inputs:
+  require-tooling-cache:
+    description: Require the exact verified runtime populated by a preceding producer job.
+    required: false
+    default: 'false'
   upstream-ref:
     description: Upstream git ref or tag to check out. Defaults to .github/upstream-ref.
     required: false
@@ -32,6 +36,8 @@ runs:
   steps:
     - name: Set up Java tooling
       uses: ./.github/actions/setup-tooling
+      with:
+        require-cache: ${{ inputs.require-tooling-cache }}
 
     - name: Clone upstream repository
       shell: bash

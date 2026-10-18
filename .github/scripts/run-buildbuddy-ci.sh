@@ -10,8 +10,8 @@ set -euo pipefail
 invocation_file="$RUNNER_TEMP/buildbuddy-invocation-id"
 artifact_directory="$RUNNER_TEMP/buildbuddy-artifacts"
 mkdir -p "$artifact_directory"
-# Runtime inputs need a fresh snapshot even on branches that retain their first snapshot.
-runtime_identity="$(bash .github/scripts/buildbuddy-tooling-source-key.sh)"
+# Bootstrap changes replace the VM; consumer changes retain its caches and run verification inside it.
+environment_identity="$(bash .github/scripts/buildbuddy-tooling-source-key.sh environment)"
 set +e
 bb remote \
   "--invocation_id_file=$invocation_file" \
@@ -23,7 +23,7 @@ bb remote \
   --runner_exec_properties=max-stale-fallback-snapshot-age=24h \
   "--runner_exec_properties=codex-ci-task=$BUILDBUDDY_CI_TASK" \
   "--runner_exec_properties=codex-ci-target=$BUILDBUDDY_CI_TARGET" \
-  "--runner_exec_properties=codex-ci-runtime=$runtime_identity" \
+  "--runner_exec_properties=codex-ci-environment=$environment_identity" \
   "--remote_run_header=x-buildbuddy-platform.secret-env-overrides=BUILDBUDDY_API_KEY=$BUILDBUDDY_API_KEY" \
   --env=GIT_REPO_DEFAULT_BRANCH=main \
   --env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \

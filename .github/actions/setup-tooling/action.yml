@@ -1,6 +1,11 @@
 name: setup-tooling
 description: Build the Java tooling and make its bundled runtime available to subsequent steps.
 
+inputs:
+  require-cache:
+    description: Require the exact verified runtime populated by a preceding producer job.
+    default: 'false'
+
 outputs:
   launcher:
     description: Absolute path to the project tooling launcher.
@@ -45,6 +50,7 @@ runs:
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: ${{ steps.checkout.outputs.runtime }}
+        fail-on-cache-miss: ${{ inputs.require-cache == 'true' }}
         # Verification exercises the workflow and script consumers as well as the Java sources.
         key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
 
