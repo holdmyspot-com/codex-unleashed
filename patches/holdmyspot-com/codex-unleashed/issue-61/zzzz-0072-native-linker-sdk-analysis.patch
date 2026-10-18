@@ -1,0 +1,98 @@
+From 61a77cdda9a30d73f63ad2e7d0c2bc9a19a22701 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 18 Oct 2026 00:18:14 +0000
+Subject: [PATCH] fix(ci): analyze linker SDK regressions only on native
+ platforms
+
+Keep Linux and Darwin linker coverage in their native matrix jobs, avoiding macOS SDK analysis on Linux. Guard the configured dependency graph in CI.
+
+Red: unpatched Linux cquery graph contains macos_sdk (BuildBuddy dc656f0e-7d20-4067-8216-e4cdc3da2691). Green: patched graph excludes it (80aacd41-76ae-4e1b-a80d-46de860e791d), and Linux linker test passes (e61599a3-65f5-452c-a201-dae74c7dce60). Native macOS verification is tracked separately.
+---
+ .github/workflows/bazel.yml                   | 11 ++++++++
+ tools/build-warnings/rpaths/BUILD.bazel       |  8 ++++++
+ .../rpaths/check-sdk-analysis.sh              | 28 +++++++++++++++++++
+ 3 files changed, 47 insertions(+)
+ create mode 100755 tools/build-warnings/rpaths/check-sdk-analysis.sh
+
+diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
+index 556248ceb..7b49de04a 100644
+--- a/.github/workflows/bazel.yml
++++ b/.github/workflows/bazel.yml
+@@ -121,6 +121,17 @@ jobs:
+             -- \
+             "${bazel_targets[@]}"
+
++      - name: Verify native linker SDK dependencies
++        env:
++          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
++        shell: bash
++        run: |
++          set -euo pipefail
++          ./.github/scripts/run-bazel-ci.sh -- cquery --output=label -- \
++            'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
++          bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" \
++            "$RUNNER_TEMP/native-sdk-labels.txt"
++
+       - name: Upload Bazel execution logs
+         if: always() && !cancelled()
+         continue-on-error: true
+diff --git a/tools/build-warnings/rpaths/BUILD.bazel b/tools/build-warnings/rpaths/BUILD.bazel
+index 064059f5c..994e82c26 100644
+--- a/tools/build-warnings/rpaths/BUILD.bazel
++++ b/tools/build-warnings/rpaths/BUILD.bazel
+@@ -13,11 +13,19 @@ link_probe(name = "probe")
+ linux_rpath_test(
+     name = "linux_rpath_test",
+     size = "small",
++    target_compatible_with = select({
++        "@platforms//os:linux": [],
++        "//conditions:default": ["@platforms//:incompatible"],
++    }),
+     target_under_test = ":probe",
+ )
+
+ macos_rpath_test(
+     name = "macos_rpath_test",
+     size = "small",
++    target_compatible_with = select({
++        "@platforms//os:macos": [],
++        "//conditions:default": ["@platforms//:incompatible"],
++    }),
+     target_under_test = ":probe",
+ )
+diff --git a/tools/build-warnings/rpaths/check-sdk-analysis.sh b/tools/build-warnings/rpaths/check-sdk-analysis.sh
+new file mode 100755
+index 000000000..07945e632
+--- /dev/null
++++ b/tools/build-warnings/rpaths/check-sdk-analysis.sh
+@@ -0,0 +1,28 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [[ $# != 2 ]]; then
++  echo "Usage: $0 <Linux|macOS|Windows> <configured-dependency-labels>" >&2
++  exit 2
++fi
++
++if ! grep -Fq '//tools/build-warnings/rpaths:probe' "$2"; then
++  echo 'Expected configured dependencies of //tools/build-warnings/rpaths:all.' >&2
++  exit 2
++fi
++
++case "$1" in
++  macOS)
++    if ! grep -Fq macos_sdk "$2"; then
++      echo 'The native macOS linker regression must analyze its SDK.' >&2
++      exit 1
++    fi
++    ;;
++  Linux|Windows)
++    if grep -Fq macos_sdk "$2"; then
++      echo 'Non-macOS linker regression analysis must not fetch the macOS SDK.' >&2
++      exit 1
++    fi
++    ;;
++  *) echo "Unsupported runner OS: $1" >&2; exit 2 ;;
++esac
+--
+2.43.0

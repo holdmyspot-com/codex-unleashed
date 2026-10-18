@@ -136,6 +136,18 @@ jobs:
             -- \
             "${bazel_targets[@]}"
 
+      - name: Verify native linker SDK dependencies
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" -- cquery --output=label -- \
+            'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
+          bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" \
+            "$RUNNER_TEMP/native-sdk-labels.txt"
+
       - name: Upload Bazel execution logs
         if: always() && !cancelled()
         continue-on-error: true

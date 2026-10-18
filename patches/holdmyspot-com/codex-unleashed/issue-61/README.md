@@ -2669,3 +2669,68 @@ Run the maintained Bazel workflow on both macOS architectures for full native
 acceptance. Its setup action runs the cleanup and SDK probe before the build;
 compiler warnings remain fatal for project-owned targets. Linux and Windows
 do not run the macOS cleanup.
+
+### Native linker SDK analysis
+
+`zzzz-0072-native-linker-sdk-analysis.patch` runs the Linux linker regression
+on Linux and the Darwin linker regression on macOS. Both remain in the test
+matrix. Linux no longer analyzes the macOS SDK solely for the Darwin linker
+regression. Cross-platform MSVC analysis remains enabled.
+
+The patch extends `zzzz-0049-native-rpath-feature.patch` and follows the
+existing numbered issue #61 series. The root Bazel workflow and the patched
+upstream workflow both check the configured dependency graph after tests.
+From a prepared CI checkout, run:
+
+```sh
+./.github/scripts/run-bazel-ci.sh -- test -- //tools/build-warnings/rpaths:all
+./.github/scripts/run-bazel-ci.sh -- cquery --output=label -- \
+  'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
+bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" \
+  "$RUNNER_TEMP/native-sdk-labels.txt"
+```
+
+The native test passes and the other platform's test is incompatible. The
+configured dependency graph contains the macOS SDK on macOS and excludes it
+on Linux. A missing probe, unexpected SDK dependency, or missing Darwin SDK
+fails the guard.
+
+### BuildBuddy cache chunking
+
+`zzzz-0073-buildbuddy-cache-chunking.patch` enables content-defined chunking
+for `buildbuddy-generic` and its derived remote-execution configurations.
+The pinned Bazel 9.3 toolchain supports this option. Compression and minimal
+CI downloads remain enabled. The maintained wrapper retains its bounded
+Unix disk cache and its existing Windows disk-cache exception. Reusing
+chunks during downloads requires retaining that disk cache; a new runner
+still needs an initial download. See the
+[BuildBuddy chunking documentation](https://www.buildbuddy.io/changelog/bazel-remote-cache-cdc/).
+
+Apply this patch after the existing issue #61 series. It includes manual
+`//tools/build-warnings/cache-transfer:sample_a` and `:sample_b` targets.
+Each produces a deterministic 16 MiB body with an eight-byte header; only
+one header byte differs. They stay outside ordinary wildcard builds.
+For a controlled CI experiment, use a fresh, task-owned disk-cache directory:
+
+```sh
+./.github/scripts/run-bazel-ci.sh -- build \
+  --disk_cache="$RUNNER_TEMP/cache-transfer-disk" \
+  --remote_download_outputs=all -- \
+  //tools/build-warnings/cache-transfer:sample_a
+cp bazel-bin/tools/build-warnings/cache-transfer/a.bin "$RUNNER_TEMP/cache-a.bin"
+rm -f -- bazel-bin/tools/build-warnings/cache-transfer/a.bin
+./.github/scripts/run-bazel-ci.sh -- build \
+  --disk_cache="$RUNNER_TEMP/cache-transfer-disk" \
+  --remote_download_outputs=all -- \
+  //tools/build-warnings/cache-transfer:sample_b
+cmp <(tail -c +9 "$RUNNER_TEMP/cache-a.bin") \
+  <(tail -c +9 bazel-bin/tools/build-warnings/cache-transfer/b.bin)
+rm -f -- "$RUNNER_TEMP/cache-a.bin" \
+  bazel-bin/tools/build-warnings/cache-transfer/b.bin
+rm -rf -- "$RUNNER_TEMP/cache-transfer-disk"
+```
+
+The bodies match. Compare the two invocation cache-volume reports to measure
+chunk reuse; savings depend on artifact similarity and retained cache state.
+The benchmark is manual because it contacts the configured cache service and
+measures transfer rather than a deterministic timing threshold.
