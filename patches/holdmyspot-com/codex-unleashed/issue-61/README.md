@@ -2761,3 +2761,34 @@ override is required. The target runs all 54 tests with zero failures and zero
 ignored tests. Full native workflow checks cover its interaction with the
 remaining test targets. The declared upstream base uses normal parallel test
 execution for this suite.
+
+## Image suite deadline
+
+`zzzz-0075-image-suite-deadline.patch` preserves the upstream medium-suite
+budget of five minutes for the complete image unit suite. Its large image
+fixtures can exceed the one-minute default that patch 0013 assigns to generated
+unit suites on native Intel macOS. All 13 tests and their assertions remain
+enabled. An analysis regression requires the generated target's `moderate`
+timeout.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0074. The timeout regression uses the analysis-test helper from patch
+0013. The change tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61 and repairs the
+queue's deadline configuration.
+
+From the patched checkout root:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --nocache_test_results --test_output=all -- //codex-rs/utils/image:whole_suite_deadline_test //codex-rs/utils/image:image-unit-tests
+```
+
+Both targets pass. The unit suite runs 13 tests with zero failures and zero
+ignored tests, using its configured deadline without a command-line timeout
+override. When a local Linux test sandbox cannot access `/dev/null`, use
+`--strategy=TestRunner=local` for the focused analysis regression; native CI
+keeps its normal execution strategy.
