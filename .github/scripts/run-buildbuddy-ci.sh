@@ -10,6 +10,8 @@ set -euo pipefail
 invocation_file="$RUNNER_TEMP/buildbuddy-invocation-id"
 artifact_directory="$RUNNER_TEMP/buildbuddy-artifacts"
 mkdir -p "$artifact_directory"
+# Bootstrap changes need a fresh snapshot even on branches that retain their first snapshot.
+runtime_identity="$(sha256sum .github/scripts/buildbuddy-bootstrap.sh .github/scripts/buildbuddy-tools.sh | sha256sum | cut -d ' ' -f 1)"
 set +e
 bb remote \
   "--invocation_id_file=$invocation_file" \
@@ -21,6 +23,7 @@ bb remote \
   --runner_exec_properties=max-stale-fallback-snapshot-age=24h \
   "--runner_exec_properties=codex-ci-task=$BUILDBUDDY_CI_TASK" \
   "--runner_exec_properties=codex-ci-target=$BUILDBUDDY_CI_TARGET" \
+  "--runner_exec_properties=codex-ci-runtime=$runtime_identity" \
   "--remote_run_header=x-buildbuddy-platform.secret-env-overrides=BUILDBUDDY_API_KEY=$BUILDBUDDY_API_KEY" \
   --env=GIT_REPO_DEFAULT_BRANCH=main \
   --env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \

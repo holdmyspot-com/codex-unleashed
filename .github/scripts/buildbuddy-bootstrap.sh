@@ -5,7 +5,8 @@ set -euo pipefail
 project_root="$PWD"
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
-export CI_BUILD_ROOT="$HOME/.cache/codex-unleashed-ci"
+# The workspace disk holds persistent state outside the provider-cleaned Git checkout.
+export CI_BUILD_ROOT="$(dirname "$project_root")/codex-unleashed-ci"
 mkdir -p "$CI_BUILD_ROOT"
 export RUNNER_TEMP="$CI_BUILD_ROOT/tmp"
 export TMPDIR="$RUNNER_TEMP"
