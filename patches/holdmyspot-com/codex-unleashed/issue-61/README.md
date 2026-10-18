@@ -2793,6 +2793,9 @@ override. When a local Linux test sandbox cannot access `/dev/null`, use
 `--strategy=TestRunner=local` for the focused analysis regression; native CI
 keeps its normal execution strategy.
 
+Patch 0077 scopes the five-minute image budget to Intel macOS and retains a
+one-minute budget on other platforms.
+
 ## Thread-store suite deadline
 
 `zzzz-0076-thread-store-suite-deadline.patch` preserves the upstream medium-suite
@@ -2823,3 +2826,44 @@ On native Windows, both targets pass and the four unit-test shards together run
 requires no command-line timeout override. The focused analysis regression also
 runs on Linux; when its local test sandbox cannot access `/dev/null`, use
 `--strategy=TestRunner=local`. Native CI keeps its normal execution strategy.
+
+Patch 0077 scopes the five-minute thread-store budget to Windows and retains a
+one-minute budget on other platforms.
+
+## Platform-specific unit-suite deadlines
+
+`zzzz-0077-platform-unit-suite-deadlines.patch` keeps the longer native budgets
+from patches 0075 and 0076 without producing excessive-deadline warnings on
+faster platforms. Image uses five minutes on Intel macOS; thread-store uses five
+minutes on Windows. Both use one minute elsewhere. Their original test labels,
+compiled Rust binaries, assertions, arguments, and sharding remain available.
+
+Bazel's [test timeout attribute is nonconfigurable](https://bazel.build/reference/be/common-definitions#test.timeout).
+The `codex_rust_crate` macro accepts `unit_test_platform_timeouts`, a map from
+selection conditions to timeout strings. Its fallback is `unit_test_timeout`,
+unless the map supplies `//conditions:default`. A nonempty map creates compatible
+launcher variants sharing one compiled test binary. The original test label is
+a test suite that runs the compatible variant and skips the others. Calls with
+an empty map retain their existing targets.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0076. The change tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61.
+
+From the patched checkout root:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --nocache_test_results --test_output=all --test_verbose_timeout_warnings -- //tools/build-warnings/test-timeouts:timeouts_tests //codex-rs/thread-store:whole_suite_deadline_test //codex-rs/utils/image:whole_suite_deadline_test //codex-rs/thread-store:thread-store-unit-tests //codex-rs/utils/image:image-unit-tests
+```
+
+The analysis regressions require the selected platform's deadline. The original
+unit-suite labels execute one compatible launcher apiece. Native Windows runs
+all 268 thread-store tests and native Intel macOS runs all 13 image tests, with
+zero failures and zero ignored tests. The native CI matrix verifies both
+platforms and ARM macOS; its normal MSVC options apply to Windows. Focused local
+Linux analysis checks may use `--strategy=TestRunner=local` when the local test
+sandbox cannot access `/dev/null`.
