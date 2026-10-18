@@ -14,6 +14,9 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
     done
     printf 'Remote runner probe completed.\n'
     ;;
+  tooling)
+    source .github/scripts/buildbuddy-bootstrap.sh
+    ;;
   *)
     printf 'Unsupported BuildBuddy CI task: %s\n' "$BUILDBUDDY_CI_TASK" >&2
     exit 2
