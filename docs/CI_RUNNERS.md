@@ -24,7 +24,7 @@ then passes the verified output to later steps. GitHub artifact retention is
 
 ## Warm state
 
-BuildBuddy snapshots preserve the toolchain, dependency downloads, compiled
+BuildBuddy snapshots preserve the toolchain, extracted dependencies, compiled
 outputs, and running Bazel server. Task and target properties keep unrelated
 configurations in separate snapshot groups. Persistent build state lives outside
 the repository checkout so the runner's Git cleanup does not remove it.
@@ -34,6 +34,11 @@ uses its own output base. Module and MSVC preflight checks and SDK queries use
 another output root, separate from the main test server.
 The tooling source fingerprint also partitions snapshots, so changed runtime
 inputs cannot repeatedly restore an obsolete verification marker on a branch.
+
+After a task exits, the runner removes downloaded Bazel archives from its
+managed archive cache. Extracted repositories and the running Bazel server's
+analysis state remain available for reuse. A cleanup failure fails an otherwise
+successful task; an existing task failure retains its original exit status.
 
 The tooling runtime is reused only after full Maven verification succeeds for
 its source, build configuration, JDK version, operating system, and architecture.
@@ -80,6 +85,7 @@ git rm -- .github/scripts/buildbuddy-prepare-bazel.sh .github/scripts/run-buildb
 git rm -- .github/scripts/buildbuddy-v8.sh .github/scripts/run-buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-windows-cross.sh .github/scripts/test-bazel-cross-host.sh
 git rm -- .github/scripts/buildbuddy-tooling-source-key.sh
+git rm -- .github/scripts/test-buildbuddy-archive-cleanup.sh
 git rm -- .github/scripts/run-windows-callback.sh
 git rm -- .github/zsh-commit
 git rm -- scripts/codex_package/zsh-exec-wrapper.patch

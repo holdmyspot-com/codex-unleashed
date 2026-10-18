@@ -5,6 +5,18 @@ checkout_root="$PWD"
 
 finish() {
   local status=$?
+  local archive_cache="${BAZEL_REPOSITORY_CACHE:-}"
+  if [[ "$archive_cache" == "$(dirname "$checkout_root")/codex-unleashed-ci/bazel-repository-cache" ]]; then
+    local cleanup_status=0
+    rm -rf -- "$archive_cache" || cleanup_status=$?
+    if [[ "$cleanup_status" != 0 ]]; then
+      printf 'Failed to remove downloaded Bazel archives: %s\n' "$archive_cache" >&2
+      if [[ "$status" == 0 ]]; then
+        status=$cleanup_status
+      fi
+    fi
+  fi
+
   local worktree_status git_status=0
   worktree_status="$(git -C "$checkout_root" status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)" || git_status=$?
   if [[ "$git_status" != 0 && "$status" == 0 ]]; then
@@ -72,6 +84,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         pnpm --dir upstream install --frozen-lockfile
         case "$BUILDBUDDY_CI_TASK" in
           repo-checks)
+            bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
             export NODE_OPTIONS=--max-old-space-size=4096
             export ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1
             ./scripts/run-upstream-repo-checks.sh upstream
