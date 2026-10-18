@@ -1,6 +1,6 @@
-From 78817928c7e1112b55b10d168a0b0ea360a2df11 Mon Sep 17 00:00:00 2001
+From 8584916dffe8f09005cc3bb0c73d3b181b8f22fe Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 14 Oct 2026 10:20:00 +0000
+Date: Sun, 18 Oct 2026 09:07:44 +0000
 Subject: [PATCH] Preserve LLVM link resources in the native Meson recipe
 
 Normalize C and C++ resource-directory flags to the declared merged linker resource tree for Meson, whose link commands append compilation flags. Keep other arguments and resource-free toolchains unchanged.
@@ -8,22 +8,31 @@ Normalize C and C++ resource-directory flags to the declared merged linker resou
 Regression: the actual declared LLVM 23 configuration fails the miniature C/C++ Meson link at its missing builtins archive before the change. The patched recipe compiles, links, and executes the standard-library fixture without warning diagnostics.
 
 Validation: just fmt-check and the maintained native voice unit suite pass (91 tests, 19 skips). The complete native voice prefix and fresh emitted integration gates remain separate.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0035-native-meson-darwin-linker.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- third_party/voice/build_native.py          | 17 +++++-
+ third_party/voice/build_native.py          | 19 +++++-
+ third_party/voice/test_build_native.py     | 26 +++++++++
  tools/build-warnings/check-native-meson.py | 67 ++++++++++++++++++++++
- 2 files changed, 83 insertions(+), 1 deletion(-)
+ 3 files changed, 111 insertions(+), 1 deletion(-)
  create mode 100644 tools/build-warnings/check-native-meson.py
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index 58d482894..1f7249b2b 100644
+index da2872ab2..8df9b9d23 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -288,10 +288,25 @@ class NativeBuild:
+@@ -303,10 +303,27 @@ class NativeBuild:
          )
          if self.args.target.endswith("unknown-linux-gnu"):
              link[-1] = "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
 +
 +        meson_flags = {name: list(flags) for name, flags in self.flags.items()}
++        if self.args.target.endswith("apple-darwin"):
++            meson_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
 +        resource_prefix = "-resource-dir="
 +        link_resources = [
 +            flag for flag in self.flags["LDFLAGS"] if flag.startswith(resource_prefix)
@@ -45,6 +54,50 @@ index 58d482894..1f7249b2b 100644
              }
          )
          if self.args.target.endswith("apple-darwin"):
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index f15934baa..5dac98769 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -398,6 +398,11 @@ class NativeBuildTests(unittest.TestCase):
+                 shlex.split(build.environment["LDFLAGS"]),
+                 [
+                     *self.args.link_flag,
++                    *(
++                        ["-fuse-ld=/usr/bin/ld"]
++                        if self.args.target.endswith("apple-darwin")
++                        else []
++                    ),
+                     f"-L{build.prefix / 'lib'}",
+                     (
+                         "-Wl,-rpath,$ORIGIN:$ORIGIN/.."
+@@ -407,6 +412,27 @@ class NativeBuildTests(unittest.TestCase):
+                 ],
+             )
+ 
++    def test_meson_native_linker_selection_matches_target(self):
++        for suffix, expected in (
++            ("apple-darwin", "-fuse-ld=/usr/bin/ld"),
++            ("unknown-linux-gnu", "-fuse-ld=lld"),
++        ):
++            with self.subTest(target=suffix):
++                self.args.target = "x86_64-" + suffix
++                self.args.link_flag = ["-fuse-ld=lld", "-Wl,-fatal_warnings"]
++                with patch("build_native.validate_target"):
++                    build = NativeBuild(self.args, self.environment)
++                build.sources = {"meson": self.root, "probe": self.root}
++                with patch.object(build, "run"):
++                    build.meson("probe", [])
++                link = shlex.split(build.environment["LDFLAGS"])
++                selectors = [flag for flag in link if flag.startswith("-fuse-ld=")]
++                self.assertEqual(selectors[-1], expected)
++                self.assertIn("-Wl,-fatal_warnings", link)
++                self.assertEqual(build.flags["LDFLAGS"], self.args.link_flag)
++                for variable in ("CFLAGS", "CXXFLAGS"):
++                    self.assertNotIn(expected, shlex.split(build.environment[variable]))
++
+     def test_windows_paths_use_cygpath_and_propagate_failure(self):
+         build = NativeBuild(self.args, self.environment)
+         build.windows = True
 diff --git a/tools/build-warnings/check-native-meson.py b/tools/build-warnings/check-native-meson.py
 new file mode 100644
 index 000000000..f1fae251d
@@ -118,6 +171,3 @@ index 000000000..f1fae251d
 +
 +if __name__ == "__main__":
 +    main()
--- 
-2.43.0
-

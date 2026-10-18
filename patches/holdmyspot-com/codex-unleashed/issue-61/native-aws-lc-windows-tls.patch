@@ -1,22 +1,36 @@
-From 065c110df50845129b70fc11f7a07e041f9c6755 Mon Sep 17 00:00:00 2001
+From 730fa56c4a45a08a34359584ea804204bd29d7d2 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:05 +0000
+Date: Sun, 18 Oct 2026 09:07:43 +0000
 Subject: [PATCH] Preserve AWS-LC Windows TLS callbacks with LLVM 22
 
+Consolidate follow-up corrections while preserving the final implementation:
+- upgrade-llvm-23-windows-test-dependency.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- MODULE.bazel                            |  6 ++
+ MODULE.bazel                            |  8 ++
  patches/BUILD.bazel                     |  1 +
  patches/aws_lc_windows_tls.patch        | 97 +++++++++++++++++++++++++
  tools/build-warnings/aws-lc/BUILD.bazel |  4 +
- 4 files changed, 108 insertions(+)
+ 4 files changed, 110 insertions(+)
  create mode 100644 patches/aws_lc_windows_tls.patch
  create mode 100644 tools/build-warnings/aws-lc/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index cfbabeebd..ffea32d2f 100644
+index b95171a28..745f727d7 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -165,6 +165,12 @@ single_version_override(
+@@ -76,6 +76,8 @@ use_repo(windows_sdk, "windows_sdk")
+ 
+ # Abseil picks a MinGW pthread TLS path that does not match our hermetic
+ # windows-gnullvm toolchain; force it onto the portable C++11 thread-local path.
++bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
++
+ single_version_override(
+     module_name = "abseil-cpp",
+     patch_strip = 1,
+@@ -163,6 +165,12 @@ single_version_override(
  bazel_dep(name = "rules_platform", version = "0.1.0")
  bazel_dep(name = "rules_pkg", version = "1.0.1")
  bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
@@ -30,7 +44,7 @@ index cfbabeebd..ffea32d2f 100644
  bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
  single_version_override(
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 092d29882..afb097b27 100644
+index 1c31b2f14..133e504ee 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@

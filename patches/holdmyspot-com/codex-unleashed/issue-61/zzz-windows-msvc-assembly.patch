@@ -1,21 +1,28 @@
-From faf288c2e5d61de546d7b771b354a8f4bcf0bedf Mon Sep 17 00:00:00 2001
+From 6c251ec21128b842546dafae9d02f61322217e9d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 09:57:02 +0000
+Date: Sun, 18 Oct 2026 09:08:02 +0000
 Subject: [PATCH] Use MASM-compatible native Windows assembly flags and
  fixtures
 
 Regression: native MSVC configuration analysis fails with C/C++ compiler switches on raw and preprocessed assembly actions, and lacks /WX. The patched configuration passes the analysis regression. Native Windows execution and fresh emitted verification remain required.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+- zzzz-0056-windows-analysis-host-toolchain.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |  1 +
  patches/rules_cc_masm_action_flags.patch      | 67 ++++++++++++++++
- tools/build-warnings/assembly/BUILD.bazel     | 21 +++--
- .../assembly/native/BUILD.bazel               | 78 +++++++++++++++++++
+ tools/build-warnings/assembly/BUILD.bazel     | 22 +++--
+ .../assembly/native/BUILD.bazel               | 80 +++++++++++++++++++
  .../assembly/native/fixture.asm               |  5 ++
  .../assembly/native/flags_test.bzl            | 40 ++++++++++
  .../assembly/native/preprocessed.S            |  5 ++
  .../build-warnings/assembly/preprocessed.asm  |  8 ++
  tools/build-warnings/assembly/raw.asm         |  5 ++
- 9 files changed, 225 insertions(+), 5 deletions(-)
+ 9 files changed, 228 insertions(+), 5 deletions(-)
  create mode 100644 patches/rules_cc_masm_action_flags.patch
  create mode 100644 tools/build-warnings/assembly/native/BUILD.bazel
  create mode 100644 tools/build-warnings/assembly/native/fixture.asm
@@ -25,19 +32,17 @@ Regression: native MSVC configuration analysis fails with C/C++ compiler switche
  create mode 100644 tools/build-warnings/assembly/raw.asm
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index b2e4865d8..fdbbd5af6 100644
+index a4fc80ebb..690d1f044 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -168,8 +168,9 @@ single_version_override(
-     patch_strip = 1,
+@@ -165,6 +165,7 @@ single_version_override(
      patches = [
          "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
          "//patches:rules_cc_static_library_def_parser.patch",
 +        "//patches:rules_cc_masm_action_flags.patch",
      ],
  )
-
- bazel_dep(name = "rules_platform", version = "0.1.0")
+ 
 diff --git a/patches/rules_cc_masm_action_flags.patch b/patches/rules_cc_masm_action_flags.patch
 new file mode 100644
 index 000000000..b55ac375f
@@ -112,18 +117,19 @@ index 000000000..b55ac375f
 +                         ACTION_NAMES.c_compile,
 +                         ACTION_NAMES.cpp_compile,
 diff --git a/tools/build-warnings/assembly/BUILD.bazel b/tools/build-warnings/assembly/BUILD.bazel
-index 67e1d4610..e2eb66766 100644
+index 67e1d4610..6907c9adc 100644
 --- a/tools/build-warnings/assembly/BUILD.bazel
 +++ b/tools/build-warnings/assembly/BUILD.bazel
-@@ -1,11 +1,22 @@
+@@ -1,11 +1,23 @@
  load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("//tools/build-warnings/assembly/native:flags_test.bzl", "masm_fixture_selection_test")
 +
 +masm_fixture_selection_test(
 +    name = "native_fixture_selection_test",
++    size = "small",
 +    target_under_test = ":compile_inputs",
 +)
-
+ 
  cc_library(
      name = "compile_inputs",
 -    srcs = [
@@ -145,10 +151,10 @@ index 67e1d4610..e2eb66766 100644
  )
 diff --git a/tools/build-warnings/assembly/native/BUILD.bazel b/tools/build-warnings/assembly/native/BUILD.bazel
 new file mode 100644
-index 000000000..73e2fa6fb
+index 000000000..3726e00fb
 --- /dev/null
 +++ b/tools/build-warnings/assembly/native/BUILD.bazel
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,80 @@
 +load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@rules_cc//cc/private/toolchain:windows_cc_toolchain_config.bzl", "cc_toolchain_config")
 +load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
@@ -203,6 +209,7 @@ index 000000000..73e2fa6fb
 +    target_compatible_with = [
 +        "@platforms//os:windows",
 +        "@platforms//cpu:x86_64",
++        "@llvm//constraints/windows/abi:msvc",
 +    ],
 +    toolchain = ":cc_toolchain",
 +    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
@@ -225,6 +232,7 @@ index 000000000..73e2fa6fb
 +
 +masm_flags_test(
 +    name = "flags_test",
++    size = "small",
 +    target_under_test = ":assembly_inputs",
 +)
 diff --git a/tools/build-warnings/assembly/native/fixture.asm b/tools/build-warnings/assembly/native/fixture.asm

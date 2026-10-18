@@ -1,35 +1,41 @@
-From a12a7f3d3038f336ee07f0142733519e2becbd99 Mon Sep 17 00:00:00 2001
+From 6cbf23d2f51ab15d918a37696a42a2e63def69fa Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 04:06:13 +0000
+Date: Sun, 18 Oct 2026 09:07:55 +0000
 Subject: [PATCH] Fix V8 pointer formatting for Clang targeting MinGW
 
 The focused regression includes actual V8 headers without linking unused V8 implementation libraries. On unpatched V8 it reproduces three missing MinGW classifications and three pointer-format type mismatches. With the correction its Windows GNU compilation passes under Clang 23.1.2 and fatal warnings; the native Linux formatting runtime test also passes. Native Windows execution and fresh emitted queue acceptance remain pending.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzz-v8-darwin-pointer-format.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                           |   1 +
- patches/v8_clang_mingw_detection.patch | 109 +++++++++++++++++++++++++
+ patches/v8_clang_mingw_detection.patch | 119 +++++++++++++++++++++++++
  tools/build-warnings/v8/BUILD.bazel    |   4 +
- 3 files changed, 114 insertions(+)
+ 3 files changed, 124 insertions(+)
  create mode 100644 patches/v8_clang_mingw_detection.patch
  create mode 100644 tools/build-warnings/v8/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 10ff6cf98..9fa0d77e1 100644
+index 7a482d48e..d8c7aa951 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -912,6 +912,7 @@ archive_override(
+@@ -898,6 +898,7 @@ archive_override(
          "//patches:v8_bazel_rules.patch",
          "//patches:v8_source_portability.patch",
          "//patches:v8_icu_mutex_annotations.patch",
 +        "//patches:v8_clang_mingw_detection.patch",
+         "//patches:v8_inspector_python_runtime.patch",
      ],
      strip_prefix = "v8-15.0.245.2",
-     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/patches/v8_clang_mingw_detection.patch b/patches/v8_clang_mingw_detection.patch
 new file mode 100644
-index 000000000..5d4e3fe3a
+index 000000000..7ffd4db64
 --- /dev/null
 +++ b/patches/v8_clang_mingw_detection.patch
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,119 @@
 +From b1e94478942765675ec7d497221017fc8cebb5f6 Mon Sep 17 00:00:00 2001
 +From: Gili Tzabari <cowwoc2020@gmail.com>
 +Date: Thu, 15 Oct 2026 04:11:12 +0000
@@ -40,7 +46,8 @@ index 000000000..5d4e3fe3a
 + BUILD.bazel                        | 20 ++++++++++++++++++++
 + include/v8config.h                 | 16 ++++++++++------
 + test/codex/pointer-formats-test.cc | 28 ++++++++++++++++++++++++++++
-+ 3 files changed, 58 insertions(+), 6 deletions(-)
++ src/base/macros.h                 |  2 +-
++ 4 files changed, 59 insertions(+), 7 deletions(-)
 + create mode 100644 test/codex/pointer-formats-test.cc
 +
 +diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
@@ -139,6 +146,15 @@ index 000000000..5d4e3fe3a
 ++                address, std::intptr_t{-123}, std::uintptr_t{123});
 ++  return std::strcmp(output, expected);
 ++}
++diff --git a/orig/v8-15.0.245.2/src/base/macros.h b/mod/v8-15.0.245.2/src/base/macros.h
++index 4355dec..a61a2ab 100644
++--- a/orig/v8-15.0.245.2/src/base/macros.h
+++++ b/mod/v8-15.0.245.2/src/base/macros.h
++@@ -403,3 +403,3 @@ V8_INLINE A implicit_cast(A x) {
++ #undef V8PRIuPTR
++-#define V8PRIuPTR "lxu"
+++#define V8PRIuPTR "lu"
++ #endif
 diff --git a/tools/build-warnings/v8/BUILD.bazel b/tools/build-warnings/v8/BUILD.bazel
 new file mode 100644
 index 000000000..f7c014ef3

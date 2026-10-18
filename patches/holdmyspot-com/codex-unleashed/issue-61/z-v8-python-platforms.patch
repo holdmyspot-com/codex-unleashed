@@ -1,24 +1,56 @@
-From c6d25049a6929e6a3f29a396ab81b3522a4542d6 Mon Sep 17 00:00:00 2001
+From 13bfd3c293349f514a908bcf2a9fd5dcc41296f0 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 01:07:25 +0000
+Date: Sun, 18 Oct 2026 09:07:53 +0000
 Subject: [PATCH] Resolve V8 Python generators across execution platforms
 
 Focused Windows generator analysis fails on the Linux baseline with no matching wheel; hosted Windows cross builds fail for the inverse host mismatch. Resolve native, Linux and Windows wheels, and update only the required MarkupSafe pin to 3.0.4 to avoid its failing Python 3.11 source fallback. Keep Jinja2 and hash checks unchanged.
 
 Inspector generation also reproduces missing imports from hardcoded repository paths. Use the explicit supported zipapp launcher while retaining manifest runfiles. Both platform analyses and actual inspector generation pass through tools/build-warnings/v8/check-python-platforms.sh. Fresh emitted-patch formatting and lock verification follow in the owning repair goal.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzz-v8-inspector-python-runtime.patch
+- zzz-v8-python-execution-platforms.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
+ MODULE.bazel                                  |   2 +
  MODULE.bazel.lock                             | 220 +++++++++++-----
  patches/v8_bazel_rules.patch                  |  22 +-
+ patches/v8_inspector_python_runtime.patch     |  84 ++++++
  patches/v8_module_deps.patch                  | 246 +++++++++++++++++-
- .../v8/check-python-platforms.sh              |  11 +
- 4 files changed, 422 insertions(+), 77 deletions(-)
+ patches/v8_python_execution_platforms.patch   |  25 ++
+ .../v8/check-inspector-runtime.sh             |  20 ++
+ .../v8/check-python-platforms.sh              |  18 ++
+ 8 files changed, 560 insertions(+), 77 deletions(-)
+ create mode 100644 patches/v8_inspector_python_runtime.patch
+ create mode 100644 patches/v8_python_execution_platforms.patch
+ create mode 100755 tools/build-warnings/v8/check-inspector-runtime.sh
  create mode 100755 tools/build-warnings/v8/check-python-platforms.sh
 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index ec6288e29..dbfab7242 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -885,9 +885,11 @@ archive_override(
+     patches = [
+         "//patches:v8_warning_policy.patch",
+         "//patches:v8_module_deps.patch",
++        "//patches:v8_python_execution_platforms.patch",
+         "//patches:v8_bazel_rules.patch",
+         "//patches:v8_source_portability.patch",
+         "//patches:v8_icu_mutex_annotations.patch",
++        "//patches:v8_inspector_python_runtime.patch",
+     ],
+     strip_prefix = "v8-15.0.245.2",
+     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 30644b986..7e7381c86 100644
+index ce5f94a17..311a6b2a3 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
-@@ -906,71 +906,153 @@
+@@ -902,75 +902,157 @@
+             "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl": "sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a"
+           },
            "markupsafe": {
 -            "https://files.pythonhosted.org/packages/04/69/c31e837e4bb5532b02d297152464b2cb8a0edeb9bef762c015e9b4e95e16/MarkupSafe-2.0.1-cp310-cp310-musllinux_1_1_x86_64.whl": "sha256:cdfba22ea2f0029c9261a4bd07e830a8da012291fbe44dc794e488b6c9bb353a",
 -            "https://files.pythonhosted.org/packages/08/dc/a5ed54fcc61f75343663ee702cbf69831dcec9b1a952ae21cf3d1fbc56ba/MarkupSafe-2.0.1-cp36-cp36m-manylinux2010_x86_64.whl": "sha256:fa130dd50c57d53368c9d59395cb5526eda596d3ffe36666cd81a44d56e48872",
@@ -241,17 +273,25 @@ index 30644b986..7e7381c86 100644
 +            "https://files.pythonhosted.org/packages/f9/29/4df8355e313426d19e62ba33e0253c009ca12a0894ee77d67fa67255361c/markupsafe-3.0.4-cp315-cp315t-musllinux_1_2_armv7l.whl": "sha256:4e2c4809c14559aa7ef426f27fb35afbb38104c349a903bf8f3600456764bb38",
 +            "https://files.pythonhosted.org/packages/fa/4e/a469509e538d37af51103b17b073126973f2b1cbf197ff32c7ddf025cfe5/markupsafe-3.0.4-cp314-cp314-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl": "sha256:051417f74bcaaefa316276e0ff723f541616ca51043d070da00249d9bddd3e3c"
            },
+           "mdurl": {
+             "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl": "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 index dde0efdfa..782f73b84 100644
 --- a/patches/v8_bazel_rules.patch
 +++ b/patches/v8_bazel_rules.patch
-@@ -166,2 +166,5 @@ index b432f86..28c567b 100644
+@@ -164,6 +164,9 @@ diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
+ index b432f86..28c567b 100644
+ --- a/orig/v8-15.0.245.2/BUILD.bazel
  +++ b/mod/v8-15.0.245.2/BUILD.bazel
 +@@ -8,1 +8,2 @@
 + load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 ++load("@rules_python//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
  @@ -148,6 +148,10 @@ v8_flag(name = "v8_enable_trace_maps")
-@@ -230,3 +233,11 @@ index b432f86..28c567b 100644
+  
+  v8_flag(name = "v8_enable_v8_checks")
+@@ -228,7 +231,15 @@ index b432f86..28c567b 100644
+  )
+  
   filegroup(
 -@@ -4441,6 +4432,20 @@ genrule(
 +@@ -4439,2 +4431,7 @@
@@ -264,34 +304,143 @@ index dde0efdfa..782f73b84 100644
 +     name = "generated_inspector_files",
 +@@ -4441,6 +4438,20 @@ genrule(
       srcs = [
-@@ -251,3 +262,3 @@ index b432f86..28c567b 100644
+          "include/js_protocol.pdl",
+          "src/inspector/inspector_protocol_config.json",
+@@ -249,15 +260,14 @@ index b432f86..28c567b 100644
+      ],
+      outs = [
           "include/inspector/Debugger.h",
 -@@ -4462,15 +4467,19 @@ genrule(
 +@@ -4462,15 +4467,16 @@ genrule(
           "src/inspector/protocol/Schema.cpp",
-@@ -258,4 +269,3 @@ index b432f86..28c567b 100644
+          "src/inspector/protocol/Schema.h",
+      ],
+ -    cmd = "$(location :code_generator) --jinja_dir . \
+ -           --inspector_protocol_dir third_party/inspector_protocol \
  +    cmd = "INSPECTOR_PROTOCOL_DIR=$$(dirname $(execpath third_party/inspector_protocol/code_generator.py)); \
 -+           PYTHONPATH=$$INSPECTOR_PROTOCOL_DIR:external/rules_python++pip+v8_python_deps_311_jinja2/site-packages:external/rules_python++pip+v8_python_deps_311_markupsafe/site-packages:$${PYTHONPATH-} \
 -+           $(execpath @rules_python//python/bin:python) $(execpath third_party/inspector_protocol/code_generator.py) --jinja_dir . \
 ++           $(execpath :code_generator_zipapp) --jinja_dir . \
  +           --inspector_protocol_dir $$INSPECTOR_PROTOCOL_DIR \
-@@ -269,5 +279,3 @@ index b432f86..28c567b 100644
+             --config $(location :src/inspector/inspector_protocol_config.json) \
+             --config_value protocol.path=$(location :include/js_protocol.pdl) \
+@@ -267,9 +277,7 @@ index b432f86..28c567b 100644
+      message = "Generating inspector files",
+      tools = [
  -        ":code_generator",
 -+        "@rules_python//python/bin:python",
 -+        requirement("jinja2"),
 -+        requirement("markupsafe"),
 ++        ":code_generator_zipapp",
       ],
+  )
+  
+diff --git a/patches/v8_inspector_python_runtime.patch b/patches/v8_inspector_python_runtime.patch
+new file mode 100644
+index 000000000..0b9cd3022
+--- /dev/null
++++ b/patches/v8_inspector_python_runtime.patch
+@@ -0,0 +1,84 @@
++From d9d54589eba9727ffddfd612db89da8b808062d2 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 09:15:04 +0000
++Subject: [PATCH] Run inspector zipapp with declared execution-platform Python
++
++---
++ BUILD.bazel           | 17 +++++++++++++++--
++ bazel/exec_python.bzl | 18 ++++++++++++++++++
++ 2 files changed, 33 insertions(+), 2 deletions(-)
++ create mode 100644 bazel/exec_python.bzl
++
++diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
++index bbeb91a..39983b2 100644
++--- a/orig/v8-15.0.245.2/BUILD.bazel
+++++ b/mod/v8-15.0.245.2/BUILD.bazel
++@@ -8,6 +8,7 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++ load("@rules_cc//cc:cc_test.bzl", "cc_test")
++ load("@rules_python//python:defs.bzl", "py_binary", "py_test")
++ load("@rules_python//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
+++load(":bazel/exec_python.bzl", "exec_python_toolchain")
++ load("@v8_python_deps//:requirements.bzl", "requirement")
++ load(
++     "@v8//:bazel/defs.bzl",
++@@ -4447,6 +4448,16 @@ py_binary(
++ py_zipapp_binary(
++     name = "code_generator_zipapp",
++     binary = ":code_generator",
+++    executable = False,
+++)
+++
+++exec_python_toolchain(
+++    name = "code_generator_python_runtime",
+++)
+++
+++filegroup(
+++    name = "code_generator_zipapp_file",
+++    srcs = [":code_generator_zipapp"],
++ )
++
++ genrule(
++@@ -4490,15 +4501,17 @@ genrule(
++         "src/inspector/protocol/Schema.h",
++     ],
++     cmd = "INSPECTOR_PROTOCOL_DIR=$$(dirname $(execpath third_party/inspector_protocol/code_generator.py)); \
++-           $(execpath :code_generator_zipapp) --jinja_dir . \
+++           $(PYTHON3) $(execpath :code_generator_zipapp_file) --jinja_dir . \
++            --inspector_protocol_dir $$INSPECTOR_PROTOCOL_DIR \
++            --config $(location :src/inspector/inspector_protocol_config.json) \
++            --config_value protocol.path=$(location :include/js_protocol.pdl) \
++            --config_value crdtp.dir=third_party/inspector_protocol/crdtp \
++            --output_base $(@D)/src/inspector",
++     message = "Generating inspector files",
+++    toolchains = [":code_generator_python_runtime"],
++     tools = [
++-        ":code_generator_zipapp",
+++        ":code_generator_python_runtime",
+++        ":code_generator_zipapp_file",
++     ],
++ )
++
++diff --git a/orig/v8-15.0.245.2/bazel/exec_python.bzl b/mod/v8-15.0.245.2/bazel/exec_python.bzl
++new file mode 100644
++index 0000000..c62e370
++--- /dev/null
+++++ b/mod/v8-15.0.245.2/bazel/exec_python.bzl
++@@ -0,0 +1,18 @@
+++"""Make the execution platform's Python runtime available to genrules."""
+++
+++def _exec_python_toolchain_impl(ctx):
+++    return [
+++        ctx.attr._runtime[DefaultInfo],
+++        ctx.attr._runtime[platform_common.TemplateVariableInfo],
+++    ]
+++
+++exec_python_toolchain = rule(
+++    implementation = _exec_python_toolchain_impl,
+++    attrs = {
+++        "_runtime": attr.label(
+++            default = Label("@rules_python//python:current_py_toolchain"),
+++            cfg = "exec",
+++            providers = [platform_common.TemplateVariableInfo],
+++        ),
+++    },
+++)
 diff --git a/patches/v8_module_deps.patch b/patches/v8_module_deps.patch
 index d179617e6..2817599ac 100644
 --- a/patches/v8_module_deps.patch
 +++ b/patches/v8_module_deps.patch
-@@ -9,3 +9,3 @@ index b8bf8bd..573f463 100644
+@@ -7,7 +7,7 @@ diff --git a/orig/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
+ index b8bf8bd..573f463 100644
+ --- a/orig/v8-15.0.245.2/MODULE.bazel
  +++ b/mod/v8-15.0.245.2/MODULE.bazel
 -@@ -8,193 +8,67 @@ bazel_dep(name = "rules_cc", version = "0.2.0")
 +@@ -8,193 +8,72 @@ bazel_dep(name = "rules_cc", version = "0.2.0")
   bazel_dep(name = "rules_python", version = "1.0.0")
-@@ -248,2 +248,7 @@ index b8bf8bd..573f463 100644
+  bazel_dep(name = "platforms", version = "1.0.0")
+  bazel_dep(name = "abseil-cpp", version = "20250814.0")
+@@ -246,6 +246,11 @@ index b8bf8bd..573f463 100644
+ +    hub_name = "v8_python_deps",
+ +    python_version = "3.11",
  +    requirements_lock = "//:bazel/requirements.txt",
 ++    target_platforms = [
 ++        "{os}_{arch}",
@@ -299,7 +448,11 @@ index d179617e6..2817599ac 100644
 ++        "windows_x86_64",
 ++    ],
  +    extra_pip_args = [
-@@ -285 +290,240 @@ index 0000000..5a13dd0
+ +        "--require-hashes",
+ +        "--index-url=https://pypi.org/simple",
+@@ -283,3 +288,242 @@ index 0000000..5a13dd0
+ +
+ + # Unused on Bazel builds, where this is not defined/known; Copybara replaces
  + # usages with an empty list.
 +diff --git a/orig/v8-15.0.245.2/bazel/requirements.txt b/mod/v8-15.0.245.2/bazel/requirements.txt
 +index a9c132f..e054cfd 100644
@@ -540,19 +693,83 @@ index d179617e6..2817599ac 100644
 ++    --hash=sha256:fd9f8797427910198f95bced71ddfed61130d7e349213bfb8466c9c99e2c46a8 \
 ++    --hash=sha256:fdb4ca07ab75ffadab4a8b135ad59cdbb3156b99310f3d565370da74a15d6bd3
 +     # via jinja2
-diff --git a/tools/build-warnings/v8/check-python-platforms.sh b/tools/build-warnings/v8/check-python-platforms.sh
-new file mode 100755
-index 000000000..2826737ae
+diff --git a/patches/v8_python_execution_platforms.patch b/patches/v8_python_execution_platforms.patch
+new file mode 100644
+index 000000000..b0dd70fe9
 --- /dev/null
-+++ b/tools/build-warnings/v8/check-python-platforms.sh
-@@ -0,0 +1,11 @@
++++ b/patches/v8_python_execution_platforms.patch
+@@ -0,0 +1,25 @@
++From 4bda00b2315819f24b0973c0d95bcfe716b75b6f Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 15 Oct 2026 09:02:45 +0000
++Subject: [PATCH] Provide V8 Python wheels for ARM remote execution and both
++ Macs
++
++---
++ MODULE.bazel | 3 +++
++ 1 file changed, 3 insertions(+)
++
++diff --git a/orig/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
++index 7eee9b7..fe6e8a5 100644
++--- a/orig/v8-15.0.245.2/MODULE.bazel
+++++ b/mod/v8-15.0.245.2/MODULE.bazel
++@@ -75,7 +75,10 @@ pip.parse(
++     requirements_lock = "//:bazel/requirements.txt",
++     target_platforms = [
++         "{os}_{arch}",
+++        "linux_aarch64",
++         "linux_x86_64",
+++        "osx_aarch64",
+++        "osx_x86_64",
++         "windows_x86_64",
++     ],
++     extra_pip_args = [
+diff --git a/tools/build-warnings/v8/check-inspector-runtime.sh b/tools/build-warnings/v8/check-inspector-runtime.sh
+new file mode 100755
+index 000000000..d7618600b
+--- /dev/null
++++ b/tools/build-warnings/v8/check-inspector-runtime.sh
+@@ -0,0 +1,20 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
 +
 +repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 +cd -- "$repo_root"
 +
++fixture_dir="$(mktemp -d -t v8-inspector-runtime.XXXXXX)"
++trap 'rm -r -- "$fixture_dir"' EXIT
++cat > "$fixture_dir/unzip" <<'EOF'
++#!/bin/sh
++echo "unzip is unavailable in the remote execution image" >&2
++exit 127
++EOF
++chmod +x "$fixture_dir/unzip"
++
 +for platform in //:rbe //:windows_x86_64_gnullvm; do
++    bazel build "$@" "--platforms=$platform" \
++        "--action_env=PATH=$fixture_dir:/usr/bin:/bin" \
++        @v8//:generated_inspector_files
++done
+diff --git a/tools/build-warnings/v8/check-python-platforms.sh b/tools/build-warnings/v8/check-python-platforms.sh
+new file mode 100755
+index 000000000..3e51fd6ff
+--- /dev/null
++++ b/tools/build-warnings/v8/check-python-platforms.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
++cd -- "$repo_root"
++
++platforms=(
++    //:rbe
++    //:windows_x86_64_gnullvm
++    @rules_rs//rs/platforms:aarch64-unknown-linux-gnu
++    @rules_rs//rs/platforms:x86_64-apple-darwin
++    @rules_rs//rs/platforms:aarch64-apple-darwin
++)
++for platform in "${platforms[@]}"; do
 +    bazel cquery "$@" "--platforms=$platform" @v8//:code_generator
 +done
 +

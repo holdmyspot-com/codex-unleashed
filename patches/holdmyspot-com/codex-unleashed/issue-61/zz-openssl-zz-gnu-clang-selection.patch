@@ -1,6 +1,6 @@
-From 5290c9183cab423839b39c7cdfcb168e4893ee11 Mon Sep 17 00:00:00 2001
+From 840b7627fe56d03d9445ec3ae30c01a0179c95e9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 01:27:17 -0400
+Date: Sun, 18 Oct 2026 09:07:55 +0000
 Subject: [PATCH] Select OpenSSL Windows GNU Clang assembly configuration
 
 Preserve functional changes without warning-only dependency patches.
@@ -10,27 +10,36 @@ Preserve all compiler-driver assertions and production dependency sources.
 Red: run 38846595763 native MSVC job selects MASM/CL for the GNU fixture.
 Focused emitted verification and hosted native confirmation are tracked
 in the task execution record.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0056-windows-analysis-host-toolchain.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- MODULE.bazel                                 |  2 +-
+ MODULE.bazel                                 |  5 ++
  patches/openssl_gnu_clang_selection.patch    | 63 ++++++++++++++++++++
  tools/build-warnings/openssl/BUILD.bazel     |  8 ++-
  tools/build-warnings/openssl/inputs_test.bzl | 16 +++++
- 4 files changed, 87 insertions(+), 2 deletions(-)
+ 4 files changed, 91 insertions(+), 1 deletion(-)
  create mode 100644 patches/openssl_gnu_clang_selection.patch
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 773748b17..df230a467 100644
+index cb743c6cb..7a482d48e 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -520,7 +520,7 @@ bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
- single_version_override(
-     module_name = "openssl",
-     patch_strip = 1,
--    patches = [],
-+    patches = ["//patches:openssl_gnu_clang_selection.patch"],
+@@ -509,6 +509,11 @@ crate.annotation(
  )
-
+ 
+ bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
++single_version_override(
++    module_name = "openssl",
++    patch_strip = 1,
++    patches = ["//patches:openssl_gnu_clang_selection.patch"],
++)
+ 
  inject_repo(crate, "xz")
+ 
 diff --git a/patches/openssl_gnu_clang_selection.patch b/patches/openssl_gnu_clang_selection.patch
 new file mode 100644
 index 000000000..0c83b53aa
@@ -101,7 +110,7 @@ index 000000000..0c83b53aa
 +     ],
 +     visibility = ["//visibility:public"],
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
-index a9f0e11a7..4ce254dc4 100644
+index f863f487d..f6540375a 100644
 --- a/tools/build-warnings/openssl/BUILD.bazel
 +++ b/tools/build-warnings/openssl/BUILD.bazel
 @@ -1,6 +1,12 @@
@@ -115,11 +124,11 @@ index a9f0e11a7..4ce254dc4 100644
 +    size = "small",
 +    target_under_test = "@openssl//:perlasm_genfiles",
 +)
-
+ 
  openssl_install_inputs_test(
      name = "rust_install_inputs_test",
 diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
-index 1d2e66334..a31d1d83d 100644
+index 1d2e66334..7fa9a714e 100644
 --- a/tools/build-warnings/openssl/inputs_test.bzl
 +++ b/tools/build-warnings/openssl/inputs_test.bzl
 @@ -18,3 +18,19 @@ openssl_install_inputs_test = analysistest.make(
@@ -139,6 +148,6 @@ index 1d2e66334..a31d1d83d 100644
 +    _openssl_windows_perlasm_test_impl,
 +    config_settings = {
 +        "//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm")),
-+        "//command_line_option:extra_toolchains": [],
++        "//command_line_option:extra_toolchains": [str(Label("//tools/build-warnings/assembly/native:analysis_toolchain"))],
 +    },
 +)

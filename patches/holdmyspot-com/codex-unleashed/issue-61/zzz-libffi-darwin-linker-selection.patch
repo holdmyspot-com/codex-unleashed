@@ -1,6 +1,6 @@
-From 087386accf2977c739b7296a3b69b08455fc46e9 Mon Sep 17 00:00:00 2001
+From b52fbbb17d79aff14247e7cea50b655740f71c6c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 03:43:10 -0400
+Date: Sun, 18 Oct 2026 09:07:58 +0000
 Subject: [PATCH] Keep Darwin libffi linker selection out of compile-only
  probes
 
@@ -10,37 +10,68 @@ Regression: test_libffi_darwin_linker_selection_preserves_compile_only_probes fa
 
 Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d), with the existing issue-61 queue prerequisites.
 Tracking: https://github.com/holdmyspot-com/codex-unleashed/issues/61
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0017-libffi-compile-only-driver.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- third_party/voice/build_native.py      |  8 ++-
- third_party/voice/test_build_native.py | 73 ++++++++++++++++++++++++++
- 2 files changed, 79 insertions(+), 2 deletions(-)
+ third_party/voice/build_native.py      | 23 +++++++-
+ third_party/voice/test_build_native.py | 74 ++++++++++++++++++++++++++
+ 2 files changed, 95 insertions(+), 2 deletions(-)
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index c24d134db..dbf9d3fd7 100644
+index a881ba20e..551ae5e0a 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -467,5 +467,9 @@ class NativeBuild:
+@@ -464,9 +464,28 @@ class NativeBuild:
+                 }
+             )
          else:
 +            ffi_flags = {name: list(flags) for name, flags in self.flags.items()}
              if self.args.target.endswith("apple-darwin"):
                  # Libtool's partial links need -r, which ld64.lld does not support.
 -                environment["CC"] += " -fuse-ld=/usr/bin/ld"
 +                ffi_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
-+                environment["LTCC"] = self.quote(
-+                    [str(self.toolchain["cc"]), "-fuse-ld=/usr/bin/ld"]
++                # LTCC also compiles feature probes, where linker flags are invalid.
++                # Its partial-link command omits LDFLAGS, so select the linker only
++                # when this driver is linking.
++                driver = ffi_build / "ltcc.sh"
++                if shlex.quote(str(driver)) != str(driver):
++                    raise ValueError("libffi driver path cannot require shell quoting")
++                compiler = shlex.quote(str(self.toolchain["cc"]))
++                driver.write_text(
++                    "#!/bin/sh\n"
++                    'for argument in "$@"; do\n'
++                    '  case "$argument" in\n'
++                    f'    -c|-E|-S|-fsyntax-only|-M|-MM) exec {compiler} "$@" ;;\n'
++                    "  esac\n"
++                    "done\n"
++                    f'exec {compiler} -fuse-ld=/usr/bin/ld "$@"\n'
 +                )
++                driver.chmod(0o755)
++                environment["LTCC"] = str(driver)
              for name in ("ar", "ranlib"):
-@@ -480,3 +484,3 @@ class NativeBuild:
+                 if name in self.toolchain:
+                     path = str(self.toolchain[name])
+@@ -477,7 +496,7 @@ class NativeBuild:
+             # Response files preserve compiler arguments through Autoconf's word
+             # splitting and Make/libtool's shell expansion without losing flags
              # added by configure (such as -fexceptions).
 -            for name, flags in self.flags.items():
 +            for name, flags in ffi_flags.items():
                  if any(
+                     any(character.isspace() for character in flag) for flag in flags
+                 ):
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index bbba309fd..c56ad1dd2 100644
+index 4dd10bb77..5508e95d7 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -196,2 +196,75 @@ class NativeBuildTests(unittest.TestCase):
-
+@@ -197,6 +197,80 @@ class NativeBuildTests(unittest.TestCase):
+                         build.build()
+                     setattr(self.args, name, None)
+ 
 +    @unittest.skipIf(os.name == "nt", "Exercises Darwin's Unix linker selection")
 +    def test_libffi_darwin_linker_selection_preserves_compile_only_probes(self):
 +        compiler = shutil.which("clang")
@@ -75,6 +106,7 @@ index bbba309fd..c56ad1dd2 100644
 +        (build.output / "probe.c").write_text("int main(void) { return 0; }\n")
 +        for command in (
 +            "$CC $CFLAGS -c probe.c -o probe.o",
++            "$LTCC $CFLAGS -c probe.c -o libtool-probe.o",
 +            "$CC $LDFLAGS probe.o -o probe",
 +        ):
 +            result = subprocess.run(
@@ -115,3 +147,5 @@ index bbba309fd..c56ad1dd2 100644
 +        self.assertEqual(result.returncode, 0)
 +
      @unittest.skipIf(os.name == "nt", "Exercises Autoconf's Unix flag expansion")
+     def test_libffi_compiler_receives_literal_defines_without_shell_quotes(self):
+         compiler = shutil.which("cc")

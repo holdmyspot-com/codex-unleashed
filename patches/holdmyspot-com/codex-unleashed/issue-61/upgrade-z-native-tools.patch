@@ -1,6 +1,6 @@
-From 208398d0574d37d46f9f6bfc9d1ea0b602f919fc Mon Sep 17 00:00:00 2001
+From 80f5ed8c1a718327d6139502fd99e23e0f1d0b3d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:40:18 -0400
+Date: Sun, 18 Oct 2026 09:07:49 +0000
 Subject: [PATCH] Upgrade foreign build tools with visible, nonfatal dependency
  warnings
 
@@ -20,10 +20,10 @@ Retain native tool upgrades and compilation fixes without warning-only Make sour
  third_party/voice/native.bzl                  |   9 +-
  third_party/voice/windows_native.bzl          |   4 +-
  tools/build-warnings/cmake/BUILD.bazel        |  11 +
- .../build-warnings/make-bootstrap/BUILD.bazel |  16 +-
+ .../build-warnings/make-bootstrap/BUILD.bazel |   7 +
  .../make-bootstrap/warnings_test.bzl          |  17 +
  tools/build-warnings/meson/BUILD.bazel        |   5 +-
- 17 files changed, 854 insertions(+), 274 deletions(-)
+ 17 files changed, 850 insertions(+), 269 deletions(-)
  create mode 100644 patches/make_compiler_warnings.patch
  delete mode 100644 patches/rules_foreign_cc_make_cppflags.patch
  delete mode 100644 patches/rules_foreign_cc_make_msvc_stdint.patch
@@ -31,24 +31,25 @@ Retain native tool upgrades and compilation fixes without warning-only Make sour
  create mode 100644 patches/rules_foreign_cc_meson_runfiles.patch
  create mode 100644 patches/rules_foreign_cc_stable_tools.patch
  create mode 100644 tools/build-warnings/cmake/BUILD.bazel
+ create mode 100644 tools/build-warnings/make-bootstrap/BUILD.bazel
  create mode 100644 tools/build-warnings/make-bootstrap/warnings_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index e272d5020..107760028 100644
+index 3a5e65b61..48813c4ca 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -1,7 +1,7 @@
  module(name = "codex")
-
+ 
  bazel_dep(name = "bazel_lib", version = "3.2.2")
 -bazel_dep(name = "bazel_skylib", version = "1.9.0")
 +bazel_dep(name = "bazel_skylib", version = "1.9.2")
  bazel_dep(name = "platforms", version = "1.1.0")
-
+ 
  # Expose the public protobuf rules already used transitively by rules_rs.
-@@ -176,39 +176,55 @@ single_version_override(
+@@ -175,39 +175,55 @@ single_version_override(
  )
-
+ 
  bazel_dep(name = "rules_rs", version = "0.0.96")
 -bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 +bazel_dep(name = "rules_foreign_cc", version = "0.16.0")
@@ -66,7 +67,7 @@ index e272d5020..107760028 100644
 -    version = "0.15.1",
 +    ],
  )
-
+ 
 -bazel_dep(name = "rules_python", version = "1.8.0")
 +bazel_dep(name = "make", version = "4.4.1.bcr.2")
 +bazel_dep(name = "rules_cc_autoconf", version = "0.27.0")
@@ -80,12 +81,12 @@ index e272d5020..107760028 100644
 +)
 +
 +bazel_dep(name = "rules_python", version = "2.4.2")
-
+ 
  voice_python = use_extension("@rules_python//python/extensions:python.bzl", "python")
  voice_python.defaults(python_version = "3.11")
  voice_python.toolchain(python_version = "3.12")
  use_repo(voice_python, "python_3_12")
-
+ 
 -# Use the existing pinned Make build for foreign_cc consumers, including the
 -# native voice pkg-config bootstrap, instead of a PATH-provided Make.
 -register_toolchains("@rules_foreign_cc//toolchains:built_make_toolchain")
@@ -117,13 +118,13 @@ index e272d5020..107760028 100644
 +use_repo(foreign_cc_tools, "cmake-4.4.4-windows-x86_64", "rules_foreign_cc_toolchains")
 +
 +register_toolchains("@rules_foreign_cc_toolchains//:all")
-
+ 
  single_version_override(
      module_name = "rules_rs",
-@@ -540,18 +556,6 @@ crate.annotation(
-
+@@ -535,18 +551,6 @@ crate.annotation(
+ 
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
+ 
 -codex_release_archive = use_extension(
 -http_archive(
 -    name = "codex_meson_src",
@@ -139,16 +140,16 @@ index e272d5020..107760028 100644
  http_archive(
      name = "pkgconf_src",
      build_file_content = 'filegroup(name = "all_srcs", srcs = glob(["**"]), visibility = ["//visibility:public"])',
-@@ -560,6 +564,7 @@ http_archive(
+@@ -555,6 +559,7 @@ http_archive(
      urls = ["https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-3.0.8.tar.gz"],
  )
-
+ 
 +codex_release_archive = use_extension(
      "//bazel/extensions:codex_release_archive.bzl",
      "codex_release_archive",
  )
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index e45089e10..1e56309b2 100644
+index 3697331f8..ce5f94a17 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -49,17 +49,21 @@
@@ -997,7 +998,7 @@ index e45089e10..1e56309b2 100644
        "Inflector_0.11.4": "{\"dependencies\":[{\"name\":\"lazy_static\",\"optional\":true,\"req\":\"^1.2.0\"},{\"name\":\"regex\",\"optional\":true,\"req\":\"^1.1\"}],\"features\":{\"default\":[\"heavyweight\"],\"heavyweight\":[\"regex\",\"lazy_static\"],\"unstable\":[]}}",
        "addr2line_0.25.1": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.13\"},{\"features\":[\"wrap_help\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4.3.21\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"cpp_demangle\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"fallible-iterator\",\"optional\":true,\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"findshlibs\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"read\"],\"name\":\"gimli\",\"req\":\"^0.32.0\"},{\"kind\":\"dev\",\"name\":\"libtest-mimic\",\"req\":\"^0.8.1\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"read\",\"compression\"],\"name\":\"object\",\"optional\":true,\"req\":\"^0.37.0\"},{\"name\":\"rustc-demangle\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"smallvec\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"typed-arena\",\"optional\":true,\"req\":\"^2\"}],\"features\":{\"all\":[\"bin\",\"wasm\"],\"bin\":[\"loader\",\"rustc-demangle\",\"cpp_demangle\",\"fallible-iterator\",\"smallvec\",\"dep:clap\"],\"cargo-all\":[],\"default\":[\"rustc-demangle\",\"cpp_demangle\",\"loader\",\"fallible-iterator\",\"smallvec\"],\"loader\":[\"std\",\"dep:object\",\"dep:memmap2\",\"dep:typed-arena\"],\"rustc-dep-of-std\":[\"core\",\"alloc\",\"gimli/rustc-dep-of-std\"],\"std\":[\"gimli/std\"],\"wasm\":[\"object/wasm\"]}}",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index fb6169ea5..23fb45d62 100644
+index d40571f7b..8732fa21e 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,7 @@
@@ -1146,7 +1147,7 @@ index 89e81b39e..55dce5184 100644
 +@@ -89,8 +89,8 @@ def _create_meson_script(configureParameters):
 +     if tools.strip and " " not in tools.strip:
 +         script.append("##export_var## STRIP {}".format(_absolutize(ctx.workspace_name, tools.strip)))
-
+ 
  -    copts = flags.cc
  -    cxxopts = flags.cxx
 @@ -13,12 +22,10 @@ index ed7ba72..59b2de0 100644
@@ -1355,7 +1356,7 @@ index 087c4c062..99d489fa4 100644
 +load("@rules_foreign_cc//foreign_cc/private:framework.bzl", "CC_EXTERNAL_RULE_ATTRIBUTES")
 +load("@rules_foreign_cc//foreign_cc/private/framework:platform.bzl", "PLATFORM_CONSTRAINTS_RULE_ATTRIBUTES")
  load("@rules_python//python:py_runtime_info.bzl", "PyRuntimeInfo")
-
+ 
  def _native_prefix_impl(ctx):
 @@ -95,8 +97,11 @@ def _native_prefix_impl(ctx):
  native_prefix = rule(
@@ -1412,12 +1413,11 @@ index 000000000..ced852e08
 +    tools = ["@rules_foreign_cc//toolchains:current_cmake_toolchain"],
 +)
 diff --git a/tools/build-warnings/make-bootstrap/BUILD.bazel b/tools/build-warnings/make-bootstrap/BUILD.bazel
-index 063b4d595..120352348 100644
---- a/tools/build-warnings/make-bootstrap/BUILD.bazel
+new file mode 100644
+index 000000000..e83c50eb8
+--- /dev/null
 +++ b/tools/build-warnings/make-bootstrap/BUILD.bazel
-@@ -1,15 +1,20 @@
- load("@bazel_lib//lib:diff_test.bzl", "diff_test")
- load("@bazel_skylib//rules:write_file.bzl", "write_file")
+@@ -0,0 +1,7 @@
 +load(":warnings_test.bzl", "make_warnings_test")
 +
 +make_warnings_test(
@@ -1425,30 +1425,6 @@ index 063b4d595..120352348 100644
 +    size = "small",
 +    target_under_test = "@make//:make",
 +)
-
- genrule(
-     name = "make_bootstrap_result",
-     srcs = ["probe.mk"],
-     outs = ["make_bootstrap_result.txt"],
--    cmd = "$(execpath @rules_foreign_cc//toolchains/private:make_tool)/bin/" + select({
--        "@platforms//os:windows": "make.exe",
--        "//conditions:default": "make",
--    }) + " --no-print-directory -f $(execpath probe.mk) > $@",
--    tools = ["@rules_foreign_cc//toolchains/private:make_tool"],
-+    cmd = '"$(MAKE)" --no-print-directory -f $(execpath probe.mk) > $@',
-+    toolchains = ["@rules_foreign_cc//toolchains:current_make_toolchain"],
-+    tools = ["@rules_foreign_cc//toolchains:current_make_toolchain"],
- )
-
- write_file(
-@@ -23,6 +28,7 @@ write_file(
-
- diff_test(
-     name = "make_bootstrap_test",
-+    size = "small",
-     file1 = ":make_bootstrap_result",
-     file2 = ":expected",
- )
 diff --git a/tools/build-warnings/make-bootstrap/warnings_test.bzl b/tools/build-warnings/make-bootstrap/warnings_test.bzl
 new file mode 100644
 index 000000000..a746aee2d
@@ -1473,11 +1449,11 @@ index 000000000..a746aee2d
 +
 +make_warnings_test = analysistest.make(_make_warnings_test_impl)
 diff --git a/tools/build-warnings/meson/BUILD.bazel b/tools/build-warnings/meson/BUILD.bazel
-index ca883e722..7526df32d 100644
+index 6a3391c98..19d7645c0 100644
 --- a/tools/build-warnings/meson/BUILD.bazel
 +++ b/tools/build-warnings/meson/BUILD.bazel
 @@ -13,10 +13,6 @@ filegroup(
-
+ 
  foreign_cc_rule_variant(
      name = "resource_probe",
 -    # WORKAROUND: rules_foreign_cc 0.15.1 overwrites target_args["compile"].
@@ -1487,10 +1463,10 @@ index ca883e722..7526df32d 100644
      build_data = [
          "@llvm//runtimes/libcxx:libcxx.static",
          "@llvm//runtimes/libcxx:libcxxabi.static",
-@@ -34,6 +30,7 @@ foreign_cc_rule_variant(
-     out_static_libs = [],
-     postfix_script = 'mkdir -p "$$INSTALLDIR/bin"; cp "$$BUILD_TMPDIR/resource-probe" "$$INSTALLDIR/bin/resource-probe"',
-     rule = meson,
+@@ -37,6 +33,7 @@ foreign_cc_rule_variant(
+     # The genrule builds this executable for its execution platform. Wildcard
+     # target builds would also compile it for the requested target platform.
+     tags = ["manual"],
 +    target_args = {"compile": ["resource-probe:executable"]},
      targets = ["compile"],
      toolchain = "//third_party/voice:pkg_config_bootstrap_toolchain",

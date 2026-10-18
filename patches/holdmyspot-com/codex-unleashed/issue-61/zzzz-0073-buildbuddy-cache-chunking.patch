@@ -1,21 +1,17 @@
-From ccf7d28eae28d5cad2357142486f64ef7a3d0b9f Mon Sep 17 00:00:00 2001
+From 0c7c8023b23a33e796569d66d0a370fb4c68c431 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sun, 18 Oct 2026 00:18:56 +0000
+Date: Sun, 18 Oct 2026 09:08:34 +0000
 Subject: [PATCH] perf(ci): reuse BuildBuddy cache chunks for nearby artifacts
 
 Enable content-defined chunking only for the generic BuildBuddy cache. Retain compression, minimal CI downloads and the managed disk-cache policy, including the Windows exception.
 
 A manual deterministic 16 MiB fixture changes only its eight-byte header. The hosted cold chunked read transfers 16.78 MB (e0d8ebed-cf35-4c59-8618-af65564eab21); the changed warm read transfers 1.338 MB (cf9763c9-56ea-4641-94bd-42a980dc6db1). Full byte and unchanged-body comparisons pass. These measurements are fixture-specific, not a full-suite savings estimate.
 ---
- .bazelrc                                      |  3 +++
- .../build-warnings/cache-transfer/BUILD.bazel | 22 +++++++++++++++++++
- .../build-warnings/cache-transfer/generator.c | 19 ++++++++++++++++
- 3 files changed, 44 insertions(+)
- create mode 100644 tools/build-warnings/cache-transfer/BUILD.bazel
- create mode 100644 tools/build-warnings/cache-transfer/generator.c
+ .bazelrc | 3 +++
+ 1 file changed, 3 insertions(+)
 
 diff --git a/.bazelrc b/.bazelrc
-index 406647fb3..fae17bd3b 100644
+index cfdc52577..0fa910a8e 100644
 --- a/.bazelrc
 +++ b/.bazelrc
 @@ -94,6 +94,9 @@ common --grpc_keepalive_time=30s
@@ -26,60 +22,5 @@ index 406647fb3..fae17bd3b 100644
 +# https://www.buildbuddy.io/changelog/bazel-remote-cache-cdc/
 +common:buildbuddy-generic --experimental_remote_cache_chunking
  common:buildbuddy-generic --experimental_remote_downloader=grpcs://remote.buildbuddy.io
-
+ 
  # Add remote execution on the generic host.
-diff --git a/tools/build-warnings/cache-transfer/BUILD.bazel b/tools/build-warnings/cache-transfer/BUILD.bazel
-new file mode 100644
-index 000000000..660083e90
---- /dev/null
-+++ b/tools/build-warnings/cache-transfer/BUILD.bazel
-@@ -0,0 +1,22 @@
-+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-+
-+cc_binary(
-+    name = "generator",
-+    srcs = ["generator.c"],
-+    features = ["treat_warnings_as_errors"],
-+    tags = ["manual"],
-+)
-+
-+[
-+    genrule(
-+        name = "sample_" + variant,
-+        outs = [variant + ".bin"],
-+        cmd = '"$(execpath :generator)" "$@" ' + variant,
-+        tags = ["manual"],
-+        tools = [":generator"],
-+    )
-+    for variant in [
-+        "a",
-+        "b",
-+    ]
-+]
-diff --git a/tools/build-warnings/cache-transfer/generator.c b/tools/build-warnings/cache-transfer/generator.c
-new file mode 100644
-index 000000000..5973523d7
---- /dev/null
-+++ b/tools/build-warnings/cache-transfer/generator.c
-@@ -0,0 +1,19 @@
-+#include <stdint.h>
-+#include <stdio.h>
-+#include <stdlib.h>
-+
-+int main(int argc, char **argv) {
-+    if (argc != 3) return 2;
-+    FILE *output = fopen(argv[1], "wb");
-+    if (output == NULL) return 3;
-+    const unsigned char header[8] = {'c', 'h', 'u', 'n', 'k', 's', (unsigned char)argv[2][0], '\n'};
-+    if (fwrite(header, 1, sizeof(header), output) != sizeof(header)) return 4;
-+    uint32_t state = UINT32_C(2463534242);
-+    for (size_t i = 0; i < 16 * 1024 * 1024; ++i) {
-+        state ^= state << 13;
-+        state ^= state >> 17;
-+        state ^= state << 5;
-+        if (fputc((int)(state & 255), output) == EOF) return 5;
-+    }
-+    return fclose(output) == 0 ? 0 : 6;
-+}
---
-2.43.0

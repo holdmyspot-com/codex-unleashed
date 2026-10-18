@@ -1,23 +1,29 @@
-From e22817876b07b893bfd6c941a716015b375a8550 Mon Sep 17 00:00:00 2001
+From 929f0244853b8e27b020868a94c429c2ae138f3b Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sat, 17 Oct 2026 03:34:29 +0000
+Date: Sun, 18 Oct 2026 09:08:32 +0000
 Subject: [PATCH] fix(ci): print failed Bazel retry logs with matching platform
  configuration
 
 Cover CRLF and space paths, retry logs, annotated sharded labels, fallback platform selection and preservation of the failing exit status. The focused regression fails against 218aacacf87c0a5247915888893ef5ff657c201e and passes after the repair. The maintained Bazel target passes using processwrapper-sandbox on the nested local host.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0065-bazel-timeout-test-logs.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- .github/scripts/run-bazel-ci.sh               | 46 +++++++----
+ .github/scripts/run-bazel-ci.sh               | 49 +++++++----
  BUILD.bazel                                   |  1 +
  .../build-warnings/bazel-ci-logs/BUILD.bazel  |  7 ++
- .../bazel-ci-logs/check-failed-logs.sh        | 79 +++++++++++++++++++
- .../bazel-ci-logs/failed_logs_test.bzl        | 23 ++++++
- 5 files changed, 140 insertions(+), 16 deletions(-)
+ .../bazel-ci-logs/check-failed-logs.sh        | 88 +++++++++++++++++++
+ .../bazel-ci-logs/failed_logs_test.bzl        | 23 +++++
+ 5 files changed, 151 insertions(+), 17 deletions(-)
  create mode 100644 tools/build-warnings/bazel-ci-logs/BUILD.bazel
  create mode 100644 tools/build-warnings/bazel-ci-logs/check-failed-logs.sh
  create mode 100644 tools/build-warnings/bazel-ci-logs/failed_logs_test.bzl
 
 diff --git a/.github/scripts/run-bazel-ci.sh b/.github/scripts/run-bazel-ci.sh
-index f1f520c92..eb3ddb300 100755
+index f1f520c92..0a7146712 100755
 --- a/.github/scripts/run-bazel-ci.sh
 +++ b/.github/scripts/run-bazel-ci.sh
 @@ -83,6 +83,13 @@ case "${RUNNER_OS:-}" in
@@ -46,16 +52,18 @@ index f1f520c92..eb3ddb300 100755
          bazel_info_args+=("$arg")
          ;;
      esac
-@@ -117,7 +124,7 @@ print_bazel_test_log_tails() {
+@@ -116,8 +123,8 @@ print_bazel_test_log_tails() {
+   while IFS= read -r target; do
      failed_targets+=("$target")
    done < <(
-     grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
+-    grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
 -      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+) failed:.*#\1#' \
-+      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+).* failed:.*#\1#' \
++    grep -E '^((FAIL|TIMEOUT): //|ERROR: .* Testing //)' "$console_log" \
++      | sed -E 's#^(FAIL|TIMEOUT): (//[^ ]+).*#\2#; s#^ERROR: .* Testing (//[^ ]+).* failed:.*#\1#' \
        | sort -u
    )
  
-@@ -129,21 +136,28 @@ print_bazel_test_log_tails() {
+@@ -129,21 +136,29 @@ print_bazel_test_log_tails() {
    for target in "${failed_targets[@]}"; do
      local rel_path="${target#//}"
      rel_path="${rel_path/://}"
@@ -70,7 +78,8 @@ index f1f520c92..eb3ddb300 100755
 +    while IFS= read -r test_log; do
 +      test_logs+=("${test_log//\\//}")
 +    done < <(
-+      grep -F "FAIL: ${target} " "$console_log" \
++      grep -E '^(FAIL|TIMEOUT): ' "$console_log" \
++        | grep -F "${target} " \
 +        | sed -nE 's#.* \(see (.*[\\/](test|attempt_[0-9]+)\.log)\).*#\1#p' \
 +        | sort -u
 +    )
@@ -124,10 +133,10 @@ index 000000000..f5f3f043a
 +)
 diff --git a/tools/build-warnings/bazel-ci-logs/check-failed-logs.sh b/tools/build-warnings/bazel-ci-logs/check-failed-logs.sh
 new file mode 100644
-index 000000000..8a3d88b1d
+index 000000000..06117c7ed
 --- /dev/null
 +++ b/tools/build-warnings/bazel-ci-logs/check-failed-logs.sh
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,88 @@
 +#!/usr/bin/env bash
 +# Verifies reported retry logs, sharded failure labels, configured fallback paths and failure status.
 +set -euo pipefail
@@ -168,6 +177,15 @@ index 000000000..8a3d88b1d
 +    exit 0
 +    ;;
 +esac
++if [[ "$FAILURE_MODE" == timeout-reported ]]; then
++  printf 'TIMEOUT: //fixture:test (shard 1 of 2) (see %s/attempt_1.log)\r\n' "$FIXTURE_ROOT"
++  printf 'TIMEOUT: //fixture:test (shard 1 of 2) (see %s/attempt_2.log)\r\n' "$FIXTURE_ROOT"
++  exit 3
++fi
++if [[ "$FAILURE_MODE" == timeout ]]; then
++  printf 'TIMEOUT: //fixture:test (Summary)\n'
++  exit 3
++fi
 +if [[ "$FAILURE_MODE" == reported ]]; then
 +  printf 'FAIL: //fixture:test (shard 1 of 2) (Exit 1) (see %s/attempt_1.log)\r\n' "$FIXTURE_ROOT"
 +  printf 'FAIL: //fixture:test (shard 1 of 2) (Exit 1) (see %s/attempt_2.log)\r\n' "$FIXTURE_ROOT"
@@ -178,7 +196,7 @@ index 000000000..8a3d88b1d
 +chmod +x "$FIXTURE_ROOT/run-bazel-with-buildbuddy.sh"
 +ln -s run-bazel-with-buildbuddy.sh "$FIXTURE_ROOT/run_bazel_with_buildbuddy.py"
 +
-+for mode in reported fallback; do
++for mode in reported fallback timeout timeout-reported; do
 +  if RUNNER_OS=Linux BUILDBUDDY_API_KEY=fixture FAILURE_MODE="$mode" \
 +    BAZEL_OUTPUT_USER_ROOT='' BAZEL_REPO_CONTENTS_CACHE='' BAZEL_REPOSITORY_CACHE='' \
 +    CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR='' bash "$FIXTURE_ROOT/run-bazel-ci.sh" \
@@ -193,7 +211,7 @@ index 000000000..8a3d88b1d
 +    echo "Expected Bazel failure status 3; got $status" >&2
 +    exit 1
 +  fi
-+  if [[ "$mode" == reported ]]; then
++  if [[ "$mode" == reported || "$mode" == timeout-reported ]]; then
 +    grep -Fq FIRST_FAILURE_SENTINEL "$task_work/output"
 +    grep -Fq SECOND_FAILURE_SENTINEL "$task_work/output"
 +  else
@@ -236,6 +254,3 @@ index 000000000..09614269b
 +        "_wrapper": attr.label(default = "//:.github/scripts/run-bazel-ci.sh", allow_single_file = True),
 +    },
 +)
--- 
-2.43.0
-

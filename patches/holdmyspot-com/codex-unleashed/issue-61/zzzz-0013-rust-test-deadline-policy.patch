@@ -1,0 +1,736 @@
+From c95e13acf7d340be36223bcf9350beba6cfb6254 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 18 Oct 2026 09:08:09 +0000
+Subject: [PATCH] Scope generated Rust test deadlines to their suites and
+ platforms
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0024-transport-retry-test-timeout.patch
+- zzzz-0027-serialized-exec-server-timeout.patch
+- zzzz-0028-exec-server-compatibility-timeouts.patch
+- zzzz-0029-exec-integration-deadline.patch
+- zzzz-0031-daemon-integration-deadline.patch
+- zzzz-0039-tui-unit-test-timeout.patch
+- zzzz-0044-per-suite-test-deadlines.patch
+- zzzz-0055-windows-sandbox-test-deadline.patch
+- zzzz-0058-guardian-suite-deadline.patch
+- zzzz-0060-core-shard-deadline.patch
+- zzzz-0066-feedback-upload-deadline.patch
+- zzzz-0075-image-suite-deadline.patch
+- zzzz-0076-thread-store-suite-deadline.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
+---
+ .../compat/exec_server_compat_test.bzl        |  1 +
+ .../agent-message-board-client/BUILD.bazel    | 12 +++-
+ codex-rs/ansi-escape/BUILD.bazel              |  9 +++
+ codex-rs/app-server-transport/BUILD.bazel     | 11 ++++
+ codex-rs/app-server/BUILD.bazel               | 52 +++++++++++++++-
+ codex-rs/cli/BUILD.bazel                      | 23 ++++++-
+ codex-rs/core/BUILD.bazel                     | 26 +++++++-
+ codex-rs/exec-server/BUILD.bazel              | 34 ++++++++++
+ codex-rs/exec/BUILD.bazel                     | 23 ++++++-
+ codex-rs/ext/guardian-v2/BUILD.bazel          |  1 +
+ codex-rs/feedback/BUILD.bazel                 | 10 +++
+ codex-rs/login/BUILD.bazel                    |  9 +++
+ codex-rs/thread-store/BUILD.bazel             | 16 +++++
+ codex-rs/tui/BUILD.bazel                      | 21 ++++++-
+ codex-rs/utils/image/BUILD.bazel              | 24 +++++++
+ defs.bzl                                      | 62 +++++++++++++++----
+ .../build-warnings/test-timeouts/BUILD.bazel  | 27 ++++++++
+ .../test-timeouts/timeouts_test.bzl           | 22 +++++++
+ 18 files changed, 363 insertions(+), 20 deletions(-)
+ create mode 100644 tools/build-warnings/test-timeouts/BUILD.bazel
+ create mode 100644 tools/build-warnings/test-timeouts/timeouts_test.bzl
+
+diff --git a/bazel/rules/testing/compat/exec_server_compat_test.bzl b/bazel/rules/testing/compat/exec_server_compat_test.bzl
+index 8e9f6c753..6e3bf5c5f 100644
+--- a/bazel/rules/testing/compat/exec_server_compat_test.bzl
++++ b/bazel/rules/testing/compat/exec_server_compat_test.bzl
+@@ -43,5 +43,6 @@ def exec_server_compat_test(
+             "@platforms//os:linux",
+         ],
+         test_bin = "//bazel/rules/testing/compat:exec-server-compat-test-bin",
++        timeout = "short",
+         workspace_root_marker = "//codex-rs/utils/cargo-bin:repo_root.marker",
+     )
+diff --git a/codex-rs/agent-message-board-client/BUILD.bazel b/codex-rs/agent-message-board-client/BUILD.bazel
+index cd4f32e25..e27ff908a 100644
+--- a/codex-rs/agent-message-board-client/BUILD.bazel
++++ b/codex-rs/agent-message-board-client/BUILD.bazel
+@@ -1,6 +1,16 @@
+-load("//:defs.bzl", "codex_rust_crate")
++load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "agent-message-board-client",
+     crate_name = "codex_agent_message_board_client",
+ )
++
++timeout_test(
++    name = "integration_default_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":agent-message-board-client-remote_board-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/ansi-escape/BUILD.bazel b/codex-rs/ansi-escape/BUILD.bazel
+index 27622583b..43c69a21b 100644
+--- a/codex-rs/ansi-escape/BUILD.bazel
++++ b/codex-rs/ansi-escape/BUILD.bazel
+@@ -1,6 +1,15 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "ansi-escape",
+     crate_name = "codex_ansi_escape",
+ )
++
++timeout_test(
++    name = "unit_default_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":ansi-escape-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/app-server-transport/BUILD.bazel b/codex-rs/app-server-transport/BUILD.bazel
+index f6ecba680..5a58a27fe 100644
+--- a/codex-rs/app-server-transport/BUILD.bazel
++++ b/codex-rs/app-server-transport/BUILD.bazel
+@@ -1,6 +1,17 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "app-server-transport",
+     crate_name = "codex_app_server_transport",
++    # Conflict recovery tests exercise consecutive real reconnect waits of up to 30 seconds.
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "retry_unit_timeout_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":app-server-transport-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+diff --git a/codex-rs/app-server/BUILD.bazel b/codex-rs/app-server/BUILD.bazel
+index 051a7dd8e..747a55edc 100644
+--- a/codex-rs/app-server/BUILD.bazel
++++ b/codex-rs/app-server/BUILD.bazel
+@@ -1,5 +1,7 @@
+-load("//:defs.bzl", "codex_rust_crate")
++load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
+ load("//bazel/rules:runtime_package.bzl", "release_binary")
++load("//bazel/rules/testing/wine:wine_runtime.bzl", "WINE_TEST_TARGET_COMPATIBLE_WITH")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "app-server",
+@@ -12,7 +14,9 @@ codex_rust_crate(
+     extra_binaries_non_windows = [
+         "//codex-rs/cli:codex",
+     ],
+-    integration_test_timeout = "long",
++    integration_test_timeouts = {
++        "app-server-all-test": "long",
++    },
+     run_tests_with_wine_exec = True,
+     test_shard_counts = {
+         # Note app-server-all-test has a large number of integration tests, so
+@@ -34,3 +38,47 @@ codex_rust_crate(
+ release_binary(
+     binary = ":codex-app-server",
+ )
++
++timeout_test(
++    name = "binary_default_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":codex-app-server-bin-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "integration_override_test",
++    size = "small",
++    expected_timeout = "long",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":app-server-all-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "wine_override_test",
++    size = "small",
++    expected_timeout = "long",
++    target_compatible_with = WINE_TEST_TARGET_COMPATIBLE_WITH,
++    target_under_test = ":app-server-all-wine-exec-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "fast_integration_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":app-server-prompt_prefix-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "fast_wine_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINE_TEST_TARGET_COMPATIBLE_WITH,
++    target_under_test = ":app-server-prompt_prefix-wine-exec-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/cli/BUILD.bazel b/codex-rs/cli/BUILD.bazel
+index d9673f989..8d57048a5 100644
+--- a/codex-rs/cli/BUILD.bazel
++++ b/codex-rs/cli/BUILD.bazel
+@@ -1,7 +1,8 @@
+-load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "codex_rust_crate")
++load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
+ load("//bazel/platforms:release_binaries.bzl", "multiplatform_binaries")
+ load("//bazel/rules:e2e_benchmark.bzl", "codex_e2e_benchmark")
+ load("//bazel/rules:runtime_package.bzl", "release_binary")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "cli",
+@@ -10,6 +11,9 @@ codex_rust_crate(
+     extra_binaries = [
+         "//codex-rs/bwrap:bwrap",
+     ],
++    integration_test_timeouts = {
++        "cli-app_server_daemon-test": "moderate",
++    },
+     rustc_flags_extra = MACOS_WEBRTC_RUSTC_LINK_FLAGS,
+     test_data_extra = glob(["src/**/snapshots/**"]),
+ )
+@@ -26,3 +30,20 @@ codex_e2e_benchmark(
+     name = "codex-help",
+     binaries = [":codex"],
+ )
++
++timeout_test(
++    name = "daemon_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":cli-app_server_daemon-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "fast_integration_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":cli-build_info-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/core/BUILD.bazel b/codex-rs/core/BUILD.bazel
+index 9ff585216..533353fb5 100644
+--- a/codex-rs/core/BUILD.bazel
++++ b/codex-rs/core/BUILD.bazel
+@@ -1,4 +1,5 @@
+-load("//:defs.bzl", "codex_rust_crate")
++load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ exports_files(
+     ["config.schema.json"],
+@@ -24,7 +25,10 @@ codex_rust_crate(
+         "//codex-rs/windows-sandbox-rs:codex-windows-sandbox-setup",
+     ],
+     integration_compile_data_extra = glob(["assets/**"]),
+-    integration_test_timeout = "long",
++    integration_test_timeouts = {
++        "core-all-test": "moderate",
++        "core-windows_sandbox-test": "long",
++    },
+     run_tests_with_wine_exec = True,
+     rustc_env = {
+         # Keep manifest-root path lookups inside the Bazel execroot for code
+@@ -46,3 +50,21 @@ codex_rust_crate(
+     }),
+     unit_test_timeout = "long",
+ )
++
++timeout_test(
++    name = "fast_integration_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":core-mcp_trace_propagation-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "sharded_integration_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":core-all-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/exec-server/BUILD.bazel b/codex-rs/exec-server/BUILD.bazel
+index 88114f96a..7ad38a27d 100644
+--- a/codex-rs/exec-server/BUILD.bazel
++++ b/codex-rs/exec-server/BUILD.bazel
+@@ -1,5 +1,6 @@
+ load("//:defs.bzl", "codex_rust_crate")
+ load("//bazel/rules/testing/compat:exec_server_compat_test.bzl", "exec_server_compat_test")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ exports_files(
+     ["src/proto/codex.exec_server.relay.v1.rs"],
+@@ -32,6 +33,39 @@ codex_rust_crate(
+     integration_test_args = ["--test-threads=1"],
+     test_tags = ["no-sandbox"],
+     unit_test_args = ["--test-threads=1"],
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "serialized_unit_timeout_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":exec-server-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "current_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-current-version-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "minimum_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-minimum-release-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "stable_compat_timeout_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":exec-server-stable-release-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+ 
+ exec_server_compat_test(
+diff --git a/codex-rs/exec/BUILD.bazel b/codex-rs/exec/BUILD.bazel
+index 6aec3e0b7..f3f227e26 100644
+--- a/codex-rs/exec/BUILD.bazel
++++ b/codex-rs/exec/BUILD.bazel
+@@ -1,10 +1,31 @@
+-load("//:defs.bzl", "codex_rust_crate")
++load("//:defs.bzl", "WINDOWS_GNULLVM_INCOMPATIBLE", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "exec",
+     crate_name = "codex_exec",
++    integration_test_timeouts = {
++        "exec-all-test": "moderate",
++    },
+     test_shard_counts = {
+         "exec-all-test": 8,
+     },
+     test_tags = ["no-sandbox"],
+ )
++
++timeout_test(
++    name = "integration_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":exec-all-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "fast_integration_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
++    target_under_test = ":exec-event_processor_with_json_output-test",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/ext/guardian-v2/BUILD.bazel b/codex-rs/ext/guardian-v2/BUILD.bazel
+index e10e27c05..f5b14edd4 100644
+--- a/codex-rs/ext/guardian-v2/BUILD.bazel
++++ b/codex-rs/ext/guardian-v2/BUILD.bazel
+@@ -11,4 +11,5 @@ codex_rust_crate(
+     crate_name = "codex_guardian_v2",
+     extra_binaries = ["//codex-rs/code-mode-host:codex-code-mode-host"],
+     test_data_extra = glob(["src/**/snapshots/**"]),
++    unit_test_timeout = "moderate",
+ )
+diff --git a/codex-rs/feedback/BUILD.bazel b/codex-rs/feedback/BUILD.bazel
+index a53efd5f7..151af2e7a 100644
+--- a/codex-rs/feedback/BUILD.bazel
++++ b/codex-rs/feedback/BUILD.bazel
+@@ -1,6 +1,16 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "feedback",
+     crate_name = "codex_feedback",
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "large_upload_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":feedback-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+diff --git a/codex-rs/login/BUILD.bazel b/codex-rs/login/BUILD.bazel
+index 78eea8c3d..bd38b7980 100644
+--- a/codex-rs/login/BUILD.bazel
++++ b/codex-rs/login/BUILD.bazel
+@@ -1,4 +1,5 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "login",
+@@ -14,3 +15,11 @@ codex_rust_crate(
+     },
+     unit_test_timeout = "long",
+ )
++
++timeout_test(
++    name = "unit_override_test",
++    size = "small",
++    expected_timeout = "long",
++    target_under_test = ":login-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
+diff --git a/codex-rs/thread-store/BUILD.bazel b/codex-rs/thread-store/BUILD.bazel
+index 5d800f51f..57c711034 100644
+--- a/codex-rs/thread-store/BUILD.bazel
++++ b/codex-rs/thread-store/BUILD.bazel
+@@ -1,6 +1,22 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "thread-store",
+     crate_name = "codex_thread_store",
++    # Preserve the native Windows budget without extending fast-platform runs.
++    unit_test_platform_timeouts = {"@platforms//os:windows": "moderate"},
++)
++
++timeout_test(
++    name = "whole_suite_deadline_test",
++    size = "small",
++    expected_timeout = select({
++        "@platforms//os:windows": "moderate",
++        "//conditions:default": "short",
++    }),
++    target_under_test = select({
++        "@platforms//os:windows": ":moderate-thread-store-unit-tests",
++        "//conditions:default": ":short-thread-store-unit-tests",
++    }),
+ )
+diff --git a/codex-rs/tui/BUILD.bazel b/codex-rs/tui/BUILD.bazel
+index 8f4f27d44..1c7ea7a74 100644
+--- a/codex-rs/tui/BUILD.bazel
++++ b/codex-rs/tui/BUILD.bazel
+@@ -1,4 +1,5 @@
+ load("//:defs.bzl", "MACOS_WEBRTC_RUSTC_LINK_FLAGS", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "tui",
+@@ -18,8 +19,26 @@ codex_rust_crate(
+         "tests/fixtures/**",
+     ]),
+     test_shard_counts = {
+-        "tui-unit-tests": 8,
++        "tui-unit-tests": 4,
+     },
+     # The startup symlink test applies its own Seatbelt policy, which cannot be nested.
+     test_tags = ["no-sandbox"],
++    # Keep shard concurrency bounded and allow the complete interactive test workload.
++    unit_test_timeout = "moderate",
++)
++
++timeout_test(
++    name = "unit_deadline_test",
++    size = "small",
++    expected_timeout = "moderate",
++    target_under_test = ":tui-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
++)
++
++timeout_test(
++    name = "fast_binary_deadline_test",
++    size = "small",
++    expected_timeout = "short",
++    target_under_test = ":md-events-bin-unit-tests",
++    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
+ )
+diff --git a/codex-rs/utils/image/BUILD.bazel b/codex-rs/utils/image/BUILD.bazel
+index 0bc9e6b17..7d41e1f8c 100644
+--- a/codex-rs/utils/image/BUILD.bazel
++++ b/codex-rs/utils/image/BUILD.bazel
+@@ -1,6 +1,30 @@
+ load("//:defs.bzl", "codex_rust_crate")
++load("//tools/build-warnings/test-timeouts:timeouts_test.bzl", "timeout_test")
+ 
+ codex_rust_crate(
+     name = "image",
+     crate_name = "codex_utils_image",
++    # Preserve the Intel macOS budget without extending fast-platform runs.
++    unit_test_platform_timeouts = {":intel_macos": "moderate"},
++)
++
++config_setting(
++    name = "intel_macos",
++    constraint_values = [
++        "@platforms//cpu:x86_64",
++        "@platforms//os:macos",
++    ],
++)
++
++timeout_test(
++    name = "whole_suite_deadline_test",
++    size = "small",
++    expected_timeout = select({
++        ":intel_macos": "moderate",
++        "//conditions:default": "short",
++    }),
++    target_under_test = select({
++        ":intel_macos": ":moderate-image-unit-tests",
++        "//conditions:default": ":short-image-unit-tests",
++    }),
+ )
+diff --git a/defs.bzl b/defs.bzl
+index a297207b8..ff34b9ce5 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -141,6 +141,28 @@ def _windows_workspace_root_setup(ctx):
+     return """set "INSTA_WORKSPACE_ROOT=%workspace_root%"
+ cd /d "%workspace_root%" || exit /b 1"""
+ 
++def _platform_unit_tests(name, unit_test_platform_timeouts, **kwargs):
++    """Preserve the unit-suite label while running one compatible timeout variant."""
++    if not unit_test_platform_timeouts:
++        workspace_root_test(name = name, **kwargs)
++        return
++
++    timeouts = {"//conditions:default": kwargs.get("timeout", "moderate")} | unit_test_platform_timeouts
++    variants = {timeout: True for timeout in timeouts.values()}
++    tests = []
++    for timeout in sorted(variants):
++        variant_name = timeout + "-" + name
++        variant_kwargs = dict(kwargs)
++        variant_kwargs["timeout"] = timeout
++        variant_kwargs["target_compatible_with"] = select({
++            condition: [] if selected_timeout == timeout else ["@platforms//:incompatible"]
++            for condition, selected_timeout in timeouts.items()
++        })
++        workspace_root_test(name = variant_name, **variant_kwargs)
++        tests.append(":" + variant_name)
++
++    native.test_suite(name = name, tests = tests, tags = kwargs.get("tags", []))
++
+ workspace_root_test = rule(
+     implementation = _workspace_root_test_impl,
+     test = True,
+@@ -204,15 +226,18 @@ def codex_rust_crate(
+         integration_test_args = [],
+         unit_test_args = [],
+         binary_test_target_compatible_with = [],
+-        integration_test_timeout = None,
++        binary_unit_test_timeout = "short",
++        integration_test_timeout = "short",
++        integration_test_timeouts = {},
+         test_data_extra = [],
+         test_shard_counts = {},
+         test_tags = [],
+         test_threads = 0,
+-        unit_test_timeout = None,
++        unit_test_timeout = "short",
+         extra_binaries = [],
+         extra_binaries_non_windows = [],
+-        run_tests_with_wine_exec = False):
++        run_tests_with_wine_exec = False,
++        unit_test_platform_timeouts = {}):
+     """Defines a Rust crate with library, binaries, and tests wired for Bazel + Cargo parity.
+ 
+     The macro mirrors Cargo conventions: it builds a library when `src/` exists,
+@@ -252,8 +277,14 @@ def codex_rust_crate(
+         integration_test_args: Optional args for integration test binaries.
+         unit_test_args: Optional args for the unit test binary.
+         binary_test_target_compatible_with: Platform constraints for binary unit tests.
++        binary_unit_test_timeout: Bazel timeout for binary unit tests, independent
++            of the library unit-test suite. Defaults to short.
+         integration_test_timeout: Optional Bazel timeout for integration test
+-            targets generated from `tests/*.rs`.
++            targets generated from `tests/*.rs`. Defaults to short; explicit
++            overrides cover longer suites. None retains Bazel's size-based default.
++        integration_test_timeouts: Mapping from native integration test target
++            names to timeout overrides. Windows-cross and Wine variants inherit
++            the same override. Other targets use integration_test_timeout.
+         test_data_extra: Extra runtime data for tests.
+         test_shard_counts: Mapping from generated test target name to Bazel
+             shard count. Matching tests use native Bazel sharding on the outer
+@@ -266,7 +297,8 @@ def codex_rust_crate(
+             Typically used to disable the sandbox, but see https://bazel.build/reference/be/common-definitions#common.tags
+         test_threads: Optional Rust test thread limit for sharded integration tests.
+         unit_test_timeout: Optional Bazel timeout for the unit-test target
+-            generated from `src/**/*.rs`.
++            generated from `src/**/*.rs`. Defaults to short;
++            None retains Bazel's size-based default.
+         extra_binaries: Additional binary labels to surface as test data and
+             `CARGO_BIN_EXE_*` environment variables. These are only needed for binaries from a different crate.
+         extra_binaries_non_windows: Like `extra_binaries`, but omitted from
+@@ -275,6 +307,10 @@ def codex_rust_crate(
+         run_tests_with_wine_exec: Boolean, defaults to False. Whether to emit a
+             Wine-exec variant for each integration test. Variants inherit the
+             native test's timeout, tags, and shard count.
++        unit_test_platform_timeouts: Mapping from select conditions to unit-suite
++            timeout strings. The fallback is unit_test_timeout, unless the map
++            supplies //conditions:default. Compatible variants share one compiled
++            test binary and the original label runs them through a test suite.
+     """
+     test_env = {
+         # The launcher resolves an absolute workspace root at runtime so
+@@ -384,8 +420,9 @@ def codex_rust_crate(
+             unit_test_kwargs["shard_count"] = unit_test_shard_count
+             unit_test_kwargs["flaky"] = True
+ 
+-        workspace_root_test(
++        _platform_unit_tests(
+             name = unit_test_name,
++            unit_test_platform_timeouts = unit_test_platform_timeouts,
+             env = test_env,
+             runfile_env = {
+                 binary: "CARGO_BIN_EXE_" + Label(binary).name
+@@ -456,8 +493,8 @@ def codex_rust_crate(
+         binary_unit_test_kwargs = {}
+         if unit_test_args:
+             binary_unit_test_kwargs["args"] = unit_test_args
+-        if unit_test_timeout:
+-            binary_unit_test_kwargs["timeout"] = unit_test_timeout
++        if binary_unit_test_timeout:
++            binary_unit_test_kwargs["timeout"] = binary_unit_test_timeout
+         if binary_unit_test_shard_count:
+             binary_unit_test_kwargs["shard_count"] = binary_unit_test_shard_count
+             binary_unit_test_kwargs["flaky"] = True
+@@ -518,8 +555,6 @@ def codex_rust_crate(
+     integration_test_kwargs = {}
+     if integration_test_args:
+         integration_test_kwargs["args"] = integration_test_args
+-    if integration_test_timeout:
+-        integration_test_kwargs["timeout"] = integration_test_timeout
+ 
+     for test in native.glob(["tests/*.rs"], allow_empty = True):
+         test_file_stem = test.removeprefix("tests/").removesuffix(".rs")
+@@ -531,6 +566,9 @@ def codex_rust_crate(
+ 
+         test_kwargs = {}
+         test_kwargs.update(integration_test_kwargs)
++        test_timeout = integration_test_timeouts.get(test_name, integration_test_timeout)
++        if test_timeout:
++            test_kwargs["timeout"] = test_timeout
+         test_shard_count = _test_shard_count(test_shard_counts, test_name)
+         if test_shard_count:
+             # Put Bazel sharding on the label users/CI invoke. Do not set
+@@ -653,7 +691,7 @@ def codex_rust_crate(
+             wine_runfile_env[native_test_binary] = "CODEX_WINE_EXEC_TEST_BINARY"
+ 
+             wine_test_kwargs = {}
+-            wine_test_kwargs.update(integration_test_kwargs)
++            wine_test_kwargs.update(test_kwargs)
+             if test_shard_count:
+                 wine_test_kwargs["shard_count"] = test_shard_count
+                 wine_test_kwargs["flaky"] = True
+@@ -676,7 +714,7 @@ def codex_rust_crate(
+             )
+ 
+         windows_cross_test_kwargs = {}
+-        windows_cross_test_kwargs.update(integration_test_kwargs)
++        windows_cross_test_kwargs.update(test_kwargs)
+         if test_shard_count:
+             windows_cross_test_kwargs["shard_count"] = test_shard_count
+             windows_cross_test_kwargs["flaky"] = True
+diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
+new file mode 100644
+index 000000000..ff140d662
+--- /dev/null
++++ b/tools/build-warnings/test-timeouts/BUILD.bazel
+@@ -0,0 +1,27 @@
++test_suite(
++    name = "timeouts_tests",
++    tests = [
++        "//codex-rs/agent-message-board-client:integration_default_test",
++        "//codex-rs/ansi-escape:unit_default_test",
++        "//codex-rs/app-server:binary_default_test",
++        "//codex-rs/app-server:fast_integration_deadline_test",
++        "//codex-rs/app-server:fast_wine_deadline_test",
++        "//codex-rs/app-server:integration_override_test",
++        "//codex-rs/app-server:wine_override_test",
++        "//codex-rs/app-server-transport:retry_unit_timeout_test",
++        "//codex-rs/cli:daemon_deadline_test",
++        "//codex-rs/cli:fast_integration_deadline_test",
++        "//codex-rs/core:fast_integration_deadline_test",
++        "//codex-rs/core:sharded_integration_deadline_test",
++        "//codex-rs/exec:fast_integration_deadline_test",
++        "//codex-rs/exec:integration_deadline_test",
++        "//codex-rs/exec-server:current_compat_timeout_test",
++        "//codex-rs/exec-server:minimum_compat_timeout_test",
++        "//codex-rs/exec-server:serialized_unit_timeout_test",
++        "//codex-rs/exec-server:stable_compat_timeout_test",
++        "//codex-rs/feedback:large_upload_deadline_test",
++        "//codex-rs/login:unit_override_test",
++        "//codex-rs/tui:fast_binary_deadline_test",
++        "//codex-rs/tui:unit_deadline_test",
++    ],
++)
+diff --git a/tools/build-warnings/test-timeouts/timeouts_test.bzl b/tools/build-warnings/test-timeouts/timeouts_test.bzl
+new file mode 100644
+index 000000000..64ee601a8
+--- /dev/null
++++ b/tools/build-warnings/test-timeouts/timeouts_test.bzl
+@@ -0,0 +1,22 @@
++"""Verify generated Rust test timeouts and explicit long-running overrides."""
++
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++_TestTimeoutInfo = provider(fields = ["timeout"])
++
++def _timeout_aspect_impl(target, ctx):
++    return [_TestTimeoutInfo(timeout = ctx.rule.attr.timeout)]
++
++_timeout_aspect = aspect(implementation = _timeout_aspect_impl)
++
++def _timeout_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    target = analysistest.target_under_test(env)
++    asserts.equals(env, ctx.attr.expected_timeout, target[_TestTimeoutInfo].timeout)
++    return analysistest.end(env)
++
++timeout_test = analysistest.make(
++    _timeout_test_impl,
++    attrs = {"expected_timeout": attr.string(mandatory = True)},
++    extra_target_under_test_aspects = [_timeout_aspect],
++)

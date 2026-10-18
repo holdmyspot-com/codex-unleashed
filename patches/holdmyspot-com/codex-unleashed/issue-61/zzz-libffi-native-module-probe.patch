@@ -1,6 +1,6 @@
-From ba5edd0cb8505e7e6cca785f805ea58a603108e7 Mon Sep 17 00:00:00 2001
+From cf718aa29df812a8644668ca5944c1b0d41195aa Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 11:06:10 +0000
+Date: Sun, 18 Oct 2026 09:07:59 +0000
 Subject: [PATCH] Avoid the obsolete libffi Darwin module probe
 
 Select bundled libtool LT_MULTI_MODULE configuration for the C-only libffi shared library on Darwin. Keep warning rejection and compiler/linker severity unchanged; do not seed capability-cache values or upgrade dependency versions.
@@ -14,11 +14,10 @@ Regression: the actual bundled probe with the baseline recipe raises NativeBuild
  create mode 100644 third_party/voice/testdata/libffi-single-module.sh
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index 28ea9219a..b28406558 100644
+index fa1a91858..c75de554d 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -466,8 +466,14 @@ class NativeBuild:
-             )
+@@ -466,6 +466,12 @@ class NativeBuild:
          else:
              ffi_flags = {name: list(flags) for name, flags in self.flags.items()}
              if self.args.target.endswith("apple-darwin"):
@@ -30,17 +29,15 @@ index 28ea9219a..b28406558 100644
 +
                  # Libtool's partial links need -r, which ld64.lld does not support.
                  ffi_flags["LDFLAGS"].append("-fuse-ld=/usr/bin/ld")
-                 environment["LTCC"] = self.quote(
-                     [str(self.toolchain["cc"]), "-fuse-ld=/usr/bin/ld"]
+                 # LTCC also compiles feature probes, where linker flags are invalid.
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index 94a79b75d..30a4a9171 100644
+index 901680d7a..f21a18dac 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -266,8 +266,73 @@ class NativeBuildTests(unittest.TestCase):
-         self.assertIn('"/usr/bin/ld"', reload_trace.stderr)
+@@ -271,6 +271,71 @@ class NativeBuildTests(unittest.TestCase):
          result = subprocess.run([build.output / "probe"], check=False)
          self.assertEqual(result.returncode, 0)
-
+ 
 +    @unittest.skipIf(os.name == "nt", "Exercises Darwin's libtool configuration")
 +    def test_libffi_darwin_recipe_avoids_obsolete_module_probe(self):
 +        compiler = shutil.which("clang")
@@ -109,7 +106,6 @@ index 94a79b75d..30a4a9171 100644
      @unittest.skipIf(
          os.name == "nt", "Windows configure arguments have a separate recipe test"
      )
-     def test_libffi_native_prefix_uses_its_declared_library_directory(self):
 diff --git a/third_party/voice/testdata/libffi-single-module.sh b/third_party/voice/testdata/libffi-single-module.sh
 new file mode 100644
 index 000000000..60e4b0fe8

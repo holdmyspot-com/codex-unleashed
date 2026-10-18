@@ -85,18 +85,12 @@ neighboring feature in the shared configuration schema. Then apply this series:
    notifications and adds guidance for yielding the parent turn.
 3. `0003-defer-goal-continuation-to-live-children.patch` keeps an active-goal
    parent available while its child runs and verifies the public app-server flow.
-4. `0004-observe-child-startup-in-completion-fixture.patch` observes each child's
-   turn-start event before checking that it is running. Spawn registration
-   does not imply that the child's first turn has started.
-5. `0005-keep-guardian-fixture-turns-explicit.patch` selects queued child-result
-   delivery for the Guardian fixture that drives root turns explicitly. Its
-   model responses and authorization assertions use that controlled sequence.
-6. `0006-isolate-upstream-scenario-history.patch` keeps eviction parent turns
-   explicit and checks retained history without matching tool-catalog guidance.
-7. `0007-scope-eviction-fixture-commands.patch` matches scripted eviction
-   commands only after their user prompt reaches the model and completes
-   automatic parent wakes independently. Mailbox and retained-history assertions
-   run with background subagent notifications enabled.
+
+The completion patch observes child turn-start events before asserting running
+state. Guardian and eviction fixtures that drive root turns explicitly select
+queued delivery. Scripted eviction commands match their submitted user prompts;
+automatic completion wakes finish independently. History assertions exclude
+tool-catalog guidance while retaining mailbox and retained-history checks.
 
 Later patches depend on all preceding patches. The shared
 `schema/refresh-config-schema.patch` applies after the runtime patches and

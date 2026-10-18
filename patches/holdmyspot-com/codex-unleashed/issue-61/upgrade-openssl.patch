@@ -1,35 +1,53 @@
-From c63f7ce08d501c836016b5dede16b46b658199ba Mon Sep 17 00:00:00 2001
+From de4f6b0bd6ea5ef24ee228c862b710f936c3b8fe Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:28:06 -0400
+Date: Sun, 18 Oct 2026 09:07:49 +0000
 Subject: [PATCH] Use latest stable OpenSSL and compatible Rust bindings
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- upgrade-zz-openssl-link-inputs.patch
+- z-openssl-library-names.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- MODULE.bazel                                    |  2 +-
- MODULE.bazel.lock                               | 12 ++++++------
- codex-rs/Cargo.lock                             |  9 ++++-----
- tools/build-warnings/openssl/BUILD.bazel        | 16 ++++++++++++++++
- .../openssl/configuration_header_test.c         |  6 ++++++
- .../openssl/rust_bindings_test.rs               | 17 +++++++++++++++++
- 6 files changed, 50 insertions(+), 12 deletions(-)
+ MODULE.bazel                                  |  3 ++-
+ MODULE.bazel.lock                             | 12 ++++-----
+ codex-rs/Cargo.lock                           |  9 +++----
+ tools/build-warnings/openssl/BUILD.bazel      | 25 +++++++++++++++++++
+ .../openssl/configuration_header_test.c       |  6 +++++
+ tools/build-warnings/openssl/inputs_test.bzl  | 20 +++++++++++++++
+ .../openssl/rust_bindings_test.rs             | 17 +++++++++++++
+ 7 files changed, 80 insertions(+), 12 deletions(-)
+ create mode 100644 tools/build-warnings/openssl/BUILD.bazel
  create mode 100644 tools/build-warnings/openssl/configuration_header_test.c
+ create mode 100644 tools/build-warnings/openssl/inputs_test.bzl
  create mode 100644 tools/build-warnings/openssl/rust_bindings_test.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index f00f84366..aa9c93b29 100644
+index 81421417a..3a5e65b61 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -492,7 +492,7 @@ crate.annotation(
+@@ -484,7 +484,7 @@ crate.annotation(
      deps = ["@xz//:lzma"],
  )
-
+ 
 -bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
 +bazel_dep(name = "openssl", version = "4.0.1.bcr.0")
- single_version_override(
-     module_name = "openssl",
-     patch_strip = 1,
+ 
+ inject_repo(crate, "xz")
+ 
+@@ -499,6 +499,7 @@ crate.annotation(
+     ],
+     build_script_env = {
+         "OPENSSL_DIR": "$(execpath @openssl//:gen_dir)",
++        "OPENSSL_LIBS": "ssl:crypto",
+         "OPENSSL_NO_VENDOR": "1",
+         "OPENSSL_STATIC": "1",
+     },
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 49ff7ece4..e45089e10 100644
+index 7f786e956..3697331f8 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -103,8 +103,8 @@
@@ -70,7 +88,7 @@ index 3caeead36..c48f6c895 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -11082,15 +11082,14 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
-
+ 
  [[package]]
  name = "openssl"
 -version = "0.10.75"
@@ -88,7 +106,7 @@ index 3caeead36..c48f6c895 100644
   "openssl-sys",
  ]
 @@ -11129,9 +11128,9 @@ dependencies = [
-
+ 
  [[package]]
  name = "openssl-sys"
 -version = "0.9.111"
@@ -100,17 +118,26 @@ index 3caeead36..c48f6c895 100644
   "cc",
   "libc",
 diff --git a/tools/build-warnings/openssl/BUILD.bazel b/tools/build-warnings/openssl/BUILD.bazel
-index fc2f72933..70e504c00 100644
---- a/tools/build-warnings/openssl/BUILD.bazel
+new file mode 100644
+index 000000000..f863f487d
+--- /dev/null
 +++ b/tools/build-warnings/openssl/BUILD.bazel
-@@ -1,4 +1,20 @@
- load("@rules_cc//cc:cc_test.bzl", "cc_test")
+@@ -0,0 +1,25 @@
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load("@rules_rs//rs:rust_test.bzl", "rust_test")
++load(":inputs_test.bzl", "openssl_install_inputs_test")
++
++openssl_install_inputs_test(
++    name = "rust_install_inputs_test",
++    size = "small",
++    target_under_test = ":rust_bindings_test",
++)
 +
 +rust_test(
 +    name = "rust_bindings_test",
 +    size = "small",
 +    srcs = ["rust_bindings_test.rs"],
++    compile_data = ["@openssl//:gen_dir"],
 +    edition = "2024",
 +    deps = ["@crates//:openssl-0.10.81"],
 +)
@@ -121,9 +148,6 @@ index fc2f72933..70e504c00 100644
 +    srcs = ["configuration_header_test.c"],
 +    deps = ["@openssl//:crypto"],
 +)
-
- cc_test(
-     name = "ssl_init_test",
 diff --git a/tools/build-warnings/openssl/configuration_header_test.c b/tools/build-warnings/openssl/configuration_header_test.c
 new file mode 100644
 index 000000000..868132a99
@@ -136,6 +160,32 @@ index 000000000..868132a99
 +int main(void) {
 +  return OPENSSL_init_crypto(0, NULL) == 1 ? 0 : 1;
 +}
+diff --git a/tools/build-warnings/openssl/inputs_test.bzl b/tools/build-warnings/openssl/inputs_test.bzl
+new file mode 100644
+index 000000000..1d2e66334
+--- /dev/null
++++ b/tools/build-warnings/openssl/inputs_test.bzl
+@@ -0,0 +1,20 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _openssl_install_inputs_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    install_files = ctx.attr.install[DefaultInfo].files.to_list()
++    link_actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "Rustc"
++    ]
++    asserts.equals(env, 1, len(link_actions), "The Rust fixture must have one compiler/linker action")
++    for action in link_actions:
++        for install_file in install_files:
++            asserts.true(env, install_file in action.inputs.to_list(), "The linker sandbox must contain the OpenSSL installation tree")
++    return analysistest.end(env)
++
++openssl_install_inputs_test = analysistest.make(
++    _openssl_install_inputs_test_impl,
++    attrs = {"install": attr.label(default = "@openssl//:gen_dir")},
++)
 diff --git a/tools/build-warnings/openssl/rust_bindings_test.rs b/tools/build-warnings/openssl/rust_bindings_test.rs
 new file mode 100644
 index 000000000..63293778a

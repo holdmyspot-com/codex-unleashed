@@ -1,30 +1,45 @@
-From 2b2692e6bcabc6d15554e0683d65999468835e97 Mon Sep 17 00:00:00 2001
+From 88ac9d85a0d79eb63d55cb21b2f565428ff04ba9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:23:47 -0400
+Date: Sun, 18 Oct 2026 09:07:53 +0000
 Subject: [PATCH] Fix Abseil compiler selection for Windows Clang
 
 Preserve functional changes without warning-only dependency patches.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- native-abseil-declaration.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- MODULE.bazel                                  |  1 +
+ MODULE.bazel                                  |  2 +
  patches/abseil_msvc_pragma_guards.patch       | 90 +++++++++++++++++++
- tools/build-warnings/abseil/BUILD.bazel       | 10 +++
+ tools/build-warnings/abseil/BUILD.bazel       | 11 +++
  .../abseil/windows_platform_test.cc           | 14 +++
- 4 files changed, 115 insertions(+)
+ 4 files changed, 117 insertions(+)
  create mode 100644 patches/abseil_msvc_pragma_guards.patch
+ create mode 100644 tools/build-warnings/abseil/BUILD.bazel
  create mode 100644 tools/build-warnings/abseil/windows_platform_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index ac77a3695..f02e35872 100644
+index c9955c860..452261fad 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -93,6 +93,7 @@ single_version_override(
+@@ -79,6 +79,7 @@ use_repo(windows_sdk, "windows_sdk")
+ 
+ # Abseil picks a MinGW pthread TLS path that does not match our hermetic
+ # windows-gnullvm toolchain; force it onto the portable C++11 thread-local path.
++bazel_dep(name = "abseil-cpp", version = "20250814.1")
+ bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+ 
+ single_version_override(
+@@ -86,6 +87,7 @@ single_version_override(
      patch_strip = 1,
      patches = [
          "//patches:abseil_windows_gnullvm_thread_identity.patch",
 +        "//patches:abseil_msvc_pragma_guards.patch",
      ],
  )
-
+ 
 diff --git a/patches/abseil_msvc_pragma_guards.patch b/patches/abseil_msvc_pragma_guards.patch
 new file mode 100644
 index 000000000..0bc1768de
@@ -122,12 +137,13 @@ index 000000000..0bc1768de
 + #include <algorithm>
 + #include <cstring>
 diff --git a/tools/build-warnings/abseil/BUILD.bazel b/tools/build-warnings/abseil/BUILD.bazel
-index a29586d5a..372ca1416 100644
---- a/tools/build-warnings/abseil/BUILD.bazel
+new file mode 100644
+index 000000000..9f6e2b7a5
+--- /dev/null
 +++ b/tools/build-warnings/abseil/BUILD.bazel
-@@ -1,5 +1,15 @@
- load("@rules_cc//cc:cc_test.bzl", "cc_test")
-
+@@ -0,0 +1,11 @@
++load("@rules_cc//cc:cc_test.bzl", "cc_test")
++
 +cc_test(
 +    name = "windows_platform_test",
 +    size = "small",
@@ -137,10 +153,6 @@ index a29586d5a..372ca1416 100644
 +        "@abseil-cpp//absl/debugging:symbolize",
 +    ],
 +)
-+
- cc_test(
-     name = "lifetime_attribute_test",
-     size = "small",
 diff --git a/tools/build-warnings/abseil/windows_platform_test.cc b/tools/build-warnings/abseil/windows_platform_test.cc
 new file mode 100644
 index 000000000..2ca78c859

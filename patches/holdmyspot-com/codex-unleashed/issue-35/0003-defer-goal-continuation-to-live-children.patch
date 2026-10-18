@@ -1,6 +1,6 @@
-From e4674ebe220b0f73f3c0424da4e06b64315cecb7 Mon Sep 17 00:00:00 2001
+From fa9e7563d18e0a8c42d3732f56058d9eb1ac38ec Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Mon, 5 Oct 2026 16:27:06 -0400
+Date: Sun, 18 Oct 2026 09:07:38 +0000
 Subject: [PATCH] bugfix: Keep active-goal parents available while children run
 
 Red: just test -p codex-app-server -E test(app_server_resumes_parent_after_background_child_finishes) starts an unsolicited active-goal parent turn before child completion; the ordinary control passes.
@@ -316,13 +316,13 @@ index 000000000..311b07f9e
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index 491207ad7..e35f48051 100644
+index ab566dc09..9139af63e 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
  use super::analytics::wait_for_analytics_event;
  use super::analytics::wait_for_matching_analytics_event;
-
+ 
 +#[path = "background_subagent_tests.rs"]
 +mod background_subagents;
 +
@@ -330,13 +330,13 @@ index 491207ad7..e35f48051 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index 8d2cd8351..1a7ee3d85 100644
+index a63dc8f4d..161b2c24a 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1031,6 +1031,40 @@ impl CodexThread {
+@@ -1039,6 +1039,40 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
-
+ 
 +    /// Reports whether a direct V2 child is running or starting with automatic
 +    /// completion delivery enabled. Idle goal continuation can defer to that
 +    /// child's result without blocking user input or loading historical children.
@@ -375,20 +375,20 @@ index 8d2cd8351..1a7ee3d85 100644
      pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
          self.session.conversation_history_snapshot().await
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
-index 210f3e5de..9c894f703 100644
+index 9cdc27d87..7ba359315 100644
 --- a/codex-rs/core/tests/suite/background_subagent_tests.rs
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
          .build_with_auto_env(&server)
          .await?;
-
+ 
 +    assert!(!test.codex.has_running_background_subagents().await?);
      test.submit_turn("Inspect the available tools.").await?;
      let request = response.single_request();
      let tools = request.body_json()["tools"].clone();
-@@ -380,6 +381,10 @@ async fn background_subagent_completion_coordinates_parent_turns(
-     let child_id = ThreadId::from_string(&wait_for_spawned_thread_id(&test).await?)?;
+@@ -381,6 +382,10 @@ async fn background_subagent_completion_coordinates_parent_turns(
      let child = test.thread_manager.get_thread(child_id).await?;
+     wait_for_event(&child, |event| matches!(event, EventMsg::TurnStarted(_))).await;
      assert_eq!(child.agent_status().await, AgentStatus::Running,);
 +    assert_eq!(
 +        test.codex.has_running_background_subagents().await?,
@@ -397,7 +397,7 @@ index 210f3e5de..9c894f703 100644
      if matches!(
          parent_state,
          BackgroundScenario::Answering | BackgroundScenario::ParentInterrupted
-@@ -696,5 +701,6 @@ async fn background_subagent_simultaneous_results_serialize_parent_turns() -> Re
+@@ -698,5 +703,6 @@ async fn background_subagent_simultaneous_results_serialize_parent_turns() -> Re
          }
      })
      .await?;
@@ -405,10 +405,10 @@ index 210f3e5de..9c894f703 100644
      Ok(())
  }
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 3e35f9807..128fc9d19 100644
+index 8744473a0..6188beb5b 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
-@@ -466,6 +466,14 @@ impl GoalRuntimeHandle {
+@@ -477,6 +477,14 @@ impl GoalRuntimeHandle {
              self.inner.accounting_state.clear_active_goal();
              return Ok(());
          }
@@ -423,6 +423,3 @@ index 3e35f9807..128fc9d19 100644
          let start_options = thread
              .thread_extension_data()
              .get::<TurnStartOptions>()
--- 
-2.43.0
-

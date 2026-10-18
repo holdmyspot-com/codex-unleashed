@@ -1,6 +1,6 @@
-From c6980649233b8584fb45d34f701069ff8ba57bbf Mon Sep 17 00:00:00 2001
+From 5121a8eed7b45dbdb09236e7afb625f08eb36f81 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 18:14:46 +0000
+Date: Sun, 18 Oct 2026 09:08:15 +0000
 Subject: [PATCH] Route upstream Bazel entry points through configured Java
  tooling
 
@@ -23,24 +23,44 @@ GREEN: python3 -m unittest test_run_bazel_with_buildbuddy passes all 16 tests.
 Gates: just fmt-check and just bazel-lock-check pass on the fresh ordered
 queue with the actual bundled Java launcher configured; the obsolete JVM
 option warning is absent from the lock-check output.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0026-windows-bash-path-resolution.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- .github/scripts/run_bazel_with_buildbuddy.py  | 13 +++++++
- .../scripts/test_run_bazel_with_buildbuddy.py | 36 +++++++++++++++++++
- 2 files changed, 49 insertions(+)
+ .github/scripts/run_bazel_with_buildbuddy.py  | 20 ++++++++++
+ .../scripts/test_run_bazel_with_buildbuddy.py | 40 +++++++++++++++++++
+ 2 files changed, 60 insertions(+)
 
 diff --git a/.github/scripts/run_bazel_with_buildbuddy.py b/.github/scripts/run_bazel_with_buildbuddy.py
-index 51bac9867..68932190e 100755
+index 51bac9867..92f44ca1a 100755
 --- a/.github/scripts/run_bazel_with_buildbuddy.py
 +++ b/.github/scripts/run_bazel_with_buildbuddy.py
-@@ -192,6 +192,19 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
-
-
+@@ -2,6 +2,7 @@
+ 
+ import json
+ import os
++import shutil
+ import subprocess
+ import sys
+ from collections.abc import Mapping
+@@ -192,6 +193,25 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
+ 
+ 
  def main() -> None:
 +    tooling = os.environ.get("CODEX_UNLEASHED_TOOLING")
 +    if tooling:
++        bash = shutil.which("bash")
++        if bash is None:
++            raise FileNotFoundError(
++                "Bash is required on PATH to run CODEX_UNLEASHED_TOOLING"
++            )
++
 +        result = subprocess.run(
 +            [
-+                "bash",
++                bash,
 +                Path(tooling).as_posix(),
 +                "run-bazel-with-buildbuddy",
 +                *sys.argv[1:],
@@ -53,13 +73,13 @@ index 51bac9867..68932190e 100755
      if config is None:
          print(
 diff --git a/.github/scripts/test_run_bazel_with_buildbuddy.py b/.github/scripts/test_run_bazel_with_buildbuddy.py
-index 3db617b38..f683c11f8 100644
+index 3db617b38..b7ae0ffcc 100644
 --- a/.github/scripts/test_run_bazel_with_buildbuddy.py
 +++ b/.github/scripts/test_run_bazel_with_buildbuddy.py
-@@ -285,6 +285,41 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+@@ -285,6 +285,45 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
              ],
          )
-
+ 
 +    def test_main_uses_configured_java_tooling_with_exact_arguments_and_status(
 +        self,
 +    ) -> None:
@@ -89,7 +109,11 @@ index 3db617b38..f683c11f8 100644
 +                text=True,
 +            )
 +
-+            self.assertEqual(result.returncode, 37, result.stderr)
++            self.assertEqual(
++                result.returncode,
++                37,
++                f"stdout={result.stdout!r}; stderr={result.stderr!r}",
++            )
 +            self.assertEqual(
 +                result.stdout.splitlines(), ["run-bazel-with-buildbuddy", *args]
 +            )
@@ -98,7 +122,7 @@ index 3db617b38..f683c11f8 100644
      def test_main_preserves_spaced_argument_and_child_exit_status(self) -> None:
          spaced_arg = (
              r"--test_env=PATH=C:\Program Files\PowerShell\7;C:\Program Files\Git\bin"
-@@ -294,6 +329,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
+@@ -294,6 +333,7 @@ class RunBazelWithBuildBuddyTest(unittest.TestCase):
          )
          env = os.environ.copy()
          env["CODEX_BAZEL_BIN"] = sys.executable

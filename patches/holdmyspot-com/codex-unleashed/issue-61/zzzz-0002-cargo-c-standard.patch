@@ -1,26 +1,31 @@
-From f54dfd33b210e579a0f733ab22ab18d70e0071bb Mon Sep 17 00:00:00 2001
+From 374f1dbb3e6b19030688059dffdfef215f1bf48e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:11 +0000
+Date: Sun, 18 Oct 2026 09:08:03 +0000
 Subject: [PATCH] Leave Cargo native C dialect selection to build scripts
 
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
  patches/rules_rust_cargo_c_standard.patch     | 34 +++++++++++++++++++
- .../cargo-c-standard/BUILD.bazel              | 14 ++++++++
+ .../cargo-c-standard/BUILD.bazel              | 15 ++++++++
  .../build-warnings/cargo-c-standard/build.rs  |  1 +
  .../cargo-c-standard/flags_test.bzl           | 24 +++++++++++++
- 6 files changed, 75 insertions(+)
+ 6 files changed, 76 insertions(+)
  create mode 100644 patches/rules_rust_cargo_c_standard.patch
  create mode 100644 tools/build-warnings/cargo-c-standard/BUILD.bazel
  create mode 100644 tools/build-warnings/cargo-c-standard/build.rs
  create mode 100644 tools/build-warnings/cargo-c-standard/flags_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index cd3d06bd0..c06d6a6bf 100644
+index 9520a2261..77ee78dc8 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -285,6 +285,7 @@ rules_rust.patch(
+@@ -273,6 +273,7 @@ rules_rust.patch(
          "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
          # Spill wrapper arguments to a params file to avoid Windows command-line limits.
          "//patches:rules_rust_process_wrapper_param_file.patch",
@@ -29,7 +34,7 @@ index cd3d06bd0..c06d6a6bf 100644
          "//patches:rules_rust_compiler_thp.patch",
          "//patches:rules_rust_unwind_driver_selection.patch",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index c7ef1bbd8..3cd543394 100644
+index fc198f248..66e635909 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -80,10 +85,10 @@ index 000000000..a40e39c32
 +2.43.0
 diff --git a/tools/build-warnings/cargo-c-standard/BUILD.bazel b/tools/build-warnings/cargo-c-standard/BUILD.bazel
 new file mode 100644
-index 000000000..3c92a51fc
+index 000000000..8da9ba571
 --- /dev/null
 +++ b/tools/build-warnings/cargo-c-standard/BUILD.bazel
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,15 @@
 +load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 +load(":flags_test.bzl", "cargo_c_flags_test")
 +
@@ -96,6 +101,7 @@ index 000000000..3c92a51fc
 +
 +cargo_c_flags_test(
 +    name = "flags_test",
++    size = "small",
 +    target_under_test = ":probe",
 +)
 diff --git a/tools/build-warnings/cargo-c-standard/build.rs b/tools/build-warnings/cargo-c-standard/build.rs

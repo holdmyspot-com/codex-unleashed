@@ -1,28 +1,41 @@
-From 84a6213472faeed04b5b19e014707a8b0e5957df Mon Sep 17 00:00:00 2001
+From 6dd1dd89412a2bb7d2b9d01e1a0dfe700ef78e0c Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 01:56:24 +0000
+Date: Sun, 18 Oct 2026 09:07:51 +0000
 Subject: [PATCH] Print detailed Meson setup failure diagnostics
 
 A failing setup fixture produces CODEX_MESON_SETUP_EXPECTED_FAILURE without its debug detail on the baseline. Printing meson-log.txt on failure exposes CODEX_MESON_LOG_DETAIL and retains the failure result. The Linux maintained warning check passes; native and fresh emitted-patch gates remain in the owning verification record.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0012-libffi-configure-diagnostics.patch
+- zzzz-0023-meson-compiler-failure-context.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |  1 +
- ...s_foreign_cc_meson_setup_diagnostics.patch | 26 +++++++++++++++++++
- tools/build-warnings/check.sh                 | 12 +++++++++
- .../meson-diagnostics/BUILD.bazel             | 13 ++++++++++
- .../meson-diagnostics/meson.build             |  3 +++
- 5 files changed, 55 insertions(+)
+ ...s_foreign_cc_meson_setup_diagnostics.patch | 26 ++++++
+ third_party/voice/bazel_native.py             | 19 +++-
+ third_party/voice/test_build_native.py        | 93 +++++++++++++++++++
+ tools/build-warnings/check.sh                 | 12 +++
+ .../meson-diagnostics/BUILD.bazel             | 13 +++
+ .../meson-diagnostics/meson.build             |  3 +
+ 7 files changed, 166 insertions(+), 1 deletion(-)
  create mode 100644 patches/rules_foreign_cc_meson_setup_diagnostics.patch
  create mode 100644 tools/build-warnings/meson-diagnostics/BUILD.bazel
  create mode 100644 tools/build-warnings/meson-diagnostics/meson.build
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index e0fd613ab..0d1d86baf 100644
+index 04093e1e3..b45f0a4e4 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -192,2 +192,3 @@ single_version_override(
+@@ -184,6 +184,7 @@ single_version_override(
+         "//patches:rules_foreign_cc_stable_tools.patch",
+         "//patches:rules_foreign_cc_meson_runfiles.patch",
          "//patches:rules_foreign_cc_meson_resource_directory.patch",
 +        "//patches:rules_foreign_cc_meson_setup_diagnostics.patch",
      ],
+ )
+ 
 diff --git a/patches/rules_foreign_cc_meson_setup_diagnostics.patch b/patches/rules_foreign_cc_meson_setup_diagnostics.patch
 new file mode 100644
 index 000000000..33863de94
@@ -55,12 +68,163 @@ index 000000000..33863de94
 ++    exit "$status"
 ++fi""".format(
 +         meson = meson_path,
+diff --git a/third_party/voice/bazel_native.py b/third_party/voice/bazel_native.py
+index 584ff7037..4d5be012a 100644
+--- a/third_party/voice/bazel_native.py
++++ b/third_party/voice/bazel_native.py
+@@ -57,9 +57,26 @@ def main():
+         except Exception:
+             # Preserve the failing upstream diagnostic in the Bazel action log.
+             if builder.record["steps"]:
+-                log = builder.output / (builder.record["steps"][-1]["name"] + ".log")
++                step_name = builder.record["steps"][-1]["name"]
++                log = builder.output / (step_name + ".log")
+                 if log.is_file():
+                     print(log.read_text(errors="replace"), file=sys.stderr)
++                if step_name.startswith("libffi-"):
++                    configure_log = builder.output / "build/libffi/config.log"
++                    if configure_log.is_file():
++                        print("libffi config.log:", file=sys.stderr)
++                        print(
++                            configure_log.read_text(errors="replace"), file=sys.stderr
++                        )
++                meson_log = (
++                    builder.output
++                    / "build"
++                    / step_name.rsplit("-", 1)[0]
++                    / "meson-logs/meson-log.txt"
++                )
++                if meson_log.is_file():
++                    print(f"{step_name} meson-log.txt:", file=sys.stderr)
++                    print(meson_log.read_text(errors="replace"), file=sys.stderr)
+             raise
+         with tarfile.open(prefix, "w") as archive:
+             archive.add(builder.prefix, arcname=".")
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 091c8a4df..4dd10bb77 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -1,5 +1,7 @@
+ """Check native build preconditions and subprocess failure propagation."""
+ 
++from contextlib import redirect_stderr
++import io
+ import json
+ import os
+ from pathlib import Path
+@@ -13,6 +15,7 @@ from types import SimpleNamespace
+ import unittest
+ from unittest.mock import patch
+ 
++import bazel_native
+ from build_native import NativeBuild, validate_target
+ 
+ 
+@@ -447,6 +450,96 @@ class NativeBuildTests(unittest.TestCase):
+         )
+         self.assertFalse((build.output / "built.json").exists())
+ 
++    def test_bazel_failure_preserves_configure_context_and_original_error(self):
++        for index, (name, status, detail, context) in enumerate(
++            (
++                ("libffi-configure", 23, "configure failed", "libffi/config.log"),
++                ("libffi-build", 23, "warning: no debug symbols", "libffi/config.log"),
++                ("libffi-install", 23, "install failed", "libffi/config.log"),
++                ("other-build", 23, "other failed", "libffi/config.log"),
++                ("libffi-configure", 23, None, "libffi/config.log"),
++                (
++                    "proxy-libintl-configure",
++                    23,
++                    "compiler failed",
++                    "proxy-libintl/meson-logs/meson-log.txt",
++                ),
++                ("glib-build", 23, "compile failed", "glib/meson-logs/meson-log.txt"),
++                (
++                    "gstreamer-install",
++                    23,
++                    "warning: Meson install diagnostic",
++                    "gstreamer/meson-logs/meson-log.txt",
++                ),
++                (
++                    "proxy-libintl-configure",
++                    23,
++                    None,
++                    "proxy-libintl/meson-logs/meson-log.txt",
++                ),
++            )
++        ):
++            with self.subTest(name=name, status=status, detail=detail):
++                self.args.output = self.root / f"failure-context-{index}"
++                build = NativeBuild(self.args, self.environment)
++                config = self.root / "bazel-config.json"
++                config.write_text(
++                    json.dumps(
++                        {
++                            "archives": [],
++                            "prefix": str(self.root / "prefix.tar"),
++                            "receipt": str(self.root / "built.json"),
++                            "ld": sys.executable,
++                            **{
++                                tool: str(path)
++                                for tool, path in build.toolchain.items()
++                            },
++                            **{
++                                tool: sys.executable
++                                for tool in ("ar", "ranlib", "nm", "readelf")
++                            },
++                        }
++                    )
++                )
++
++                def fail():
++                    build.output.mkdir()
++                    if detail is not None:
++                        log = build.output / "build" / context
++                        log.parent.mkdir(parents=True)
++                        log.write_text("native configure probe detail\n")
++                    build.run(
++                        name,
++                        [
++                            sys.executable,
++                            "-c",
++                            "import sys; print(sys.argv[1]); raise SystemExit(int(sys.argv[2]))",
++                            detail or "configure failed before log creation",
++                            str(status),
++                        ],
++                    )
++
++                stderr = io.StringIO()
++                exception = subprocess.CalledProcessError if status else RuntimeError
++                with (
++                    patch("bazel_native.sys.argv", ["bazel_native.py", str(config)]),
++                    patch("bazel_native.NativeBuild", return_value=build),
++                    patch.object(build, "build", side_effect=fail),
++                    redirect_stderr(stderr),
++                    self.assertRaises(exception) as error,
++                ):
++                    bazel_native.main()
++                if status:
++                    self.assertEqual(error.exception.returncode, status)
++                self.assertIn(detail or "configure failed", stderr.getvalue())
++                self.assertEqual(
++                    "native configure probe detail" in stderr.getvalue(),
++                    Path(context).parts[0] == name.rsplit("-", 1)[0]
++                    and detail is not None,
++                )
++                self.assertFalse((self.root / "prefix.tar").exists())
++                self.assertFalse((self.root / "built.json").exists())
++
+     def test_ambient_native_discovery_variables_are_not_inherited(self):
+         inherited = {
+             **self.environment,
 diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
-index 0c0353f08..7df4ad024 100644
+index 5fcbb8f56..38c60119f 100644
 --- a/tools/build-warnings/check.sh
 +++ b/tools/build-warnings/check.sh
-@@ -45,2 +45,14 @@ done
-
+@@ -50,6 +50,18 @@ for compilation_mode in fastbuild dbg opt; do
+     fi
+ done
+ 
 +if bazel build "$@" //tools/build-warnings/meson-diagnostics:setup_failure >"$probe_dir/meson.log" 2>&1; then
 +    cat -- "$probe_dir/meson.log"
 +    echo "Meson setup unexpectedly succeeded" >&2
@@ -74,6 +238,8 @@ index 0c0353f08..7df4ad024 100644
 +fi
 +
  if bazel build "$@" //tools/build-warnings:compiler_warning >"$probe_dir/warning.log" 2>&1; then
+     cat -- "$probe_dir/warning.log"
+     echo "The C compiler accepts warnings; warnings must fail the build." >&2
 diff --git a/tools/build-warnings/meson-diagnostics/BUILD.bazel b/tools/build-warnings/meson-diagnostics/BUILD.bazel
 new file mode 100644
 index 000000000..89dca5dd7

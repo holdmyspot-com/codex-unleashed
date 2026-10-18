@@ -1,6 +1,6 @@
-From bcbaaf8ed730ba71d9d0ee92d24100aeb43911e5 Mon Sep 17 00:00:00 2001
+From 20a41e225b8051ef31c1e28efc9d2ef37e12796a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 01:12:13 -0400
+Date: Sun, 18 Oct 2026 09:07:38 +0000
 Subject: [PATCH] feature: Resume available parents when V2 subagents finish
 
 Refresh collaboration catalog hashes in scenarios added by rust-v0.163.0. Preserve all request history, output assertions, and snapshot headers.
@@ -8,17 +8,30 @@ Refresh collaboration catalog hashes in scenarios added by rust-v0.163.0. Preser
 Red: fresh core-all-test run records snapshot mismatches in six new scenarios; all observed body differences are the collaboration schema and aggregate catalog hashes. Verification records retain the commands and results.
 
 Align both retained-output snapshots with the same collaboration catalog.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- 0004-observe-child-startup-in-completion-fixture.patch
+- 0005-keep-guardian-fixture-turns-explicit.patch
+- 0006-isolate-upstream-scenario-history.patch
+- 0007-scope-eviction-fixture-commands.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
+ .../app-server/tests/suite/v2/guardian_v2.rs  |   3 +-
+ .../tests/suite/v2/thread_unsubscribe.rs      |  45 +-
  codex-rs/core/config.schema.json              |   6 +
  codex-rs/core/src/agent/control/completion.rs |  25 +-
  .../src/tools/handlers/multi_agents_tests.rs  |  12 +-
  codex-rs/core/src/tools/spec_plan.rs          |  18 +-
  codex-rs/core/tests/suite/agent_execution.rs  |   8 +
- .../tests/suite/background_subagent_tests.rs  | 700 ++++++++++++++++++
+ .../tests/suite/background_subagent_tests.rs  | 702 ++++++++++++++++++
  .../core/tests/suite/cyber_access_program.rs  |   4 +
  .../core/tests/suite/guardian_root_handoff.rs |   5 +
  .../suite/guardian_subagent_authorization.rs  |   4 +
  .../core/tests/suite/multi_agent_resume.rs    |   4 +
+ codex-rs/core/tests/suite/scenarios.rs        |   1 +
+ .../suite/scenarios_agent_eviction_tests.rs   |   5 +
  .../suite/scenarios_agent_message_board.rs    |   5 +
  ...s__astra_active_environment_selection.snap |   4 +-
  ...tra_async_compaction_with_live_suffix.snap |  12 +-
@@ -50,9 +63,116 @@ Align both retained-output snapshots with the same collaboration catalog.
  .../tests/suite/subagent_notifications.rs     |   7 +
  .../core/tests/suite/subagent_service_tier.rs |   4 +
  codex-rs/features/src/lib.rs                  |   8 +
- 41 files changed, 873 insertions(+), 79 deletions(-)
+ 45 files changed, 918 insertions(+), 90 deletions(-)
  create mode 100644 codex-rs/core/tests/suite/background_subagent_tests.rs
 
+diff --git a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
+index 90849f482..98f5759f6 100644
+--- a/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
++++ b/codex-rs/app-server/tests/suite/v2/guardian_v2.rs
+@@ -941,7 +941,8 @@ async fn guardian_v2_routes_scoped_tool_approvals(
+     if lifecycle.uses_root_worker() {
+         mock_config = mock_config
+             .enable_feature(Feature::Collab)
+-            .enable_feature(Feature::MultiAgentV2);
++            .enable_feature(Feature::MultiAgentV2)
++            .disable_feature(Feature::UnleashedBackgroundSubagents);
+     }
+     if matches!(lifecycle, ThreadLifecycle::RootUserInputCompaction) {
+         mock_config = mock_config
+diff --git a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
+index 289859b26..56ed5c5be 100644
+--- a/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
++++ b/codex-rs/app-server/tests/suite/v2/thread_unsubscribe.rs
+@@ -532,6 +532,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+     MockResponsesConfig::new(&server.uri())
+         .with_model("gpt-5.5")
+         .enable_feature(Feature::MultiAgentV2)
++        .disable_feature(Feature::EnableRequestCompression)
+         .with_root_config("thread_unload_delay_secs = 0")
+         .write(codex_home.path())?;
+     write_models_cache(codex_home.path()).await?;
+@@ -541,6 +542,16 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+         .await?;
+     let parent = mcp.start_thread(ThreadStartParams::default()).await?.thread;
+     let mut child_id = None;
++    // Completion wakes can arrive between the explicitly submitted parent turns.
++    wiremock::Mock::given(wiremock::matchers::method("POST"))
++        .and(wiremock::matchers::path_regex(".*/responses$"))
++        .and(wiremock::matchers::header("thread-id", parent.id.clone()))
++        .respond_with(responses::sse_response(responses::sse(vec![
++            responses::ev_completed("parent-done"),
++        ])))
++        .with_priority(10)
++        .mount(&server)
++        .await;
+ 
+     for (tool, args) in [
+         (
+@@ -559,9 +570,27 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+         ),
+     ] {
+         let call_id = format!("idle-eviction-{tool}");
++        let parent_id = parent.id.clone();
++        let prompt = format!("Run {tool}");
+         let _call = responses::mount_sse_once_match(
+             &server,
+-            wiremock::matchers::header("thread-id", parent.id.clone()),
++            move |request: &wiremock::Request| {
++                let body: serde_json::Value =
++                    serde_json::from_slice(&request.body).expect("responses request");
++                request
++                    .headers
++                    .get("thread-id")
++                    .is_some_and(|id| id == parent_id.as_str())
++                    && body["input"].as_array().is_some_and(|input| {
++                        input.iter().any(|item| {
++                            item["type"] == "message"
++                                && item["role"] == "user"
++                                && item["content"].as_array().is_some_and(|content| {
++                                    content.iter().any(|part| part["text"] == prompt)
++                                })
++                        })
++                    })
++            },
+             responses::sse(vec![
+                 responses::ev_function_call_with_namespace(
+                     &call_id,
+@@ -573,14 +602,6 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             ]),
+         )
+         .await;
+-        let _parent_done = responses::mount_sse_once_match(
+-            &server,
+-            move |request: &wiremock::Request| {
+-                String::from_utf8_lossy(&request.body).contains(&call_id)
+-            },
+-            responses::sse(vec![responses::ev_completed("parent-done")]),
+-        )
+-        .await;
+         if tool != "send_message" {
+             let parent_id = parent.id.clone();
+             let _child = responses::mount_sse_once_match(
+@@ -601,7 +622,7 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             )
+             .await;
+         }
+-        timeout(
++        let completed = timeout(
+             DEFAULT_READ_TIMEOUT,
+             mcp.start_turn_and_wait_for_completion(TurnStartParams {
+                 thread_id: parent.id.clone(),
+@@ -613,6 +634,10 @@ async fn v2_child_idle_eviction_preserves_mail_and_followup_context() -> Result<
+             }),
+         )
+         .await??;
++        assert_eq!(
++            completed.turn.status,
++            codex_app_server_protocol::TurnStatus::Completed
++        );
+ 
+         if tool != "send_message" {
+             let completed = timeout(
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
 index 5ec881958..7c0fbb473 100644
 --- a/codex-rs/core/config.schema.json
@@ -87,7 +207,7 @@ index 587f4cdae..05552de45 100644
 -//! Sessions capture terminal state; the controller owns routing and queue-only delivery.
 +//! Sessions capture terminal state; the controller owns routing and parent wakeup policy.
  //! Delivery remains best effort; metrics distinguish queue acceptance from delivery failure.
-
+ 
  use super::LocalAgentControl;
 @@ -10,6 +10,7 @@ use crate::agent_communication::AgentCommunicationContext;
  use crate::agent_communication::AgentCommunicationKind;
@@ -141,7 +261,7 @@ index f6ffb7a8b..565744de1 100644
 @@ -1892,12 +1892,20 @@ async fn multi_agent_v2_send_message_rejects_interrupt_parameter() {
      )));
  }
-
+ 
 +#[test_case::test_case(true; "automatic")]
 +#[test_case::test_case(false; "queue_only")]
  #[tokio::test]
@@ -233,10 +353,10 @@ index 41b1b6e5a..5e30dd5d3 100644
                      .features
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
 new file mode 100644
-index 000000000..210f3e5de
+index 000000000..9cdc27d87
 --- /dev/null
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
-@@ -0,0 +1,700 @@
+@@ -0,0 +1,702 @@
 +use super::*;
 +use codex_protocol::protocol::MultiAgentVersion;
 +use pretty_assertions::assert_eq;
@@ -618,6 +738,7 @@ index 000000000..210f3e5de
 +    test.submit_turn("delegate background work").await?;
 +    let child_id = ThreadId::from_string(&wait_for_spawned_thread_id(&test).await?)?;
 +    let child = test.thread_manager.get_thread(child_id).await?;
++    wait_for_event(&child, |event| matches!(event, EventMsg::TurnStarted(_))).await;
 +    assert_eq!(child.agent_status().await, AgentStatus::Running,);
 +    if matches!(
 +        parent_state,
@@ -868,6 +989,7 @@ index 000000000..210f3e5de
 +    for id in test.thread_manager.list_thread_ids().await {
 +        if id != test.session_configured.thread_id {
 +            let child = test.thread_manager.get_thread(id).await?;
++            wait_for_event(&child, |event| matches!(event, EventMsg::TurnStarted(_))).await;
 +            assert_eq!(child.agent_status().await, AgentStatus::Running);
 +            running_children += 1;
 +        }
@@ -998,12 +1120,40 @@ index 09c317d8f..750059f73 100644
      config
          .features
          .enable(Feature::Collab)
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index cfad8149a..d3268ed23 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -2465,6 +2465,7 @@ async fn astra_async_compaction_keeps_work_added_after_its_snapshot(
+         let positions = input
+             .iter()
+             .enumerate()
++            .filter(|(_, item)| item["type"] != "additional_tools")
+             .filter_map(|(i, item)| item.to_string().contains(text).then_some(i))
+             .collect::<Vec<_>>();
+         assert_eq!(positions.len(), 1, "{text}");
+diff --git a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
+index 5f6bf67e6..0e4264812 100644
+--- a/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
++++ b/codex-rs/core/tests/suite/scenarios_agent_eviction_tests.rs
+@@ -20,6 +20,11 @@ async fn idle_eviction_preserves_worker_context_for_followup() -> Result<()> {
+         .with_extensions(Arc::new(extensions.build()))
+         .with_config(|config| {
+             configure_scenario_catalog(config);
++            // This eviction scenario drives parent turns explicitly.
++            config
++                .features
++                .disable(Feature::UnleashedBackgroundSubagents)
++                .expect("keep eviction fixture parent turns explicit");
+             config.features.enable(Feature::Collab).unwrap();
+             config.features.enable(Feature::MultiAgentV2).unwrap();
+             config
 diff --git a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 index c857a313d..2321041a5 100644
 --- a/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 +++ b/codex-rs/core/tests/suite/scenarios_agent_message_board.rs
 @@ -75,6 +75,11 @@ fn done() -> String {
-
+ 
  fn configure(config: &mut codex_core::config::Config) {
      super::configure_scenario_catalog(config);
 +    // Isolate board notices from independent child-completion notifications.
@@ -1019,7 +1169,7 @@ index 2c899e4a8..3bcfb7c20 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_active_environment_selection.snap
 @@ -6,7 +6,7 @@ Scenario: Astra starts in one workspace, switches for the next step of the activ
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=62160ed28e692c35):
@@ -1041,7 +1191,7 @@ index fb8b1f915..a330ed37d 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_compaction_with_live_suffix.snap
 @@ -6,7 +6,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
-
+ 
  ## Window 1
  -- request 1 (request) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1059,7 +1209,7 @@ index fb8b1f915..a330ed37d 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -41,7 +41,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
-
+ 
  ## Window 2 (after request 2: input diverged at item 08)
  -- request 3 (request) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1077,7 +1227,7 @@ index fb8b1f915..a330ed37d 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -78,7 +78,7 @@ Scenario: Astra compacts a completed launch-notes turn in the background. The us
-
+ 
  ## Window 3 (after request 3: input diverged at item 02)
  -- request 4 (request) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1099,7 +1249,7 @@ index 815d076e4..503ba873f 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_async_question_and_answer.snap
 @@ -7,7 +7,7 @@ Scenario: Astra uses the catalog question schema to ask who a launch update is f
-
+ 
  ## Window 1
  -- request 1 (request) --
 -00:additional_tools/developer (3; hash=f181967456befa67):
@@ -1121,7 +1271,7 @@ index 63afb9950..4d202ae73 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_code_mode_call_timing.snap
 @@ -6,7 +6,7 @@ Scenario: Astra receives host and handler timings on completed and failed code-m
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1187,7 +1337,7 @@ index b81315dda..080c24a81 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_interrupts_response.snap
 @@ -6,7 +6,7 @@ Scenario: Astra receives new user input after its unfinished response is interru
-
+ 
  ## Window 1
  -- request 1 (request) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1209,7 +1359,7 @@ index cb8ed17bf..e00b03dfb 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__astra_input_yields_code_mode_cell.snap
 @@ -6,7 +6,7 @@ Scenario: Astra continues after new user input yields a running code cell, then
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=69c8f596545517aa):
@@ -1379,7 +1529,7 @@ index f72b39e0b..e3710384f 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__code_mode_settled_helpers__code_mode_settled_helpers.snap
 @@ -6,7 +6,7 @@ Scenario: Settlement helpers deliver fulfilled and rejected records with input i
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1510,7 +1660,7 @@ index cfc270827..fded50160 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__partial_answers__preserved_answer_fork.snap
 @@ -6,12 +6,12 @@ Scenario: A worker inherits the parent prefix unchanged and receives its own ins
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (2; hash=cefa72e421dc276f):
@@ -1525,7 +1675,7 @@ index cfc270827..fded50160 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -46,12 +46,12 @@ Scenario: A worker inherits the parent prefix unchanged and receives its own ins
-
+ 
  ## Window 2 (after request 3: input diverged at item 12)
  -- request 4 (turn) --
 -00:additional_tools/developer (2; hash=cefa72e421dc276f):
@@ -1585,7 +1735,7 @@ index 502a05072..4ca7bec2f 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_retention_disabled.snap
 @@ -6,7 +6,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1603,7 +1753,7 @@ index 502a05072..4ca7bec2f 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -44,7 +44,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
-
+ 
  ## Window 2 (after request 3: input diverged at item 10)
  -- request 4 (compaction) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1621,7 +1771,7 @@ index 502a05072..4ca7bec2f 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -82,7 +82,7 @@ Scenario: With retention disabled, the client can still send retain=true. Tool o
-
+ 
  ## Window 3 (after request 4: input diverged at item 06)
  -- request 5 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1643,7 +1793,7 @@ index af3d0a2d3..4d0f7747f 100644
 --- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap
 +++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__retained_tool_outputs__retained_tool_output_survives_compaction_and_resume.snap
 @@ -6,7 +6,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
-
+ 
  ## Window 1
  -- request 1 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1661,7 +1811,7 @@ index af3d0a2d3..4d0f7747f 100644
            - function/interrupt_agent
            - function/list_agents
 @@ -47,7 +47,7 @@ Scenario: Retained thread instructions stop emergency tool-output trimming. Comp
-
+ 
  ## Window 2 (after request 4: input diverged at item 06)
  -- request 5 (turn) --
 -00:additional_tools/developer (3; hash=bf2e30605ff5dc17):
@@ -1735,12 +1885,12 @@ index 7f56f8291..b527b1b06 100644
 @@ -80,6 +80,8 @@ use super::direct_tool_metadata::tool_call_metadata;
  #[path = "spawn_settings_tests.rs"]
  mod spawn_settings_tests;
-
+ 
 +#[path = "background_subagent_tests.rs"]
 +mod background_subagent_tests;
  #[path = "guardian_subagent_notification_tests.rs"]
  mod guardian_subagent_notification_tests;
-
+ 
 @@ -2868,6 +2870,11 @@ async fn multi_agent_v2_peer_followup_completion_notifies_initiating_turn(
      let mut builder = test_codex()
          .with_model("gpt-5.6-sol")
@@ -1759,7 +1909,7 @@ index 74d559254..4da8c11c1 100644
 +++ b/codex-rs/core/tests/suite/subagent_service_tier.rs
 @@ -63,6 +63,10 @@ fn assert_request_service_tier(request: &ResponseMock, expected: Option<&str>) {
  }
-
+ 
  fn configure_priority_role(config: &mut Config) {
 +    config
 +        .features

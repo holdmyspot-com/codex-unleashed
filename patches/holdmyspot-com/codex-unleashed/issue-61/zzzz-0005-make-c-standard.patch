@@ -1,20 +1,26 @@
-From f9dc00cf1354cc220c31d021f8b672099da6fbbe Mon Sep 17 00:00:00 2001
+From e3f3685abe043125b3017dc4168eff1ca5e3068f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:40:53 -0400
+Date: Sun, 18 Oct 2026 09:08:05 +0000
 Subject: [PATCH] Select the GNU Make C dialect without a conflicting default
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                          |  1 +
  patches/BUILD.bazel                   |  1 +
  patches/make_c_standard.patch         | 26 ++++++++++++++++++++++++++
- tools/build-warnings/make/BUILD.bazel |  6 ++++++
- 4 files changed, 34 insertions(+)
+ tools/build-warnings/make/BUILD.bazel |  7 +++++++
+ 4 files changed, 35 insertions(+)
  create mode 100644 patches/make_c_standard.patch
  create mode 100644 tools/build-warnings/make/BUILD.bazel
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index bdad0ef3f..e0a9ad2fd 100644
+index a54c5d506..2246a21f3 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -215,6 +215,7 @@ single_version_override(
@@ -24,9 +30,9 @@ index bdad0ef3f..e0a9ad2fd 100644
 +        "//patches:make_c_standard.patch",
      ],
  )
-
+ 
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index e44b71933..29475a469 100644
+index ee26a9731..1d2020f1d 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -69,13 +75,14 @@ index 000000000..aacf4ac29
 +     ] + select({
 diff --git a/tools/build-warnings/make/BUILD.bazel b/tools/build-warnings/make/BUILD.bazel
 new file mode 100644
-index 000000000..e86dcdb5d
+index 000000000..62930429c
 --- /dev/null
 +++ b/tools/build-warnings/make/BUILD.bazel
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,7 @@
 +load("//tools/build-warnings/aws-lc:standard_flags_test.bzl", "native_c_standard_test")
 +
 +native_c_standard_test(
 +    name = "standard_test",
++    size = "small",
 +    target_under_test = "@make//:make",
 +)

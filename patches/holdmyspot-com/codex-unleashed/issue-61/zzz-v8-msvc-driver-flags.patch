@@ -1,33 +1,40 @@
-From 4a36585de80d56f3da3f66c652b1086604335d01 Mon Sep 17 00:00:00 2001
+From 42634d2960dcc7a4b5417205b6bfe861c487b38a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:56:25 -0400
+Date: Sun, 18 Oct 2026 09:08:01 +0000
 Subject: [PATCH] Select V8 Windows flags by compiler driver
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+- zzzz-0020-v8-msvc-language-version.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                           |   1 +
  patches/v8_msvc_driver_flags.patch     | 168 +++++++++++++++++++++++++
- tools/build-warnings/v8/BUILD.bazel    |  12 ++
- tools/build-warnings/v8/flags_test.bzl |  30 +++++
- 4 files changed, 211 insertions(+)
+ tools/build-warnings/v8/BUILD.bazel    |  14 +++
+ tools/build-warnings/v8/flags_test.bzl |  31 +++++
+ 4 files changed, 214 insertions(+)
  create mode 100644 patches/v8_msvc_driver_flags.patch
  create mode 100644 tools/build-warnings/v8/flags_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 4acb8ae9c..49d1a7153 100644
+index 711a99951..a4fc80ebb 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -909,6 +909,7 @@ archive_override(
+@@ -911,6 +911,7 @@ archive_override(
          "//patches:v8_clang_mingw_detection.patch",
          "//patches:v8_windows_stack_assembly.patch",
          "//patches:v8_inspector_python_runtime.patch",
 +        "//patches:v8_msvc_driver_flags.patch",
+         "//patches:v8_windows_assembly_abi.patch",
      ],
      strip_prefix = "v8-15.0.245.2",
-     urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
 diff --git a/patches/v8_msvc_driver_flags.patch b/patches/v8_msvc_driver_flags.patch
 new file mode 100644
-index 000000000..62e4126e4
+index 000000000..c8fea5c56
 --- /dev/null
 +++ b/patches/v8_msvc_driver_flags.patch
 @@ -0,0 +1,168 @@
@@ -53,8 +60,8 @@ index 000000000..62e4126e4
 +     ],
 +-    copts = ["-std=c++20"],
 ++    copts = select({
-++        "@rules_cc//cc/compiler:msvc-cl": ["/std:c++20"],
-++        "@rules_cc//cc/compiler:clang-cl": ["/std:c++20"],
+++        "@rules_cc//cc/compiler:msvc-cl": ["/std:c++20", "/Zc:__cplusplus"],
+++        "@rules_cc//cc/compiler:clang-cl": ["/std:c++20", "/Zc:__cplusplus"],
 ++        "//conditions:default": ["-std=c++20"],
 ++    }),
 ++    features = select({
@@ -200,19 +207,21 @@ index 000000000..62e4126e4
 +             alwayslink = 1,
 +             linkstatic = 1,
 diff --git a/tools/build-warnings/v8/BUILD.bazel b/tools/build-warnings/v8/BUILD.bazel
-index 333fea42e..1ca108a84 100644
+index 333fea42e..2fc5095fa 100644
 --- a/tools/build-warnings/v8/BUILD.bazel
 +++ b/tools/build-warnings/v8/BUILD.bazel
-@@ -1,3 +1,15 @@
+@@ -1,3 +1,17 @@
 +load(":flags_test.bzl", "windows_cpp_flags_test")
 +
 +windows_cpp_flags_test(
 +    name = "windows_pointer_flags_test",
++    size = "small",
 +    target_under_test = "@v8//:codex_pointer_formats_test",
 +)
 +
 +windows_cpp_flags_test(
 +    name = "windows_library_flags_test",
++    size = "small",
 +    target_under_test = "@v8//:codex_windows_stack_assembly_library_icu",
 +)
 +
@@ -221,10 +230,10 @@ index 333fea42e..1ca108a84 100644
      tests = ["@v8//:codex_pointer_formats_test"],
 diff --git a/tools/build-warnings/v8/flags_test.bzl b/tools/build-warnings/v8/flags_test.bzl
 new file mode 100644
-index 000000000..f7fad417b
+index 000000000..75841bf0a
 --- /dev/null
 +++ b/tools/build-warnings/v8/flags_test.bzl
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,31 @@
 +load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
 +
 +def _windows_cpp_flags_test_impl(ctx):
@@ -238,6 +247,7 @@ index 000000000..f7fad417b
 +    for action in actions:
 +        standard_flags = [arg for arg in action.argv if arg.startswith("/std:")]
 +        asserts.equals(env, ["/std:c++20"], standard_flags[-1:], "CL actions select C++20")
++        asserts.true(env, "/Zc:__cplusplus" in action.argv, "CL actions report the selected C++ language version")
 +        compiler = action.argv[0].replace("\\", "/").split("/")[-1]
 +        if compiler in ["clang-cl", "clang-cl.exe"]:
 +            for required in ["/EHsc", "/GR", "/GS"]:

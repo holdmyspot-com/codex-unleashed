@@ -1,6 +1,6 @@
-From 61947b3f0d993dbe5ee7a34a8193dee46262fab6 Mon Sep 17 00:00:00 2001
+From bc366f3e9afcbf0f8d1058e4824f7a72e09bb628 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 01:27:17 -0400
+Date: Sun, 18 Oct 2026 09:08:03 +0000
 Subject: [PATCH] Restrict XZ stack flags to GNU Windows drivers
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
@@ -10,18 +10,25 @@ Preserve all compiler-driver assertions and production dependency sources.
 Red: run 38846595763 native MSVC job selects MASM/CL for the GNU fixture.
 Focused emitted verification and hosted native confirmation are tracked
 in the task execution record.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+- zzzz-0056-windows-analysis-host-toolchain.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |  1 +
  patches/BUILD.bazel                           |  1 +
  patches/xz_windows_driver_flags.patch         | 57 +++++++++++++++++++
- tools/build-warnings/xz/BUILD.bazel           | 11 ++++
+ tools/build-warnings/xz/BUILD.bazel           | 13 +++++
  tools/build-warnings/xz/driver_flags_test.bzl | 42 ++++++++++++++
- 5 files changed, 112 insertions(+)
+ 5 files changed, 114 insertions(+)
  create mode 100644 patches/xz_windows_driver_flags.patch
  create mode 100644 tools/build-warnings/xz/driver_flags_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 4ba2a7ecf..9943e2b3b 100644
+index 690d1f044..9520a2261 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -509,6 +509,7 @@ single_version_override(
@@ -33,7 +40,7 @@ index 4ba2a7ecf..9943e2b3b 100644
      ],
  )
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 4ee15d415..e452d50cd 100644
+index e9a653838..fc198f248 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -106,28 +113,30 @@ index 000000000..c4eb62da7
 +     defines = select({
 +         "@platforms//os:windows": ["LZMA_API_STATIC"],
 diff --git a/tools/build-warnings/xz/BUILD.bazel b/tools/build-warnings/xz/BUILD.bazel
-index fc78c6671..c5e340b0c 100644
+index fc78c6671..76b5c2a78 100644
 --- a/tools/build-warnings/xz/BUILD.bazel
 +++ b/tools/build-warnings/xz/BUILD.bazel
-@@ -1,4 +1,15 @@
+@@ -1,4 +1,17 @@
  load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +load(":driver_flags_test.bzl", "xz_gnu_flags_test", "xz_msvc_flags_test")
 +
 +xz_msvc_flags_test(
 +    name = "msvc_flags_test",
++    size = "small",
 +    target_under_test = "@xz//:lzma",
 +)
 +
 +xz_gnu_flags_test(
 +    name = "gnu_flags_test",
++    size = "small",
 +    target_under_test = "@xz//:lzma",
 +)
-
+ 
  cc_test(
      name = "arm64_filter_test",
 diff --git a/tools/build-warnings/xz/driver_flags_test.bzl b/tools/build-warnings/xz/driver_flags_test.bzl
 new file mode 100644
-index 000000000..fa19af1a0
+index 000000000..cf50e0d44
 --- /dev/null
 +++ b/tools/build-warnings/xz/driver_flags_test.bzl
 @@ -0,0 +1,42 @@
@@ -169,7 +178,7 @@ index 000000000..fa19af1a0
 +    _xz_gnu_flags_test_impl,
 +    config_settings = {
 +        "//command_line_option:platforms": str(Label("//:windows_x86_64_gnullvm")),
-+        "//command_line_option:extra_toolchains": [],
++        "//command_line_option:extra_toolchains": [str(Label("//tools/build-warnings/assembly/native:analysis_toolchain"))],
 +        "//command_line_option:features": ["-static_link_msvcrt", "treat_warnings_as_errors"],
 +    },
 +)

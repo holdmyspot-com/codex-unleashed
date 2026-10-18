@@ -1,26 +1,32 @@
-From 3dd4f7a15536344cbe59c540ece4f88c10f9e634 Mon Sep 17 00:00:00 2001
+From 29933072cf95c618fb28b5ddaf42cc2c4921ae5f Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:40:52 -0400
+Date: Sun, 18 Oct 2026 09:08:00 +0000
 Subject: [PATCH] Preserve Ninja edge timing without narrowing
 
 Preserve compilation and runtime fixes without warning-only dependency changes.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  | 10 +++
  patches/BUILD.bazel                           |  1 +
  patches/ninja_elapsed_time.patch              | 83 +++++++++++++++++++
- tools/build-warnings/ninja/BUILD.bazel        |  7 ++
+ tools/build-warnings/ninja/BUILD.bazel        |  8 ++
  .../build-warnings/ninja/elapsed_time_test.cc | 79 ++++++++++++++++++
- 5 files changed, 180 insertions(+)
+ 5 files changed, 181 insertions(+)
  create mode 100644 patches/ninja_elapsed_time.patch
  create mode 100644 tools/build-warnings/ninja/BUILD.bazel
  create mode 100644 tools/build-warnings/ninja/elapsed_time_test.cc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 803ded3b0..ab4c048af 100644
+index 8ee44586d..711a99951 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -193,6 +193,16 @@ single_version_override(
-
+ 
  bazel_dep(name = "make", version = "4.4.1.bcr.2")
  bazel_dep(name = "ninja", version = "1.13.2")
 +
@@ -34,10 +40,10 @@ index 803ded3b0..ab4c048af 100644
 +)
 +
  bazel_dep(name = "rules_cc_autoconf", version = "0.27.0")
-
+ 
  single_version_override(
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 3d7d3571d..4ee15d415 100644
+index e229fbde1..e9a653838 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -137,14 +143,15 @@ index 000000000..438f0c99b
 +   int64_t start_time_millis_;
 diff --git a/tools/build-warnings/ninja/BUILD.bazel b/tools/build-warnings/ninja/BUILD.bazel
 new file mode 100644
-index 000000000..7a7c5146a
+index 000000000..2367c267a
 --- /dev/null
 +++ b/tools/build-warnings/ninja/BUILD.bazel
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +load("@rules_cc//cc:cc_test.bzl", "cc_test")
 +
 +cc_test(
 +    name = "elapsed_time_test",
++    size = "small",
 +    srcs = ["elapsed_time_test.cc"],
 +    deps = ["@ninja//:ninja_core"],
 +)

@@ -1,23 +1,30 @@
-From 461a3c13b41a9f08ed2110e5c30d04754c96ea85 Mon Sep 17 00:00:00 2001
+From 899b53d40b18444060bad79bb8815d75f65ec50e Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 21:39:26 -0400
+Date: Sun, 18 Oct 2026 09:07:48 +0000
 Subject: [PATCH] build: use current pkgconf and Meson with nonfatal dependency
 
 Retain functional changes without warning-only dependency backports.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- upgrade-native-pkgconf-probe-archiver.patch
+- upgrade-zz-native-probe-execution.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
- MODULE.bazel                                  | 29 ++++++++++-
- ..._foreign_cc_meson_resource_directory.patch | 31 ++++++++++++
- third_party/voice/BUILD.bazel                 | 44 ++++++++++-------
- third_party/voice/pkg_config.bzl              | 11 +++--
- tools/build-warnings/meson/BUILD.bazel        | 48 +++++++++++++++++++
+ MODULE.bazel                                  | 29 +++++++++-
+ ..._foreign_cc_meson_resource_directory.patch | 31 +++++++++++
+ third_party/voice/BUILD.bazel                 | 44 +++++++++------
+ third_party/voice/pkg_config.bzl              | 11 ++--
+ tools/build-warnings/meson/BUILD.bazel        | 53 +++++++++++++++++++
  tools/build-warnings/meson/main.cc            |  7 +++
  tools/build-warnings/meson/meson.build        |  3 ++
  tools/build-warnings/meson/probe.c            |  3 ++
  tools/build-warnings/meson/probe.h            |  7 +++
- tools/build-warnings/pkg-config/BUILD.bazel   | 24 ++++++++++
+ tools/build-warnings/pkg-config/BUILD.bazel   | 24 +++++++++
  tools/build-warnings/pkg-config/private.pc    |  4 ++
  tools/build-warnings/pkg-config/probe.pc      |  7 +++
- 12 files changed, 196 insertions(+), 22 deletions(-)
+ 12 files changed, 201 insertions(+), 22 deletions(-)
  create mode 100644 patches/rules_foreign_cc_meson_resource_directory.patch
  create mode 100644 tools/build-warnings/meson/BUILD.bazel
  create mode 100644 tools/build-warnings/meson/main.cc
@@ -29,20 +36,20 @@ Retain functional changes without warning-only dependency backports.
  create mode 100644 tools/build-warnings/pkg-config/probe.pc
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 542c1b1ad..7941a6377 100644
+index 36062f613..81421417a 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -185,6 +185,7 @@ single_version_override(
+@@ -184,6 +184,7 @@ single_version_override(
          "//patches:rules_foreign_cc_make_xcompile.patch",
          "//patches:rules_foreign_cc_make_msvc_stdint.patch",
      ],
 +        "//patches:rules_foreign_cc_meson_resource_directory.patch",
      version = "0.15.1",
  )
-
-@@ -200,7 +201,14 @@ use_repo(voice_python, "python_3_12")
+ 
+@@ -199,7 +200,14 @@ use_repo(voice_python, "python_3_12")
  register_toolchains("@rules_foreign_cc//toolchains:built_make_toolchain")
-
+ 
  foreign_cc_tools = use_extension("@rules_foreign_cc//foreign_cc:extensions.bzl", "tools")
 -use_repo(foreign_cc_tools, "cmake-3.31.8-windows-x86_64", "pkgconfig_src")
 +register_toolchains("@rules_foreign_cc//toolchains:built_meson_toolchain")
@@ -53,12 +60,12 @@ index 542c1b1ad..7941a6377 100644
 +    foreign_cc_tools,
 +    meson_src = "codex_meson_src",
 +)
-
+ 
  single_version_override(
      module_name = "rules_rs",
-@@ -533,6 +541,25 @@ crate.annotation(
+@@ -527,6 +535,25 @@ crate.annotation(
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
+ 
  codex_release_archive = use_extension(
 +http_archive(
 +    name = "codex_meson_src",
@@ -126,7 +133,7 @@ index 94adba1b5..5c6e4e349 100644
 @@ -72,45 +72,55 @@ alias(
      }),
  )
-
+ 
 -# Keep the pinned pkg-config sources, but explicitly use LLVM archive tools.
 -# The upstream bootstrap otherwise selects host ar/ranlib on macOS.
 +native_tool_toolchain(
@@ -195,7 +202,7 @@ index 94adba1b5..5c6e4e349 100644
 +    toolchain = "//third_party/voice:pkg_config_bootstrap_toolchain",
      visibility = ["//visibility:public"],
  )
-
+ 
 diff --git a/third_party/voice/pkg_config.bzl b/third_party/voice/pkg_config.bzl
 index 4b87d36a3..df1911e77 100644
 --- a/third_party/voice/pkg_config.bzl
@@ -203,11 +210,11 @@ index 4b87d36a3..df1911e77 100644
 @@ -1,12 +1,14 @@
 -"""Build the pinned pkg-config with native Mac configure checks."""
 +"""Build the pinned pkgconf with native Mac configuration checks."""
-
+ 
 -load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make_variant")
 +load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
 +load("@rules_foreign_cc//foreign_cc/private:transitions.bzl", "foreign_cc_rule_variant")
-
+ 
  def pkg_config(name, **kwargs):
      """Keep Linux remote builds and select native Mac producers by OS and CPU."""
      tags = kwargs.pop("tags", [])
@@ -231,10 +238,10 @@ index 4b87d36a3..df1911e77 100644
              **kwargs
 diff --git a/tools/build-warnings/meson/BUILD.bazel b/tools/build-warnings/meson/BUILD.bazel
 new file mode 100644
-index 000000000..7b14ac1ab
+index 000000000..6a3391c98
 --- /dev/null
 +++ b/tools/build-warnings/meson/BUILD.bazel
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,53 @@
 +load("@rules_foreign_cc//foreign_cc:defs.bzl", "meson")
 +load("@rules_foreign_cc//foreign_cc/private:transitions.bzl", "foreign_cc_rule_variant")
 +
@@ -258,8 +265,10 @@ index 000000000..7b14ac1ab
 +        "@llvm//runtimes/libcxx:libcxx.static",
 +        "@llvm//runtimes/libcxx:libcxxabi.static",
 +        "@llvm//runtimes/libunwind:libunwind.static",
++        "@llvm//tools:llvm-ar",
 +    ],
 +    env = {
++        "AR": "$$EXT_BUILD_ROOT$$/$(execpath @llvm//tools:llvm-ar)",
 +        "LDFLAGS": "$$EXT_BUILD_ROOT$$/$(execpath @llvm//runtimes/libcxx:libcxx.static) $$EXT_BUILD_ROOT$$/$(execpath @llvm//runtimes/libcxx:libcxxabi.static) $$EXT_BUILD_ROOT$$/$(execpath @llvm//runtimes/libunwind:libunwind.static)",
 +    },
 +    lib_source = ":sources",
@@ -269,6 +278,9 @@ index 000000000..7b14ac1ab
 +    out_static_libs = [],
 +    postfix_script = 'mkdir -p "$$INSTALLDIR/bin"; cp "$$BUILD_TMPDIR/resource-probe" "$$INSTALLDIR/bin/resource-probe"',
 +    rule = meson,
++    # The genrule builds this executable for its execution platform. Wildcard
++    # target builds would also compile it for the requested target platform.
++    tags = ["manual"],
 +    targets = ["compile"],
 +    toolchain = "//third_party/voice:pkg_config_bootstrap_toolchain",
 +)

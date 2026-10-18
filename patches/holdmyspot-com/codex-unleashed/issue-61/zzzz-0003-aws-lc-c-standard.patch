@@ -1,24 +1,30 @@
-From 89378bd88518f5d5dad04f27a97a6a9b0d3f0d76 Mon Sep 17 00:00:00 2001
+From cac2736c8c697b7ece48516bcfae6d9e0cd60db0 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 12:13:43 +0000
+Date: Sun, 18 Oct 2026 09:08:04 +0000
 Subject: [PATCH] Select the AWS-LC C11 dialect without a conflicting default
 
 Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d) with the existing issue-61 queue and native MSVC analysis fixture. RED: AWS-LC crypto and SSL C actions contain both /std:c17 and /std:c11. GREEN: both action tests select /std:c11 once and retain /WX. Evidence: windows-wrapper-gbpNjj aws-lc-standard-red.log and compiler-flags-batch-green.log. Fresh emitted patch and full native Windows execution remain required gates.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0009-regression-test-sizes.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |   5 +-
  patches/BUILD.bazel                           |   1 +
  patches/aws_lc_c_standard.patch               | 128 ++++++++++++++++++
- tools/build-warnings/aws-lc/BUILD.bazel       |  12 ++
+ tools/build-warnings/aws-lc/BUILD.bazel       |  14 ++
  .../aws-lc/standard_flags_test.bzl            |  25 ++++
- 5 files changed, 170 insertions(+), 1 deletion(-)
+ 5 files changed, 172 insertions(+), 1 deletion(-)
  create mode 100644 patches/aws_lc_c_standard.patch
  create mode 100644 tools/build-warnings/aws-lc/standard_flags_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 8846453ea..f15132047 100644
+index 77ee78dc8..e59b21ccc 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -183,7 +183,10 @@ bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
+@@ -175,7 +175,10 @@ bazel_dep(name = "aws-lc", version = "5.1.0.bcr.1")
  single_version_override(
      module_name = "aws-lc",
      patch_strip = 1,
@@ -28,10 +34,10 @@ index 8846453ea..f15132047 100644
 +        "//patches:aws_lc_c_standard.patch",
 +    ],
  )
-
+ 
  bazel_dep(name = "rules_rs", version = "0.0.96")
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 3cd543394..cb809ec7a 100644
+index 66e635909..e15911708 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -175,19 +181,21 @@ index 000000000..ec6704a95
 +     deps = [
 +         ":crypto",
 diff --git a/tools/build-warnings/aws-lc/BUILD.bazel b/tools/build-warnings/aws-lc/BUILD.bazel
-index cfde8a33d..d6cc999dd 100644
+index cfde8a33d..421e037cb 100644
 --- a/tools/build-warnings/aws-lc/BUILD.bazel
 +++ b/tools/build-warnings/aws-lc/BUILD.bazel
-@@ -1,3 +1,15 @@
+@@ -1,3 +1,17 @@
 +load(":standard_flags_test.bzl", "native_c_standard_test")
 +
 +native_c_standard_test(
 +    name = "crypto_standard_test",
++    size = "small",
 +    target_under_test = "@aws-lc//:crypto",
 +)
 +
 +native_c_standard_test(
 +    name = "ssl_standard_test",
++    size = "small",
 +    target_under_test = "@aws-lc//:ssl",
 +)
 +

@@ -1,13 +1,20 @@
-From 5afa462e0962e1cb49bf3a43c20f0da20ff2719d Mon Sep 17 00:00:00 2001
+From 3da9bd72488b538693ad96a552e9c289c8ba0cd6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Sat, 17 Oct 2026 06:43:52 +0000
+Date: Sun, 18 Oct 2026 09:08:32 +0000
 Subject: [PATCH] fix(ci): skip repository archives saved by another producer
 
 Recheck the exact cache key without downloading immediately before saving. Retain saves on misses and service errors. Include a CI policy regression. Red: test-bazel-cache-save.sh fails on the parent workflow at all four producers; green: all four pass. The hosted mirror passes the Maven focused regression and real GitHub cache hit/miss probes in run 39010880684. This is an intermediate repair; full release gates remain pending.
+
+Consolidate follow-up corrections while preserving the final implementation:
+- zzzz-0067-sdk-cache-save-preflight.patch
+
+Original focused red/green records remain in the owning task evidence.
+Fresh emitted-queue verification is a separate acceptance gate.
 ---
  .github/scripts/test-bazel-cache-save.sh | 54 +++++++++++++++++++++++
  .github/workflows/bazel.yml              | 55 +++++++++++++++++++++---
- 2 files changed, 104 insertions(+), 5 deletions(-)
+ .github/workflows/sdk.yml                | 16 ++++++-
+ 3 files changed, 119 insertions(+), 6 deletions(-)
  create mode 100644 .github/scripts/test-bazel-cache-save.sh
 
 diff --git a/.github/scripts/test-bazel-cache-save.sh b/.github/scripts/test-bazel-cache-save.sh
@@ -173,6 +180,39 @@ index 02d8afcdb..556248ceb 100644
          uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
          with:
            path: ${{ steps.prepare_bazel.outputs.repository-cache-path }}
--- 
-2.43.0
-
+diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
+index 3f91dd18f..eac7676fd 100644
+--- a/.github/workflows/sdk.yml
++++ b/.github/workflows/sdk.yml
+@@ -74,6 +74,10 @@ jobs:
+           target: x86_64-unknown-linux-gnu
+           cache-scope: sdk
+ 
++      - name: Check Bazel repository cache save policy
++        shell: bash
++        run: bash .github/scripts/test-bazel-cache-save.sh .github/workflows/sdk.yml
++
+       - name: Build codex and the code-mode host with Bazel
+         id: build_bazel
+         env:
+@@ -148,9 +152,19 @@ jobs:
+           uv run --only-group dev --frozen --no-sync ruff format --check .
+           uv run --only-group dev --frozen --no-sync pytest
+ 
+-      - name: Save bazel repository cache
++      - name: Recheck Bazel repository cache before saving
++        id: repository_cache_before_save
+         if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
+         continue-on-error: true
++        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
++        with:
++          path: ${{ steps.setup_bazel.outputs.repository-cache-path }}
++          key: ${{ steps.setup_bazel.outputs.repository-cache-key }}
++          lookup-only: true
++
++      - name: Save Bazel repository cache
++        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true' && steps.repository_cache_before_save.outputs.cache-hit != 'true'
++        continue-on-error: true
+         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+         with:
+           path: ${{ steps.setup_bazel.outputs.repository-cache-path }}

@@ -30,8 +30,6 @@ The native probe first requires a clean C program to build, then requires a depr
 
 `native-aws-lc-windows-tls.patch` backports AWS-LC's MinGW TLS-callback fix, preserving thread-exit cleanup under LLVM 22. It uses the upstream section attributes and `_tls_used` reference while retaining the MSVC path. A focused thread-exit cleanup regression participates in `just bazel-test`. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`.
 
-`native-make-bootstrap-policy.patch` adds a runtime probe that builds the selected Make tool and executes a Makefile. It does not backport GNU Make warning fixes.
-
 `upgrade-llvm-23-windows-driver.patch` selects hermetic LLVM 0.8.24
 (LLVM 23.1.2) and aligns its direct Bazel dependencies. LLVM 23 honors Rust's
 Windows GNU `-nolibc` option under `-Werror`. The custom libc++, ARM64 MinGW,
@@ -119,15 +117,11 @@ unrelated advisories and stale exceptions remain failures.
 
 ### Rustls Bazel metadata
 
-`rustls-bazel-metadata.patch` refreshes the Rustls crate fact in
-`MODULE.bazel.lock` for version 0.23.46. Apply it after the issue #60 toolchain
-patches, this issue's Bazel module changes, and the
-`security-RUSTSEC-2026-0346/update-rustls.patch` security update. It changes no
-other crate facts.
-
-After Cargo resolves the workspace lockfile versions, run `just bazel-lock-check`
-from the patched checkout. The check passes; a stale Rustls 0.23.45 fact causes
-the maintained check to reject the lockfile.
+`patches/openai/codex/security-RUSTSEC-2026-0346/update-rustls.patch` updates
+Rustls to 0.23.46 in both the Cargo lockfile and the Bazel crate facts. Apply
+that security patch after the issue #60 toolchain and issue #61 module changes.
+After Cargo resolves workspace package versions, `just bazel-lock-check` passes;
+a stale Rustls 0.23.45 fact causes the maintained check to reject the lockfile.
 
 ## Dependency-usage source inventory
 
@@ -228,15 +222,12 @@ Linux and Windows, then generates the inspector files on the execution host.
 Both analyses and generation must succeed. Native Windows execution remains a
 separate CI gate; cross-platform analysis does not establish that runtime result.
 
-## Abseil public API compatibility
+## Abseil dependency declaration
 
-`native-abseil-lifetime-attribute.patch` registers the selected Abseil dependency and tests its public containers, status API, and mutex guards. It preserves the dependency source and annotations.
-
-```sh
-bazel test //tools/build-warnings/abseil:lifetime_attribute_test
-```
-
-The expected result is successful execution with dependency warnings nonfatal.
+`zz-abseil-windows-compiler-selection.patch` exposes the selected Abseil module to
+native build targets and supplies the Windows compiler regression and its BUILD
+support. Dependency source and
+annotations retain their released behavior.
 
 ## V8 MinGW pointer formatting
 
@@ -258,14 +249,7 @@ Windows GNU execution host for its Windows runtime gate; Linux execution and
 cross-compilation do not establish that outcome. The complete V8 build remains
 a separate acceptance gate.
 
-## OpenSSL initialization and provider compatibility
-
-`native-openssl-unused-globals.patch` and `native-openssl-unused-options.patch` add public API and CLI probes without changing dependency source. The initialization test repeatedly initializes TLS and loads and unloads the base and default providers. The CLI probe runs version and server-help commands.
-
-```sh
-bazel test //tools/build-warnings/openssl:ssl_init_test
-bazel build //tools/build-warnings/openssl:cli_probe
-```
+## OpenSSL integration compatibility
 
 `upgrade-openssl.patch` selects OpenSSL 4.0.1.bcr.0, whose
 Bazel integration includes the
@@ -274,8 +258,9 @@ The released integration uses the existing `opensslconf.h` source header,
 retains generated platform configuration headers, and keeps Bazel's dependency
 validation enabled. The patch updates the Rust bindings to `openssl` 0.10.81
 and `openssl-sys` 0.9.117, which support OpenSSL 4. The dependency source retains its released warning behavior. Apply it after
-`native-openssl-unused-globals.patch`, `native-openssl-unused-options.patch`,
-and `upgrade-llvm-23-windows-driver.patch`.
+`upgrade-llvm-23-windows-driver.patch`. This patch owns the shared OpenSSL
+regression BUILD file. Overrides belong to the retained integration fixes that
+use them.
 
 Resolve the workspace package versions before running the Bazel checks:
 
@@ -296,16 +281,11 @@ that the bundled OpenSSL 4 library supports hashing and TLS context creation
 through the selected bindings. The older `openssl-sys` 0.9.111 rejects
 OpenSSL 4 during its build script.
 
+## GoogleTest dependency declaration
 
-## GoogleTest Windows paths
-
-`upgrade-llvm-23-windows-test-paths.patch` exercises path normalization and separator handling through GoogleTest’s public API. It uses the selected GoogleTest release without source backports.
-
-```sh
-bazel test //tools/build-warnings/googletest:path_separator_test
-```
-
-The test passes when path normalization and splitting preserve the expected components.
+`native-aws-lc-windows-tls.patch` exposes the selected GoogleTest
+module to retained native integration consumers, including AWS-LC. It does not
+modify GoogleTest source.
 
 ## Windows static-library DEF generation
 
@@ -351,9 +331,9 @@ do not establish native Mac acceptance. The bootstrap builds only its required
 CLI executable. With `upgrade-z-native-tools.patch`, rules_foreign_cc preserves
 explicit `target_args["compile"]` and both probes use that supported property.
 
-`upgrade-native-pkgconf-probe-archiver.patch` supplies the resource probe's
+`upgrade-native-pkgconf-bootstrap.patch` supplies the resource probe's
 LLVM archiver as a declared build input and an absolute Meson `AR` path.
-Apply it after `upgrade-native-pkgconf-bootstrap.patch` and its prerequisites.
+Apply it with the native tool prerequisites described above.
 The same probe command compiles C and C++, creates its static archive, links,
 and runs the executable without requiring an archiver on the worker's `PATH`.
 The generated build script and Meson log must identify the declared `llvm-ar`.
@@ -377,7 +357,7 @@ Resolve workspace package versions, then run from the patched checkout:
 
 ```sh
 cargo update --workspace --manifest-path codex-rs/Cargo.toml
-bazel test //tools/build-warnings/make-bootstrap:make_warnings_test //tools/build-warnings/make-bootstrap:make_bootstrap_test
+bazel test //tools/build-warnings/make-bootstrap:make_warnings_test
 bazel build //tools/build-warnings/cmake:stable_version_probe //tools/build-warnings/meson:resource_directory_probe //third_party/voice:pkg_config_unix
 bazel build //third_party/voice:native_prefix_linux_x86_64
 just fmt-check
@@ -385,14 +365,14 @@ just bazel-lock-check
 ```
 
 The CMake probe requires version 4.4.4. The Make analysis test requires nonfatal
-compiler warnings and rejects `-w` and `/w`; its runtime test executes a Makefile.
+compiler warnings and rejects `-w` and `/w`.
 The Meson probe links and executes its C/C++ fixture. The complete Linux prefix
 preserves visible dependency diagnostics and fails on unsuccessful build commands. Native macOS and Windows checks remain separate
 platform acceptance gates.
 
 ## Native probe execution platform
 
-`upgrade-zz-native-probe-execution.patch` keeps the Meson executable helper out
+`upgrade-native-pkgconf-bootstrap.patch` keeps the Meson executable helper out
 of wildcard target expansion. The public `resource_directory_probe` still
 builds and runs it as an execution-platform tool. Apply
 `upgrade-z-native-tools.patch` first.
@@ -410,10 +390,10 @@ the explicit public probe still compiles, links, and runs its C/C++ executable.
 
 ## OpenSSL Rust probe linker inputs
 
-`upgrade-zz-openssl-link-inputs.patch` declares the OpenSSL installation tree as
+`upgrade-openssl.patch` declares the OpenSSL installation tree as
 compile data for the Rust binding probe. The library directory emitted by the
 OpenSSL build script is therefore available in the linker sandbox. Apply
-`upgrade-openssl.patch` and `upgrade-z-native-tools.patch` first.
+`upgrade-z-native-tools.patch` before this OpenSSL integration patch.
 
 ```sh
 bazel test //tools/build-warnings/openssl:rust_install_inputs_test
@@ -427,18 +407,16 @@ action's inputs. The cross-build checks Darwin ARM64 linking; execution of the
 resulting test remains a native macOS gate. An unsandboxed link can succeed
 without the declared input and does not establish sandbox correctness.
 
-
 ## OpenSSL Rust library names
 
-`z-openssl-library-names.patch` supplies `ssl:crypto` through openssl-sys's
+`upgrade-openssl.patch` supplies `ssl:crypto` through openssl-sys's
 supported `OPENSSL_LIBS` setting for the Bazel-managed installation. Bazel's
 MSVC outputs are `ssl.lib` and `crypto.lib`; the Rust build script's normal
 Windows defaults request `libssl` and `libcrypto` instead. The explicit selection
 also matches the Unix archives through Rust's normal platform naming convention.
 It retains static linking and the declared Bazel installation inputs.
 
-Apply this patch after `upgrade-zz-openssl-link-inputs.patch`, which
-supplies the focused regression. `bazel test //tools/build-warnings/openssl:rust_bindings_test`
+The same patch supplies the focused regression. `bazel test //tools/build-warnings/openssl:rust_bindings_test`
 verifies cryptography and TLS through the actual Rust bindings. Native Windows
 CI runs the same regression on the MSVC platform; successful Unix execution
 alone does not establish that platform's link result.
@@ -452,13 +430,12 @@ non-prototype declarations. Apply `upgrade-z-native-tools.patch` first.
 
 ```sh
 bazel build @make//:make --platforms=@llvm//platforms:macos_arm64
-bazel test //tools/build-warnings/make-bootstrap:make_bootstrap_test
 just fmt-check
 just bazel-lock-check
 ```
 
 The cross-build compiles the actual Darwin implementation and links GNU Make.
-The runtime probe checks Makefile execution on its execution host. Native macOS
+The native SDK build exercises the selected Make tool. Native macOS
 execution remains a separate gate.
 
 ## Bundled Opus build executable
@@ -510,16 +487,6 @@ The Windows executable builds with warnings treated as errors; the Linux
 control test passes. Native Windows CI also runs the regression executable.
 Issue [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61)
 tracks adoption of the equivalent upstream corrections.
-
-## CCTZ strptime availability
-
-`zz-cctz-strptime-availability.patch` exercises Abseil’s public time-parsing fallback without changing CCTZ source or configuration.
-
-```sh
-bazel test //tools/build-warnings/abseil:strptime_fallback_test
-```
-
-The test passes when the selected dependency parses the supported timestamp through its public API.
 
 ## Explicit Python package initializers
 
@@ -630,55 +597,15 @@ option to remain visible without failing a successful command. Use the declared 
 project-owned `TMPDIR`. The complete native prefix and hosted platform builds
 remain separate acceptance gates.
 
-## Native GLib printf compatibility
-
-`native-voice-warning-glib-1-printf.patch` supplies a public-API runtime probe for the checksum-pinned GLib printf implementation. It checks wide integers, padding, and long output without changing dependency source.
-
-```sh
-bazel test //tools/build-warnings/glib:printf_test
-```
-
-The expected result is successful execution against the native SDK.
-
-## Native GLib log writer
-
-`native-voice-warning-glib-2-writer.patch` tests the public log-writer callback and user-data contract without changing GLib source.
-
-```sh
-bazel test //tools/build-warnings/glib:log_writer_test
-```
-
-The expected result is one callback with the supplied state and message.
-
-## Native GStreamer pad compatibility
-
-`native-voice-warning-gstreamer-1-quarks.patch` supplies shared native SDK test support and a pad API runtime probe. It preserves the dependency source, including its unused quark storage and option-parsing callback.
-
-```sh
-bazel test //tools/build-warnings/gstreamer:pad_quarks_test
-```
-
-The expected result is successful execution against the native SDK.
-
 ## Native GStreamer enum generation
 
-`native-voice-warning-video-2-enums.patch` keeps two enum expressions on single lines so glib-mkenums emits their public values. This fixes missing runtime enum registrations independently of warning policy.
+`native-voice-warning-video-2-enums.patch` keeps two enum expressions on single lines so glib-mkenums emits their public values. This fixes missing runtime enum registrations independently of warning policy. The patch owns its native SDK test BUILD support.
 
 ```sh
 bazel test //tools/build-warnings/gstreamer:enum_values_test
 ```
 
 Both public flags must be present with their declared values.
-
-## Native GStreamer audio conversion
-
-`native-voice-warning-z-audioconvert.patch` tests loading the built audio conversion plugin and constructing its element. It preserves the dependency source and logging category.
-
-```sh
-bazel test //tools/build-warnings/gstreamer:audio_convert_test
-```
-
-The expected result is successful plugin loading and element construction on Linux.
 
 ## Native SDK dependency metadata
 
@@ -781,11 +708,9 @@ From the patched checkout root:
 - Source whitespace checks pass. Nested patches use Git's empty-line spelling for empty context. Their hunk counts remain consistent when trailing context is shortened.
 - After Cargo resolves the workspace lockfile versions, `just bazel-lock-check` passes without crate-annotation advisories, including on a cold module-extension evaluation.
 - `just check-build-warnings` passes on Unix: the clean fixture builds and the warning fixture fails at its expected diagnostic.
-- `bazel test //third_party/v8/libcxx_config:config_test` passes with both runtime configuration values explicitly defined as zero.
 - `bazel test //tools/build-warnings:mingw_function_guard_x86_64_test //tools/build-warnings:mingw_function_guard_aarch64_test` passes without preprocessor warnings and preserves both architectures' macro expansion.
 - `bazel test //tools/build-warnings/bindgen:preprocessor_policy_test` passes all six argument-preservation and MSVC normalization regressions.
 - `bazel build //tools/build-warnings/bindgen:warning` fails specifically at `expected_bindgen_warning`, proving that a header warning is fatal during binding generation.
-- `bazel test //tools/build-warnings/make-bootstrap:make_bootstrap_test` builds the selected GNU Make and verifies its Makefile execution. Dependency warnings remain visible and nonfatal.
 - `bazel test //tools/build-warnings/aws-lc:thread_test` verifies that worker-thread exit invokes its registered destructor exactly once and an unused thread does not invoke it again.
 - `bazel build //tools/build-warnings/aws-lc:thread_test --platforms=//:windows_x86_64_gnullvm` compiles and links the Windows regression executable without warnings. On a Windows execution host, run the same target with `bazel test` to verify thread-exit cleanup; cross-compilation alone does not establish that runtime outcome.
 - `bazel test //tools/build-warnings/llvm-driver:all` verifies warning-free Windows GNU linking with `-nolibc` and requires the MSVC linker to reject an intentionally triggered warning when fatal-linker warnings are enabled. These Linux-hosted driver checks do not establish Windows runtime behavior.
@@ -865,16 +790,6 @@ overriding `--@rules_python//python/config_settings:bootstrap_impl=system_python
 must fail with `Unexpected host Python bootstrap`. The regression runs on Unix;
 Windows launcher and complete platform builds remain separate acceptance gates.
 
-## OpenSSL socket error sentinels
-
-`zz-openssl-socket-sentinel.patch` checks invalid-socket errors through OpenSSL’s public BIO API without changing socket sentinel expressions in dependency source.
-
-```sh
-bazel test //tools/build-warnings/openssl:socket_error_test
-```
-
-The regression requires invalid socket operations to report the expected failure and error queue.
-
 ## OpenSSL Windows GNU Clang selection
 
 `zz-openssl-zz-gnu-clang-selection.patch` includes the existing Windows GNU
@@ -890,7 +805,7 @@ Apply the OpenSSL upgrade and native tool prerequisites first.
 
 ```sh
 bazel test //tools/build-warnings/openssl:windows_perlasm_test --platforms=//:local_linux
-bazel build //tools/build-warnings/openssl:ssl_init_test --platforms=//:windows_x86_64_gnullvm
+bazel build //tools/build-warnings/openssl:rust_bindings_test --platforms=//:windows_x86_64_gnullvm
 just fmt-check
 just bazel-lock-check
 ```
@@ -899,16 +814,6 @@ The analysis regression requires the MinGW flavor in every production Windows
 x86-64 GNU assembly-generation action. The build compiles and links the actual
 generated objects into the SSL regression executable. Native Windows execution
 remains a separate runtime gate.
-
-## OpenSSL notifier close-on-exec helper
-
-`zz-openssl-zzz-rio-cloexec-guard.patch` exercises notifier signaling, readiness, and clearing through OpenSSL’s public API. It leaves the dependency’s unused helper unchanged.
-
-```sh
-bazel test //tools/build-warnings/openssl:rio_notifier_test
-```
-
-The regression passes when signaling makes the notifier ready and clearing resets it.
 
 ## Darwin libffi compiler and linker separation
 
@@ -942,7 +847,7 @@ libffi configure, build and install path as part of the native voice prefix.
 
 ## Darwin unsigned pointer formatting
 
-`zzz-v8-darwin-pointer-format.patch` corrects V8's Darwin unsigned pointer format
+`zz-v8-clang-mingw-detection.patch` corrects V8's Darwin unsigned pointer format
 to print decimal values. The pointer-format regression from
 `zz-v8-clang-mingw-target-detection.patch` checks hexadecimal, signed decimal,
 and unsigned decimal output using V8's real headers. The tracking issue is
@@ -1000,10 +905,9 @@ native target does not establish that target's coverage. GitHub's
 [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 documents the host architectures of these runner labels.
 
-
 ## V8 Python execution platforms
 
-`zzz-v8-python-execution-platforms.patch` makes V8's existing Python 3.11
+`z-v8-python-platforms.patch` makes V8's existing Python 3.11
 dependencies available on ARM Linux remote workers and both macOS
 architectures. The selected package versions and hashes remain unchanged.
 The tracking issue is
@@ -1027,7 +931,7 @@ platforms; hosted V8 canary builds remain separate acceptance gates.
 
 ## V8 inspector runtime
 
-`zzz-v8-inspector-python-runtime.patch` generates V8 inspector sources on
+`z-v8-python-platforms.patch` generates V8 inspector sources on
 workers without a system `unzip` command. It launches the existing zipapp with
 Bazel's declared execution-platform Python runtime and uses Python's zip
 extraction support. Package versions remain unchanged. The tracking issue is
@@ -1325,7 +1229,8 @@ The full macOS Cargo release build remains a separate required gate.
 
 ## Short regression test resource declarations
 
-`zzzz-0009-regression-test-sizes.patch` declares eleven short native build
+The assembly, AWS-LC and Cargo C-standard, Make C-standard, Ninja elapsed-time,
+V8 MSVC-driver and XZ driver patches declare their eleven short native build
 regressions as small Bazel tests. It covers the assembly fixture checks,
 AWS-LC and Cargo C-standard checks, the Make C-standard check, the Ninja elapsed
 time check, the two V8 Windows action checks, and the two XZ driver checks. Verbose timeout diagnostics remain
@@ -1426,7 +1331,7 @@ verifies it through the project tooling's full gate.
 
 ## Libffi configure diagnostics
 
-`zzzz-0012-libffi-configure-diagnostics.patch` preserves Libffi's configure
+`z-meson-setup-diagnostics.patch` preserves Libffi's configure
 context in a failed Bazel native-prefix action. If a Libffi configure, build, or
 install step fails, the action prints the failing step's output and the existing
 `build/libffi/config.log` before removing its temporary directory. The original
@@ -1453,7 +1358,7 @@ establish that the underlying Libffi warning is fixed.
 
 ## Generated Rust test timeouts
 
-`zzzz-0013-rust-test-timeouts.patch` gives generated Rust unit, binary-unit,
+`zzzz-0013-rust-test-deadline-policy.patch` gives generated Rust unit, binary-unit,
 and integration tests a short timeout by default. The measured short suites
 avoid Bazel's oversized-timeout advisories. Explicit crate timeout settings
 remain authoritative, including the long core/login unit suites and
@@ -1536,7 +1441,7 @@ remains a required hosted acceptance gate.
 
 ## V8 Windows assembly selection
 
-`zzzz-0016-v8-windows-assembly-abi.patch` gives the Windows GNU stack-scanning
+`zz-v8-windows-stack-assembly.patch` gives the Windows GNU stack-scanning
 assembly its own `.S` source and restores the original MASM implementation.
 The configured Windows ABI selects the source for both V8's production
 library and its existing callback regression. Both sources preserve Windows
@@ -1565,7 +1470,7 @@ assembler and runtime outcomes.
 
 ## Libtool compile-only probes
 
-`zzzz-0017-libffi-compile-only-driver.patch` keeps Darwin's system-linker
+`zzz-libffi-darwin-linker-selection.patch` keeps Darwin's system-linker
 selection out of Libtool's compile-only invocations. Libtool uses `LTCC`
 for both capability probes and partial links, whose command omits
 `LDFLAGS`. A private compiler driver selects the system linker only for
@@ -1651,7 +1556,7 @@ establish Windows extension lookup or environment inheritance.
 
 ## MSVC C++ language-version reporting
 
-`zzzz-0020-v8-msvc-language-version.patch` makes CL drivers report the selected
+`zzz-v8-msvc-driver-flags.patch` makes CL drivers report the selected
 C++20 language version to V8 headers with `/Zc:__cplusplus`. It covers both
 the pointer-format regression and the V8 library compile actions. It enables
 the correct language-version macro without disabling V8's C++20 requirement
@@ -1733,7 +1638,7 @@ exit status, and the existing fallback behavior.
 
 ## Meson compiler-failure context
 
-`zzzz-0023-meson-compiler-failure-context.patch` includes the failing native
+`z-meson-setup-diagnostics.patch` includes the failing native
 voice component's `meson-log.txt` in Bazel's action diagnostics before
 temporary build cleanup. Compiler commands and their errors remain available
 for configure, build, and install failures. The original step exception and
@@ -1762,7 +1667,7 @@ does not establish that the underlying native compiler failure is fixed.
 
 ## Transport reconnect test timeout
 
-`zzzz-0024-transport-retry-test-timeout.patch` gives the transport unit suite
+`zzzz-0013-rust-test-deadline-policy.patch` gives the transport unit suite
 an explicit moderate timeout. Its conflict-recovery regressions exercise
 consecutive real reconnect waits of up to 30 seconds. The short default is
 insufficient for that workload. Assertions, reconnect behavior, and verbose
@@ -1770,7 +1675,7 @@ timeout diagnostics remain enabled.
 
 The declared base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+queue and `zzzz-0013-rust-test-deadline-policy.patch`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
 ```sh
@@ -1818,7 +1723,7 @@ does not establish Darwin linker behavior.
 
 ## Windows Bash executable resolution
 
-`zzzz-0026-windows-bash-path-resolution.patch` resolves Bash through `PATH`
+`zzzz-0022-bazel-java-tooling-entry-point.patch` resolves Bash through `PATH`
 before the upstream Python bridge invokes the configured Java tooling launcher.
 Native Windows process creation searches the system directory before `PATH`
 for a bare executable name, which can select the WSL launcher rather than Git
@@ -1846,14 +1751,14 @@ acceptance gates for the complete launcher chain.
 
 ## Serialized exec-server unit-test timeout
 
-`zzzz-0027-serialized-exec-server-timeout.patch` gives exec-server's serialized
+`zzzz-0013-rust-test-deadline-policy.patch` gives exec-server's serialized
 unit suite an explicit moderate timeout. Its hundreds of tests include real
 network retry waits and require more than the short budget on native macOS.
 Integration-test budgets and verbose timeout diagnostics retain their settings.
 
 The declared base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-queue, including `zzzz-0013-rust-test-timeouts.patch`. The tracking issue is
+queue and `zzzz-0013-rust-test-deadline-policy.patch`. The tracking issue is
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
 ```sh
@@ -1869,7 +1774,7 @@ supported native platform; analysis alone does not establish that execution gate
 
 ## Exec-server compatibility test deadlines
 
-`zzzz-0028-exec-server-compatibility-timeouts.patch` gives the current-version,
+`zzzz-0013-rust-test-deadline-policy.patch` gives the current-version,
 minimum-release, and stable-release compatibility checks short deadlines.
 These Linux-only checks complete in seconds. Verbose timeout diagnostics remain
 enabled, and the compatibility assertions retain their behavior.
@@ -1889,10 +1794,9 @@ All timeout analysis regressions and the three actual compatibility
 checks must pass without timing-range advisories. The focused runtime command
 requires a Linux x86-64 execution host and the pinned comparison releases.
 
-
 ## Sharded exec integration deadline
 
-`zzzz-0029-exec-integration-deadline.patch` gives exec integration tests an
+`zzzz-0013-rust-test-deadline-policy.patch` gives exec integration tests an
 explicit moderate timeout. The eight-shard suite can exceed the short budget
 on native macOS. Unit-test defaults, sharding, assertions, and verbose timeout
 diagnostics retain their behavior.
@@ -1914,7 +1818,6 @@ moderate timeout. All eight runtime shards must complete with every assertion
 passing on each supported native platform. An analysis pass alone does not
 establish that execution gate.
 
-
 ## V8 compiler feature guards
 
 `zzzz-0030-v8-warning-feature-guards.patch` nests Clang warning-feature
@@ -1931,7 +1834,7 @@ GCC and MSVC must compile and run it without preprocessor diagnostics.
 
 ## Daemon integration deadline
 
-`zzzz-0031-daemon-integration-deadline.patch` gives CLI integration tests a
+`zzzz-0013-rust-test-deadline-policy.patch` gives CLI integration tests a
 moderate timeout. The daemon suite includes real startup and shutdown waits
 that exceed the short default on native macOS. Assertions and verbose timing
 diagnostics remain enabled.
@@ -1959,7 +1862,7 @@ The baseline fails with `Invalid character escape`. Required queue checks are
 
 ## Native Meson Darwin linker selection
 
-`zzzz-0035-native-meson-darwin-linker.patch` selects the native Darwin linker
+`native-voice-meson-resource-directory.patch` selects the native Darwin linker
 for native voice Meson links and capability probes. The selector belongs only
 in `LDFLAGS`; compile-only arguments retain their existing values. Other
 platforms retain the declared LLVM linker. Fatal diagnostics remain enabled.
@@ -2022,10 +1925,10 @@ succeed; a Linux configuration-ordering probe does not establish that gate.
 
 ### TUI unit test deadline
 
-`zzzz-0039-tui-unit-test-timeout.patch` uses four TUI unit-test shards with a
+`zzzz-0013-rust-test-deadline-policy.patch` uses four TUI unit-test shards with a
 moderate deadline. All test assertions remain enabled. The analysis regression
 `//codex-rs/tui:unit_deadline_test` checks the declared deadline and participates
-in `//tools/build-warnings/test-timeouts:tests`. Run the regression together with
+in `//tools/build-warnings/test-timeouts:timeouts_tests`. Run the regression together with
 `//codex-rs/tui:tui-unit-tests`; both targets are expected to pass.
 
 ## Windows launcher profile environment
@@ -2125,7 +2028,7 @@ without thread exhaustion; wrapper tests alone do not establish that result.
 
 ## Per-suite test deadlines
 
-`zzzz-0044-per-suite-test-deadlines.patch` scopes extended integration deadlines
+`zzzz-0013-rust-test-deadline-policy.patch` scopes extended integration deadlines
 to the daemon, core-all, app-server-all, and exec-all suites. Short sibling tests
 use the short default. Binary unit tests have their own short default, independent
 of the library unit-suite deadline. Wine and Windows-cross variants inherit the
@@ -2152,7 +2055,7 @@ shares the deadline required by its slowest supported execution.
 
 ## Build-info executable runfiles
 
-`zzzz-0045-build-info-test-runfiles.patch` resolves the Codex executable through
+`../branding-and-app-server-distribution/add-branding-and-build-metadata.patch` resolves the Codex executable through
 the maintained Cargo/Bazel binary helper in both build-info regressions. A
 logical runfile name is not a native filesystem path on manifest-only Windows.
 The version, provider, and upstream identity assertions retain their behavior.
@@ -2230,7 +2133,7 @@ rpath diagnostics. Analysis checks alone do not establish that native gate.
 
 ## V8 analysis test size
 
-`zzzz-0050-v8-analysis-test-size.patch` declares the V8 warning-policy analysis
+`native-and-rust-warning-policy.patch` declares the V8 warning-policy analysis
 test small. Its subsecond execution otherwise produces Bazel's test-size
 advisory. Verbose timeout diagnostics remain enabled.
 
@@ -2275,7 +2178,7 @@ with forward slashes. A Windows backslash before an underscore is a Markdown
 escape, so an unnormalized temporary path changes the destination the test
 renders. The relative-link and citation assertions remain enabled.
 
-`zzzz-0053-stale-updater-error-fixture.patch` expects the ownership rejection for
+`../issue-54/updater-executable-handoff.patch` expects the ownership rejection for
 a stale predecessor before considering launch or elevation errors. Both
 predecessor-record preservation assertions remain enabled.
 
@@ -2287,7 +2190,7 @@ runtime initialization must fail.
 
 ## Windows sandbox integration deadline
 
-`zzzz-0055-windows-sandbox-test-deadline.patch` gives the dedicated Windows
+`zzzz-0013-rust-test-deadline-policy.patch` gives the dedicated Windows
 sandbox integration binary the same long deadline as the core integration
 suite. Its 120-second event wait exceeds the short 60-second whole-binary
 deadline. Every test and security assertion remains enabled under the queue's
@@ -2295,8 +2198,9 @@ existing narrowly scoped legacy-sandbox exclusion.
 
 ## Windows analysis host toolchain
 
-`zzzz-0056-windows-analysis-host-toolchain.patch` retains the analysis-only MSVC
-toolchain when XZ and OpenSSL analysis tests transition to a Windows GNU target.
+The assembly, OpenSSL GNU-Clang selection and XZ driver patches retain the
+analysis-only MSVC toolchain when their analysis tests transition to a Windows
+GNU target.
 The host VFS generator otherwise resolves through the LLVM toolchain being
 analyzed and creates a dependency cycle. The fixture toolchain requires the
 MSVC ABI, so it cannot replace the GNU target compiler.
@@ -2353,7 +2257,7 @@ run alone does not establish that native gate.
 
 ## Guardian whole-suite deadline
 
-`zzzz-0058-guardian-suite-deadline.patch` gives the complete guardian unit-test
+`zzzz-0013-rust-test-deadline-policy.patch` gives the complete guardian unit-test
 suite a moderate deadline. Native Intel Mac execution approaches the short
 60-second limit, so the suite needs headroom for normal runtime variation.
 Every test and assertion remains enabled.
@@ -2402,7 +2306,7 @@ unfiltered integration suite keeps its long deadline.
 
 ## Sharded core integration deadline
 
-`zzzz-0060-core-shard-deadline.patch` gives the sharded core integration suite
+`zzzz-0013-rust-test-deadline-policy.patch` gives the sharded core integration suite
 Bazel's moderate five-minute deadline. The separate Windows sandbox suite keeps
 its long deadline. The core integration assertions and 16-shard layout remain
 enabled, and Wine execution inherits the same integration deadline.
@@ -2532,10 +2436,9 @@ save and guard it with a preceding lookup using the same key and path. Linux
 Bazel CI runs this check. The hosted workflow has the same guard and its Maven
 regression checks the YAML bindings.
 
-`zzzz-0067-sdk-cache-save-preflight.patch` applies the same lookup and miss
+`zzzz-0064-bazel-cache-save-preflight.patch` applies the same lookup and miss
 guard to the SDK workflow, whose repository cache is shared with the Bazel
-producers. It requires `zzzz-0064-bazel-cache-save-preflight.patch` for the
-maintained policy regression. SDK CI runs that regression with its own workflow:
+producers and supplies the shared maintained policy regression. SDK CI runs that regression with its own workflow:
 
 ```sh
 bash .github/scripts/test-bazel-cache-save.sh .github/workflows/sdk.yml
@@ -2548,7 +2451,7 @@ Simultaneous first-writer reservations remain best-effort cache operations.
 
 ## Timeout test logs
 
-`zzzz-0065-bazel-timeout-test-logs.patch` prints log tails for Bazel `TIMEOUT`
+`zzzz-0063-bazel-failed-test-logs.patch` prints log tails for Bazel `TIMEOUT`
 records as well as `FAIL` records. Reported retry paths support CRLF and spaces;
 summary-only timeouts use the configured test-output root. The wrapper preserves
 Bazel's original failing exit status.
@@ -2570,7 +2473,7 @@ hosted acceptance gate.
 
 ## Feedback upload test deadline
 
-`zzzz-0066-feedback-upload-deadline.patch` retains upstream's five-minute
+`zzzz-0013-rust-test-deadline-policy.patch` retains upstream's five-minute
 (`moderate`) deadline for the feedback unit suite. Its large-payload upload
 integrity tests keep their full payloads and assertions. Other unit suites keep
 the shared short deadline unless they declare their own override.
@@ -2706,35 +2609,6 @@ chunks during downloads requires retaining that disk cache; a new runner
 still needs an initial download. See the
 [BuildBuddy chunking documentation](https://www.buildbuddy.io/changelog/bazel-remote-cache-cdc/).
 
-Apply this patch after the existing issue #61 series. It includes manual
-`//tools/build-warnings/cache-transfer:sample_a` and `:sample_b` targets.
-Each produces a deterministic 16 MiB body with an eight-byte header; only
-one header byte differs. They stay outside ordinary wildcard builds.
-For a controlled CI experiment, use a fresh, task-owned disk-cache directory:
-
-```sh
-./.github/scripts/run-bazel-ci.sh -- build \
-  --disk_cache="$RUNNER_TEMP/cache-transfer-disk" \
-  --remote_download_outputs=all -- \
-  //tools/build-warnings/cache-transfer:sample_a
-cp bazel-bin/tools/build-warnings/cache-transfer/a.bin "$RUNNER_TEMP/cache-a.bin"
-rm -f -- bazel-bin/tools/build-warnings/cache-transfer/a.bin
-./.github/scripts/run-bazel-ci.sh -- build \
-  --disk_cache="$RUNNER_TEMP/cache-transfer-disk" \
-  --remote_download_outputs=all -- \
-  //tools/build-warnings/cache-transfer:sample_b
-cmp <(tail -c +9 "$RUNNER_TEMP/cache-a.bin") \
-  <(tail -c +9 bazel-bin/tools/build-warnings/cache-transfer/b.bin)
-rm -f -- "$RUNNER_TEMP/cache-a.bin" \
-  bazel-bin/tools/build-warnings/cache-transfer/b.bin
-rm -rf -- "$RUNNER_TEMP/cache-transfer-disk"
-```
-
-The bodies match. Compare the two invocation cache-volume reports to measure
-chunk reuse; savings depend on artifact similarity and retained cache state.
-The benchmark is manual because it contacts the configured cache service and
-measures transfer rather than a deterministic timing threshold.
-
 ## macOS PTY fixture concurrency
 
 `zzzz-0074-macos-pty-fixture-concurrency.patch` runs the PTY unit suite one
@@ -2764,17 +2638,16 @@ execution for this suite.
 
 ## Image suite deadline
 
-`zzzz-0075-image-suite-deadline.patch` preserves the upstream medium-suite
-budget of five minutes for the complete image unit suite. Its large image
+`zzzz-0013-rust-test-deadline-policy.patch` preserves the upstream medium-suite
+budget of five minutes on Intel macOS and one minute elsewhere. Its large image
 fixtures can exceed the one-minute default that patch 0013 assigns to generated
 unit suites on native Intel macOS. All 13 tests and their assertions remain
-enabled. An analysis regression requires the generated target's `moderate`
-timeout.
+enabled. An analysis regression requires the selected platform's deadline.
 
 The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
-patch 0074. The timeout regression uses the analysis-test helper from patch
-0013. The change tracks
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding queue and
+`zzzz-0013-rust-test-deadline-policy.patch`, which includes its analysis-test
+helper. The change tracks
 https://github.com/holdmyspot-com/codex-unleashed/issues/61 and repairs the
 queue's deadline configuration.
 
@@ -2793,22 +2666,19 @@ override. When a local Linux test sandbox cannot access `/dev/null`, use
 `--strategy=TestRunner=local` for the focused analysis regression; native CI
 keeps its normal execution strategy.
 
-Patch 0077 scopes the five-minute image budget to Intel macOS and retains a
-one-minute budget on other platforms.
-
 ## Thread-store suite deadline
 
-`zzzz-0076-thread-store-suite-deadline.patch` preserves the upstream medium-suite
-budget of five minutes for the complete thread-store unit suite. On native
+`zzzz-0013-rust-test-deadline-policy.patch` preserves the upstream medium-suite
+budget of five minutes on Windows and one minute elsewhere. On native
 Windows, its four shards can approach or exceed the one-minute deadline that
 patch 0013 assigns to generated unit suites. All 268 tests and their assertions
-remain enabled. An analysis regression requires the generated target's
-`moderate` timeout.
+remain enabled. An analysis regression requires the selected platform's
+deadline.
 
 The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
-patch 0075. The timeout regression uses the analysis-test helper from patch
-0013. The change tracks
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding queue and
+`zzzz-0013-rust-test-deadline-policy.patch`, which includes its analysis-test
+helper. The change tracks
 https://github.com/holdmyspot-com/codex-unleashed/issues/61 and repairs the
 queue's deadline configuration.
 
@@ -2827,19 +2697,16 @@ requires no command-line timeout override. The focused analysis regression also
 runs on Linux; when its local test sandbox cannot access `/dev/null`, use
 `--strategy=TestRunner=local`. Native CI keeps its normal execution strategy.
 
-Patch 0077 scopes the five-minute thread-store budget to Windows and retains a
-one-minute budget on other platforms.
-
 ## Platform-specific unit-suite deadlines
 
-`zzzz-0077-platform-unit-suite-deadlines.patch` keeps the longer native budgets
-from patches 0075 and 0076 without producing excessive-deadline warnings on
-faster platforms. Image uses five minutes on Intel macOS; thread-store uses five
+`zzzz-0013-rust-test-deadline-policy.patch` selects longer native budgets without
+producing excessive-deadline warnings on faster platforms. Image uses five minutes on Intel macOS; thread-store uses five
 minutes on Windows. Both use one minute elsewhere. Their original test labels,
 compiled Rust binaries, assertions, arguments, and sharding remain available.
 
 Bazel's [test timeout attribute is nonconfigurable](https://bazel.build/reference/be/common-definitions#test.timeout).
-The `codex_rust_crate` macro accepts `unit_test_platform_timeouts`, a map from
+The deadline-policy patch supplies the shared launcher helper. The
+`codex_rust_crate` macro accepts `unit_test_platform_timeouts`, a map from
 selection conditions to timeout strings. Its fallback is `unit_test_timeout`,
 unless the map supplies `//conditions:default`. A nonempty map creates compatible
 launcher variants sharing one compiled test binary. The original test label is
@@ -2847,8 +2714,8 @@ a test suite that runs the compatible variant and skips the others. Calls with
 an empty map retain their existing targets.
 
 The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
-patch 0076. The change tracks
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding queue and
+`zzzz-0013-rust-test-deadline-policy.patch`. The changes track
 https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 
 From the patched checkout root:

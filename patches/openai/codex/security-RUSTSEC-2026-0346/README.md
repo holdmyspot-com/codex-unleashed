@@ -12,11 +12,11 @@ TLS connections use Rustls 0.23.46, which addresses four security advisories.
 
 ## Scope
 
-The patch updates only the Rustls lockfile version and its published checksum.
-It applies independently and leaves advisory checks enabled. Verification of the
-complete queue also requires the other security patches for unrelated dependencies.
-The issue #61 `rustls-bazel-metadata.patch` refreshes the corresponding Bazel
-crate fact after this update and the issue #60/#61 Bazel toolchain patches.
+The patch updates the Rustls Cargo lockfile version, published checksum and
+corresponding Bazel crate fact together. It leaves advisory checks enabled.
+Apply the issue #60 toolchain and issue #61 Bazel module prerequisites first.
+Verification of the complete queue also requires the security patches for
+unrelated dependencies.
 
 ## Reproduction
 
