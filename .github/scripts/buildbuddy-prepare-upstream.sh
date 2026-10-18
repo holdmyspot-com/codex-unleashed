@@ -9,7 +9,7 @@ if [[ ! -d "$upstream/.git" ]]; then
   git -C "$upstream" remote add origin https://github.com/openai/codex.git
 fi
 git -C "$upstream" fetch --depth 1 origin "$upstream_ref"
-upstream_commit="$(git -C "$upstream" rev-parse FETCH_HEAD)"
+upstream_commit="$(git -C "$upstream" rev-parse 'FETCH_HEAD^{commit}')"
 patch_identity="$(git ls-files -z patches scripts/apply-patches.sh | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f 1)"
 source_identity="$upstream_commit:$patch_identity"
 source_marker="$CI_BUILD_ROOT/upstream-prepared"

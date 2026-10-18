@@ -26,10 +26,21 @@ runs:
         set -euo pipefail
         directory="$RUNNER_TEMP/buildbuddy-cli"
         mkdir -p "$directory"
+        case "$RUNNER_ARCH" in
+          X64)
+            platform=x86_64
+            checksum=557d731cd912b73184de9ca03baae6c95305479b5203375da312f150b05c5caa
+            ;;
+          ARM64)
+            platform=arm64
+            checksum=dcd871906a7b5c3d634c6d2fc79df2fa94967626aea099c4210577e37d655323
+            ;;
+          *) printf 'Unsupported BuildBuddy CLI host architecture: %s\n' "$RUNNER_ARCH" >&2; exit 2 ;;
+        esac
         curl --fail --location --retry 3 \
-          https://github.com/buildbuddy-io/bazel/releases/download/5.0.493/bazel-5.0.493-linux-x86_64 \
+          "https://github.com/buildbuddy-io/bazel/releases/download/5.0.493/bazel-5.0.493-linux-$platform" \
           --output "$directory/bb"
-        printf '%s  %s\n' 557d731cd912b73184de9ca03baae6c95305479b5203375da312f150b05c5caa \
+        printf '%s  %s\n' "$checksum" \
           "$directory/bb" | sha256sum --check --status
         chmod +x "$directory/bb"
         printf '%s\n' "$directory" >> "$GITHUB_PATH"

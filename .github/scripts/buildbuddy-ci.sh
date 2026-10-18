@@ -28,7 +28,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
     source .github/scripts/buildbuddy-bootstrap.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
@@ -102,6 +102,9 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         mapfile -t targets <<< "$target_lines"
         "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary -- build \
           "${flags[@]}" "--build_metadata=COMMIT_SHA=$GITHUB_SHA" -- "${targets[@]}"
+        ;;
+      v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
+        source .github/scripts/buildbuddy-v8.sh
         ;;
       sdk)
         cd upstream
