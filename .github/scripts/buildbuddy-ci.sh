@@ -28,7 +28,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross)
     source .github/scripts/buildbuddy-bootstrap.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
@@ -73,6 +73,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
       bazel-test)
         cd upstream
         if [[ "$BUILDBUDDY_CI_TARGET" == x86_64-unknown-linux-gnu ]]; then
+          bash "$project_root/.github/scripts/test-bazel-cross-host.sh"
           bash "$project_root/.github/scripts/test-bazel-cache-save.sh" "$project_root/.github/workflows/bazel.yml"
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-module-bazel
           "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-consumer-selectors
@@ -105,6 +106,9 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         ;;
       v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
         source .github/scripts/buildbuddy-v8.sh
+        ;;
+      windows-cross)
+        source .github/scripts/buildbuddy-windows-cross.sh
         ;;
       sdk)
         cd upstream

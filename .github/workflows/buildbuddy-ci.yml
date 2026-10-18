@@ -1,4 +1,5 @@
 name: BuildBuddy CI
+run-name: BuildBuddy ${{ inputs.task || 'probe' }} (${{ inputs.target || 'x86_64-unknown-linux-gnu' }})
 on:
   workflow_call:
     inputs:

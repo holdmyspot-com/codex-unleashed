@@ -82,6 +82,9 @@ case "${RUNNER_OS:-}" in
     fi
     ;;
 esac
+if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+  ci_config=ci-windows-cross
+fi
 
 # Prints failed-attempt log tails from reported paths or the configured output root.
 # Arguments:
@@ -318,7 +321,7 @@ if [[ $remote_download_toplevel -eq 1 ]]; then
   post_config_bazel_args+=(--remote_download_outputs=toplevel)
 fi
 
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   # `--enable_platform_specific_config` expands `common:windows` on Windows
   # hosts after ordinary rc configs, which can override `ci-windows-cross`'s
   # RBE host platform. Repeat the host platform on the command line so V8 and
@@ -328,7 +331,8 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUI
   # an explicit shell executable, remote Linux actions can be asked to run
   # `C:\Program Files\Git\usr\bin\bash.exe`.
   # Linux execution tools cannot fall back to the Windows client when RBE fails.
-  post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback)
+  post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback
+    --action_env=PATH=/usr/bin:/bin --host_action_env=PATH=/usr/bin:/bin)
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
@@ -415,14 +419,6 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
     post_config_bazel_args+=(
       "--action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
       "--host_action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
-    )
-  elif [[ $windows_cross_compile -eq 1 ]]; then
-    # Remote build actions run on Linux RBE workers. Give their shell snippets
-    # a Linux PATH while preserving CODEX_BAZEL_WINDOWS_PATH below for local
-    # Windows test execution.
-    post_config_bazel_args+=(
-      "--action_env=PATH=/usr/bin:/bin"
-      "--host_action_env=PATH=/usr/bin:/bin"
     )
   fi
   post_config_bazel_args+=("--test_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}")
