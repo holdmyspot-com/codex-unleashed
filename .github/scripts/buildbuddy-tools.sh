@@ -32,6 +32,7 @@ if [[ ! -x "$CI_BUILD_ROOT/pnpm/node_modules/.bin/pnpm" ]]; then
 fi
 export PATH="$CI_BUILD_ROOT/pnpm/node_modules/.bin:$PATH"
 export UV_PYTHON_INSTALL_DIR="$CI_BUILD_ROOT/python"
+export UV_PYTHON_BIN_DIR="$CI_BUILD_ROOT/bin"
 uv python install 3.12
 if [[ ! -x "$CI_BUILD_ROOT/python-env/bin/python" ]]; then
   uv venv --python 3.12 "$CI_BUILD_ROOT/python-env"
