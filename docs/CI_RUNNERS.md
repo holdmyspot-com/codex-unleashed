@@ -64,9 +64,11 @@ git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/workflo
 git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/scripts/run-bazel-ci.sh .gitignore
 git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/scripts/build-zsh-release-artifact.sh
 git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- tooling/distribution/src/test/java/com/holdmyspot/codexunleashed/distribution/CargoShearWorkflowTest.java tooling/distribution/src/test/java/com/holdmyspot/codexunleashed/distribution/WindowsShardWorkflowTest.java
+git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- scripts/codex_package/README.md
 git add -- .github/workflows .github/scripts/run-bazel-ci.sh .gitignore
 git add -- .github/scripts/build-zsh-release-artifact.sh
 git add -- tooling/distribution/src/test/java/com/holdmyspot/codexunleashed/distribution/CargoShearWorkflowTest.java tooling/distribution/src/test/java/com/holdmyspot/codexunleashed/distribution/WindowsShardWorkflowTest.java
+git add -- scripts/codex_package/README.md
 git rm -- .github/actions/run-buildbuddy/action.yml MODULE.bazel
 git rm -- .github/scripts/buildbuddy-bootstrap.sh .github/scripts/buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-prepare-upstream.sh .github/scripts/buildbuddy-tools.sh
@@ -75,6 +77,7 @@ git rm -- .github/scripts/buildbuddy-windows-cross.sh .github/scripts/test-bazel
 git rm -- .github/scripts/buildbuddy-tooling-source-key.sh
 git rm -- .github/scripts/run-windows-callback.sh
 git rm -- .github/zsh-commit
+git rm -- scripts/codex_package/zsh-exec-wrapper.patch
 git rm -- docs/CI_RUNNERS.md
 actionlint
 git diff --check

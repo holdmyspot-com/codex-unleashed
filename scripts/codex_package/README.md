@@ -91,6 +91,12 @@ matching prebuilt artifact. Downloaded archives are cached under
 DotSlash manifest, such as the manifest published with a standalone zsh
 artifact release.
 
+The standalone zsh release builder uses the source commit in `.github/zsh-commit`
+and the packaging resource `zsh-exec-wrapper.patch`. The patch is retained verbatim
+from [Codex rust-v0.159.0](https://github.com/openai/codex/blob/rust-v0.159.0/codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch)
+so building the standalone artifact does not depend on the current upstream
+checkout containing the legacy shell implementation.
+
 The release archive wrapper produces both tar.gz and tar.zst outputs with the
 maintained artifact filenames. It owns a unique staging directory beneath
 `RUNNER_TEMP` or `TMPDIR` and removes that directory and its temporary resource

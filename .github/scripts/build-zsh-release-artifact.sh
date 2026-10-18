@@ -10,7 +10,7 @@ fi
 archive_path="$1"
 workspace="${GITHUB_WORKSPACE:?missing GITHUB_WORKSPACE}"
 zsh_commit="${ZSH_COMMIT:-$(cat "$workspace/.github/zsh-commit")}"
-zsh_patch="${ZSH_PATCH:-upstream/codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch}"
+zsh_patch="${ZSH_PATCH:-scripts/codex_package/zsh-exec-wrapper.patch}"
 temp_root="${RUNNER_TEMP:-/tmp}"
 work_root="$(mktemp -d "${temp_root%/}/codex-zsh-release.XXXXXX")"
 trap 'rm -rf "$work_root"' EXIT

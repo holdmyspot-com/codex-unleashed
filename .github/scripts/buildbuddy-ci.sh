@@ -48,7 +48,11 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
       exit
     fi
-    source .github/scripts/buildbuddy-prepare-upstream.sh
+    if [[ "$BUILDBUDDY_CI_TASK" == zsh-release ]]; then
+      export GITHUB_WORKSPACE="$project_root"
+    else
+      source .github/scripts/buildbuddy-prepare-upstream.sh
+    fi
     case "$BUILDBUDDY_CI_TASK" in
       zsh-release)
         if [[ "$BUILDBUDDY_CI_TARGET" != x86_64-unknown-linux-musl ]]; then
