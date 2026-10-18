@@ -22,6 +22,10 @@ if [[ ! -x "$BUILDBUDDY_BAZEL_BINARY" ]]; then
     mv -- "$download_directory/$binary_name" "$BUILDBUDDY_BAZEL_BINARY"
   )
 fi
-printf 'startup --max_idle_secs=0\ncommon --build_metadata=PARENT_INVOCATION_ID=%s\ncommon --build_metadata=PARENT_RUN_ID=%s\ncommon --build_metadata=DISABLE_COMMIT_STATUS_REPORTING=true\n' \
-  "${BUILDBUDDY_INVOCATION_ID:?}" "${BUILDBUDDY_RUN_ID:?}" > "$CI_BUILD_ROOT/product.bazelrc"
+runner_root="${BUILDBUDDY_CI_RUNNER_ROOT_DIR:-$(dirname "$project_root")}"
+# Preserve provider authentication, internal-transfer accounting and invocation links.
+# The native product client selects its own output base under the managed output root.
+awk '$1 == "startup" && $2 ~ /^--output_base=/ { next } { print }' \
+  "$runner_root/buildbuddy.bazelrc" > "$CI_BUILD_ROOT/product.bazelrc"
+export BUILDBUDDY_BAZEL_WORKSPACE="$upstream"
 ln -sfn "$project_root/.github/scripts/run-buildbuddy-bazel.sh" "$CI_BUILD_ROOT/bin/bazel"
