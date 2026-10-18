@@ -13,6 +13,10 @@ inputs:
   api-key:
     description: BuildBuddy credential with remote execution and cache write access.
     required: true
+outputs:
+  artifact-directory:
+    description: Directory containing verified artifacts downloaded from the remote task.
+    value: ${{ steps.run.outputs.artifact-directory }}
 runs:
   using: composite
   steps:
@@ -31,6 +35,7 @@ runs:
         printf '%s\n' "$directory" >> "$GITHUB_PATH"
 
     - name: Run task on BuildBuddy
+      id: run
       shell: bash
       env:
         BUILDBUDDY_API_KEY: ${{ inputs.api-key }}

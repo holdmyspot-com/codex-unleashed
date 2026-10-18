@@ -1,7 +1,5 @@
 name: BuildBuddy CI
 on:
-  push:
-    branches: [ci/buildbuddy-runners]
   workflow_call:
     inputs:
       task:
@@ -42,8 +40,17 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/run-buildbuddy
+        id: remote
         with:
           task: ${{ inputs.task || 'probe' }}
           target: ${{ inputs.target || 'x86_64-unknown-linux-gnu' }}
           upstream-ref: ${{ inputs.upstream_ref }}
           api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - name: Upload remote diagnostics
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v6
+        with:
+          name: buildbuddy-${{ inputs.task }}-${{ inputs.target || 'x86_64-unknown-linux-gnu' }}
+          path: ${{ runner.temp }}/buildbuddy-artifacts
+          retention-days: 1
+          if-no-files-found: ignore

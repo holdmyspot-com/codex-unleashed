@@ -3,6 +3,8 @@
 set -euo pipefail
 
 project_root="$PWD"
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
 export CI_BUILD_ROOT="$HOME/.cache/codex-unleashed-ci"
 mkdir -p "$CI_BUILD_ROOT"
 export RUNNER_TEMP="$CI_BUILD_ROOT/tmp"
@@ -64,8 +66,11 @@ if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
 fi
 
 # The checkout is cleaned between invocations; persistent targets live outside it.
-mkdir -p .cat/work/temp/build-caches "$CI_BUILD_ROOT/maven"
-ln -s "$CI_BUILD_ROOT/maven" .cat/work/temp/build-caches/maven
+mkdir -p .cat/work/temp/build-caches/maven
+for directory in home repository target; do
+  mkdir -p "$CI_BUILD_ROOT/maven/$directory"
+  ln -s "$CI_BUILD_ROOT/maven/$directory" ".cat/work/temp/build-caches/maven/$directory"
+done
 export CODEX_UNLEASHED_TOOLING="$project_root/tooling/bin/codex-tooling"
 tooling_identity="$(
   { git ls-files -z tooling .github/scripts patches | sort -z | xargs -0 sha256sum
