@@ -126,8 +126,8 @@ print_bazel_test_log_tails() {
   while IFS= read -r target; do
     failed_targets+=("$target")
   done < <(
-    grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
-      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+).* failed:.*#\1#' \
+    grep -E '^((FAIL|TIMEOUT): //|ERROR: .* Testing //)' "$console_log" \
+      | sed -E 's#^(FAIL|TIMEOUT): (//[^ ]+).*#\2#; s#^ERROR: .* Testing (//[^ ]+).* failed:.*#\1#' \
       | sort -u
   )
 
@@ -144,7 +144,8 @@ print_bazel_test_log_tails() {
     while IFS= read -r test_log; do
       test_logs+=("${test_log//\\//}")
     done < <(
-      grep -F "FAIL: ${target} " "$console_log" \
+      grep -E '^(FAIL|TIMEOUT): ' "$console_log" \
+        | grep -F "${target} " \
         | sed -nE 's#.* \(see (.*[\\/](test|attempt_[0-9]+)\.log)\).*#\1#p' \
         | sort -u
     )
