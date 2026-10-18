@@ -2734,3 +2734,30 @@ The bodies match. Compare the two invocation cache-volume reports to measure
 chunk reuse; savings depend on artifact similarity and retained cache state.
 The benchmark is manual because it contacts the configured cache service and
 measures transfer rather than a deterministic timing threshold.
+
+## macOS PTY fixture concurrency
+
+`zzzz-0074-macos-pty-fixture-concurrency.patch` runs the PTY unit suite one
+test at a time on macOS. Concurrent process fixtures can miss their existing
+deadlines on native Intel runners. All 54 tests, assertions and deadlines
+remain enabled. Other platforms retain their normal test concurrency.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0073. The patch tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61. From the patched
+checkout root, reconcile release workspace versions as `prepare-bazel-ci`
+does, then run the maintained checks:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --nocache_test_results --test_output=all -- //codex-rs/utils/pty:pty-unit-tests
+```
+
+On macOS, the generated test target supplies `--test-threads=1`; no command-line
+override is required. The target runs all 54 tests with zero failures and zero
+ignored tests. Full native workflow checks cover its interaction with the
+remaining test targets. The declared upstream base uses normal parallel test
+execution for this suite.

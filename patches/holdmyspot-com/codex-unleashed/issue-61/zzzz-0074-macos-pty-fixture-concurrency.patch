@@ -1,0 +1,38 @@
+From 46fa6e8ea617dcba0c15ebc0cca4e6e8f170ac3f Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 18 Oct 2026 05:04:06 +0000
+Subject: [PATCH] fix(ci): serialize macOS PTY process tests
+
+Run the PTY unit suite one test at a time on macOS to prevent concurrent
+process fixtures from competing for their existing per-test deadlines.
+Keep all 54 tests, assertions and deadlines, and retain normal concurrency
+on other platforms.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012)
+with the maintained queue through 0073.
+Red: native Intel macOS run 39096519432/job 117584013373 executes the
+normal PTY target: 53 pass, pty_dropped_output_receiver_keeps_draining_child
+fails with deadline elapsed.
+Green: the same job reruns the same target with --test-threads=1:
+54 pass, 0 fail, 0 ignored in 14.77 seconds. The aggregate diagnostic still
+fails because the separate image suite times out in both modes.
+Maintained just fmt-check passes with installed stable Rust and pinned
+just/DotSlash. Fresh emitted and configured native verification follow.
+---
+ codex-rs/utils/pty/BUILD.bazel | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/codex-rs/utils/pty/BUILD.bazel b/codex-rs/utils/pty/BUILD.bazel
+index 4383f014c..ab2c290a0 100644
+--- a/codex-rs/utils/pty/BUILD.bazel
++++ b/codex-rs/utils/pty/BUILD.bazel
+@@ -3,4 +3,9 @@ load("//:defs.bzl", "codex_rust_crate")
+ codex_rust_crate(
+     name = "pty",
+     crate_name = "codex_utils_pty",
++    # Run macOS PTY process tests sequentially to avoid deadline contention.
++    unit_test_args = select({
++        "@platforms//os:macos": ["--test-threads=1"],
++        "//conditions:default": [],
++    }),
+ )
