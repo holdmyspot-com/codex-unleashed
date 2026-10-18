@@ -103,18 +103,22 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
       bazel-test)
         cd upstream
         if [[ "$BUILDBUDDY_CI_TARGET" == x86_64-unknown-linux-gnu ]]; then
-          bash "$project_root/.github/scripts/test-bazel-cross-host.sh"
-          bash "$project_root/.github/scripts/test-bazel-cache-save.sh" "$project_root/.github/workflows/bazel.yml"
-          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-module-bazel
-          "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-consumer-selectors
-          just test-github-scripts
-          "$project_root/.github/scripts/run-bazel-ci.sh" -- build --nobuild -- @llvm//runtimes/msvc:msvc_include
-          ./scripts/check-module-bazel-lock.sh
+          (
+            export BAZEL_OUTPUT_USER_ROOT="$CI_BUILD_ROOT/bazel-preflight"
+            bash "$project_root/.github/scripts/test-bazel-cross-host.sh"
+            bash "$project_root/.github/scripts/test-bazel-cache-save.sh" "$project_root/.github/workflows/bazel.yml"
+            "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-module-bazel
+            "$CODEX_UNLEASHED_TOOLING" rusty-v8-bazel . check-consumer-selectors
+            just test-github-scripts
+            "$project_root/.github/scripts/run-bazel-ci.sh" -- build --nobuild -- @llvm//runtimes/msvc:msvc_include
+            ./scripts/check-module-bazel-lock.sh
+          )
         fi
         "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary --print-failed-test-logs -- \
           test --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings \
           "--build_metadata=COMMIT_SHA=$GITHUB_SHA" -- //... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests
-        "$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=label -- \
+        BAZEL_OUTPUT_USER_ROOT="$CI_BUILD_ROOT/bazel-preflight" \
+          "$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=label -- \
           'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
         bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" "$RUNNER_TEMP/native-sdk-labels.txt"
         ;;
