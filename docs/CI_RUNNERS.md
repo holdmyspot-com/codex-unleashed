@@ -28,6 +28,9 @@ BuildBuddy snapshots preserve the toolchain, dependency downloads, compiled
 outputs, and running Bazel server. Task and target properties keep unrelated
 configurations in separate snapshot groups. Persistent build state lives outside
 the repository checkout so the runner's Git cleanup does not remove it.
+Product builds use a checksum-verified native client for upstream's pinned Bazel
+version and a separate output root. The provider's checkout-management server
+uses its own output base, preserving the product server's analysis graph.
 The tooling source fingerprint also partitions snapshots, so changed runtime
 inputs cannot repeatedly restore an obsolete verification marker on a branch.
 
@@ -72,6 +75,7 @@ git add -- scripts/codex_package/README.md
 git rm -- .github/actions/run-buildbuddy/action.yml MODULE.bazel
 git rm -- .github/scripts/buildbuddy-bootstrap.sh .github/scripts/buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-prepare-upstream.sh .github/scripts/buildbuddy-tools.sh
+git rm -- .github/scripts/buildbuddy-prepare-bazel.sh .github/scripts/run-buildbuddy-bazel.sh
 git rm -- .github/scripts/buildbuddy-v8.sh .github/scripts/run-buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-windows-cross.sh .github/scripts/test-bazel-cross-host.sh
 git rm -- .github/scripts/buildbuddy-tooling-source-key.sh
