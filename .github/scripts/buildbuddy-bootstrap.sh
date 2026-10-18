@@ -19,7 +19,10 @@ if [[ ! -f "$CI_BUILD_ROOT/system-packages-v1" ]]; then
   sudo apt-get update
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     jq unzip xz-utils build-essential pkg-config libcap-dev ca-certificates
-  sudo sysctl -w kernel.unprivileged_userns_clone=1
+  if [[ -f /proc/sys/kernel/unprivileged_userns_clone ]]; then
+    sudo sysctl -w kernel.unprivileged_userns_clone=1
+  fi
+  unshare --user --map-root-user true
   touch "$CI_BUILD_ROOT/system-packages-v1"
 fi
 
