@@ -84,6 +84,7 @@ tooling_identity="$(
 tooling_marker="$CI_BUILD_ROOT/tooling-verified"
 if [[ ! -f "$tooling_marker" ]] || [[ "$(cat "$tooling_marker")" != "$tooling_identity" ]]; then
   rm -f -- "$tooling_marker"
+  rustup toolchain install stable --profile minimal --no-update --no-self-update
   tooling/mvnw -q verify </dev/null
   printf '%s\n' "$tooling_identity" > "$tooling_marker"
   printf 'Tooling runtime: verified cache miss.\n'

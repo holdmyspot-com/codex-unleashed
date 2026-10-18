@@ -37,3 +37,21 @@ export BAZEL_DISK_CACHE_MAX_AGE=14d
 export BAZEL_REPO_CONTENTS_CACHE="$CI_BUILD_ROOT/bazel-repo-contents-cache"
 export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="${BUILDBUDDY_ARTIFACTS_DIRECTORY:?}/bazel-execution-logs"
 mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+
+case "$BUILDBUDDY_CI_TASK" in
+  bazel-test|bazel-clippy|bazel-verify-release|sdk|windows-cross)
+    # Maven verification and Cargo lock normalization are the last native Rust consumers.
+    # Bazel supplies its own toolchains and source repositories for the remote actions.
+    (
+      obsolete_tools="$(mktemp -d "$RUNNER_TEMP/obsolete-native-tools-XXXXXX")"
+      trap 'rm -rf -- "$obsolete_tools"' EXIT
+      for directory in "$RUSTUP_HOME/toolchains" "$CARGO_HOME/registry" "$CARGO_HOME/git"; do
+        if [[ -d "$directory" ]]; then
+          du -sh "$directory"
+          mv -- "$directory" "$obsolete_tools/$(basename "$directory")"
+        fi
+      done
+    )
+    df -h "$CI_BUILD_ROOT"
+    ;;
+esac
