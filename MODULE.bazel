@@ -1,0 +1,3 @@
+# Provides the workspace boundary required by the BuildBuddy Remote Bazel CLI.
+# Product targets remain in the separately prepared upstream checkout.
+module(name = "codex_unleashed_ci")

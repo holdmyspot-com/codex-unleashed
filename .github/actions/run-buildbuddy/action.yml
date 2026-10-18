@@ -1,0 +1,40 @@
+name: run-buildbuddy
+description: Run a Linux CI task on a warm BuildBuddy runner and propagate its result.
+inputs:
+  task:
+    description: Task supported by buildbuddy-ci.sh.
+    required: true
+  target:
+    description: Rust target triple used by the task.
+    default: x86_64-unknown-linux-gnu
+  upstream-ref:
+    description: Optional upstream revision; defaults to the supported release.
+    default: ''
+  api-key:
+    description: BuildBuddy credential with remote execution and cache write access.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install verified BuildBuddy CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        directory="$RUNNER_TEMP/buildbuddy-cli"
+        mkdir -p "$directory"
+        curl --fail --location --retry 3 \
+          https://github.com/buildbuddy-io/bazel/releases/download/5.0.493/bazel-5.0.493-linux-x86_64 \
+          --output "$directory/bb"
+        printf '%s  %s\n' 557d731cd912b73184de9ca03baae6c95305479b5203375da312f150b05c5caa \
+          "$directory/bb" | sha256sum --check --status
+        chmod +x "$directory/bb"
+        printf '%s\n' "$directory" >> "$GITHUB_PATH"
+
+    - name: Run task on BuildBuddy
+      shell: bash
+      env:
+        BUILDBUDDY_API_KEY: ${{ inputs.api-key }}
+        BUILDBUDDY_CI_TASK: ${{ inputs.task }}
+        BUILDBUDDY_CI_TARGET: ${{ inputs.target }}
+        UPSTREAM_REF: ${{ inputs.upstream-ref }}
+      run: bash "$GITHUB_ACTION_PATH/../../scripts/run-buildbuddy-ci.sh"

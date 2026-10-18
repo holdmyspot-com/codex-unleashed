@@ -1,0 +1,49 @@
+name: BuildBuddy CI
+on:
+  push:
+    branches: [ci/buildbuddy-runners]
+  workflow_call:
+    inputs:
+      task:
+        required: true
+        type: string
+      target:
+        default: x86_64-unknown-linux-gnu
+        type: string
+      upstream_ref:
+        default: ''
+        type: string
+    secrets:
+      BUILDBUDDY_API_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Linux CI task
+        required: true
+        default: probe
+        type: string
+      target:
+        description: Rust target triple
+        default: x86_64-unknown-linux-gnu
+        type: string
+      upstream_ref:
+        description: Optional upstream revision
+        default: ''
+        type: string
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/run-buildbuddy
+        with:
+          task: ${{ inputs.task || 'probe' }}
+          target: ${{ inputs.target || 'x86_64-unknown-linux-gnu' }}
+          upstream-ref: ${{ inputs.upstream_ref }}
+          api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
