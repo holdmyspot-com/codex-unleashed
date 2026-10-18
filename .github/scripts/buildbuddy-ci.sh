@@ -42,7 +42,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross|zsh-release)
     source .github/scripts/buildbuddy-bootstrap.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
@@ -50,6 +50,18 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
     fi
     source .github/scripts/buildbuddy-prepare-upstream.sh
     case "$BUILDBUDDY_CI_TASK" in
+      zsh-release)
+        if [[ "$BUILDBUDDY_CI_TARGET" != x86_64-unknown-linux-musl ]]; then
+          printf 'Unsupported remote zsh target: %s\n' "$BUILDBUDDY_CI_TARGET" >&2
+          exit 2
+        fi
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          autoconf bison gettext libncursesw5-dev
+        archive="dist/zsh/$BUILDBUDDY_CI_TARGET/codex-zsh-$BUILDBUDDY_CI_TARGET.tar.gz"
+        bash .github/scripts/build-zsh-release-artifact.sh "$archive"
+        mkdir -p "$BUILDBUDDY_ARTIFACTS_DIRECTORY/zsh"
+        mv -- "$archive" "$BUILDBUDDY_ARTIFACTS_DIRECTORY/zsh/"
+        ;;
       repo-checks|format|cargo-shear|cargo-deny)
         export RUSTUP_TOOLCHAIN=stable
         rustup component add rustfmt

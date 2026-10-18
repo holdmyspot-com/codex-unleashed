@@ -11,10 +11,6 @@ on:
         required: false
         type: string
 
-env:
-  ZSH_COMMIT: 77045ef899e53b9598bebc5a41db93a548a40ca6
-  ZSH_PATCH: upstream/codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch
-
 concurrency:
   group: ${{ github.workflow }}::${{ github.ref_name }}
   cancel-in-progress: false
@@ -45,6 +41,28 @@ jobs:
           fi
           echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
+  linux-x86:
+    name: Build zsh (Linux) - x86_64-unknown-linux-musl
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/run-buildbuddy
+        id: remote
+        with:
+          task: zsh-release
+          target: x86_64-unknown-linux-musl
+          api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: codex-zsh-x86_64-unknown-linux-musl
+          path: ${{ steps.remote.outputs.artifact-directory }}/zsh/*
+          retention-days: 1
+          if-no-files-found: error
+
   linux:
     name: Build zsh (Linux) - ${{ matrix.target }}
     needs: metadata
@@ -56,10 +74,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-            image: ubuntu:24.04
-            archive_name: codex-zsh-x86_64-unknown-linux-musl.tar.gz
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             image: arm64v8/ubuntu:24.04
@@ -137,6 +151,7 @@ jobs:
     needs:
       - metadata
       - linux
+      - linux-x86
       - darwin
     runs-on: ubuntu-latest
     permissions:

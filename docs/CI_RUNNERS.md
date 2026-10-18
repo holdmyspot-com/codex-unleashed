@@ -7,6 +7,8 @@ through remote execution. Native ARM64 V8 smoke tests run on GitHub ARM64 runner
 Native macOS and Windows checks run on GitHub runners.
 Windows GNU test targets are cross-compiled on BuildBuddy; their stack assembly
 callback executes on a native GitHub Windows runner.
+The x86-64 zsh release build runs on BuildBuddy; ARM64 and macOS zsh builds run
+on their native GitHub runners.
 
 GitHub Actions submits each remote task, streams its logs, and propagates its
 exit status. The submission action uses a checksum-verified BuildBuddy CLI.
@@ -60,7 +62,9 @@ revision:
 git switch -c ci/restore-github-runners
 git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/workflows
 git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/scripts/run-bazel-ci.sh .gitignore
+git restore --source=9d6ae54ffbda36abe1452b650f3e9ad876cd9aa4 -- .github/scripts/build-zsh-release-artifact.sh
 git add -- .github/workflows .github/scripts/run-bazel-ci.sh .gitignore
+git add -- .github/scripts/build-zsh-release-artifact.sh
 git rm -- .github/actions/run-buildbuddy/action.yml MODULE.bazel
 git rm -- .github/scripts/buildbuddy-bootstrap.sh .github/scripts/buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-prepare-upstream.sh .github/scripts/buildbuddy-tools.sh
@@ -68,6 +72,7 @@ git rm -- .github/scripts/buildbuddy-v8.sh .github/scripts/run-buildbuddy-ci.sh
 git rm -- .github/scripts/buildbuddy-windows-cross.sh .github/scripts/test-bazel-cross-host.sh
 git rm -- .github/scripts/buildbuddy-tooling-source-key.sh
 git rm -- .github/scripts/run-windows-callback.sh
+git rm -- .github/zsh-commit
 actionlint
 git diff --check
 git diff --cached
