@@ -1,15 +1,29 @@
 #!/usr/bin/env bash
 # Runs the selected CI task inside a hosted BuildBuddy Linux VM.
 set -euo pipefail
+checkout_root="$PWD"
 
 finish() {
   local status=$?
+  local worktree_status git_status=0
+  worktree_status="$(git -C "$checkout_root" status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)" || git_status=$?
+  if [[ "$git_status" != 0 && "$status" == 0 ]]; then
+    status=$git_status
+  fi
+  if [[ -n "$worktree_status" ]]; then
+    printf 'CI task left changes in the repository worktree:\n%s\n' "$worktree_status" >&2
+    if [[ "$status" == 0 ]]; then
+      status=1
+    fi
+  fi
+
   local artifacts="${BUILDBUDDY_ARTIFACTS_DIRECTORY:?}"
   mkdir -p "$artifacts"
   printf '%s\n%s\n%s\n%s\n' "$GITHUB_SHA" "$BUILDBUDDY_CI_TASK" "$BUILDBUDDY_CI_TARGET" "$status" \
     > "$artifacts/result.txt"
   (cd "$artifacts" && find . -type f ! -name artifact-manifest.sha256 -print0 \
     | sort -z | xargs -0 sha256sum > artifact-manifest.sha256)
+  exit "$status"
 }
 trap finish EXIT
 

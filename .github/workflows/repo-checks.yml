@@ -1,5 +1,4 @@
 name: repo-checks
-
 on:
   workflow_call:
     inputs:
@@ -9,115 +8,13 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: "Optional upstream ref to test. Defaults to .github/upstream-ref."
+        description: Optional upstream ref to test. Defaults to .github/upstream-ref.
         required: false
         type: string
-
 jobs:
   build-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      NODE_OPTIONS: --max-old-space-size=4096
-      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
-    steps:
-      - name: Record job start
-        id: timing_start
-        shell: bash
-        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout patch repo
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Git
-        shell: bash
-        run: git config --global core.autocrlf false
-
-      - uses: ./.github/actions/setup-ci
-
-      - name: Setup Node.js and pnpm
-        uses: ./.github/actions/setup-pnpm
-
-      - name: Determine pnpm store path
-        id: pnpm_store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: ./.github/actions/prepare-patched-upstream
-        with:
-          upstream-ref: ${{ inputs.upstream_ref }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          version: "0.11.3"
-          cache-suffix: ${{ env.CACHE_UPSTREAM_PREFIX }}
-
-      - name: Set up Zig
-        uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c
-        with:
-          version: 0.14.0
-          cache-key: ${{ env.CACHE_UPSTREAM_PREFIX }}
-
-      - name: Cache pnpm store
-        id: pnpm_cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.pnpm_store.outputs.path }}
-          key: ${{ env.CACHE_UPSTREAM_PREFIX }}pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ env.CACHE_UPSTREAM_PREFIX }}pnpm-${{ runner.os }}-
-
-      - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: ${{ env.CACHE_UPSTREAM_PREFIX }}
-          workspaces: |
-            upstream/codex-rs -> target
-          cache-targets: false
-          cache-directories: ${{ env.CARGO_TARGET_DIR }}
-          key: repo-checks-${{ hashFiles('upstream/codex-rs/Cargo.lock') }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install upstream dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd upstream
-          pnpm install --frozen-lockfile
-
-      - name: Verify upstream repository checks
-        run: ./scripts/run-upstream-repo-checks.sh upstream
-
-      - name: Upload CI artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: repo-checks-ubuntu-latest
-          path: upstream/codex-rs/target/**/cargo-timings/cargo-timing.html
-          retention-days: 1
-          if-no-files-found: ignore
-
-      - name: Write job summary
-        if: always()
-        shell: bash
-        env:
-          START_EPOCH: ${{ steps.timing_start.outputs.epoch }}
-          PNPM_CACHE_HIT: ${{ steps.pnpm_cache.outputs.cache-hit || 'false' }}
-        run: |
-          set -euo pipefail
-          end_epoch="$(date +%s)"
-          duration="$(( end_epoch - START_EPOCH ))"
-          {
-            echo "## Repo checks summary"
-            echo
-            echo "- Outcome: ${{ job.status }}"
-            echo "- Duration (seconds): ${duration}"
-            echo "- pnpm cache hit: ${PNPM_CACHE_HIT}"
-            echo "- Cargo cache: managed by Swatinem/rust-cache"
-          } >> "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/buildbuddy-ci.yml
+    with:
+      task: repo-checks
+      upstream_ref: ${{ inputs.upstream_ref }}
+    secrets: inherit

@@ -1,30 +1,15 @@
 # Codespell configuration is within .codespellrc
 ---
 name: Codespell
-
 on:
   workflow_call:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   codespell:
     name: Check for spelling errors
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Annotate locations with typos
-        run: echo "::add-matcher::$GITHUB_WORKSPACE/.github/codespell-matcher.json"
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          version: "0.11.3"
-          cache-dependency-glob: .github/workflows/codespell.yml
-      - name: Codespell
-        run: uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
+    uses: ./.github/workflows/buildbuddy-ci.yml
+    with:
+      task: codespell
+    secrets: inherit
