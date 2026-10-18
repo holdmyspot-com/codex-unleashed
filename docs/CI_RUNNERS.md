@@ -30,7 +30,8 @@ configurations in separate snapshot groups. Persistent build state lives outside
 the repository checkout so the runner's Git cleanup does not remove it.
 Product builds use a checksum-verified native client for upstream's pinned Bazel
 version and a separate output root. The provider's checkout-management server
-uses its own output base, preserving the product server's analysis graph.
+uses its own output base. Module and MSVC preflight checks and SDK queries use
+another output root, separate from the main test server.
 The tooling source fingerprint also partitions snapshots, so changed runtime
 inputs cannot repeatedly restore an obsolete verification marker on a branch.
 
