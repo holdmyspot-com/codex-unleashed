@@ -4,6 +4,8 @@
 
 - Keep downstream patches independently reviewable and applicable, with documented
   configuration, upstream provenance, dependencies, and release versioning.
+- Keep patches portable for upstream pull requests by avoiding dependencies on
+  other downstream patches or preinstalled third-party plugins wherever possible.
 - Accept patch verification only when the declared upstream checks pass on the
   emitted patch applied to its declared base.
 - Retire a patch only when regression evidence establishes that the selected
@@ -33,10 +35,16 @@ replacements for patches under `patches/`.
 
 - Generate patches with `git format-patch` and keep each patch to one logical
   bug fix.
-- Make each patch apply independently against its declared upstream base
-  whenever possible, including any downstream feature-property registration it
-  needs. Keep unavoidable shared prerequisites narrow and document their
-  dependencies and application order.
+- Prefer patches that apply, build, and work on a clean checkout of their declared
+  upstream base without other downstream patches or preinstalled third-party
+  plugins. Include the feature registration and test support the patch needs;
+  handle plugin-generated inputs through upstream interfaces and isolated test
+  fixtures rather than assuming the plugin is installed. This keeps patches
+  suitable for contribution as upstream pull requests. Normal dependencies
+  declared by the upstream project remain available. Verify standalone behavior
+  as well as integration with the patch queue. When a prerequisite is unavoidable,
+  document why, keep it minimal, name its exact dependency and application order,
+  and verify the patch with only those required prerequisites.
 - Name downstream Codex feature flags under `[features]` with the
   `unleashed_<descriptive_name>` prefix and the matching
   `Unleashed<DescriptiveName>` Rust feature variant. Name downstream
