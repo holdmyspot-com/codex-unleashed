@@ -28,16 +28,17 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|bazel-test|sdk)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk)
     source .github/scripts/buildbuddy-bootstrap.sh
-    source .github/scripts/buildbuddy-tools.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
       exit
     fi
     source .github/scripts/buildbuddy-prepare-upstream.sh
     case "$BUILDBUDDY_CI_TASK" in
-      repo-checks|format|cargo-shear)
+      repo-checks|format|cargo-shear|cargo-deny)
+        export RUSTUP_TOOLCHAIN=stable
+        rustup component add rustfmt
         pnpm --dir upstream install --frozen-lockfile
         case "$BUILDBUDDY_CI_TASK" in
           repo-checks)
@@ -53,6 +54,19 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
               cargo install cargo-shear --version 1.11.2 --locked
             fi
             "$CODEX_UNLEASHED_TOOLING" check-cargo-shear upstream
+            ;;
+          cargo-deny)
+            if [[ ! -x "$CI_BUILD_ROOT/bin/cargo-deny" ]]; then
+              curl -fsSL --retry 3 https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz \
+                -o "$RUNNER_TEMP/cargo-deny.tar.gz"
+              printf '%s  %s\n' 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f \
+                "$RUNNER_TEMP/cargo-deny.tar.gz" | sha256sum --check --status
+              tar -xzf "$RUNNER_TEMP/cargo-deny.tar.gz" --strip-components=1 \
+                -C "$CI_BUILD_ROOT/bin" --wildcards '*/cargo-deny'
+              rm -- "$RUNNER_TEMP/cargo-deny.tar.gz"
+            fi
+            (cd upstream/codex-rs && cargo deny check --deny unmatched-source --deny license-not-encountered \
+              --deny unused-wrapper --deny advisory-not-detected)
             ;;
         esac
         ;;
@@ -72,6 +86,22 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         "$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=label -- \
           'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
         bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" "$RUNNER_TEMP/native-sdk-labels.txt"
+        ;;
+      bazel-clippy|bazel-verify-release)
+        cd upstream
+        if [[ "$BUILDBUDDY_CI_TASK" == bazel-clippy ]]; then
+          target_lines="$(./scripts/list-bazel-clippy-targets.sh)"
+          flags=(--config=clippy --build_metadata=TAG_job=clippy)
+        else
+          target_lines="$(bash ./scripts/list-bazel-release-targets.sh)"
+          flags=(--compilation_mode=fastbuild
+            --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no
+            --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no
+            --build_metadata=TAG_job=verify-release-build --build_metadata=TAG_rust_debug_assertions=off)
+        fi
+        mapfile -t targets <<< "$target_lines"
+        "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary -- build \
+          "${flags[@]}" "--build_metadata=COMMIT_SHA=$GITHUB_SHA" -- "${targets[@]}"
         ;;
       sdk)
         cd upstream

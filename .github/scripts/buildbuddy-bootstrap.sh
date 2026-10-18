@@ -17,15 +17,15 @@ export CARGO_NET_GIT_FETCH_WITH_CLI=true
 export PATH="$CI_BUILD_ROOT/bin:$CARGO_HOME/bin:$PATH"
 mkdir -p "$RUNNER_TEMP" "$CI_BUILD_ROOT/bin"
 
-if [[ ! -f "$CI_BUILD_ROOT/system-packages-v1" ]]; then
+if [[ ! -f "$CI_BUILD_ROOT/system-packages-v2" ]]; then
   sudo apt-get update
   sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    jq unzip xz-utils build-essential pkg-config libcap-dev ca-certificates
+    jq unzip xz-utils zstd build-essential pkg-config libcap-dev ca-certificates
   if [[ -f /proc/sys/kernel/unprivileged_userns_clone ]]; then
     sudo sysctl -w kernel.unprivileged_userns_clone=1
   fi
   unshare --user --map-root-user true
-  touch "$CI_BUILD_ROOT/system-packages-v1"
+  touch "$CI_BUILD_ROOT/system-packages-v2"
 fi
 
 if [[ ! -f "$CI_BUILD_ROOT/jdk-27/.complete" ]]; then
@@ -64,6 +64,8 @@ if [[ ! -x "$CARGO_HOME/bin/rustup" ]]; then
   "$RUNNER_TEMP/rustup-init" -y --no-modify-path --profile minimal --default-toolchain stable
   rm -- "$RUNNER_TEMP/rustup-init" "$RUNNER_TEMP/rustup-init.sha256"
 fi
+
+source .github/scripts/buildbuddy-tools.sh
 
 # The checkout is cleaned between invocations; persistent targets live outside it.
 mkdir -p .cat/work/temp/build-caches/maven
