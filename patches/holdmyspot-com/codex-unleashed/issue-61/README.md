@@ -2792,3 +2792,34 @@ ignored tests, using its configured deadline without a command-line timeout
 override. When a local Linux test sandbox cannot access `/dev/null`, use
 `--strategy=TestRunner=local` for the focused analysis regression; native CI
 keeps its normal execution strategy.
+
+## Thread-store suite deadline
+
+`zzzz-0076-thread-store-suite-deadline.patch` preserves the upstream medium-suite
+budget of five minutes for the complete thread-store unit suite. On native
+Windows, its four shards can approach or exceed the one-minute deadline that
+patch 0013 assigns to generated unit suites. All 268 tests and their assertions
+remain enabled. An analysis regression requires the generated target's
+`moderate` timeout.
+
+The declared base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) with the maintained queue through
+patch 0075. The timeout regression uses the analysis-test helper from patch
+0013. The change tracks
+https://github.com/holdmyspot-com/codex-unleashed/issues/61 and repairs the
+queue's deadline configuration.
+
+From the patched checkout root:
+
+```sh
+just fmt-check
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just bazel-lock-check
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs --windows-msvc-host-platform -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --nocache_test_results --test_output=all -- //codex-rs/thread-store:whole_suite_deadline_test //codex-rs/thread-store:thread-store-unit-tests
+```
+
+On native Windows, both targets pass and the four unit-test shards together run
+268 tests with zero failures and zero ignored tests. The configured deadline
+requires no command-line timeout override. The focused analysis regression also
+runs on Linux; when its local test sandbox cannot access `/dev/null`, use
+`--strategy=TestRunner=local`. Native CI keeps its normal execution strategy.
