@@ -10,8 +10,8 @@ set -euo pipefail
 invocation_file="$RUNNER_TEMP/buildbuddy-invocation-id"
 artifact_directory="$RUNNER_TEMP/buildbuddy-artifacts"
 mkdir -p "$artifact_directory"
-# Bootstrap changes need a fresh snapshot even on branches that retain their first snapshot.
-runtime_identity="$(sha256sum .github/scripts/buildbuddy-bootstrap.sh .github/scripts/buildbuddy-tools.sh | sha256sum | cut -d ' ' -f 1)"
+# Runtime inputs need a fresh snapshot even on branches that retain their first snapshot.
+runtime_identity="$(bash .github/scripts/buildbuddy-tooling-source-key.sh)"
 set +e
 bb remote \
   "--invocation_id_file=$invocation_file" \

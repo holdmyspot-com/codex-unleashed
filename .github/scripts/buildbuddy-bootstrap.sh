@@ -76,7 +76,7 @@ for directory in home repository target; do
 done
 export CODEX_UNLEASHED_TOOLING="$project_root/tooling/bin/codex-tooling"
 tooling_identity="$(
-  { git ls-files -z tooling .github/scripts patches | sort -z | xargs -0 sha256sum
+  { bash .github/scripts/buildbuddy-tooling-source-key.sh
     java --version
     uname -sm
   } | sha256sum | cut -d ' ' -f 1
