@@ -18,7 +18,8 @@ for client_host in Linux Windows; do
     CODEX_UNLEASHED_TOOLING="$work_root/capture-command" CAPTURE_ARGUMENTS="$work_root/arguments" \
     bash "$project_root/.github/scripts/run-bazel-ci.sh" --windows-cross-compile -- build -- //:windows_target
 
-  for expected in --config=ci-windows-cross --host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback; do
+  for expected in --config=ci-windows-cross --host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback \
+    --features=-dynamic_link_msvcrt --host_features=-dynamic_link_msvcrt; do
     if ! grep -Fxq -- "$expected" "$work_root/arguments"; then
       printf '%s client cross-build did not pass %s to Bazel.\n' "$client_host" "$expected" >&2
       exit 1

@@ -333,6 +333,9 @@ if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   # Linux execution tools cannot fall back to the Windows client when RBE fails.
   post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash --noremote_local_fallback
     --action_env=PATH=/usr/bin:/bin --host_action_env=PATH=/usr/bin:/bin)
+  # The project requests static MSVC linkage; exclude LLVM's default dynamic
+  # CRT feature so target and execution toolchains cannot select both modes.
+  post_config_bazel_args+=(--features=-dynamic_link_msvcrt --host_features=-dynamic_link_msvcrt)
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
