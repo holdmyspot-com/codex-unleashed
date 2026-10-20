@@ -518,11 +518,6 @@ jobs:
       - name: Setup Node.js and pnpm
         uses: ./.github/actions/setup-pnpm
 
-      - name: Determine pnpm store path
-        id: pnpm_store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
       - uses: ./.github/actions/prepare-patched-upstream
         with:
           upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
@@ -533,6 +528,12 @@ jobs:
         with:
           version: "0.11.3"
           cache-suffix: ${{ env.CACHE_UPSTREAM_PREFIX }}
+
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        # Resolve in the patched checkout so its packageManager pnpm version selects the store.
+        run: echo "path=$(cd upstream && pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         id: pnpm_cache
@@ -630,11 +631,6 @@ jobs:
 
       - name: Setup Node.js and pnpm
         uses: ./.github/actions/setup-pnpm
-
-      - name: Determine pnpm store path
-        id: pnpm_store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Print runner specs (Linux)
         if: ${{ runner.os == 'Linux' }}
@@ -765,7 +761,7 @@ jobs:
           : > "${cargo_home}/config.toml"
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
         with:
           targets: ${{ matrix.target }}
 
@@ -795,6 +791,12 @@ jobs:
             --compiler-fingerprint "$fingerprint" \
             --v8-version "$v8_version" \
             --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        # Resolve in the patched checkout so its packageManager pnpm version selects the store.
+        run: echo "path=$(cd upstream && pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
         id: pnpm_cache
@@ -1255,7 +1257,7 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # 1.99.0
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
         with:
           targets: ${{ matrix.target }}
 
@@ -1708,7 +1710,7 @@ jobs:
         if: ${{ inputs.publish_npm }}
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24
+          node-version: 26.12.0
           registry-url: https://registry.npmjs.org
           scope: "@holdmyspot"
 
