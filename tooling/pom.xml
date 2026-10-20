@@ -9,6 +9,7 @@
 	<version>1.0-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<name>Codex Unleashed tooling</name>
+	<description>Build, verification, and release tooling for Codex Unleashed</description>
 
 	<modules>
 		<module>bootstrap</module>
@@ -17,12 +18,12 @@
 	</modules>
 
 	<properties>
-		<tooling.release.workflow>${maven.multiModuleProjectDirectory}/../.github/workflows/build-release.yml</tooling.release.workflow>
+		<tooling.release.workflow>${project.rootDirectory}/../.github/workflows/build-release.yml</tooling.release.workflow>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<maven.compiler.release>27</maven.compiler.release>
-		<tooling.config.directory>${maven.multiModuleProjectDirectory}/config</tooling.config.directory>
-		<tooling.build.root>${maven.multiModuleProjectDirectory}/../.cat/work/temp/build-caches/maven/target</tooling.build.root>
+		<tooling.config.directory>${project.rootDirectory}/config</tooling.config.directory>
+		<tooling.build.root>${project.rootDirectory}/../.cat/work/temp/build-caches/maven/target</tooling.build.root>
 		<tooling.test.jvm.options/>
 		<tooling.native.bash>bash</tooling.native.bash>
 		<maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
@@ -31,8 +32,10 @@
 		<maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
 		<maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
 		<maven-antrun-plugin.version>3.2.0</maven-antrun-plugin.version>
-		<checkstyle.version>14.1.0</checkstyle.version>
-		<pmd.version>7.27.0</pmd.version>
+		<checkstyle.version>14.3.0</checkstyle.version>
+		<pmd.version>7.28.0</pmd.version>
+		<logback.version>1.6.5</logback.version>
+		<test.thread.count>4</test.thread.count>
 		<testng.version>7.12.0</testng.version>
 		<maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
@@ -43,7 +46,7 @@
 			<dependency>
 				<groupId>ch.qos.logback</groupId>
 				<artifactId>logback-classic</artifactId>
-				<version>1.6.5</version>
+				<version>${logback.version}</version>
 				<scope>test</scope>
 			</dependency>
 			<dependency>
@@ -75,6 +78,7 @@
 					<version>${maven-compiler-plugin.version}</version>
 					<configuration>
 						<failOnWarning>true</failOnWarning>
+						<showWarnings>true</showWarnings>
 						<compilerArgs>
 							<arg>-Xlint:all,-exports,-requires-automatic,-module</arg>
 						</compilerArgs>
@@ -86,9 +90,18 @@
 					<version>${maven-surefire-plugin.version}</version>
 					<configuration>
 						<parallel>methods</parallel>
-						<threadCount>4</threadCount>
+						<threadCount>${test.thread.count}</threadCount>
 						<promoteUserPropertiesToSystemProperties>false</promoteUserPropertiesToSystemProperties>
 						<argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" -Djdk.lang.Process.allowAmbiguousCommands=false ${tooling.test.jvm.options}</argLine>
+						<!-- Git's detached background maintenance would keep changing a test repository's .git directory
+						while the test deletes it. -->
+						<environmentVariables>
+							<GIT_CONFIG_COUNT>2</GIT_CONFIG_COUNT>
+							<GIT_CONFIG_KEY_0>maintenance.auto</GIT_CONFIG_KEY_0>
+							<GIT_CONFIG_VALUE_0>false</GIT_CONFIG_VALUE_0>
+							<GIT_CONFIG_KEY_1>gc.auto</GIT_CONFIG_KEY_1>
+							<GIT_CONFIG_VALUE_1>0</GIT_CONFIG_VALUE_1>
+						</environmentVariables>
 						<systemPropertyVariables>
 							<tooling.build.root>${tooling.build.root}</tooling.build.root>
 							<tooling.release.workflow>${tooling.release.workflow}</tooling.release.workflow>

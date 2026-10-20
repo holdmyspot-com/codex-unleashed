@@ -34,6 +34,8 @@ set -euf
 
 tooling_project_root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 tooling_cache_root="$tooling_project_root/.cat/work/temp/build-caches/maven"
+mkdir -p "$tooling_cache_root"
+tooling_cache_root="$(CDPATH= cd -- "$tooling_cache_root" && pwd -P)"
 export MAVEN_USER_HOME="$tooling_cache_root/home"
 export TMPDIR="$tooling_cache_root/tmp"
 export XDG_CACHE_HOME="$tooling_cache_root/xdg"

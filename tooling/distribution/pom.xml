@@ -28,7 +28,7 @@
 		<dependency>
 			<groupId>tools.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-yaml</artifactId>
-			<version>3.2.3</version>
+			<version>3.2.4</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -59,7 +59,7 @@
 							<tooling.cli.jar>${tooling.build.root}/tooling-cli/tooling-cli-${project.version}.jar</tooling.cli.jar>
 							<tooling.runtime.modules>${project.build.directory}/modules</tooling.runtime.modules>
 							<tooling.release.workflow>${tooling.release.workflow}</tooling.release.workflow>
-							<tooling.launcher>${maven.multiModuleProjectDirectory}/bin/codex-tooling</tooling.launcher>
+							<tooling.launcher>${project.rootDirectory}/bin/codex-tooling</tooling.launcher>
 					</systemPropertyVariables>
 				</configuration>
 			</plugin>
