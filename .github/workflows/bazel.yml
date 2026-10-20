@@ -47,6 +47,8 @@ jobs:
 
   clippy-linux:
     name: Bazel clippy on BuildBuddy for ${{ matrix.target }}
+    # Windows GNU builds reuse the V8 snapshot that only a Windows host can generate.
+    needs: windows-v8-snapshot
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +62,8 @@ jobs:
 
   verify-release-linux:
     name: Verify release build on BuildBuddy for ${{ matrix.target }}
+    # Windows GNU builds reuse the V8 snapshot that only a Windows host can generate.
+    needs: windows-v8-snapshot
     strategy:
       fail-fast: false
       matrix:
@@ -228,8 +232,39 @@ jobs:
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
 
+  windows-v8-snapshot:
+    name: Generate Windows GNU V8 snapshot on Windows
+    needs: prepare-windows-tooling
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+          upstream-ref: ${{ inputs.upstream_ref }}
+      - name: Prepare Bazel CI
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+          cache-scope: bazel-windows-v8-snapshot
+      # ci-windows-cross runs V8Mksnapshot locally because the Windows snapshot generator must run on Windows. The
+      # Linux-hosted cross builds below can only reuse its result, so generate it here into the shared remote cache.
+      - name: Generate V8 snapshot
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary --windows-cross-compile \
+            -- build "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" -- @v8//:icu/generated_snapshot_files
+
   test-windows-shard:
     name: Cross-compile Windows GNU tests on BuildBuddy
+    needs: windows-v8-snapshot
     uses: ./.github/workflows/buildbuddy-ci.yml
     with:
       task: windows-cross

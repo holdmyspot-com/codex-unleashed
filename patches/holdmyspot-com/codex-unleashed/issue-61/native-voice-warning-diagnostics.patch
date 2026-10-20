@@ -1,4 +1,4 @@
-From 8ce082980f3836174a2e674ac77dda34d67eb3db Mon Sep 17 00:00:00 2001
+From 620df2327032192afc5ca0d7378b68b82f1c8a1b Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 21:56:21 -0400
 Subject: [PATCH] build: retain native dependency warnings without rejecting
@@ -6,11 +6,11 @@ Subject: [PATCH] build: retain native dependency warnings without rejecting
 Preserve compilation and runtime fixes without warning-only dependency changes.
 ---
  third_party/voice/build_native.py      | 29 +++++++++
- third_party/voice/test_build_native.py | 88 ++++++++++++++++++++++++++
- 2 files changed, 117 insertions(+)
+ third_party/voice/test_build_native.py | 90 ++++++++++++++++++++++++++
+ 2 files changed, 119 insertions(+)
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index 1b4feada4..9f5f3acf0 100644
+index 96e2b78b4..044b0da17 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
 @@ -18,6 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -61,18 +61,20 @@ index 1b4feada4..9f5f3acf0 100644
      def posix_path(self, path):
          if not self.windows:
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index f15934baa..62d4bd761 100644
+index 29d5eb3ad..f57c7797a 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -297,6 +297,30 @@ class NativeBuildTests(unittest.TestCase):
-             build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
+@@ -294,6 +294,32 @@ class NativeBuildTests(unittest.TestCase):
          )
+         self.assertEqual(output.read_text(), literal)
 
 +    def test_cmake_unused_project_option_remains_visible(self):
 +        cmake = shutil.which("cmake")
-+        if cmake is None:
-+            self.skipTest("Requires CMake")
++        make = shutil.which("nmake" if os.name == "nt" else "make")
++        if cmake is None or make is None:
++            self.skipTest("Requires CMake and the bootstrap make program")
 +        self.args.cmake = Path(cmake)
++        self.args.make = Path(make)
 +        source = self.root / "unused-option"
 +        source.mkdir()
 +        (source / "CMakeLists.txt").write_text(
@@ -95,7 +97,7 @@ index f15934baa..62d4bd761 100644
      def test_build_refuses_existing_output_before_reading_sources(self):
          self.args.output.mkdir()
          (self.args.output / "keep").write_text("untouched")
-@@ -307,6 +331,70 @@ class NativeBuildTests(unittest.TestCase):
+@@ -304,6 +330,70 @@ class NativeBuildTests(unittest.TestCase):
              {"keep": "untouched"},
          )
 

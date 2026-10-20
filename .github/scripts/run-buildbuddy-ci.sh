@@ -12,10 +12,13 @@ artifact_directory="$RUNNER_TEMP/buildbuddy-artifacts"
 mkdir -p "$artifact_directory"
 # Bootstrap changes replace the VM; consumer changes retain its caches and run verification inside it.
 environment_identity="$(bash .github/scripts/buildbuddy-tooling-source-key.sh environment)"
+# Without a request, runners get a 22GB disk. A fresh MSVC runtime fetch alone peaks at 5.2GB beside the retained
+# caches, so request the 100GB maximum.
 set +e
 bb remote \
   "--invocation_id_file=$invocation_file" \
   --os=linux --arch=amd64 \
+  --runner_exec_properties=EstimatedFreeDiskBytes=100GB \
   "--run_from_commit=$GITHUB_SHA" \
   "--run_from_branch=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:?}}" \
   --runner_exec_properties=remote-snapshot-save-policy=none-available \

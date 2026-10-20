@@ -15,15 +15,18 @@ Fresh emitted-queue verification is a separate acceptance gate.
 ---
  MODULE.bazel                                  |  1 +
  patches/rules_cc_masm_action_flags.patch      | 67 ++++++++++++++++
- tools/build-warnings/assembly/BUILD.bazel     | 22 +++--
+ tools/build-warnings/assembly/BUILD.bazel     | 25 ++++++
+ tools/build-warnings/assembly/frontend.c      |  9 +++
  .../assembly/native/BUILD.bazel               | 80 +++++++++++++++++++
  .../assembly/native/fixture.asm               |  5 ++
  .../assembly/native/flags_test.bzl            | 40 ++++++++++
  .../assembly/native/preprocessed.S            |  5 ++
  .../build-warnings/assembly/preprocessed.asm  |  8 ++
  tools/build-warnings/assembly/raw.asm         |  5 ++
- 9 files changed, 228 insertions(+), 5 deletions(-)
+ 10 files changed, 245 insertions(+)
  create mode 100644 patches/rules_cc_masm_action_flags.patch
+ create mode 100644 tools/build-warnings/assembly/BUILD.bazel
+ create mode 100644 tools/build-warnings/assembly/frontend.c
  create mode 100644 tools/build-warnings/assembly/native/BUILD.bazel
  create mode 100644 tools/build-warnings/assembly/native/fixture.asm
  create mode 100644 tools/build-warnings/assembly/native/flags_test.bzl
@@ -32,10 +35,10 @@ Fresh emitted-queue verification is a separate acceptance gate.
  create mode 100644 tools/build-warnings/assembly/raw.asm
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index a4fc80ebb..690d1f044 100644
+index 28af59ab9..a106f59cf 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -165,6 +165,7 @@ single_version_override(
+@@ -163,6 +163,7 @@ single_version_override(
      patches = [
          "//patches:rules_cc_rusty_v8_custom_libcxx.patch",
          "//patches:rules_cc_static_library_def_parser.patch",
@@ -117,11 +120,12 @@ index 000000000..b55ac375f
 +                         ACTION_NAMES.c_compile,
 +                         ACTION_NAMES.cpp_compile,
 diff --git a/tools/build-warnings/assembly/BUILD.bazel b/tools/build-warnings/assembly/BUILD.bazel
-index 67e1d4610..6907c9adc 100644
---- a/tools/build-warnings/assembly/BUILD.bazel
+new file mode 100644
+index 000000000..3429e989e
+--- /dev/null
 +++ b/tools/build-warnings/assembly/BUILD.bazel
-@@ -1,11 +1,23 @@
- load("@rules_cc//cc:cc_library.bzl", "cc_library")
+@@ -0,0 +1,25 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("//tools/build-warnings/assembly/native:flags_test.bzl", "masm_fixture_selection_test")
 +
 +masm_fixture_selection_test(
@@ -129,26 +133,38 @@ index 67e1d4610..6907c9adc 100644
 +    size = "small",
 +    target_under_test = ":compile_inputs",
 +)
- 
- cc_library(
-     name = "compile_inputs",
--    srcs = [
--        "frontend.c",
--        "preprocessed.S",
--        "raw.s",
--    ],
-+    srcs = ["frontend.c"] + select({
++
++cc_library(
++    name = "compile_inputs",
++    srcs = [
++        "frontend.c",
++        "preprocessed.asm",
++        "raw.asm",
++    ],
++    defines = ["CODEX_ASSEMBLY_VALUE=7"],
++    target_compatible_with = select({
 +        "@rules_cc//cc/compiler:msvc-cl": [
-+            "preprocessed.asm",
-+            "raw.asm",
++            "@platforms//os:windows",
++            "@platforms//cpu:x86_64",
 +        ],
-+        "//conditions:default": [
-+            "preprocessed.S",
-+            "raw.s",
-+        ],
++        "//conditions:default": ["@platforms//:incompatible"],
 +    }),
-     defines = ["CODEX_ASSEMBLY_VALUE=7"],
- )
++)
+diff --git a/tools/build-warnings/assembly/frontend.c b/tools/build-warnings/assembly/frontend.c
+new file mode 100644
+index 000000000..e29ea0567
+--- /dev/null
++++ b/tools/build-warnings/assembly/frontend.c
+@@ -0,0 +1,9 @@
++#include <stdint.h>
++
++#if CODEX_ASSEMBLY_VALUE != 7
++#error The C input requires its declared definition
++#endif
++
++uint32_t codex_c_frontend_fixture(void) {
++    return CODEX_ASSEMBLY_VALUE;
++}
 diff --git a/tools/build-warnings/assembly/native/BUILD.bazel b/tools/build-warnings/assembly/native/BUILD.bazel
 new file mode 100644
 index 000000000..3726e00fb

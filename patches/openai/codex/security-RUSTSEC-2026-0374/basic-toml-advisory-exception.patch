@@ -1,0 +1,48 @@
+From ae070c93efd3e3d40409c58ca9f0a4f273858901 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <gili@STALKER.localdomain>
+Date: Tue, 20 Oct 2026 11:06:51 -0400
+Subject: [PATCH] fix(secrets): record the basic-toml unmaintained advisory
+
+RUSTSEC-2026-0374 reports basic-toml as unmaintained. codex-secrets
+reaches it through age, i18n-embed-fl and i18n-config, whose latest
+releases still require it, so no dependency update removes it.
+
+Record a WORKAROUND exception in deny.toml and the cargo-audit
+configuration that links cargo-i18n#176, which moves i18n-config to
+toml, and remove it once an i18n-config release includes that change.
+All other advisory checks remain enabled.
+
+Red: CI 39440201163 job 118687716787 rejects basic-toml for
+RUSTSEC-2026-0374.
+Green: cargo deny --manifest-path codex-rs/Cargo.toml --all-features
+check --deny unmatched-source --deny license-not-encountered
+--deny unused-wrapper --deny advisory-not-detected passes.
+---
+ codex-rs/.cargo/audit.toml | 2 ++
+ codex-rs/deny.toml         | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/codex-rs/.cargo/audit.toml b/codex-rs/.cargo/audit.toml
+index ebafb26..3aadc6c 100644
+--- a/codex-rs/.cargo/audit.toml
++++ b/codex-rs/.cargo/audit.toml
+@@ -16,4 +16,6 @@ ignore = [
+     "RUSTSEC-2026-0119", # hickory-proto via rama-dns/rama-tcp; remove when rama updates to hickory 0.26.1 or hickory-net
+     "RUSTSEC-2026-0194", # quick-xml via plist/syntect and wayland-scanner; trusted inputs only; remove when rust-plist#191 and wayland-rs#938 are released
+     "RUSTSEC-2026-0195", # quick-xml via plist/syntect and wayland-scanner; trusted inputs only; remove when rust-plist#191 and wayland-rs#938 are released
++    # WORKAROUND: https://github.com/kellpossible/cargo-i18n/pull/176
++    "RUSTSEC-2026-0374", # basic-toml via i18n-config/age; remove when an i18n-config release includes cargo-i18n#176
+ ]
+diff --git a/codex-rs/deny.toml b/codex-rs/deny.toml
+index 0f110a9..66f075e 100644
+--- a/codex-rs/deny.toml
++++ b/codex-rs/deny.toml
+@@ -86,6 +86,8 @@ ignore = [
+     { id = "RUSTSEC-2025-0141", reason = "bincode is unmaintained; pulled in via syntect v5.3.0 used by codex-tui for syntax highlighting; no fixed release yet" },
+     { id = "RUSTSEC-2026-0194", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
+     { id = "RUSTSEC-2026-0195", reason = "quick-xml v0.39.4 remains via plist/syntect and wayland-scanner; plist does not exercise the affected APIs and wayland-scanner parses trusted build-time XML; remove when rust-plist#191 and wayland-rs#938 are released" },
++    # WORKAROUND: https://github.com/kellpossible/cargo-i18n/pull/176
++    { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained; pulled in via i18n-config under age/i18n-embed-fl used by codex-secrets; remove when an i18n-config release includes cargo-i18n#176, which moves it to toml" },
+ ]
+ # If this is true, then cargo deny will use the git executable to fetch advisory database.
+ # If this is false, then it uses a built-in git library.

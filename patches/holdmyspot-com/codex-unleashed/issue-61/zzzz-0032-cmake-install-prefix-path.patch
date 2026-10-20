@@ -1,4 +1,4 @@
-From 0b60550d24e171b18b3afcd94948527c0956db0b Mon Sep 17 00:00:00 2001
+From 7517b6a5f421c4888e4f9d83de1c7eb27abf5d5a Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 18:03:20 -0400
 Subject: [PATCH] Normalize native CMake installation prefix paths
@@ -10,10 +10,10 @@ CMake emits its install script with backslash escape sequences when a Windows pr
  2 files changed, 31 insertions(+), 1 deletion(-)
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index 4007781da..5b2b98005 100644
+index ad38835fd..1c4779a51 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -266,7 +266,7 @@ class NativeBuild:
+@@ -267,7 +267,7 @@ class NativeBuild:
          settings = {
              "CMAKE_MAKE_PROGRAM": str(make),
              "CMAKE_BUILD_TYPE": "Release",
@@ -23,12 +23,12 @@ index 4007781da..5b2b98005 100644
              "CMAKE_C_COMPILER": str(self.toolchain["cc"]),
              "CMAKE_CXX_COMPILER": str(self.toolchain["cxx"]),
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index f68c5f265..db62edffa 100644
+index b1c198b80..86cb92a4a 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -488,6 +488,36 @@ class NativeBuildTests(unittest.TestCase):
-             build.record["cmake_initial_caches"]["fixture"]["CODEX_LITERAL"], literal
+@@ -420,6 +420,36 @@ class NativeBuildTests(unittest.TestCase):
          )
+         self.assertEqual(output.read_text(), literal)
 
 +    @unittest.skipUnless(
 +        os.name == "nt", "Requires native Windows install-script generation"
@@ -60,8 +60,6 @@ index f68c5f265..db62edffa 100644
 +            (build.prefix / "share/marker.txt").read_text(), "installed fixture"
 +        )
 +
-     def test_cmake_parallel_builds_match_generator_support(self):
-         self.environment["USERPROFILE"] = str(self.root / "user profile")
-         for system, suffix in (
---
-2.43.0
+     def test_cmake_unused_project_option_remains_visible(self):
+         cmake = shutil.which("cmake")
+         make = shutil.which("nmake" if os.name == "nt" else "make")

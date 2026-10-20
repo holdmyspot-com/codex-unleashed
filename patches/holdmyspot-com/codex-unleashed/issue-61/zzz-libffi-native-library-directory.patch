@@ -13,11 +13,10 @@ Regression: recipe test fails without the option and passes with it. All 24 nati
  2 files changed, 24 insertions(+)
 
 diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
-index dbf9d3fd7..28ea9219a 100644
+index 202b3ec..ad38835 100644
 --- a/third_party/voice/build_native.py
 +++ b/third_party/voice/build_native.py
-@@ -516,8 +516,9 @@ class NativeBuild:
-                 f"--prefix={self.posix_path(self.prefix)}",
+@@ -530,6 +530,7 @@ class NativeBuild:
                  "--enable-shared",
                  "--disable-static",
                  "--disable-docs",
@@ -25,16 +24,14 @@ index dbf9d3fd7..28ea9219a 100644
                  *configure_options,
              ],
              cwd=ffi_build,
-             environment=environment,
 diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
-index c56ad1dd2..94a79b75d 100644
+index 4065cd3..b1c198b 100644
 --- a/third_party/voice/test_build_native.py
 +++ b/third_party/voice/test_build_native.py
-@@ -266,8 +266,30 @@ class NativeBuildTests(unittest.TestCase):
-         self.assertIn('"/usr/bin/ld"', reload_trace.stderr)
+@@ -271,6 +271,28 @@ class NativeBuildTests(unittest.TestCase):
          result = subprocess.run([build.output / "probe"], check=False)
          self.assertEqual(result.returncode, 0)
-
+ 
 +    @unittest.skipIf(
 +        os.name == "nt", "Windows configure arguments have a separate recipe test"
 +    )
@@ -60,9 +57,7 @@ index c56ad1dd2..94a79b75d 100644
      @unittest.skipIf(os.name == "nt", "Exercises Autoconf's Unix flag expansion")
      def test_libffi_compiler_receives_literal_defines_without_shell_quotes(self):
          compiler = shutil.which("cc")
-         if compiler is None:
-@@ -681,8 +703,9 @@ class NativeBuildTests(unittest.TestCase):
-                         "--prefix=/cygdrive/d/prefix",
+@@ -808,6 +830,7 @@ class NativeBuildTests(unittest.TestCase):
                          "--enable-shared",
                          "--disable-static",
                          "--disable-docs",
@@ -70,4 +65,3 @@ index c56ad1dd2..94a79b75d 100644
                          f"--build={host}",
                          f"--host={host}",
                      ],
-                 )

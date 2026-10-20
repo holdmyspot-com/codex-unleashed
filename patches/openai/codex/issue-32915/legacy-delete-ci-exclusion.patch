@@ -22,10 +22,10 @@ Tracking: https://github.com/openai/codex/issues/32915
  1 file changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/.bazelrc b/.bazelrc
-index e1b15563c..8931f9b4a 100644
+index 0fa910a..fae17bd 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -202,7 +202,9 @@ common:ci-windows --build_metadata=TAG_os=windows
+@@ -213,7 +213,9 @@ common:ci-windows --build_metadata=TAG_os=windows
  common:ci-windows --repo_contents_cache=D:/a/.cache/bazel-repo-contents-cache
  # The hidden dynamic-tool callback currently times out on Windows, and ConPTY
  # cannot reliably interrupt foreground processes on Windows Bazel runners.
@@ -36,7 +36,7 @@ index e1b15563c..8931f9b4a 100644
  
  # We prefer to run the build actions entirely remotely so we can dial up the concurrency.
  # We have platform-specific tests, so we want to execute the tests on all platforms using the strongest sandboxing available on each platform.
-@@ -233,7 +235,9 @@ common:ci-windows-cross --test_env=RUST_TEST_THREADS=1
+@@ -244,7 +246,9 @@ common:ci-windows-cross --test_env=RUST_TEST_THREADS=1
  # Native Windows CI still covers the PowerShell parser-process tests. The
  # cross-built gnullvm binaries currently hang in those tests when run on the
  # Windows runner. This replaces the Windows skip list, so retain its exclusions.
@@ -47,6 +47,3 @@ index e1b15563c..8931f9b4a 100644
  common:ci-windows-cross --platforms=//:windows_x86_64_gnullvm
  common:ci-windows-cross --extra_execution_platforms=//:rbe,//:windows_x86_64_msvc
  common:ci-windows-cross --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain
--- 
-2.43.0
-

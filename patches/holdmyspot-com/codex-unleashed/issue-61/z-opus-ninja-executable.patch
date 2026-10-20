@@ -13,14 +13,20 @@ The baseline bundled_opus_test fails because the foreign-build Ninja wrapper req
  create mode 100644 tools/build-warnings/opus/bundled_opus_test.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 079e33e9a..85d7373e7 100644
+index 29a70dc88..c2e865e10 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -195,2 +195,3 @@ single_version_override(
+@@ -187,6 +187,7 @@ single_version_override(
+ )
+
  bazel_dep(name = "make", version = "4.4.1.bcr.2")
 +bazel_dep(name = "ninja", version = "1.13.2")
  bazel_dep(name = "rules_cc_autoconf", version = "0.27.0")
-@@ -693,11 +694,8 @@ crate.annotation(
+
+ single_version_override(
+@@ -687,15 +688,12 @@ crate.annotation(
+         "CMAKE": "$${pwd}/$(CMAKE)",
+         "CMAKE_GENERATOR": "Ninja",
          "CMAKE_TOOLCHAIN_FILE": "$(execpath @@//third_party/voice:opus-toolchain.cmake)",
 -        "CODEX_VOICE_NINJA": "$${pwd}/$(NINJA)",
 +        "CODEX_VOICE_NINJA": "$(execpath @ninja//:ninja)",
@@ -35,11 +41,17 @@ index 079e33e9a..85d7373e7 100644
          "@rules_foreign_cc//toolchains:current_cmake_toolchain",
 -        "@rules_foreign_cc//toolchains:current_ninja_toolchain",
      ],
-@@ -728,3 +726,3 @@ crate.annotation(
+     crate = "opusic-sys",
+ )
+@@ -721,7 +719,7 @@ crate.annotation(
+     ],
+ )
 
 -inject_repo(crate, "rules_foreign_cc")
 +inject_repo(crate, "ninja", "rules_foreign_cc")
 
+ crate.annotation(
+     # Provide the hermetic SDK path so the build script doesn't try to invoke an unavailable `xcrun --show-sdk-path`.
 diff --git a/tools/build-warnings/opus/BUILD.bazel b/tools/build-warnings/opus/BUILD.bazel
 new file mode 100644
 index 000000000..200ddeebf

@@ -3,6 +3,7 @@
 # Git hunk headers, including nested patches, can end in the middle of a source word.
 # WORKAROUND: preserve this verbatim AWS-LC context until upstream corrects its typo.
 # https://github.com/holdmyspot-com/codex-unleashed/issues/61
-ignore-regex = ^\+*@@ .*@@.*$|^\+ // space duplication could have occured on any call entropy must be added to$
-# Encoded Git binary deltas are data; textual patch changes remain checked.
-ignore-multiline-regex = (?m)^GIT binary patch\n.*?(?=^diff --git |\Z)
+ignore-regex = ^[ +-]*@@ .*@@.*$|^\+ // space duplication could have occured on any call entropy must be added to$
+# Encoded Git binary deltas and lockfile diffs are data; upstream skips *.lock files too. Textual patch changes
+# remain checked.
+ignore-multiline-regex = (?m)^GIT binary patch\n.*?(?=^diff --git |\Z)|^diff --git a/\S+\.lock b/.*?(?=^diff --git |\Z)

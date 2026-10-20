@@ -13,6 +13,18 @@ Skill frontmatter uses a maintained YAML parser while preserving existing suppor
 
 The workspace aliases `yaml_serde` 0.10.7 as `serde_yaml`, replacing the unmaintained parser and its unsafe-libyaml dependency. Rust imports and the public skill parser interface remain unchanged. `yaml-parser-bazel-aliases.patch` carries Cargo dependency aliases into Bazel targets, preserving each target's dependency kinds and platform conditions.
 
+## Patch variants and application order
+
+`maintained-yaml-parser.patch` integrates with this repository's sorted patch
+queue. It follows the issue #71 dependency upgrade, whose lockfile entries
+(such as `indexmap` 2.14.2) form its context.
+
+`maintained-yaml-parser.upstream.mbox` is the self-contained upstream
+contribution variant. Apply it directly to the clean upstream base with
+`git apply` or `git am`; it requires no other downstream patch. Its `.mbox`
+suffix keeps the queue application script from applying both variants. The
+parser change is the same in both variants.
+
 ## Reproduction
 
 Run `cargo deny check` from `codex-rs` on the declared upstream base. Its unsafe-libyaml 0.2.11 dependency triggers the unmaintained RUSTSEC-2024-0449 advisory.

@@ -14,9 +14,19 @@ TLS connections use Rustls 0.23.46, which addresses four security advisories.
 
 The patch updates the Rustls Cargo lockfile version, published checksum and
 corresponding Bazel crate fact together. It leaves advisory checks enabled.
-Apply the issue #60 toolchain and issue #61 Bazel module prerequisites first.
+
+`update-rustls.patch` integrates with this repository's sorted patch queue. It
+follows the issue #60 toolchain, issue #61 Bazel module and issue #71
+dependency upgrade patches, and also raises the workspace requirement to
+0.23.46 because issue #71 pins direct requirements to their locked releases.
 Verification of the complete queue also requires the security patches for
 unrelated dependencies.
+
+`update-rustls.upstream.mbox` is the self-contained upstream contribution
+variant. Apply it directly to the clean upstream base with `git apply` or
+`git am`; it updates the lockfiles only and requires no other downstream patch.
+Its `.mbox` suffix keeps the queue application script from applying both
+variants.
 
 ## Reproduction
 

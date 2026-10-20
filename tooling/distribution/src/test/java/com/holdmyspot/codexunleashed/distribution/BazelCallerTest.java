@@ -115,6 +115,15 @@ public final class BazelCallerTest
 					}
 					assertTrue(test.contains("--local_test_jobs=" + jobs),
 						"Local test concurrency must respect the CI job limit; received arguments " + test);
+					assertTrue(test.contains("--notrack_incremental_state"),
+						"One-shot CI builds must not retain incremental state in the Bazel server heap: " + test);
+					assertTrue(test.contains("--nokeep_state_after_build"));
+					assertEquals(run(root, environment, NativeCommands.scriptBuilder(scripts.resolve("run-bazel-ci.sh"),
+						"--", "cquery", "--output=files", "--", "//fixture:test")), 37);
+					List<String> cquery = arguments(root);
+					assertTrue(cquery.contains("cquery"));
+					assertFalse(cquery.contains("--notrack_incremental_state"),
+						"Bazel rejects queries over analysis results without incremental state: " + cquery);
 
 					if (operatingSystem.equals("Windows"))
 					{

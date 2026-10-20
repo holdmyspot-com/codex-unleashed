@@ -196,7 +196,7 @@ index 9b408e1c7..5cc9ba6c9 100644
 -            if process.stdout and not process.stdout.endswith("\n"):
 +        stderr = "".join(
 +            line
-+            for line in process.stderr.splitlines(keepends=True)
++            for line in (process.stderr or "").splitlines(keepends=True)
 +            if not (
 +                group.name == "Rust"
 +                and line.removesuffix("\n") == STABLE_RUSTFMT_IMPORTS_WARNING

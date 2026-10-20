@@ -25,10 +25,10 @@ Fresh emitted-queue verification is a separate acceptance gate.
  create mode 100644 tools/build-warnings/meson-diagnostics/meson.build
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 04093e1e3..b45f0a4e4 100644
+index 323013b89..29a70dc88 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -184,6 +184,7 @@ single_version_override(
+@@ -182,6 +182,7 @@ single_version_override(
          "//patches:rules_foreign_cc_stable_tools.patch",
          "//patches:rules_foreign_cc_meson_runfiles.patch",
          "//patches:rules_foreign_cc_meson_resource_directory.patch",
@@ -218,12 +218,12 @@ index 091c8a4df..4dd10bb77 100644
          inherited = {
              **self.environment,
 diff --git a/tools/build-warnings/check.sh b/tools/build-warnings/check.sh
-index 5fcbb8f56..38c60119f 100644
+index 0ce2f42cc..e0d599d9a 100644
 --- a/tools/build-warnings/check.sh
 +++ b/tools/build-warnings/check.sh
-@@ -50,6 +50,18 @@ for compilation_mode in fastbuild dbg opt; do
-     fi
- done
+@@ -30,6 +30,18 @@ if ! bazel build "$@" //tools/build-warnings:dependency_warning >"$probe_dir/dep
+ fi
+ cat -- "$probe_dir/dependency-warning.log"
  
 +if bazel build "$@" //tools/build-warnings/meson-diagnostics:setup_failure >"$probe_dir/meson.log" 2>&1; then
 +    cat -- "$probe_dir/meson.log"

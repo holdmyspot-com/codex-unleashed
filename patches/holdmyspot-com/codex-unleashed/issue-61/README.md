@@ -12,21 +12,13 @@ Codex and project-owned tooling treat warnings as errors. Third-party dependency
 
 ## Scope and dependencies
 
-`formatter-warning-policy.patch` updates the existing upstream formatter wrapper and its CI callers. It requires no other downstream patch. It includes process-boundary tests and runs them in repository checks. This patch covers formatter diagnostics; the issue's other build-tool enforcement gates are separate work.
+`formatter-warning-policy.patch` updates the existing upstream formatter wrapper and its CI callers. It requires no other downstream patch. It includes process-boundary tests and runs them in repository checks. The wrapper treats a missing stderr capture as empty output, which the Python SDK's successful-command formatter test supplies. This patch covers formatter diagnostics; the issue's other build-tool enforcement gates are separate work.
 
 `native-and-rust-warning-policy.patch` enables Cargo's warning policy, strict rustdoc diagnostics, and strict Bazel Rust target and execution-platform actions. Native compiler warning enforcement is explicit on project-owned targets. External native builds do not inherit a global `treat_warnings_as_errors` feature. V8's build configuration also omits its own `-Werror`, preserving its warning flags and C++ sources. The warning-policy regression checks both a fatal project warning and a successful dependency build with visible warning output. The production V8 action regression, `bazel test //tools/build-warnings/dependencies:v8_warning_policy_test`, verifies that its compile arguments retain `-Wextra` and omit `-Werror`. Apply the current-toolchain patch from issue #60 first, including its linker-argument compatibility adaptation.
 
 The native probe first requires a clean C program to build, then requires a deprecated-function warning to fail at the compiler diagnostic. It rejects an unrelated failure as evidence of warning enforcement. Remaining build-tool and hosted-platform acceptance gates are tracked separately in the issue.
 
-`vendored-native-build-script-modes.patch` explicitly selects the existing vendored build scripts for `tikv-jemalloc-sys` and `libgit2-sys`. This resolves rules_rs's well-known-annotation advisories without changing native library providers. It applies after the issue #60 toolchain patch. Cold module-extension evaluation must complete without either advisory.
-
-`libcxx-explicit-runtime-configuration.patch` defines the custom libc++ runtime's minimum availability-header version and LLVM-libc selection as zero. These match the existing preprocessor branches and remove undefined-macro warnings. The patch includes a native configuration regression test and applies independently of the other patches.
-
 `icu-mutex-thread-safety.patch` releases the currency-name cache mutex when cache-entry allocation fails. It retains this runtime fix without adding mutex annotations or refactoring ICU locks for compiler diagnostics. ICU warnings remain visible and nonfatal.
-
-`native-mingw-function-guard.patch` corrects the native x86 function macro's `#ifndef` spelling in the pinned MinGW headers and enables fatal diagnostics in import-definition preprocessing. Its regression tests compile the real header for Windows x86-64 and ARM64 and assert that native symbols remain enabled only on the corresponding architecture. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`, which provides its test directory.
-
-`native-bindgen-preprocessor-policy.patch` preserves the compiler's optimization and warning-policy arguments when generating Rust bindings. It translates MSVC's `/WX` and `/WX-` options to their Clang equivalents and retains argument boundaries and the existing toolchain's deterministic macro-redaction policy. Its regression suite participates in `just bazel-test`. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`.
 
 `native-aws-lc-windows-tls.patch` backports AWS-LC's MinGW TLS-callback fix, preserving thread-exit cleanup under LLVM 22. It uses the upstream section attributes and `_tls_used` reference while retaining the MSVC path. A focused thread-exit cleanup regression participates in `just bazel-test`. Apply it after the issue #60 toolchain patch and `native-and-rust-warning-policy.patch`.
 
@@ -164,41 +156,19 @@ missing symbol-tool warnings. Hosted remote execution remains a separate gate.
 
 ## Direct Bazel dependency versions
 
-`zzz-direct-dependency-versions.patch` pins bazel_lib to 3.7.2, matching the
-version required by the updated XZ module, and makes direct dependency version
-mismatches fatal. Apply it after `z-xz-windows-arm64-filter.patch`.
+`zzz-direct-dependency-versions.patch` updates the direct `bazel_lib` and `xz`
+modules to their latest stable versions, 3.7.2 and 5.4.5.bcr.9, and makes
+direct dependency version mismatches fatal. XZ 5.4.5.bcr.9 requires bazel_lib 3.7.2.
 `tools/build-warnings/check-direct-dependencies.sh` runs Bazel's resolver with
 the strict check; it must succeed without a direct dependency mismatch. The
 normal `just bazel-lock-check` also runs with this policy.
-
-## Assembly compiler arguments
-
-`z-llvm-assembly-action-flags.patch` sends preprocessing options only to inputs
-that use the preprocessor and C/C++ compiler options only to compiler actions.
-Raw assembly keeps its target, assembler, and fatal-warning options. C and
-preprocessed assembly retain their declared definitions and header search paths.
-Apply the LLVM 23, native warning policy, and remote download options patches first.
-
-```sh
-just check-build-warnings --platforms=//:windows_x86_64_gnullvm
-just check-build-warnings
-just fmt-check
-just bazel-lock-check
-```
-
-The warning check compiles raw assembly, preprocessed assembly, and C in
-fastbuild, debug, and optimized modes. Its independent deprecated-function
-fixture must still fail at the expected compiler diagnostic. Preliminary
-analysis failures print their captured log and preserve the original status.
-The Windows GNU command checks cross-compilation; native Windows execution
-and the complete release build remain separate gates.
 
 ## Meson setup diagnostics
 
 `z-meson-setup-diagnostics.patch` prints Meson's detailed setup log when setup
 fails and preserves the setup command's failure status. This exposes compiler
 diagnostics before Bazel removes the sandbox. It applies after the stable native
-tool, Meson runfiles, Meson resource directory, and assembly argument patches.
+tool, Meson runfiles, and Meson resource directory patches.
 
 `just check-build-warnings` builds a deliberately failing Meson project and
 requires both its setup failure and a detail written only to the Meson log.
@@ -444,8 +414,8 @@ execution remains a separate gate.
 executable directly to Opus's Cargo build script. It declares the executable as
 a build input and retains CMake's resolved toolchain. The version matches the
 existing foreign-build tool selection. This Cargo action runs outside the
-foreign-build wrapper's environment. Apply `upgrade-z-native-tools.patch` and
-`vendored-native-build-script-modes.patch` first.
+foreign-build wrapper's environment. Apply `upgrade-z-native-tools.patch`
+first.
 
 ```sh
 bazel test //tools/build-warnings/opus:bundled_opus_test
@@ -503,25 +473,6 @@ Meson's Python tool and native compiler/linker integration with this policy.
 The owning rules_python migration is tracked in
 [rules_python #2945](https://github.com/bazel-contrib/rules_python/issues/2945).
 
-## Windows XZ ARM64 filter configuration
-
-`z-xz-windows-arm64-filter.patch` selects Bazel module `xz` 5.4.5.bcr.9 and
-enables the ARM64 encoder and decoder that its Windows build already compiles.
-The Windows configuration lacks those entry points, leaving the internal filter
-initializer unused under strict compiler checks. This repair supplies the missing
-configuration rather than excluding the source or disabling its diagnostic.
-Apply it after the issue #61 native build patches. The registry module's required
-`bazel_lib` dependency resolves to 3.7.2 as part of this direct dependency update.
-
-`bazel test //tools/build-warnings/xz:arm64_filter_test` verifies ARM64 filter
-availability and an actual compression/decompression round trip.
-`bazel build //tools/build-warnings/xz:arm64_filter_test --platforms=//:windows_x86_64_gnullvm`
-compiles and links the Windows regression with strict compiler diagnostics.
-Native Windows CI executes the same regression on the MSVC platform.
-
-The source configuration is maintained in the
-[Bazel Central Registry XZ module](https://github.com/bazelbuild/bazel-central-registry/tree/main/modules/xz/5.4.5.bcr.9).
-
 ## Rust runtime selection on Darwin
 
 `upgrade-native-rust-runtime-selection.patch` removes C++ compiler-runtime
@@ -575,9 +526,10 @@ The complete native prefix and non-Linux platforms remain separate gates.
 `native-voice-cmake-initial-cache.patch` supplies generic compiler, installation,
 platform, and offline-discovery defaults through CMake's supported
 [`-C` initial cache](https://cmake.org/cmake/help/v3.31/manual/cmake.1.html).
-The cache uses literal bracket arguments and records its settings in build
-provenance. C-only and C++-only projects can share these defaults without unused
-command-line variable warnings. Project-specific options remain `-D` arguments.
+The cache uses literal bracket arguments. C-only and C++-only projects, such as
+the bundled Opus build used directly by `voice-host`, can share these defaults
+without unused command-line variable warnings. Project-specific options remain
+`-D` arguments.
 
 `native-voice-warning-diagnostics.patch` follows that patch. Native dependency
 commands retain their exit status when their logs contain compiler, linker,
@@ -670,24 +622,6 @@ The test generates a message with the registered Prost toolchain and verifies
 an encode/decode round-trip. Without the backport, target analysis fails because
 the unused legacy dependency no longer exists.
 
-## Codespell tool isolation
-
-`codespell-isolated-tool-environment.patch` runs the existing Codespell check
-through uv's isolated tool environment. It preserves the action's package
-requirement, repository configuration, ignore list, count output, and failure
-status. The workflow caches tool dependencies using its own configuration as
-the cache input. It applies independently against the declared base.
-
-```sh
-uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
-just fmt-check
-```
-
-Tool installation produces no root-pip warning. Spelling findings retain their
-nonzero status; this patch does not establish that upstream's spelling inventory
-is clean. The Docker action's pinned version and latest stable version both
-install Python packages as root.
-
 ## Verification
 
 `typescript-lint-warning-policy.patch` sets a zero-warning threshold on the
@@ -708,9 +642,6 @@ From the patched checkout root:
 - Source whitespace checks pass. Nested patches use Git's empty-line spelling for empty context. Their hunk counts remain consistent when trailing context is shortened.
 - After Cargo resolves the workspace lockfile versions, `just bazel-lock-check` passes without crate-annotation advisories, including on a cold module-extension evaluation.
 - `just check-build-warnings` passes on Unix: the clean fixture builds and the warning fixture fails at its expected diagnostic.
-- `bazel test //tools/build-warnings:mingw_function_guard_x86_64_test //tools/build-warnings:mingw_function_guard_aarch64_test` passes without preprocessor warnings and preserves both architectures' macro expansion.
-- `bazel test //tools/build-warnings/bindgen:preprocessor_policy_test` passes all six argument-preservation and MSVC normalization regressions.
-- `bazel build //tools/build-warnings/bindgen:warning` fails specifically at `expected_bindgen_warning`, proving that a header warning is fatal during binding generation.
 - `bazel test //tools/build-warnings/aws-lc:thread_test` verifies that worker-thread exit invokes its registered destructor exactly once and an unused thread does not invoke it again.
 - `bazel build //tools/build-warnings/aws-lc:thread_test --platforms=//:windows_x86_64_gnullvm` compiles and links the Windows regression executable without warnings. On a Windows execution host, run the same target with `bazel test` to verify thread-exit cleanup; cross-compilation alone does not establish that runtime outcome.
 - `bazel test //tools/build-warnings/llvm-driver:all` verifies warning-free Windows GNU linking with `-nolibc` and requires the MSVC linker to reject an intentionally triggered warning when fatal-linker warnings are enabled. These Linux-hosted driver checks do not establish Windows runtime behavior.
@@ -728,7 +659,7 @@ Dependency warnings remain nonfatal. Source backports are limited to compilation
 
 ## V8 Windows stack compatibility
 
-`zz-v8-windows-stack-assembly.patch` exposes a bounded Windows stack-assembly fixture through V8’s production library macro. Its C++ fixture checks the existing ICU definitions; its executable checks callback arguments and stack alignment. Dependency compiler arguments retain their released behavior. Apply the existing LLVM assembly-action patch and V8 MinGW detection patch first. V8 remains at version `15.0.245.2`.
+`zz-v8-windows-stack-assembly.patch` exposes a bounded Windows stack-assembly fixture through V8’s production library macro. Its C++ fixture checks the existing ICU definitions; its executable checks callback arguments and stack alignment. Dependency compiler arguments retain their released behavior. Apply the V8 MinGW detection patch first. V8 remains at version `15.0.245.2`.
 
 ```sh
 bazel build @v8//:codex_windows_stack_assembly_test --platforms=//:windows_x86_64_gnullvm
@@ -989,8 +920,7 @@ assembly source and linker behavior.
 `zzz-windows-msvc-assembly.patch` keeps MASM actions free of C/C++ compiler
 options, maps external include directories to MASM's include option, and makes
 assembly warnings fatal through `/WX`. C/C++ compilation retains its existing
-options. The build-warning fixtures select MASM sources for native MSVC and GNU
-sources for other drivers. Dependency versions remain unchanged. The tracking
+options. The build-warning fixture compiles MASM sources and C for native MSVC. Dependency versions remain unchanged. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
 The declared base is `rust-v0.163.0`
@@ -1006,7 +936,7 @@ just bazel-lock-check
 
 The analysis regressions use rules_cc's native Windows toolchain configuration
 to check raw and preprocessed assembly arguments, fixture selection, and the
-retained C compiler options. They run without executing MSVC tools and do not
+retained C compiler options. Other drivers do not build the MSVC fixture. They run without executing MSVC tools and do not
 establish native compilation. A Windows MSVC build of
 `//tools/build-warnings/assembly:compile_inputs` remains a separate acceptance
 gate for source syntax and command execution.
@@ -1034,101 +964,18 @@ The recipe regressions require explicit native library placement on Unix and
 Windows. An integration comparison runs libffi 3.8.0's configure with Clang 23:
 the configured `libdir` and `toolexeclibdir` stay the same, and the unsupported
 `-print-multi-os-directory` diagnostics disappear. Native macOS acceptance also
-requires the module-probe patch below and full platform verification.
+requires full platform verification.
 
-## Ninja elapsed edge times
+## Rust wrapper parameter files
 
-`zzz-ninja-elapsed-time.patch` preserves the 64-bit elapsed start time between
-Ninja's edge-start and edge-completion callbacks. It fixes the MSVC C4244 error
-in the direct Ninja 1.13.2 Bazel module without changing the dependency version.
-The BCR build exposes Ninja's existing core as a library so the regression runs
-its real `Builder`; the executable retains its compiler options and Windows
-preprocessor definitions. Ninja's existing build-log representation is outside
-this patch's scope.
+`zzzz-0004-rust-wrapper-parameter-files.patch` lets Bazel spill long Rust
+process-wrapper arguments into a multiline parameter file. The parser
+preserves LF and CRLF files, backslashes, spaces, quotes, empty arguments,
+and child compiler response-file references. An unreadable wrapper file
+reports its path and retains the underlying I/O error. Its upstream base is
+`rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding
+issue-61 queue.
 
-The declared base is `rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`)
-with the preceding issue-61 module and build-policy patches. The nested patch
-applies to the Ninja 1.13.2 BCR source archive and its published build overlay.
-The canonical tracking issue is <https://github.com/holdmyspot-com/codex-unleashed/issues/61>.
-Remove the workaround when the selected Ninja module preserves elapsed edge
-start times without narrowing and the regression passes without the type fix.
-
-Run from the patched checkout:
-
-```sh
-bazel test //tools/build-warnings/ninja:elapsed_time_test --test_output=errors
-bazel build @ninja//:ninja
-just fmt-check
-just bazel-lock-check
-```
-
-The runtime test checks an ordinary elapsed time and a start time above
-`INT_MAX`. Each edge has exactly one start and completion callback, both
-callbacks receive the same start time, and completion cannot precede the start.
-The test-only baseline loses the high bit in the completion callback. The
-patched native test preserves it. Linux execution does not establish native
-Windows/MSVC acceptance; that remains a hosted-platform gate.
-
-## Native libffi Darwin module configuration
-
-`zzz-libffi-native-module-probe.patch` selects bundled libtool's documented
-`LT_MULTI_MODULE` configure-time control for the Darwin libffi recipe. The
-C/assembly shared library uses the linker's default behavior without probing
-or adding the obsolete `-single_module` flag. Capability-cache values,
-warning rejection, and dependency versions remain unchanged. The tracking
-issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
-
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-native voice patches, including `zzz-libffi-native-library-directory.patch`.
-The control is documented directly in libffi 3.8.0's bundled
-`m4/libtool.m4`, in `_LT_REQUIRED_DARWIN_CHECKS`. Remove this workaround when
-the bundled libtool configuration omits the obsolete probe on modern Darwin.
-
-```sh
-python3 -m unittest discover -s third_party/voice -p test_build_native.py
-just fmt-check
-just bazel-lock-check
-```
-
-The recipe regression runs the bundled libtool probe with the environment
-selected by the native builder. It must complete without warning diagnostics
-and retain `capability=no`; a plain C Mach-O shared library must link with
-linker warnings fatal. Linux uses Clang and `ld64.lld` for this bounded
-cross-link check. Native macOS uses its native linker. The complete
-voice-prefix build and its consumers remain required native-platform gates.
-
-## Windows compiler flag ownership and Rust wrapper parameter files
-
-The `zzzz-0001` through `zzzz-0005` series applies in numeric order after the
-existing issue-61 queue. Its upstream base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`). The series uses the existing
-native MSVC analysis toolchain and dependency overrides. Adjacent patch
-registrations account for the ordering dependency; each file contains one fix.
-
-- `zzzz-0001-xz-windows-driver-flags.patch` restricts GNU stack flags to
-  Windows Clang, GCC, and MinGW GCC drivers. MSVC receives neither GNU flag;
-  the GNU Windows configuration retains both flags.
-  Its GNU analysis fixture clears runner-specific extra toolchains so native
-  MSVC CI does not replace the compiler configuration under inspection.
-- `zzzz-0002-cargo-c-standard.patch` lets Cargo build scripts choose their C
-  dialect without also exporting the toolchain's default dialect. Explicit
-  compile flags, the selected runtime, and fatal warnings remain enabled.
-- `zzzz-0003-aws-lc-c-standard.patch` selects AWS-LC's explicit C11 dialect
-  without also adding the toolchain's default C17 dialect. Its shared feature
-  selection covers the libraries, bundled tools, and tests.
-- `zzzz-0004-rust-wrapper-parameter-files.patch` lets Bazel spill long Rust
-  process-wrapper arguments into a multiline parameter file. The parser
-  preserves LF and CRLF files, backslashes, spaces, quotes, empty arguments,
-  and child compiler response-file references. An unreadable wrapper file
-  reports its path and retains the underlying I/O error.
-- `zzzz-0005-make-c-standard.patch` selects GNU Make's explicit C11 dialect
-  without also adding the toolchain's default dialect. Its analysis regression
-  reuses the native C-standard fixture from `zzzz-0003`.
-
-The compiler-action checks inspect the native MSVC toolchain configuration.
-They require the intended dialect or driver flags and retain `/WX` or
-`-Werror`. The Cargo check also requires exactly one static-runtime flag.
 The transport test uses 600 environment files to exceed Windows' process
 command-line limit and verifies that their compiler environment is available.
 The maintained wrapper suite includes a parameter file larger than that limit.
@@ -1136,21 +983,16 @@ The maintained wrapper suite includes a parameter file larger than that limit.
 Run the focused checks from the patched checkout root:
 
 ```sh
-bazel test //tools/build-warnings/xz:msvc_flags_test //tools/build-warnings/xz:gnu_flags_test //tools/build-warnings/cargo-c-standard:flags_test //tools/build-warnings/aws-lc:crypto_standard_test //tools/build-warnings/aws-lc:ssl_standard_test
 bazel test @rules_rust//util/process_wrapper:process_wrapper_test //tools/build-warnings/wrapper-params:transport_test
-bazel test //tools/build-warnings/make:standard_test
 just fmt-check
 just bazel-lock-check
 ```
 
-Each command succeeds. The action checks establish compiler configuration;
-full native Windows compilation and execution remain separate required gates.
-The AWS-LC action checks cover crypto and SSL directly; native CI also covers
-jitterentropy and other transitive targets. Linux execution of the transport
-test establishes parameter-file transport, while native Windows execution
-establishes behavior at the Windows process-creation boundary. The Bazel JVM
-startup diagnostic is a separate launcher issue and is not suppressed by this
-series. No dependency version changes are required.
+Each command succeeds. Linux execution of the transport test establishes
+parameter-file transport, while native Windows execution establishes behavior
+at the Windows process-creation boundary. The Bazel JVM startup diagnostic is a
+separate launcher issue and is not suppressed by this patch. No dependency
+version changes are required.
 
 ## Cargo native runtime features
 
@@ -1163,7 +1005,7 @@ settings remain enabled. Dependency versions remain unchanged.
 
 The base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61
-queue, including the Cargo C-standard and parameter-file patches. The tracking
+queue, including the parameter-file patch. The tracking
 issue is [#61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
 
 ```sh
@@ -1229,16 +1071,14 @@ The full macOS Cargo release build remains a separate required gate.
 
 ## Short regression test resource declarations
 
-The assembly, AWS-LC and Cargo C-standard, Make C-standard, Ninja elapsed-time,
-V8 MSVC-driver and XZ driver patches declare their eleven short native build
-regressions as small Bazel tests. It covers the assembly fixture checks,
-AWS-LC and Cargo C-standard checks, the Make C-standard check, the Ninja elapsed
-time check, the two V8 Windows action checks, and the two XZ driver checks. Verbose timeout diagnostics remain
+The native Windows assembly and V8 MSVC-driver patches declare their four short
+native build regressions as small Bazel tests: the two assembly fixture checks
+and the two V8 Windows action checks. Verbose timeout diagnostics remain
 active.
 
 The declared base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 patches
-that introduce these test targets, including `zzzz-0005-make-c-standard.patch`.
+that introduce these test targets.
 The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
 Run the following focused check with the MSVC runtime license environment set:
 
@@ -1246,18 +1086,11 @@ Run the following focused check with the MSVC runtime license environment set:
 bazel test --test_verbose_timeout_warnings --test_output=errors \
   //tools/build-warnings/assembly:native_fixture_selection_test \
   //tools/build-warnings/assembly/native:flags_test \
-  //tools/build-warnings/aws-lc:crypto_standard_test \
-  //tools/build-warnings/aws-lc:ssl_standard_test \
-  //tools/build-warnings/cargo-c-standard:flags_test \
-  //tools/build-warnings/make:standard_test \
-  //tools/build-warnings/ninja:elapsed_time_test \
   //tools/build-warnings/v8:windows_pointer_flags_test \
-  //tools/build-warnings/v8:windows_library_flags_test \
-  //tools/build-warnings/xz:gnu_flags_test \
-  //tools/build-warnings/xz:msvc_flags_test
+  //tools/build-warnings/v8:windows_library_flags_test
 ```
 
-All eleven checks pass without timing-range advisories. Required queue checks
+All four checks pass without timing-range advisories. Required queue checks
 remain `just fmt-check` and `just bazel-lock-check`.
 
 ## Explicit Python zip applications
@@ -1416,28 +1249,6 @@ The regression executes the actual compiled build script in its supported
 requires each Windows system library exactly once, without downloading or
 compiling a V8 archive. The complete Windows V8 link remains a required hosted
 acceptance gate.
-
-## Windows Ninja bootstrap parallelism
-
-`zzzz-0015-nmake-bootstrap-parallelism.patch` keeps the native Windows Ninja
-bootstrap free of CMake's unsupported-parallelism warning. NMake runs serially;
-the subsequent Ninja builds and Unix Makefiles bootstrap retain the configured
-parallel job count. Warning diagnostics remain fatal.
-
-The declared base is `rust-v0.163.0`
-(`83086188ae0614bd882818ff1aa23f3194962012`) with the preceding issue-61 queue.
-The tracking issue is https://github.com/holdmyspot-com/codex-unleashed/issues/61.
-With CMake and a native C/C++ toolchain available, run:
-
-```sh
-python3 -m unittest discover -v -s third_party/voice -p test_build_native.py
-just fmt-check
-just bazel-lock-check
-```
-
-The generator-support regression checks Windows NMake, Windows Ninja, Unix
-Makefiles, and Unix Ninja commands. The complete native Windows voice build
-remains a required hosted acceptance gate.
 
 ## V8 Windows assembly selection
 
@@ -2198,7 +2009,7 @@ existing narrowly scoped legacy-sandbox exclusion.
 
 ## Windows analysis host toolchain
 
-The assembly, OpenSSL GNU-Clang selection and XZ driver patches retain the
+The assembly and OpenSSL GNU-Clang selection patches retain the
 analysis-only MSVC toolchain when their analysis tests transition to a Windows
 GNU target.
 The host VFS generator otherwise resolves through the LLVM toolchain being
@@ -2214,7 +2025,7 @@ checkout, run:
 ```sh
 just fmt-check
 just bazel-lock-check
-bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/xz:msvc_flags_test //tools/build-warnings/xz:gnu_flags_test //tools/build-warnings/openssl:windows_perlasm_test
+bash .github/scripts/run-bazel-ci.sh --print-failed-test-logs -- test --test_output=errors --test_verbose_timeout_warnings -- //tools/build-warnings/assembly/native:flags_test //tools/build-warnings/openssl:windows_perlasm_test
 ```
 
 Native Windows MSVC CI must also run the affected regressions:

@@ -13,11 +13,15 @@ Base: rust-v0.162.1 (092d3acd6bec3e3a14bdc7e7a2810ab628ab759d). Tracking: https:
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
-index ede5a7f07..1f0fac918 100644
+index 2f4b09d..b6150c3 100644
 --- a/.github/workflows/bazel.yml
 +++ b/.github/workflows/bazel.yml
-@@ -30,3 +30,3 @@ jobs:
+@@ -28,7 +28,7 @@ jobs:
+           # macOS
+           - os: macos-15-xlarge
              target: aarch64-apple-darwin
 -          - os: macos-15-xlarge
 +          - os: macos-15-intel
              target: x86_64-apple-darwin
+ 
+           # Linux

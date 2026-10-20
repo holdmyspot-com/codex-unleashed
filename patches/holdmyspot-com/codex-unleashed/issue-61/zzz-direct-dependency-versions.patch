@@ -3,34 +3,73 @@ From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 01:11:21 +0000
 Subject: [PATCH] Require resolved direct Bazel dependency versions
 
-Align the direct bazel_lib pin with required version 3.7.2, the latest stable BCR version. Promote future direct-version mismatches to errors. A focused cquery fails with exit 48 against the old pin and passes after the update; the included resolver check also passes. Fresh emitted-patch verification follows in the owning CI repair goal.
+Update the direct bazel_lib pin to 3.7.2 and the direct xz pin to 5.4.5.bcr.9, the latest stable BCR versions; xz 5.4.5.bcr.9 requires bazel_lib 3.7.2. Promote future direct-version mismatches to errors. A focused cquery fails with exit 48 against the old pin and passes after the update; the included resolver check also passes.
 ---
  .bazelrc                                          | 1 +
- MODULE.bazel                                      | 2 +-
+ MODULE.bazel                                      | 4 ++--
+ MODULE.bazel.lock                                 | 6 ++++--
  tools/build-warnings/check-direct-dependencies.sh | 6 ++++++
- 3 files changed, 8 insertions(+), 1 deletion(-)
+ 4 files changed, 13 insertions(+), 4 deletions(-)
  create mode 100755 tools/build-warnings/check-direct-dependencies.sh
 
 diff --git a/.bazelrc b/.bazelrc
-index b20365f10..a77f52164 100644
+index 6474ac6..6e00c14 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -1,2 +1,3 @@
+@@ -1,4 +1,5 @@
  common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 +common --check_direct_dependencies=error
  common --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
+ # Dummy xcode config so we don't need to build xcode_locator in repo rule.
+ common --xcode_version_config=//:disable_xcode
 diff --git a/MODULE.bazel b/MODULE.bazel
-index c04ee65d7..5e14e29fd 100644
+index 42b6fde..2f571fe 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -2,3 +2,3 @@ module(name = "codex")
-
+@@ -1,6 +1,6 @@
+ module(name = "codex")
+ 
 -bazel_dep(name = "bazel_lib", version = "3.2.2")
 +bazel_dep(name = "bazel_lib", version = "3.7.2")
  bazel_dep(name = "bazel_skylib", version = "1.9.2")
+ bazel_dep(name = "platforms", version = "1.1.0")
+ 
+@@ -489,7 +489,7 @@ crate.annotation(
+ 
+ inject_repo(crate, "zlib")
+ 
+-bazel_dep(name = "xz", version = "5.4.5.bcr.8")
++bazel_dep(name = "xz", version = "5.4.5.bcr.9")
+ single_version_override(
+     module_name = "xz",
+     patch_strip = 1,
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index 81bf245..67d4fb3 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -61,7 +61,8 @@
+     "https://bcr.bazel.build/modules/bazel_lib/3.1.0/MODULE.bazel": "6809765c14e3c766a9b9286c7b0ec56ed87a73326e48fe01749f0c0fdcfe3287",
+     "https://bcr.bazel.build/modules/bazel_lib/3.2.0/MODULE.bazel": "39b50d94b9be6bda507862254e20c263f9b950e3160112348d10a938be9ce2c2",
+     "https://bcr.bazel.build/modules/bazel_lib/3.2.2/MODULE.bazel": "e2c890c8a515d6bca9c66d47718aa9e44b458fde64ec7204b8030bf2d349058c",
+-    "https://bcr.bazel.build/modules/bazel_lib/3.2.2/source.json": "9e84e115c20e14652c5c21401ae85ff4daa8702e265b5c0b3bf89353f17aa212",
++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/MODULE.bazel": "cbc920fff00a55b2fd663d40850560a6fb17fd5ef3a9f3d6cbf0d32908dd8a40",
++    "https://bcr.bazel.build/modules/bazel_lib/3.7.2/source.json": "7a9c2b06a113c4962d329bb68befdb90d0447788a19aabaa32b476a0458e7d28",
+     "https://bcr.bazel.build/modules/bazel_skylib/1.0.3/MODULE.bazel": "bcb0fd896384802d1ad283b4e4eb4d718eebd8cb820b0a2c3a347fb971afd9d8",
+     "https://bcr.bazel.build/modules/bazel_skylib/1.1.1/MODULE.bazel": "1add3e7d93ff2e6998f9e118022c84d163917d912f5afafb3058e3d2f1545b5e",
+     "https://bcr.bazel.build/modules/bazel_skylib/1.2.0/MODULE.bazel": "44fe84260e454ed94ad326352a698422dbe372b21a1ac9f3eab76eb531223686",
+@@ -290,7 +291,8 @@
+     "https://bcr.bazel.build/modules/with_cfg.bzl/0.12.0/MODULE.bazel": "b573395fe63aef4299ba095173e2f62ccfee5ad9bbf7acaa95dba73af9fc2b38",
+     "https://bcr.bazel.build/modules/with_cfg.bzl/0.12.0/source.json": "3f3fbaeafecaf629877ad152a2c9def21f8d330d91aa94c5dc75bbb98c10b8b8",
+     "https://bcr.bazel.build/modules/xz/5.4.5.bcr.8/MODULE.bazel": "e48a69bd54053c2ec5fffc2a29fb70122afd3e83ab6c07068f63bc6553fa57cc",
+-    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.8/source.json": "bd7e928ccd63505b44f4784f7bbf12cc11f9ff23bf3ca12ff2c91cd74846099e",
++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/MODULE.bazel": "ff7cf8a5334a96b7b9ffcbe73418d45929ce125efebac39c1ee7d14bd2ae7a9b",
++    "https://bcr.bazel.build/modules/xz/5.4.5.bcr.9/source.json": "abf61f3c1630eab7b81722f710060b6f31e7c160511bcbfaad74bb4385883051",
+     "https://bcr.bazel.build/modules/zlib-ng/2.3.3.bcr.2/MODULE.bazel": "86130924115bf8dfc4aba286fb49a2ec8d32430a21771db9ccf5381acf0d10cc",
+     "https://bcr.bazel.build/modules/zlib-ng/2.3.3.bcr.2/source.json": "7aa4112eb2fbb99757e97cf0b7a4e2bdb3464b2b3cfb351bc807ffcb34bd349f",
+     "https://bcr.bazel.build/modules/zlib/1.2.11/MODULE.bazel": "07b389abc85fdbca459b69e2ec656ae5622873af3f845e1c9d80fe179f3effa0",
 diff --git a/tools/build-warnings/check-direct-dependencies.sh b/tools/build-warnings/check-direct-dependencies.sh
 new file mode 100755
-index 000000000..beae00edc
+index 0000000..beae00e
 --- /dev/null
 +++ b/tools/build-warnings/check-direct-dependencies.sh
 @@ -0,0 +1,6 @@

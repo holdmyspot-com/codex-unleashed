@@ -17,30 +17,29 @@ Subject: [PATCH] Transport long Rust wrapper commands through parameter files
  create mode 100644 tools/build-warnings/wrapper-params/transport.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 6487ffeb4..0e03866b7 100644
+index a106f59cf..d0ef6ae22 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -284,9 +284,8 @@ rules_rust.patch(
+@@ -258,8 +258,7 @@ rules_rust.patch(
          # Skip transient native-Windows linker outputs while consolidating
          # dependency search paths.
          "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
 -        # Spill wrapper arguments to a params file to avoid Windows command-line limits.
 -        "//patches:rules_rust_process_wrapper_param_file.patch",
-         "//patches:rules_rust_cargo_c_standard.patch",
 +        "//patches:rules_rust_wrapper_parameter_files.patch",
          "//patches:rules_rust_windows_execroot_separators.patch",
          "//patches:rules_rust_compiler_thp.patch",
          "//patches:rules_rust_unwind_driver_selection.patch",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index cb809ec7a..c9c6a9df6 100644
+index 1a495c211..d14e69e24 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
  exports_files([
 +    "rules_rust_wrapper_parameter_files.patch",
-     "aws_lc_c_standard.patch",
-     "rules_rust_cargo_c_standard.patch",
-     "xz_windows_driver_flags.patch",
+     "opusic_sys_library_directories.patch",
+     "make_getopt_prototypes.patch",
+     "make_compiler_warnings.patch",
 diff --git a/patches/rules_rust_wrapper_parameter_files.patch b/patches/rules_rust_wrapper_parameter_files.patch
 new file mode 100644
 index 000000000..c46e6bee4

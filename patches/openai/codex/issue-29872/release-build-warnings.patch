@@ -27,20 +27,26 @@ recorded separately in release-debug-items-verification.json.
  6 files changed, 20 insertions(+), 1 deletion(-)
 
 diff --git a/codex-rs/analytics/src/client_tests.rs b/codex-rs/analytics/src/client_tests.rs
-index 55f53efe2..b8899c467 100644
+index 13c9426..64ce76b 100644
 --- a/codex-rs/analytics/src/client_tests.rs
 +++ b/codex-rs/analytics/src/client_tests.rs
-@@ -91,3 +91,5 @@ use codex_app_server_protocol::TurnSteerParams;
+@@ -91,7 +91,9 @@ use codex_app_server_protocol::TurnStartResponse;
+ use codex_app_server_protocol::TurnStatus as AppServerTurnStatus;
+ use codex_app_server_protocol::TurnSteerParams;
  use codex_app_server_protocol::TurnSteerResponse;
 +#[cfg(debug_assertions)]
  use codex_http_client::HttpClientFactory;
 +#[cfg(debug_assertions)]
  use codex_http_client::OutboundProxyPolicy;
+ #[cfg(debug_assertions)]
+ use codex_login::AuthManager;
 diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
-index 896aa6623..868dfb9e8 100644
+index 70e8519..fcfbe74 100644
 --- a/codex-rs/app-server/src/lib.rs
 +++ b/codex-rs/app-server/src/lib.rs
-@@ -1511,5 +1511,8 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+@@ -1516,9 +1516,12 @@ fn test_user_config_file_from_env() -> Option<std::path::PathBuf> {
+ }
+ 
  fn loader_overrides_with_test_user_config_file(
 -    mut loader_overrides: LoaderOverrides,
 +    loader_overrides: LoaderOverrides,
@@ -50,25 +56,35 @@ index 896aa6623..868dfb9e8 100644
 +    let mut loader_overrides = loader_overrides;
 +
      #[cfg(debug_assertions)]
+     if let Some(path) = test_user_config_file {
+         let path = AbsolutePathBuf::from_absolute_path(path).map_err(|err| {
 diff --git a/codex-rs/app-server/src/main.rs b/codex-rs/app-server/src/main.rs
-index 4119cedfe..d156a1b54 100644
+index 4119ced..d156a1b 100644
 --- a/codex-rs/app-server/src/main.rs
 +++ b/codex-rs/app-server/src/main.rs
-@@ -6,2 +6,3 @@ use codex_app_server::AppServerRuntimeOptions;
+@@ -4,6 +4,7 @@ use clap::Parser;
+ use codex_app_server::AppServerCodeModeHostArgs;
+ use codex_app_server::AppServerRuntimeOptions;
  use codex_app_server::AppServerTransport;
 +#[cfg(debug_assertions)]
  use codex_app_server::PluginStartupTasks;
-@@ -26,3 +27,5 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+ use codex_app_server::run_main_with_transport_options;
+ use codex_arg0::Arg0DispatchPaths;
+@@ -24,7 +25,9 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+ 
+ // Debug-only test hook: lets integration tests point the server at a temporary
  // managed config file without writing to /etc.
 +#[cfg(debug_assertions)]
  const MANAGED_CONFIG_PATH_ENV_VAR: &str = "CODEX_APP_SERVER_MANAGED_CONFIG_PATH";
 +#[cfg(debug_assertions)]
  const DISABLE_MANAGED_CONFIG_ENV_VAR: &str = "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG";
+ 
+ #[derive(Debug, Parser)]
 diff --git a/codex-rs/cli/tests/update.rs b/codex-rs/cli/tests/update.rs
-index cf1742cda..4d95ba6a7 100644
+index cf1742c..4d95ba6 100644
 --- a/codex-rs/cli/tests/update.rs
 +++ b/codex-rs/cli/tests/update.rs
-@@ -1,6 +1,11 @@
+@@ -1,8 +1,13 @@
 +#[cfg(debug_assertions)]
  use anyhow::Result;
 +#[cfg(debug_assertions)]
@@ -77,30 +93,37 @@ index cf1742cda..4d95ba6a7 100644
  use std::path::Path;
 +#[cfg(debug_assertions)]
  use tempfile::TempDir;
-
+ 
 +#[cfg(debug_assertions)]
  fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
+     let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
+     cmd.env("CODEX_HOME", codex_home);
 diff --git a/codex-rs/cloud-tasks/src/lib.rs b/codex-rs/cloud-tasks/src/lib.rs
-index 664368416..1c3dea772 100644
+index 6643684..1c3dea7 100644
 --- a/codex-rs/cloud-tasks/src/lib.rs
 +++ b/codex-rs/cloud-tasks/src/lib.rs
-@@ -15,3 +15,5 @@ use codex_git_utils::default_branch_name;
+@@ -13,7 +13,9 @@ use codex_cloud_tasks_client::TaskStatus;
+ use codex_git_utils::current_branch_name;
+ use codex_git_utils::default_branch_name;
  use codex_http_client::ClientRouteClass;
 +#[cfg(debug_assertions)]
  use codex_http_client::HttpClientFactory;
 +#[cfg(debug_assertions)]
  use codex_http_client::OutboundProxyPolicy;
+ use codex_http_client::RouteAwareClientPool;
+ use codex_login::default_client::get_codex_user_agent;
 diff --git a/justfile b/justfile
-index 3614939c7..407bd3dd8 100644
+index fa823fa..1bed6c4 100644
 --- a/justfile
 +++ b/justfile
-@@ -62,2 +62,6 @@ clippy *args:
-
+@@ -66,6 +66,10 @@ clippy *args:
+ check-build-warnings *args:
+     bash {{ justfile_directory() }}/tools/build-warnings/check.sh "$@"
+ 
 +# Check unused imports, mutable bindings, and dead code in release targets.
 +check-release-warnings:
 +    cargo clippy --release --all-targets -p codex-core -p codex-app-server -p codex-cloud-tasks -p codex-analytics -p codex-cli -- --no-deps -D unused_imports -D unused_mut -D dead_code
 +
  [unix]
--- 
-2.43.0
-
+ install:
+     rustup show active-toolchain

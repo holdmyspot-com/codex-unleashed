@@ -331,6 +331,18 @@ jobs:
           path: upstream-rusty-v8
           submodules: recursive
 
+      - name: Download upstream tools/win
+        shell: bash
+        working-directory: upstream-rusty-v8
+        # rusty_v8 skips this submodule because its mirror can advertise commits before their objects exist; fetch the
+        # pinned commit's archive, as upstream CI does, for the Windows DebugVisualizers that GN loads.
+        run: |
+          set -euo pipefail
+          commit="$(git ls-tree HEAD tools/win | awk '{print $3}')"
+          mkdir -p tools/win
+          curl -fsSL --retry 3 "https://chromium.googlesource.com/chromium/src/tools/win/+archive/${commit}.tar.gz" |
+            tar -xz -C tools/win
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"

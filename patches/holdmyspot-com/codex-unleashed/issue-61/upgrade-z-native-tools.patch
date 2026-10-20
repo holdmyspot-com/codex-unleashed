@@ -35,7 +35,7 @@ Retain native tool upgrades and compilation fixes without warning-only Make sour
  create mode 100644 tools/build-warnings/make-bootstrap/warnings_test.bzl
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 3a5e65b61..48813c4ca 100644
+index ddfc04724..ee0bc4a00 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -1,7 +1,7 @@
@@ -47,7 +47,7 @@ index 3a5e65b61..48813c4ca 100644
  bazel_dep(name = "platforms", version = "1.1.0")
  
  # Expose the public protobuf rules already used transitively by rules_rs.
-@@ -175,39 +175,55 @@ single_version_override(
+@@ -174,39 +174,55 @@ single_version_override(
  )
  
  bazel_dep(name = "rules_rs", version = "0.0.96")
@@ -121,7 +121,7 @@ index 3a5e65b61..48813c4ca 100644
  
  single_version_override(
      module_name = "rules_rs",
-@@ -535,18 +551,6 @@ crate.annotation(
+@@ -533,18 +549,6 @@ crate.annotation(
  
  http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
  
@@ -140,7 +140,7 @@ index 3a5e65b61..48813c4ca 100644
  http_archive(
      name = "pkgconf_src",
      build_file_content = 'filegroup(name = "all_srcs", srcs = glob(["**"]), visibility = ["//visibility:public"])',
-@@ -555,6 +559,7 @@ http_archive(
+@@ -553,6 +557,7 @@ http_archive(
      urls = ["https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-3.0.8.tar.gz"],
  )
  
@@ -998,7 +998,7 @@ index 3697331f8..ce5f94a17 100644
        "Inflector_0.11.4": "{\"dependencies\":[{\"name\":\"lazy_static\",\"optional\":true,\"req\":\"^1.2.0\"},{\"name\":\"regex\",\"optional\":true,\"req\":\"^1.1\"}],\"features\":{\"default\":[\"heavyweight\"],\"heavyweight\":[\"regex\",\"lazy_static\"],\"unstable\":[]}}",
        "addr2line_0.25.1": "{\"dependencies\":[{\"name\":\"alloc\",\"optional\":true,\"package\":\"rustc-std-workspace-alloc\",\"req\":\"^1.0.0\"},{\"kind\":\"dev\",\"name\":\"backtrace\",\"req\":\"^0.3.13\"},{\"features\":[\"wrap_help\"],\"name\":\"clap\",\"optional\":true,\"req\":\"^4.3.21\"},{\"name\":\"core\",\"optional\":true,\"package\":\"rustc-std-workspace-core\",\"req\":\"^1.0.0\"},{\"default_features\":false,\"features\":[\"alloc\"],\"name\":\"cpp_demangle\",\"optional\":true,\"req\":\"^0.4\"},{\"kind\":\"dev\",\"name\":\"criterion\",\"req\":\"^0.7.0\"},{\"default_features\":false,\"name\":\"fallible-iterator\",\"optional\":true,\"req\":\"^0.3.0\"},{\"kind\":\"dev\",\"name\":\"findshlibs\",\"req\":\"^0.10\"},{\"default_features\":false,\"features\":[\"read\"],\"name\":\"gimli\",\"req\":\"^0.32.0\"},{\"kind\":\"dev\",\"name\":\"libtest-mimic\",\"req\":\"^0.8.1\"},{\"name\":\"memmap2\",\"optional\":true,\"req\":\"^0.9.4\"},{\"default_features\":false,\"features\":[\"read\",\"compression\"],\"name\":\"object\",\"optional\":true,\"req\":\"^0.37.0\"},{\"name\":\"rustc-demangle\",\"optional\":true,\"req\":\"^0.1\"},{\"default_features\":false,\"name\":\"smallvec\",\"optional\":true,\"req\":\"^1\"},{\"name\":\"typed-arena\",\"optional\":true,\"req\":\"^2\"}],\"features\":{\"all\":[\"bin\",\"wasm\"],\"bin\":[\"loader\",\"rustc-demangle\",\"cpp_demangle\",\"fallible-iterator\",\"smallvec\",\"dep:clap\"],\"cargo-all\":[],\"default\":[\"rustc-demangle\",\"cpp_demangle\",\"loader\",\"fallible-iterator\",\"smallvec\"],\"loader\":[\"std\",\"dep:object\",\"dep:memmap2\",\"dep:typed-arena\"],\"rustc-dep-of-std\":[\"core\",\"alloc\",\"gimli/rustc-dep-of-std\"],\"std\":[\"gimli/std\"],\"wasm\":[\"object/wasm\"]}}",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index d40571f7b..8732fa21e 100644
+index 133e504ee..616862555 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,7 @@
@@ -1009,7 +1009,7 @@ index d40571f7b..8732fa21e 100644
      "aws_lc_windows_tls.patch",
      "rules_rust_unwind_driver_selection.patch",
      "llvm_warnings_as_errors.patch",
-@@ -17,9 +20,6 @@ exports_files([
+@@ -16,9 +19,6 @@ exports_files([
      "rules_rust_windows_msvc_direct_link_args.patch",
      "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
      "rules_cc_rusty_v8_custom_libcxx.patch",
@@ -1017,8 +1017,8 @@ index d40571f7b..8732fa21e 100644
 -    "rules_foreign_cc_make_xcompile.patch",
 -    "rules_foreign_cc_make_msvc_stdint.patch",
      "rules_rs_build_script_deps_annotation.patch",
-     "rules_rs_bindgen_preprocessor_policy.patch",
      "rules_rs_rust_debug_modes.patch",
+     "rules_rs_windows_msvc_linker.patch",
 diff --git a/patches/make_compiler_warnings.patch b/patches/make_compiler_warnings.patch
 new file mode 100644
 index 000000000..0a6b353c1

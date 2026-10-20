@@ -287,6 +287,14 @@ if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
   local_jobs=1
 fi
 post_config_bazel_args+=("--loading_phase_threads=${local_jobs}" "--local_test_jobs=${local_jobs}")
+# Each CI job builds once, so drop the reverse dependency edges that only incremental rebuilds use. Hermetic
+# libclang for bindgen build scripts puts LLVM in the analysis graph, which otherwise exhausts the Bazel server heap.
+# Queries over analysis results, such as cquery, require that state.
+case "${bazel_args[0]}" in
+  build|test|run|coverage)
+    post_config_bazel_args+=(--notrack_incremental_state --nokeep_state_after_build)
+    ;;
+esac
 if [[ -n "${BUILDBUDDY_API_KEY:-}" && ( "${RUNNER_OS:-}" != "Windows" || $windows_cross_compile -eq 1 ) ]]; then
   post_config_bazel_args+=("--local_resources=cpu=${local_jobs}")
   if [[ "${RUNNER_OS:-}" == "macOS" ]]; then

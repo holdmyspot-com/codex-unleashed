@@ -15,18 +15,22 @@ Regression: hash_initializers_test fails with 21 generated initializers before t
  create mode 100644 tools/build-warnings/python/init_files_test.bzl
 
 diff --git a/.bazelrc b/.bazelrc
-index 88bb56b13..b20365f10 100644
+index f17e64e..04a0ea3 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -28,2 +28,5 @@ common --noenable_runfiles
-
+@@ -28,6 +28,9 @@ build:windows --workspace_status_command=./scripts/workspace-status.cmd
+ # Runfiles strategy rationale: codex-rs/utils/cargo-bin/README.md
+ common --noenable_runfiles
+ 
 +# Python targets declare their required package initializers explicitly.
 +common --incompatible_default_to_explicit_init_py
 +
  common --enable_platform_specific_config
+ common:linux --host_platform=//:local_linux
+ common:windows --host_platform=//:local_windows
 diff --git a/tools/build-warnings/python/BUILD.bazel b/tools/build-warnings/python/BUILD.bazel
 new file mode 100644
-index 000000000..cf3fbb4aa
+index 0000000..cf3fbb4
 --- /dev/null
 +++ b/tools/build-warnings/python/BUILD.bazel
 @@ -0,0 +1,7 @@
@@ -39,7 +43,7 @@ index 000000000..cf3fbb4aa
 +)
 diff --git a/tools/build-warnings/python/init_files_test.bzl b/tools/build-warnings/python/init_files_test.bzl
 new file mode 100644
-index 000000000..7569309bd
+index 0000000..7569309
 --- /dev/null
 +++ b/tools/build-warnings/python/init_files_test.bzl
 @@ -0,0 +1,14 @@

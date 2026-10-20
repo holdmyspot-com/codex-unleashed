@@ -13,14 +13,13 @@ Cargo exact target-query probe: darwin-lld exits 1 as unstable; ld64.lld exits 0
  create mode 100755 tools/build-warnings/check-darwin-linker.sh
 
 diff --git a/codex-rs/.cargo/config.toml b/codex-rs/.cargo/config.toml
-index bd1d67e1e..92e1f1109 100644
+index bd1d67e..92e1f11 100644
 --- a/codex-rs/.cargo/config.toml
 +++ b/codex-rs/.cargo/config.toml
-@@ -1,8 +1,15 @@
- [build]
+@@ -2,6 +2,13 @@
  warnings = "deny"
  rustdocflags = ["-Dwarnings"]
-
+ 
 +[target.'cfg(target_os = "macos")']
 +# WORKAROUND: https://github.com/rust-lang/rust/issues/159105
 +# Apple's linker warns for large unwind sections. LLD retains valid DWARF
@@ -30,11 +29,10 @@ index bd1d67e1e..92e1f1109 100644
 +
  [target.'cfg(all(windows, target_env = "msvc"))']
  rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
-
- # MSVC emits a warning about code that may trip "Cortex-A53 MPCore processor bug #843419" (see
+ 
 diff --git a/tools/build-warnings/check-darwin-linker.sh b/tools/build-warnings/check-darwin-linker.sh
 new file mode 100755
-index 000000000..d1191efe3
+index 0000000..d1191ef
 --- /dev/null
 +++ b/tools/build-warnings/check-darwin-linker.sh
 @@ -0,0 +1,109 @@

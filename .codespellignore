@@ -6,3 +6,5 @@ nd
 seh
 # Rust crate name used in Cargo and Bazel dependency metadata.
 inout
+# IBM i Portable Application Solutions Environment, named in V8 sources.
+pase

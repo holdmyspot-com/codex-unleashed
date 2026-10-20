@@ -22,30 +22,30 @@ Subject: [PATCH] Align Cargo build-script target features with Rust runtime
  create mode 100644 tools/build-warnings/cargo-runtime/runtime.rs
 
 diff --git a/MODULE.bazel b/MODULE.bazel
-index 61741154e..4b644c0fa 100644
+index d0ef6ae22..df3bd0eb1 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -287,6 +287,7 @@ rules_rust.patch(
+@@ -259,6 +259,7 @@ rules_rust.patch(
+         # dependency search paths.
          "//patches:rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
-         "//patches:rules_rust_cargo_c_standard.patch",
          "//patches:rules_rust_wrapper_parameter_files.patch",
 +        "//patches:rules_rust_cargo_runtime_flags.patch",
          "//patches:rules_rust_windows_execroot_separators.patch",
          "//patches:rules_rust_compiler_thp.patch",
          "//patches:rules_rust_unwind_driver_selection.patch",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index a54bd81a6..333408e68 100644
+index d14e69e24..fb1c02d09 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -1,4 +1,5 @@
  exports_files([
 +    "rules_rust_cargo_runtime_flags.patch",
-     "make_c_standard.patch",
      "rules_rust_wrapper_parameter_files.patch",
-     "aws_lc_c_standard.patch",
+     "opusic_sys_library_directories.patch",
+     "make_getopt_prototypes.patch",
 diff --git a/patches/rules_rust_cargo_runtime_flags.patch b/patches/rules_rust_cargo_runtime_flags.patch
 new file mode 100644
-index 000000000..94a202ce0
+index 000000000..d7bdf34db
 --- /dev/null
 +++ b/patches/rules_rust_cargo_runtime_flags.patch
 @@ -0,0 +1,69 @@
@@ -61,10 +61,10 @@ index 000000000..94a202ce0
 + 2 files changed, 24 insertions(+), 7 deletions(-)
 +
 +diff --git a/cargo/private/cargo_build_script.bzl b/cargo/private/cargo_build_script.bzl
-+index 3865418..ad1007b 100644
++index 15577c9..b2bac19 100644
 +--- a/cargo/private/cargo_build_script.bzl
 ++++ b/cargo/private/cargo_build_script.bzl
-+@@ -603,10 +603,12 @@ def _cargo_build_script_impl(ctx):
++@@ -594,10 +594,12 @@ def _cargo_build_script_impl(ctx):
 +
 +     # Inform build scripts of rustc flags
 +     # https://github.com/rust-lang/cargo/issues/9600
