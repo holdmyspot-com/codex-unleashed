@@ -88,6 +88,8 @@ public final class Main
 			return switch (args[0])
 			{
 				case "run-local-rust" -> LocalRustCommand.run(Arrays.copyOfRange(args, 1, args.length), err);
+				case ScheduleCompilersCommand.NAME ->
+					ScheduleCompilersCommand.run(Arrays.copyOfRange(args, 1, args.length), err);
 				case "download-workflow-artifact" ->
 				{
 					if (args.length != 5)
@@ -248,6 +250,7 @@ public final class Main
 	{
 		err.println("Usage: codex-tooling <command> <arguments>");
 		err.println("  run-local-rust <project-root> <checkout> <cache-name> -- <command> [argument ...]");
+		err.println("  " + ScheduleCompilersCommand.NAME + " -- <command> [argument ...]");
 		err.println("  download-workflow-artifact <owner/name> <run-id> <artifact-name> <destination>");
 		err.println("  stage-release-installers <upstream-checkout> <release-directory>");
 		err.println("  next-release-build-number <upstream-tag> (tag inventory on standard input)");

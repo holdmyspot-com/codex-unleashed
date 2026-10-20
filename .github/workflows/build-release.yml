@@ -928,7 +928,12 @@ jobs:
             # rejected because one of its inputs changed.
             export CARGO_LOG="cargo::core::compiler::fingerprint=info"
           fi
-          ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output"
+          build=(./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output")
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            # Pause, kill, and rerun compilers so that parallel rustc invocations stay within the runner's memory.
+            build=(.github/scripts/run-memory-scheduled-build.sh "${build[@]}")
+          fi
+          "${build[@]}"
 
       - name: Record successfully compiled source inputs
         shell: bash
