@@ -1,18 +1,37 @@
-From 27bb724d4205d46080fd9d4f639ab04ecb880dda Mon Sep 17 00:00:00 2001
+From 5ef5f9b35f9a9684a5eb1cfc40a801c9b8545cf9 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 21 Oct 2026 11:27:07 -0400
-Subject: [PATCH] test(uds): avoid slow ACL cmdlet startup on Windows
+Subject: [PATCH] test(uds): avoid PowerShell module startup in Windows
+ fixtures
 
-The two PowerShell ACL inspections consume 53.6 seconds by themselves on Windows CI, exhausting the shared 60-second test target budget. Use DirectoryInfo ACL methods for the same independent ACL setup and SDDL comparison, preserving both PermissionDenied assertions and the no-repair assertion. Native verification is required before accepting this candidate.
+Native CI spends most of the shared 60-second socket-test budget loading management and ACL cmdlets. Use cmd.exe mklink for the real junction and DirectoryInfo/FileInfo ACL methods for independent permission checks. Preserve all junction rejection, user-only inheritance, broad-ACL rejection and no-repair assertions.
 ---
- codex-rs/uds/src/lib_tests.rs | 9 +++++----
- 1 file changed, 5 insertions(+), 4 deletions(-)
+ codex-rs/uds/src/lib_tests.rs | 26 +++++++++++++++-----------
+ 1 file changed, 15 insertions(+), 11 deletions(-)
 
 diff --git a/codex-rs/uds/src/lib_tests.rs b/codex-rs/uds/src/lib_tests.rs
-index 91040b1..d20aabc 100644
+index 91040b1..9fe72b4 100644
 --- a/codex-rs/uds/src/lib_tests.rs
 +++ b/codex-rs/uds/src/lib_tests.rs
-@@ -87,12 +87,13 @@ async fn socket_validation_rejects_broad_acl_without_repairing_it() {
+@@ -27,11 +27,12 @@ async fn private_directory_rejects_junctions() {
+     let target = temp.path().join("target");
+     let junction = temp.path().join("junction");
+     std::fs::create_dir(&target).expect("target");
+-    let output = std::process::Command::new("powershell.exe")
+-        .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; New-Item -ItemType Junction -Path $env:CODEX_TEST_LINK -Target $env:CODEX_TEST_TARGET | Out-Null"])
+-        .env("CODEX_TEST_LINK", &junction)
+-        .env("CODEX_TEST_TARGET", &target)
+-        .output().expect("create junction");
++    let output = std::process::Command::new("cmd.exe")
++        .args(["/D", "/Q", "/C", "mklink", "/J"])
++        .arg(&junction)
++        .arg(&target)
++        .output()
++        .expect("create junction");
+     assert!(
+         output.status.success(),
+         "{}",
+@@ -87,12 +88,13 @@ async fn socket_validation_rejects_broad_acl_without_repairing_it() {
      let before = inspect(
          r#"
  $ErrorActionPreference = 'Stop'
@@ -29,7 +48,7 @@ index 91040b1..d20aabc 100644
  "#,
      );
      assert_eq!(
-@@ -111,7 +112,7 @@ Set-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY -AclObject $acl
+@@ -111,7 +113,7 @@ Set-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY -AclObject $acl
      assert_eq!(
          before,
          inspect(
@@ -38,3 +57,17 @@ index 91040b1..d20aabc 100644
          )
      );
  }
+@@ -150,9 +152,11 @@ async fn private_directory_acl_is_user_only_and_inherited_by_files() {
+         .args(["-NoProfile", "-NonInteractive", "-Command", r#"
+ $ErrorActionPreference = 'Stop'
+ $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+-$directory = Get-Acl -LiteralPath $env:CODEX_TEST_PRIVATE_DIRECTORY
++$directory = [System.IO.DirectoryInfo]::new($env:CODEX_TEST_PRIVATE_DIRECTORY).GetAccessControl()
+ if (-not $directory.AreAccessRulesProtected) { throw 'directory inherits broad access' }
+-foreach ($acl in @($directory, (Get-Acl -LiteralPath (Join-Path $env:CODEX_TEST_PRIVATE_DIRECTORY 'child')), (Get-Acl -LiteralPath (Join-Path $env:CODEX_TEST_PRIVATE_DIRECTORY 'socket')))) {
++$child = [System.IO.FileInfo]::new([System.IO.Path]::Combine($env:CODEX_TEST_PRIVATE_DIRECTORY, 'child')).GetAccessControl()
++$socket = [System.IO.FileInfo]::new([System.IO.Path]::Combine($env:CODEX_TEST_PRIVATE_DIRECTORY, 'socket')).GetAccessControl()
++foreach ($acl in @($directory, $child, $socket)) {
+     $rules = @($acl.Access)
+     if ($rules.Count -ne 1) { throw 'unexpected access rules' }
+     if ($rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) { throw 'wrong user' }

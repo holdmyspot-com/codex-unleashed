@@ -2548,11 +2548,12 @@ sandbox cannot access `/dev/null`.
 
 ## Windows socket ACL fixture startup
 
-`zzzz-0075-windows-acl-test-startup.patch` uses .NET `DirectoryInfo` ACL methods
-in the existing PowerShell fixture instead of loading the ACL cmdlets. The
-fixture grants Everyone access and compares the directory SDDL before and
-after both native rejection checks. Both `PermissionDenied` assertions and
-the assertion that rejection leaves the ACL unchanged remain enabled.
+`zzzz-0075-windows-acl-test-startup.patch` uses .NET `DirectoryInfo` and
+`FileInfo` ACL methods in the PowerShell fixtures instead of loading ACL
+cmdlets, and `cmd.exe`'s `mklink /J` to create the real junction. The fixtures
+verify junction rejection, user-only ACL inheritance, and rejection of broad
+access without repair. Both `PermissionDenied` assertions and the comparison
+of directory SDDL before and after rejection remain enabled.
 
 The patch applies directly to the declared upstream base without other
 patches. Native Windows verification runs the complete
