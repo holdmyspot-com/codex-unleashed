@@ -2,7 +2,7 @@
 
 ## Intent
 
-Codex Unleashed builds with Rust/Cargo 1.99.0 and Bazel 9.3.0. Rendering tests
+Codex Unleashed builds with Rust/Cargo 1.99.1 and Bazel 9.3.0. Rendering tests
 check the rendered cells and styled spans without depending on the standard
 library's Unicode debug escaping. The build retains strict lint checks.
 
