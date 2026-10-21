@@ -42,6 +42,23 @@ jobs:
           export TMPDIR="$RUNNER_TEMP"
           bash .github/scripts/test-bazel-msvc-pathmap.sh
           bash .github/scripts/test-bazel-cross-host.sh
+      - name: Check PowerShell junction creation outside Bazel
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = Join-Path $env:RUNNER_TEMP ('junction-probe-' + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path (Join-Path $directory 'target') -Force | Out-Null
+          try {
+            $env:CODEX_TEST_LINK = Join-Path $directory 'junction'
+            $env:CODEX_TEST_TARGET = Join-Path $directory 'target'
+            $elapsed = Measure-Command {
+              & powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = ''Stop''; New-Item -ItemType Junction -Path $env:CODEX_TEST_LINK -Target $env:CODEX_TEST_TARGET | Out-Null'
+              if ($LASTEXITCODE -ne 0) { throw 'PowerShell junction probe failed' }
+            }
+            Write-Output ('PowerShell junction creation seconds: ' + $elapsed.TotalSeconds)
+          } finally {
+            Remove-Item -LiteralPath $directory -Recurse -Force
+          }
       - name: Verify AWS-LC consumers and reproduce socket tests
         shell: bash
         env:
@@ -55,6 +72,16 @@ jobs:
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
             --nocache_test_results --test_output=errors \
             -- //codex-rs/http-client:http-client-unit-tests //codex-rs/uds:uds-unit-tests
+      - name: Inspect the AWS-LC compiler response file
+        if: failure()
+        shell: pwsh
+        run: |
+          $response = 'upstream/bazel-out/windows_x86_64_msvc-fastbuild/bin/external/aws-lc+/_objs/crypto/bcm.obj.params'
+          if (Test-Path -LiteralPath $response) {
+            Get-Content -LiteralPath $response
+          } else {
+            throw ('Compiler response file is unavailable: ' + $response)
+          }
 
   source-paths:
     runs-on: windows-2022
