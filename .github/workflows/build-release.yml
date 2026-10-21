@@ -932,6 +932,8 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             # Pause, kill, and rerun compilers so that parallel rustc invocations stay within the runner's memory.
             build=(.github/scripts/run-memory-scheduled-build.sh "${build[@]}")
+            TMPDIR="$RUNNER_TEMP" bash .github/scripts/test-linux-build-observer.sh
+            build=(bash .github/scripts/observe-linux-build.sh "${build[@]}")
           fi
           "${build[@]}"
 
