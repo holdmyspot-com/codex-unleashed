@@ -62,9 +62,38 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw 'PowerShell junction probe failed' }
             }
             Write-Output ('PowerShell junction creation seconds: ' + $elapsed.TotalSeconds)
+            & powershell.exe -NoProfile -NonInteractive -Command '[Console]::WriteLine($PSHOME); [Console]::WriteLine($env:PSModulePath)'
+            if ($LASTEXITCODE -ne 0) { throw 'PowerShell module-path probe failed' }
           } finally {
             Remove-Item -LiteralPath $directory -Recurse -Force
           }
+      - name: Trace PowerShell module loading in the socket test environment
+        shell: pwsh
+        run: |
+          $source = @'
+
+          #[cfg(windows)]
+          #[test]
+          fn diagnostic_powershell_modules() {
+              for name in ["PSModulePath", "SystemRoot", "USERPROFILE", "LOCALAPPDATA", "TEMP"] {
+                  eprintln!("PowerShell diagnostic environment {name}={:?}", std::env::var_os(name));
+              }
+              for (phase, script) in [
+                  ("paths", "[Console]::WriteLine($PSHOME); [Console]::WriteLine($env:PSModulePath)"),
+                  ("management", "Import-Module Microsoft.PowerShell.Management -ErrorAction Stop; [Console]::WriteLine('management imported')"),
+                  ("security", "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; [Console]::WriteLine('security imported')"),
+              ] {
+                  eprintln!("PowerShell diagnostic starting {phase}");
+                  let output = std::process::Command::new("powershell.exe")
+                      .args(["-NoProfile", "-NonInteractive", "-Command", script])
+                      .output().expect("PowerShell diagnostic child");
+                  eprintln!("PowerShell diagnostic {phase}: status={} stdout={} stderr={}",
+                      output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+                  assert!(output.status.success(), "PowerShell diagnostic phase {phase}");
+              }
+          }
+          '@
+          Add-Content -LiteralPath upstream/codex-rs/uds/src/lib_tests.rs -Value $source -Encoding utf8
       - name: Verify AWS-LC consumers and reproduce socket tests
         shell: bash
         env:
@@ -76,7 +105,7 @@ jobs:
             --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
             -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --nocache_test_results --test_output=errors \
+            --nocache_test_results --test_output=errors --test_arg=--nocapture \
             -- //codex-rs/http-client:http-client-unit-tests //codex-rs/uds:uds-unit-tests
       - name: Inspect the AWS-LC compiler response file
         if: failure()
