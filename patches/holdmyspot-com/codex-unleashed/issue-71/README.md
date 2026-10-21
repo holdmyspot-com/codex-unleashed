@@ -33,6 +33,10 @@ Codex Unleashed builds with the latest stable releases of its direct Rust crates
 - tree-sitter 0.27, vt100 0.18, similar 3, pulldown-cmark 0.13 and whoami 2
 - dirs 7, dns-lookup 4, ctor 1, shlex 2, signal-hook 0.4 and zstd 0.14
 
+The lockfiles also resolve aws-config 1.13.0, aws-credential-types 1.3.1,
+aws-sigv4 1.6.2, aws-types 1.7.0 and wildmatch 2.7.0. Their supporting AWS
+crates follow the versions required by those releases.
+
 The affected crates are ported to these APIs without new lint suppressions.
 Regenerated app-server protocol schemas and the Python SDK's generated
 bindings reflect the schemars 1 output.
