@@ -1,0 +1,40 @@
+From 27bb724d4205d46080fd9d4f639ab04ecb880dda Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Wed, 21 Oct 2026 11:27:07 -0400
+Subject: [PATCH] test(uds): avoid slow ACL cmdlet startup on Windows
+
+The two PowerShell ACL inspections consume 53.6 seconds by themselves on Windows CI, exhausting the shared 60-second test target budget. Use DirectoryInfo ACL methods for the same independent ACL setup and SDDL comparison, preserving both PermissionDenied assertions and the no-repair assertion. Native verification is required before accepting this candidate.
+---
+ codex-rs/uds/src/lib_tests.rs | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/uds/src/lib_tests.rs b/codex-rs/uds/src/lib_tests.rs
+index 91040b1..d20aabc 100644
+--- a/codex-rs/uds/src/lib_tests.rs
++++ b/codex-rs/uds/src/lib_tests.rs
+@@ -87,12 +87,13 @@ async fn socket_validation_rejects_broad_acl_without_repairing_it() {
+     let before = inspect(
+         r#"
+ $ErrorActionPreference = 'Stop'
+-$acl = Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY
++$directory = [System.IO.DirectoryInfo]::new($env:CODEX_TEST_DIRECTORY)
++$acl = $directory.GetAccessControl()
+ $everyone = [System.Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+ $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+ $acl.AddAccessRule($rule)
+-Set-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY -AclObject $acl
+-(Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY).Sddl
++$directory.SetAccessControl($acl)
++$directory.GetAccessControl().Sddl
+ "#,
+     );
+     assert_eq!(
+@@ -111,7 +112,7 @@ Set-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY -AclObject $acl
+     assert_eq!(
+         before,
+         inspect(
+-            "$ErrorActionPreference = 'Stop'; (Get-Acl -LiteralPath $env:CODEX_TEST_DIRECTORY).Sddl"
++            "$ErrorActionPreference = 'Stop'; ([System.IO.DirectoryInfo]::new($env:CODEX_TEST_DIRECTORY)).GetAccessControl().Sddl"
+         )
+     );
+ }

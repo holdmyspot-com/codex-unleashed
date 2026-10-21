@@ -2545,3 +2545,17 @@ zero failures and zero ignored tests. The native CI matrix verifies both
 platforms and ARM macOS; its normal MSVC options apply to Windows. Focused local
 Linux analysis checks may use `--strategy=TestRunner=local` when the local test
 sandbox cannot access `/dev/null`.
+
+## Windows socket ACL fixture startup
+
+`zzzz-0075-windows-acl-test-startup.patch` uses .NET `DirectoryInfo` ACL methods
+in the existing PowerShell fixture instead of loading the ACL cmdlets. The
+fixture grants Everyone access and compares the directory SDDL before and
+after both native rejection checks. Both `PermissionDenied` assertions and
+the assertion that rejection leaves the ACL unchanged remain enabled.
+
+The patch applies directly to the declared upstream base without other
+patches. Native Windows verification runs the complete
+`//codex-rs/uds:uds-unit-tests` target with the maintained MSVC CI configuration
+and its normal 60-second timeout. The whole target must pass; a Linux build
+or a passing isolated case does not establish this Windows acceptance gate.

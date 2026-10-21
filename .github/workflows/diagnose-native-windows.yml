@@ -67,33 +67,6 @@ jobs:
           } finally {
             Remove-Item -LiteralPath $directory -Recurse -Force
           }
-      - name: Trace PowerShell module loading in the socket test environment
-        shell: pwsh
-        run: |
-          $source = @'
-
-          #[cfg(windows)]
-          #[test]
-          fn diagnostic_powershell_modules() {
-              for name in ["PSModulePath", "SystemRoot", "USERPROFILE", "LOCALAPPDATA", "TEMP"] {
-                  eprintln!("PowerShell diagnostic environment {name}={:?}", std::env::var_os(name));
-              }
-              for (phase, script) in [
-                  ("paths", "[Console]::WriteLine($PSHOME); [Console]::WriteLine($env:PSModulePath)"),
-                  ("management", "Import-Module Microsoft.PowerShell.Management -ErrorAction Stop; [Console]::WriteLine('management imported')"),
-                  ("security", "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; [Console]::WriteLine('security imported')"),
-              ] {
-                  eprintln!("PowerShell diagnostic starting {phase}");
-                  let output = std::process::Command::new("powershell.exe")
-                      .args(["-NoProfile", "-NonInteractive", "-Command", script])
-                      .output().expect("PowerShell diagnostic child");
-                  eprintln!("PowerShell diagnostic {phase}: status={} stdout={} stderr={}",
-                      output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-                  assert!(output.status.success(), "PowerShell diagnostic phase {phase}");
-              }
-          }
-          '@
-          Add-Content -LiteralPath upstream/codex-rs/uds/src/lib_tests.rs -Value $source -Encoding utf8
       - name: Trace broad ACL validation phases
         shell: pwsh
         run: |
@@ -107,16 +80,12 @@ jobs:
           $case = $original.Replace('.env("CODEX_TEST_DIRECTORY", &directory)', '.env("CODEX_TEST_DIRECTORY", &directory).stderr(std::process::Stdio::inherit())')
           $case = $case.Replace('let output = std::process::Command', 'let child_started = std::time::Instant::now(); eprintln!("broad ACL: child start"); let output = std::process::Command')
           $case = $case.Replace('assert!(', 'eprintln!("broad ACL: child returned after {:?}", child_started.elapsed()); assert!(')
-          $case = $case.Replace('$acl = Get-Acl', '[Console]::Error.WriteLine("broad ACL: Get-Acl start"); $acl = Get-Acl')
-          $case = $case.Replace('$everyone =', '[Console]::Error.WriteLine("broad ACL: Get-Acl done"); $everyone =')
           $case = $case.Replace('$acl.AddAccessRule($rule)', '[Console]::Error.WriteLine("broad ACL: AddAccessRule start"); $acl.AddAccessRule($rule); [Console]::Error.WriteLine("broad ACL: AddAccessRule done")')
-          $case = $case.Replace('Set-Acl -LiteralPath', '[Console]::Error.WriteLine("broad ACL: Set-Acl start"); Set-Acl -LiteralPath')
-          $case = $case.Replace('(Get-Acl -LiteralPath', '[Console]::Error.WriteLine(''broad ACL: inspect SDDL''); (Get-Acl -LiteralPath')
           $case = $case.Replace('validate_private_socket_path(&directory.join("socket"))', '{ eprintln!("broad ACL: native validation start"); validate_private_socket_path(&directory.join("socket")) }')
           $case = $case.Replace('prepare_private_socket_directory(&directory)', '{ eprintln!("broad ACL: directory preparation start"); prepare_private_socket_directory(&directory) }')
           $text = $text.Substring(0, $start) + $case + $text.Substring($end)
           Set-Content -LiteralPath $path -Value $text -Encoding utf8
-      - name: Measure isolated broad ACL regression
+      - name: Measure socket regression suite
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -127,9 +96,8 @@ jobs:
             --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
             -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --nocache_test_results --test_output=all --test_timeout=120 \
-            --test_arg=--nocapture --test_arg=--exact \
-            --test_arg=lib_tests::socket_validation_rejects_broad_acl_without_repairing_it \
+            --nocache_test_results --test_output=all --test_timeout=60 \
+            --test_arg=--nocapture \
             -- //codex-rs/uds:uds-unit-tests
       - name: Inspect the AWS-LC compiler response file
         if: failure()
