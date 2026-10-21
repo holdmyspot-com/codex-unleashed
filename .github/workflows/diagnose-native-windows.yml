@@ -94,6 +94,28 @@ jobs:
           }
           '@
           Add-Content -LiteralPath upstream/codex-rs/uds/src/lib_tests.rs -Value $source -Encoding utf8
+      - name: Trace broad ACL validation phases
+        shell: pwsh
+        run: |
+          $path = 'upstream/codex-rs/uds/src/lib_tests.rs'
+          $text = Get-Content -LiteralPath $path -Raw
+          $start = $text.IndexOf('async fn socket_validation_rejects_broad_acl_without_repairing_it()')
+          if ($start -lt 0) { throw 'Broad ACL regression is unavailable' }
+          $end = $text.IndexOf('#[cfg(windows)]', $start)
+          if ($end -lt 0) { throw 'Broad ACL regression boundary is unavailable' }
+          $original = $text.Substring($start, $end - $start)
+          $case = $original.Replace('.env("CODEX_TEST_DIRECTORY", &directory)', '.env("CODEX_TEST_DIRECTORY", &directory).stderr(std::process::Stdio::inherit())')
+          $case = $case.Replace('let output = std::process::Command', 'eprintln!("broad ACL: child start"); let output = std::process::Command')
+          $case = $case.Replace('assert!(', 'eprintln!("broad ACL: child returned"); assert!(')
+          $case = $case.Replace('$acl = Get-Acl', '[Console]::Error.WriteLine("broad ACL: Get-Acl start"); $acl = Get-Acl')
+          $case = $case.Replace('$everyone =', '[Console]::Error.WriteLine("broad ACL: Get-Acl done"); $everyone =')
+          $case = $case.Replace('$acl.AddAccessRule($rule)', '[Console]::Error.WriteLine("broad ACL: AddAccessRule start"); $acl.AddAccessRule($rule); [Console]::Error.WriteLine("broad ACL: AddAccessRule done")')
+          $case = $case.Replace('Set-Acl -LiteralPath', '[Console]::Error.WriteLine("broad ACL: Set-Acl start"); Set-Acl -LiteralPath')
+          $case = $case.Replace('(Get-Acl -LiteralPath', '[Console]::Error.WriteLine(''broad ACL: inspect SDDL''); (Get-Acl -LiteralPath')
+          $case = $case.Replace('validate_private_socket_path(&directory.join("socket"))', '{ eprintln!("broad ACL: native validation start"); validate_private_socket_path(&directory.join("socket")) }')
+          $case = $case.Replace('prepare_private_socket_directory(&directory)', '{ eprintln!("broad ACL: directory preparation start"); prepare_private_socket_directory(&directory) }')
+          $text = $text.Substring(0, $start) + $case + $text.Substring($end)
+          Set-Content -LiteralPath $path -Value $text -Encoding utf8
       - name: Verify AWS-LC consumers and reproduce socket tests
         shell: bash
         env:
