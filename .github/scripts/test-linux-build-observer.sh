@@ -43,7 +43,7 @@ for observer in dmesg journalctl; do
     exit 1
   fi
 done
-if ! rg -q 'Build resources at' "$fixture/output"; then
+if ! grep -Fq 'Build resources at' "$fixture/output"; then
   cat "$fixture/output" >&2
   exit 1
 fi
