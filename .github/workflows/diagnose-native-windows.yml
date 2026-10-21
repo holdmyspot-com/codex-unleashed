@@ -1,0 +1,46 @@
+name: Diagnose native Windows source paths
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [update/latest-stable-dependencies]
+    paths: [.github/workflows/diagnose-native-windows.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  source-paths:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Inspect native compiler source-path behavior
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if errorlevel 1 exit /b %errorlevel%
+          powershell.exe -NoProfile -NonInteractive -Command ^
+            "$ErrorActionPreference = 'Stop'; ^
+            $root = Join-Path $env:RUNNER_TEMP ('native-source-paths-' + [guid]::NewGuid()); ^
+            New-Item -ItemType Directory -Path $root | Out-Null; ^
+            try { ^
+              Set-Location $root; ^
+              New-Item -ItemType Directory -Path include | Out-Null; ^
+              Set-Content include/probe.h 'static const char *included_path = __FILE__;' -Encoding ASCII; ^
+              Set-Content main.c @('#include <stdio.h>', '#include <probe.h>', 'int main(void) { puts(included_path); return 0; }') -Encoding ASCII; ^
+              & cl.exe /nologo /WX /std:c11 ('/I' + (Join-Path $root 'include')) main.c /Febaseline.exe /Fobaseline.obj; ^
+              if ($LASTEXITCODE -ne 0) { throw 'Baseline compilation failed' }; ^
+              $baseline = & ./baseline.exe; ^
+              if ($LASTEXITCODE -ne 0) { throw 'Baseline execution failed' }; ^
+              Write-Output ('Baseline included-file macro: ' + $baseline); ^
+              & cl.exe /nologo /WX /std:c11 /experimental:deterministic ('/pathmap:' + $root + '=.') ('/I' + (Join-Path $root 'include')) main.c /Femapped.exe /Fomapped.obj; ^
+              if ($LASTEXITCODE -ne 0) { throw 'Mapped compilation failed' }; ^
+              $mapped = & ./mapped.exe; ^
+              if ($LASTEXITCODE -ne 0) { throw 'Mapped execution failed' }; ^
+              Write-Output ('Mapped included-file macro: ' + $mapped); ^
+              if ($mapped.Contains($root)) { throw 'Path mapping retained the absolute compilation root' }; ^
+              if ($mapped.Contains('probe.h') -eq $false) { throw 'Path mapping lost the source filename' } ^
+            } finally { ^
+              Set-Location $env:RUNNER_TEMP; ^
+              Remove-Item -LiteralPath $root -Recurse -Force ^
+            }"
