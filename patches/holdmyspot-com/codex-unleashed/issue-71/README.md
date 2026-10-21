@@ -54,9 +54,10 @@ dependency requires an exact or bounded version:
 | windows-future | 0.3.2 | `windows` 0.62.2, the latest release, returns its 0.3 async types |
 
 The Bazel modules move to their latest registry releases, including
-protobuf 36.2, rules_rs 0.1.0, abseil-cpp 20260817.0, windows_support 0.4.1,
+protobuf 36.2, llvm 0.8.25, rules_rs 0.1.3, rules_cc_autoconf 0.29.0,
+abseil-cpp 20260817.0, windows_support 0.4.1,
 apple_support 2.10.1, rules_cc 0.2.26, rules_pkg 1.3.0 and zstd, bzip2, zlib
-and aws-lc revisions. Crate annotations use the rules_rs 0.1.0
+and aws-lc revisions. Crate annotations use the rules_rs 0.1.3
 `crate.annotation_select` API. Workspace members keep upstream's `0.0.0`
 `Cargo.lock` versions; Bazel CI reconciles them with the release version
 through Cargo before rules_rs reads the lockfile. The rules_rs and rules_rust patches made redundant by the new releases
@@ -68,7 +69,7 @@ New crate annotations keep compile-action sandbox paths out of build outputs:
 - openssl-src uses a relative manifest directory.
 - rust-embed embeds files in every build mode.
 
-rules_rs 0.1.0 rejects a compiled Rust output that contains the absolute
+rules_rs 0.1.3 rejects a compiled Rust output that contains the absolute
 action working directory. `rules_rust_working_dir_context.patch` adds the byte
 offset and the printable string around the first match to that error, so a
 rejected output names the embedded value.
