@@ -25,6 +25,9 @@ if [[ -z "$crate" ]]; then
 fi
 
 directory="$CODEX_COMPILER_SCHEDULER_DIR"
+reply=
+output="$(mktemp -d "$directory/output.XXXXXXXXXX")" || exit 1
+trap 'rm -rf -- "$output"; rm -f -- "$reply"' EXIT
 reply="$(mktemp -u "$directory/reply.XXXXXXXXXX")"
 mkfifo -m 600 "$reply"
 # Opening the reply FIFO for reading and writing returns at once, so the scheduler's open for writing never waits.
@@ -63,7 +66,9 @@ while :; do
   fi
   # setsid execs the compiler in place because a background job does not lead its process group, so the job's
   # process identifier also identifies the compiler's new process group.
-  setsid "$@" <&0 &
+  # Cargo treats metadata output as dependency completion. Discard an aborted attempt's output so that a retry
+  # cannot report the same completion twice.
+  setsid "$@" <&0 >"$output/stdout" 2>"$output/stderr" &
   process_group=$!
   # Newer compilers are likelier victims if the kernel must still kill one.
   printf '%s\n' "$adjustment" 2>/dev/null > "/proc/$process_group/oom_score_adj"
@@ -74,12 +79,16 @@ while :; do
   process_group=
   send exited "$id" "$status"
   if [[ "$status" -ne 137 ]]; then
+    cat "$output/stdout"
+    cat "$output/stderr" >&2
     exit "$status"
   fi
   # The scheduler replies "retry" and later "start" to rerun a compiler that it killed, or "fail" once a rerun is
   # killed as well, and explains either decision in its own log.
   read_reply
   if [[ "$verb" != "retry" ]]; then
+    cat "$output/stdout"
+    cat "$output/stderr" >&2
     exit "$status"
   fi
   read_reply

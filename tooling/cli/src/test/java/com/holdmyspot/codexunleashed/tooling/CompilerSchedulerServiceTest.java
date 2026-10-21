@@ -140,6 +140,8 @@ public final class CompilerSchedulerServiceTest
 			assertEquals(exitStatus(wrappers.get(0)), 0);
 			assertEquals(exitStatus(wrappers.get(1)), 0);
 			assertEquals(runs(root, "newest"), 2);
+			assertEquals(Files.readAllLines(root.resolve("newest.stdout")), List.of("compiler output"));
+			assertEquals(Files.readAllLines(root.resolve("newest.stderr")), List.of("compiler diagnostic"));
 		}
 		finally
 		{
@@ -181,6 +183,37 @@ public final class CompilerSchedulerServiceTest
 	}
 
 	/**
+	 * Preserves a failed compiler's output and exit status.
+	 *
+	 * @throws Exception if the compiler cannot start or finish
+	 */
+	@Test
+	public void preservesFailedCompilerOutput() throws Exception
+	{
+		Path root = Files.createTempDirectory("compiler-scheduler-");
+		List<Process> wrappers = new ArrayList<>();
+		try (CompilerSchedulerService service = new CompilerSchedulerService(RESERVE, () -> AMPLE,
+			Duration.ofMillis(10), new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8)))
+		{
+			Map<String, String> environment = service.environment();
+			ProcessBuilder builder = new ProcessBuilder(environment.get("RUSTC_WRAPPER"), "sh", "-c",
+				"printf 'output\\n'; printf 'diagnostic\\n' >&2; exit 23", "compiler", "--crate-name", "failed").
+				redirectOutput(root.resolve("stdout").toFile()).
+				redirectError(root.resolve("stderr").toFile());
+			builder.environment().putAll(environment);
+			wrappers.add(builder.start());
+			assertEquals(exitStatus(wrappers.getFirst()), 23);
+			assertEquals(Files.readAllLines(root.resolve("stdout")), List.of("output"));
+			assertEquals(Files.readAllLines(root.resolve("stderr")), List.of("diagnostic"));
+		}
+		finally
+		{
+			destroy(wrappers);
+			delete(root);
+		}
+	}
+
+	/**
 	 * Runs a non-compiling rustc invocation, such as a version query, without waiting for the scheduler.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -207,12 +240,14 @@ public final class CompilerSchedulerServiceTest
 	private static void startCompiler(CompilerSchedulerService service, Path root, String name,
 		List<Process> wrappers) throws IOException
 	{
-		String compiler = "printf 'run\\n' >> \"$0.runs\"; printf '%s\\n' $$ > \"$0.pid.tmp\"; " +
+		String compiler = "printf 'compiler output\\n'; printf 'compiler diagnostic\\n' >&2; " +
+			"printf 'run\\n' >> \"$0.runs\"; printf '%s\\n' $$ > \"$0.pid.tmp\"; " +
 			"mv \"$0.pid.tmp\" \"$0.pid\"; while [ ! -e \"$1\" ]; do sleep 0.02; done";
 		Map<String, String> environment = service.environment();
 		ProcessBuilder builder = new ProcessBuilder(environment.get("RUSTC_WRAPPER"), "sh", "-c", compiler,
 			root.resolve(name).toString(), root.resolve("release").toString(), "--crate-name", name).
-			redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD);
+			redirectOutput(root.resolve(name + ".stdout").toFile()).
+			redirectError(root.resolve(name + ".stderr").toFile());
 		builder.environment().putAll(environment);
 		wrappers.add(builder.start());
 	}
