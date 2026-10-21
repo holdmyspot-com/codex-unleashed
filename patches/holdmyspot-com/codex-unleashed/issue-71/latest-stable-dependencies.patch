@@ -1,6 +1,6 @@
-From da533ae7565869690104d411d0d277e0da449d78 Mon Sep 17 00:00:00 2001
+From edc9f065a9259ef07113b5a404e834f5145c2a9d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Wed, 21 Oct 2026 07:52:03 -0400
+Date: Wed, 21 Oct 2026 08:20:17 -0400
 Subject: [PATCH] build(deps): upgrade direct Rust, Bazel and V8 dependencies
 
 Upgrade direct dependencies and port their APIs while retaining the six documented compatibility holds.
@@ -10,6 +10,9 @@ Base: openai/codex rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012).
 Prerequisites: issue 60 and earlier release-queue patches documented in README.md.
 
 The current registry audit covers 252 direct crates. Before the final lock refresh, five additional AWS/wildmatch direct dependencies trail stable; after targeted cargo update only the six documented holds remain. Bazel lock regeneration succeeds and reports existing jemalloc/libgit2 annotation diagnostics. Full platform validation remains required.
+
+
+Regenerate two rules_rust extension fingerprints with Bazel 9.3.1.
 ---
  .gitattributes                                |    1 +
  .github/scripts/test_v8_canary_changes.py     |    6 +
@@ -1277,7 +1280,7 @@ index a688f07..3da8474 100644
  rbe_platform_repository = use_repo_rule("//:rbe.bzl", "rbe_platform_repository")
  
 diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
-index 47cd79e..0600fea 100644
+index 47cd79e..6b4366b 100644
 --- a/MODULE.bazel.lock
 +++ b/MODULE.bazel.lock
 @@ -8,13 +8,20 @@
@@ -1746,7 +1749,7 @@ index 47cd79e..0600fea 100644
        "general": {
 -        "bzlTransitiveDigest": "WDuVCwqV73DvcHB5Of+02lhUZgPxr9MqtpvMRyUi0eQ=",
 -        "usagesDigest": "QI2z8ZUR+mqtbwsf2fLqYdJAkPOHdOV+tF2yVAUgRzw=",
-+        "bzlTransitiveDigest": "+BTCNlvlEqRiSB0REm8D6TZyU8pvc7ac6SOixskwKA8=",
++        "bzlTransitiveDigest": "i6nvF/3ZqtEXCv8SPlE8Iu0DdUHyO4tEaI03wxjsld0=",
 +        "usagesDigest": "x0vrCWeHpY81Qjj7vEW+k03YwVf1a+fL0Y9237dy0E4=",
          "recordedInputs": [
 -          "REPO_MAPPING:rules_kotlin+,bazel_tools bazel_tools"
@@ -2049,7 +2052,7 @@ index 47cd79e..0600fea 100644
        "general": {
 -        "bzlTransitiveDigest": "+9d3Xk+XLM+3cS8xVHR6XRn3dYpPmBavXbfU8v/qtnc=",
 -        "usagesDigest": "mM5nr0rInol5uct6JfVpNViqAYYCaAo3qdfPr4gsFGQ=",
-+        "bzlTransitiveDigest": "iGLOc/atUc8Y//93Fqxj6QMzzJLwgRI8pVjqV/mfSHw=",
++        "bzlTransitiveDigest": "N77zFEP3jASYPQkC8U0fSDy3NAQ4hdRXFPNq4eb0PoE=",
 +        "usagesDigest": "tG3p3Nb5XxC7vWY/bcKdb//g0HoAxpxxH3F5/jBVlk4=",
          "recordedInputs": [
 -          "REPO_MAPPING:rules_python+,bazel_tools bazel_tools",

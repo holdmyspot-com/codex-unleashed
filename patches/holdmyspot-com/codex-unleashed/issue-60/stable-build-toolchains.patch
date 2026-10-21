@@ -1,8 +1,11 @@
-From 480f998b61638a985a6bc66e02be580446e78632 Mon Sep 17 00:00:00 2001
+From 1a05a6eee8a5cf6a488198acac841a8ced4179fa Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:05 +0000
-Subject: [PATCH] build: support stable Rust 1.99 and Bazel 9.3
+Date: Wed, 21 Oct 2026 08:10:04 -0400
+Subject: [PATCH] build: support stable Rust 1.99.1 and Bazel 9.3.1
 
+Retain the emitted stable-toolchain compatibility fixes and advance the Bazel patch release.
+
+Refs: holdmyspot-com/codex-unleashed#60
 ---
  .bazelversion                                 |   2 +-
  .../build-cargo-package-binaries/action.yml   |   2 +-
@@ -58,12 +61,12 @@ Subject: [PATCH] build: support stable Rust 1.99 and Bazel 9.3
  create mode 100644 patches/rules_rust_unwind_driver_selection.patch
 
 diff --git a/.bazelversion b/.bazelversion
-index deeb3d6..b13d146 100644
+index deeb3d6..3b74042 100644
 --- a/.bazelversion
 +++ b/.bazelversion
 @@ -1 +1 @@
 -9.2.0
-+9.3.0
++9.3.1
 diff --git a/.github/actions/build-cargo-package-binaries/action.yml b/.github/actions/build-cargo-package-binaries/action.yml
 index 84a35f5..928e0a1 100644
 --- a/.github/actions/build-cargo-package-binaries/action.yml
