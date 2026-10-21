@@ -1,0 +1,257 @@
+diff --git a/test/process_wrapper/BUILD.bazel b/test/process_wrapper/BUILD.bazel
+index 09af719..b809132 100644
+--- a/test/process_wrapper/BUILD.bazel
++++ b/test/process_wrapper/BUILD.bazel
+@@ -204,3 +204,34 @@ rust_test(
+     },
+     deps = ["//rust/runfiles"],
+ )
++
++rust_test(
++    name = "compiler_scheduler_test",
++    size = "small",
++    srcs = ["compiler_scheduler.rs"],
++    data = [
++        ":compiler_scheduler_server",
++        ":fake_rustc",
++        "//util/process_wrapper:bootstrap_process_wrapper",
++    ],
++    edition = "2018",
++    rustc_env = {
++        "BOOTSTRAP_RLOCATIONPATH": "$(rlocationpath //util/process_wrapper:bootstrap_process_wrapper)",
++        "FAKE_RUSTC_RLOCATIONPATH": "$(rlocationpath :fake_rustc)",
++        "SCHEDULER_SERVER_RLOCATIONPATH": "$(rlocationpath :compiler_scheduler_server)",
++    },
++    deps = ["//rust/runfiles"],
++)
++
++cc_binary(
++    name = "compiler_scheduler_server",
++    srcs = ["compiler_scheduler_server.cc"],
++    copts = select({
++        "@platforms//os:windows": ["/W4", "/WX"],
++        "//conditions:default": ["-Wall", "-Wextra", "-Werror"],
++    }),
++    linkopts = select({
++        "@platforms//os:windows": ["-DEFAULTLIB:ws2_32.lib"],
++        "//conditions:default": [],
++    }),
++)
+diff --git a/test/process_wrapper/compiler_scheduler.rs b/test/process_wrapper/compiler_scheduler.rs
+new file mode 100644
+index 0000000..aced804
+--- /dev/null
++++ b/test/process_wrapper/compiler_scheduler.rs
+@@ -0,0 +1,98 @@
++//! Compiler admission checks through the executable bootstrap wrapper.
++
++use std::path::PathBuf;
++use std::process::{Command, Output};
++
++use runfiles::Runfiles;
++
++fn compiler(endpoint: Option<PathBuf>) -> Output {
++    let runfiles = Runfiles::create().expect("cannot locate test runfiles");
++    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
++        .expect("bootstrap wrapper is missing");
++    let executable = runfiles::rlocation!(runfiles, env!("FAKE_RUSTC_RLOCATIONPATH"))
++        .expect("compiler fixture is missing");
++    let mut command = Command::new(bootstrap);
++    command.arg("--").arg(executable);
++    command.env_remove("CODEX_COMPILER_SCHEDULER_SOCKET");
++    if let Some(endpoint) = endpoint {
++        command.env("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint);
++    }
++    command.output().expect("cannot run bootstrap wrapper")
++}
++
++#[test]
++fn ordinary_compiler_runs_without_scheduler_configuration() {
++    let output = compiler(None);
++    assert!(output.status.success(), "{:?}", output);
++    assert!(
++        String::from_utf8_lossy(&output.stderr).contains("rendered"),
++        "compiler fixture did not run"
++    );
++}
++
++#[test]
++fn configured_scheduler_must_be_available_before_compiler_starts() {
++    let endpoint = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
++        .join("unavailable-scheduler");
++    assert!(!endpoint.exists(), "fixture endpoint already exists");
++    let output = compiler(Some(endpoint));
++    assert_eq!(output.status.code(), Some(125), "{output:?}");
++    assert!(
++        !String::from_utf8_lossy(&output.stderr).contains("rendered"),
++        "compiler ran without admission"
++    );
++}
++
++#[test]
++fn long_socket_directory_preserves_compiler_working_directory() {
++    use std::io::{BufRead, BufReader};
++    use std::process::{Child, Stdio};
++
++    struct Fixture {
++        server: Child,
++        directory: PathBuf,
++    }
++
++    impl Drop for Fixture {
++        fn drop(&mut self) {
++            let _ = self.server.kill();
++            self.server.wait().expect("cannot reap scheduler fixture");
++            std::fs::remove_dir_all(&self.directory).expect("cannot remove scheduler fixture");
++        }
++    }
++
++    let runfiles = Runfiles::create().expect("cannot locate runfiles");
++    let server = runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH"))
++        .expect("scheduler server fixture is missing");
++    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
++        .expect("bootstrap wrapper is missing");
++    let directory = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
++        .join("deep-".to_owned() + &"x".repeat(128));
++    std::fs::create_dir(&directory).expect("cannot create private socket directory");
++    let mut fixture = Fixture {
++        server: Command::new(server)
++            .current_dir(&directory)
++            .stdout(Stdio::piped())
++            .spawn()
++            .expect("cannot start scheduler fixture"),
++        directory,
++    };
++    let mut ready = String::new();
++    BufReader::new(fixture.server.stdout.take().unwrap())
++        .read_line(&mut ready)
++        .expect("cannot read scheduler readiness");
++    assert_eq!(ready.trim_end(), "ready");
++    let output = Command::new(bootstrap)
++        .arg("--")
++        .arg(runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH")).unwrap())
++        .arg("--compiler")
++        .env("CODEX_COMPILER_SCHEDULER_SOCKET", fixture.directory.join("s"))
++        .output()
++        .expect("cannot start compiler stand-in");
++    assert!(output.status.success(), "{:?}", output);
++    assert_eq!(
++        String::from_utf8(output.stdout).unwrap().trim_end(),
++        std::env::current_dir().unwrap().to_string_lossy()
++    );
++    assert!(fixture.server.wait().unwrap().success());
++}
+diff --git a/test/process_wrapper/compiler_scheduler_server.cc b/test/process_wrapper/compiler_scheduler_server.cc
+new file mode 100644
+index 0000000..e91335d
+--- /dev/null
++++ b/test/process_wrapper/compiler_scheduler_server.cc
+@@ -0,0 +1,108 @@
++#include <array>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <iostream>
++#include <string>
++#include <vector>
++
++#if defined(_WIN32)
++#include <winsock2.h>
++#include <windows.h>
++#include <afunix.h>
++using NativeSocket = SOCKET;
++constexpr NativeSocket kInvalidSocket = INVALID_SOCKET;
++#else
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++using NativeSocket = int;
++constexpr NativeSocket kInvalidSocket = -1;
++#endif
++
++namespace {
++
++struct Socket {
++  explicit Socket(NativeSocket descriptor) : value(descriptor) {}
++  ~Socket() {
++#if defined(_WIN32)
++    closesocket(value);
++#else
++    close(value);
++#endif
++  }
++  Socket(const Socket&) = delete;
++  Socket& operator=(const Socket&) = delete;
++  NativeSocket value;
++};
++
++bool packet(NativeSocket socket, std::array<char, 12>* bytes, bool write) {
++  size_t transferred = 0;
++  while (transferred < bytes->size()) {
++    int remaining = static_cast<int>(bytes->size() - transferred);
++    auto count = write ? send(socket, bytes->data() + transferred, remaining, 0)
++                       : recv(socket, bytes->data() + transferred, remaining, 0);
++    if (count <= 0) return false;
++    transferred += static_cast<size_t>(count);
++  }
++  return true;
++}
++
++int compiler() {
++#if defined(_WIN32)
++  DWORD length = GetCurrentDirectoryW(0, nullptr);
++  if (length == 0) return 1;
++  std::vector<wchar_t> directory(length);
++  DWORD count = GetCurrentDirectoryW(length, directory.data());
++  if (count == 0 || count >= length) return 1;
++  int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, directory.data(),
++                                 static_cast<int>(count), nullptr, 0, nullptr, nullptr);
++  if (bytes <= 0) return 1;
++  std::string output(static_cast<size_t>(bytes), '\0');
++  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, directory.data(),
++                          static_cast<int>(count), &output[0], bytes, nullptr, nullptr) != bytes) return 1;
++  std::cout << output << '\n';
++#else
++  char* directory = getcwd(nullptr, 0);
++  if (directory == nullptr) return 1;
++  std::cout << directory << '\n';
++  std::free(directory);
++#endif
++  return 0;
++}
++
++int server() {
++  Socket listener(socket(AF_UNIX, SOCK_STREAM, 0));
++  if (listener.value == kInvalidSocket) return 2;
++  struct sockaddr_un address = {};
++  address.sun_family = AF_UNIX;
++  address.sun_path[0] = 's';
++  if (bind(listener.value, reinterpret_cast<struct sockaddr*>(&address), static_cast<int>(sizeof(address))) != 0 ||
++      listen(listener.value, 1) != 0) return 2;
++  std::cout << "ready" << std::endl;
++  Socket client(accept(listener.value, nullptr, nullptr));
++  if (client.value == kInvalidSocket) return 2;
++  std::array<char, 12> bytes = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0};
++  if (!packet(client.value, &bytes, true)) return 3;
++  if (!packet(client.value, &bytes, false) ||
++      bytes != std::array<char, 12>{0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
++  if (!packet(client.value, &bytes, false) ||
++      bytes != std::array<char, 12>{0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
++  return 0;
++}
++
++}  // namespace
++
++int main(int argc, char** argv) {
++  if (argc == 2 && std::strcmp(argv[1], "--compiler") == 0) return compiler();
++#if defined(_WIN32)
++  WSADATA data;
++  if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return 2;
++#endif
++  int status = server();
++#if defined(_WIN32)
++  WSACleanup();
++#endif
++  std::remove("s");
++  return status;
++}
