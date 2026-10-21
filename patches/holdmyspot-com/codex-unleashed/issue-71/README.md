@@ -127,17 +127,19 @@ diagnostics are still recorded.
 
 ## Reproduction
 
-On the patched queue without this patch, list direct registry dependencies
-that trail their latest stable release:
+On the patched queue without this patch, list workspace dependency declarations
+and resolved versions:
 
 ```sh
 cargo metadata --format-version 1 --manifest-path codex-rs/Cargo.toml > metadata.json
-python3 -I audit.py metadata.json
 ```
 
-`audit.py` resolves each workspace member's direct registry dependencies from
-the metadata and compares them with the newest non-yanked, non-prerelease
-crates.io release. Before this patch it reported 35 trailing crates.
+For each workspace member's direct registry dependency, compare its resolved
+version with the highest non-yanked, non-prerelease version in that crate's
+crates.io sparse-index record. Exclude path and Git dependencies from this
+registry comparison. The unupgraded queue resolves older versions of the
+dependencies listed in Scope. The table above identifies the version constraints
+that prevent some direct dependencies from advancing together.
 
 With the OpenTelemetry upgrade but without the log-database filter, the
 app-server logging suite records SDK export errors from an unreachable
