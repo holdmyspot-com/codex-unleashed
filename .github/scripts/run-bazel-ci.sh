@@ -333,7 +333,7 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
     printf 'Expected an absolute Windows Bazel execution root; got: %s\n' "$execution_root" >&2
     exit 1
   fi
-  execution_root="${execution_root//\//\\}"
+  execution_root="${execution_root//\\//}"
   post_config_bazel_args+=(
     --copt=/experimental:deterministic
     --host_copt=/experimental:deterministic

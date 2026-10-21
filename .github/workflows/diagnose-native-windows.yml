@@ -2,6 +2,11 @@ name: Diagnose native Windows source paths
 
 on:
   workflow_dispatch:
+    inputs:
+      native_regressions:
+        description: Run the native Bazel integration checks after the compiler probe.
+        type: boolean
+        default: false
   push:
     branches: [update/latest-stable-dependencies]
     paths: [.github/workflows/diagnose-native-windows.yml]
@@ -11,6 +16,7 @@ permissions:
 
 jobs:
   prepare-tooling:
+    if: inputs.native_regressions == true
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: windows-2022
@@ -107,7 +113,21 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Baseline execution failed' }
             Write-Output ('Baseline included-file macro: ' + $baseline)
 
-            & cl.exe /nologo /WX /std:c11 /experimental:deterministic ('/pathmap:' + $root + '=.') ('/I' + (Join-Path $root 'include')) main.c /Femapped.exe /Fomapped.obj
+            $response = @('/nologo', '/WX', '/std:c11', '/experimental:deterministic',
+              ('/pathmap:' + $root.Replace('\', '/') + '=.'),
+              ('/I"' + (Join-Path $root 'include') + '"'), 'main.c', '/Femapped.exe', '/Fomapped.obj')
+            $unmappedResponse = $response.Clone()
+            $unmappedResponse[4] = '/pathmap:' + $root.Replace('\', '\\') + '=.'
+            Set-Content unmapped.rsp $unmappedResponse -Encoding ASCII
+            & cl.exe '@unmapped.rsp'
+            if ($LASTEXITCODE -ne 0) { throw 'Doubled-backslash compilation failed' }
+            $unmapped = & ./mapped.exe
+            if ($LASTEXITCODE -ne 0) { throw 'Doubled-backslash execution failed' }
+            Write-Output ('Doubled-backslash included-file macro: ' + $unmapped)
+            if ($unmapped.Contains($root) -eq $false) { throw 'Doubled backslashes did not reproduce the path leak' }
+
+            Set-Content mapped.rsp $response -Encoding ASCII
+            & cl.exe '@mapped.rsp'
             if ($LASTEXITCODE -ne 0) { throw 'Mapped compilation failed' }
             $mapped = & ./mapped.exe
             if ($LASTEXITCODE -ne 0) { throw 'Mapped execution failed' }
