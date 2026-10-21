@@ -2560,3 +2560,19 @@ patches. Native Windows verification runs the complete
 `//codex-rs/uds:uds-unit-tests` target with the maintained MSVC CI configuration
 and its normal 60-second timeout. The whole target must pass; a Linux build
 or a passing isolated case does not establish this Windows acceptance gate.
+
+## Credential-export fixture gate polling
+
+`zzzz-0076-credential-fixture-gate-polling.patch` sleeps between filesystem
+checks while the shared-auth recovery fixture waits for its export subprocess.
+The fixture yields its single-thread runtime and filesystem capacity instead
+of remaining continuously runnable. The export deadline remains 5000 ms and
+the coordination deadline remains ten seconds. Queued-caller, successful
+recovery, and single-export assertions remain enabled.
+
+The patch applies independently to the declared upstream base. Verify the
+emitted patch with `just fmt-check`, then run the complete native Windows
+`//codex-rs/model-provider:model-provider-unit-tests` target using the maintained
+MSVC CI configuration, `--nocache_test_results`, and `--runs_per_test=5`.
+The complete native matrix remains the release gate. Linux formatting does
+not establish that the intermittent Windows timeout is repaired.
