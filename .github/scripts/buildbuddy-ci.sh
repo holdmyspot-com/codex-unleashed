@@ -85,6 +85,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         case "$BUILDBUDDY_CI_TASK" in
           repo-checks)
             bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
+            bash "$project_root/.github/scripts/test-ci-memory.sh" "$project_root"
             export NODE_OPTIONS=--max-old-space-size=4096
             export ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1
             ./scripts/run-upstream-repo-checks.sh upstream

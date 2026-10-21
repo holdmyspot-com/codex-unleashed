@@ -2,6 +2,8 @@
 # Sources the toolchain environment and verifies the tooling runtime before reuse.
 set -euo pipefail
 
+bash .github/scripts/disable-ci-swap.sh
+
 project_root="$PWD"
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8

@@ -6,6 +6,10 @@ set -euo pipefail
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 project_root="$(CDPATH= cd -- "$GITHUB_ACTION_PATH/../../.." && pwd)"
+if [[ "${RUNNER_OS:-}" == Linux ]]; then
+  bash "$project_root/.github/scripts/disable-ci-swap.sh"
+fi
+
 if [[ "${TOOLING_RUNTIME_CACHE_HIT:-false}" != true ]]; then
   "$project_root/tooling/mvnw" -q verify </dev/null
 fi

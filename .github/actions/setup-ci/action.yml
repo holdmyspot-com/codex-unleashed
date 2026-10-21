@@ -17,6 +17,11 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Require RAM-only builds (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/../../scripts/disable-ci-swap.sh"
+
     - name: Remove unused Apple simulator runtimes (macOS)
       if: runner.os == 'macOS'
       shell: bash

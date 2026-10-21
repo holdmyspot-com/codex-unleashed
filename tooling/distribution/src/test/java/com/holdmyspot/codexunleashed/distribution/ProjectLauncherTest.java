@@ -229,6 +229,7 @@ public final class ProjectLauncherTest
 			builder.environment().put("GITHUB_OUTPUT", output.toString().replace('\\', '/'));
 			builder.environment().put("GITHUB_ENV", environment.toString().replace('\\', '/'));
 			builder.environment().put("TOOLING_RUNTIME_CACHE_HIT", hit);
+			builder.environment().put("RUNNER_OS", "Fixture");
 			try (Process process = builder.start())
 			{
 				try
