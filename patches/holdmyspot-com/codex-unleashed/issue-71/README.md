@@ -57,7 +57,8 @@ The Bazel modules move to their latest registry releases, including
 protobuf 36.2, llvm 0.8.25, rules_rs 0.1.3, rules_cc_autoconf 0.29.0,
 abseil-cpp 20260817.0, windows_support 0.4.1,
 apple_support 2.10.1, rules_cc 0.2.26, rules_pkg 1.3.0 and zstd, bzip2, zlib
-and aws-lc revisions. Crate annotations use the rules_rs 0.1.3
+and aws-lc revisions. The isolated argument-comment linter and its packaged
+Dylint commands use Dylint 6.2.0. Crate annotations use the rules_rs 0.1.3
 `crate.annotation_select` API. Workspace members keep upstream's `0.0.0`
 `Cargo.lock` versions; Bazel CI reconciles them with the release version
 through Cargo before rules_rs reads the lockfile. The rules_rs and rules_rust patches made redundant by the new releases
