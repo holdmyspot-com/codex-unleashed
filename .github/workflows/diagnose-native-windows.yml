@@ -105,8 +105,8 @@ jobs:
           if ($end -lt 0) { throw 'Broad ACL regression boundary is unavailable' }
           $original = $text.Substring($start, $end - $start)
           $case = $original.Replace('.env("CODEX_TEST_DIRECTORY", &directory)', '.env("CODEX_TEST_DIRECTORY", &directory).stderr(std::process::Stdio::inherit())')
-          $case = $case.Replace('let output = std::process::Command', 'eprintln!("broad ACL: child start"); let output = std::process::Command')
-          $case = $case.Replace('assert!(', 'eprintln!("broad ACL: child returned"); assert!(')
+          $case = $case.Replace('let output = std::process::Command', 'let child_started = std::time::Instant::now(); eprintln!("broad ACL: child start"); let output = std::process::Command')
+          $case = $case.Replace('assert!(', 'eprintln!("broad ACL: child returned after {:?}", child_started.elapsed()); assert!(')
           $case = $case.Replace('$acl = Get-Acl', '[Console]::Error.WriteLine("broad ACL: Get-Acl start"); $acl = Get-Acl')
           $case = $case.Replace('$everyone =', '[Console]::Error.WriteLine("broad ACL: Get-Acl done"); $everyone =')
           $case = $case.Replace('$acl.AddAccessRule($rule)', '[Console]::Error.WriteLine("broad ACL: AddAccessRule start"); $acl.AddAccessRule($rule); [Console]::Error.WriteLine("broad ACL: AddAccessRule done")')
@@ -116,7 +116,7 @@ jobs:
           $case = $case.Replace('prepare_private_socket_directory(&directory)', '{ eprintln!("broad ACL: directory preparation start"); prepare_private_socket_directory(&directory) }')
           $text = $text.Substring(0, $start) + $case + $text.Substring($end)
           Set-Content -LiteralPath $path -Value $text -Encoding utf8
-      - name: Verify AWS-LC consumers and reproduce socket tests
+      - name: Measure isolated broad ACL regression
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -127,8 +127,10 @@ jobs:
             --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
             -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --nocache_test_results --test_output=errors --test_arg=--nocapture \
-            -- //codex-rs/http-client:http-client-unit-tests //codex-rs/uds:uds-unit-tests
+            --nocache_test_results --test_output=all --test_timeout=120 \
+            --test_arg=--nocapture --test_arg=--exact \
+            --test_arg=lib_tests::socket_validation_rejects_broad_acl_without_repairing_it \
+            -- //codex-rs/uds:uds-unit-tests
       - name: Inspect the AWS-LC compiler response file
         if: failure()
         shell: pwsh
