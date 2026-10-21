@@ -10,6 +10,52 @@ permissions:
   contents: read
 
 jobs:
+  prepare-tooling:
+    uses: ./.github/workflows/prepare-tooling.yml
+    with:
+      runner: windows-2022
+
+  native-regressions:
+    needs: prepare-tooling
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Check native and cross-build command construction
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TMPDIR="$RUNNER_TEMP"
+          bash .github/scripts/test-bazel-msvc-pathmap.sh
+          bash .github/scripts/test-bazel-cross-host.sh
+      - name: Verify AWS-LC consumers and reproduce socket tests
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --nocache_test_results --test_output=errors \
+            -- //codex-rs/http-client:http-client-unit-tests //codex-rs/uds:uds-unit-tests
+
   source-paths:
     runs-on: windows-2022
     timeout-minutes: 15

@@ -322,6 +322,24 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
     # explicit `--platforms=...` flag.
     post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
   fi
+
+  execution_root_info_args=(info)
+  if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+    execution_root_info_args+=("--config=${ci_config}")
+  fi
+  execution_root="$(run_bazel_with_startup_args "${execution_root_info_args[@]}" execution_root)"
+  execution_root="${execution_root//$'\r'/}"
+  if [[ ! "$execution_root" =~ ^[A-Za-z]:[/\\] ]]; then
+    printf 'Expected an absolute Windows Bazel execution root; got: %s\n' "$execution_root" >&2
+    exit 1
+  fi
+  execution_root="${execution_root//\//\\}"
+  post_config_bazel_args+=(
+    --copt=/experimental:deterministic
+    --host_copt=/experimental:deterministic
+    "--copt=/pathmap:${execution_root}=."
+    "--host_copt=/pathmap:${execution_root}=."
+  )
 fi
 
 if [[ $remote_download_toplevel -eq 1 ]]; then
