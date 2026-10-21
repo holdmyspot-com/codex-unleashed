@@ -216,7 +216,10 @@
 						<id>require-jdk-27</id>
 						<goals><goal>enforce</goal></goals>
 						<configuration>
-							<rules><requireJavaVersion><version>27</version></requireJavaVersion></rules>
+							<rules>
+								<requireJavaVersion><version>27</version></requireJavaVersion>
+								<requireMavenVersion><version>[3.6.3,)</version></requireMavenVersion>
+							</rules>
 						</configuration>
 					</execution>
 				</executions>
