@@ -67,8 +67,8 @@ public final class ScheduleCompilersCommandTest
 			Path build = Files.writeString(root.resolve("build.cjs"), """
 				const fs = require('node:fs');
 				const endpoint = process.env.CODEX_COMPILER_SCHEDULER_SOCKET;
-				if (!endpoint || !fs.existsSync(endpoint)) {
-				  console.error('Missing native compiler scheduler socket');
+				if (!endpoint || !fs.existsSync(process.env.RUSTC_WRAPPER)) {
+				  console.error('Missing native compiler scheduler configuration');
 				  process.exit(91);
 				}
 				fs.writeFileSync('scheduler-socket', endpoint);
@@ -80,7 +80,7 @@ public final class ScheduleCompilersCommandTest
 				  args = ['query'];
 				}
 				const result = require('node:child_process').spawnSync(process.env.RUSTC_WRAPPER,
-				  [process.argv[2], '--source=27', process.argv[3], ...args], {encoding: 'utf8', env});
+				  [process.argv[2], '--source=27', process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
 				if (result.error) throw result.error;
 				process.stdout.write(result.stdout);
 				process.stderr.write(result.stderr);

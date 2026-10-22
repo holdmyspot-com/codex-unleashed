@@ -13,6 +13,7 @@ on:
           - compiler-scheduler-native
           - compiler-scheduler-macos
           - compiler-scheduler-tooling
+          - compiler-scheduler-tooling-windows
 
 permissions:
   contents: read
@@ -220,18 +221,24 @@ jobs:
           retention-days: 1
 
   compiler-scheduler-tooling:
-    if: inputs.focus == 'compiler-scheduler-tooling'
+    if: inputs.focus == 'compiler-scheduler-tooling' || inputs.focus == 'compiler-scheduler-tooling-windows'
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, macos-15, macos-15-intel, windows-2022]
+        runner: ${{ fromJSON(inputs.focus == 'compiler-scheduler-tooling-windows' && '["windows-2022"]' || '["ubuntu-latest", "macos-15", "macos-15-intel", "windows-2022"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-tooling
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 26.12.1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: ${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}
+          java-version: '27'
       - uses: ./.github/actions/setup-msvc-env
         if: runner.os == 'Windows'
         with:
@@ -243,6 +250,9 @@ jobs:
           tooling/mvnw -q -pl cli -am test \
             -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest \
             -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Verify and cache the complete tooling runtime
+        if: inputs.focus == 'compiler-scheduler-tooling'
+        uses: ./.github/actions/setup-tooling
       - name: Retain compiler scheduler test evidence
         if: always()
         uses: actions/upload-artifact@v6
