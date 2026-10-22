@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Repeat complete credential regression target
+      - name: Compare credential regression concurrency
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -54,12 +54,31 @@ jobs:
           set -euo pipefail
           cd upstream
           git apply "${GITHUB_WORKSPACE}/.github/diagnostics/credential-export-gate.patch"
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
-            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
-            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --nocache_test_results --runs_per_test=5 --test_output=errors \
-            -- //codex-rs/model-provider:model-provider-unit-tests
+          evidence="${GITHUB_WORKSPACE}/.cat/work/temp/credential-concurrency"
+          mkdir -p "$evidence"
+          for concurrency in 5 1; do
+            status=0
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+              -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+              --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+              --local_test_jobs="$concurrency" --test_env=RUST_TEST_THREADS=1 \
+              --nocache_test_results --runs_per_test=5 --test_output=errors \
+              -- //codex-rs/model-provider:model-provider-unit-tests \
+              > "$evidence/jobs-$concurrency.log" 2>&1 || status=$?
+            printf '%s\t%s\n' "$concurrency" "$status" >> "$evidence/results.tsv"
+            if [[ "$status" != 0 ]]; then cat "$evidence/jobs-$concurrency.log"; fi
+            case "$status" in 0|3) ;; *) exit "$status" ;; esac
+          done
+          cat "$evidence/results.tsv"
+      - name: Retain credential concurrency investigation
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: credential-concurrency
+          path: .cat/work/temp/credential-concurrency
+          if-no-files-found: error
+          retention-days: 1
 
   compiler-scheduler-baseline:
     if: inputs.focus == 'compiler-scheduler-baseline' || inputs.focus == 'compiler-scheduler-native'
