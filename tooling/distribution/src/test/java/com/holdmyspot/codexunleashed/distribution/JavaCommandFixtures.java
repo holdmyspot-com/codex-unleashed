@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -109,8 +110,8 @@ final class JavaCommandFixtures
 				    exit(result.code().unwrap_or(1));
 				}
 				""");
-			ProcessBuilder builder = NativeCommands.createBuilder("rustc", "--crate-name", "codex_fixture",
-				source.path().toString(), "-o", binary.toString());
+			List<String> command = new ArrayList<>(List.of("rustc", "--crate-name", "codex_fixture",
+				source.path().toString(), "-o", binary.toString()));
 			try (Process query = NativeCommands.createBuilder("rustc", "--print", "host-tuple").
 				redirectErrorStream(true).redirectOutput(log.path().toFile()).start())
 			{
@@ -121,8 +122,9 @@ final class JavaCommandFixtures
 			String linker = System.getenv("CARGO_TARGET_" + target.toUpperCase(Locale.ROOT).replace('-', '_') +
 				"_LINKER");
 			if (linker != null)
-				builder.command().addAll(List.of("-C", "linker=" + linker));
+				command.addAll(List.of("-C", "linker=" + linker));
 
+			ProcessBuilder builder = NativeCommands.createBuilder(command);
 			builder.redirectErrorStream(true).redirectOutput(log.path().toFile());
 			try (Process process = builder.start())
 			{
