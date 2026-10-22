@@ -47,3 +47,34 @@ if ! grep -Fq 'Build resources at' "$fixture/output"; then
   cat "$fixture/output" >&2
   exit 1
 fi
+
+# shellcheck source=observe-linux-build.sh
+source "$script_directory/observe-linux-build.sh"
+cat > "$fixture/reader" <<'READER'
+#!/usr/bin/env bash
+case "$1" in
+  success) cat "$2" ;;
+  gone) rm -- "$2"; echo 'resource disappeared' >&2; exit 1 ;;
+  failure) echo 'permission denied' >&2; exit 13 ;;
+esac
+READER
+printf 'compiler memory\n' > "$fixture/resource"
+read_process_resource "$fixture/resource" bash "$fixture/reader" success > "$fixture/out" 2> "$fixture/err"
+test "$(cat "$fixture/out")" = 'compiler memory'
+test ! -s "$fixture/err"
+
+status=0
+read_process_resource "$fixture/resource" bash "$fixture/reader" failure > "$fixture/out" 2> "$fixture/err" || status=$?
+test "$status" -eq 13
+test ! -s "$fixture/out"
+test "$(cat "$fixture/err")" = 'permission denied'
+
+status=0
+read_process_resource "$fixture/resource" bash "$fixture/reader" gone > "$fixture/out" 2> "$fixture/err" || status=$?
+test "$status" -eq 1
+test ! -s "$fixture/out"
+if [[ -s "$fixture/err" ]]; then
+  cat "$fixture/err" >&2
+  echo 'An exited process must not produce a resource-read diagnostic' >&2
+  exit 1
+fi
