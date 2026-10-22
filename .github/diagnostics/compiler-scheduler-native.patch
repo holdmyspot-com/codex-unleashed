@@ -470,10 +470,10 @@ index 110702c..614d506 100644
    std::perror("bootstrap_process_wrapper: execvp");
 diff --git a/util/process_wrapper/private/compiler_scheduler.h b/util/process_wrapper/private/compiler_scheduler.h
 new file mode 100644
-index 0000000..93709ff
+index 0000000..f599011
 --- /dev/null
 +++ b/util/process_wrapper/private/compiler_scheduler.h
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,607 @@
 +#ifndef RULES_RUST_COMPILER_SCHEDULER_H_
 +#define RULES_RUST_COMPILER_SCHEDULER_H_
 +
@@ -1022,7 +1022,9 @@ index 0000000..93709ff
 +      siginfo_t status = {};
 +      int result = waitid(P_PID, child, &status, WEXITED | WNOHANG | WNOWAIT);
 +      if (result < 0 && errno != EINTR) break;
-+      if (result == 0 && status.si_pid == child) {
++      if (result == 0 && status.si_pid == child &&
++          (status.si_code == CLD_EXITED || status.si_code == CLD_KILLED ||
++           status.si_code == CLD_DUMPED)) {
 +        int exit_status = status.si_code == CLD_EXITED ? status.si_status : 128 + status.si_status;
 +        // Keep the exited leader's PID reserved until its remaining group is gone.
 +        if (!terminate(child)) {
