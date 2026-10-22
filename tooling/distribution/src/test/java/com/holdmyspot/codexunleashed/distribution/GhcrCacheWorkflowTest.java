@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -32,14 +33,14 @@ public final class GhcrCacheWorkflowTest
 	}
 
 	/**
-	 * Rejects invalid tags before transport and preserves dependency payloads across every original restore case.
+	 * Rejects invalid tags before transport and preserves executables, symbols and dependencies during restoration.
 	 *
 	 * @throws IOException if fixture, process or cleanup operations fail
 	 * @throws InterruptedException if waiting is interrupted
 	 * @throws URISyntaxException if native fixture class locations are invalid
 	 */
 	@Test
-	public void restoresOnlyReusableDependencies() throws IOException, InterruptedException, URISyntaxException
+	public void restoresReleaseOutputs() throws IOException, InterruptedException, URISyntaxException
 	{
 		Path root = Files.createTempDirectory("ghcr-pull-");
 		try
@@ -221,8 +222,10 @@ public final class GhcrCacheWorkflowTest
 		assertEquals(Files.readString(restored.resolve("deps/codex-generated-data")), "reusable codex dependency");
 		assertEquals(Files.readString(restored.resolve("deps/codex-hashed-binary")), "cached codex");
 		assertEquals(Files.readString(restored.resolve("deps/bwrap-hashed-binary")), "cached bwrap");
-		for (String removed : List.of("codex", "codex-code-mode-host", "codex-responses-api-proxy", "bwrap", "codex.dSYM"))
-			assertFalse(Files.exists(restored.resolve(removed)), removed);
+		for (String binary : List.of("codex", "codex-code-mode-host", "codex-responses-api-proxy", "bwrap"))
+			requireThat(Files.readString(restored.resolve(binary)), "binaryContent").isEqualTo("cached " + binary);
+		requireThat(Files.readString(restored.resolve("codex.dSYM/Contents/Resources/DWARF/codex")), "symbolContent").
+			isEqualTo("cached symbols");
 		try (Stream<Path> entries = Files.list(temporary))
 		{
 			assertEquals(entries.count(), 0L);

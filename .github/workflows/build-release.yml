@@ -966,20 +966,24 @@ jobs:
             --require-license-evidence
           echo "CODEX_PACKAGE_RUST_LICENSES_DIR=${license_dir}" >> "$GITHUB_ENV"
 
-      - name: Strip Unix release binaries
+      - name: Stage and strip Unix release binaries
         if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'apple-darwin') }}
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          BUNDLE: ${{ matrix.bundle }}
         run: |
           set -euo pipefail
           release_dir="${CARGO_TARGET_DIR}/${TARGET}/release"
+          staged_dir="${release_dir}/staged-${BUNDLE}"
+          mkdir -p "$staged_dir"
           for binary in ${{ matrix.binaries }}; do
-            binary_path="${release_dir}/${binary}"
-            if [[ ! -f "${binary_path}" ]]; then
-              echo "Binary ${binary_path} not found" >&2
+            if [[ ! -f "${release_dir}/${binary}" ]]; then
+              echo "Binary ${release_dir}/${binary} not found" >&2
               exit 1
             fi
+            binary_path="${staged_dir}/${binary}"
+            cp "${release_dir}/${binary}" "$binary_path"
             if [[ "${TARGET}" == *linux-musl ]]; then
               # build-release.sh strips bwrap before calculating its embedded
               # digest. The other binaries are stripped here. Do not add a
@@ -993,13 +997,16 @@ jobs:
             else
               # Upstream archives dSYMs and then strips the distributed
               # executable with these macOS-specific flags.
-              if [[ ! -d "${binary_path}.dSYM" ]]; then
-                echo "dSYM ${binary_path}.dSYM not found" >&2
+              if [[ ! -d "${release_dir}/${binary}.dSYM" ]]; then
+                echo "dSYM ${release_dir}/${binary}.dSYM not found" >&2
                 exit 1
               fi
               strip -S -x "${binary_path}"
             fi
           done
+          if [[ -f "${release_dir}/bwrap" ]]; then
+            cp "${release_dir}/bwrap" "$staged_dir/bwrap"
+          fi
 
       - name: Restore generated Cargo metadata
         shell: bash
@@ -1055,7 +1062,7 @@ jobs:
           bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
             --target "$TARGET" \
             --bundle "$BUNDLE" \
-            --entrypoint-dir "${CARGO_TARGET_DIR}/${TARGET}/release" \
+            --entrypoint-dir "${CARGO_TARGET_DIR}/${TARGET}/release/staged-${BUNDLE}" \
             --archive-dir "dist/${TARGET}" \
             --zsh-manifest "${GITHUB_WORKSPACE}/scripts/codex_package/codex-zsh" \
             --rg-manifest "${GITHUB_WORKSPACE}/upstream/scripts/codex_package/rg"
@@ -1072,14 +1079,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_dir="${CARGO_TARGET_DIR}/${{ matrix.target }}/release"
-          find "$release_dir" -type d -name '*.dSYM' -prune -exec rm -rf {} +
           find "$CARGO_TARGET_DIR" -type d -name cargo-timings -prune -exec rm -rf {} +
           find "$CARGO_TARGET_DIR" -type d -name 'staged-*' -prune -exec rm -rf {} +
 
           echo "Largest Cargo cache directories:"
           du -sh "$CARGO_TARGET_DIR"/* 2>/dev/null | sort -h | tail -20 || true
-          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -name '*.dSYM' -o -name '*.pdb' -o -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
+          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
           if [[ -n "$forbidden_files" ]]; then
             echo "Unwanted files remain in the Cargo cache:" >&2
             printf '%s\n' "$forbidden_files" >&2
@@ -1499,13 +1504,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find "$CARGO_TARGET_DIR" -type f -name '*.pdb' -delete
           find "$CARGO_TARGET_DIR" -type d -name cargo-timings -prune -exec rm -rf {} +
           find "$CARGO_TARGET_DIR" -type d -name 'staged-*' -prune -exec rm -rf {} +
 
           echo "Largest Cargo cache directories:"
           du -sh "$CARGO_TARGET_DIR"/* 2>/dev/null | sort -h | tail -20 || true
-          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -name '*.dSYM' -o -name '*.pdb' -o -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
+          forbidden_files="$(find "$CARGO_TARGET_DIR" -type f \( -path '*/cargo-timings/*' -o -path '*/staged-*/*' \) -print)"
           if [[ -n "$forbidden_files" ]]; then
             echo "Unwanted files remain in the Cargo cache:" >&2
             printf '%s\n' "$forbidden_files" >&2

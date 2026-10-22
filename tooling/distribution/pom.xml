@@ -14,6 +14,7 @@
 		<tooling.test.jvm.options>--add-modules=jdk.httpserver,java.xml --add-reads=com.holdmyspot.codexunleashed.distribution=jdk.httpserver --add-reads=com.holdmyspot.codexunleashed.distribution=java.xml</tooling.test.jvm.options>
 	</properties>
 	<dependencies>
+		<dependency><groupId>io.github.cowwoc.requirements</groupId><artifactId>requirements-java</artifactId></dependency>
 		<dependency>
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>

@@ -19,6 +19,7 @@ import org.apache.commons.io.file.StandardDeleteOption;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -55,8 +56,9 @@ public final class SourceInputCacheTest
 			FileTime before = Files.getLastModifiedTime(source);
 			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			assertFalse(Files.exists(fixture.binary()));
-			assertTrue(fixture.libraryFresh(fixture.build()));
+			String warmBuild = fixture.build();
+			requireThat(fixture.libraryFresh(warmBuild), "libraryFresh").isTrue();
+			requireThat(fixture.artifactFresh(warmBuild, "cache-demo", "bin"), "binaryFresh").isTrue();
 			fixture.record();
 
 			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
@@ -164,7 +166,7 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Preserves libraries and sibling binaries when invalidating a binary owned by a library package.
+	 * Preserves complete requested binaries, libraries and sibling binaries during warm preparation.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail
 	 */
@@ -182,8 +184,51 @@ public final class SourceInputCacheTest
 			String output = fixture.build();
 			assertTrue(fixture.libraryFresh(output, "side_demo"));
 			assertTrue(fixture.artifactFresh(output, fixture.siblingBinary, "bin"));
-			assertFalse(fixture.artifactFresh(output, "side-demo", "bin"));
+			requireThat(fixture.artifactFresh(output, "side-demo", "bin"), "siblingFresh").isTrue();
 			assertTrue(fixture.artifactFresh(output, "cache-demo", "bin"));
+		}
+	}
+
+	/**
+	 * Retains modeled platform outputs with their symbols and invalidates executables whose symbols are removed.
+	 *
+	 * @throws IOException if Cargo metadata or fixture operations fail
+	 */
+	@Test
+	public void rebuildsMissingSymbolOutputs() throws IOException
+	{
+		for (String target : List.of("x86_64-pc-windows-msvc", "aarch64-apple-darwin"))
+		{
+			try (Fixture fixture = Fixture.create())
+			{
+				fixture.initialize();
+				fixture.target = target;
+				fixture.prepare();
+				Path release = fixture.base.resolve("target").resolve(target).resolve("release");
+				Path binary;
+				Path symbols;
+				if (target.contains("windows"))
+				{
+					binary = release.resolve("cache-demo.exe");
+					symbols = release.resolve("cache_demo.pdb");
+				}
+				else
+				{
+					binary = release.resolve("cache-demo");
+					symbols = release.resolve("cache-demo.dSYM/Contents/Resources/DWARF/cache-demo");
+				}
+				Files.createDirectories(symbols.getParent());
+				Files.writeString(binary, "modeled executable");
+				Files.writeString(symbols, "modeled debug symbols");
+				fixture.record();
+				fixture.prepare();
+				requireThat(binary, "binary").isRegularFile();
+				requireThat(symbols, "symbols").isRegularFile();
+				fixture.record();
+				Files.delete(symbols);
+				fixture.prepare();
+				requireThat(Files.exists(binary), "binaryExists").isFalse();
+			}
 		}
 	}
 
@@ -328,6 +373,8 @@ public final class SourceInputCacheTest
 			environment.put("CARGO_HOME", base.resolve("cargo-home").toString());
 			environment.put("CARGO_TARGET_DIR", base.resolve("target").toString());
 			environment.put("CARGO_NET_OFFLINE", "true");
+			environment.put("CARGO_PROFILE_RELEASE_DEBUG", "1");
+			environment.put("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed");
 			environment.put("XDG_CACHE_HOME", base.resolve("xdg").toString());
 			environment.put("TMPDIR", base.resolve("tmp").toString());
 			environment.put("GIT_CEILING_DIRECTORIES", base.toString());

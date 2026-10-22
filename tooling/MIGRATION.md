@@ -324,8 +324,10 @@ uses the Java extractor; complete workflow execution remains a separate gate.
 Source-input cache preparation uses Java in both release jobs. The command writes pending inputs before cleanup,
 cleans only workspace packages when a successful snapshot is absent, and retains external dependency output.
 Warm preparation compares successful and interrupted source digests, restores unchanged timestamps, marks changed
-sources, and invalidates only the requested executable units in library-owning packages. Binary-only package owners
-receive sorted Cargo cleanup selectors. Successful recording requires unchanged prepared inputs, permits generated
+sources, and retains requested executables whose required symbol outputs are complete. Missing executables or
+Windows PDB or macOS dSYM output trigger executable-unit invalidation; binary-only owners receive sorted Cargo
+cleanup selectors. Release packaging strips staged copies and retains the original compiler outputs and symbols in
+the cache, so unchanged inputs can reuse complete binaries without losing release symbols. Successful recording requires unchanged prepared inputs, permits generated
 Cargo lockfile changes, atomically writes the snapshot, and removes pending state. Failed cleanup or compilation
 leaves pending state available for recovery without recording success. Native Unix timestamp adapters retain negative
 fractional and large epoch nanoseconds beyond the installed JDK's filesystem conversion range. The Windows adapter

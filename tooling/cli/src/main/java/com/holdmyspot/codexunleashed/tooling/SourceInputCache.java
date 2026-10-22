@@ -91,7 +91,7 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Writes pending inputs, restores unchanged sources and invalidates only requested executable units.
+	 * Writes pending inputs, restores unchanged sources and invalidates requested executables with incomplete outputs.
 	 *
 	 * @param request the workspace, target and binaries
 	 * @param context process and timestamp authorities
@@ -134,21 +134,45 @@ public final class SourceInputCache
 		out.println("Source contents changed in " + changed.size() + " files; Cargo determines affected units; " +
 			unchanged + " unchanged files retained.");
 		Set<String> libraries = inputs.metadata().libraryOwners();
-		Set<String> binaryOnly = new TreeSet<>(owners.values());
-		binaryOnly.removeAll(libraries);
-		if (!binaryOnly.isEmpty())
-			clean(request, context, inputs.manifest(), List.copyOf(binaryOnly), out, err);
 		Path release = inputs.targetDirectory().resolve(SourceCacheTargets.directoryName(request.target())).
 			resolve("release");
+		Set<String> binaryOnly = new TreeSet<>();
+		for (Map.Entry<String, String> owner : owners.entrySet())
+		{
+			if (!libraries.contains(owner.getValue()) && !hasCompleteOutputs(release, request.target(), owner.getKey()))
+				binaryOnly.add(owner.getValue());
+		}
+		if (!binaryOnly.isEmpty())
+			clean(request, context, inputs.manifest(), List.copyOf(binaryOnly), out, err);
 		for (String binary : new TreeSet<>(request.binaries()))
 		{
-			if (libraries.contains(owners.get(binary)))
+			if (libraries.contains(owners.get(binary)) && !hasCompleteOutputs(release, request.target(), binary))
 			{
 				int count = CachedBinaryOutputs.invalidate(release, binary);
 				out.println("Invalidated " + count + " cached binary fingerprints for " + binary +
 					"; library outputs retained.");
 			}
 		}
+	}
+
+	/**
+	 * Indicates whether an executable and the target's required debug symbols are present.
+	 *
+	 * @param release the Cargo release output directory
+	 * @param target the requested Cargo target
+	 * @param binary the executable name from Cargo metadata
+	 * @return true if packaging can consume the executable and its required symbols
+	 */
+	private static boolean hasCompleteOutputs(Path release, String target, String binary)
+	{
+		if (target.contains("windows"))
+			return Files.isRegularFile(release.resolve(binary + ".exe")) &&
+				(Files.isRegularFile(release.resolve(binary.replace('-', '_') + ".pdb")) ||
+					Files.isRegularFile(release.resolve(binary + ".pdb")));
+		if (target.contains("apple-darwin"))
+			return Files.isRegularFile(release.resolve(binary)) &&
+				Files.isRegularFile(release.resolve(binary + ".dSYM").resolve("Contents/Resources/DWARF").resolve(binary));
+		return Files.isRegularFile(release.resolve(binary));
 	}
 
 	/**

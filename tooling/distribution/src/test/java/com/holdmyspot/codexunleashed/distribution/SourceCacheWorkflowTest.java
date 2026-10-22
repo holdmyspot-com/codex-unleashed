@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import static org.testng.Assert.assertEquals;
@@ -49,6 +50,8 @@ public final class SourceCacheWorkflowTest
 			environment.put("CARGO_HOME", root.resolve("cargo-home").toString());
 			environment.put("CARGO_TARGET_DIR", root.resolve("target").toString());
 			environment.put("CARGO_NET_OFFLINE", "true");
+			environment.put("CARGO_PROFILE_RELEASE_DEBUG", "1");
+			environment.put("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed");
 			environment.put("XDG_CACHE_HOME", root.resolve("xdg").toString());
 			environment.put("TMPDIR", root.resolve("captures").toString());
 			environment.put("RUNNER_TEMP", root.resolve("reports").toString());
@@ -89,12 +92,12 @@ public final class SourceCacheWorkflowTest
 				if (last.path("target").path("name").asString().equals("codex_windows_sandbox"))
 				{
 					assertEquals(last.path("target").path("kind").get(0).asString(), "lib");
-					assertTrue(last.path("fresh").booleanValue());
+					requireThat(last.path("fresh").booleanValue(), "artifactFresh").isTrue();
 					libraries += 1;
 				}
 				if (last.path("target").path("kind").get(0).asString().equals("bin"))
 				{
-					assertFalse(last.path("fresh").booleanValue());
+					requireThat(last.path("fresh").booleanValue(), "artifactFresh").isTrue();
 					binaries += 1;
 				}
 			}
@@ -138,6 +141,8 @@ public final class SourceCacheWorkflowTest
 			environment.put("CARGO_HOME", root.resolve("cargo-home").toString());
 			environment.put("CARGO_TARGET_DIR", root.resolve("target").toString());
 			environment.put("CARGO_NET_OFFLINE", "true");
+			environment.put("CARGO_PROFILE_RELEASE_DEBUG", "1");
+			environment.put("CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO", "packed");
 			environment.put("XDG_CACHE_HOME", root.resolve("xdg").toString());
 			environment.put("TMPDIR", root.resolve("captures").toString());
 			environment.put("GIT_CEILING_DIRECTORIES", root.toString());
@@ -159,21 +164,28 @@ public final class SourceCacheWorkflowTest
 				assertTrue(Files.isRegularFile(snapshot));
 				Files.setLastModifiedTime(source, FileTime.from(Instant.ofEpochSecond(1)));
 				run(root, environment, List.of("bash", "-eu", "-c", prepare));
-				assertFalse(Files.exists(root.resolve("target").resolve(target).resolve("release/release-demo")));
 				assertEquals(timestamp(root, environment, source), originalNanos);
 				String output = build(root, environment, workspace, target);
 				boolean librarySeen = false;
+				boolean binarySeen = false;
 				for (String line : output.lines().toList())
 				{
 					JsonNode artifact = JsonMapper.builder().build().readTree(line);
 					if (artifact.path("reason").asString().equals("compiler-artifact") &&
 						artifact.path("target").path("name").asString().equals("release_demo"))
 					{
-						assertTrue(artifact.path("fresh").booleanValue(), output);
+						requireThat(artifact.path("fresh").booleanValue(), "artifactFresh").isTrue();
 						librarySeen = true;
 					}
+					if (artifact.path("reason").asString().equals("compiler-artifact") &&
+						artifact.path("target").path("name").asString().equals("release-demo"))
+					{
+						requireThat(artifact.path("fresh").booleanValue(), "artifactFresh").isTrue();
+						binarySeen = true;
+					}
 				}
-				assertTrue(librarySeen, output);
+				requireThat(librarySeen, "librarySeen").isTrue();
+				requireThat(binarySeen, "binarySeen").isTrue();
 				run(root, environment, List.of("bash", "-eu", "-c", record));
 			}
 

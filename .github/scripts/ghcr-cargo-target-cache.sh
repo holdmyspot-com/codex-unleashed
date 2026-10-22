@@ -131,25 +131,10 @@ case "$operation" in
         --allow-path-traversal \
         --output "$archive_directory"
     fi
-    # Extract before removing release outputs: dependency entries can be hard
-    # links to those executables. Excluding their targets breaks extraction.
+    # Keep executable targets when extracting their hard-linked dependency entries.
     # Stream the archive so GNU tar never interprets a Windows drive letter
     # in its filename as a remote-host specification.
     "$archive_tar" --zstd -xf - -C "$target_directory" < "$archive_directory/cargo-target.tar.zst"
-    # Reuse compiled dependencies, but rebuild release executables and symbols
-    # from the current patch set and build metadata, including matching dSYMs.
-    release_dir="$target_directory/$cache_target/release"
-    if [[ -d "$release_dir" ]]; then
-      for artifact in "$release_dir"/codex* "$release_dir"/bwrap*; do
-        [[ -e "$artifact" || -L "$artifact" ]] || continue
-        if [[ -d "$artifact" ]]; then
-          [[ "$artifact" == *.dSYM ]] || continue
-          rm -r -- "$artifact"
-        else
-          rm -- "$artifact"
-        fi
-      done
-    fi
     ;;
   push)
     [[ -d "$target_directory" ]] || {
