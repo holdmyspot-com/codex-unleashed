@@ -19,7 +19,6 @@ export PATCHES_ALREADY_APPLIED=1 SKIP_UPSTREAM_TESTS=1 SKIP_ARTIFACT_COLLECTION=
 export CARGO_INCREMENTAL=1
 export CFLAGS="${CFLAGS:-} -fno-lto"
 export CXXFLAGS="${CXXFLAGS:-} -fno-lto"
-export CC_ENABLE_DEBUG_OUTPUT=1
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$bundled_linker"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
 unset RUSTFLAGS
