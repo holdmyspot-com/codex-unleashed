@@ -10,6 +10,7 @@ on:
         options:
           - credentials
           - compiler-profile
+          - linker-profile
           - compiler-scheduler-baseline
           - compiler-scheduler-native
           - compiler-scheduler-macos
@@ -21,7 +22,7 @@ permissions:
 
 jobs:
   compiler-profile:
-    if: inputs.focus == 'compiler-profile'
+    if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile'
     permissions:
       actions: read
       attestations: write
@@ -36,6 +37,7 @@ jobs:
       build_only: true
       publish_npm: false
       ghcr_cache: true
+      linker-lto: ${{ inputs.focus == 'linker-profile' }}
 
   prepare-tooling:
     if: inputs.focus == 'credentials'

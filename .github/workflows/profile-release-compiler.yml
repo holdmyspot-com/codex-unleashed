@@ -6,6 +6,11 @@ on:
       - "rust-v*.*.*"
   workflow_call:
     inputs:
+      linker-lto:
+        description: "Benchmark linker-managed ThinLTO with the compiler's bundled LLD."
+        required: false
+        default: false
+        type: boolean
       automatic:
         description: "Skip an unchanged failed release while its one-day failure record is retained. Leave false for an explicit retry."
         required: false
@@ -810,10 +815,15 @@ jobs:
           PROFILE_COMPILER_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           PROFILE_UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
           PROFILE_TARGET: ${{ matrix.target }}
+          PROFILE_LINKER_LTO: ${{ inputs.linker-lto || false }}
         run: |
           set -euo pipefail
           identity="$(
             {
+              if [[ "$PROFILE_LINKER_LTO" == true ]]; then
+                printf '%s\n' 'linker-plugin-thinlto-v1'
+                git ls-tree -r HEAD -- .github/diagnostics/benchmark-linker-thinlto.sh
+              fi
               printf '%s\n' 'compiler-profile-seed-v1' "$PROFILE_UPSTREAM_SHA" "$PROFILE_PATCH_HASH" \
                 "$PROFILE_COMPILER_TAG" "$PROFILE_TARGET" "$CODEX_UNLEASHED_BUILD_NUMBER" \
                 "$REPRODUCIBILITY_MODE" "$CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO" \
@@ -966,7 +976,13 @@ jobs:
           PROFILE_UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
           PROFILE_SEED_CACHE_ENABLED: ${{ inputs.ghcr_cache }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash .github/scripts/profile-release-compiler.sh
+          PROFILE_LINKER_LTO: ${{ inputs.linker-lto || false }}
+        run: |
+          if [[ "$PROFILE_LINKER_LTO" == true ]]; then
+            bash .github/diagnostics/benchmark-linker-thinlto.sh
+          else
+            bash .github/scripts/profile-release-compiler.sh
+          fi
 
       - name: Upload compiler profile
         if: always()
