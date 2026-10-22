@@ -1,0 +1,939 @@
+name: Profile release compiler
+
+on:
+  push:
+    tags:
+      - "rust-v*.*.*"
+  workflow_call:
+    inputs:
+      automatic:
+        description: "Skip an unchanged failed release while its one-day failure record is retained. Leave false for an explicit retry."
+        required: false
+        default: false
+        type: boolean
+      upstream_tag:
+        description: "Optional upstream tag override."
+        required: false
+        type: string
+      build_number:
+        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
+        required: false
+        type: string
+      artifact_run_id:
+        description: "Optional completed build run to reuse for publishing."
+        required: false
+        type: string
+      focus_target:
+        description: "Optional target to build during focused comparison runs."
+        required: false
+        type: string
+      focus_bundle:
+        description: "Optional bundle to build during focused comparison runs."
+        required: false
+        type: string
+      verification_level:
+        description: "Verification tier: full or sentinel. Detection runs separately."
+        required: false
+        default: full
+        type: string
+      reproducibility_mode:
+        description: "Optional deterministic compiler mode for reproducibility experiments."
+        required: false
+        default: "off"
+        type: string
+      cache_audit:
+        description: "Upload a complete Cargo cache file/size manifest for one diagnostic run."
+        required: false
+        default: false
+        type: boolean
+      ghcr_cache:
+        description: "Use the public GHCR Cargo target overflow cache. Disable only for cache diagnostics."
+        required: false
+        default: true
+        type: boolean
+      publish_npm:
+        description: "Publish the npm packages associated with the release."
+        required: false
+        default: false
+        type: boolean
+      build_only:
+        description: "Run the complete build and verification matrix without publishing a release."
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      automatic:
+        description: "Skip an unchanged failed release while its one-day failure record is retained. Leave false for an explicit retry."
+        required: false
+        default: false
+        type: boolean
+      upstream_tag:
+        description: "Optional upstream tag override."
+        required: false
+        type: string
+      build_number:
+        description: "Optional vendor build number. Defaults to the next build for this upstream version, starting at 1."
+        required: false
+        type: string
+      artifact_run_id:
+        description: "Optional completed build run to reuse for publishing."
+        required: false
+        type: string
+      focus_target:
+        description: "Optional target to build during focused comparison runs."
+        required: false
+        type: string
+      focus_bundle:
+        description: "Optional bundle to build during focused comparison runs."
+        required: false
+        type: string
+      verification_level:
+        description: "Verification tier to run."
+        required: false
+        default: full
+        type: choice
+        options:
+          - sentinel
+          - full
+      reproducibility_mode:
+        description: "Compiler mode for reproducibility experiments."
+        required: false
+        default: "off"
+        type: choice
+        options:
+          - "off"
+          - deterministic
+      cache_audit:
+        description: "Upload a complete Cargo cache file/size manifest for one diagnostic run."
+        required: false
+        default: false
+        type: boolean
+      ghcr_cache:
+        description: "Use the public GHCR Cargo target overflow cache. Disable only for cache diagnostics."
+        required: false
+        default: true
+        type: boolean
+      publish_npm:
+        description: "Publish the npm packages associated with the release."
+        required: false
+        default: false
+        type: boolean
+      build_only:
+        description: "Run the complete build and verification matrix without publishing a release."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: >-
+    build-release-${{ github.ref }}-${{ inputs.upstream_tag || 'latest' }}-${{ inputs.verification_level || 'full' }}-${{
+      inputs.focus_target || 'all-targets'
+    }}-${{ inputs.focus_bundle || 'all-bundles' }}-${{
+      inputs.reproducibility_mode || 'off'
+    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}-${{ inputs.build_only }}-${{ inputs.build_number }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: inputs.verification_level == 'full' || inputs.verification_level == 'sentinel' || inputs.verification_level == ''
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.prepare.outputs.should_release }}
+      upstream_tag: ${{ steps.prepare.outputs.upstream_tag }}
+      build_number: ${{ steps.prepare.outputs.build_number }}
+      upstream_sha: ${{ steps.prepare.outputs.upstream_sha }}
+      patched_tag: ${{ steps.prepare.outputs.patched_tag }}
+      release_name: ${{ steps.prepare.outputs.release_name }}
+      build_date: ${{ steps.prepare.outputs.build_date }}
+      patch_files: ${{ steps.prepare.outputs.patch_files }}
+      supported_targets: ${{ steps.prepare.outputs.supported_targets }}
+      patch_hash: ${{ steps.prepare.outputs.patch_hash }}
+      build_metadata: ${{ steps.prepare.outputs.build_metadata }}
+      artifact_run_id: ${{ steps.prepare.outputs.artifact_run_id }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_run_attempt: ${{ steps.source.outputs.source_run_attempt }}
+      unix_matrix: ${{ steps.focus.outputs.unix_matrix }}
+      windows_matrix: ${{ steps.focus.outputs.windows_matrix }}
+    steps:
+      - name: Checkout patch repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Java tooling
+        uses: ./.github/actions/setup-tooling
+
+      - name: Download metadata for artifact reuse
+        if: ${{ inputs.artifact_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$ARTIFACT_RUN_ID" release-metadata reused-metadata
+
+      - name: Determine upstream release
+        id: prepare
+        shell: bash
+        env:
+          INPUT_AUTOMATIC: ${{ inputs.automatic || false }}
+          INPUT_UPSTREAM_TAG: ${{ inputs.upstream_tag || '' }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number || '' }}
+          INPUT_ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id || '' }}
+          INPUT_FOCUS_TARGET: ${{ inputs.focus_target || '' }}
+          INPUT_FOCUS_BUNDLE: ${{ inputs.focus_bundle || '' }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+
+          focused_comparison=false
+          if [[ -n "${INPUT_FOCUS_TARGET}" || -n "${INPUT_FOCUS_BUNDLE}" ]]; then
+            focused_comparison=true
+          fi
+
+          patch_hash="$(find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')"
+
+          if [[ -n "${INPUT_ARTIFACT_RUN_ID}" ]]; then
+            metadata_file="$(find reused-metadata -type f -name '*.json' -print -quit)"
+            if [[ -z "${metadata_file}" ]]; then
+              echo "ERROR: build run ${INPUT_ARTIFACT_RUN_ID} did not provide release metadata." >&2
+              exit 1
+            fi
+
+            upstream_tag="$(jq -er '.upstream_tag' "${metadata_file}")"
+            upstream_sha="$(jq -er '.upstream_sha' "${metadata_file}")"
+            patched_tag="$(jq -er '.patched_tag' "${metadata_file}")"
+            release_name="$(jq -er '.release_name // (.patched_tag | sub("^rust-v"; ""))' "${metadata_file}")"
+            build_date="$(jq -er '.build_date' "${metadata_file}")"
+            patch_files="$(jq -er '.patch_files' "${metadata_file}")"
+            supported_targets="$(jq -er '.supported_targets' "${metadata_file}")"
+            metadata_patch_hash="$(jq -er '.patch_hash' "${metadata_file}")"
+            if ! jq -e '.schema_version == 2 and (.build_metadata | type == "object")' "${metadata_file}" >/dev/null; then
+              echo "ERROR: build run ${INPUT_ARTIFACT_RUN_ID} uses incompatible release metadata; start a fresh build." >&2
+              exit 1
+            fi
+            build_metadata="$(jq -c -er '.build_metadata' "${metadata_file}")"
+
+            if [[ "${patch_hash}" != "${metadata_patch_hash}" ]]; then
+              echo "ERROR: current patch files do not match build run ${INPUT_ARTIFACT_RUN_ID}." >&2
+              exit 1
+            fi
+            if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
+              echo "Patched release ${patched_tag} already exists."
+              {
+                echo "should_release=false"
+                echo "upstream_tag=${upstream_tag}"
+                echo "upstream_sha=${upstream_sha}"
+                echo "patched_tag=${patched_tag}"
+                echo "release_name=${release_name}"
+                echo "build_date=${build_date}"
+                echo "patch_files=${patch_files}"
+                echo "supported_targets=${supported_targets}"
+                echo "patch_hash=${patch_hash}"
+                echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}"
+              } >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+
+            echo "Reusing final artifacts from build run ${INPUT_ARTIFACT_RUN_ID} for ${patched_tag}."
+            {
+              echo "build_number=${patched_tag##*+}"
+              echo "should_release=true"
+              echo "upstream_tag=${upstream_tag}"
+              echo "upstream_sha=${upstream_sha}"
+              echo "patched_tag=${patched_tag}"
+              echo "release_name=${release_name}"
+              echo "build_date=${build_date}"
+              echo "patch_files=${patch_files}"
+              echo "supported_targets=${supported_targets}"
+              echo "patch_hash=${patch_hash}"
+              echo "build_metadata=${build_metadata}"
+              echo "artifact_run_id=${INPUT_ARTIFACT_RUN_ID}"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          if [[ -n "${INPUT_UPSTREAM_TAG:-}" ]]; then
+            upstream_tag="${INPUT_UPSTREAM_TAG}"
+            upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^rust-v[0-9] ]]; then
+            upstream_tag="${GITHUB_REF_NAME%%+*}"
+            upstream_prerelease="$(gh api "repos/openai/codex/releases/tags/${upstream_tag}" --jq '(.prerelease or .draft)')"
+          else
+            upstream_release_json="$(./scripts/check-upstream-release.sh openai/codex)"
+            upstream_tag="$(jq -r '.tag_name' <<<"${upstream_release_json}")"
+            upstream_prerelease="$(jq -r '(.prerelease or .draft)' <<<"${upstream_release_json}")"
+          fi
+
+          if [[ -z "${upstream_tag}" || "${upstream_tag}" == "null" ]]; then
+            echo "ERROR: failed to determine upstream tag" >&2
+            exit 1
+          fi
+
+          if [[ "${upstream_prerelease}" == "true" ]]; then
+            echo "Upstream release ${upstream_tag} is a prerelease or draft; skipping."
+            {
+              echo "should_release=false"
+              echo "upstream_tag=${upstream_tag}"
+              echo "upstream_sha="
+              echo "patched_tag="
+              echo "release_name="
+              echo "build_date=${build_date}"
+              echo "patch_files="
+              echo "supported_targets="
+              echo "patch_hash="
+              echo "artifact_run_id="
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ -n "${INPUT_BUILD_NUMBER}" ]]; then
+            build_number="${INPUT_BUILD_NUMBER}"
+          else
+            build_number="$(
+              gh api "repos/${GITHUB_REPOSITORY}/tags" --paginate --jq '.[].name' |
+                "$CODEX_UNLEASHED_TOOLING" next-release-build-number "${upstream_tag}"
+            )"
+          fi
+          patched_tag="${upstream_tag}+${build_number}"
+          release_name="${patched_tag#rust-v}"
+          failure_marker_name="failed-upstream-release-${upstream_tag}-${GITHUB_SHA}-${patch_hash}"
+          export failure_marker_name
+
+          if [[ "${focused_comparison}" != true ]] && gh release view "${patched_tag}" >/dev/null 2>&1; then
+            echo "Patched release ${patched_tag} already exists."
+            {
+              echo "should_release=false"
+              echo "upstream_tag=${upstream_tag}"
+              echo "patched_tag=${patched_tag}"
+              echo "build_date=${build_date}"
+              echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
+              echo "patch_hash=${patch_hash}"
+              echo "artifact_run_id="
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${INPUT_AUTOMATIC}" == "true" ]]; then
+            failure_marker_id="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+                --paginate --slurp |
+                jq -r '[.[].artifacts[]
+                  | select(.expired == false and .name == env.failure_marker_name)
+                  | .id] | first // empty'
+            )"
+            if [[ -n "${failure_marker_id}" ]]; then
+              echo "A release attempt for ${upstream_tag} and these sources failed within the retained one-day window; skipping automatic retry. Start a manual run with automatic=false to retry."
+              {
+                echo "should_release=false"
+                echo "upstream_tag=${upstream_tag}"
+                echo "patched_tag=${patched_tag}"
+                echo "build_date=${build_date}"
+                echo "patch_files=$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
+                echo "supported_targets="
+                echo "patch_hash=${patch_hash}"
+                echo "artifact_run_id="
+              } >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+          fi
+
+          bash .github/scripts/checkout-upstream-tag.sh https://github.com/openai/codex.git "${upstream_tag}" upstream
+          upstream_sha="$(git -C upstream rev-parse HEAD)"
+          patch_files="$(find patches -type f -name '*.patch' -printf '%P ' | sed 's/[[:space:]]*$//')"
+          supported_targets="x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin, aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc"
+
+          # Use the upstream commit time for deterministic package metadata.
+          # The former implementation downloaded every upstream package and
+          # standalone asset here solely to copy their timestamps. We no
+          # longer compare our bytes with those independently-built assets.
+          build_metadata='{}'
+          for target in \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl \
+            x86_64-apple-darwin \
+            aarch64-apple-darwin \
+            x86_64-pc-windows-msvc \
+            aarch64-pc-windows-msvc; do
+            bundles="primary app-server"
+            for bundle in ${bundles}; do
+              if [[ -n "${INPUT_FOCUS_TARGET}" && "${INPUT_FOCUS_TARGET}" != "${target}" ]]; then
+                continue
+              fi
+              if [[ -n "${INPUT_FOCUS_BUNDLE}" && "${INPUT_FOCUS_BUNDLE}" != "${bundle}" ]]; then
+                continue
+              fi
+              source_date_epoch="$(git -C upstream show -s --format=%ct "${upstream_sha}")"
+              archive_mtime="${source_date_epoch}"
+              archive_gzip_mtime="${source_date_epoch}"
+              standalone_archive_mtime="${source_date_epoch}"
+              member_mtimes='{}'
+              metadata_key="${target}|${bundle}"
+              build_metadata="$(jq -c \
+                --arg key "${metadata_key}" \
+                --argjson source_date_epoch "${source_date_epoch}" \
+                --argjson archive_mtime "${archive_mtime}" \
+                --argjson archive_gzip_mtime "${archive_gzip_mtime}" \
+                --argjson member_mtimes "${member_mtimes}" \
+                --argjson standalone_archive_mtime "${standalone_archive_mtime}" \
+                '. + {($key): {source_date_epoch: $source_date_epoch, archive_mtime: $archive_mtime, archive_gzip_mtime: $archive_gzip_mtime, standalone_archive_mtime: $standalone_archive_mtime, member_mtimes: $member_mtimes}}' \
+                <<<"${build_metadata}")"
+            done
+          done
+
+          jq -n \
+            --arg artifact_run_id "${GITHUB_RUN_ID}" \
+            --arg upstream_tag "${upstream_tag}" \
+            --arg upstream_sha "${upstream_sha}" \
+            --arg patched_tag "${patched_tag}" \
+            --arg release_name "${release_name}" \
+            --arg build_date "${build_date}" \
+            --arg patch_files "${patch_files}" \
+            --arg patch_hash "${patch_hash}" \
+            --arg supported_targets "${supported_targets}" \
+            --argjson build_metadata "${build_metadata}" \
+            '{schema_version: 2, artifact_run_id: $artifact_run_id, upstream_tag: $upstream_tag, upstream_sha: $upstream_sha, patched_tag: $patched_tag, release_name: $release_name, build_date: $build_date, patch_files: $patch_files, patch_hash: $patch_hash, supported_targets: $supported_targets, build_metadata: $build_metadata}' \
+            > release-metadata.json
+
+          {
+            echo "should_release=true"
+            echo "upstream_tag=${upstream_tag}"
+            echo "build_number=${build_number}"
+            echo "upstream_sha=${upstream_sha}"
+            echo "patched_tag=${patched_tag}"
+            echo "release_name=${release_name}"
+            echo "build_date=${build_date}"
+            echo "patch_files=${patch_files}"
+            echo "supported_targets=${supported_targets}"
+            echo "patch_hash=${patch_hash}"
+            echo "build_metadata=${build_metadata}"
+            echo "artifact_run_id=${GITHUB_RUN_ID}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Reserve and verify release source tag
+        id: source
+        if: >-
+          ${{ steps.prepare.outputs.should_release == 'true' &&
+              (inputs.verification_level == '' || inputs.verification_level == 'full') &&
+              inputs.focus_target == '' && inputs.focus_bundle == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.patched_tag }}
+          ARTIFACT_RUN_ID: ${{ steps.prepare.outputs.artifact_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" ensure-release-tag \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --artifact-run-id "$ARTIFACT_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Select release comparison matrix
+        id: focus
+        shell: bash
+        env:
+          FOCUS_TARGET: ${{ inputs.focus_target || '' }}
+          FOCUS_BUNDLE: ${{ inputs.focus_bundle || '' }}
+          VERIFICATION_LEVEL: ${{ inputs.verification_level || 'full' }}
+        run: |
+          set -euo pipefail
+          echo "Prepared release: ${{ steps.prepare.outputs.should_release }}"
+          echo "Prepared artifact run: ${{ steps.prepare.outputs.artifact_run_id }}"
+          if [[ "${VERIFICATION_LEVEL}" == "sentinel" && -z "${FOCUS_TARGET}" && -z "${FOCUS_BUNDLE}" ]]; then
+            FOCUS_TARGET="x86_64-unknown-linux-musl"
+            FOCUS_BUNDLE="primary"
+          fi
+          unix_matrix='[
+            {"runner":"ubuntu-latest","target":"x86_64-unknown-linux-musl","bundle":"primary","artifact_name":"x86_64-unknown-linux-musl","binaries":"codex codex-code-mode-host codex-responses-api-proxy bwrap"},
+            {"runner":"ubuntu-24.04-arm","target":"aarch64-unknown-linux-musl","bundle":"primary","artifact_name":"aarch64-unknown-linux-musl","binaries":"codex codex-code-mode-host codex-responses-api-proxy bwrap"},
+            {"runner":"macos-15","target":"x86_64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"x86_64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"},
+            {"runner":"macos-15","target":"aarch64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"aarch64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"}
+          ]'
+          windows_matrix='[
+            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"},
+            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"}
+          ]'
+          filter_matrix() {
+            jq -c --arg target "$FOCUS_TARGET" --arg bundle "$FOCUS_BUNDLE" \
+              'map(select(($target == "" or .target == $target) and ($bundle == "" or .bundle == $bundle)))'
+          }
+          unix_matrix="$(printf '%s' "$unix_matrix" | filter_matrix)"
+          windows_matrix="$(printf '%s' "$windows_matrix" | filter_matrix)"
+          {
+            echo "unix_matrix=${unix_matrix}"
+            echo "windows_matrix=${windows_matrix}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload build metadata
+        if: >-
+          ${{
+            steps.prepare.outputs.should_release == 'true'
+          }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          retention-days: 1
+
+  verify:
+    needs: prepare
+    permissions:
+      contents: read
+    if: >-
+      ${{
+        always() &&
+        !cancelled() &&
+        needs.prepare.outputs.should_release == 'true'
+      }}
+    runs-on: ubuntu-latest
+    env:
+      # This upstream-only compatibility exception is narrowly scoped to the
+      # stale code-mode manifest exception; every other repository check remains
+      # enforced by run-upstream-repo-checks.sh.
+      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
+    steps:
+      - name: Record job start
+        id: timing_start
+        shell: bash
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout patch repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-ci
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
+          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.3"
+          cache-suffix: ${{ env.CACHE_UPSTREAM_PREFIX }}
+
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        # Resolve in the patched checkout so its packageManager pnpm version selects the store.
+        run: echo "path=$(cd upstream && pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        id: pnpm_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          restore-keys: |
+            upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-
+
+      - name: Install upstream dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          pnpm install --frozen-lockfile
+
+      - name: Verify codex-rs Cargo manifests inherit workspace settings
+        run: ./scripts/run-upstream-repo-checks.sh upstream
+
+      - name: Write verify summary
+        if: always()
+        shell: bash
+        env:
+          START_EPOCH: ${{ steps.timing_start.outputs.epoch }}
+          PNPM_CACHE_HIT: ${{ steps.pnpm_cache.outputs.cache-hit || 'false' }}
+        run: |
+          set -euo pipefail
+          end_epoch="$(date +%s)"
+          duration="$(( end_epoch - START_EPOCH ))"
+          {
+            echo "## Verify summary"
+            echo
+            echo "- Outcome: ${{ job.status }}"
+            echo "- Duration (seconds): ${duration}"
+            echo "- pnpm cache hit: ${PNPM_CACHE_HIT}"
+            echo "- Cargo cache: managed by Swatinem/rust-cache"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-unix:
+    needs:
+      - prepare
+      - verify
+    if: >-
+      ${{
+        always() &&
+        !cancelled() &&
+        needs.verify.result == 'success' &&
+        needs.prepare.outputs.should_release == 'true' &&
+        needs.prepare.outputs.artifact_run_id == github.run_id &&
+        (
+          inputs.focus_target == '' ||
+          contains(inputs.focus_target, 'linux') ||
+          contains(inputs.focus_target, 'apple-darwin')
+        )
+      }}
+    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout_minutes || 180 }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    env:
+      CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      REPRODUCIBILITY_MODE: ${{ inputs.reproducibility_mode || 'off' }}
+      ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION: "1"
+      SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
+      CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_mtime }}
+      CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].archive_gzip_mtime }}
+      CODEX_PACKAGE_ARCHIVE_MEMBER_MTIMES: ${{ toJSON(fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].member_mtimes) }}
+      CODEX_STANDALONE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].standalone_archive_mtime }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.unix_matrix) }}
+    steps:
+      - name: Record job start
+        id: timing_start
+        shell: bash
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout patch repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-ci
+        with:
+          # Linux hosted runners can use the path from upstream's build
+          # environment. Other platforms are aligned after the upstream
+          # checkout is prepared.
+          cargo-target-dir: ${{ runner.os == 'Linux' && '/home/runner/work/codex/codex/codex-rs/target' || '' }}
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Print runner specs (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cpu_model="$(lscpu | awk -F: '/Model name/ {gsub(/^[ \t]+/, "", $2); print $2; exit}')"
+          total_ram="$(awk '/MemTotal/ {printf "%.1f GiB\n", $2 / 1024 / 1024}' /proc/meminfo)"
+          echo "Runner: ${RUNNER_NAME:-unknown}"
+          echo "OS: $(uname -a)"
+          echo "CPU model: ${cpu_model}"
+          echo "Logical CPUs: $(nproc)"
+          echo "Total RAM: ${total_ram}"
+          echo "Disk usage:"
+          df -h .
+
+      - name: Print runner specs (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          total_ram="$(sysctl -n hw.memsize | awk '{printf "%.1f GiB\n", $1 / 1024 / 1024 / 1024}')"
+          echo "Runner: ${RUNNER_NAME:-unknown}"
+          echo "OS: $(sw_vers -productName) $(sw_vers -productVersion)"
+          echo "Hardware model: $(sysctl -n hw.model)"
+          echo "CPU architecture: $(uname -m)"
+          echo "Logical CPUs: $(sysctl -n hw.logicalcpu)"
+          echo "Physical CPUs: $(sysctl -n hw.physicalcpu)"
+          echo "Total RAM: ${total_ram}"
+          echo "Disk usage:"
+          df -h .
+
+      - name: Set up Zig
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        uses: step-security/setup-zig@1e9fbd457bcc3587b58845344a267f12f151709c # v2.2.2
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Prepare Linux APT cache directories
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
+          sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
+
+      - name: Restore APT cache
+        if: ${{ runner.os == 'Linux' }}
+        id: apt_cache
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: /var/cache/apt
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-apt-${{ runner.os }}-${{ matrix.target }}-v1
+
+      - name: Install Linux build dependencies
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ needs.prepare.outputs.upstream_tag }}
+          expected-upstream-commit: ${{ needs.prepare.outputs.upstream_sha }}
+          apply-patches: true
+
+      - name: Preserve patched Cargo metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream add -- codex-rs/Cargo.lock
+
+      - name: Normalize patched source timestamps
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|{1}', matrix.target, matrix.bundle)].source_date_epoch }}
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" normalize-source-timestamps upstream "$SOURCE_DATE_EPOCH"
+
+      - name: Align upstream checkout with release path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cargo embeds build-script output paths in release binaries. The
+          # upstream release is built from this canonical GitHub runner path;
+          # use the same physical path instead of compensating with RUSTFLAGS,
+          # which changes Cargo fingerprints.
+          release_checkout="${GITHUB_WORKSPACE%/*/*}/codex/codex"
+          if [[ "${release_checkout}" != "${GITHUB_WORKSPACE}/upstream" ]]; then
+            # setup-ci and the GHCR restore may already have populated this
+            # target directory. Preserve it while replacing the checkout;
+            # removing release_checkout wholesale would otherwise discard the
+            # restored Cargo fingerprints before Cargo can use them.
+            preserved_target="${RUNNER_TEMP}/codex-release-target"
+            if [[ -d "${release_checkout}/codex-rs/target" ]]; then
+              rm -rf "${preserved_target}"
+              mv "${release_checkout}/codex-rs/target" "${preserved_target}"
+            fi
+            rm -rf "${release_checkout}"
+            mkdir -p "$(dirname "${release_checkout}")"
+            mv "${GITHUB_WORKSPACE}/upstream" "${release_checkout}"
+            ln -s "${release_checkout}" "${GITHUB_WORKSPACE}/upstream"
+            if [[ -d "${preserved_target}" ]]; then
+              mkdir -p "${release_checkout}/codex-rs"
+              mv "${preserved_target}" "${release_checkout}/codex-rs/target"
+            fi
+          fi
+          mkdir -p "${release_checkout}/codex-rs/target"
+          # Upstream's release workflow exposes the physical source checkout
+          # through CODEX_REPO_ROOT. Set it after moving the checkout so build
+          # scripts embed the same canonical path as the official release.
+          echo "CODEX_REPO_ROOT=${release_checkout}" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=${release_checkout}/codex-rs/target" >> "$GITHUB_ENV"
+
+      - name: Use upstream-compatible Cargo home (Linux musl)
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_home="/home/runner/work/codex/codex/.cargo-home"
+          mkdir -p "${cargo_home}/bin"
+          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+          : > "${cargo_home}/config.toml"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Configure deterministic compiler mode
+        if: ${{ (inputs.reproducibility_mode || 'off') == 'deterministic' }}
+        shell: bash
+        run: |
+          # Even an empty job-level value overrides upstream Cargo target
+          # flags, so define these only for the opt-in compiler experiment.
+          echo "RUSTFLAGS=-Ccodegen-units=1 -Zno-parallel-backend" >> "$GITHUB_ENV"
+          echo "RUSTC_BOOTSTRAP=1" >> "$GITHUB_ENV"
+
+      - name: Record Rust compiler cache input
+        id: rust_compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null 2>&1; then
+            fingerprint="$(rustc -Vv | sha256sum | awk '{print $1}')"
+          else
+            fingerprint="$(rustc -Vv | shasum -a 256 | awk '{print $1}')"
+          fi
+          echo "fingerprint=${fingerprint}" >> "$GITHUB_OUTPUT"
+          v8_version="$("$CODEX_UNLEASHED_TOOLING" resolved-v8-crate-version .)"
+          "$CODEX_UNLEASHED_TOOLING" release-cache-keys \
+            --target "${{ matrix.target }}" \
+            --compiler-fingerprint "$fingerprint" \
+            --v8-version "$v8_version" \
+            --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine pnpm store path
+        id: pnpm_store
+        shell: bash
+        # Resolve in the patched checkout so its packageManager pnpm version selects the store.
+        run: echo "path=$(cd upstream && pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        id: pnpm_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-${{ hashFiles('upstream/pnpm-lock.yaml') }}
+          restore-keys: |
+            upstream-${{ needs.prepare.outputs.upstream_tag }}-pnpm-${{ runner.os }}-
+
+      - name: Cache Cargo dependencies
+        id: cargo_cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: upstream-${{ needs.prepare.outputs.upstream_tag }}-
+          workspaces: |
+            upstream/codex-rs -> target
+          # Cargo target directories belong exclusively to the GHCR overflow
+          # cache below. Keep only registry, Git, and other dependency data in
+          # the GitHub Actions cache.
+          cache-targets: false
+          # Do not include runner- and run-specific environment paths in the
+          # cache key: this cache contains source downloads, while compiled
+          # outputs have a separate compiler identity in GHCR.
+          add-rust-environment-hash-key: false
+          # Namespace dependency downloads by upstream release for retention.
+          # Their content identity remains independent of the patch set.
+          shared-key: ${{ steps.rust_compiler.outputs.cargo_download_key }}
+          cache-workspace-crates: false
+          # Cargo's installed binaries are setup tools, not release outputs;
+          # cache them through their dedicated setup steps instead.
+          cache-bin: false
+          cache-all-crates: false
+          save-if: true
+          cache-on-failure: true
+
+      - name: Set up ORAS for GHCR Cargo cache
+        if: ${{ inputs.ghcr_cache == true }}
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
+
+      - name: Log in to GHCR Cargo cache
+        if: ${{ inputs.ghcr_cache == true }}
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | oras login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Restore GHCR Cargo target cache
+        id: ghcr_cargo_cache
+        if: ${{ inputs.ghcr_cache == true }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if bash .github/scripts/ghcr-cargo-target-cache.sh pull \
+            "$GHCR_CACHE_REPOSITORY" \
+            "$GHCR_CACHE_TAG" \
+            "$CARGO_TARGET_DIR" \
+            "${{ needs.prepare.outputs.upstream_tag }}"; then
+            echo "restored=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild release binaries from cached dependencies
+        shell: bash
+        run: |
+          "${CODEX_UNLEASHED_TOOLING}" clean-cached-release-binaries \
+            upstream/codex-rs \
+            "${{ matrix.target }}" \
+            ${{ matrix.binaries }}
+
+      - name: Cache rusty_v8 artifacts
+        id: rusty_v8_cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .cache/rusty_v8
+          key: upstream-${{ needs.prepare.outputs.upstream_tag }}-${{ steps.rust_compiler.outputs.rusty_v8_key }}
+
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Install upstream dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd upstream
+          pnpm install --frozen-lockfile
+
+      - name: Configure Linux musl toolchain
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bash upstream/.github/scripts/install-musl-build-tools.sh
+
+      - name: Disable aws-lc jitter entropy (musl)
+        if: ${{ contains(matrix.target, 'linux-musl') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
+          target_no_jitter="${target_no_jitter//-/_}"
+          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
+
+      - name: Profile release compiler and linker
+        shell: bash
+        env:
+          UPSTREAM_TARGET: ${{ matrix.target }}
+          UPSTREAM_BINARIES: ${{ matrix.binaries }}
+          CARGO_INCREMENTAL: "1"
+        run: bash .github/scripts/profile-release-compiler.sh
+
+      - name: Upload compiler profile
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-compiler-profile-${{ matrix.target }}
+          path: ${{ runner.temp }}/codex-compiler-profile
+          retention-days: 1
+          if-no-files-found: error

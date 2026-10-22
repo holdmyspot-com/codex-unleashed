@@ -9,6 +9,7 @@ on:
         default: credentials
         options:
           - credentials
+          - compiler-profile
           - compiler-scheduler-baseline
           - compiler-scheduler-native
           - compiler-scheduler-macos
@@ -19,6 +20,22 @@ permissions:
   contents: read
 
 jobs:
+  compiler-profile:
+    if: inputs.focus == 'compiler-profile'
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/profile-release-compiler.yml
+    secrets: inherit
+    with:
+      focus_target: x86_64-unknown-linux-musl
+      focus_bundle: primary
+      build_only: true
+      publish_npm: false
+      ghcr_cache: true
+
   prepare-tooling:
     if: inputs.focus == 'credentials'
     uses: ./.github/workflows/prepare-tooling.yml
