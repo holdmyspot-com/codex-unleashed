@@ -13,6 +13,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 /** Verifies literal native-child arguments and ordinary exit status through the public CLI. */
@@ -24,6 +25,91 @@ public final class BazelCommandTest
 	/** Creates CLI tests. */
 	public BazelCommandTest()
 	{
+	}
+
+	/**
+	 * Runs the public command with a Java socket client that connects to the live scheduler, reports its compiler
+	 * lifecycle, and exits with an ordinary failure status. The command removes its private IPC resources afterward.
+	 *
+	 * @throws IOException if fixture or process operations fail
+	 */
+	@Test
+	public void buildOwnsSchedulerLifecycle() throws IOException
+	{
+		Path root = Files.createTempDirectory("bazel-scheduler-cli-");
+		try
+		{
+			Map<String, String> environment = new HashMap<>(System.getenv());
+			for (String key : List.of("BAZEL_OUTPUT_USER_ROOT", "BUILDBUDDY_API_KEY", "GITHUB_ACTIONS",
+				"BAZEL_REPO_CONTENTS_CACHE", "BAZEL_REPOSITORY_CACHE", "BAZEL_DISK_CACHE", "NODE_OPTIONS",
+				BazelCommands.SCHEDULER_DIRECTORY))
+				environment.put(key, "");
+			Files.writeString(root.resolve("build"), """
+				import java.io.DataInputStream;
+				import java.io.DataOutputStream;
+				import java.net.StandardProtocolFamily;
+				import java.net.UnixDomainSocketAddress;
+				import java.nio.channels.Channels;
+				import java.nio.channels.SocketChannel;
+				import java.nio.file.Files;
+				import java.nio.file.Path;
+				class Build {
+				    public static void main(String[] args) throws Exception {
+				        Thread.ofVirtual().start(() -> {
+				            try { Thread.sleep(10000); } catch (InterruptedException error) {
+				                throw new AssertionError(error);
+				            }
+				            Runtime.getRuntime().halt(95);
+				        });
+				        var cwd = Path.of("").toAbsolutePath();
+				        try (var entries = Files.list(cwd)) {
+				            if (entries.anyMatch(path -> path.getFileName().toString()
+				                    .startsWith(".codex-compiler-scheduler-")))
+				                throw new AssertionError("Scheduler requires a directory symlink");
+				        }
+				        var directory = System.getenv("CODEX_COMPILER_SCHEDULER_DIRECTORY");
+				        Files.writeString(Path.of("ipc-directory"), directory);
+				        var address = cwd.relativize(Path.of(directory).resolve("s"));
+				        try (var socket = SocketChannel.open(StandardProtocolFamily.UNIX)) {
+				            socket.connect(UnixDomainSocketAddress.of(address));
+				            var input = new DataInputStream(Channels.newInputStream(socket));
+				            var output = new DataOutputStream(Channels.newOutputStream(socket));
+				            if (input.readInt() != 1 || input.readInt() != 1 || input.readInt() != 0)
+				                throw new AssertionError("Missing compiler admission");
+				            output.writeInt(8); output.writeInt(1); output.writeInt(0);
+				            output.writeInt(9); output.writeInt(1); output.writeInt(0);
+				            output.flush();
+				            if (input.read() != -1)
+				                throw new AssertionError("Completed compiler connection remains open");
+				        }
+				        System.exit(17);
+				    }
+				}
+				""");
+			environment.put("CODEX_BAZEL_BIN", Path.of(System.getProperty("java.home"), "bin", "java").toString());
+			SystemCommands.Result result = cli(root, environment,
+				List.of("run-bazel-with-buildbuddy", "--source=27", "build", "//:fixture"));
+			assertEquals(result.status(), 17, result.stdout() + result.stderr());
+			String endpointDirectory = Files.readString(root.resolve("ipc-directory"));
+			assertFalse(Files.exists(Path.of(endpointDirectory)));
+			SystemCommands.Result repeated = cli(root, environment,
+				List.of("run-bazel-with-buildbuddy", "--source=27", "build", "//:fixture"));
+			assertEquals(repeated.status(), 17, repeated.stdout() + repeated.stderr());
+			assertEquals(Files.readString(root.resolve("ipc-directory")), endpointDirectory);
+			assertFalse(Files.exists(Path.of(endpointDirectory)));
+			try (Stream<Path> files = Files.list(root))
+			{
+				assertFalse(files.anyMatch(path -> path.getFileName().toString().startsWith(".codex-compiler-scheduler-")));
+			}
+		}
+		finally
+		{
+			try (Stream<Path> paths = Files.walk(root))
+			{
+				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+					Files.delete(path);
+			}
+		}
 	}
 
 	/**

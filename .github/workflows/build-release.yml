@@ -938,10 +938,8 @@ jobs:
             # rejected because one of its inputs changed.
             export CARGO_LOG="cargo::core::compiler::fingerprint=info"
           fi
-          build=(./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output")
+          build=(.github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream "${RUNNER_TEMP}/upstream-build-output")
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            # Pause, kill, and rerun compilers so that parallel rustc invocations stay within the runner's memory.
-            build=(.github/scripts/run-memory-scheduled-build.sh "${build[@]}")
             TMPDIR="$RUNNER_TEMP" bash .github/scripts/test-linux-build-observer.sh
             build=(bash .github/scripts/observe-linux-build.sh "${build[@]}")
           fi
@@ -1407,6 +1405,7 @@ jobs:
             helper_build_args+=(--bin "$binary")
           done
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" \
             cargo build --target "${{ matrix.target }}" --release --timings \
             --message-format=json-render-diagnostics "${helper_build_args[@]}" \
             > "$RUNNER_TEMP/cargo-cache-reuse-${{ matrix.target }}-${{ matrix.bundle }}.jsonl"
@@ -1431,6 +1430,7 @@ jobs:
             build_args+=(--bin "$binary")
           done
           bash "${GITHUB_WORKSPACE}/scripts/run-cancellable-command.sh" \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" \
             cargo build --target "$target" --release --timings "${build_args[@]}"
 
       - name: Record successfully compiled source inputs

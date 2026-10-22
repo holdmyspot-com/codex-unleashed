@@ -66,6 +66,13 @@ runs:
         restore-keys: |
           tooling-maven-${{ runner.os }}-${{ runner.arch }}-jdk27-
 
+    - name: Configure host MSVC for the native compiler controller
+      if: runner.os == 'Windows' && steps.runtime.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $target = if ('${{ runner.arch }}' -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+        & "$env:GITHUB_ACTION_PATH/../setup-msvc-env/setup-msvc-env.ps1" -Target $target
+
     - name: Build tooling runtime
       id: build
       shell: bash

@@ -1,21 +1,33 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.BufferedInputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 
 /** Executes Bazel with the selected BuildBuddy configuration and caller-owned standard streams. */
 public final class BazelCommand
 {
 	/** The maintained Bazel wrapper command. */
 	public static final String NAME = "run-bazel-with-buildbuddy";
+	/** Allows only the invoking user to access the scheduler's IPC directory on POSIX filesystems. */
+	private static final Set<PosixFilePermission> IPC_PERMISSIONS = PosixFilePermissions.fromString("rwx------");
 	// WORKAROUND: https://github.com/bazelbuild/bazel/issues/31786
 	// Remove this exact diagnostic filter when Bazel's launcher stops adding -Xverify:none.
 	private static final byte[] OBSOLETE_VERIFICATION_WARNING = ("OpenJDK 64-Bit Server VM warning: " +
@@ -48,7 +60,73 @@ public final class BazelCommand
 		}
 		Map<String, String> environment = System.getenv();
 		Path directory = Path.of("").toAbsolutePath();
-		BazelCommands.Invocation invocation = BazelCommands.plan(values, environment, directory);
+		if (BazelCommands.buildsCompilers(values))
+			return scheduleCompilers(values, environment, directory, err);
+		return execute(values, environment, directory, err);
+	}
+
+	/**
+	 * Keeps the scheduler host alive for the complete child invocation and removes its private IPC directory afterward.
+	 *
+	 * @param arguments literal Bazel arguments
+	 * @param environment the invoking process environment
+	 * @param directory the child working directory
+	 * @param err diagnostic output
+	 * @return the child's ordinary status
+	 * @throws IOException if the scheduler, build, or IPC cleanup fails
+	 */
+	private static int scheduleCompilers(List<String> arguments, Map<String, String> environment,
+		Path directory, PrintStream err) throws IOException
+	{
+		Path temporaryDirectory = Path.of(environment.getOrDefault("TMPDIR", System.getProperty("java.io.tmpdir"))).
+			toAbsolutePath();
+		StringBuilder identity = new StringBuilder(directory.toRealPath().toString()).append('\0').
+			append(environment.getOrDefault("BAZEL_OUTPUT_USER_ROOT", ""));
+		for (String argument : arguments.stream().takeWhile(value -> value.startsWith("-")).toList())
+		{
+			if (argument.startsWith("--output_base=") || argument.startsWith("--output_user_root="))
+				identity.append('\0').append(argument);
+		}
+		String name = "bazel-compiler-" + UUID.nameUUIDFromBytes(identity.toString().getBytes(StandardCharsets.UTF_8));
+		Path ipcDirectory = temporaryDirectory.resolve(name);
+		// Stable socket arguments preserve compiler cache keys. Keep the lock inode for any waiting invocation.
+		Path locks = Path.of(environment.getOrDefault("XDG_CACHE_HOME", temporaryDirectory.toString())).
+			resolve("codex-compiler-locks");
+		Files.createDirectories(locks);
+		try (FileChannel channel = FileChannel.open(locks.resolve(name + ".lock"),
+			StandardOpenOption.CREATE, StandardOpenOption.WRITE); FileLock _ = channel.lock())
+		{
+			if (Files.getFileStore(temporaryDirectory).supportsFileAttributeView("posix"))
+				Files.createDirectory(ipcDirectory, PosixFilePermissions.asFileAttribute(IPC_PERMISSIONS));
+			else
+				Files.createDirectory(ipcDirectory);
+			try (Closeable _ = () -> Files.delete(ipcDirectory);
+				CompilerSchedulerProcess service = new CompilerSchedulerProcess(ipcDirectory, err))
+			{
+				Map<String, String> scheduledEnvironment = new HashMap<>(environment);
+				scheduledEnvironment.put(BazelCommands.SCHEDULER_DIRECTORY, ipcDirectory.toString());
+				int status = execute(arguments, scheduledEnvironment, directory, err);
+				service.checkAlive();
+				return status;
+			}
+		}
+	}
+
+	/**
+	 * Runs a planned Bazel invocation with explicit environmental inputs and streams its diagnostics.
+	 *
+	 * @param values literal Bazel arguments
+	 * @param environment the child's complete environment
+	 * @param directory the child working directory
+	 * @param err diagnostic output
+	 * @return the child's ordinary status
+	 * @throws IOException if planning, process startup, diagnostics, or waiting fails
+	 */
+	private static int execute(List<String> values, Map<String, String> environment, Path directory, PrintStream err)
+		throws IOException
+	{
+		BazelCommands.Invocation invocation = BazelCommands.plan(values, environment, directory,
+			System.getProperty("os.name"));
 		if (invocation.remoteConfig().isEmpty())
 			err.println("BuildBuddy key unavailable; using local Bazel configuration.");
 		else

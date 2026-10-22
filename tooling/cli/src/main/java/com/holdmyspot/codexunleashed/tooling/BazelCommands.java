@@ -5,6 +5,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -18,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 /** Plans Bazel execution from explicit workflow evidence, credentials and cache settings. */
 public final class BazelCommands
 {
+	/** Private IPC directory supplied by the compiler scheduler's invocation owner. */
+	static final String SCHEDULER_DIRECTORY = "CODEX_COMPILER_SCHEDULER_DIRECTORY";
 	private static final String WINDOWS_CROSS_CONFIG = "--config=ci-windows-cross";
 	private static final Set<String> REMOTE_EXECUTION = Set.of("--config=ci-linux", "--config=ci-macos",
 		"--config=ci-v8", WINDOWS_CROSS_CONFIG);
@@ -59,17 +62,20 @@ public final class BazelCommands
 	 * @param arguments Bazel arguments without the executable
 	 * @param environment the caller's explicit environment
 	 * @param workingDirectory directory used to resolve relative event filenames
+	 * @param operatingSystem the invoking JVM operating system name
 	 * @return the complete immutable invocation
 	 * @throws NullPointerException if an argument, argument element, environment entry or directory is null
 	 * @throws IllegalArgumentException if no Bazel command is present
 	 * @throws IOException if workflow evidence has invalid UTF-8
 	 */
-	public static Invocation plan(List<String> arguments, Map<String, String> environment, Path workingDirectory)
+	public static Invocation plan(List<String> arguments, Map<String, String> environment, Path workingDirectory,
+		String operatingSystem)
 		throws IOException
 	{
 		arguments = List.copyOf(arguments);
 		environment = Map.copyOf(environment);
 		Objects.requireNonNull(workingDirectory, "workingDirectory");
+		Objects.requireNonNull(operatingSystem, "operatingSystem");
 		int commandIndex = 0;
 		while (commandIndex < arguments.size() && arguments.get(commandIndex).startsWith("-"))
 			commandIndex += 1;
@@ -138,8 +144,102 @@ public final class BazelCommands
 			"--repo_contents_cache=");
 		addCache(command, configured, configuredSeparator, environment, "BAZEL_REPOSITORY_CACHE", "--repository_cache=");
 		addDiskCache(command, configured, configuredSeparator, environment, config.isPresent());
+		String schedulerDirectory = environment.get(SCHEDULER_DIRECTORY);
+		if (present(schedulerDirectory) && buildsCompilers(arguments))
+			addCompilerScheduler(command, schedulerDirectory, config.isPresent() && remoteExecution, operatingSystem);
 		command.addAll(configured.subList(configuredSeparator, configured.size()));
 		return new Invocation(command, config, openai);
+	}
+
+	/**
+	 * Identifies commands that execute compiler actions, excluding startup options and executable payloads.
+	 *
+	 * @param arguments Bazel arguments without its executable
+	 * @return whether the selected command executes compiler actions
+	 */
+	static boolean buildsCompilers(List<String> arguments)
+	{
+		return arguments.stream().filter(argument -> !argument.startsWith("-")).findFirst().
+			map(command -> Set.of("build", "test", "run", "coverage").contains(command)).orElse(false);
+	}
+
+	/**
+	 * Requires sandboxed local Rust actions and leaves remote workers under their own resource controls.
+	 *
+	 * @param command arguments before the executable payload separator
+	 * @param directory the caller-owned private socket directory mounted into local sandboxes
+	 * @param remoteExecution whether the invocation enables BuildBuddy remote execution
+	 * @param operatingSystem the invoking JVM operating system name
+	 * @throws IOException if the operating system has no supported local compiler strategy
+	 */
+	private static void addCompilerScheduler(List<String> command, String directory, boolean remoteExecution,
+		String operatingSystem) throws IOException
+	{
+		String socket = Path.of(directory).resolve("s").toString();
+		String strategies;
+		if (operatingSystem.equals("Linux"))
+		{
+			socket = "/var/tmp/s";
+			strategies = "linux-sandbox";
+		}
+		else if (operatingSystem.equals("Mac OS X"))
+			strategies = "darwin-sandbox";
+		else if (operatingSystem.startsWith("Windows"))
+			strategies = "local";
+		else
+			throw new IOException("Compiler scheduling does not support operating system: " + operatingSystem);
+		command.add("--action_env=CODEX_COMPILER_SCHEDULER_SOCKET=" + socket);
+		command.add("--host_action_env=CODEX_COMPILER_SCHEDULER_SOCKET=" + socket);
+		if (operatingSystem.equals("Linux"))
+			command.add("--sandbox_add_mount_pair=" + directory + ":/var/tmp");
+		if (remoteExecution)
+			strategies = "remote," + strategies;
+		command.add("--strategy=Rustc=" + strategies);
+		command.add("--strategy=RustcMetadata=" + strategies);
+		if (remoteExecution)
+		{
+			String override = "CODEX_COMPILER_SCHEDULER_SOCKET=";
+			appendRemoteOverride(command, "secret-env-overrides", override, true);
+			appendRemoteOverride(command, "secret-env-overrides-base64",
+				Base64.getEncoder().encodeToString(override.getBytes(java.nio.charset.StandardCharsets.UTF_8)), false);
+		}
+	}
+
+	/**
+	 * Preserves existing execution-time environment overrides and appends the scheduler override last.
+	 *
+	 * @param command mutable arguments before the executable payload separator
+	 * @param property the BuildBuddy platform header name
+	 * @param value the appended environment assignment in the header's encoding
+	 * @param required whether to create the header when the caller did not supply one
+	 */
+	private static void appendRemoteOverride(List<String> command, String property, String value, boolean required)
+	{
+		String header = "x-buildbuddy-platform." + property + "=";
+		String option = "--remote_exec_header=" + header;
+		List<String> values = new ArrayList<>();
+		for (int index = 0; index < command.size();)
+		{
+			String argument = command.get(index);
+			if (argument.startsWith(option))
+			{
+				values.add(argument.substring(option.length()));
+				command.remove(index);
+			}
+			else if (argument.equals("--remote_exec_header") && index + 1 < command.size() &&
+				command.get(index + 1).startsWith(header))
+			{
+				values.add(command.remove(index + 1).substring(header.length()));
+				command.remove(index);
+			}
+			else
+				index += 1;
+		}
+		if (required || !values.isEmpty())
+		{
+			values.add(value);
+			command.add(option + String.join(",", values));
+		}
 	}
 
 	/**

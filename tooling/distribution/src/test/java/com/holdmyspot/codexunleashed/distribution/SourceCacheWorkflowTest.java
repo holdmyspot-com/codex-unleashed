@@ -61,6 +61,8 @@ public final class SourceCacheWorkflowTest
 			Path image = root.resolve("runtime with spaces");
 			DistributionMain.main(new String[]{System.getProperty("tooling.runtime.modules"), image.toString()});
 			String launcher = image.resolve("bin/codex-tooling").toString();
+			environment.put("CODEX_UNLEASHED_TOOLING", launcher);
+			environment.put("RUNNER_OS", "Windows");
 			runScript(root, environment, List.of(launcher, "clean-cached-release-binaries", workspace.toString(), target,
 				"codex-windows-sandbox"));
 			run(root, environment, List.of("cargo", "build", "--offline", "--release", "--target", target,

@@ -7,6 +7,7 @@ module com.holdmyspot.codexunleashed.tooling
 	requires tools.jackson.dataformat.toml;
 	requires info.picocli;
 	requires java.net.http;
+	requires jdk.management;
 		requires org.apache.commons.compress;
 		requires org.apache.commons.io;
 

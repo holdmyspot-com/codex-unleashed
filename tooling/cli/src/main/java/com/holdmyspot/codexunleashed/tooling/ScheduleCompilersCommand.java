@@ -1,16 +1,16 @@
 package com.holdmyspot.codexunleashed.tooling;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalLong;
 
 /**
  * Runs a build whose rustc invocations are scheduled by the free memory of the system and the build's control group.
@@ -21,19 +21,6 @@ public final class ScheduleCompilersCommand
 	 * The command name.
 	 */
 	public static final String NAME = "schedule-compilers";
-	/**
-	 * The share of total memory that the scheduler keeps free.
-	 */
-	private static final int RESERVE_PERCENT = 10;
-	/**
-	 * The least free memory, in bytes, that the scheduler keeps free.
-	 */
-	private static final long MINIMUM_RESERVE = 1L << 30;
-	/**
-	 * The delay between free-memory readings.
-	 */
-	private static final Duration INTERVAL = Duration.ofMillis(250);
-
 	/**
 	 * Prevents construction.
 	 */
@@ -60,83 +47,45 @@ public final class ScheduleCompilersCommand
 			err.println("Usage: " + NAME + " -- <command> [argument ...]");
 			return 2;
 		}
-		long reserve = Math.max(MINIMUM_RESERVE, readMeminfo("MemTotal") / 100 * RESERVE_PERCENT);
-		try (CompilerSchedulerService service = new CompilerSchedulerService(reserve,
-			ScheduleCompilersCommand::freeMemory, INTERVAL, err))
+		Path temporaryDirectory = Path.of(System.getenv().getOrDefault("TMPDIR", System.getProperty("java.io.tmpdir"))).
+			toAbsolutePath();
+		Path directory = Files.createTempDirectory(temporaryDirectory, "cargo-compiler-");
+		String filename = "compiler-wrapper";
+		if (System.getProperty("os.name").startsWith("Windows"))
+			filename += ".exe";
+		Path wrapper = directory.resolve(filename);
+		try (Closeable _ = () ->
 		{
+			Files.deleteIfExists(wrapper);
+			Files.delete(directory);
+		}; CompilerSchedulerProcess service = new CompilerSchedulerProcess(directory, err))
+		{
+			installWrapper(wrapper);
 			Map<String, String> environment = new HashMap<>(System.getenv());
-			environment.putAll(service.environment());
-			return SystemCommands.execute(Arrays.asList(Arrays.copyOfRange(args, 1, args.length)),
+			environment.put("CODEX_COMPILER_SCHEDULER_SOCKET", directory.resolve("s").toString());
+			environment.put("RUSTC_WRAPPER", wrapper.toString());
+			int status = SystemCommands.execute(Arrays.asList(Arrays.copyOfRange(args, 1, args.length)),
 				Path.of("").toAbsolutePath(), environment);
+			service.checkAlive();
+			return status;
 		}
 	}
 
 	/**
-	 * Returns the memory that the build can still use: the system's available memory, limited by the room left under
-	 * the memory limit of this process's control group.
+	 * Extracts the host controller compiled into this platform's tooling runtime.
 	 *
-	 * @return the free memory, in bytes
-	 * @throws IOException if the memory cannot be read
+	 * @param wrapper the invocation-owned executable path
+	 * @throws IOException if the controller is absent or cannot be installed
 	 */
-	private static long freeMemory() throws IOException
+	private static void installWrapper(Path wrapper) throws IOException
 	{
-		long free = readMeminfo("MemAvailable");
-		OptionalLong room = controlGroupRoom();
-		if (room.isPresent())
-			free = Math.min(free, room.getAsLong());
-		return free;
-	}
-
-	/**
-	 * Reads a field of {@code /proc/meminfo}.
-	 *
-	 * @param field the field name
-	 * @return the value, in bytes
-	 * @throws IOException if the field cannot be read
-	 */
-	private static long readMeminfo(String field) throws IOException
-	{
-		for (String line : Files.readAllLines(Path.of("/proc/meminfo")))
+		try (InputStream source = ScheduleCompilersCommand.class.getResourceAsStream("native/" + wrapper.getFileName()))
 		{
-			if (line.startsWith(field + ":"))
-			{
-				String[] words = line.substring(field.length() + 1).trim().split("\\s+");
-				return Long.parseLong(words[0]) * 1024;
-			}
+			if (source == null)
+				throw new IOException("The tooling runtime does not contain its native compiler controller");
+			Files.copy(source, wrapper);
 		}
-		throw new IOException("/proc/meminfo does not report " + field);
-	}
-
-	/**
-	 * Returns how much memory this process's cgroup v2 control group can still charge before reaching its limit.
-	 *
-	 * @return the remaining memory, in bytes, or empty if the control group has no memory limit
-	 * @throws IOException if the control group cannot be read
-	 */
-	private static OptionalLong controlGroupRoom() throws IOException
-	{
-		String group = null;
-		// The unified cgroup v2 hierarchy is the entry with hierarchy ID 0 and no controller list.
-		for (String line : Files.readAllLines(Path.of("/proc/self/cgroup")))
-		{
-			String[] fields = line.split(":", 3);
-			if (fields.length == 3 && fields[0].equals("0") && fields[1].isEmpty())
-				group = fields[2];
-		}
-		if (group == null)
-			return OptionalLong.empty();
-		Path directory = Path.of("/sys/fs/cgroup", group);
-		try
-		{
-			String limit = Files.readString(directory.resolve("memory.max")).strip();
-			if (limit.equals("max"))
-				return OptionalLong.empty();
-			long current = Long.parseLong(Files.readString(directory.resolve("memory.current")).strip());
-			return OptionalLong.of(Math.max(0, Long.parseLong(limit) - current));
-		}
-		catch (NoSuchFileException _)
-		{
-			return OptionalLong.empty();
-		}
+		if (Files.getFileStore(wrapper).supportsFileAttributeView("posix"))
+			Files.setPosixFilePermissions(wrapper, PosixFilePermissions.fromString("rwx------"));
 	}
 }

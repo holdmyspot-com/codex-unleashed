@@ -150,7 +150,7 @@ public final class V8Bazel
 	private static String run(List<String> arguments, Path root, Map<String, String> environment, CommandRunner runner)
 		throws IOException
 	{
-		return runner.run(BazelCommands.plan(arguments, environment, root).command());
+		return runner.run(BazelCommands.plan(arguments, environment, root, System.getProperty("os.name")).command());
 	}
 
 	/**

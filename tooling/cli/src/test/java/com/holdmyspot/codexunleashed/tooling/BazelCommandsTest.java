@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 /** Verifies retained Bazel startup, credential, host, cache and argument-boundary decisions. */
@@ -17,6 +19,99 @@ public final class BazelCommandsTest
 	/** Creates Bazel command tests. */
 	public BazelCommandsTest()
 	{
+	}
+
+	/**
+	 * Routes local Rust compiler actions through the scheduler's private socket mount while retaining literal targets.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void localCompilerSchedulingUsesSandbox() throws IOException
+	{
+		List<String> result = command(List.of("build", "--", "//cli:codex"),
+			Map.of("CODEX_COMPILER_SCHEDULER_DIRECTORY", "/owned/ipc first"));
+		assertEquals(result, List.of("bazel", "build",
+			"--action_env=CODEX_COMPILER_SCHEDULER_SOCKET=/var/tmp/s",
+			"--host_action_env=CODEX_COMPILER_SCHEDULER_SOCKET=/var/tmp/s",
+			"--sandbox_add_mount_pair=/owned/ipc first:/var/tmp",
+			"--strategy=Rustc=linux-sandbox", "--strategy=RustcMetadata=linux-sandbox", "--", "//cli:codex"));
+	}
+
+	/**
+	 * Selects native local execution without Linux mount flags on macOS and Windows.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void nativePlatformStrategies() throws IOException
+	{
+		for (String platform : List.of("Mac OS X", "Windows 11"))
+		{
+			List<String> result = BazelCommands.plan(List.of("build"),
+				Map.of("CODEX_COMPILER_SCHEDULER_DIRECTORY", "/owned/ipc"), Path.of("."), platform).command();
+			String strategy = "local";
+			if (platform.equals("Mac OS X"))
+				strategy = "darwin-sandbox";
+			assertTrue(result.contains("--strategy=Rustc=" + strategy));
+			assertTrue(result.contains("--strategy=RustcMetadata=" + strategy));
+			assertTrue(result.contains("--action_env=CODEX_COMPILER_SCHEDULER_SOCKET=" +
+				Path.of("/owned/ipc").resolve("s")));
+			assertFalse(result.stream().anyMatch(value -> value.startsWith("--sandbox_add_mount_pair=")));
+		}
+	}
+
+	/**
+	 * Keeps remote execution first and clears the local socket only at remote execution time, leaving payloads intact.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void remoteCompilersKeepRemoteExecution() throws IOException
+	{
+		String header = "--remote_exec_header=x-buildbuddy-platform.secret-env-overrides=";
+		List<String> result = command(List.of("run", "--config=ci-linux", header + "OTHER=value", "//cli:codex",
+			"--", header + "payload"),
+			Map.of("BUILDBUDDY_API_KEY", "token", "CODEX_COMPILER_SCHEDULER_DIRECTORY", "/owned/ipc"));
+		assertTrue(result.contains("--config=buildbuddy-generic-rbe"));
+		assertTrue(result.contains("--strategy=Rustc=remote,linux-sandbox"));
+		assertTrue(result.contains("--strategy=RustcMetadata=remote,linux-sandbox"));
+		assertTrue(result.contains(header + "OTHER=value,CODEX_COMPILER_SCHEDULER_SOCKET="));
+		assertEquals(result.subList(result.indexOf("--") + 1, result.size()), List.of(header + "payload"));
+	}
+
+	/**
+	 * Leaves non-building commands untouched even when the invoking environment contains a scheduler directory.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void queriesDoNotScheduleCompilers() throws IOException
+	{
+		assertEquals(command(List.of("query", "//..."),
+			Map.of("CODEX_COMPILER_SCHEDULER_DIRECTORY", "/owned/ipc")), List.of("bazel", "query", "//..."));
+	}
+
+	/**
+	 * Preserves repeated and base64 execution-time overrides while clearing a conflicting remote scheduler socket last.
+	 *
+	 * @throws IOException if planning fails
+	 */
+	@Test
+	public void schedulerPreservesRemoteOverrides() throws IOException
+	{
+		String plain = "x-buildbuddy-platform.secret-env-overrides=";
+		String encoded = "x-buildbuddy-platform.secret-env-overrides-base64=";
+		String existing = Base64.getEncoder().encodeToString("OTHER=fixture".
+			getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		String cleared = Base64.getEncoder().encodeToString("CODEX_COMPILER_SCHEDULER_SOCKET=".
+			getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		List<String> result = command(List.of("build", "--config=ci-linux", "--remote_exec_header", plain + "FIRST=one",
+			"--remote_exec_header=" + plain + "SECOND=two", "--remote_exec_header", encoded + existing, "//cli:codex"),
+			Map.of("BUILDBUDDY_API_KEY", "token", "CODEX_COMPILER_SCHEDULER_DIRECTORY", "/owned/ipc"));
+		assertTrue(result.contains("--remote_exec_header=" + plain +
+			"FIRST=one,SECOND=two,CODEX_COMPILER_SCHEDULER_SOCKET="));
+		assertTrue(result.contains("--remote_exec_header=" + encoded + existing + "," + cleared));
 	}
 
 	/**
@@ -29,7 +124,7 @@ public final class BazelCommandsTest
 	{
 		assertEquals(command(List.of("build", "--config=ci-linux", "--", "--config=ci-v8"), Map.of()),
 			List.of("bazel", "build", "--", "--config=ci-v8"));
-		assertFalse(BazelCommands.plan(List.of("build"), Map.of(), Path.of(".")).remoteConfig().isPresent());
+		assertFalse(BazelCommands.plan(List.of("build"), Map.of(), Path.of("."), "Linux").remoteConfig().isPresent());
 	}
 
 	/**
@@ -42,7 +137,7 @@ public final class BazelCommandsTest
 	{
 		List<String> arguments = List.of("run", "//cli:codex", "--", "--config=ci-v8");
 		assertEquals(command(arguments, Map.of()), List.of("bazel", "run", "//cli:codex", "--", "--config=ci-v8"));
-		assertEquals(BazelCommands.plan(arguments, Map.of("BUILDBUDDY_API_KEY", "token"), Path.of(".")).
+		assertEquals(BazelCommands.plan(arguments, Map.of("BUILDBUDDY_API_KEY", "token"), Path.of("."), "Linux").
 			remoteConfig().orElseThrow(), "buildbuddy-generic");
 	}
 
@@ -87,10 +182,10 @@ public final class BazelCommandsTest
 	{
 		Map<String, String> environment = Map.of("BUILDBUDDY_API_KEY", "token", "GITHUB_ACTIONS", "true",
 			"GITHUB_REPOSITORY", "openai/codex", "GITHUB_EVENT_NAME", "push");
-		assertEquals(BazelCommands.plan(List.of("build", "--config=ci-windows-cross"), environment, Path.of(".")).
+		assertEquals(BazelCommands.plan(List.of("build", "--config=ci-windows-cross"), environment, Path.of("."), "Linux").
 			remoteConfig().orElseThrow(), "buildbuddy-openai-rbe-windows-cross");
 		assertEquals(BazelCommands.plan(List.of("run", "--config=ci-linux", "//cli:codex", "--",
-			"--config=ci-windows-cross"), environment, Path.of(".")).remoteConfig().orElseThrow(),
+			"--config=ci-windows-cross"), environment, Path.of("."), "Linux").remoteConfig().orElseThrow(),
 			"buildbuddy-openai-rbe");
 		assertEquals(command(List.of("build", "--config=ci-windows-cross"), Map.of()), List.of("bazel", "build"));
 	}
@@ -158,7 +253,7 @@ public final class BazelCommandsTest
 			assertEquals(prConfiguration(value, "openai/codex", true), "buildbuddy-generic-rbe");
 		Map<String, String> environment = Map.of("BUILDBUDDY_API_KEY", "token", "GITHUB_ACTIONS", "true",
 			"GITHUB_REPOSITORY", "openai/codex", "GITHUB_EVENT_NAME", "pull_request");
-		assertEquals(BazelCommands.plan(List.of("build"), environment, Path.of(".")).remoteConfig().orElseThrow(),
+		assertEquals(BazelCommands.plan(List.of("build"), environment, Path.of("."), "Linux").remoteConfig().orElseThrow(),
 			"buildbuddy-generic");
 	}
 
@@ -176,12 +271,15 @@ public final class BazelCommandsTest
 			Map<String, String> environment = Map.of("BUILDBUDDY_API_KEY", "token", "GITHUB_ACTIONS", "true",
 				"GITHUB_REPOSITORY", "openai/codex", "GITHUB_EVENT_NAME", "pull_request", "GITHUB_EVENT_PATH",
 				event.getFileName().toString());
-			assertEquals(BazelCommands.plan(List.of("build"), environment, event.getParent()).remoteConfig().orElseThrow(),
+			assertEquals(BazelCommands.plan(List.of("build"), environment,
+				event.getParent(), "Linux").remoteConfig().orElseThrow(),
 				"buildbuddy-generic");
 			Files.write(event, new byte[]{(byte) 255});
-			expectThrows(IOException.class, () -> BazelCommands.plan(List.of("build"), environment, event.getParent()));
+			expectThrows(IOException.class, () -> BazelCommands.plan(List.of("build"), environment,
+				event.getParent(), "Linux"));
 			Files.delete(event);
-			assertEquals(BazelCommands.plan(List.of("build"), environment, event.getParent()).remoteConfig().orElseThrow(),
+			assertEquals(BazelCommands.plan(List.of("build"), environment,
+				event.getParent(), "Linux").remoteConfig().orElseThrow(),
 				"buildbuddy-generic");
 		}
 		finally
@@ -358,7 +456,7 @@ public final class BazelCommandsTest
 	 */
 	private static List<String> command(List<String> arguments, Map<String, String> environment) throws IOException
 	{
-		return BazelCommands.plan(arguments, environment, Path.of(".")).command();
+		return BazelCommands.plan(arguments, environment, Path.of("."), "Linux").command();
 	}
 
 	/**
@@ -379,7 +477,7 @@ public final class BazelCommandsTest
 			Map<String, String> environment = Map.of("BUILDBUDDY_API_KEY", "token", "GITHUB_ACTIONS",
 				Boolean.toString(actions), "GITHUB_REPOSITORY", repository, "GITHUB_EVENT_NAME", "pull_request",
 				"GITHUB_EVENT_PATH", event.toString());
-			return BazelCommands.plan(List.of("build", "--config=ci-v8"), environment, event.getParent()).
+			return BazelCommands.plan(List.of("build", "--config=ci-v8"), environment, event.getParent(), "Linux").
 				remoteConfig().orElseThrow();
 		}
 		finally

@@ -12,6 +12,7 @@ on:
           - compiler-scheduler-baseline
           - compiler-scheduler-native
           - compiler-scheduler-macos
+          - compiler-scheduler-tooling
 
 permissions:
   contents: read
@@ -215,5 +216,38 @@ jobs:
         with:
           name: compiler-scheduler-${{ matrix.runner }}-${{ matrix.variant }}
           path: .cat/work/temp/scheduler-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
+
+  compiler-scheduler-tooling:
+    if: inputs.focus == 'compiler-scheduler-tooling'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-15, macos-15-intel, windows-2022]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tooling
+      - uses: ./.github/actions/setup-msvc-env
+        if: runner.os == 'Windows'
+        with:
+          target: x86_64-pc-windows-msvc
+      - name: Exercise public compiler scheduler commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          tooling/mvnw -q -pl cli -am test \
+            -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest \
+            -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Retain compiler scheduler test evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: compiler-scheduler-tooling-${{ matrix.runner }}
+          path: .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
           if-no-files-found: ignore
           retention-days: 1

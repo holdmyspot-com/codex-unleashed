@@ -2576,3 +2576,49 @@ emitted patch with `just fmt-check`, then run the complete native Windows
 MSVC CI configuration, `--nocache_test_results`, and `--runs_per_test=5`.
 The complete native matrix remains the release gate. Linux formatting does
 not establish that the intermittent Windows timeout is repaired.
+
+## Native compiler memory scheduling
+
+`zzzz-0077-bazel-compiler-scheduler.patch` registers an opt-in native
+`rules_rust` compiler controller. With `CODEX_COMPILER_SCHEDULER_SOCKET`
+configured, local compiler actions request admission from the tooling scheduler,
+pause or resume under memory pressure, and retry a killed compilation alone.
+Without the endpoint, the process wrapper retains its ordinary behavior.
+Remote execution retains the remote worker's resource controls.
+
+The Codex registration base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). Its runtime prerequisite is
+`rules_rs` 0.1.3, which selects `rules_rust`
+`a20387a3b3e7baec859b53f3cb15b026fbc8a423`; the issue-71 direct-dependency
+update supplies that selection. The registration uses a separate patch tag so
+it composes with the existing rules patches. The embedded
+`patches/rules_rust_compiler_scheduler.patch` is a standalone Git-format patch
+for that exact rules_rust revision, including its own regression fixtures.
+Neither patch requires CAT or another installed plugin.
+
+For standalone verification, apply the embedded patch to the declared
+rules_rust revision and run its maintained Bazel test entry point, narrowed to:
+
+```sh
+bazel test //test/process_wrapper:compiler_scheduler_test \
+  --cache_test_results=no --test_output=errors \
+  --copt=-Wall --copt=-Wextra --copt=-Werror
+```
+
+The target checks ordinary invocation, unavailable-controller failure,
+long socket paths without changing the compiler working directory, and
+pause/resume/kill/retry cleanup with diagnostics from the final attempt.
+On local environments whose default TestRunner sandbox cannot execute the
+fixture, `--strategy=TestRunner=processwrapper-sandbox` selects the supported
+test runner without changing compiler action strategies. This focused check
+does not replace the complete upstream test suite or the release matrix.
+
+The tooling launcher owns the scheduler host through the build's lifetime.
+Cargo uses a bundled native wrapper; Bazel uses the embedded rules adapter.
+Linux uses cgroup and physical memory readings, and macOS/Windows use JDK
+physical memory readings. Windows controls descendants with a Job Object;
+POSIX controllers use process groups, with Linux subreaper support. macOS does
+not provide the same ownership guarantee for descendants that detach into a
+new session. Linux release builds enforce RAM-only operation through their
+existing build scope; other platforms retain their operating system's swap
+configuration.

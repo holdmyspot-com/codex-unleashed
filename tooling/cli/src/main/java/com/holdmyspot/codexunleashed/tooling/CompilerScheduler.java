@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.tooling;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +21,9 @@ import java.util.Map;
  */
 public final class CompilerScheduler
 {
+	/** The default delay between memory observations for the Cargo and Bazel adapters. */
+	static final Duration OBSERVATION_INTERVAL = Duration.ofMillis(250);
+
 	/**
 	 * An action that the caller performs on a compiler.
 	 */

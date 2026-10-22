@@ -1,0 +1,1724 @@
+From 27a81fcccb2cd8c5803c2d9d60a86fd873122378 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 22 Oct 2026 02:37:02 +0000
+Subject: [PATCH] Register opt-in native compiler memory scheduling for Bazel
+
+Include the standalone rules_rust adapter and its lifecycle regression tests. The controller admits, pauses and retries local compiler actions while ordinary builds without a scheduler retain their existing behavior.
+
+Codex base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012). Runtime prerequisite: rules_rs 0.1.3 selecting rules_rust a20387a3b3e7baec859b53f3cb15b026fbc8a423, provided by the direct dependency update. The second patch tag composes with that update without changing its existing patch list.
+
+Verification: emitted inner patch replayed on clean a20387a3b3e7baec859b53f3cb15b026fbc8a423; //test/process_wrapper:compiler_scheduler_test passes with uncached tests, -Wall -Wextra -Werror and the documented local processwrapper-sandbox TestRunner strategy. Outer registration applies to the full Codex patch queue; hosted Java integration and full release remain separate gates.
+---
+ MODULE.bazel                                |    5 +
+ patches/BUILD.bazel                         |    1 +
+ patches/rules_rust_compiler_scheduler.patch | 1671 +++++++++++++++++++
+ 3 files changed, 1677 insertions(+)
+ create mode 100644 patches/rules_rust_compiler_scheduler.patch
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index d946666..4c77158 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -225,6 +225,11 @@ rules_rust.patch(
+ )
+ use_repo(rules_rust, "rules_rust")
+
++rules_rust.patch(
++    patches = ["//patches:rules_rust_compiler_scheduler.patch"],
++    strip = 1,
++)
++
+ # argument-comment-lint uses rustc_private and needs nightly rustc-dev
+ # components. Keep that rules_rust-reexported toolchain separate from the
+ # default rules_rs toolchains below, which do not expose dev_components.
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index e442235..09d0514 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -31,6 +31,7 @@ exports_files([
+     "webrtc-sys_hermetic_darwin_sysroot.patch",
+     "windows-link.patch",
+     "windows-support-remote-case-aliases.patch",
++    "rules_rust_compiler_scheduler.patch",
+     "windows-support-native-tools.patch",
+     "xz_windows_stack_args.patch",
+     "zstd-sys_windows_msvc_include_dirs.patch",
+diff --git a/patches/rules_rust_compiler_scheduler.patch b/patches/rules_rust_compiler_scheduler.patch
+new file mode 100644
+index 0000000..519ebfe
+--- /dev/null
++++ b/patches/rules_rust_compiler_scheduler.patch
+@@ -0,0 +1,1671 @@
++From 20514092dad25c72f0651bfcf4bb3fc8fb2e8879 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Thu, 22 Oct 2026 02:02:08 +0000
++Subject: [PATCH] Support opt-in compiler memory scheduling through the native
++ wrapper
++
++Use an invocation-owned socket service for compiler admission, pause, resume and retry. Keep process-tree control in the native action wrapper so local sandboxes retain their isolation. Cover normal compilation, metadata actions and process-wrapper bootstrapping.
++
++Focused native controller tests pass on Linux, Windows, macOS ARM64 and macOS Intel. The scheduled bootstrap and regular Rust action handoff also passes on Linux. Full downstream integration remains a separate gate.
++---
++ rust/private/rustc.bzl                        |  29 +-
++ rust/private/toolchain.bzl                    |   7 +
++ test/process_wrapper/BUILD.bazel              |  31 +
++ test/process_wrapper/compiler_scheduler.rs    | 122 ++++
++ .../compiler_scheduler_server.cc              | 198 ++++++
++ util/process_wrapper/main.rs                  |  11 +
++ util/process_wrapper/private/BUILD.bazel      |  10 +-
++ .../private/bootstrap_process_wrapper.cc      |  35 +-
++ .../private/compiler_scheduler.h              | 607 ++++++++++++++++++
++ .../private/compiler_scheduler_windows.h      | 440 +++++++++++++
++ 10 files changed, 1479 insertions(+), 11 deletions(-)
++ create mode 100644 test/process_wrapper/compiler_scheduler.rs
++ create mode 100644 test/process_wrapper/compiler_scheduler_server.cc
++ create mode 100644 util/process_wrapper/private/compiler_scheduler.h
++ create mode 100644 util/process_wrapper/private/compiler_scheduler_windows.h
++
++diff --git a/rust/private/rustc.bzl b/rust/private/rustc.bzl
++index 08fb531..78e3a1d 100644
++--- a/rust/private/rustc.bzl
+++++ b/rust/private/rustc.bzl
++@@ -2309,13 +2309,20 @@ def rustc_compile(
++             expand_directories = False,
++         )
++
+++        supervisor_flags = ctx.actions.args()
+++        supervisor_flags.add("--scheduler-outer")
+++        supervisor_flags.add_all(action_outputs, before_each = "--scheduler-output", expand_directories = False)
+++        supervisor_flags.add("--")
+++        supervisor_flags.add(process_wrapper)
+++
++         # Run as normal
++         ctx.actions.run(
++-            executable = process_wrapper,
+++            executable = rust_toolchain.compiler_supervisor,
+++            tools = [process_wrapper],
++             inputs = compile_inputs,
++             outputs = action_outputs,
++             env = env,
++-            arguments = args.all,
+++            arguments = [supervisor_flags] + args.all,
++             mnemonic = mnemonic,
++             progress_message = progress_message or "Compiling Rust {} %{{label}}{} ({} file{})".format(
++                 crate_info.type,
++@@ -2328,12 +2335,19 @@ def rustc_compile(
++             execution_requirements = {"supports-path-mapping": ""} if args.supports_path_mapping else None,
++         )
++         if args_metadata:
+++            metadata_outputs = [build_metadata] + [x for x in [rustc_rmeta_output] if x]
+++            metadata_supervisor_flags = ctx.actions.args()
+++            metadata_supervisor_flags.add("--scheduler-outer")
+++            metadata_supervisor_flags.add_all(metadata_outputs, before_each = "--scheduler-output", expand_directories = False)
+++            metadata_supervisor_flags.add("--")
+++            metadata_supervisor_flags.add(process_wrapper)
++             ctx.actions.run(
++-                executable = process_wrapper,
+++                executable = rust_toolchain.compiler_supervisor,
+++                tools = [process_wrapper],
++                 inputs = compile_inputs_metadata,
++-                outputs = [build_metadata] + [x for x in [rustc_rmeta_output] if x],
+++                outputs = metadata_outputs,
++                 env = env,
++-                arguments = args_metadata.all,
+++                arguments = [metadata_supervisor_flags] + args_metadata.all,
++                 mnemonic = metadata_mnemonic,
++                 progress_message = metadata_progress_message or "Compiling Rust metadata {} %{{label}}{} ({} file{})".format(
++                     crate_info.type,
++@@ -2348,12 +2362,15 @@ def rustc_compile(
++         # Run without process_wrapper
++         if build_env_files or build_flags_files or stamp or build_metadata:
++             fail("build_env_files, build_flags_files, stamp, build_metadata are not supported when building without process_wrapper")
+++        supervisor_flags = ctx.actions.args()
+++        supervisor_flags.add("--scheduler-bootstrap")
+++        supervisor_flags.add_all(action_outputs, before_each = "--scheduler-output", expand_directories = False)
++         ctx.actions.run(
++             executable = process_wrapper,
++             inputs = compile_inputs,
++             outputs = action_outputs,
++             env = env,
++-            arguments = [args.rustc_path, args.rustc_flags],
+++            arguments = [supervisor_flags, args.rustc_path, args.rustc_flags],
++             mnemonic = mnemonic,
++             progress_message = progress_message or "Compiling Rust (without process_wrapper) {} %{{label}}{} ({} file{})".format(
++                 crate_info.type,
++diff --git a/rust/private/toolchain.bzl b/rust/private/toolchain.bzl
++index 9f3ebe7..fc03f7c 100644
++--- a/rust/private/toolchain.bzl
+++++ b/rust/private/toolchain.bzl
++@@ -666,6 +666,7 @@ def _rust_toolchain_impl(ctx):
++         extra_rustc_flags_for_crate_types = ctx.attr.extra_rustc_flags_for_crate_types,
++         extra_exec_rustc_flags = expanded_extra_exec_rustc_flags,
++         process_wrapper = ctx.executable.process_wrapper if ctx.attr.process_wrapper else None,
+++        compiler_supervisor = ctx.executable.compiler_supervisor,
++         per_crate_rustc_flags = ctx.attr.per_crate_rustc_flags,
++         sysroot = sysroot_path,
++         sysroot_anchor = sysroot.sysroot_anchor,
++@@ -867,6 +868,12 @@ rust_toolchain = rule(
++             cfg = "exec",
++             mandatory = True,
++         ),
+++        "compiler_supervisor": attr.label(
+++            doc = "Native supervisor for local compiler memory scheduling.",
+++            default = Label("//util/process_wrapper:bootstrap_process_wrapper"),
+++            executable = True,
+++            cfg = "exec",
+++        ),
++         "require_explicit_unstable_features": attr.label(
++             default = Label(
++                 "//rust/settings:require_explicit_unstable_features",
++diff --git a/test/process_wrapper/BUILD.bazel b/test/process_wrapper/BUILD.bazel
++index 09af719..b809132 100644
++--- a/test/process_wrapper/BUILD.bazel
+++++ b/test/process_wrapper/BUILD.bazel
++@@ -204,3 +204,34 @@ rust_test(
++     },
++     deps = ["//rust/runfiles"],
++ )
+++
+++rust_test(
+++    name = "compiler_scheduler_test",
+++    size = "small",
+++    srcs = ["compiler_scheduler.rs"],
+++    data = [
+++        ":compiler_scheduler_server",
+++        ":fake_rustc",
+++        "//util/process_wrapper:bootstrap_process_wrapper",
+++    ],
+++    edition = "2018",
+++    rustc_env = {
+++        "BOOTSTRAP_RLOCATIONPATH": "$(rlocationpath //util/process_wrapper:bootstrap_process_wrapper)",
+++        "FAKE_RUSTC_RLOCATIONPATH": "$(rlocationpath :fake_rustc)",
+++        "SCHEDULER_SERVER_RLOCATIONPATH": "$(rlocationpath :compiler_scheduler_server)",
+++    },
+++    deps = ["//rust/runfiles"],
+++)
+++
+++cc_binary(
+++    name = "compiler_scheduler_server",
+++    srcs = ["compiler_scheduler_server.cc"],
+++    copts = select({
+++        "@platforms//os:windows": ["/W4", "/WX"],
+++        "//conditions:default": ["-Wall", "-Wextra", "-Werror"],
+++    }),
+++    linkopts = select({
+++        "@platforms//os:windows": ["-DEFAULTLIB:ws2_32.lib"],
+++        "//conditions:default": [],
+++    }),
+++)
++diff --git a/test/process_wrapper/compiler_scheduler.rs b/test/process_wrapper/compiler_scheduler.rs
++new file mode 100644
++index 0000000..15460a6
++--- /dev/null
+++++ b/test/process_wrapper/compiler_scheduler.rs
++@@ -0,0 +1,122 @@
+++//! Compiler admission checks through the executable bootstrap wrapper.
+++
+++use std::path::PathBuf;
+++use std::process::{Command, Output};
+++
+++use runfiles::Runfiles;
+++
+++fn compiler(endpoint: Option<PathBuf>) -> Output {
+++    let runfiles = Runfiles::create().expect("cannot locate test runfiles");
+++    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
+++        .expect("bootstrap wrapper is missing");
+++    let executable = runfiles::rlocation!(runfiles, env!("FAKE_RUSTC_RLOCATIONPATH"))
+++        .expect("compiler fixture is missing");
+++    let mut command = Command::new(bootstrap);
+++    command.arg("--").arg(executable);
+++    command.env_remove("CODEX_COMPILER_SCHEDULER_SOCKET");
+++    if let Some(endpoint) = endpoint {
+++        command.env("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint);
+++    }
+++    command.output().expect("cannot run bootstrap wrapper")
+++}
+++
+++#[test]
+++fn ordinary_compiler_runs_without_scheduler_configuration() {
+++    let output = compiler(None);
+++    assert!(output.status.success(), "{:?}", output);
+++    assert!(
+++        String::from_utf8_lossy(&output.stderr).contains("rendered"),
+++        "compiler fixture did not run"
+++    );
+++}
+++
+++#[test]
+++fn configured_scheduler_must_be_available_before_compiler_starts() {
+++    let endpoint = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
+++        .join("unavailable-scheduler");
+++    assert!(!endpoint.exists(), "fixture endpoint already exists");
+++    let output = compiler(Some(endpoint));
+++    assert_eq!(output.status.code(), Some(125), "{output:?}");
+++    assert!(
+++        !String::from_utf8_lossy(&output.stderr).contains("rendered"),
+++        "compiler ran without admission"
+++    );
+++}
+++
+++#[test]
+++fn long_socket_directory_preserves_compiler_working_directory() {
+++    exercise_fixture(false);
+++}
+++
+++#[test]
+++fn compiler_pauses_resumes_and_retries_without_replaying_failed_attempt_output() {
+++    exercise_fixture(true);
+++}
+++
+++fn exercise_fixture(controlled: bool) {
+++    use std::io::{BufRead, BufReader};
+++    use std::process::{Child, Stdio};
+++
+++    struct Fixture {
+++        server: Child,
+++        directory: PathBuf,
+++    }
+++
+++    impl Drop for Fixture {
+++        fn drop(&mut self) {
+++            let _ = self.server.kill();
+++            self.server.wait().expect("cannot reap scheduler fixture");
+++            std::fs::remove_dir_all(&self.directory).expect("cannot remove scheduler fixture");
+++        }
+++    }
+++
+++    let runfiles = Runfiles::create().expect("cannot locate runfiles");
+++    let server = runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH"))
+++        .expect("scheduler server fixture is missing");
+++    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
+++        .expect("bootstrap wrapper is missing");
+++    let directory = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
+++        .join(if controlled { "control-" } else { "deep-" }.to_owned() + &"x".repeat(128));
+++    std::fs::create_dir(&directory).expect("cannot create private socket directory");
+++    let mut fixture = Fixture {
+++        server: Command::new(server)
+++            .arg(if controlled { "--control-server" } else { "--cwd-server" })
+++            .current_dir(&directory)
+++            .stdout(Stdio::piped())
+++            .spawn()
+++            .expect("cannot start scheduler fixture"),
+++        directory,
+++    };
+++    let mut ready = String::new();
+++    BufReader::new(fixture.server.stdout.take().unwrap())
+++        .read_line(&mut ready)
+++        .expect("cannot read scheduler readiness");
+++    assert_eq!(ready.trim_end(), "ready");
+++    let mut command = Command::new(bootstrap);
+++    command.arg("--")
+++        .arg(runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH")).unwrap());
+++    if controlled {
+++        command.arg("--heartbeat").arg(fixture.directory.join("heartbeat"));
+++    } else {
+++        command.arg("--compiler");
+++    }
+++    let output = command
+++        .env("CODEX_COMPILER_SCHEDULER_SOCKET", fixture.directory.join("s"))
+++        .output()
+++        .expect("cannot start compiler stand-in");
+++    assert!(output.status.success(), "{:?}", output);
+++    assert_eq!(
+++        String::from_utf8(output.stdout).unwrap().trim_end(),
+++        if controlled {
+++            "compiler attempt".to_owned()
+++        } else {
+++            std::env::current_dir().unwrap().to_string_lossy().into_owned()
+++        }
+++    );
+++    let completion = fixture.server.wait().unwrap();
+++    assert!(
+++        completion.success(),
+++        "compiler did not complete scheduler protocol: {}",
+++        completion
+++    );
+++}
++diff --git a/test/process_wrapper/compiler_scheduler_server.cc b/test/process_wrapper/compiler_scheduler_server.cc
++new file mode 100644
++index 0000000..bae3818
++--- /dev/null
+++++ b/test/process_wrapper/compiler_scheduler_server.cc
++@@ -0,0 +1,198 @@
+++#include <array>
+++#include <cstdio>
+++#include <cstdlib>
+++#include <cstring>
+++#include <chrono>
+++#include <fstream>
+++#include <iostream>
+++#include <string>
+++#include <thread>
+++#include <vector>
+++
+++#if defined(_WIN32)
+++#include <winsock2.h>
+++#include <windows.h>
+++#include <afunix.h>
+++using NativeSocket = SOCKET;
+++constexpr NativeSocket kInvalidSocket = INVALID_SOCKET;
+++#else
+++#include <arpa/inet.h>
+++#include <sys/select.h>
+++#include <sys/socket.h>
+++#include <sys/un.h>
+++#include <unistd.h>
+++using NativeSocket = int;
+++constexpr NativeSocket kInvalidSocket = -1;
+++#endif
+++
+++namespace {
+++
+++struct Socket {
+++  explicit Socket(NativeSocket descriptor) : value(descriptor) {}
+++  ~Socket() {
+++#if defined(_WIN32)
+++    closesocket(value);
+++#else
+++    close(value);
+++#endif
+++  }
+++  Socket(const Socket&) = delete;
+++  Socket& operator=(const Socket&) = delete;
+++  NativeSocket value;
+++};
+++
+++bool packet(NativeSocket socket, std::array<char, 12>* bytes, bool write) {
+++  size_t transferred = 0;
+++  while (transferred < bytes->size()) {
+++    int remaining = static_cast<int>(bytes->size() - transferred);
+++    auto count = write ? send(socket, bytes->data() + transferred, remaining, 0)
+++                       : recv(socket, bytes->data() + transferred, remaining, 0);
+++    if (count <= 0) return false;
+++    transferred += static_cast<size_t>(count);
+++  }
+++  return true;
+++}
+++
+++int compiler() {
+++#if defined(_WIN32)
+++  DWORD length = GetCurrentDirectoryW(0, nullptr);
+++  if (length == 0) return 1;
+++  std::vector<wchar_t> directory(length);
+++  DWORD count = GetCurrentDirectoryW(length, directory.data());
+++  if (count == 0 || count >= length) return 1;
+++  int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, directory.data(),
+++                                 static_cast<int>(count), nullptr, 0, nullptr, nullptr);
+++  if (bytes <= 0) return 1;
+++  std::string output(static_cast<size_t>(bytes), '\0');
+++  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, directory.data(),
+++                          static_cast<int>(count), &output[0], bytes, nullptr, nullptr) != bytes) return 1;
+++  std::cout << output << '\n';
+++#else
+++  char* directory = getcwd(nullptr, 0);
+++  if (directory == nullptr) return 1;
+++  std::cout << directory << '\n';
+++  std::free(directory);
+++#endif
+++  return 0;
+++}
+++
+++bool command(NativeSocket socket, unsigned operation, unsigned generation, unsigned value = 0) {
+++  std::array<unsigned, 3> words = {htonl(operation), htonl(generation), htonl(value)};
+++  static_assert(sizeof(words) == 12, "scheduler packet size differs");
+++  std::array<char, 12> bytes;
+++  std::memcpy(bytes.data(), words.data(), bytes.size());
+++  return packet(socket, &bytes, true);
+++}
+++
+++bool event(NativeSocket socket, unsigned operation, unsigned generation, unsigned value = 0) {
+++  std::array<char, 12> bytes;
+++  if (!packet(socket, &bytes, false)) return false;
+++  std::array<unsigned, 3> words;
+++  std::memcpy(words.data(), bytes.data(), bytes.size());
+++  return words == std::array<unsigned, 3>{htonl(operation), htonl(generation), htonl(value)};
+++}
+++
+++std::streamoff heartbeat_size() {
+++  std::ifstream input("heartbeat", std::ios::binary | std::ios::ate);
+++  return input ? static_cast<std::streamoff>(input.tellg()) : 0;
+++}
+++
+++bool progress(std::streamoff previous) {
+++  for (int remaining = 250; remaining > 0; --remaining) {
+++    if (heartbeat_size() >= previous + 3) return true;
+++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+++  }
+++  return false;
+++}
+++
+++int control(NativeSocket socket) {
+++  if (!progress(0) || !command(socket, 2, 1)) return 5;
+++  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+++  auto paused = heartbeat_size();
+++  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+++  if (heartbeat_size() != paused) return 6;
+++  if (!command(socket, 3, 1) || !progress(paused)) return 7;
+++  if (!command(socket, 4, 1) || !event(socket, 11, 1, 137)) return 8;
+++  auto stopped = heartbeat_size();
+++  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+++  if (heartbeat_size() != stopped) return 9;
+++  if (!command(socket, 5, 1) || !command(socket, 1, 2) || !event(socket, 8, 2) ||
+++      !progress(stopped)) return 10;
+++  std::ofstream finish("heartbeat-finish");
+++  finish << "finish";
+++  finish.close();
+++  return event(socket, 9, 2) ? 0 : 11;
+++}
+++
+++int heartbeat(const char* path) {
+++  std::ofstream output(path, std::ios::app | std::ios::binary);
+++  if (!output) return 1;
+++  std::cout << "compiler attempt" << std::endl;
+++  for (int remaining = 1000; remaining > 0; --remaining) {
+++    if (std::ifstream(std::string(path) + "-finish")) return 0;
+++    output << 't' << std::flush;
+++    if (!output) return 1;
+++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+++  }
+++  return 1;
+++}
+++
+++int server(bool controlled) {
+++  Socket listener(socket(AF_UNIX, SOCK_STREAM, 0));
+++  if (listener.value == kInvalidSocket) return 2;
+++  struct sockaddr_un address = {};
+++  address.sun_family = AF_UNIX;
+++  address.sun_path[0] = 's';
+++  if (bind(listener.value, reinterpret_cast<struct sockaddr*>(&address), static_cast<int>(sizeof(address))) != 0 ||
+++      listen(listener.value, 1) != 0) return 2;
+++  std::cout << "ready" << std::endl;
+++  fd_set readable;
+++  FD_ZERO(&readable);
+++  FD_SET(listener.value, &readable);
+++  struct timeval timeout = {20, 0};
+++#if defined(_WIN32)
+++  int descriptor_bound = 0;
+++#else
+++  int descriptor_bound = listener.value + 1;
+++#endif
+++  if (select(descriptor_bound, &readable, nullptr, nullptr, &timeout) != 1) return 4;
+++  Socket client(accept(listener.value, nullptr, nullptr));
+++  if (client.value == kInvalidSocket) return 2;
+++#if defined(_WIN32)
+++  DWORD milliseconds = 20000;
+++  const char* deadline = reinterpret_cast<const char*>(&milliseconds);
+++  int deadline_size = static_cast<int>(sizeof(milliseconds));
+++#else
+++  timeout.tv_sec = 20;
+++  timeout.tv_usec = 0;
+++  const void* deadline = &timeout;
+++  auto deadline_size = static_cast<socklen_t>(sizeof(timeout));
+++#endif
+++  if (setsockopt(client.value, SOL_SOCKET, SO_RCVTIMEO, deadline, deadline_size) != 0 ||
+++      setsockopt(client.value, SOL_SOCKET, SO_SNDTIMEO, deadline, deadline_size) != 0) return 2;
+++  std::array<char, 12> bytes = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0};
+++  if (!packet(client.value, &bytes, true)) return 3;
+++  if (!packet(client.value, &bytes, false) ||
+++      bytes != std::array<char, 12>{0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
+++  if (controlled) return control(client.value);
+++  if (!packet(client.value, &bytes, false) ||
+++      bytes != std::array<char, 12>{0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
+++  return 0;
+++}
+++
+++}  // namespace
+++
+++int main(int argc, char** argv) {
+++  if (argc == 2 && std::strcmp(argv[1], "--compiler") == 0) return compiler();
+++  if (argc == 3 && std::strcmp(argv[1], "--heartbeat") == 0) return heartbeat(argv[2]);
+++#if defined(_WIN32)
+++  WSADATA data;
+++  if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return 2;
+++#endif
+++  int status = server(argc == 2 && std::strcmp(argv[1], "--control-server") == 0);
+++#if defined(_WIN32)
+++  WSACleanup();
+++#endif
+++  std::remove("s");
+++  return status;
+++}
++diff --git a/util/process_wrapper/main.rs b/util/process_wrapper/main.rs
++index 46333ba..e67245d 100644
++--- a/util/process_wrapper/main.rs
+++++ b/util/process_wrapper/main.rs
++@@ -459,6 +459,17 @@ fn main() -> Result<(), ProcessWrapperError> {
++     let status = child
++         .wait()
++         .map_err(|e| ProcessWrapperError(format!("failed to wait for child process: {}", e)))?;
+++    #[cfg(unix)]
+++    if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
+++        if let Some(path) = std::env::var_os("CODEX_COMPILER_SCHEDULER_CHILD_STATUS") {
+++            fs::write(&path, format!("{signal}\n")).map_err(|error| {
+++                ProcessWrapperError(format!(
+++                    "failed to report wrapped compiler signal to {}: {error}",
+++                    PathBuf::from(path).display()
+++                ))
+++            })?;
+++        }
+++    }
++     let code = status.code().unwrap_or(1);
++     // Close our handle on the stdout file before emptying it.
++     drop(command);
++diff --git a/util/process_wrapper/private/BUILD.bazel b/util/process_wrapper/private/BUILD.bazel
++index 6cbbbc0..2466692 100644
++--- a/util/process_wrapper/private/BUILD.bazel
+++++ b/util/process_wrapper/private/BUILD.bazel
++@@ -2,6 +2,14 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
++
++ cc_binary(
++     name = "bootstrap_process_wrapper",
++-    srcs = ["bootstrap_process_wrapper.cc"],
+++    srcs = ["bootstrap_process_wrapper.cc", "compiler_scheduler.h", "compiler_scheduler_windows.h"],
+++    copts = select({
+++        "@platforms//os:windows": ["/std:c++17", "/W4", "/WX"],
+++        "//conditions:default": [],
+++    }),
+++    linkopts = select({
+++        "@platforms//os:windows": ["-DEFAULTLIB:ws2_32.lib"],
+++        "//conditions:default": [],
+++    }),
++     visibility = ["//util/process_wrapper:__pkg__"],
++ )
++diff --git a/util/process_wrapper/private/bootstrap_process_wrapper.cc b/util/process_wrapper/private/bootstrap_process_wrapper.cc
++index 110702c..614d506 100644
++--- a/util/process_wrapper/private/bootstrap_process_wrapper.cc
+++++ b/util/process_wrapper/private/bootstrap_process_wrapper.cc
++@@ -4,6 +4,7 @@
++ #include <cstring>
++ #include <string>
++ #include <vector>
+++#include "compiler_scheduler.h"
++
++ #if defined(_WIN32)
++ #include <direct.h>
++@@ -139,6 +140,22 @@ bool replace_environment_placeholders(const char* name,
++
++ int main(int argc, char** argv) {
++   int first_arg_index = 1;
+++  bool outer = argc > 1 && std::strcmp(argv[1], "--scheduler-outer") == 0;
+++  bool bootstrap = argc > 1 && std::strcmp(argv[1], "--scheduler-bootstrap") == 0;
+++  std::vector<std::string> scheduler_outputs;
+++  if (outer || bootstrap) {
+++    first_arg_index = 2;
+++    while (first_arg_index + 1 < argc &&
+++           std::strcmp(argv[first_arg_index], "--scheduler-output") == 0) {
+++      scheduler_outputs.push_back(argv[first_arg_index + 1]);
+++      first_arg_index += 2;
+++    }
+++    if (first_arg_index >= argc || std::strcmp(argv[first_arg_index], "--") != 0) {
+++      std::fprintf(stderr, "bootstrap_process_wrapper: missing scheduler command separator\n");
+++      return 1;
+++    }
+++    ++first_arg_index;
+++  }
++   if (argc > 1 && std::strcmp(argv[1], "--") == 0) {
++     first_arg_index = 2;
++   }
++@@ -162,7 +179,7 @@ int main(int argc, char** argv) {
++   // SDKROOT may contain ${pwd}, just like rustc arguments. The full process
++   // wrapper expands environment values, so its bootstrap replacement must do
++   // the same before linking the process wrapper itself.
++-  if (!replace_environment_placeholders("SDKROOT", pwd, output_base,
+++  if (!outer && !replace_environment_placeholders("SDKROOT", pwd, output_base,
++                                         exec_root)) {
++     std::perror("bootstrap_process_wrapper: set SDKROOT");
++     return 1;
++@@ -171,7 +188,7 @@ int main(int argc, char** argv) {
++   std::vector<std::string> command_args;
++   command_args.reserve(static_cast<size_t>(argc - first_arg_index));
++   for (int i = first_arg_index; i < argc; ++i) {
++-    command_args.push_back(
+++    command_args.push_back(outer ? argv[i] :
++         replace_placeholders(argv[i], pwd, output_base, exec_root));
++   }
++
++@@ -185,13 +202,23 @@ int main(int argc, char** argv) {
++
++   std::vector<char*> exec_argv = build_exec_argv(command_args);
++
+++  const char* endpoint = std::getenv("CODEX_COMPILER_SCHEDULER_SOCKET");
+++  if (endpoint != nullptr && *endpoint != '\0') {
+++#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
+++    return compiler_scheduler::run(endpoint, exec_argv.data(), scheduler_outputs);
+++#else
+++    std::fprintf(stderr, "bootstrap_process_wrapper: compiler scheduling is unavailable on this platform\n");
+++    return 125;
+++#endif
+++  }
+++
++ #if defined(_WIN32)
++-  int exit_code = _spawnvp(_P_WAIT, exec_argv[0], exec_argv.data());
+++  intptr_t exit_code = _spawnvp(_P_WAIT, exec_argv[0], exec_argv.data());
++   if (exit_code == -1) {
++     std::perror("bootstrap_process_wrapper: _spawnvp");
++     return 1;
++   }
++-  return exit_code;
+++  return static_cast<int>(exit_code);
++ #else
++   execvp(exec_argv[0], exec_argv.data());
++   std::perror("bootstrap_process_wrapper: execvp");
++diff --git a/util/process_wrapper/private/compiler_scheduler.h b/util/process_wrapper/private/compiler_scheduler.h
++new file mode 100644
++index 0000000..f599011
++--- /dev/null
+++++ b/util/process_wrapper/private/compiler_scheduler.h
++@@ -0,0 +1,607 @@
+++#ifndef RULES_RUST_COMPILER_SCHEDULER_H_
+++#define RULES_RUST_COMPILER_SCHEDULER_H_
+++
+++#if defined(_WIN32)
+++#include "compiler_scheduler_windows.h"
+++#elif defined(__linux__) || defined(__APPLE__)
+++#include <arpa/inet.h>
+++#include <fcntl.h>
+++#include <ftw.h>
+++#include <poll.h>
+++#include <signal.h>
+++#include <sys/socket.h>
+++#if defined(__linux__)
+++#include <sys/prctl.h>
+++#else
+++#include <libproc.h>
+++#include <sys/proc.h>
+++#endif
+++#include <sys/un.h>
+++#include <sys/wait.h>
+++#include <unistd.h>
+++
+++#include <cerrno>
+++#include <cstdint>
+++#include <cstdio>
+++#include <cstdlib>
+++#include <cstring>
+++#include <fstream>
+++#include <memory>
+++#include <limits>
+++#include <string>
+++#include <vector>
+++
+++namespace compiler_scheduler {
+++
+++#if defined(__APPLE__)
+++constexpr int kNoSignal = 0;
+++#else
+++constexpr int kNoSignal = MSG_NOSIGNAL;
+++#endif
+++
+++inline bool configure_socket(int descriptor, bool nonblocking) {
+++  int flags = fcntl(descriptor, F_GETFD);
+++  if (flags < 0 || fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC) < 0) return false;
+++  if (nonblocking) {
+++    flags = fcntl(descriptor, F_GETFL);
+++    if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) < 0) return false;
+++  }
+++#if defined(__APPLE__)
+++  int enabled = 1;
+++  if (setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled)) < 0) return false;
+++#endif
+++  return true;
+++}
+++
+++// Every packet contains a command, an attempt generation and a command value.
+++enum Command : uint32_t {
+++  START = 1, PAUSE = 2, RESUME = 3, KILL = 4, RETRY = 5, FAIL = 6,
+++  CANCEL = 7, STARTED = 8, EXITED = 9, CANCELLED = 10, KILLED = 11, EXTERNALLY_KILLED = 12
+++};
+++
+++struct Packet {
+++  uint32_t command;
+++  uint32_t generation;
+++  uint32_t value;
+++};
+++
+++static volatile sig_atomic_t interrupted = 0;
+++
+++inline void interrupt(int signal) { interrupted = signal; }
+++
+++class SignalHandlers {
+++ public:
+++  SignalHandlers() : installed_(0), valid_(false) {
+++    sigemptyset(&signals_);
+++    for (int signal : numbers_) sigaddset(&signals_, signal);
+++    sigset_t previous;
+++    if (sigprocmask(SIG_BLOCK, &signals_, &previous) < 0) return;
+++    interrupted = 0;
+++    struct sigaction handler = {};
+++    handler.sa_handler = interrupt;
+++    sigemptyset(&handler.sa_mask);
+++    while (installed_ < 3) {
+++      if (sigaction(numbers_[installed_], &handler, &previous_[installed_]) < 0) break;
+++      ++installed_;
+++    }
+++    valid_ = installed_ == 3;
+++    if (!valid_) restore();
+++    if (sigprocmask(SIG_SETMASK, &previous, nullptr) < 0) valid_ = false;
+++  }
+++
+++  SignalHandlers(const SignalHandlers&) = delete;
+++  SignalHandlers& operator=(const SignalHandlers&) = delete;
+++
+++  ~SignalHandlers() {
+++    sigset_t previous;
+++    if (sigprocmask(SIG_BLOCK, &signals_, &previous) == 0) {
+++      restore();
+++      sigprocmask(SIG_SETMASK, &previous, nullptr);
+++    }
+++  }
+++
+++  bool valid() const { return valid_; }
+++
+++ private:
+++  void restore() {
+++    while (installed_ > 0) {
+++      --installed_;
+++      sigaction(numbers_[installed_], &previous_[installed_], nullptr);
+++    }
+++  }
+++
+++  int numbers_[3] = {SIGINT, SIGTERM, SIGHUP};
+++  struct sigaction previous_[3];
+++  sigset_t signals_;
+++  int installed_;
+++  bool valid_;
+++};
+++
+++// A single reader retains partial packets so cancellation remains observable.
+++class Connection {
+++ public:
+++  explicit Connection(int descriptor) : descriptor_(descriptor), used_(0) {}
+++
+++  bool send(Command command, uint32_t generation, uint32_t value) {
+++    uint32_t packet[] = {htonl(command), htonl(generation), htonl(value)};
+++    size_t sent = 0;
+++    while (sent < sizeof(packet)) {
+++      if (interrupted != 0) return false;
+++      ssize_t result = ::send(descriptor_, reinterpret_cast<char*>(packet) + sent,
+++                              sizeof(packet) - sent, kNoSignal | MSG_DONTWAIT);
+++      if (result > 0) {
+++        sent += static_cast<size_t>(result);
+++      } else if (result < 0 && errno == EINTR && interrupted == 0) {
+++        continue;
+++      } else if (result < 0 && errno == EAGAIN) {
+++        struct pollfd ready = {descriptor_, POLLOUT, 0};
+++        if (poll(&ready, 1, 20) < 0 && errno != EINTR) return false;
+++      } else {
+++        return false;
+++      }
+++    }
+++    return true;
+++  }
+++
+++  void cancel(uint32_t generation, uint32_t signal) {
+++    uint32_t packet[] = {htonl(CANCELLED), htonl(generation), htonl(signal)};
+++    // Cleanup never waits for the service to accept a cancellation notification.
+++    ::send(descriptor_, packet, sizeof(packet), kNoSignal | MSG_DONTWAIT);
+++  }
+++
+++  // Returns one for a packet, zero for a timeout, and minus one for disconnect.
+++  int receive(Packet* packet) {
+++    struct pollfd ready = {descriptor_, POLLIN, 0};
+++    int result = poll(&ready, 1, 20);
+++    if (result < 0) return errno == EINTR ? 0 : -1;
+++    if (result == 0) return 0;
+++    ssize_t count = recv(descriptor_, reinterpret_cast<char*>(buffer_) + used_,
+++                         sizeof(buffer_) - used_, MSG_DONTWAIT);
+++    if (count <= 0) {
+++      return count < 0 && (errno == EINTR || errno == EAGAIN) ? 0 : -1;
+++    }
+++    used_ += static_cast<size_t>(count);
+++    if (used_ < sizeof(buffer_)) return 0;
+++    packet->command = ntohl(buffer_[0]);
+++    packet->generation = ntohl(buffer_[1]);
+++    packet->value = ntohl(buffer_[2]);
+++    used_ = 0;
+++    return 1;
+++  }
+++
+++ private:
+++  int descriptor_;
+++  uint32_t buffer_[3];
+++  size_t used_;
+++};
+++
+++inline int connect_relative(const char* endpoint) {
+++  struct sockaddr_un address = {};
+++  address.sun_family = AF_UNIX;
+++  if (std::strlen(endpoint) >= sizeof(address.sun_path)) {
+++    errno = ENAMETOOLONG;
+++    return -1;
+++  }
+++  std::strcpy(address.sun_path, endpoint);
+++  int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
+++  if (descriptor < 0) return -1;
+++  if (!configure_socket(descriptor, true)) {
+++    int failure = errno;
+++    close(descriptor);
+++    errno = failure;
+++    return -1;
+++  }
+++  int result = ::connect(descriptor, reinterpret_cast<struct sockaddr*>(&address), sizeof(address));
+++  if (result == 0) return descriptor;
+++  if (errno == EINPROGRESS) {
+++    while (interrupted == 0) {
+++      struct pollfd ready = {descriptor, POLLOUT, 0};
+++      result = poll(&ready, 1, 20);
+++      if (result < 0 && errno == EINTR) continue;
+++      if (result < 0) break;
+++      if (result == 0) continue;
+++      int error = 0;
+++      socklen_t length = sizeof(error);
+++      if (getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &error, &length) < 0) break;
+++      if (error == 0) return descriptor;
+++      errno = error;
+++      break;
+++    }
+++    if (interrupted != 0) errno = EINTR;
+++  }
+++  int failure = errno;
+++  close(descriptor);
+++  errno = failure;
+++  return -1;
+++}
+++
+++// This single-threaded supervisor restores its working directory before launching
+++// a compiler. Only the socket basename is subject to the Unix address limit.
+++inline int connect(const char* endpoint) {
+++  const char* separator = std::strrchr(endpoint, '/');
+++  if (separator == nullptr) return connect_relative(endpoint);
+++  int original = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+++  if (original < 0) return -1;
+++  std::string directory(endpoint, static_cast<size_t>(separator - endpoint));
+++  if (directory.empty()) directory = "/";
+++  if (chdir(directory.c_str()) < 0) {
+++    int failure = errno;
+++    close(original);
+++    errno = failure;
+++    return -1;
+++  }
+++  int descriptor = connect_relative(separator + 1);
+++  int failure = errno;
+++  int restored;
+++  do {
+++    restored = fchdir(original);
+++  } while (restored < 0 && errno == EINTR);
+++  if (restored < 0) {
+++    failure = errno;
+++    if (descriptor >= 0) close(descriptor);
+++    descriptor = -1;
+++  }
+++  close(original);
+++  errno = failure;
+++  return descriptor;
+++}
+++
+++inline bool terminate(pid_t child) {
+++  kill(-child, SIGKILL);
+++  kill(child, SIGKILL);
+++#if defined(__APPLE__)
+++  // Retain the leader's PID until no member of its process group can execute.
+++  siginfo_t leader = {};
+++  while (waitid(P_PID, static_cast<id_t>(child), &leader, WEXITED | WNOWAIT) < 0) {
+++    if (errno != EINTR) return false;
+++  }
+++  while (true) {
+++    errno = 0;
+++    int bytes = proc_listpids(PROC_PGRP_ONLY, static_cast<uint32_t>(child), nullptr, 0);
+++    if (bytes < 0 || (bytes == 0 && errno != 0)) return false;
+++    if (bytes > std::numeric_limits<int>::max() - static_cast<int>(sizeof(pid_t))) return false;
+++    std::vector<pid_t> members(static_cast<size_t>(bytes) / sizeof(pid_t) + 1);
+++    int capacity = static_cast<int>(members.size() * sizeof(pid_t));
+++    errno = 0;
+++    int received = proc_listpids(PROC_PGRP_ONLY, static_cast<uint32_t>(child), members.data(), capacity);
+++    if (received < 0 || (received == 0 && errno != 0)) return false;
+++    if (received >= capacity) continue;
+++    bool active = false;
+++    for (size_t index = 0; index < static_cast<size_t>(received) / sizeof(pid_t); ++index) {
+++      pid_t member = members[index];
+++      if (member == 0 || member == child) continue;
+++      struct proc_bsdinfo status = {};
+++      errno = 0;
+++      int size = proc_pidinfo(member, PROC_PIDTBSDINFO, 0, &status, static_cast<int>(sizeof(status)));
+++      if (size == 0 && errno == ESRCH) continue;
+++      if (size != static_cast<int>(sizeof(status))) return false;
+++      if (status.pbi_pgid == static_cast<uint32_t>(child) && status.pbi_status != SZOMB) active = true;
+++    }
+++    if (!active) break;
+++    kill(-child, SIGKILL);
+++    poll(nullptr, 0, 10);
+++  }
+++  while (waitpid(child, nullptr, 0) < 0) {
+++    if (errno != EINTR) return false;
+++  }
+++  return true;
+++#else
+++  while (waitpid(child, nullptr, 0) < 0 && errno == EINTR) {}
+++  // The supervisor has one attempt. Subreaping also adopts children that created another session.
+++  while (true) {
+++    pid_t result = waitpid(-1, nullptr, WNOHANG);
+++    if (result > 0 || (result < 0 && errno == EINTR)) continue;
+++    if (result < 0) return errno == ECHILD;
+++    std::ifstream descendants("/proc/self/task/" + std::to_string(getpid()) + "/children");
+++    if (!descendants.is_open()) return false;
+++    pid_t descendant;
+++    while (descendants >> descendant) {
+++      if (kill(descendant, SIGKILL) < 0 && errno != ESRCH) return false;
+++    }
+++    if (!descendants.eof()) return false;
+++    poll(nullptr, 0, 10);
+++  }
+++#endif
+++}
+++
+++inline int remove_entry(const char* path, const struct stat*, int, struct FTW*) {
+++  return std::remove(path);
+++}
+++
+++inline bool remove_tree(const std::string& path) {
+++  struct stat entry;
+++  if (lstat(path.c_str(), &entry) < 0) return errno == ENOENT;
+++  return nftw(path.c_str(), remove_entry, 16, FTW_DEPTH | FTW_PHYS) == 0;
+++}
+++
+++// Attempt diagnostics remain anonymous files until the service chooses a terminal result.
+++class Attempt {
+++ public:
+++  Attempt() : output_(-1), error_(-1) {}
+++  Attempt(const Attempt&) = delete;
+++  Attempt& operator=(const Attempt&) = delete;
+++
+++  ~Attempt() {
+++    if (output_ >= 0) close(output_);
+++    if (error_ >= 0) close(error_);
+++    if (!cleanup()) std::perror("compiler_scheduler: remove attempt directory");
+++  }
+++
+++  bool prepare() {
+++    const char* root = std::getenv("TMPDIR");
+++    if (root == nullptr || *root == '\0') {
+++      errno = EINVAL;
+++      return false;
+++    }
+++    std::string pattern = std::string(root) + "/codex-compile-XXXXXX";
+++    std::vector<char> writable(pattern.begin(), pattern.end());
+++    writable.push_back('\0');
+++    char* directory = mkdtemp(writable.data());
+++    if (directory == nullptr) return false;
+++    directory_ = directory;
+++    output_ = spool("stdout");
+++    if (output_ < 0) return false;
+++    error_ = spool("stderr");
+++    return error_ >= 0;
+++  }
+++
+++  bool redirect() const {
+++    return setenv("TMPDIR", directory_.c_str(), 1) == 0 &&
+++           setenv("CODEX_COMPILER_SCHEDULER_CHILD_STATUS", (directory_ + "/child-signal").c_str(), 1) == 0 &&
+++           dup2(output_, STDOUT_FILENO) >= 0 && dup2(error_, STDERR_FILENO) >= 0;
+++  }
+++
+++  bool child_signal(int* signal) const {
+++    std::string path = directory_ + "/child-signal";
+++    struct stat entry;
+++    if (lstat(path.c_str(), &entry) < 0) return errno == ENOENT;
+++    std::ifstream status(path);
+++    if (!(status >> *signal) || *signal <= 0 || *signal >= NSIG) {
+++      errno = EINVAL;
+++      return false;
+++    }
+++    status >> std::ws;
+++    if (!status.eof()) {
+++      errno = EINVAL;
+++      return false;
+++    }
+++    return true;
+++  }
+++
+++  bool replay() const {
+++    return copy(output_, STDOUT_FILENO) && copy(error_, STDERR_FILENO);
+++  }
+++
+++  bool cleanup() {
+++    if (directory_.empty()) return true;
+++    if (!remove_tree(directory_)) return false;
+++    directory_.clear();
+++    return true;
+++  }
+++
+++ private:
+++  int spool(const char* name) const {
+++    std::string path = directory_ + "/" + name;
+++    int descriptor = open(path.c_str(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+++    if (descriptor >= 0 && unlink(path.c_str()) < 0) {
+++      int failure = errno;
+++      close(descriptor);
+++      errno = failure;
+++      return -1;
+++    }
+++    return descriptor;
+++  }
+++
+++  static bool copy(int source, int destination) {
+++    if (lseek(source, 0, SEEK_SET) < 0) return false;
+++    char buffer[8192];
+++    while (true) {
+++      ssize_t count = read(source, buffer, sizeof(buffer));
+++      if (count == 0) return true;
+++      if (count < 0) {
+++        if (errno == EINTR && interrupted == 0) continue;
+++        return false;
+++      }
+++      ssize_t copied = 0;
+++      while (copied < count) {
+++        ssize_t written = write(destination, buffer + copied, static_cast<size_t>(count - copied));
+++        if (written > 0) copied += written;
+++        else if (written < 0 && errno == EINTR && interrupted == 0) continue;
+++        else return false;
+++      }
+++    }
+++  }
+++
+++  std::string directory_;
+++  int output_;
+++  int error_;
+++};
+++
+++// The child cannot execute until its parent knows that the process group exists.
+++inline pid_t launch(char* const* arguments, const Attempt& attempt) {
+++  int handshake[2];
+++  if (socketpair(AF_UNIX, SOCK_STREAM, 0, handshake) < 0) return -1;
+++  if (!configure_socket(handshake[0], false) || !configure_socket(handshake[1], false)) {
+++    int failure = errno;
+++    close(handshake[0]);
+++    close(handshake[1]);
+++    errno = failure;
+++    return -1;
+++  }
+++  pid_t child = fork();
+++  if (child == 0) {
+++    close(handshake[0]);
+++    if (setsid() < 0) _exit(126);
+++    if (!attempt.redirect()) _exit(126);
+++    char acknowledgement = 1;
+++    if (::send(handshake[1], &acknowledgement, 1, kNoSignal) != 1) _exit(126);
+++    if (recv(handshake[1], &acknowledgement, 1, 0) != 1) _exit(126);
+++    close(handshake[1]);
+++    execvp(arguments[0], arguments);
+++    std::perror("compiler_scheduler: execvp");
+++    _exit(127);
+++  }
+++
+++  int failure = errno;
+++  close(handshake[1]);
+++  if (child > 0) {
+++    char acknowledgement;
+++    ssize_t count;
+++    do {
+++      count = recv(handshake[0], &acknowledgement, 1, 0);
+++    } while (count < 0 && errno == EINTR && interrupted == 0);
+++    if (count != 1 || interrupted != 0 ||
+++        ::send(handshake[0], &acknowledgement, 1, kNoSignal) != 1) {
+++      terminate(child);
+++      child = -1;
+++      failure = ECANCELED;
+++    }
+++  }
+++  close(handshake[0]);
+++  errno = failure;
+++  return child;
+++}
+++
+++// The service owns admission policy; this adapter owns only sandbox-local children.
+++inline int run(const char* endpoint, char* const* arguments,
+++               const std::vector<std::string>& outputs = {}) {
+++  SignalHandlers handlers;
+++  if (!handlers.valid()) {
+++    std::perror("compiler_scheduler: install cancellation handlers");
+++    return 125;
+++  }
+++  int descriptor = connect(endpoint);
+++  if (descriptor < 0) {
+++    std::perror("compiler_scheduler: connect");
+++    return interrupted == 0 ? 125 : 128 + interrupted;
+++  }
+++  Connection connection(descriptor);
+++#if defined(__linux__)
+++  int old_subreaper;
+++  if (prctl(PR_GET_CHILD_SUBREAPER, &old_subreaper) < 0 ||
+++      prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
+++    std::perror("compiler_scheduler: enable child reaping");
+++    close(descriptor);
+++    return 125;
+++  }
+++#endif
+++  pid_t child = -1;
+++  uint32_t generation = 0;
+++  bool killed = false;
+++  bool awaiting_retry = false;
+++  std::unique_ptr<Attempt> attempt;
+++  int outcome = 125;
+++  bool finished = false;
+++  while (!finished && interrupted == 0) {
+++    Packet packet;
+++    int received = connection.receive(&packet);
+++    if (received < 0) break;
+++    if (received > 0) {
+++      if (packet.command == START && child < 0 && !awaiting_retry && packet.generation > generation) {
+++        generation = packet.generation;
+++        killed = false;
+++        attempt.reset(new Attempt());
+++        if (!attempt->prepare()) {
+++          std::perror("compiler_scheduler: prepare attempt");
+++          break;
+++        }
+++        child = launch(arguments, *attempt);
+++        if (child < 0) {
+++          std::perror("compiler_scheduler: launch");
+++          break;
+++        }
+++        if (!connection.send(STARTED, generation, 0)) break;
+++      } else if (packet.generation == generation && child > 0) {
+++        int signal = 0;
+++        if (packet.command == PAUSE) signal = SIGSTOP;
+++        else if (packet.command == RESUME) signal = SIGCONT;
+++        else if (packet.command == KILL) {
+++          signal = SIGKILL;
+++          killed = true;
+++        } else if (packet.command == CANCEL) {
+++          finished = true;
+++        } else {
+++          break;
+++        }
+++        if (signal != 0 && kill(-child, signal) < 0 && errno != ESRCH) break;
+++      } else if (packet.command == RETRY && awaiting_retry && packet.generation == generation) {
+++        attempt.reset();
+++        awaiting_retry = false;
+++      } else if (packet.command == FAIL && awaiting_retry && packet.generation == generation) {
+++        if (!attempt->replay()) {
+++          std::perror("compiler_scheduler: replay diagnostics");
+++          outcome = 125;
+++        }
+++        finished = true;
+++      } else if (packet.command == CANCEL) {
+++        finished = true;
+++      } else {
+++        break;
+++      }
+++    }
+++
+++    if (finished) break;
+++
+++    if (child > 0) {
+++      siginfo_t status = {};
+++      int result = waitid(P_PID, child, &status, WEXITED | WNOHANG | WNOWAIT);
+++      if (result < 0 && errno != EINTR) break;
+++      if (result == 0 && status.si_pid == child &&
+++          (status.si_code == CLD_EXITED || status.si_code == CLD_KILLED ||
+++           status.si_code == CLD_DUMPED)) {
+++        int exit_status = status.si_code == CLD_EXITED ? status.si_status : 128 + status.si_status;
+++        // Keep the exited leader's PID reserved until its remaining group is gone.
+++        if (!terminate(child)) {
+++          std::perror("compiler_scheduler: reap compiler descendants");
+++          break;
+++        }
+++        child = -1;
+++        int child_signal = 0;
+++        if (!attempt->child_signal(&child_signal)) {
+++          std::perror("compiler_scheduler: read wrapped compiler signal");
+++          break;
+++        }
+++        if (!attempt->cleanup()) {
+++          std::perror("compiler_scheduler: remove attempt directory");
+++          break;
+++        }
+++        bool sigkill = child_signal == SIGKILL ||
+++                       (status.si_code != CLD_EXITED && status.si_status == SIGKILL);
+++        if (sigkill) {
+++          exit_status = 128 + SIGKILL;
+++          bool cleaned = true;
+++          for (const std::string& output : outputs) {
+++            if (!remove_tree(output)) {
+++              std::perror("compiler_scheduler: remove incomplete output");
+++              cleaned = false;
+++            }
+++          }
+++          if (!cleaned) break;
+++          awaiting_retry = true;
+++        } else if (!attempt->replay()) {
+++          std::perror("compiler_scheduler: replay diagnostics");
+++          break;
+++        }
+++        if (!connection.send(sigkill ? (killed ? KILLED : EXTERNALLY_KILLED) : EXITED,
+++                              generation, static_cast<uint32_t>(exit_status))) break;
+++        outcome = exit_status;
+++        finished = !awaiting_retry;
+++      }
+++    }
+++  }
+++  if (child > 0 && !terminate(child)) std::perror("compiler_scheduler: reap compiler descendants");
+++  attempt.reset();
+++  if (interrupted != 0) {
+++    connection.cancel(generation, static_cast<uint32_t>(interrupted));
+++    outcome = 128 + interrupted;
+++  }
+++  close(descriptor);
+++#if defined(__linux__)
+++  prctl(PR_SET_CHILD_SUBREAPER, old_subreaper);
+++#endif
+++  return outcome;
+++}
+++
+++}  // namespace compiler_scheduler
+++#endif
+++#endif
++diff --git a/util/process_wrapper/private/compiler_scheduler_windows.h b/util/process_wrapper/private/compiler_scheduler_windows.h
++new file mode 100644
++index 0000000..48eafeb
++--- /dev/null
+++++ b/util/process_wrapper/private/compiler_scheduler_windows.h
++@@ -0,0 +1,440 @@
+++#ifndef RULES_RUST_COMPILER_SCHEDULER_WINDOWS_H_
+++#define RULES_RUST_COMPILER_SCHEDULER_WINDOWS_H_
+++
+++#ifndef NOMINMAX
+++#define NOMINMAX
+++#endif
+++#include <winsock2.h>
+++#include <windows.h>
+++#include <afunix.h>
+++#include <tlhelp32.h>
+++
+++#include <algorithm>
+++#include <cstdint>
+++#include <cstdio>
+++#include <cstring>
+++#include <cwchar>
+++#include <filesystem>
+++#include <memory>
+++#include <random>
+++#include <stdexcept>
+++#include <string>
+++#include <utility>
+++#include <vector>
+++
+++namespace compiler_scheduler {
+++
+++enum Command : uint32_t {
+++  START = 1, PAUSE = 2, RESUME = 3, KILL = 4, RETRY = 5, FAIL = 6,
+++  CANCEL = 7, STARTED = 8, EXITED = 9, CANCELLED = 10, KILLED = 11,
+++  EXTERNALLY_KILLED = 12
+++};
+++
+++struct Packet {
+++  uint32_t command;
+++  uint32_t generation;
+++  uint32_t value;
+++};
+++
+++class Handle {
+++ public:
+++  explicit Handle(HANDLE value = nullptr) : value_(value) {}
+++  Handle(const Handle&) = delete;
+++  Handle& operator=(const Handle&) = delete;
+++  Handle(Handle&& other) noexcept : value_(other.release()) {}
+++  ~Handle() { reset(); }
+++  HANDLE get() const { return value_; }
+++  bool valid() const { return value_ != nullptr && value_ != INVALID_HANDLE_VALUE; }
+++  HANDLE release() { HANDLE value = value_; value_ = nullptr; return value; }
+++  void reset(HANDLE value = nullptr) {
+++    if (valid()) CloseHandle(value_);
+++    value_ = value;
+++  }
+++
+++ private:
+++  HANDLE value_;
+++};
+++
+++inline std::wstring wide(const char* text) {
+++  int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
+++  if (length == 0) throw std::runtime_error("invalid UTF-8 compiler argument");
+++  std::vector<wchar_t> buffer(static_cast<size_t>(length));
+++  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, buffer.data(), length) == 0)
+++    throw std::runtime_error("cannot convert compiler argument");
+++  return std::wstring(buffer.data());
+++}
+++
+++inline std::wstring quote(const std::wstring& argument) {
+++  std::wstring result(1, L'"');
+++  size_t slashes = 0;
+++  for (wchar_t character : argument) {
+++    if (character == L'\\') { ++slashes; continue; }
+++    result.append(character == L'"' ? slashes * 2 + 1 : slashes, L'\\');
+++    result.push_back(character);
+++    slashes = 0;
+++  }
+++  result.append(slashes * 2, L'\\');
+++  result.push_back(L'"');
+++  return result;
+++}
+++
+++class Connection {
+++ public:
+++  Connection() : socket_(INVALID_SOCKET), used_(0), initialized_(false) {}
+++  Connection(const Connection&) = delete;
+++  Connection& operator=(const Connection&) = delete;
+++  ~Connection() {
+++    if (socket_ != INVALID_SOCKET) closesocket(socket_);
+++    if (initialized_) WSACleanup();
+++  }
+++
+++  bool connect(const char* endpoint) {
+++    WSADATA data;
+++    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return false;
+++    initialized_ = true;
+++    socket_ = WSASocketW(AF_UNIX, SOCK_STREAM, 0, nullptr, 0, WSA_FLAG_NO_HANDLE_INHERIT);
+++    if (socket_ == INVALID_SOCKET) return false;
+++
+++    // Only the basename enters sockaddr_un; restore the compiler's directory first.
+++    std::filesystem::path path(wide(endpoint));
+++    std::filesystem::path original = std::filesystem::current_path();
+++    std::string name = path.filename().u8string();
+++    if (name.size() >= sizeof(SOCKADDR_UN::sun_path)) return false;
+++    SOCKADDR_UN address = {};
+++    address.sun_family = AF_UNIX;
+++    std::memcpy(address.sun_path, name.c_str(), name.size() + 1);
+++    std::error_code failure;
+++    if (path.has_parent_path()) std::filesystem::current_path(path.parent_path(), failure);
+++    if (failure) return false;
+++    int result = ::connect(socket_, reinterpret_cast<sockaddr*>(&address), static_cast<int>(sizeof(address)));
+++    std::filesystem::current_path(original, failure);
+++    if (result == SOCKET_ERROR || failure) return false;
+++    u_long nonblocking = 1;
+++    return ioctlsocket(socket_, FIONBIO, &nonblocking) == 0;
+++  }
+++
+++  bool send(Command command, uint32_t generation, uint32_t value) {
+++    uint32_t packet[] = {htonl(command), htonl(generation), htonl(value)};
+++    int sent = 0;
+++    while (sent < static_cast<int>(sizeof(packet))) {
+++      int count = ::send(socket_, reinterpret_cast<const char*>(packet) + sent,
+++                         static_cast<int>(sizeof(packet)) - sent, 0);
+++      if (count > 0) sent += count;
+++      else if (count == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK) {
+++        if (ready(true) < 0) return false;
+++      } else return false;
+++    }
+++    return true;
+++  }
+++
+++  int receive(Packet* packet) {
+++    int selected = ready(false);
+++    if (selected <= 0) return selected;
+++    int count = recv(socket_, reinterpret_cast<char*>(buffer_) + used_,
+++                     static_cast<int>(sizeof(buffer_)) - used_, 0);
+++    if (count <= 0)
+++      return count == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK ? 0 : -1;
+++    used_ += count;
+++    if (used_ < static_cast<int>(sizeof(buffer_))) return 0;
+++    packet->command = ntohl(buffer_[0]);
+++    packet->generation = ntohl(buffer_[1]);
+++    packet->value = ntohl(buffer_[2]);
+++    used_ = 0;
+++    return 1;
+++  }
+++
+++ private:
+++  int ready(bool writing) const {
+++    fd_set descriptors;
+++    FD_ZERO(&descriptors);
+++    FD_SET(socket_, &descriptors);
+++    timeval timeout = {0, 20000};
+++    int result = select(0, writing ? nullptr : &descriptors,
+++                        writing ? &descriptors : nullptr, nullptr, &timeout);
+++    return result == SOCKET_ERROR ? -1 : result;
+++  }
+++
+++  SOCKET socket_;
+++  int used_;
+++  bool initialized_;
+++  uint32_t buffer_[3];
+++};
+++
+++class Attempt {
+++ public:
+++  Attempt() = default;
+++  Attempt(const Attempt&) = delete;
+++  Attempt& operator=(const Attempt&) = delete;
+++  ~Attempt() {
+++    if (!stop()) {
+++      job_.reset();
+++      std::fprintf(stderr, "compiler_scheduler: cannot confirm child cleanup; retaining attempt directory\n");
+++      return;
+++    }
+++    output_.reset();
+++    error_.reset();
+++    if (!directory_.empty()) {
+++      std::error_code failure;
+++      std::filesystem::remove_all(directory_, failure);
+++      if (failure) std::fprintf(stderr, "compiler_scheduler: cannot remove attempt directory\n");
+++    }
+++  }
+++
+++  bool launch(char* const* arguments) {
+++    std::random_device random;
+++    auto root = std::filesystem::temp_directory_path();
+++    for (int tries = 0; tries < 32; ++tries) {
+++      auto candidate = root / (L"codex-compile-" + std::to_wstring(random()));
+++      std::error_code failure;
+++      if (std::filesystem::create_directory(candidate, failure)) {
+++        directory_ = std::move(candidate);
+++        break;
+++      }
+++      if (failure && failure != std::errc::file_exists) return false;
+++    }
+++    if (directory_.empty()) return false;
+++    SECURITY_ATTRIBUTES security = {sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+++    output_.reset(CreateFileW((directory_ / L"stdout").c_str(), GENERIC_READ | GENERIC_WRITE,
+++        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &security, CREATE_NEW,
+++        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr));
+++    error_.reset(CreateFileW((directory_ / L"stderr").c_str(), GENERIC_READ | GENERIC_WRITE,
+++        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &security, CREATE_NEW,
+++        FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr));
+++    Handle input(CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+++                             &security, OPEN_EXISTING, 0, nullptr));
+++    job_.reset(CreateJobObjectW(nullptr, nullptr));
+++    if (!output_.valid() || !error_.valid() || !input.valid() || !job_.valid()) return false;
+++    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+++    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+++    if (!SetInformationJobObject(job_.get(), JobObjectExtendedLimitInformation,
+++                                 &limits, sizeof(limits))) return false;
+++
+++    std::wstring command;
+++    for (size_t index = 0; arguments[index] != nullptr; ++index) {
+++      if (index > 0) command.push_back(L' ');
+++      command += quote(wide(arguments[index]));
+++    }
+++    std::vector<wchar_t> writable(command.begin(), command.end());
+++    writable.push_back(L'\0');
+++    SIZE_T bytes = 0;
+++    InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
+++    std::vector<unsigned char> storage(bytes);
+++    auto attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+++    if (!InitializeProcThreadAttributeList(attributes, 1, 0, &bytes)) return false;
+++    struct AttributesOwner {
+++      LPPROC_THREAD_ATTRIBUTE_LIST value;
+++      ~AttributesOwner() { DeleteProcThreadAttributeList(value); }
+++    } attributes_owner{attributes};
+++    HANDLE inherited[] = {input.get(), output_.get(), error_.get()};
+++    bool configured = UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+++                                                inherited, sizeof(inherited), nullptr, nullptr) != FALSE;
+++    STARTUPINFOEXW startup = {};
+++    startup.StartupInfo.cb = sizeof(startup);
+++    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+++    startup.StartupInfo.hStdInput = input.get();
+++    startup.StartupInfo.hStdOutput = output_.get();
+++    startup.StartupInfo.hStdError = error_.get();
+++    startup.lpAttributeList = attributes;
+++    std::vector<wchar_t> environment;
+++    if (!child_environment(&environment)) return false;
+++    PROCESS_INFORMATION process = {};
+++    BOOL created = configured && CreateProcessW(nullptr, writable.data(), nullptr, nullptr, TRUE,
+++        CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+++        environment.data(), nullptr,
+++        &startup.StartupInfo, &process);
+++    if (!created) return false;
+++    process_.reset(process.hProcess);
+++    Handle thread(process.hThread);
+++    if (!AssignProcessToJobObject(job_.get(), process_.get())) {
+++      TerminateProcess(process_.get(), 125);
+++      WaitForSingleObject(process_.get(), INFINITE);
+++      return false;
+++    }
+++    return ResumeThread(thread.get()) != static_cast<DWORD>(-1);
+++  }
+++
+++  bool status(DWORD* status, bool* complete) const {
+++    DWORD waiting = WaitForSingleObject(process_.get(), 0);
+++    *complete = waiting == WAIT_OBJECT_0;
+++    return waiting != WAIT_FAILED && (!*complete || GetExitCodeProcess(process_.get(), status));
+++  }
+++
+++  bool pause() {
+++    if (!paused_.empty()) return true;
+++    while (true) {
+++      bool added = false;
+++      Handle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0));
+++      if (!snapshot.valid()) return false;
+++      THREADENTRY32 entry = {};
+++      entry.dwSize = sizeof(entry);
+++      if (!Thread32First(snapshot.get(), &entry)) return GetLastError() == ERROR_NO_MORE_FILES;
+++      do {
+++        Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+++                                   FALSE, entry.th32OwnerProcessID));
+++        if (!process.valid()) continue;
+++        BOOL owned = FALSE;
+++        if (!IsProcessInJob(process.get(), job_.get(), &owned)) return false;
+++        if (!owned || WaitForSingleObject(process.get(), 0) == WAIT_OBJECT_0) continue;
+++        bool known = false;
+++        for (const Handle& suspended : paused_)
+++          if (GetThreadId(suspended.get()) == entry.th32ThreadID) known = true;
+++        if (known) continue;
+++        Handle thread(OpenThread(THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+++                                 FALSE, entry.th32ThreadID));
+++        if (!thread.valid()) {
+++          if (GetLastError() == ERROR_INVALID_PARAMETER) continue;
+++          return false;
+++        }
+++        if (GetProcessIdOfThread(thread.get()) != entry.th32OwnerProcessID) continue;
+++        if (SuspendThread(thread.get()) == static_cast<DWORD>(-1)) {
+++          if (WaitForSingleObject(thread.get(), 0) == WAIT_OBJECT_0) continue;
+++          return false;
+++        }
+++        paused_.push_back(std::move(thread));
+++        added = true;
+++      } while (Thread32Next(snapshot.get(), &entry));
+++      if (GetLastError() != ERROR_NO_MORE_FILES) return false;
+++      if (!added) return true;
+++    }
+++  }
+++
+++  bool resume() {
+++    for (const Handle& thread : paused_) {
+++      if (ResumeThread(thread.get()) == static_cast<DWORD>(-1) &&
+++          WaitForSingleObject(thread.get(), 0) != WAIT_OBJECT_0) return false;
+++    }
+++    paused_.clear();
+++    return true;
+++  }
+++
+++  bool stop() {
+++    if (!job_.valid()) return true;
+++    if (!TerminateJobObject(job_.get(), 137)) return false;
+++    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+++    do {
+++      if (!QueryInformationJobObject(job_.get(), JobObjectBasicAccountingInformation,
+++                                     &accounting, sizeof(accounting), nullptr)) return false;
+++      if (accounting.ActiveProcesses > 0) Sleep(1);
+++    } while (accounting.ActiveProcesses > 0);
+++    paused_.clear();
+++    return true;
+++  }
+++
+++  bool replay() const {
+++    return copy(output_.get(), GetStdHandle(STD_OUTPUT_HANDLE)) &&
+++           copy(error_.get(), GetStdHandle(STD_ERROR_HANDLE));
+++  }
+++
+++ private:
+++  bool child_environment(std::vector<wchar_t>* result) const {
+++    std::unique_ptr<wchar_t, decltype(&FreeEnvironmentStringsW)> original(
+++        GetEnvironmentStringsW(), &FreeEnvironmentStringsW);
+++    if (original == nullptr) return false;
+++    std::vector<std::wstring> variables;
+++    for (const wchar_t* entry = original.get(); *entry != L'\0'; entry += std::wcslen(entry) + 1) {
+++      if (_wcsnicmp(entry, L"TEMP=", 5) != 0 && _wcsnicmp(entry, L"TMP=", 4) != 0 &&
+++          _wcsnicmp(entry, L"TMPDIR=", 7) != 0) variables.emplace_back(entry);
+++    }
+++    variables.push_back(L"TEMP=" + directory_.wstring());
+++    variables.push_back(L"TMP=" + directory_.wstring());
+++    variables.push_back(L"TMPDIR=" + directory_.wstring());
+++    std::sort(variables.begin(), variables.end(), [](const std::wstring& left, const std::wstring& right) {
+++      return _wcsicmp(left.c_str(), right.c_str()) < 0;
+++    });
+++    for (const std::wstring& variable : variables) {
+++      result->insert(result->end(), variable.begin(), variable.end());
+++      result->push_back(L'\0');
+++    }
+++    result->push_back(L'\0');
+++    return true;
+++  }
+++
+++  static bool copy(HANDLE source, HANDLE destination) {
+++    LARGE_INTEGER beginning = {};
+++    if (!SetFilePointerEx(source, beginning, nullptr, FILE_BEGIN)) return false;
+++    char buffer[8192];
+++    DWORD count;
+++    while (ReadFile(source, buffer, sizeof(buffer), &count, nullptr)) {
+++      if (count == 0) return true;
+++      DWORD copied = 0;
+++      while (copied < count) {
+++        DWORD written;
+++        if (!WriteFile(destination, buffer + copied, count - copied, &written, nullptr) || written == 0)
+++          return false;
+++        copied += written;
+++      }
+++    }
+++    return false;
+++  }
+++
+++  std::filesystem::path directory_;
+++  Handle output_;
+++  Handle error_;
+++  Handle job_;
+++  Handle process_;
+++  std::vector<Handle> paused_;
+++};
+++
+++inline int run(const char* endpoint, char* const* arguments,
+++               const std::vector<std::string>& outputs = {}) {
+++  try {
+++    Connection connection;
+++    if (!connection.connect(endpoint)) {
+++      std::fprintf(stderr, "compiler_scheduler: cannot connect to scheduler\n");
+++      return 125;
+++    }
+++    std::unique_ptr<Attempt> attempt;
+++    uint32_t generation = 0;
+++    bool awaiting_retry = false;
+++    bool killed = false;
+++    DWORD outcome = 125;
+++    while (true) {
+++      Packet packet;
+++      int received = connection.receive(&packet);
+++      if (received < 0) return 125;
+++      if (received > 0) {
+++        if (packet.command == CANCEL) return 125;
+++        if (packet.command == START && !attempt && !awaiting_retry && packet.generation > generation) {
+++          generation = packet.generation;
+++          killed = false;
+++          attempt.reset(new Attempt());
+++          if (!attempt->launch(arguments) || !connection.send(STARTED, generation, 0)) return 125;
+++        } else if (attempt && !awaiting_retry && packet.generation == generation) {
+++          if (packet.command == PAUSE) { if (!attempt->pause()) return 125; }
+++          else if (packet.command == RESUME) { if (!attempt->resume()) return 125; }
+++          else if (packet.command == KILL) { killed = true; if (!attempt->stop()) return 125; }
+++          else return 125;
+++        } else if (packet.command == RETRY && awaiting_retry && packet.generation == generation) {
+++          attempt.reset();
+++          awaiting_retry = false;
+++        } else if (packet.command == FAIL && awaiting_retry && packet.generation == generation) {
+++          return attempt->replay() ? static_cast<int>(outcome) : 125;
+++        } else return 125;
+++      }
+++      if (!attempt || awaiting_retry) continue;
+++      bool complete = false;
+++      if (!attempt->status(&outcome, &complete)) return 125;
+++      if (!complete) continue;
+++      if (!attempt->stop()) return 125;
+++      bool memory_failure = killed || outcome == 0xC0000017UL || outcome == 0xC000012DUL;
+++      if (memory_failure) {
+++        for (const std::string& output : outputs) {
+++          std::error_code failure;
+++          std::filesystem::remove_all(std::filesystem::path(wide(output.c_str())), failure);
+++          if (failure) return 125;
+++        }
+++        awaiting_retry = true;
+++        outcome = 137;
+++      } else if (!attempt->replay()) return 125;
+++      if (!connection.send(memory_failure ? (killed ? KILLED : EXTERNALLY_KILLED) : EXITED,
+++                           generation, outcome)) return 125;
+++      if (!awaiting_retry) return static_cast<int>(outcome);
+++    }
+++  } catch (const std::exception& failure) {
+++    std::fprintf(stderr, "compiler_scheduler: %s\n", failure.what());
+++    return 125;
+++  }
+++}
+++
+++}  // namespace compiler_scheduler
+++#endif
++--
++2.43.0
+--
+2.43.0
