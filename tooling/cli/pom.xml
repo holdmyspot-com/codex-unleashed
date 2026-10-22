@@ -18,8 +18,13 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>io.github.cowwoc.pouch</groupId>
+			<artifactId>pouch-core</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>
+			<scope>compile</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
