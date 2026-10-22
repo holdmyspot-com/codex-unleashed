@@ -227,7 +227,7 @@ jobs:
       matrix:
         runner: ${{ fromJSON(inputs.focus == 'compiler-scheduler-tooling-windows' && '["windows-2022"]' || '["ubuntu-latest", "macos-15", "macos-15-intel", "windows-2022"]') }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -250,15 +250,23 @@ jobs:
           tooling/mvnw -q -pl cli -am test \
             -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest \
             -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Capture Windows tooling thread evidence
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "$PSHOME/pwsh.exe" -ArgumentList @(
+            '-NoProfile', '-File', '.github/scripts/capture-tooling-threads.ps1',
+            '-OutputDirectory', '.cat/work/temp/build-caches/maven/thread-diagnostics'
+          ) -NoNewWindow
       - name: Verify and cache the complete tooling runtime
         uses: ./.github/actions/setup-tooling
-        env:
-          MAVEN_ARGS: -ntp -Dsurefire.forkedProcessTimeoutInSeconds=600
       - name: Retain compiler scheduler test evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: compiler-scheduler-tooling-${{ matrix.runner }}
-          path: .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
+          path: |
+            .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
+            .cat/work/temp/build-caches/maven/thread-diagnostics
           if-no-files-found: ignore
           retention-days: 1
