@@ -18,8 +18,6 @@ import tools.jackson.databind.json.JsonMapper;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
 
 /**
  * Verifies the public tooling command boundary.
@@ -52,12 +50,12 @@ public final class MainTest
 			var output = new ByteArrayOutputStream();
 			try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 			{
-				assertEquals(Main.run(new String[]{"stage-release-installers", root.toString(), release.toString()},
-					InputStream.nullInputStream(), stream, stream), 0);
+				requireThat(Main.run(new String[]{"stage-release-installers", root.toString(), release.toString()},
+					InputStream.nullInputStream(), stream, stream), "status").isEqualTo(0);
 			}
-			assertEquals(Files.readString(release.resolve("install.sh")), installer);
-			assertEquals(Files.readString(release.resolve("install.ps1")), installer);
-			assertEquals(output.size(), 0);
+			requireThat(Files.readString(release.resolve("install.sh")), "installer").isEqualTo(installer);
+			requireThat(Files.readString(release.resolve("install.ps1")), "installer").isEqualTo(installer);
+			requireThat(output.size(), "outputSize").isEqualTo(0);
 		}
 		finally
 		{
@@ -78,10 +76,11 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"stage-release-installers", "absent-checkout", "absent-release"},
-				InputStream.nullInputStream(), stream, stream), 1);
+			requireThat(Main.run(new String[]{"stage-release-installers", "absent-checkout", "absent-release"},
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(1);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).startsWith("ERROR: required installer file is missing:"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").
+			startsWith("ERROR: required installer file is missing:");
 	}
 
 	/**
@@ -93,12 +92,13 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"unknown"}, InputStream.nullInputStream(), stream, stream), 2);
-			assertEquals(Main.run(new String[]{"stage-release-installers"}, InputStream.nullInputStream(),
-				stream, stream), 2);
-			assertEquals(Main.run(new String[0], InputStream.nullInputStream(), stream, stream), 2);
+			requireThat(Main.run(new String[]{"unknown"}, InputStream.nullInputStream(), stream, stream),
+				"status").isEqualTo(2);
+			requireThat(Main.run(new String[]{"stage-release-installers"}, InputStream.nullInputStream(),
+				stream, stream), "status").isEqualTo(2);
+			requireThat(Main.run(new String[0], InputStream.nullInputStream(), stream, stream), "status").isEqualTo(2);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).contains("Usage:"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").contains("Usage:");
 	}
 
 	/**
@@ -112,9 +112,10 @@ public final class MainTest
 			getBytes(StandardCharsets.UTF_8));
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"next-release-build-number", "rust-v0.160.0"}, input, stream, stream), 0);
+			requireThat(Main.run(new String[]{"next-release-build-number", "rust-v0.160.0"}, input, stream, stream),
+				"status").isEqualTo(0);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), "30" + System.lineSeparator());
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo("30" + System.lineSeparator());
 	}
 
 	/**
@@ -126,10 +127,11 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"next-release-build-number", "v0.160.0"}, InputStream.nullInputStream(),
-				stream, stream), 1);
+			requireThat(Main.run(new String[]{"next-release-build-number", "v0.160.0"}, InputStream.nullInputStream(),
+				stream, stream), "status").isEqualTo(1);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).startsWith("ERROR: upstream tag must be rust-vX.Y.Z"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").
+			startsWith("ERROR: upstream tag must be rust-vX.Y.Z");
 	}
 
 	/**
@@ -142,9 +144,10 @@ public final class MainTest
 		var input = new ByteArrayInputStream(new byte[]{(byte) 0xff});
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"next-release-build-number", "rust-v0.160.0"}, input, stream, stream), 1);
+			requireThat(Main.run(new String[]{"next-release-build-number", "rust-v0.160.0"}, input, stream, stream),
+				"status").isEqualTo(1);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).startsWith("ERROR:"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").startsWith("ERROR:");
 	}
 
 	/**
@@ -156,13 +159,15 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"cache-prefix", "--upstream-ref", "rust-v0.160.0"},
-				InputStream.nullInputStream(), stream, stream), 0);
-			assertEquals(output.toString(StandardCharsets.UTF_8), "upstream-rust-v0.160.0-" + System.lineSeparator());
+			requireThat(Main.run(new String[]{"cache-prefix", "--upstream-ref", "rust-v0.160.0"},
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(0);
+			requireThat(output.toString(StandardCharsets.UTF_8), "output").
+				isEqualTo("upstream-rust-v0.160.0-" + System.lineSeparator());
 			output.reset();
-			assertEquals(Main.run(new String[]{"cache-prefix", "--upstream-ref", "main"},
-				InputStream.nullInputStream(), stream, stream), 0);
-			assertEquals(output.toString(StandardCharsets.UTF_8), "upstream-unreleased-" + System.lineSeparator());
+			requireThat(Main.run(new String[]{"cache-prefix", "--upstream-ref", "main"},
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(0);
+			requireThat(output.toString(StandardCharsets.UTF_8), "output").
+				isEqualTo("upstream-unreleased-" + System.lineSeparator());
 		}
 	}
 
@@ -175,11 +180,12 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"cache-prefix", "main"}, InputStream.nullInputStream(), stream, stream), 2);
-			assertEquals(Main.run(new String[]{"cache-prefix", "--invalid", "main"}, InputStream.nullInputStream(),
-				stream, stream), 2);
+			requireThat(Main.run(new String[]{"cache-prefix", "main"}, InputStream.nullInputStream(), stream, stream),
+				"status").isEqualTo(2);
+			requireThat(Main.run(new String[]{"cache-prefix", "--invalid", "main"}, InputStream.nullInputStream(),
+				stream, stream), "status").isEqualTo(2);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).contains("Usage:"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").contains("Usage:");
 	}
 
 	/**
@@ -191,10 +197,10 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"stable-releases"}, InputStream.nullInputStream(), stream, stream,
-				_ -> "rust-v0.159.2\nrust-v0.160.0\nrust-v0.159.3\n"), 0);
+			requireThat(Main.run(new String[]{"stable-releases"}, InputStream.nullInputStream(), stream, stream,
+				_ -> "rust-v0.159.2\nrust-v0.160.0\nrust-v0.159.3\n"), "status").isEqualTo(0);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), "rust-v0.160.0" + System.lineSeparator() +
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo("rust-v0.160.0" + System.lineSeparator() +
 			"rust-v0.159.3" + System.lineSeparator());
 	}
 
@@ -207,11 +213,11 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"stable-releases", "--retain-upstream-ref", "rust-v0.160.0",
+			requireThat(Main.run(new String[]{"stable-releases", "--retain-upstream-ref", "rust-v0.160.0",
 				"--retain-upstream-ref", "rust-v0.159.0"}, InputStream.nullInputStream(), stream, stream,
-				_ -> "rust-v0.161.0\nrust-v0.160.1\nrust-v0.160.0\n"), 0);
+				_ -> "rust-v0.161.0\nrust-v0.160.1\nrust-v0.160.0\n"), "status").isEqualTo(0);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(String.join(System.lineSeparator(),
 			"rust-v0.161.0", "rust-v0.160.1", "rust-v0.160.0", "rust-v0.159.0", ""));
 	}
 
@@ -243,7 +249,7 @@ public final class MainTest
 		AtomicInteger index = new AtomicInteger();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
+			requireThat(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
 				"--retain-upstream-ref", "rust-v0.160.0"}, InputStream.nullInputStream(), stream, stream,
 				command -> switch (index.getAndIncrement())
 				{
@@ -252,17 +258,17 @@ public final class MainTest
 						"{\"id\":2,\"key\":\"upstream-rust-v0.159.0-pnpm-linux\"}\n";
 					case 2 ->
 					{
-						assertEquals(command, List.of("gh", "api", "--method", "DELETE",
+						requireThat(command, "command").isEqualTo(List.of("gh", "api", "--method", "DELETE",
 							"repos/owner/repo/actions/caches/2"));
 						yield "";
 					}
 					default -> throw new AssertionError("Unexpected cache deletion");
-				}), 0);
+				}), "status").isEqualTo(0);
 		}
-		assertEquals(index.get(), 3);
+		requireThat(index.get(), "commandCount").isEqualTo(3);
 		JsonNode json = JsonMapper.builder().build().readTree(output.toString(StandardCharsets.UTF_8));
-		assertEquals(json.get("obsolete_cache_ids").size(), 1);
-		assertEquals(json.get("obsolete_cache_ids").get(0).asInt(), 2);
+		requireThat(json.get("obsolete_cache_ids").size(), "obsoleteCacheIdCount").isEqualTo(1);
+		requireThat(json.get("obsolete_cache_ids").get(0).asInt(), "obsoleteCacheId").isEqualTo(2);
 	}
 
 	/**
@@ -278,14 +284,14 @@ public final class MainTest
 			try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
 				var err = new PrintStream(errors, true, StandardCharsets.UTF_8))
 			{
-				assertEquals(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
+				requireThat(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo",
 					"--retain-upstream-ref", ref}, InputStream.nullInputStream(), out, err, _ ->
 					{
 						throw new AssertionError("Invalid retention must not contact GitHub");
-					}), 1);
+					}), "status").isEqualTo(1);
 			}
-			assertEquals(output.size(), 0);
-			assertTrue(errors.toString(StandardCharsets.UTF_8).startsWith("ERROR:"));
+			requireThat(output.size(), "outputSize").isEqualTo(0);
+			requireThat(errors.toString(StandardCharsets.UTF_8), "errors").startsWith("ERROR:");
 		}
 	}
 
@@ -299,19 +305,19 @@ public final class MainTest
 		AtomicInteger index = new AtomicInteger();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo", "--dry-run"},
+			requireThat(Main.run(new String[]{"prune-actions-caches", "--repository", "owner/repo", "--dry-run"},
 				InputStream.nullInputStream(), stream, stream, _ -> switch (index.getAndIncrement())
 				{
 					case 0 -> "rust-v0.160.0\n";
 					case 1 -> "{\"id\":9007199254740993,\"key\":\"pnpm-legacy\"}\n";
 					default -> throw new AssertionError("Unexpected deletion");
-				}), 0);
+				}), "status").isEqualTo(0);
 		}
 		JsonNode json = JsonMapper.builder().build().readTree(output.toString(StandardCharsets.UTF_8));
-		assertEquals(json.get("retained_releases").get(0).asString(), "rust-v0.160.0");
-		assertEquals(json.get("obsolete_cache_ids").get(0).asString(), "9007199254740993");
-		assertTrue(json.get("dry_run").asBoolean());
-		assertEquals(index.get(), 2);
+		requireThat(json.get("retained_releases").get(0).asString(), "retainedRelease").isEqualTo("rust-v0.160.0");
+		requireThat(json.get("obsolete_cache_ids").get(0).asString(), "obsoleteCacheId").isEqualTo("9007199254740993");
+		requireThat(json.get("dry_run").asBoolean(), "dryRun").isTrue();
+		requireThat(index.get(), "commandCount").isEqualTo(2);
 	}
 
 	/**
@@ -326,10 +332,10 @@ public final class MainTest
 			for (String[] args : List.of(new String[]{"prune-actions-caches"},
 				new String[]{"prune-actions-caches", "--invalid", "owner/repo"},
 				new String[]{"prune-actions-caches", "--repository", "owner/repo", "--invalid"}))
-				assertEquals(Main.run(args, InputStream.nullInputStream(), stream, stream, _ ->
+				requireThat(Main.run(args, InputStream.nullInputStream(), stream, stream, _ ->
 				{
 					throw new AssertionError("Unexpected GitHub request");
-				}), 2);
+				}), "status").isEqualTo(2);
 		}
 	}
 
@@ -342,11 +348,12 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"check-ci-results", "{\"build\":{\"result\":\"success\"}}"},
-				InputStream.nullInputStream(), stream, stream), 0);
-			assertEquals(Main.run(new String[]{"check-ci-results", "{\"build\":{\"result\":\"skipped\"}}"},
-				InputStream.nullInputStream(), stream, stream), 1);
-			assertEquals(Main.run(new String[]{"check-ci-results"}, InputStream.nullInputStream(), stream, stream), 2);
+			requireThat(Main.run(new String[]{"check-ci-results", "{\"build\":{\"result\":\"success\"}}"},
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(0);
+			requireThat(Main.run(new String[]{"check-ci-results", "{\"build\":{\"result\":\"skipped\"}}"},
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(1);
+			requireThat(Main.run(new String[]{"check-ci-results"}, InputStream.nullInputStream(), stream, stream),
+				"status").isEqualTo(2);
 		}
 	}
 
@@ -359,11 +366,11 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"release-cache-keys", "--v8-version=1.2.3", "--target", "old-tag",
+			requireThat(Main.run(new String[]{"release-cache-keys", "--v8-version=1.2.3", "--target", "old-tag",
 				"--compiler-fingerprint", "a".repeat(64), "--target", "x86_64-unknown-linux-gnu"},
-				InputStream.nullInputStream(), stream, stream), 0);
+				InputStream.nullInputStream(), stream, stream), "status").isEqualTo(0);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(String.join(System.lineSeparator(),
 			"cargo_download_key=codex-release-downloads-v5-x86_64-unknown-linux-gnu",
 			"cargo_target_tag=cargo-v2-x86_64-unknown-linux-gnu-off-" + "a".repeat(64),
 			"rusty_v8_key=rusty-v8-v2-x86_64-unknown-linux-gnu-1.2.3", "rusty_v8_version=1.2.3", ""));
@@ -386,10 +393,10 @@ public final class MainTest
 			try (var out = new PrintStream(output, true, StandardCharsets.UTF_8);
 				var err = new PrintStream(error, true, StandardCharsets.UTF_8))
 			{
-				assertEquals(Main.run(args, InputStream.nullInputStream(), out, err), 2);
+				requireThat(Main.run(args, InputStream.nullInputStream(), out, err), "status").isEqualTo(2);
 			}
-			assertEquals(output.size(), 0);
-			assertTrue(error.size() > 0);
+			requireThat(output.size(), "outputSize").isEqualTo(0);
+			requireThat(error.size(), "errorSize").isGreaterThan(0);
 		}
 	}
 
@@ -402,9 +409,9 @@ public final class MainTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"release-cache-keys", "--help"}, InputStream.nullInputStream(),
-				stream, stream), 0);
+			requireThat(Main.run(new String[]{"release-cache-keys", "--help"}, InputStream.nullInputStream(),
+				stream, stream), "status").isEqualTo(0);
 		}
-		assertTrue(output.toString(StandardCharsets.UTF_8).contains("--compiler-fingerprint"));
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").contains("--compiler-fingerprint");
 	}
 }

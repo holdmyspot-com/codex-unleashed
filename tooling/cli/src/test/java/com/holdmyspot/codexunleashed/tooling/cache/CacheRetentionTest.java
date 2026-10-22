@@ -3,9 +3,7 @@ package com.holdmyspot.codexunleashed.tooling.cache;
 import java.util.List;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies release lineage and dependency-cache retention decisions.
@@ -25,8 +23,8 @@ public final class CacheRetentionTest
 	@Test
 	public void associatesStableRelease()
 	{
-		assertEquals(CacheRetention.prefix("rust-v0.160.0"), "upstream-rust-v0.160.0-");
-		assertEquals(CacheRetention.prefix("rust-v00.01.02"), "upstream-rust-v00.01.02-");
+		requireThat(CacheRetention.prefix("rust-v0.160.0"), "prefix").isEqualTo("upstream-rust-v0.160.0-");
+		requireThat(CacheRetention.prefix("rust-v00.01.02"), "prefix").isEqualTo("upstream-rust-v00.01.02-");
 	}
 
 	/**
@@ -37,7 +35,7 @@ public final class CacheRetentionTest
 	{
 		for (String reference : new String[]{"main", "rust-v0.160.0-alpha.1", "rust-v0.160.0+41", "rust-v٠.١.٢",
 			" rust-v0.160.0", "rust-v0.160.0\n", ""})
-			assertEquals(CacheRetention.prefix(reference), "upstream-unreleased-");
+			requireThat(CacheRetention.prefix(reference), "prefix").isEqualTo("upstream-unreleased-");
 	}
 
 	/**
@@ -46,8 +44,8 @@ public final class CacheRetentionTest
 	@Test
 	public void retainsNewestStableReleases()
 	{
-		assertEquals(CacheRetention.retainedStableTags(List.of("rust-v0.99.0", "rust-v0.160.0",
-			"rust-v0.159.3", "rust-v0.161.0-alpha.1", "rust-v0.160.0")),
+		requireThat(CacheRetention.retainedStableTags(List.of("rust-v0.99.0", "rust-v0.160.0",
+			"rust-v0.159.3", "rust-v0.161.0-alpha.1", "rust-v0.160.0")), "retainedTags").isEqualTo(
 			List.of("rust-v0.160.0", "rust-v0.159.3"));
 	}
 
@@ -57,8 +55,8 @@ public final class CacheRetentionTest
 	@Test
 	public void preservesEqualVersionSpellings()
 	{
-		assertEquals(CacheRetention.retainedStableTags(List.of("rust-v00.01.02", "rust-v0.1.2",
-			"rust-v00.01.02", "rust-v0.1.1")), List.of("rust-v00.01.02", "rust-v0.1.2"));
+		requireThat(CacheRetention.retainedStableTags(List.of("rust-v00.01.02", "rust-v0.1.2",
+			"rust-v00.01.02", "rust-v0.1.1")), "retainedTags").isEqualTo(List.of("rust-v00.01.02", "rust-v0.1.2"));
 	}
 
 	/**
@@ -67,8 +65,8 @@ public final class CacheRetentionTest
 	@Test
 	public void ordersArbitraryVersionComponents()
 	{
-		assertEquals(CacheRetention.retainedStableTags(List.of("rust-v99999999999999999999999.0.0",
-			"rust-v99999999999999999999998.9.9", "rust-v1.0.0")),
+		requireThat(CacheRetention.retainedStableTags(List.of("rust-v99999999999999999999999.0.0",
+			"rust-v99999999999999999999998.9.9", "rust-v1.0.0")), "retainedTags").isEqualTo(
 			List.of("rust-v99999999999999999999999.0.0", "rust-v99999999999999999999998.9.9"));
 	}
 
@@ -92,10 +90,10 @@ public final class CacheRetentionTest
 		for (String key : List.of("bazel-cache-upstream-rust-v0.159.2-linux", "pnpm-legacy",
 			"rusty-v8-legacy", "v0-rust-codex-release-downloads-v5", "setup-uv-2-old",
 			"apt-upstream-unreleased-linux"))
-			assertTrue(CacheRetention.isObsoleteCache(key, retained), key);
+			requireThat(CacheRetention.isObsoleteCache(key, retained), key).isTrue();
 		for (String key : List.of("pnpm-upstream-rust-v0.160.0-linux", "v0-upstream-rust-v0.159.3-linux",
 			"setup-uv-2-upstream-rust-v0.160.0-linux", "unrelated-cache",
 			"notupstream-rust-v0.159.2-linux"))
-			assertFalse(CacheRetention.isObsoleteCache(key, retained), key);
+			requireThat(CacheRetention.isObsoleteCache(key, retained), key).isFalse();
 	}
 }

@@ -4,10 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.expectThrows;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies that terminal CI jobs accept only explicit dependency success.
@@ -34,9 +34,9 @@ public final class CiResultsTest
 			var output = new ByteArrayOutputStream();
 			try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 			{
-				assertEquals(CiResults.check(inventory, stream), 0);
+				requireThat(CiResults.check(inventory, stream), "status").isEqualTo(0);
 			}
-			assertEquals(output.toString(StandardCharsets.UTF_8),
+			requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(
 				"All CI dependencies succeeded." + System.lineSeparator());
 		}
 	}
@@ -52,28 +52,42 @@ public final class CiResultsTest
 		var output = new ByteArrayOutputStream();
 		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			assertEquals(CiResults.check("{\"z\":{\"result\":\"failure\"},\"b\":{\"result\":\"cancelled\"}," +
-				"\"a\":{\"result\":\"skipped\"},\"ok\":{\"result\":\"success\"}}", stream), 1);
+			requireThat(CiResults.check("{\"z\":{\"result\":\"failure\"},\"b\":{\"result\":\"cancelled\"}," +
+				"\"a\":{\"result\":\"skipped\"},\"ok\":{\"result\":\"success\"}}", stream), "status").isEqualTo(1);
 		}
-		assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(String.join(System.lineSeparator(),
 			"CI dependencies did not succeed:", "a: skipped", "b: cancelled", "z: failure", ""));
 	}
 
 	/**
 	 * Rejects missing, null, and non-string statuses without printing success.
+	 *
+	 * @param inventory malformed dependency inventory
+	 * @throws IOException if the inventory is rejected as expected
 	 */
-	@Test
-	public void rejectsMalformedDependencyInventory()
+	@Test(dataProvider = "malformedDependencyInventories", expectedExceptions = IOException.class)
+	public void rejectsMalformedDependencyInventory(String inventory) throws IOException
 	{
-		for (String inventory : new String[]{"{invalid", "{} {}", "[]", "null", "{\"job\":{}}",
-			"{\"job\":{\"result\":null}}", "{\"job\":{\"result\":false}}"})
+		var output = new ByteArrayOutputStream();
+		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
 		{
-			var output = new ByteArrayOutputStream();
-			try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
-			{
-				expectThrows(IOException.class, () -> CiResults.check(inventory, stream));
-			}
-			assertEquals(output.size(), 0);
+			CiResults.check(inventory, stream);
 		}
+		finally
+		{
+			requireThat(output.size(), "outputSize").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Supplies independent malformed inventories for the rejection test.
+	 *
+	 * @return one inventory per invocation
+	 */
+	@DataProvider
+	public Object[][] malformedDependencyInventories()
+	{
+		return new Object[][]{{"{invalid"}, {"{} {}"}, {"[]"}, {"null"}, {"{\"job\":{}}"},
+			{"{\"job\":{\"result\":null}}"}, {"{\"job\":{\"result\":false}}"}};
 	}
 }
