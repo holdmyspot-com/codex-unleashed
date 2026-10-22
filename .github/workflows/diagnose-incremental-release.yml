@@ -915,6 +915,8 @@ jobs:
 
       - name: Measure release compilation reuse
         shell: bash
+        env:
+          CARGO_INCREMENTAL: ${{ matrix.incremental }}
         run: |
           set -euo pipefail
           export UPSTREAM_TARGET="${{ matrix.target }}"
