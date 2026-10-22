@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   prepare-tooling:
+    if: inputs.focus != 'compiler-scheduler-baseline'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: windows-2022
@@ -57,14 +58,19 @@ jobs:
 
   compiler-scheduler-baseline:
     if: inputs.focus == 'compiler-scheduler-baseline'
-    needs: prepare-tooling
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-tooling
+      - uses: actions/checkout@v6
+        with:
+          # This pin supplies the exact verified driver independently of diagnostic edits.
+          ref: 2d04175e11d005db8bb2ba90e00ad6ea3b9dacb6
+          path: baseline-driver
+          persist-credentials: false
+      - uses: ./baseline-driver/.github/actions/setup-tooling
         with:
           require-cache: 'true'
       - uses: ./.github/actions/setup-bazel-ci
@@ -91,9 +97,9 @@ jobs:
           diagnostic="${GITHUB_WORKSPACE}/.cat/work/temp/scheduler-diagnostics/baseline.log"
           cd scheduler-upstream
           set +e
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-with-buildbuddy.sh" \
+          "${GITHUB_WORKSPACE}/baseline-driver/.github/scripts/run-bazel-with-buildbuddy.sh" \
             test //test/process_wrapper:compiler_scheduler_test \
-            --test_filter=configured_scheduler_must_be_available_before_compiler_starts \
+            --test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact \
             --nocache_test_results --test_output=errors --lockfile_mode=update \
             2>&1 | tee "$diagnostic"
           status=${PIPESTATUS[0]}
@@ -102,6 +108,7 @@ jobs:
             printf 'Expected a behavioral test failure (3), got %s.\n' "$status" >&2
             exit 1
           fi
+          grep -F 'running 1 test' "$diagnostic"
           grep -F 'configured_scheduler_must_be_available_before_compiler_starts ... FAILED' "$diagnostic"
           grep -F 'left: Some(0)' "$diagnostic"
           grep -F 'right: Some(125)' "$diagnostic"

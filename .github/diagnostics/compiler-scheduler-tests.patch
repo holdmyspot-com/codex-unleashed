@@ -39,10 +39,10 @@ index 09af719..b809132 100644
 +)
 diff --git a/test/process_wrapper/compiler_scheduler.rs b/test/process_wrapper/compiler_scheduler.rs
 new file mode 100644
-index 0000000..aced804
+index 0000000..2ab2387
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler.rs
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,103 @@
 +//! Compiler admission checks through the executable bootstrap wrapper.
 +
 +use std::path::PathBuf;
@@ -139,14 +139,19 @@ index 0000000..aced804
 +        String::from_utf8(output.stdout).unwrap().trim_end(),
 +        std::env::current_dir().unwrap().to_string_lossy()
 +    );
-+    assert!(fixture.server.wait().unwrap().success());
++    let completion = fixture.server.wait().unwrap();
++    assert!(
++        completion.success(),
++        "compiler did not complete scheduler protocol: {}",
++        completion
++    );
 +}
 diff --git a/test/process_wrapper/compiler_scheduler_server.cc b/test/process_wrapper/compiler_scheduler_server.cc
 new file mode 100644
-index 0000000..e91335d
+index 0000000..fd512ad
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler_server.cc
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,131 @@
 +#include <array>
 +#include <cstdio>
 +#include <cstdlib>
@@ -162,6 +167,7 @@ index 0000000..e91335d
 +using NativeSocket = SOCKET;
 +constexpr NativeSocket kInvalidSocket = INVALID_SOCKET;
 +#else
++#include <sys/select.h>
 +#include <sys/socket.h>
 +#include <sys/un.h>
 +#include <unistd.h>
@@ -229,8 +235,30 @@ index 0000000..e91335d
 +  if (bind(listener.value, reinterpret_cast<struct sockaddr*>(&address), static_cast<int>(sizeof(address))) != 0 ||
 +      listen(listener.value, 1) != 0) return 2;
 +  std::cout << "ready" << std::endl;
++  fd_set readable;
++  FD_ZERO(&readable);
++  FD_SET(listener.value, &readable);
++  struct timeval timeout = {20, 0};
++#if defined(_WIN32)
++  int descriptor_bound = 0;
++#else
++  int descriptor_bound = listener.value + 1;
++#endif
++  if (select(descriptor_bound, &readable, nullptr, nullptr, &timeout) != 1) return 4;
 +  Socket client(accept(listener.value, nullptr, nullptr));
 +  if (client.value == kInvalidSocket) return 2;
++#if defined(_WIN32)
++  DWORD milliseconds = 20000;
++  const char* deadline = reinterpret_cast<const char*>(&milliseconds);
++  int deadline_size = static_cast<int>(sizeof(milliseconds));
++#else
++  timeout.tv_sec = 20;
++  timeout.tv_usec = 0;
++  const void* deadline = &timeout;
++  auto deadline_size = static_cast<socklen_t>(sizeof(timeout));
++#endif
++  if (setsockopt(client.value, SOL_SOCKET, SO_RCVTIMEO, deadline, deadline_size) != 0 ||
++      setsockopt(client.value, SOL_SOCKET, SO_SNDTIMEO, deadline, deadline_size) != 0) return 2;
 +  std::array<char, 12> bytes = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0};
 +  if (!packet(client.value, &bytes, true)) return 3;
 +  if (!packet(client.value, &bytes, false) ||
