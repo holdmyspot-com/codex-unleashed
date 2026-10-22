@@ -64,13 +64,19 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Preserve the diagnostic patch independently of the verified driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cat/work/temp/scheduler-diagnostics
+          cp .github/diagnostics/compiler-scheduler-tests.patch .cat/work/temp/scheduler-diagnostics/tests.patch
       - uses: actions/checkout@v6
         with:
           # This pin supplies the exact verified driver independently of diagnostic edits.
           ref: 2d04175e11d005db8bb2ba90e00ad6ea3b9dacb6
-          path: baseline-driver
+          clean: false
           persist-credentials: false
-      - uses: ./baseline-driver/.github/actions/setup-tooling
+      - uses: ./.github/actions/setup-tooling
         with:
           require-cache: 'true'
       - uses: ./.github/actions/setup-bazel-ci
@@ -86,7 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git -C scheduler-upstream apply ../.github/diagnostics/compiler-scheduler-tests.patch
+          git -C scheduler-upstream apply ../.cat/work/temp/scheduler-diagnostics/tests.patch
       - name: Establish missing scheduler admission on the unpatched base
         shell: bash
         env:
@@ -97,7 +103,7 @@ jobs:
           diagnostic="${GITHUB_WORKSPACE}/.cat/work/temp/scheduler-diagnostics/baseline.log"
           cd scheduler-upstream
           set +e
-          "${GITHUB_WORKSPACE}/baseline-driver/.github/scripts/run-bazel-with-buildbuddy.sh" \
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-with-buildbuddy.sh" \
             test //test/process_wrapper:compiler_scheduler_test \
             --test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact \
             --nocache_test_results --test_output=errors --lockfile_mode=update \
