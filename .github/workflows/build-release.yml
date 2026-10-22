@@ -56,6 +56,11 @@ on:
         required: false
         default: false
         type: boolean
+      build_only:
+        description: "Run the complete build and verification matrix without publishing a release."
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       automatic:
@@ -114,6 +119,11 @@ on:
         required: false
         default: false
         type: boolean
+      build_only:
+        description: "Run the complete build and verification matrix without publishing a release."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -128,7 +138,7 @@ concurrency:
       inputs.focus_target || 'all-targets'
     }}-${{ inputs.focus_bundle || 'all-bundles' }}-${{
       inputs.reproducibility_mode || 'off'
-    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}-${{ inputs.build_number }}
+    }}-${{ inputs.cache_audit || 'false' }}-${{ inputs.ghcr_cache || 'false' }}-${{ inputs.publish_npm }}-${{ inputs.build_only }}-${{ inputs.build_number }}
   queue: max
   cancel-in-progress: false
 
@@ -1680,6 +1690,7 @@ jobs:
         always() &&
         !cancelled() &&
         needs.verify.result == 'success' &&
+        inputs.build_only != true &&
         needs.prepare.outputs.should_release == 'true' &&
         (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == '' &&
@@ -1952,6 +1963,7 @@ jobs:
     if: >-
       ${{
         always() &&
+        inputs.build_only != true &&
         needs.prepare.outputs.should_release == 'true' &&
         (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == '' &&

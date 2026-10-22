@@ -33,8 +33,11 @@ public final class ReleaseWorkflowPolicyTest
 	{
 		String condition = document().path("jobs").path("publish").path("if").asString().strip();
 		condition = condition.substring(3, condition.length() - 2);
-		for (boolean reused : new boolean[]{false, true})
+		for (List<Boolean> scenario : List.of(List.of(false, false), List.of(false, true),
+			List.of(true, false), List.of(true, true)))
 		{
+			boolean reused = scenario.get(0);
+			boolean buildOnly = scenario.get(1);
 			String run = "current";
 			if (reused)
 				run = "previous";
@@ -45,11 +48,12 @@ public final class ReleaseWorkflowPolicyTest
 					"build-windows-package", Map.of("result", "success"));
 				String script = "const needs = " + JsonMapper.builder().build().writeValueAsString(needs) + ";\n" +
 					"const github = {run_id: 'current'};\n" +
-					"const inputs = {verification_level: 'full', focus_target: '', focus_bundle: ''};\n" +
+					"const inputs = {verification_level: 'full', focus_target: '', focus_bundle: '', build_only: " +
+					buildOnly + "};\n" +
 					"const always = () => true; const cancelled = () => false;\n" +
 					"console.log(Boolean(" + condition + "));";
 				assertEquals(run(List.of("node", "-e", script), System.getenv()).strip(),
-					Boolean.toString(result.equals("success")));
+					Boolean.toString(result.equals("success") && !buildOnly));
 			}
 		}
 	}
