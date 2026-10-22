@@ -233,6 +233,32 @@ public final class SourceInputCacheTest
 	}
 
 	/**
+	 * Retains a modeled macOS executable when its dSYM contains Cargo's hashed crate artifact name.
+	 *
+	 * @throws IOException if Cargo metadata or fixture operations fail
+	 */
+	@Test
+	public void retainsCargoDwarfArtifactName() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.initialize();
+			fixture.target = "aarch64-apple-darwin";
+			fixture.prepare();
+			Path release = fixture.base.resolve("target/aarch64-apple-darwin/release");
+			Path binary = release.resolve("cache-demo");
+			Path symbols = release.resolve("cache-demo.dSYM/Contents/Resources/DWARF/cache_demo-a1b2c3");
+			Files.createDirectories(symbols.getParent());
+			Files.writeString(binary, "modeled executable");
+			Files.writeString(symbols, "modeled debug symbols");
+			fixture.record();
+			fixture.prepare();
+			requireThat(binary, "binary").isRegularFile();
+			requireThat(symbols, "symbols").isRegularFile();
+		}
+	}
+
+	/**
 	 * Rebuilds reverted library inputs after a failed build has already cached changed library output.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail

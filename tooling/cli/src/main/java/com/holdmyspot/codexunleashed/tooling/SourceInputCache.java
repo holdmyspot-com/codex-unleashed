@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 
 /** Prepares Cargo cache reuse from source contents and records inputs only after successful compilation. */
@@ -159,19 +160,27 @@ public final class SourceInputCache
 	 * Indicates whether an executable and the target's required debug symbols are present.
 	 *
 	 * @param release the Cargo release output directory
-	 * @param target the requested Cargo target
-	 * @param binary the executable name from Cargo metadata
+	 * @param target  the requested Cargo target
+	 * @param binary  the executable name from Cargo metadata
 	 * @return true if packaging can consume the executable and its required symbols
+	 * @throws IOException if the debug-symbol directory cannot be read
 	 */
-	private static boolean hasCompleteOutputs(Path release, String target, String binary)
+	private static boolean hasCompleteOutputs(Path release, String target, String binary) throws IOException
 	{
 		if (target.contains("windows"))
 			return Files.isRegularFile(release.resolve(binary + ".exe")) &&
 				(Files.isRegularFile(release.resolve(binary.replace('-', '_') + ".pdb")) ||
 					Files.isRegularFile(release.resolve(binary + ".pdb")));
 		if (target.contains("apple-darwin"))
-			return Files.isRegularFile(release.resolve(binary)) &&
-				Files.isRegularFile(release.resolve(binary + ".dSYM").resolve("Contents/Resources/DWARF").resolve(binary));
+		{
+			Path dwarf = release.resolve(binary + ".dSYM/Contents/Resources/DWARF");
+			if (!Files.isRegularFile(release.resolve(binary)) || !Files.isDirectory(dwarf))
+				return false;
+			try (Stream<Path> symbols = Files.list(dwarf))
+			{
+				return symbols.anyMatch(Files::isRegularFile);
+			}
+		}
 		return Files.isRegularFile(release.resolve(binary));
 	}
 
