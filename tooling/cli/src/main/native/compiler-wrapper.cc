@@ -59,7 +59,13 @@ int wmain(int argc, wchar_t** argv) {
     for (std::string& argument : storage) arguments.push_back(argument.data());
     arguments.push_back(nullptr);
     if (argc >= 2 && !compiles_crate(argc, arguments.data())) {
-      intptr_t status = _wspawnvp(_P_WAIT, argv[1], argv + 1);
+      std::vector<std::wstring> quoted;
+      for (int index = 1; index < argc; ++index)
+        quoted.push_back(compiler_scheduler::quote(argv[index]));
+      std::vector<const wchar_t*> query_arguments;
+      for (const std::wstring& argument : quoted) query_arguments.push_back(argument.c_str());
+      query_arguments.push_back(nullptr);
+      intptr_t status = _wspawnvp(_P_WAIT, argv[1], query_arguments.data());
       if (status == -1) {
         std::perror("compiler scheduler: execute compiler query");
         return 125;
