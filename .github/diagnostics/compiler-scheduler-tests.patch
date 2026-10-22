@@ -39,10 +39,10 @@ index 09af719..b809132 100644
 +)
 diff --git a/test/process_wrapper/compiler_scheduler.rs b/test/process_wrapper/compiler_scheduler.rs
 new file mode 100644
-index 0000000..2ab2387
+index 0000000..15460a6
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler.rs
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,122 @@
 +//! Compiler admission checks through the executable bootstrap wrapper.
 +
 +use std::path::PathBuf;
@@ -90,6 +90,15 @@ index 0000000..2ab2387
 +
 +#[test]
 +fn long_socket_directory_preserves_compiler_working_directory() {
++    exercise_fixture(false);
++}
++
++#[test]
++fn compiler_pauses_resumes_and_retries_without_replaying_failed_attempt_output() {
++    exercise_fixture(true);
++}
++
++fn exercise_fixture(controlled: bool) {
 +    use std::io::{BufRead, BufReader};
 +    use std::process::{Child, Stdio};
 +
@@ -112,10 +121,11 @@ index 0000000..2ab2387
 +    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
 +        .expect("bootstrap wrapper is missing");
 +    let directory = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
-+        .join("deep-".to_owned() + &"x".repeat(128));
++        .join(if controlled { "control-" } else { "deep-" }.to_owned() + &"x".repeat(128));
 +    std::fs::create_dir(&directory).expect("cannot create private socket directory");
 +    let mut fixture = Fixture {
 +        server: Command::new(server)
++            .arg(if controlled { "--control-server" } else { "--cwd-server" })
 +            .current_dir(&directory)
 +            .stdout(Stdio::piped())
 +            .spawn()
@@ -127,17 +137,26 @@ index 0000000..2ab2387
 +        .read_line(&mut ready)
 +        .expect("cannot read scheduler readiness");
 +    assert_eq!(ready.trim_end(), "ready");
-+    let output = Command::new(bootstrap)
-+        .arg("--")
-+        .arg(runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH")).unwrap())
-+        .arg("--compiler")
++    let mut command = Command::new(bootstrap);
++    command.arg("--")
++        .arg(runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH")).unwrap());
++    if controlled {
++        command.arg("--heartbeat").arg(fixture.directory.join("heartbeat"));
++    } else {
++        command.arg("--compiler");
++    }
++    let output = command
 +        .env("CODEX_COMPILER_SCHEDULER_SOCKET", fixture.directory.join("s"))
 +        .output()
 +        .expect("cannot start compiler stand-in");
 +    assert!(output.status.success(), "{:?}", output);
 +    assert_eq!(
 +        String::from_utf8(output.stdout).unwrap().trim_end(),
-+        std::env::current_dir().unwrap().to_string_lossy()
++        if controlled {
++            "compiler attempt".to_owned()
++        } else {
++            std::env::current_dir().unwrap().to_string_lossy().into_owned()
++        }
 +    );
 +    let completion = fixture.server.wait().unwrap();
 +    assert!(
@@ -148,16 +167,19 @@ index 0000000..2ab2387
 +}
 diff --git a/test/process_wrapper/compiler_scheduler_server.cc b/test/process_wrapper/compiler_scheduler_server.cc
 new file mode 100644
-index 0000000..fd512ad
+index 0000000..bae3818
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler_server.cc
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,198 @@
 +#include <array>
 +#include <cstdio>
 +#include <cstdlib>
 +#include <cstring>
++#include <chrono>
++#include <fstream>
 +#include <iostream>
 +#include <string>
++#include <thread>
 +#include <vector>
 +
 +#if defined(_WIN32)
@@ -167,6 +189,7 @@ index 0000000..fd512ad
 +using NativeSocket = SOCKET;
 +constexpr NativeSocket kInvalidSocket = INVALID_SOCKET;
 +#else
++#include <arpa/inet.h>
 +#include <sys/select.h>
 +#include <sys/socket.h>
 +#include <sys/un.h>
@@ -226,7 +249,68 @@ index 0000000..fd512ad
 +  return 0;
 +}
 +
-+int server() {
++bool command(NativeSocket socket, unsigned operation, unsigned generation, unsigned value = 0) {
++  std::array<unsigned, 3> words = {htonl(operation), htonl(generation), htonl(value)};
++  static_assert(sizeof(words) == 12, "scheduler packet size differs");
++  std::array<char, 12> bytes;
++  std::memcpy(bytes.data(), words.data(), bytes.size());
++  return packet(socket, &bytes, true);
++}
++
++bool event(NativeSocket socket, unsigned operation, unsigned generation, unsigned value = 0) {
++  std::array<char, 12> bytes;
++  if (!packet(socket, &bytes, false)) return false;
++  std::array<unsigned, 3> words;
++  std::memcpy(words.data(), bytes.data(), bytes.size());
++  return words == std::array<unsigned, 3>{htonl(operation), htonl(generation), htonl(value)};
++}
++
++std::streamoff heartbeat_size() {
++  std::ifstream input("heartbeat", std::ios::binary | std::ios::ate);
++  return input ? static_cast<std::streamoff>(input.tellg()) : 0;
++}
++
++bool progress(std::streamoff previous) {
++  for (int remaining = 250; remaining > 0; --remaining) {
++    if (heartbeat_size() >= previous + 3) return true;
++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
++  }
++  return false;
++}
++
++int control(NativeSocket socket) {
++  if (!progress(0) || !command(socket, 2, 1)) return 5;
++  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++  auto paused = heartbeat_size();
++  std::this_thread::sleep_for(std::chrono::milliseconds(400));
++  if (heartbeat_size() != paused) return 6;
++  if (!command(socket, 3, 1) || !progress(paused)) return 7;
++  if (!command(socket, 4, 1) || !event(socket, 11, 1, 137)) return 8;
++  auto stopped = heartbeat_size();
++  std::this_thread::sleep_for(std::chrono::milliseconds(100));
++  if (heartbeat_size() != stopped) return 9;
++  if (!command(socket, 5, 1) || !command(socket, 1, 2) || !event(socket, 8, 2) ||
++      !progress(stopped)) return 10;
++  std::ofstream finish("heartbeat-finish");
++  finish << "finish";
++  finish.close();
++  return event(socket, 9, 2) ? 0 : 11;
++}
++
++int heartbeat(const char* path) {
++  std::ofstream output(path, std::ios::app | std::ios::binary);
++  if (!output) return 1;
++  std::cout << "compiler attempt" << std::endl;
++  for (int remaining = 1000; remaining > 0; --remaining) {
++    if (std::ifstream(std::string(path) + "-finish")) return 0;
++    output << 't' << std::flush;
++    if (!output) return 1;
++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
++  }
++  return 1;
++}
++
++int server(bool controlled) {
 +  Socket listener(socket(AF_UNIX, SOCK_STREAM, 0));
 +  if (listener.value == kInvalidSocket) return 2;
 +  struct sockaddr_un address = {};
@@ -263,6 +347,7 @@ index 0000000..fd512ad
 +  if (!packet(client.value, &bytes, true)) return 3;
 +  if (!packet(client.value, &bytes, false) ||
 +      bytes != std::array<char, 12>{0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
++  if (controlled) return control(client.value);
 +  if (!packet(client.value, &bytes, false) ||
 +      bytes != std::array<char, 12>{0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
 +  return 0;
@@ -272,11 +357,12 @@ index 0000000..fd512ad
 +
 +int main(int argc, char** argv) {
 +  if (argc == 2 && std::strcmp(argv[1], "--compiler") == 0) return compiler();
++  if (argc == 3 && std::strcmp(argv[1], "--heartbeat") == 0) return heartbeat(argv[2]);
 +#if defined(_WIN32)
 +  WSADATA data;
 +  if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return 2;
 +#endif
-+  int status = server();
++  int status = server(argc == 2 && std::strcmp(argv[1], "--control-server") == 0);
 +#if defined(_WIN32)
 +  WSACleanup();
 +#endif
