@@ -2561,12 +2561,14 @@ patches. Native Windows verification runs the complete
 and its normal 60-second timeout. The whole target must pass; a Linux build
 or a passing isolated case does not establish this Windows acceptance gate.
 
-## Credential-export fixture gate polling
+## Credential-export fixture concurrency
 
 `zzzz-0076-credential-fixture-gate-polling.patch` sleeps between filesystem
 checks while the shared-auth recovery fixture waits for its export subprocess.
 The fixture yields its single-thread runtime and filesystem capacity instead
-of remaining continuously runnable. The export deadline remains 5000 ms and
+of remaining continuously runnable. The Windows model-provider unit-test binary
+runs one Rust test at a time, while Bazel can run other test binaries in parallel.
+Every test remains enabled. The export deadline remains 5000 ms and
 the coordination deadline remains ten seconds. Queued-caller, successful
 recovery, and single-export assertions remain enabled.
 
