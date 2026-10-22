@@ -24,6 +24,7 @@ jobs:
     if: inputs.focus == 'compiler-profile'
     permissions:
       actions: read
+      attestations: write
       contents: write
       packages: write
       id-token: write
