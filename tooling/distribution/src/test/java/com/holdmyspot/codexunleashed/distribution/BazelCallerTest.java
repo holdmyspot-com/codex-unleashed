@@ -61,7 +61,8 @@ public final class BazelCallerTest
 			environment.put("BAZEL_REPOSITORY_CACHE", Files.createDirectory(root.resolve("repository cache")).toString());
 			String windowsPath = "C:\\Program Files\\PowerShell\\7;C:\\Program Files\\Git\\bin";
 			environment.put("CODEX_BAZEL_WINDOWS_PATH", windowsPath);
-			String systemRoot = environment.getOrDefault("SystemRoot", "E:\\Windows Root");
+			String systemRoot = environment.getOrDefault("SystemRoot",
+				environment.getOrDefault("SYSTEMROOT", "E:\\Windows Root"));
 			environment.put("SystemRoot", systemRoot);
 			String processorArchitecture = environment.getOrDefault("PROCESSOR_ARCHITECTURE", "AMD64");
 			environment.put("PROCESSOR_ARCHITECTURE", processorArchitecture);

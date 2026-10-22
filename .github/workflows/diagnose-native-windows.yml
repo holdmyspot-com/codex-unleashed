@@ -248,7 +248,7 @@ jobs:
         run: |
           set -euo pipefail
           tooling/mvnw -q -pl distribution -am package \
-            -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest,PackageSourceBuildsTest,DistributionMainTest \
+            -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest,PackageSourceBuildsTest,DistributionMainTest,BazelCallerTest \
             -Dsurefire.failIfNoSpecifiedTests=false
       - name: Verify and cache the complete tooling runtime
         uses: ./.github/actions/setup-tooling
