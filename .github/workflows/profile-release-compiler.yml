@@ -980,6 +980,7 @@ jobs:
         run: |
           if [[ "$PROFILE_LINKER_LTO" == true ]]; then
             bash .github/diagnostics/benchmark-linker-thinlto.sh
+            bash .github/diagnostics/benchmark-linker-source-change.sh
           else
             bash .github/scripts/profile-release-compiler.sh
           fi

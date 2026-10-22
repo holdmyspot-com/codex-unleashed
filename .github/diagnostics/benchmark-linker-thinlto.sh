@@ -33,12 +33,15 @@ for phase in seed warm; do
   fi
 
   date +%s.%N > "$profile_output/$phase-start.txt"
+  printf '%s: starting %s build with linker-managed ThinLTO\n' "$(date -u +%FT%TZ)" "$phase"
   /usr/bin/time -v -o "$profile_output/$phase-resources.txt" "${build[@]}" \
-    > "$profile_output/$phase.log" 2>&1 || {
+    2>&1 | tee "$profile_output/$phase.log" | \
+    awk '/Heartbeat:|Finished|Compiling|error:|warning:|^Running|^Skipping/ { print; fflush() }' || {
     cat "$profile_output/$phase.log" >&2
     exit 1
   }
   date +%s.%N > "$profile_output/$phase-end.txt"
+  printf '%s: completed %s build\n' "$(date -u +%FT%TZ)" "$phase"
   cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/$phase-cargo-timing.html"
   "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --version > "$profile_output/$phase-version.txt"
   stat --printf='%s\n' "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" > "$profile_output/$phase-binary-size.txt"
@@ -47,9 +50,10 @@ for phase in seed warm; do
   test -s "$profile_output/$phase-cache.txt"
 
   if [[ "$phase" == seed && "${PROFILE_SEED_CACHE_ENABLED:-false}" == true && "${PROFILE_SEED_CACHE_HIT:-false}" != true ]]; then
+    printf '%s: saving seed build and module cache to GHCR\n' "$(date -u +%FT%TZ)"
     bash .github/scripts/ghcr-cargo-target-cache.sh push \
       "${PROFILE_SEED_CACHE_REPOSITORY:?}" "${PROFILE_SEED_CACHE_TAG:?}" \
-      "$CARGO_TARGET_DIR" "${PROFILE_UPSTREAM_TAG:?}" > "$profile_output/seed-cache-save.log" 2>&1 || {
+      "$CARGO_TARGET_DIR" "${PROFILE_UPSTREAM_TAG:?}" 2>&1 | tee "$profile_output/seed-cache-save.log" || {
       cat "$profile_output/seed-cache-save.log" >&2
       exit 1
     }
