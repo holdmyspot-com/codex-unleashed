@@ -2622,3 +2622,33 @@ not provide the same ownership guarantee for descendants that detach into a
 new session. Linux release builds enforce RAM-only operation through their
 existing build scope; other platforms retain their operating system's swap
 configuration.
+
+## Readable musl dependency build commands
+
+`zzzz-0078-readable-native-build-commands.patch` keeps OpenSSL compiler
+progress to the compiler name and input filename instead of repeating its
+include paths and feature flags for every file. Compiler diagnostics remain
+visible. A failed invocation prints the full command with Bash quoting and
+returns the compiler's status. GNU Make also propagates a failed compilation.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), with no downstream prerequisite.
+The scope is the musl OpenSSL preparation step. The wrapper receives literal
+arguments, including spaces and Unicode, and does not filter compiler output.
+
+Run the included focused regression with an owned temporary directory:
+
+```sh
+TMPDIR=/absolute/owned/test-directory bash .github/scripts/test-readable-native-command.sh
+shellcheck .github/scripts/run-readable-native-command.sh \
+  .github/scripts/test-readable-native-command.sh .github/scripts/install-musl-openssl.sh
+```
+
+The regression checks the wrapper directly and through GNU Make, including
+concise successful output, retained diagnostics, literal arguments, full failed
+commands, and failure propagation. It does not establish a complete OpenSSL
+build; the release's musl preparation steps provide that acceptance gate.
+
+The complete upstream formatting gate is `just fmt-check` from the checkout
+root, using upstream's declared formatter dependencies. The focused shell
+checks supplement that gate.

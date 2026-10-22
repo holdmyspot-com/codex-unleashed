@@ -1,0 +1,123 @@
+From a7a4d2b3b8612879a6e0651a035a0d45605f4da0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Thu, 22 Oct 2026 02:48:58 +0000
+Subject: [PATCH] Show concise compiler progress for the musl OpenSSL build
+
+Run make quietly and delegate compiler calls through an argument-preserving wrapper. Successful calls show the compiler and input filename; compiler diagnostics remain live and a failed call also prints its complete shell-quoted command and preserves its status.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012). Test-only baseline fails with the missing wrapper (127). Patched direct invocation and GNU Make regression tests pass, including Unicode and spaced arguments, retained warning diagnostics and failure propagation. Bash syntax and ShellCheck pass.
+---
+ .github/scripts/install-musl-openssl.sh       |  6 ++-
+ .../scripts/run-readable-native-command.sh    | 17 ++++++
+ .../scripts/test-readable-native-command.sh   | 52 +++++++++++++++++++
+ 3 files changed, 73 insertions(+), 2 deletions(-)
+ create mode 100644 .github/scripts/run-readable-native-command.sh
+ create mode 100644 .github/scripts/test-readable-native-command.sh
+
+diff --git a/.github/scripts/install-musl-openssl.sh b/.github/scripts/install-musl-openssl.sh
+index 15c50c5..b7a4a15 100644
+--- a/.github/scripts/install-musl-openssl.sh
++++ b/.github/scripts/install-musl-openssl.sh
+@@ -17,6 +17,8 @@ openssl_version="3.6.4"
+ openssl_sha256="9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef"
+ openssl_root="${RUNNER_TEMP:-/tmp}/codex-musl-tools-${TARGET}/openssl-${openssl_version}"
+ openssl_prefix="${openssl_root}/prefix"
++scripts=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++printf -v readable_cc 'bash %q %q' "$scripts/run-readable-native-command.sh" "$OPENSSL_CC"
+
+ if [[ ! -f "${openssl_prefix}/.complete" ]]; then
+   mkdir -p "${openssl_root}"
+@@ -34,8 +36,8 @@ if [[ ! -f "${openssl_prefix}/.complete" ]]; then
+       no-shared no-module no-tests no-comp no-zlib no-zlib-dynamic \
+       no-ssl3 no-md2 no-rc5 no-weak-ssl-ciphers no-camellia no-idea no-seed \
+       no-engine no-async -DOPENSSL_NO_SECURE_MEMORY
+-    make -j"${OPENSSL_BUILD_JOBS:-$(nproc)}" build_libs
+-    make install_dev
++    make -s "CC=${readable_cc}" -j"${OPENSSL_BUILD_JOBS:-$(nproc)}" build_libs
++    make -s "CC=${readable_cc}" install_dev
+   )
+   touch "${openssl_prefix}/.complete"
+ fi
+diff --git a/.github/scripts/run-readable-native-command.sh b/.github/scripts/run-readable-native-command.sh
+new file mode 100644
+index 0000000..1792cb5
+--- /dev/null
++++ b/.github/scripts/run-readable-native-command.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++# Shows the input filename while preserving literal arguments and compiler diagnostics.
++# A failed command is also printed in full, using Bash quoting for reproduction.
++set -uo pipefail
++if [[ "$#" -eq 0 ]]; then
++  echo 'Usage: run-readable-native-command.sh <compiler> [arguments ...]' >&2
++  exit 2
++fi
++printf '%s %q\n' "${1##*/}" "${!#}" >&2
++"$@"
++status=$?
++if [[ "$status" -ne 0 ]]; then
++  printf 'Failed command: ' >&2
++  printf '%q ' "$@" >&2
++  printf '\n' >&2
++fi
++exit "$status"
+diff --git a/.github/scripts/test-readable-native-command.sh b/.github/scripts/test-readable-native-command.sh
+new file mode 100644
+index 0000000..ddcf66a
+--- /dev/null
++++ b/.github/scripts/test-readable-native-command.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++set -euo pipefail
++scripts=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
++fixture=$(mktemp -d "${TMPDIR:?TMPDIR must name the owned test directory}/readable-native-XXXXXX")
++trap 'status=$?; if [[ "$status" != 0 && -f "$fixture/diagnostics" ]]; then cat "$fixture/diagnostics" >&2; fi; rm -rf -- "$fixture"' EXIT
++cat > "$fixture/compiler with spaces" <<'COMPILER'
++#!/usr/bin/env bash
++printf '%s\n' "$@" > "$ARGUMENTS_FILE"
++printf 'warning: retained diagnostic\n' >&2
++exit "${FAKE_STATUS:-0}"
++COMPILER
++chmod +x "$fixture/compiler with spaces"
++export ARGUMENTS_FILE="$fixture/arguments"
++compiler="$fixture/compiler with spaces"
++arguments=('-DREPEATED=λ and spaces' -c -o 'object with spaces.o' 'source with spaces.c')
++bash "$scripts/run-readable-native-command.sh" "$compiler" "${arguments[@]}" > "$fixture/output" 2> "$fixture/diagnostics"
++printf '%s\n' "${arguments[@]}" > "$fixture/expected"
++cmp "$fixture/expected" "$ARGUMENTS_FILE"
++grep -Fq 'source\ with\ spaces.c' "$fixture/diagnostics"
++grep -Fq 'warning: retained diagnostic' "$fixture/diagnostics"
++if grep -Fq -- '-DREPEATED' "$fixture/diagnostics"; then
++  echo 'Successful compilation repeats common flags' >&2
++  exit 1
++fi
++if FAKE_STATUS=42 bash "$scripts/run-readable-native-command.sh" "$compiler" "${arguments[@]}" > "$fixture/output" 2> "$fixture/diagnostics"; then
++  echo 'Failed compilation unexpectedly succeeds' >&2
++  exit 1
++else
++  status=$?
++fi
++[[ "$status" == 42 ]]
++printf -v expected_command '%q ' "$compiler" "${arguments[@]}"
++grep -Fq -- "$expected_command" "$fixture/diagnostics"
++grep -Fq 'warning: retained diagnostic' "$fixture/diagnostics"
++cmp "$fixture/expected" "$ARGUMENTS_FILE"
++printf -v readable_cc 'bash %q %q' "$scripts/run-readable-native-command.sh" "$compiler"
++printf -v recipe_arguments '%q ' "${arguments[@]}"
++printf "build_libs:\n\t\$(CC) %s\n" "$recipe_arguments" > "$fixture/Makefile"
++make -s --no-print-directory -C "$fixture" "CC=$readable_cc" build_libs > "$fixture/output" 2> "$fixture/diagnostics"
++cmp "$fixture/expected" "$ARGUMENTS_FILE"
++grep -Fq 'source\ with\ spaces.c' "$fixture/diagnostics"
++grep -Fq 'warning: retained diagnostic' "$fixture/diagnostics"
++if grep -Fq -- '-DREPEATED' "$fixture/diagnostics"; then
++  echo 'Make compilation repeats common flags' >&2
++  exit 1
++fi
++if FAKE_STATUS=42 make -s --no-print-directory -C "$fixture" "CC=$readable_cc" build_libs > "$fixture/output" 2> "$fixture/diagnostics"; then
++  echo 'Make unexpectedly accepts a failed compiler' >&2
++  exit 1
++fi
++grep -Fq -- "$expected_command" "$fixture/diagnostics"
++grep -Fq 'warning: retained diagnostic' "$fixture/diagnostics"
+--
+2.43.0
