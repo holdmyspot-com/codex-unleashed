@@ -45,27 +45,20 @@ public final class ScheduleCompilersCommandTest
 	@Test(dataProvider = "compilerCases")
 	public void ownsNativeWrapperLifecycle(boolean query) throws IOException
 	{
-		Path root = Files.createTempDirectory("cargo-scheduler-cli-");
+		Path root = Files.createTempDirectory("cargo scheduler cli-");
 		try
 		{
-			Path compiler = Files.writeString(root.resolve("Compiler.java"), """
-				class Compiler {
-				    public static void main(String[] args) {
-				        if (args.length == 1 && args[0].equals("query")) {
-				            System.out.print("query");
-				            System.exit(5);
-				        }
-				        if (args.length != 3 || !args[0].equals("--crate-name") ||
-				                !args[1].equals("fixture") || !args[2].equals("λ and spaces"))
-				            throw new AssertionError("Compiler arguments changed: " +
-				                java.util.Arrays.toString(args) + "; code points: " +
-				                java.util.Arrays.stream(args).map(value ->
-				                    java.util.Arrays.toString(value.codePoints().toArray())).toList());
-				        System.out.print("compiled");
-				        System.err.print("diagnostic");
-				        System.exit(17);
-				    }
+			Path compiler = Files.writeString(root.resolve("compiler.cjs"), """
+				const args = process.argv.slice(2);
+				if (args.length === 1 && args[0] === 'query') {
+				  process.stdout.write('query');
+				  process.exit(5);
 				}
+				if (JSON.stringify(args) !== JSON.stringify(['--crate-name', 'fixture', 'λ and spaces']))
+				  throw new Error('Compiler arguments changed: ' + JSON.stringify(args));
+				process.stdout.write('compiled');
+				process.stderr.write('diagnostic');
+				process.exit(17);
 				""");
 			Path build = Files.writeString(root.resolve("build.cjs"), """
 				const fs = require('node:fs');
@@ -83,7 +76,7 @@ public final class ScheduleCompilersCommandTest
 				  args = ['query'];
 				}
 				const direct = require('node:child_process').spawnSync(process.argv[2],
-				  ['--source=27', process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
+				  [process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
 				const expected = process.argv[4] === 'query' ? 5 : 17;
 				if (direct.error) throw direct.error;
 				if (direct.status !== expected) {
@@ -91,7 +84,7 @@ public final class ScheduleCompilersCommandTest
 				  process.exit(92);
 				}
 				const result = require('node:child_process').spawnSync(process.env.RUSTC_WRAPPER,
-				  [process.argv[2], '--source=27', process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
+				  [process.argv[2], process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
 				if (result.error) throw result.error;
 				process.stdout.write(result.stdout);
 				process.stderr.write(result.stderr);
@@ -99,7 +92,6 @@ public final class ScheduleCompilersCommandTest
 				""");
 			Map<String, String> environment = new HashMap<>(System.getenv());
 			environment.put("NODE_OPTIONS", "");
-			String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
 			String mode = "compile";
 			int status = 17;
 			String stdout = "compiled";
@@ -112,7 +104,7 @@ public final class ScheduleCompilersCommandTest
 				stderr = "";
 			}
 			SystemCommands.Result result = cli(root, environment,
-				List.of("node", build.toString(), java, compiler.toString(), mode));
+				List.of("node", build.toString(), "node", compiler.toString(), mode));
 			assertEquals(result.status(), status, result.stdout() + result.stderr());
 			assertEquals(result.stdout(), stdout);
 			assertEquals(result.stderr(), stderr);

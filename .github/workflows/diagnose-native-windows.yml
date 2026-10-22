@@ -251,8 +251,9 @@ jobs:
             -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest \
             -Dsurefire.failIfNoSpecifiedTests=false
       - name: Verify and cache the complete tooling runtime
-        if: inputs.focus == 'compiler-scheduler-tooling'
         uses: ./.github/actions/setup-tooling
+        env:
+          MAVEN_ARGS: -ntp -Dsurefire.forkedProcessTimeoutInSeconds=600
       - name: Retain compiler scheduler test evidence
         if: always()
         uses: actions/upload-artifact@v6
