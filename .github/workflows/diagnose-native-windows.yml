@@ -1,4 +1,4 @@
-name: Diagnose focused Windows regressions
+name: Diagnose focused native regressions
 
 on:
   workflow_dispatch:
@@ -11,6 +11,7 @@ on:
           - credentials
           - compiler-scheduler-baseline
           - compiler-scheduler-native
+          - compiler-scheduler-macos
 
 permissions:
   contents: read
@@ -58,7 +59,7 @@ jobs:
             -- //codex-rs/model-provider:model-provider-unit-tests
 
   compiler-scheduler-baseline:
-    if: inputs.focus != 'credentials'
+    if: inputs.focus == 'compiler-scheduler-baseline' || inputs.focus == 'compiler-scheduler-native'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -142,6 +143,78 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: compiler-scheduler-windows-baseline
+          path: .cat/work/temp/scheduler-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
+
+  compiler-scheduler-macos:
+    if: inputs.focus == 'compiler-scheduler-macos'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+        variant: [baseline, native]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      USE_BAZEL_VERSION: 9.3.1
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: hermeticbuild/rules_rust
+          ref: a20387a3b3e7baec859b53f3cb15b026fbc8a423
+          path: scheduler-upstream
+          persist-credentials: false
+      - name: Apply the selected standalone native regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch=compiler-scheduler-tests.patch
+          if [[ "$VARIANT" == native ]]; then patch=compiler-scheduler-native.patch; fi
+          git -C scheduler-upstream apply "../.github/diagnostics/$patch"
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-version: 1.28.1
+          module-root: scheduler-upstream
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
+          output-base: ${{ github.workspace }}/.cat/work/temp/build-caches/native-scheduler/bazel-output
+      - name: Check native macOS compiler control
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cat/work/temp/scheduler-diagnostics
+          diagnostic="${GITHUB_WORKSPACE}/.cat/work/temp/scheduler-diagnostics/result.log"
+          cd scheduler-upstream
+          arguments=()
+          if [[ "$VARIANT" == baseline ]]; then
+            arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
+          fi
+          set +e
+          bazel test //test/process_wrapper:compiler_scheduler_test \
+            "${arguments[@]}" --copt=-Wall --copt=-Wextra --copt=-Werror \
+            --nocache_test_results --test_output=all --lockfile_mode=update 2>&1 | tee "$diagnostic"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$VARIANT" == native ]]; then
+            if [[ "$status" != 0 ]]; then exit "$status"; fi
+            grep -F 'test result: ok. 4 passed;' "$diagnostic"
+          else
+            if [[ "$status" != 3 ]]; then exit 1; fi
+            grep -F 'running 1 test' "$diagnostic"
+            grep -F 'left: Some(0)' "$diagnostic"
+            grep -F 'right: Some(125)' "$diagnostic"
+          fi
+      - name: Retain focused macOS evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: compiler-scheduler-${{ matrix.runner }}-${{ matrix.variant }}
           path: .cat/work/temp/scheduler-diagnostics
           if-no-files-found: ignore
           retention-days: 1

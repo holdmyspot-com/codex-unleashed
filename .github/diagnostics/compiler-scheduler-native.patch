@@ -390,7 +390,7 @@ index 6cbbbc0..2466692 100644
      visibility = ["//util/process_wrapper:__pkg__"],
  )
 diff --git a/util/process_wrapper/private/bootstrap_process_wrapper.cc b/util/process_wrapper/private/bootstrap_process_wrapper.cc
-index 110702c..8f12da6 100644
+index 110702c..614d506 100644
 --- a/util/process_wrapper/private/bootstrap_process_wrapper.cc
 +++ b/util/process_wrapper/private/bootstrap_process_wrapper.cc
 @@ -4,6 +4,7 @@
@@ -448,10 +448,10 @@ index 110702c..8f12da6 100644
 
 +  const char* endpoint = std::getenv("CODEX_COMPILER_SCHEDULER_SOCKET");
 +  if (endpoint != nullptr && *endpoint != '\0') {
-+#if defined(__linux__) || defined(_WIN32)
++#if defined(__linux__) || defined(_WIN32) || defined(__APPLE__)
 +    return compiler_scheduler::run(endpoint, exec_argv.data(), scheduler_outputs);
 +#else
-+    std::fprintf(stderr, "bootstrap_process_wrapper: compiler scheduling requires Linux\n");
++    std::fprintf(stderr, "bootstrap_process_wrapper: compiler scheduling is unavailable on this platform\n");
 +    return 125;
 +#endif
 +  }
@@ -470,23 +470,28 @@ index 110702c..8f12da6 100644
    std::perror("bootstrap_process_wrapper: execvp");
 diff --git a/util/process_wrapper/private/compiler_scheduler.h b/util/process_wrapper/private/compiler_scheduler.h
 new file mode 100644
-index 0000000..df3b9c9
+index 0000000..93709ff
 --- /dev/null
 +++ b/util/process_wrapper/private/compiler_scheduler.h
-@@ -0,0 +1,524 @@
+@@ -0,0 +1,605 @@
 +#ifndef RULES_RUST_COMPILER_SCHEDULER_H_
 +#define RULES_RUST_COMPILER_SCHEDULER_H_
 +
 +#if defined(_WIN32)
 +#include "compiler_scheduler_windows.h"
-+#elif defined(__linux__)
++#elif defined(__linux__) || defined(__APPLE__)
 +#include <arpa/inet.h>
 +#include <fcntl.h>
 +#include <ftw.h>
 +#include <poll.h>
 +#include <signal.h>
 +#include <sys/socket.h>
++#if defined(__linux__)
 +#include <sys/prctl.h>
++#else
++#include <libproc.h>
++#include <sys/proc.h>
++#endif
 +#include <sys/un.h>
 +#include <sys/wait.h>
 +#include <unistd.h>
@@ -498,10 +503,31 @@ index 0000000..df3b9c9
 +#include <cstring>
 +#include <fstream>
 +#include <memory>
++#include <limits>
 +#include <string>
 +#include <vector>
 +
 +namespace compiler_scheduler {
++
++#if defined(__APPLE__)
++constexpr int kNoSignal = 0;
++#else
++constexpr int kNoSignal = MSG_NOSIGNAL;
++#endif
++
++inline bool configure_socket(int descriptor, bool nonblocking) {
++  int flags = fcntl(descriptor, F_GETFD);
++  if (flags < 0 || fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC) < 0) return false;
++  if (nonblocking) {
++    flags = fcntl(descriptor, F_GETFL);
++    if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) < 0) return false;
++  }
++#if defined(__APPLE__)
++  int enabled = 1;
++  if (setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled)) < 0) return false;
++#endif
++  return true;
++}
 +
 +// Every packet contains a command, an attempt generation and a command value.
 +enum Command : uint32_t {
@@ -578,7 +604,7 @@ index 0000000..df3b9c9
 +    while (sent < sizeof(packet)) {
 +      if (interrupted != 0) return false;
 +      ssize_t result = ::send(descriptor_, reinterpret_cast<char*>(packet) + sent,
-+                              sizeof(packet) - sent, MSG_NOSIGNAL | MSG_DONTWAIT);
++                              sizeof(packet) - sent, kNoSignal | MSG_DONTWAIT);
 +      if (result > 0) {
 +        sent += static_cast<size_t>(result);
 +      } else if (result < 0 && errno == EINTR && interrupted == 0) {
@@ -596,7 +622,7 @@ index 0000000..df3b9c9
 +  void cancel(uint32_t generation, uint32_t signal) {
 +    uint32_t packet[] = {htonl(CANCELLED), htonl(generation), htonl(signal)};
 +    // Cleanup never waits for the service to accept a cancellation notification.
-+    ::send(descriptor_, packet, sizeof(packet), MSG_NOSIGNAL | MSG_DONTWAIT);
++    ::send(descriptor_, packet, sizeof(packet), kNoSignal | MSG_DONTWAIT);
 +  }
 +
 +  // Returns one for a packet, zero for a timeout, and minus one for disconnect.
@@ -633,8 +659,14 @@ index 0000000..df3b9c9
 +    return -1;
 +  }
 +  std::strcpy(address.sun_path, endpoint);
-+  int descriptor = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
++  int descriptor = socket(AF_UNIX, SOCK_STREAM, 0);
 +  if (descriptor < 0) return -1;
++  if (!configure_socket(descriptor, true)) {
++    int failure = errno;
++    close(descriptor);
++    errno = failure;
++    return -1;
++  }
 +  int result = ::connect(descriptor, reinterpret_cast<struct sockaddr*>(&address), sizeof(address));
 +  if (result == 0) return descriptor;
 +  if (errno == EINPROGRESS) {
@@ -693,6 +725,43 @@ index 0000000..df3b9c9
 +inline bool terminate(pid_t child) {
 +  kill(-child, SIGKILL);
 +  kill(child, SIGKILL);
++#if defined(__APPLE__)
++  // Retain the leader's PID until no member of its process group can execute.
++  siginfo_t leader = {};
++  while (waitid(P_PID, static_cast<id_t>(child), &leader, WEXITED | WNOWAIT) < 0) {
++    if (errno != EINTR) return false;
++  }
++  while (true) {
++    errno = 0;
++    int bytes = proc_listpids(PROC_PGRP_ONLY, static_cast<uint32_t>(child), nullptr, 0);
++    if (bytes < 0 || (bytes == 0 && errno != 0)) return false;
++    if (bytes > std::numeric_limits<int>::max() - static_cast<int>(sizeof(pid_t))) return false;
++    std::vector<pid_t> members(static_cast<size_t>(bytes) / sizeof(pid_t) + 1);
++    int capacity = static_cast<int>(members.size() * sizeof(pid_t));
++    errno = 0;
++    int received = proc_listpids(PROC_PGRP_ONLY, static_cast<uint32_t>(child), members.data(), capacity);
++    if (received < 0 || (received == 0 && errno != 0)) return false;
++    if (received >= capacity) continue;
++    bool active = false;
++    for (size_t index = 0; index < static_cast<size_t>(received) / sizeof(pid_t); ++index) {
++      pid_t member = members[index];
++      if (member == 0 || member == child) continue;
++      struct proc_bsdinfo status = {};
++      errno = 0;
++      int size = proc_pidinfo(member, PROC_PIDTBSDINFO, 0, &status, static_cast<int>(sizeof(status)));
++      if (size == 0 && errno == ESRCH) continue;
++      if (size != static_cast<int>(sizeof(status))) return false;
++      if (status.pbi_pgid == static_cast<uint32_t>(child) && status.pbi_status != SZOMB) active = true;
++    }
++    if (!active) break;
++    kill(-child, SIGKILL);
++    poll(nullptr, 0, 10);
++  }
++  while (waitpid(child, nullptr, 0) < 0) {
++    if (errno != EINTR) return false;
++  }
++  return true;
++#else
 +  while (waitpid(child, nullptr, 0) < 0 && errno == EINTR) {}
 +  // The supervisor has one attempt. Subreaping also adopts children that created another session.
 +  while (true) {
@@ -708,6 +777,7 @@ index 0000000..df3b9c9
 +    if (!descendants.eof()) return false;
 +    poll(nullptr, 0, 10);
 +  }
++#endif
 +}
 +
 +inline int remove_entry(const char* path, const struct stat*, int, struct FTW*) {
@@ -826,14 +896,21 @@ index 0000000..df3b9c9
 +// The child cannot execute until its parent knows that the process group exists.
 +inline pid_t launch(char* const* arguments, const Attempt& attempt) {
 +  int handshake[2];
-+  if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, handshake) < 0) return -1;
++  if (socketpair(AF_UNIX, SOCK_STREAM, 0, handshake) < 0) return -1;
++  if (!configure_socket(handshake[0], false) || !configure_socket(handshake[1], false)) {
++    int failure = errno;
++    close(handshake[0]);
++    close(handshake[1]);
++    errno = failure;
++    return -1;
++  }
 +  pid_t child = fork();
 +  if (child == 0) {
 +    close(handshake[0]);
 +    if (setsid() < 0) _exit(126);
 +    if (!attempt.redirect()) _exit(126);
 +    char acknowledgement = 1;
-+    if (::send(handshake[1], &acknowledgement, 1, MSG_NOSIGNAL) != 1) _exit(126);
++    if (::send(handshake[1], &acknowledgement, 1, kNoSignal) != 1) _exit(126);
 +    if (recv(handshake[1], &acknowledgement, 1, 0) != 1) _exit(126);
 +    close(handshake[1]);
 +    execvp(arguments[0], arguments);
@@ -850,7 +927,7 @@ index 0000000..df3b9c9
 +      count = recv(handshake[0], &acknowledgement, 1, 0);
 +    } while (count < 0 && errno == EINTR && interrupted == 0);
 +    if (count != 1 || interrupted != 0 ||
-+        ::send(handshake[0], &acknowledgement, 1, MSG_NOSIGNAL) != 1) {
++        ::send(handshake[0], &acknowledgement, 1, kNoSignal) != 1) {
 +      terminate(child);
 +      child = -1;
 +      failure = ECANCELED;
@@ -875,6 +952,7 @@ index 0000000..df3b9c9
 +    return interrupted == 0 ? 125 : 128 + interrupted;
 +  }
 +  Connection connection(descriptor);
++#if defined(__linux__)
 +  int old_subreaper;
 +  if (prctl(PR_GET_CHILD_SUBREAPER, &old_subreaper) < 0 ||
 +      prctl(PR_SET_CHILD_SUBREAPER, 1) < 0) {
@@ -882,6 +960,7 @@ index 0000000..df3b9c9
 +    close(descriptor);
 +    return 125;
 +  }
++#endif
 +  pid_t child = -1;
 +  uint32_t generation = 0;
 +  bool killed = false;
@@ -991,7 +1070,9 @@ index 0000000..df3b9c9
 +    outcome = 128 + interrupted;
 +  }
 +  close(descriptor);
++#if defined(__linux__)
 +  prctl(PR_SET_CHILD_SUBREAPER, old_subreaper);
++#endif
 +  return outcome;
 +}
 +
