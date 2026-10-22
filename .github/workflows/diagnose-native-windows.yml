@@ -10,19 +10,20 @@ on:
         options:
           - credentials
           - compiler-scheduler-baseline
+          - compiler-scheduler-native
 
 permissions:
   contents: read
 
 jobs:
   prepare-tooling:
-    if: inputs.focus != 'compiler-scheduler-baseline'
+    if: inputs.focus == 'credentials'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: windows-2022
 
   regressions:
-    if: inputs.focus != 'compiler-scheduler-baseline'
+    if: inputs.focus == 'credentials'
     needs: prepare-tooling
     runs-on: windows-2022
     timeout-minutes: 90
@@ -57,7 +58,7 @@ jobs:
             -- //codex-rs/model-provider:model-provider-unit-tests
 
   compiler-scheduler-baseline:
-    if: inputs.focus == 'compiler-scheduler-baseline'
+    if: inputs.focus != 'credentials'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -66,10 +67,16 @@ jobs:
           persist-credentials: false
       - name: Preserve the diagnostic patch independently of the verified driver
         shell: bash
+        env:
+          FOCUS: ${{ inputs.focus }}
         run: |
           set -euo pipefail
           mkdir -p .cat/work/temp/scheduler-diagnostics
-          cp .github/diagnostics/compiler-scheduler-tests.patch .cat/work/temp/scheduler-diagnostics/tests.patch
+          if [[ "$FOCUS" == compiler-scheduler-native ]]; then
+            cp .github/diagnostics/compiler-scheduler-native.patch .cat/work/temp/scheduler-diagnostics/tests.patch
+          else
+            cp .github/diagnostics/compiler-scheduler-tests.patch .cat/work/temp/scheduler-diagnostics/tests.patch
+          fi
       - uses: actions/checkout@v6
         with:
           # This pin supplies the exact verified driver independently of diagnostic edits.
@@ -93,23 +100,34 @@ jobs:
         run: |
           set -euo pipefail
           git -C scheduler-upstream apply ../.cat/work/temp/scheduler-diagnostics/tests.patch
-      - name: Establish missing scheduler admission on the unpatched base
+      - name: Check native scheduler admission
         shell: bash
         env:
           USE_BAZEL_VERSION: 9.3.1
+          FOCUS: ${{ inputs.focus }}
         run: |
           set -euo pipefail
           mkdir -p .cat/work/temp/scheduler-diagnostics
           diagnostic="${GITHUB_WORKSPACE}/.cat/work/temp/scheduler-diagnostics/baseline.log"
           cd scheduler-upstream
+          arguments=()
+          if [[ "$FOCUS" == compiler-scheduler-baseline ]]; then
+            arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
+          fi
           set +e
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-with-buildbuddy.sh" \
             test //test/process_wrapper:compiler_scheduler_test \
-            --test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact \
-            --nocache_test_results --test_output=errors --lockfile_mode=update \
+            "${arguments[@]}" \
+            --nocache_test_results --test_output=all --lockfile_mode=update \
             2>&1 | tee "$diagnostic"
           status=${PIPESTATUS[0]}
           set -e
+          if [[ "$FOCUS" == compiler-scheduler-native ]]; then
+            if [[ "$status" != 0 ]]; then exit "$status"; fi
+            grep -F 'test result: ok. 3 passed;' "$diagnostic"
+            printf 'Patched Windows compiler admission and working-directory checks pass.\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if [[ "$status" != 3 ]]; then
             printf 'Expected a behavioral test failure (3), got %s.\n' "$status" >&2
             exit 1
