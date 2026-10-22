@@ -17,6 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import org.testng.annotations.Test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -212,6 +213,24 @@ public final class MainTest
 		}
 		assertEquals(output.toString(StandardCharsets.UTF_8), String.join(System.lineSeparator(),
 			"rust-v0.161.0", "rust-v0.160.1", "rust-v0.160.0", "rust-v0.159.0", ""));
+	}
+
+	/**
+	 * Prints each retained release once when the pinned and building upstream references are identical.
+	 */
+	@Test
+	public void retainsRepeatedProtectedRelease()
+	{
+		var output = new ByteArrayOutputStream();
+		try (var stream = new PrintStream(output, true, StandardCharsets.UTF_8))
+		{
+			int status = Main.run(new String[]{"stable-releases", "--retain-upstream-ref", "rust-v0.163.0",
+				"--retain-upstream-ref", "rust-v0.163.0"}, InputStream.nullInputStream(), stream, stream,
+				_ -> "rust-v0.163.0\nrust-v0.162.1\n");
+			requireThat(status, "status").isEqualTo(0);
+		}
+		requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(
+			String.join(System.lineSeparator(), "rust-v0.163.0", "rust-v0.162.1", ""));
 	}
 
 	/**
