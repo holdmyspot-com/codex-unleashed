@@ -8,9 +8,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -266,8 +268,14 @@ public final class PackageSourceBuildsTest
 				    process::exit(status.code().unwrap_or(1));
 				}
 				""");
-			SystemCommands.Result compiled = SystemCommands.capture(List.of("rustc", "--edition=2024", "-Dwarnings",
-				"--crate-name", "quiet_cargo", adapter.toString(), "-o", cargo().toString()), root, root);
+			List<String> command = new ArrayList<>(List.of("rustc", "--edition=2024", "-Dwarnings",
+				"--crate-name", "quiet_cargo", adapter.toString(), "-o", cargo().toString()));
+			String linker = System.getenv("CARGO_TARGET_" + target.triple().toUpperCase(Locale.ROOT).
+				replace('-', '_') + "_LINKER");
+			if (linker != null)
+				command.addAll(List.of("-C", "linker=" + linker));
+
+			SystemCommands.Result compiled = SystemCommands.capture(command, root, root);
 			if (compiled.status() != 0)
 				throw new IOException("Cannot compile the Cargo output adapter: " + compiled.stdout() + compiled.stderr());
 
