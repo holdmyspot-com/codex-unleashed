@@ -2,8 +2,7 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies that Cargo Shear accepts only reports without warnings or errors.
@@ -27,8 +26,9 @@ public final class CargoShearPolicyTest
 	{
 		String finding = "{\"code\":\"shear/unlinked_files\",\"severity\":\"warning\",\"message\":\"known orphan\"}";
 		String report = "{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[" + finding + "]}";
-		assertFalse(CargoShearPolicy.accepts(report));
-		assertFalse(CargoShearPolicy.accepts(report.replace("known orphan", "new orphan")));
+		requireThat(CargoShearPolicy.accepts(report), "acceptsKnownWarning").isFalse();
+		String newWarningReport = report.replace("known orphan", "new orphan");
+		requireThat(CargoShearPolicy.accepts(newWarningReport), "acceptsNewWarning").isFalse();
 	}
 
 	/**
@@ -39,13 +39,14 @@ public final class CargoShearPolicyTest
 	@Test
 	public void rejectsErrorsAndUnverifiedWarnings() throws IOException
 	{
-		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":1,\"warnings\":0},\"findings\":[]}"));
-		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[{\"severity\":\"warning\"}]}"));
-		assertTrue(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":0},\"findings\":[]}"));
-		assertFalse(CargoShearPolicy.accepts(
-			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[]}"));
+		requireThat(CargoShearPolicy.accepts(
+			"{\"summary\":{\"errors\":1,\"warnings\":0},\"findings\":[]}"), "acceptsError").isFalse();
+		requireThat(CargoShearPolicy.accepts(
+			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[{\"severity\":\"warning\"}]}"),
+			"acceptsWarningFinding").isFalse();
+		requireThat(CargoShearPolicy.accepts(
+			"{\"summary\":{\"errors\":0,\"warnings\":0},\"findings\":[]}"), "acceptsCleanReport").isTrue();
+		requireThat(CargoShearPolicy.accepts(
+			"{\"summary\":{\"errors\":0,\"warnings\":1},\"findings\":[]}"), "acceptsWarningSummary").isFalse();
 	}
 }

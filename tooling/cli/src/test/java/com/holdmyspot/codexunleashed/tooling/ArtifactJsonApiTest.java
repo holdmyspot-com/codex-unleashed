@@ -9,7 +9,7 @@ import tools.jackson.core.util.DefaultPrettyPrinter;
 import tools.jackson.core.util.Separators;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Proves the selected library's compatible ASCII artifact formatting at its real writer boundary.
@@ -38,9 +38,10 @@ public final class ArtifactJsonApiTest
 			enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
 		String result = mapper.writer().with(printer).writeValueAsString(Map.of("z", 2, "empty", List.of(), "a",
 			List.of(Map.of("path", "patches/é.patch")))) + "\n";
-		assertEquals(result, "{\n  \"a\": [\n    {\n      \"path\": \"patches/\\u00e9.patch\"\n    }\n  ],\n" +
+		requireThat(result, "result").isEqualTo(
+			"{\n  \"a\": [\n    {\n      \"path\": \"patches/\\u00e9.patch\"\n    }\n  ],\n" +
 			"  \"empty\": [],\n  \"z\": 2\n}\n");
-		assertEquals(ArtifactJson.format(Map.of("z", 2, "empty", List.of(), "a",
-			List.of(Map.of("path", "patches/é.patch")))), result);
+		requireThat(ArtifactJson.format(Map.of("z", 2, "empty", List.of(), "a",
+			List.of(Map.of("path", "patches/é.patch")))), "artifactJson").isEqualTo(result);
 	}
 }
