@@ -7,19 +7,20 @@ set -euo pipefail
 test "$UPSTREAM_TARGET" = x86_64-unknown-linux-musl
 
 profile_output="$RUNNER_TEMP/codex-compiler-profile"
-mkdir -p "$profile_output" "$CARGO_TARGET_DIR/linker-plugin-bin" "$CARGO_TARGET_DIR/lld-thinlto-cache"
+mkdir -p "$profile_output" "$CARGO_TARGET_DIR/lld-thinlto-cache"
 compiler_sysroot="$(rustc --print sysroot)"
 compiler_host="$(rustc -vV | sed -n 's/^host: //p')"
 bundled_linker="$compiler_sysroot/lib/rustlib/$compiler_host/bin/rust-lld"
 test -x "$bundled_linker"
-ln -sf "$bundled_linker" "$CARGO_TARGET_DIR/linker-plugin-bin/ld.lld"
 "$bundled_linker" -flavor gnu --version > "$profile_output/linker-version.txt"
 rustc -vV > "$profile_output/compiler-version.txt"
 
 export PATCHES_ALREADY_APPLIED=1 SKIP_UPSTREAM_TESTS=1 SKIP_ARTIFACT_COLLECTION=1
 export CARGO_INCREMENTAL=1
-export RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clink-arg=-B$CARGO_TARGET_DIR/linker-plugin-bin -Clink-arg=-fuse-ld=lld -Clink-arg=-Wl,--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
-printf '%s\n' "$RUSTFLAGS" > "$profile_output/rustflags.txt"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$bundled_linker"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
+unset RUSTFLAGS
+printf '%s\n' "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS" > "$profile_output/rustflags.txt"
 build=(bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream
   "$RUNNER_TEMP/linker-profile-build-output")
 
