@@ -247,20 +247,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tooling/mvnw -q -pl cli -am test \
-            -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest,PackageSourceBuildsTest \
+          tooling/mvnw -q -pl distribution -am package \
+            -Dtest=BazelCommandTest,BazelCommandsTest,ScheduleCompilersCommandTest,CompilerSchedulerHostTest,CompilerSchedulerServerTest,PhysicalCompilerMemoryTest,CompilerSchedulerTest,PackageSourceBuildsTest,DistributionMainTest \
             -Dsurefire.failIfNoSpecifiedTests=false
-      - name: Capture Windows tooling thread evidence
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $output = Join-Path $env:GITHUB_WORKSPACE '.cat/work/temp/build-caches/maven/thread-diagnostics'
-          New-Item -ItemType Directory -Force -Path $output | Out-Null
-          $script = Join-Path $env:GITHUB_WORKSPACE '.github/scripts/capture-tooling-threads.ps1'
-          Start-Process -FilePath "$PSHOME/pwsh.exe" -ArgumentList @(
-            '-NoProfile', '-File', "`"$script`"", '-OutputDirectory', "`"$output`""
-          ) -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow `
-            -RedirectStandardOutput "$output/collector.out" -RedirectStandardError "$output/collector.err"
       - name: Verify and cache the complete tooling runtime
         uses: ./.github/actions/setup-tooling
       - name: Retain compiler scheduler test evidence
@@ -270,6 +259,6 @@ jobs:
           name: compiler-scheduler-tooling-${{ matrix.runner }}
           path: |
             .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
-            .cat/work/temp/build-caches/maven/thread-diagnostics
+            .cat/work/temp/build-caches/maven/target/tooling-distribution/surefire-reports
           if-no-files-found: ignore
           retention-days: 1

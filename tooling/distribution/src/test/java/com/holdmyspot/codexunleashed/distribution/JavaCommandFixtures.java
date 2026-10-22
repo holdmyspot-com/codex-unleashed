@@ -9,6 +9,7 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -110,6 +111,18 @@ final class JavaCommandFixtures
 				""");
 			ProcessBuilder builder = NativeCommands.createBuilder("rustc", "--crate-name", "codex_fixture",
 				source.path().toString(), "-o", binary.toString());
+			try (Process query = NativeCommands.createBuilder("rustc", "--print", "host-tuple").
+				redirectErrorStream(true).redirectOutput(log.path().toFile()).start())
+			{
+				if (query.waitFor() != 0)
+					throw new IOException("Cannot identify the native Rust target: " + Files.readString(log.path()));
+			}
+			String target = Files.readString(log.path()).strip();
+			String linker = System.getenv("CARGO_TARGET_" + target.toUpperCase(Locale.ROOT).replace('-', '_') +
+				"_LINKER");
+			if (linker != null)
+				builder.command().addAll(List.of("-C", "linker=" + linker));
+
 			builder.redirectErrorStream(true).redirectOutput(log.path().toFile());
 			try (Process process = builder.start())
 			{
