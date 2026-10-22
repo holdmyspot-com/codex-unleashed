@@ -2,6 +2,7 @@ param([Parameter(Mandatory = $true)][string]$OutputDirectory)
 
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') | Set-Content "$OutputDirectory/started.txt"
 foreach ($delay in @(120, 480)) {
     Start-Sleep -Seconds $delay
     $sample = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
