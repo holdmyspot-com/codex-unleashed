@@ -801,6 +801,30 @@ jobs:
             --v8-version "$v8_version" \
             --mode "${{ inputs.reproducibility_mode || 'off' }}" >> "$GITHUB_OUTPUT"
 
+      - name: Record incremental seed cache identity
+        id: profile_seed_cache
+        shell: bash
+        env:
+          PROFILE_UPSTREAM_SHA: ${{ needs.prepare.outputs.upstream_sha }}
+          PROFILE_PATCH_HASH: ${{ needs.prepare.outputs.patch_hash }}
+          PROFILE_COMPILER_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          PROFILE_UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
+          PROFILE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          identity="$(
+            {
+              printf '%s\n' 'compiler-profile-seed-v1' "$PROFILE_UPSTREAM_SHA" "$PROFILE_PATCH_HASH" \
+                "$PROFILE_COMPILER_TAG" "$PROFILE_TARGET" "$CODEX_UNLEASHED_BUILD_NUMBER" \
+                "$REPRODUCIBILITY_MODE" "$CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO" \
+                "$RUNNER_OS" "$RUNNER_ARCH" "$ImageOS" "$ImageVersion" 'CARGO_INCREMENTAL=1'
+              git ls-tree -r HEAD -- scripts tooling .github/actions .github/scripts \
+                .github/workflows/build-release.yml | \
+                awk '$4 != ".github/scripts/profile-release-compiler.sh"'
+            } | sha256sum | cut -d ' ' -f 1
+          )"
+          echo "tag=cargo-${PROFILE_TARGET}-profile-seed-${identity}-${PROFILE_UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Determine pnpm store path
         id: pnpm_store
         shell: bash
@@ -860,7 +884,8 @@ jobs:
         shell: bash
         env:
           GHCR_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
-          GHCR_CACHE_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
+          GHCR_CACHE_TAG: ${{ steps.profile_seed_cache.outputs.tag }}
+          GHCR_FALLBACK_TAG: ${{ steps.rust_compiler.outputs.cargo_target_tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -870,9 +895,17 @@ jobs:
             "$CARGO_TARGET_DIR" \
             "${{ needs.prepare.outputs.upstream_tag }}"; then
             echo "restored=true" >> "$GITHUB_OUTPUT"
+            echo "seed_restored=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
-            echo "restored=false" >> "$GITHUB_OUTPUT"
+            echo "seed_restored=false" >> "$GITHUB_OUTPUT"
+            if bash .github/scripts/ghcr-cargo-target-cache.sh pull \
+              "$GHCR_CACHE_REPOSITORY" "$GHCR_FALLBACK_TAG" "$CARGO_TARGET_DIR" \
+              "${{ needs.prepare.outputs.upstream_tag }}"; then
+              echo "restored=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No usable GHCR Cargo target cache was found; continuing with Cargo's normal build." >&2
+              echo "restored=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Rebuild release binaries from cached dependencies
@@ -927,6 +960,12 @@ jobs:
           UPSTREAM_TARGET: ${{ matrix.target }}
           UPSTREAM_BINARIES: ${{ matrix.binaries }}
           CARGO_INCREMENTAL: "1"
+          PROFILE_SEED_CACHE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/cargo-cache
+          PROFILE_SEED_CACHE_TAG: ${{ steps.profile_seed_cache.outputs.tag }}
+          PROFILE_SEED_CACHE_HIT: ${{ steps.ghcr_cargo_cache.outputs.seed_restored }}
+          PROFILE_UPSTREAM_TAG: ${{ needs.prepare.outputs.upstream_tag }}
+          PROFILE_SEED_CACHE_ENABLED: ${{ inputs.ghcr_cache }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/profile-release-compiler.sh
 
       - name: Upload compiler profile

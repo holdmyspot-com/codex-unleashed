@@ -15,10 +15,23 @@ export PATCHES_ALREADY_APPLIED=1 SKIP_UPSTREAM_TESTS=1 SKIP_ARTIFACT_COLLECTION=
 export CARGO_INCREMENTAL=1
 build=(bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream \
   "$RUNNER_TEMP/compiler-profile-build-output")
+date +%s.%N > "$PROFILE_OUTPUT/seed-start.txt"
 "${build[@]}" > "$PROFILE_OUTPUT/seed.log" 2>&1 || {
   cat "$PROFILE_OUTPUT/seed.log" >&2
   exit 1
 }
+date +%s.%N > "$PROFILE_OUTPUT/seed-end.txt"
+cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$PROFILE_OUTPUT/seed-cargo-timing.html"
+"$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --version > "$PROFILE_OUTPUT/seed-version.txt"
+test -n "$(find "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/incremental" -type f -print -quit)"
+if [[ "${PROFILE_SEED_CACHE_ENABLED:-false}" == true && "${PROFILE_SEED_CACHE_HIT:-false}" != true ]]; then
+  bash .github/scripts/ghcr-cargo-target-cache.sh push \
+    "${PROFILE_SEED_CACHE_REPOSITORY:?}" "${PROFILE_SEED_CACHE_TAG:?}" \
+    "$CARGO_TARGET_DIR" "${PROFILE_UPSTREAM_TAG:?}" > "$PROFILE_OUTPUT/seed-cache-save.log" 2>&1 || {
+    cat "$PROFILE_OUTPUT/seed-cache-save.log" >&2
+    exit 1
+  }
+fi
 
 PROFILE_REAL_RUSTC="$(command -v rustc)"
 export PROFILE_REAL_RUSTC
