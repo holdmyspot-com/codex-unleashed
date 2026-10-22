@@ -57,7 +57,10 @@ public final class ScheduleCompilersCommandTest
 				        }
 				        if (args.length != 3 || !args[0].equals("--crate-name") ||
 				                !args[1].equals("fixture") || !args[2].equals("λ and spaces"))
-				            throw new AssertionError("Compiler arguments changed");
+				            throw new AssertionError("Compiler arguments changed: " +
+				                java.util.Arrays.toString(args) + "; code points: " +
+				                java.util.Arrays.stream(args).map(value ->
+				                    java.util.Arrays.toString(value.codePoints().toArray())).toList());
 				        System.out.print("compiled");
 				        System.err.print("diagnostic");
 				        System.exit(17);
@@ -78,6 +81,14 @@ public final class ScheduleCompilersCommandTest
 				if (process.argv[4] === 'query') {
 				  env.CODEX_COMPILER_SCHEDULER_SOCKET = '';
 				  args = ['query'];
+				}
+				const direct = require('node:child_process').spawnSync(process.argv[2],
+				  ['--source=27', process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
+				const expected = process.argv[4] === 'query' ? 5 : 17;
+				if (direct.error) throw direct.error;
+				if (direct.status !== expected) {
+				  console.error('Unscheduled compiler fixture failed: ' + direct.stderr);
+				  process.exit(92);
 				}
 				const result = require('node:child_process').spawnSync(process.env.RUSTC_WRAPPER,
 				  [process.argv[2], '--source=27', process.argv[3], ...args], {encoding: 'utf8', env, timeout: 10000});
