@@ -10,9 +10,7 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /** Verifies workspace manifest decisions using real TOML files and isolated filesystem inputs. */
@@ -37,8 +35,8 @@ public final class CargoManifestPolicyTest
 			fixture.write("utils/path-utils", packageText("codex-utils-path"));
 			fixture.write("codex-helper", packageText("codex-helper"));
 			fixture.write("nested/virtual", "[workspace]\n");
-			assertEquals(fixture.check(Map.of()), 0);
-			assertEquals(fixture.output(), "");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(0);
+			requireThat(fixture.output(), "output").isEmpty();
 		}
 	}
 
@@ -61,13 +59,13 @@ public final class CargoManifestPolicyTest
 				[lints]
 				workspace = "true"
 				""");
-			assertEquals(fixture.check(Map.of()), 1);
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
 			String output = fixture.output();
-			assertTrue(output.contains("set `version.workspace = true` in `[package]`"));
-			assertTrue(output.contains("set `edition.workspace = true` in `[package]`"));
-			assertFalse(output.contains("set `license.workspace = true`"));
-			assertTrue(output.contains("add `[lints]` with `workspace = true`"));
-			assertTrue(output.contains("set `[package].name` to `codex-example` (found `Codex-example`)"));
+			requireThat(output, "output").contains("set `version.workspace = true` in `[package]`");
+			requireThat(output, "output").contains("set `edition.workspace = true` in `[package]`");
+			requireThat(output, "output").doesNotContain("set `license.workspace = true`");
+			requireThat(output, "output").contains("add `[lints]` with `workspace = true`");
+			requireThat(output, "output").contains("set `[package].name` to `codex-example` (found `Codex-example`)");
 		}
 	}
 
@@ -99,14 +97,14 @@ public final class CargoManifestPolicyTest
 				[workspace.dependencies]
 				local = { package = "codex-example", features = [] }
 				""");
-			assertEquals(fixture.check(Map.of()), 1);
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
 			String output = fixture.output();
 			for (String label : new String[]{"[dependencies].renamed", "[dependencies].optional",
 				"[dev-dependencies].local", "[build-dependencies].local", "[target.cfg(unix).dependencies].local",
 				"[workspace.dependencies].local"})
-				assertTrue(output.contains(label), label);
-			assertFalse(output.contains("[dependencies].external"));
-			assertFalse(output.contains("[dependencies].stringOptional"));
+				requireThat(output, "output").contains(label);
+			requireThat(output, "output").doesNotContain("[dependencies].external");
+			requireThat(output, "output").doesNotContain("[dependencies].stringOptional");
 		}
 	}
 
@@ -122,13 +120,14 @@ public final class CargoManifestPolicyTest
 		{
 			fixture.write("v8-poc", packageText("codex-v8-poc") + "[features]\nsandbox = [\"different\"]\n");
 			fixture.write("example", packageText("codex-example") + "[features]\n");
-			assertEquals(fixture.check(Map.of()), 1);
-			assertTrue(fixture.output().contains("expected sandbox = [\"v8/v8_enable_sandbox\"]"));
-			assertTrue(fixture.output().contains("remove `[features]`; new workspace crate features are not allowed"));
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("expected sandbox = [\"v8/v8_enable_sandbox\"]");
+			requireThat(fixture.output(), "output").contains(
+				"remove `[features]`; new workspace crate features are not allowed");
 			fixture.write("example", packageText("codex-example"));
 			fixture.write("v8-poc", packageText("codex-v8-poc"));
-			assertEquals(fixture.check(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")), 1);
-			assertTrue(fixture.output().contains("remove the stale `[features]` exception"));
+			requireThat(fixture.check(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("remove the stale `[features]` exception");
 		}
 	}
 
@@ -144,7 +143,7 @@ public final class CargoManifestPolicyTest
 		{
 			fixture.write("example", "[package\n");
 			expectThrows(IOException.class, () -> fixture.check(Map.of()));
-			assertEquals(fixture.output(), "");
+			requireThat(fixture.output(), "output").isEmpty();
 		}
 	}
 
@@ -160,8 +159,8 @@ public final class CargoManifestPolicyTest
 		{
 			fixture.writeRoot("");
 			fixture.write("empty", "");
-			assertEquals(fixture.check(Map.of()), 0);
-			assertEquals(fixture.output(), "");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(0);
+			requireThat(fixture.output(), "output").isEmpty();
 		}
 	}
 
@@ -180,7 +179,7 @@ public final class CargoManifestPolicyTest
 				[dependencies]
 				external = { path = "../external-link/member", features = ["permitted"], default-features = false }
 				""");
-			assertEquals(fixture.check(Map.of()), 0, fixture.output());
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(0);
 		}
 	}
 
@@ -198,8 +197,9 @@ public final class CargoManifestPolicyTest
 			fixture.write("example", packageText("codex-example") +
 				"[dependencies]\nlocal = { path = \"../missing\", default-features = false }\n");
 			Path alias = Files.createSymbolicLink(fixture.root.resolve("alias"), fixture.root);
-			assertEquals(CargoManifestPolicy.check(alias, out, Map.of()), 1);
-			assertTrue(fixture.output().contains("remove `default-features = false` from workspace dependency"));
+			requireThat(CargoManifestPolicy.check(alias, out, Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains(
+				"remove `default-features = false` from workspace dependency");
 		}
 	}
 
@@ -216,9 +216,9 @@ public final class CargoManifestPolicyTest
 			fixture.write("invalid", packageText("codex-invalid").replace("\"codex-invalid\"", "2000-01-01"));
 			fixture.write("consumer", packageText("codex-consumer") +
 				"[dependencies]\nexternal = { package = \"2000-01-01\", features = [\"allowed\"] }\n");
-			assertEquals(fixture.check(Map.of()), 1);
-			assertTrue(fixture.output().contains("codex-rs/invalid/Cargo.toml:"));
-			assertFalse(fixture.output().contains("codex-rs/consumer/Cargo.toml:"));
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("codex-rs/invalid/Cargo.toml:");
+			requireThat(fixture.output(), "output").doesNotContain("codex-rs/consumer/Cargo.toml:");
 		}
 	}
 
@@ -234,16 +234,19 @@ public final class CargoManifestPolicyTest
 		{
 			fixture.write("code-mode", packageText("codex-code-mode") +
 				"[features]\nsandbox = [\"v8/v8_enable_sandbox\"]\n");
-			assertEquals(fixture.check(Map.of()), 1);
-			assertEquals(fixture.checkUpstream(Map.of()), 0);
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.checkUpstream(Map.of()), "upstreamStatus").isEqualTo(0);
 			fixture.write("code-mode", packageText("codex-code-mode"));
-			assertEquals(fixture.checkUpstream(Map.of()), 1);
-			assertTrue(fixture.output().contains("codex-rs/code-mode/Cargo.toml:"));
-			assertEquals(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "true")), 1);
-			assertEquals(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")), 0);
+			requireThat(fixture.checkUpstream(Map.of()), "upstreamStatus").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("codex-rs/code-mode/Cargo.toml:");
+			requireThat(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "true")),
+				"upstreamStatus").isEqualTo(1);
+			requireThat(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")),
+				"upstreamStatus").isEqualTo(0);
 			fixture.write("code-mode", packageText("codex-code-mode") + "[features]\nsandbox = [\"incorrect\"]\n");
-			assertEquals(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")), 1);
-			assertTrue(fixture.output().contains("limit `[features]` to the existing exception list"));
+			requireThat(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")),
+				"upstreamStatus").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("limit `[features]` to the existing exception list");
 		}
 	}
 
@@ -258,9 +261,9 @@ public final class CargoManifestPolicyTest
 		try (Fixture fixture = new Fixture(); PrintStream out = new PrintStream(fixture.output, true,
 			StandardCharsets.UTF_8))
 		{
-			assertEquals(Main.run(new String[]{"verify-cargo-workspace-manifests", fixture.root.toString()},
-				java.io.InputStream.nullInputStream(), out, out), 0, fixture.output());
-			assertEquals(fixture.output(), "");
+			requireThat(Main.run(new String[]{"verify-cargo-workspace-manifests", fixture.root.toString()},
+				java.io.InputStream.nullInputStream(), out, out), "status").isEqualTo(0);
+			requireThat(fixture.output(), "output").isEmpty();
 		}
 	}
 
