@@ -3,6 +3,8 @@
  */
 module com.holdmyspot.codexunleashed.tooling
 {
+	requires io.github.cowwoc.pouch10.core;
+	requires ch.qos.logback.classic;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.toml;
 	requires info.picocli;
