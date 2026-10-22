@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies raw output hashes, explicit process context, and capture cleanup.
@@ -40,12 +40,13 @@ public final class SystemCommandsDigestTest
 				SystemCommands.DigestResult result = SystemCommands.digest(JavaFixtures.command(BinaryCommandFixture.class,
 					root.toString(), Integer.toString(status)), root, captures,
 					Map.of("CODEX_UNLEASHED_CAPTURE_MARKER", "explicit context"));
-				assertEquals(result.status(), status);
-				assertEquals(result.stdoutSha256(), "2b48f79297030f8a1bbbdfc58f6607b5ce7a8c5c6624cbe0a1a6a8ecb76d0db4");
-				assertEquals(result.stderr(), "e".repeat(200_000));
+				requireThat(result.status(), "status").isEqualTo(status);
+				requireThat(result.stdoutSha256(), "stdoutSha256").isEqualTo(
+					"2b48f79297030f8a1bbbdfc58f6607b5ce7a8c5c6624cbe0a1a6a8ecb76d0db4");
+				requireThat(result.stderr(), "stderr").isEqualTo("e".repeat(200_000));
 				try (Stream<Path> files = Files.list(captures))
 				{
-					assertEquals(files.count(), 0L);
+					requireThat(files.count(), "captureCount").isEqualTo(0L);
 				}
 			}
 		}
