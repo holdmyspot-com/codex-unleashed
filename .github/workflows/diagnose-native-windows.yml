@@ -191,13 +191,12 @@ jobs:
           mkdir -p .cat/work/temp/scheduler-diagnostics
           diagnostic="${GITHUB_WORKSPACE}/.cat/work/temp/scheduler-diagnostics/result.log"
           cd scheduler-upstream
-          arguments=()
+          arguments=(test //test/process_wrapper:compiler_scheduler_test)
           if [[ "$VARIANT" == baseline ]]; then
             arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
           fi
           set +e
-          bazel test //test/process_wrapper:compiler_scheduler_test \
-            "${arguments[@]}" --copt=-Wall --copt=-Wextra --copt=-Werror \
+          bazel "${arguments[@]}" --copt=-Wall --copt=-Wextra --copt=-Werror \
             --nocache_test_results --test_output=all --lockfile_mode=update 2>&1 | tee "$diagnostic"
           status=${PIPESTATUS[0]}
           set -e
