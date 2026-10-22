@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           cd upstream
+          git apply "${GITHUB_WORKSPACE}/.github/diagnostics/credential-export-gate.patch"
           "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
             --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
             -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
