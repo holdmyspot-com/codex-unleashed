@@ -28,8 +28,7 @@ export RUSTC="$GITHUB_WORKSPACE/.github/diagnostics/profile-release-rustc.sh"
 chmod +x "$RUSTC" "$PROFILE_LINKER_WRAPPER"
 "$PROFILE_REAL_RUSTC" -vV > "$PROFILE_OUTPUT/compiler-version.txt"
 "$PROFILE_REAL_LINKER" --version > "$PROFILE_OUTPUT/linker-driver-version.txt"
-"$CODEX_UNLEASHED_TOOLING" clean-cached-release-binaries upstream/codex-rs "$UPSTREAM_TARGET" codex \
-  > "$PROFILE_OUTPUT/invalidation.log" 2>&1
+touch upstream/codex-rs/cli/src/main.rs
 "${build[@]}" > "$PROFILE_OUTPUT/build.log" 2>&1 || {
   cat "$PROFILE_OUTPUT/build.log" >&2
   exit 1
