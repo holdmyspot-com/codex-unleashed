@@ -33,6 +33,7 @@ jobs:
     uses: ./.github/workflows/profile-release-compiler.yml
     secrets: inherit
     with:
+      upstream_tag: rust-v0.163.0
       focus_target: x86_64-unknown-linux-musl
       focus_bundle: primary
       build_only: true
