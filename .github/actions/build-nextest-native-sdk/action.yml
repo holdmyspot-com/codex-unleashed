@@ -56,15 +56,15 @@ runs:
         BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
       run: |
         set -euo pipefail
-        options=()
-        build_options=()
+        options=(--remote-download-toplevel --print-failed-action-summary)
+        build_options=(build)
         if [[ "$RUNNER_OS" == Windows ]]; then
           options+=(--windows-msvc-host-platform)
           build_options+=(--config=ci-windows-msvc --platforms=//:local_windows_msvc)
         fi
         "$GITHUB_WORKSPACE/.github/scripts/run-bazel-ci.sh" \
-          "${options[@]}" --remote-download-toplevel --print-failed-action-summary \
-          -- build "${build_options[@]}" -- //third_party/voice:native_sdk //third_party/voice:native_runtime
+          "${options[@]}" -- "${build_options[@]}" \
+          -- //third_party/voice:native_sdk //third_party/voice:native_runtime
 
         arch="${TARGET%%-*}"
         case "$RUNNER_OS" in
