@@ -247,12 +247,15 @@ jobs:
             -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
             --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+            --test_env=ProgramFiles \
             --nocache_test_results --test_output=all --test_arg=--nocapture \
             --test_arg=legacy_capture_cancellation_terminates_descendants_without_timeout \
             --test_arg=legacy_capture_emits_output_and_preserves_descendant_after_normal_exit \
             --test_arg=legacy_tty_job_terminates_and_preserves_descendants \
             -- //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests \
             2>&1 | tee "$RUNNER_TEMP/windows-lifecycle-source/console.log"
+          bash "${GITHUB_WORKSPACE}/.github/scripts/assert-windows-lifecycle-evidence.sh" \
+            "$RUNNER_TEMP/windows-lifecycle-source/console.log"
       - name: Retain lifecycle source diagnostic evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

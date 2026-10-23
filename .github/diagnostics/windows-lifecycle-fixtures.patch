@@ -1,5 +1,5 @@
 diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
-index f3de67d..e402440 100644
+index f3de67d5..e4024401 100644
 --- a/codex-rs/windows-sandbox-rs/src/lib.rs
 +++ b/codex-rs/windows-sandbox-rs/src/lib.rs
 @@ -826,6 +826,8 @@ mod windows_impl {
@@ -73,7 +73,7 @@ index f3de67d..e402440 100644
          let stderr = rx_err.recv().unwrap_or_default();
          let exit_code = if timed_out {
 diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-index be2d1bf..a3890a5 100644
+index be2d1bf0..34cf8fc8 100644
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 @@ -101,10 +101,28 @@ fn workspace_roots_for(root: &Path) -> Vec<AbsolutePathBuf> {
@@ -105,11 +105,15 @@ index be2d1bf..a3890a5 100644
  fn start_powershell_child(
      pwsh: &Path,
      stdio_dir: &Path,
-@@ -669,15 +687,16 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+@@ -669,15 +687,20 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
          return;
      };
      let _guard = legacy_process_test_guard();
 -    let cwd = sandbox_cwd();
++    let lifecycle_started_at = Instant::now();
++    eprintln!(
++        "windows lifecycle started: unified_exec::tests::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit"
++    );
 +    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
 +    let cwd = workspace.path().to_path_buf();
      let codex_home = sandbox_home("legacy-capture-pwsh");
@@ -128,7 +132,7 @@ index be2d1bf..a3890a5 100644
          powershell_literal(&release_marker),
          powershell_literal(&survival_marker),
      );
-@@ -687,7 +706,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+@@ -687,7 +710,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
      );
      let parent_command = format!(
          "{ASSERT_NO_CONSOLE} Write-Output LEGACY-CAPTURE-DIRECT; {}",
@@ -137,7 +141,7 @@ index be2d1bf..a3890a5 100644
      );
      let permission_profile = PermissionProfile::workspace_write();
      let result = run_windows_sandbox_capture(
-@@ -701,7 +720,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+@@ -701,7 +724,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
              parent_command,
          ],
          cwd.as_path(),
@@ -146,11 +150,26 @@ index be2d1bf..a3890a5 100644
          Some(10_000),
          /*cancellation*/ None,
      )
-@@ -849,21 +868,18 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+@@ -731,6 +754,10 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+     );
+     wait_for_process_exit(&descendant_process, Duration::from_secs(10))
+         .expect("sandbox descendant did not exit after release");
++    eprintln!(
++        "windows lifecycle completed: unified_exec::tests::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit elapsed={:?}",
++        lifecycle_started_at.elapsed()
++    );
+ }
+
+ #[test]
+@@ -849,21 +876,22 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
          return;
      };
      let _guard = legacy_process_test_guard();
 -    let cwd = sandbox_cwd();
++    let lifecycle_started_at = Instant::now();
++    eprintln!(
++        "windows lifecycle started: unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout"
++    );
 +    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
 +    let cwd = workspace.path().to_path_buf();
      let codex_home = sandbox_home("legacy-capture-cancel");
@@ -176,7 +195,7 @@ index be2d1bf..a3890a5 100644
      let descendant_process = Arc::new(Mutex::new(None));
      let descendant_process_for_cancellation = Arc::clone(&descendant_process);
      let cancellation = WindowsSandboxCancellationToken::new(move || {
-@@ -896,7 +912,7 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+@@ -896,7 +924,7 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
              parent_command,
          ],
          cwd.as_path(),
@@ -185,11 +204,23 @@ index be2d1bf..a3890a5 100644
          Some(30_000),
          /*cancellation*/ Some(cancellation),
      )
-@@ -934,14 +950,15 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -922,6 +950,10 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+         !descendant_marker.exists(),
+         "sandbox descendant survived cancellation"
+     );
++    eprintln!(
++        "windows lifecycle completed: unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout elapsed={:?}",
++        lifecycle_started_at.elapsed()
++    );
+ }
+
+ #[derive(Clone, Copy, Debug)]
+@@ -934,14 +966,16 @@ async fn assert_legacy_tty_descendant_lifecycle(
      pwsh: &Path,
      lifecycle: LegacyTtyDescendantLifecycle,
  ) {
 -    let cwd = sandbox_cwd();
++    let lifecycle_started_at = Instant::now();
 +    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
 +    let cwd = workspace.path().to_path_buf();
      let codex_home = sandbox_home(match lifecycle {
@@ -205,7 +236,7 @@ index be2d1bf..a3890a5 100644
      let child_tail = match lifecycle {
          LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
          LegacyTtyDescendantLifecycle::Preserve => format!(
-@@ -950,10 +967,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -950,10 +984,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
              powershell_literal(&survival_marker),
          ),
      };
@@ -217,7 +248,7 @@ index be2d1bf..a3890a5 100644
      let parent_tail = match lifecycle {
          LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
          LegacyTtyDescendantLifecycle::Preserve => format!(
-@@ -961,8 +975,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -961,8 +992,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
              powershell_literal(&ready_marker),
          ),
      };
@@ -227,7 +258,7 @@ index be2d1bf..a3890a5 100644
      let permission_profile = PermissionProfile::workspace_write();
      let spawned = spawn_windows_sandbox_session_legacy(
          &permission_profile,
-@@ -975,7 +988,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -975,7 +1005,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
              parent_command,
          ],
          cwd.as_path(),
@@ -236,3 +267,34 @@ index be2d1bf..a3890a5 100644
          Some(30_000),
          &[],
          &[],
+@@ -1017,6 +1047,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
+     }
+     wait_for_process_exit(&descendant_process, Duration::from_secs(10))
+         .expect("sandbox ConPTY descendant did not exit");
++    eprintln!(
++        "windows lifecycle tty phase completed: {lifecycle:?} elapsed={:?}",
++        lifecycle_started_at.elapsed()
++    );
+ }
+
+ #[test]
+@@ -1026,11 +1060,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
+         return;
+     };
+     let _guard = legacy_process_test_guard();
++    let lifecycle_started_at = Instant::now();
++    eprintln!(
++        "windows lifecycle started: unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants"
++    );
+     current_thread_runtime().block_on(async move {
+         assert_legacy_tty_descendant_lifecycle(&pwsh, LegacyTtyDescendantLifecycle::Terminate)
+             .await;
+         assert_legacy_tty_descendant_lifecycle(&pwsh, LegacyTtyDescendantLifecycle::Preserve).await;
+     });
++    eprintln!(
++        "windows lifecycle completed: unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants elapsed={:?}",
++        lifecycle_started_at.elapsed()
++    );
+ }
+
+ #[test]
