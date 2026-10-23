@@ -46,7 +46,7 @@ jobs:
         with:
           repository: openai/codex
           ref: ${{ inputs.upstream-ref }}
-          path: archived-workspace
+          path: upstream
           persist-credentials: false
 
       - uses: taiki-e/install-action@v2
@@ -99,7 +99,7 @@ jobs:
           "${trace_command[@]}" cargo nextest run \
             --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
             --extract-to "$diagnostic_root/extracted" \
-            --workspace-remap "$GITHUB_WORKSPACE/archived-workspace/codex-rs" \
+            --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
             --config-file "$diagnostic_root/nextest.toml" \
             --profile archived-diagnostic --test-threads 1 --retries 0 --no-fail-fast \
             --failure-output immediate-final \
@@ -120,4 +120,4 @@ jobs:
       - name: Remove downloaded and extracted test inputs
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native" "$GITHUB_WORKSPACE/archived-workspace"
+        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native" "$GITHUB_WORKSPACE/upstream"
