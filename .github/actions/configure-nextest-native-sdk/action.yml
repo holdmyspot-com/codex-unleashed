@@ -25,8 +25,7 @@ runs:
           fi
         fi
         {
-          printf 'PKG_CONFIG_LIBDIR=%s/sdk/lib/pkgconfig\n' "$root"
-          printf 'PKG_CONFIG_PATH=\n'
+          printf 'PKG_CONFIG_PATH=%s/sdk/lib/pkgconfig\n' "$root"
           printf 'GST_PLUGIN_PATH_1_0=%s\n' "$plugins"
           printf 'GST_PLUGIN_SYSTEM_PATH_1_0=\n'
         } >> "$GITHUB_ENV"

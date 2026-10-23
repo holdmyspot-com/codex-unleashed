@@ -77,6 +77,7 @@ runs:
         mkdir "$destination"
         cp -R "${source}_sdk" "$destination/sdk"
         cp -R "$source" "$destination/runtime"
+        chmod -R u+w "$destination"
         if [[ "$RUNNER_OS" == Windows ]]; then
           printf 'PKG_CONFIG=%s\n' "$VOICE_PKG_CONFIG" >> "$GITHUB_ENV"
         fi
