@@ -213,8 +213,8 @@ index 3a50918..5ac6a7d 100644
 +        panic!(
 +            "{lifecycle:?} descendant did not start; exit_code={exit_code} stdout={:?} descendant_stdout={:?} descendant_stderr={:?}\n{}",
 +            String::from_utf8_lossy(&stdout),
-+            fs::read_to_string(codex_home.path().join("descendant.stdout")),
-+            fs::read_to_string(codex_home.path().join("descendant.stderr")),
++            fs::read_to_string(cwd.join("descendant.stdout")),
++            fs::read_to_string(cwd.join("descendant.stderr")),
 +            sandbox_log(codex_home.path())
 +        );
 +    }
