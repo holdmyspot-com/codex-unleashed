@@ -8,7 +8,18 @@ producer="$script_dir/build-voice-runtime.sh"
 [[ $# == 2 ]] || { echo 'Usage: test-build-voice-runtime.sh <upstream-checkout> <fixture-parent>' >&2; exit 2; }
 source_checkout="$(CDPATH='' cd -- "$1" && pwd)"
 fixture="$(mktemp -d "$2/voice-runtime-test-XXXXXX")"
-trap 'rm -rf -- "$fixture"' EXIT
+# Preserves a failed check's status and diagnostics while removing all fixture files.
+cleanup_fixture() {
+  local result=$? log
+  if (( result != 0 )); then
+    for log in "$fixture/stdout" "$fixture/stderr"; do
+      [[ ! -f "$log" ]] || cat "$log" >&2
+    done
+  fi
+  rm -rf -- "$fixture"
+  exit "$result"
+}
+trap cleanup_fixture EXIT
 
 matrix="$(bash "$producer" matrix)"
 jq -e 'length == 6 and ([.[].target] | unique | length == 6)' <<< "$matrix" >/dev/null
@@ -99,4 +110,133 @@ if bash "$producer" package "$fixture/upstream" x86_64-unknown-linux-musl "$fixt
   exit 1
 fi
 [[ ! -e "$fixture/tampered/voice-runtime-x86_64-unknown-linux-musl.tar.gz" ]]
-printf '%s\n' 'Voice target selection, receipt staging, archive extraction, source commit and tamper checks pass.'
+
+# Script doubles verify invocation and publication boundaries, not native loading.
+printf '%s' 'fixture native library' > "$fixture/upstream/bazel-bin/third_party/voice/native_runtime_linux_x86_64/lib/libgio-2.0.so.0"
+mkdir -p "$fixture/tools" "$fixture/project/.github/scripts" "$fixture/upstream/codex-rs"
+cp "$producer" "$fixture/project/.github/scripts/build-voice-runtime.sh"
+cat > "$fixture/upstream/bazel-bin/codex-rs/voice-host/codex-voice-host" <<'HELPER'
+#!/usr/bin/env bash
+set -euo pipefail
+# shipping-helper-fixture: distinguish the archived helper from any fallback binary.
+[[ $# == 1 && "$1" == --build-commit ]]
+[[ "$0" == *'/identity package/codex-resources/voice/bin/codex-voice-host'* ]]
+[[ -f "$(dirname -- "$0")/../runtime.json" ]]
+if [[ "${VOICE_FIXTURE_FAILURE:-}" == identity ]]; then
+  echo wrong-shipping-identity
+else
+  echo 1111111111111111111111111111111111111111
+fi
+HELPER
+cat > "$fixture/native-test" <<'TEST'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ! ${RUNFILES_MANIFEST_ONLY+x} && ! ${RUNFILES_MANIFEST_FILE+x} && ! ${RUNFILES_DIR+x} ]]
+name=relocated_runtime_initializes_closes_and_rejects_duplicate_initialization
+[[ $# == 4 && "$1" == --ignored && "$2" == --exact && "$3" == "$name" ]]
+helper="$(printenv CARGO_BIN_EXE_codex-voice-host)"
+runtime="$CODEX_TEST_VOICE_RUNTIME"
+if [[ "${VOICE_FIXTURE_WINDOWS:-}" == 1 ]]; then
+  [[ "$helper" == WINDOWS:* && "$runtime" == WINDOWS:* ]]
+  helper="${helper#WINDOWS:}"
+  runtime="${runtime#WINDOWS:}"
+fi
+[[ "$helper" == *'/identity package/codex-resources/voice/bin/codex-voice-host'* ]]
+[[ -f "$runtime/runtime.json" ]]
+grep -Fq shipping-helper-fixture "$helper"
+[[ "$("$helper" --build-commit)" == 1111111111111111111111111111111111111111 ]]
+printf '%s\n' "$4" >> "$VOICE_FIXTURE_LOG"
+case "$4" in
+  --list)
+    if [[ "${VOICE_FIXTURE_FAILURE:-}" != missing ]]; then
+      printf '%s: test\n' "$name"
+    fi
+    ;;
+  --nocapture)
+    if [[ "${VOICE_FIXTURE_FAILURE:-}" == test ]]; then
+      echo fixture-native-load-failed >&2
+      exit 19
+    fi
+    ;;
+  *) exit 2 ;;
+esac
+TEST
+cat > "$fixture/tools/cygpath" <<'CYGPATH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 2 && "$1" == -am ]]
+printf '%s\n' "$2" >> "$VOICE_FIXTURE_PATH_LOG"
+printf 'WINDOWS:%s\n' "$2"
+CYGPATH
+cat > "$fixture/tools/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'rev-parse HEAD' ]]
+echo 1111111111111111111111111111111111111111
+GIT
+cat > "$fixture/tools/cargo" <<'CARGO'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'update --workspace' ]]
+CARGO
+cat > "$fixture/project/.github/scripts/run-bazel-ci.sh" <<'BAZEL'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" > "$VOICE_FIXTURE_BUILD_LOG"
+BAZEL
+chmod +x "$fixture/native-test" "$fixture/tools/"* "$fixture/upstream/bazel-bin/codex-rs/voice-host/codex-voice-host"
+cp "$fixture/native-test" "$fixture/upstream/bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin"
+export PATH="$fixture/tools:$PATH"
+export VOICE_FIXTURE_LOG="$fixture/native-invocations" VOICE_FIXTURE_PATH_LOG="$fixture/path-conversions"
+export VOICE_FIXTURE_BUILD_LOG="$fixture/build-arguments"
+export RUNFILES_MANIFEST_ONLY=1 RUNFILES_MANIFEST_FILE=unusable RUNFILES_DIR=unusable
+commit=1111111111111111111111111111111111111111
+bash "$producer" package "$fixture/upstream" x86_64-unknown-linux-musl "$fixture/native" "$commit"
+archive="$fixture/native/voice-runtime-x86_64-unknown-linux-musl.tar.gz"
+for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
+  bash "$producer" verify "$archive" "$target" "$fixture/native-test" "$commit" > "$fixture/stdout" 2> "$fixture/stderr"
+  [[ ! -s "$fixture/stdout" && ! -s "$fixture/stderr" ]]
+done
+mkdir "$fixture/windows-archive"
+tar -xzf "$archive" -C "$fixture/windows-archive"
+mv "$fixture/windows-archive/codex-voice-host" "$fixture/windows-archive/codex-voice-host.exe"
+tar -czf "$fixture/native/windows.tar.gz" -C "$fixture/windows-archive" runtime codex-voice-host.exe
+for target in x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
+  VOICE_FIXTURE_WINDOWS=1 bash "$producer" verify "$fixture/native/windows.tar.gz" "$target" \
+    "$fixture/native-test" "$commit" > "$fixture/stdout" 2> "$fixture/stderr"
+done
+[[ "$(wc -l < "$VOICE_FIXTURE_PATH_LOG")" == 4 ]]
+[[ "$(grep -Fc -- --list "$VOICE_FIXTURE_LOG")" == 6 ]]
+[[ "$(grep -Fc -- --nocapture "$VOICE_FIXTURE_LOG")" == 6 ]]
+for failure in missing identity test; do
+  if VOICE_FIXTURE_FAILURE="$failure" bash "$producer" verify "$archive" x86_64-unknown-linux-musl \
+    "$fixture/native-test" "$commit" > "$fixture/stdout" 2> "$fixture/stderr"; then
+    echo "Native verification accepted failure: $failure" >&2
+    exit 1
+  fi
+  case "$failure" in
+    missing) grep -Fq 'Required native voice test is missing' "$fixture/stderr" ;;
+    identity) grep -Fq wrong-shipping-identity "$fixture/stderr" ;;
+    test) grep -Fq fixture-native-load-failed "$fixture/stderr" ;;
+  esac
+done
+[[ -z "$(find "$fixture/native" -maxdepth 1 -name '.voice-verify-*' -print)" ]]
+
+# The build path publishes only after verification, and removes stale output on failure.
+build_producer="$fixture/project/.github/scripts/build-voice-runtime.sh"
+for failure in missing identity test; do
+  mkdir -p "$fixture/build-output"
+  printf stale > "$fixture/build-output/voice-runtime-x86_64-unknown-linux-musl.tar.gz"
+  if VOICE_FIXTURE_FAILURE="$failure" bash "$build_producer" build "$fixture/upstream" \
+    x86_64-unknown-linux-musl "$fixture/build-output" > "$fixture/stdout" 2> "$fixture/stderr"; then
+    echo "Build published after failed verification: $failure" >&2
+    exit 1
+  fi
+  [[ ! -e "$fixture/build-output/voice-runtime-x86_64-unknown-linux-musl.tar.gz" ]]
+  [[ -z "$(find "$fixture/build-output" -mindepth 1 -print)" ]]
+done
+bash "$build_producer" build "$fixture/upstream" x86_64-unknown-linux-musl \
+  "$fixture/build-output" > "$fixture/stdout" 2> "$fixture/stderr"
+[[ -f "$fixture/build-output/voice-runtime-x86_64-unknown-linux-musl.tar.gz" ]]
+grep -Fxq '//codex-rs/voice-host:voice-host-packaged_runtime-test-bin' "$VOICE_FIXTURE_BUILD_LOG"
+[[ -z "$(find "$fixture/build-output" -maxdepth 1 -name '.voice-*' -print)" ]]

@@ -2,6 +2,7 @@
 # Builds or packages the native voice runtime and helper for one supported app target.
 # Usage: matrix [app-target] | build <checkout> <app-target> <output> |
 #        package <checkout> <app-target> <output> <expected-source-commit>
+#        verify <archive> <app-target> <native-test-binary> <expected-source-commit>
 # matrix emits JSON; build/package leave voice-runtime-<app-target>.tar.gz in output.
 # Unsupported targets, missing tools/files, invalid receipts or build failures exit nonzero.
 # build requires the workflow's prepared native host and CODEX_UNLEASHED_TOOLING.
@@ -79,6 +80,64 @@ package_voice() (
   mv "$stage/$archive" "$output/$archive"
 )
 
+# Exercises the source-owned relocated-package test against archived shipping bytes.
+# Arguments: archive; app target; native packaged_runtime libtest binary; source commit.
+# Side effects: extracts and copies files into owned temporary staging beside the archive.
+# Errors: identity mismatch, missing exact test or native failure prints captured output.
+verify_voice() (
+  local archive="$1" target="$2" test_binary="$3" expected_commit="$4"
+  local configuration helper stage identity runtime helper_path test_name identity_output
+  [[ -n "$target" ]] || { echo 'App target must be nonempty' >&2; return 2; }
+  configuration="$(voice_matrix "$target")"
+  helper="$(jq -r '.[0].helper' <<< "$configuration")"
+  archive="$(CDPATH='' cd -- "$(dirname -- "$archive")" && pwd)/$(basename -- "$archive")"
+  test_binary="$(CDPATH='' cd -- "$(dirname -- "$test_binary")" && pwd)/$(basename -- "$test_binary")"
+  stage="$(mktemp -d "$(dirname -- "$archive")/.voice-verify-XXXXXX")"
+  trap 'rm -rf -- "$stage"' EXIT
+  mkdir "$stage/extracted"
+  tar -xzf "$archive" -C "$stage/extracted"
+  runtime="$stage/extracted/runtime"
+  jq -e --arg commit "$expected_commit" '.sourceCommit == $commit' "$runtime/runtime.json" >/dev/null
+  identity="$stage/identity package/codex-resources/voice"
+  mkdir -p "$identity"
+  cp -R "$runtime/." "$identity/"
+  mkdir -p "$identity/bin"
+  helper_path="$identity/bin/$helper"
+  cp "$stage/extracted/$helper" "$helper_path"
+  chmod 0755 "$helper_path"
+  # Startup-linked libraries require the installed helper/bin and runtime/lib layout.
+  if ! "$helper_path" --build-commit > "$stage/identity.log" 2>&1; then
+    cat "$stage/identity.log" >&2
+    return 1
+  fi
+  identity_output="$(cat "$stage/identity.log")"
+  if [[ "$identity_output" != "$expected_commit" ]]; then
+    printf 'Voice helper build commit must be %s; received:\n' "$expected_commit" >&2
+    cat "$stage/identity.log" >&2
+    return 1
+  fi
+  if [[ "$target" == *-pc-windows-msvc ]]; then
+    helper_path="$(cygpath -am "$helper_path")"
+    runtime="$(cygpath -am "$runtime")"
+  fi
+  local environment=(env -u RUNFILES_MANIFEST_ONLY -u RUNFILES_MANIFEST_FILE -u RUNFILES_DIR
+    "CARGO_BIN_EXE_codex-voice-host=$helper_path" "CODEX_TEST_VOICE_RUNTIME=$runtime")
+  test_name=relocated_runtime_initializes_closes_and_rejects_duplicate_initialization
+  if ! "${environment[@]}" "$test_binary" --ignored --exact "$test_name" --list > "$stage/list.log" 2>&1; then
+    cat "$stage/list.log" >&2
+    return 1
+  fi
+  if ! grep -Fxq "$test_name: test" "$stage/list.log"; then
+    printf 'Required native voice test is missing: %s\n' "$test_name" >&2
+    cat "$stage/list.log" >&2
+    return 1
+  fi
+  if ! "${environment[@]}" "$test_binary" --ignored --exact "$test_name" --nocapture > "$stage/test.log" 2>&1; then
+    cat "$stage/test.log" >&2
+    return 1
+  fi
+)
+
 # Builds only the matching native runtime/helper through the project Bazel scheduler.
 # Arguments: prepared upstream checkout; app target; archive output directory.
 # Environment: native Windows tool bindings supplied by setup-voice-windows.ps1;
@@ -87,21 +146,27 @@ package_voice() (
 # Errors: setup, native build or packaging failures exit nonzero.
 build_voice() (
   local checkout="$1" target="$2" output="$3"
-  local project_root configuration voice_target prefix commit
+  local project_root configuration voice_target prefix commit staging archive test_binary helper
   project_root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
   [[ -n "$target" ]] || { echo 'App target must be nonempty' >&2; return 2; }
   configuration="$(voice_matrix "$target")"
   voice_target="$(jq -r '.[0].voice_target' <<< "$configuration")"
   prefix="$(jq -r '.[0].prefix' <<< "$configuration")"
+  helper="$(jq -r '.[0].helper' <<< "$configuration")"
   mkdir -p "$output"
   output="$(CDPATH='' cd -- "$output" && pwd)"
+  archive="voice-runtime-$target.tar.gz"
+  rm -f -- "$output/$archive"
+  staging="$(mktemp -d "$output/.voice-build-XXXXXX")"
+  trap 'rm -rf -- "$staging"' EXIT
   cd "$checkout"
   commit="$(git rev-parse HEAD)"
   export STABLE_GIT_COMMIT="$commit"
   (cd codex-rs && cargo update --workspace)
   local wrapper=(bash "$project_root/.github/scripts/run-bazel-ci.sh" --remote-download-toplevel --print-failed-action-summary)
   local options=(build --config=release "--build_metadata=COMMIT_SHA=$commit")
-  local targets=("//third_party/voice:native_runtime_$prefix" //codex-rs/voice-host:codex-voice-host)
+  local targets=("//third_party/voice:native_runtime_$prefix" //codex-rs/voice-host:codex-voice-host
+    //codex-rs/voice-host:voice-host-packaged_runtime-test-bin)
   case "$voice_target" in
     *-apple-darwin) options+=(--macos_minimum_os=14.0) ;;
     *-pc-windows-msvc)
@@ -126,7 +191,13 @@ build_voice() (
       ;;
   esac
   "${wrapper[@]}" -- "${options[@]}" -- "${targets[@]}"
-  package_voice "$PWD" "$target" "$output" "$commit"
+  package_voice "$PWD" "$target" "$staging" "$commit"
+  test_binary="$PWD/bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin"
+  if [[ "$helper" == *.exe ]]; then
+    test_binary+=.exe
+  fi
+  verify_voice "$staging/$archive" "$target" "$test_binary" "$commit"
+  mv "$staging/$archive" "$output/$archive"
 )
 
 case "${1:-}" in
@@ -142,5 +213,9 @@ case "${1:-}" in
     [[ $# == 5 ]] || { echo 'Usage: build-voice-runtime.sh package <checkout> <app-target> <output> <expected-source-commit>' >&2; exit 2; }
     package_voice "$2" "$3" "$4" "$5"
     ;;
-  *) echo 'Usage: build-voice-runtime.sh <matrix|build|package> [arguments]' >&2; exit 2 ;;
+  verify)
+    [[ $# == 5 ]] || { echo 'Usage: build-voice-runtime.sh verify <archive> <app-target> <native-test-binary> <expected-source-commit>' >&2; exit 2; }
+    verify_voice "$2" "$3" "$4" "$5"
+    ;;
+  *) echo 'Usage: build-voice-runtime.sh <matrix|build|package|verify> [arguments]' >&2; exit 2 ;;
 esac
