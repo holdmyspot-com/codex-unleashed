@@ -70,6 +70,22 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Install pinned Windows voice build prerequisites
+        if: inputs.focus == 'windows-test-timeouts'
+        working-directory: upstream
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content .github/scripts/voice-cygwin-snapshot.json -Raw | ConvertFrom-Json).archive
+          $directory = Join-Path $env:RUNNER_TEMP 'voice-cygwin-snapshot'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $archive = Join-Path $directory $pin.name
+          gh release download $pin.tag --repo openai/codex --pattern $pin.name --dir $directory
+          if ($LASTEXITCODE -ne 0) { throw 'Downloading the pinned Windows voice archive failed.' }
+          & ./.github/scripts/setup-voice-windows.ps1 -Target x86_64-pc-windows-msvc -SnapshotArchive $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the pinned Windows voice prerequisites failed.' }
       - name: Repeat complete credential regression target
         if: inputs.focus == 'credentials'
         shell: bash
