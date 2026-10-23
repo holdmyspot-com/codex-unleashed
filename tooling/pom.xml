@@ -70,6 +70,29 @@
 		</dependencies>
 	</dependencyManagement>
 
+	<!-- WORKAROUND: Enabled inherited Java.net repositories trigger prefix filtering against
+	     an expired endpoint: https://github.com/apache/maven-resolver/issues/2156
+	     Remove both overrides when the dependency chain drops this repository or a shipped
+	     Resolver/Maven fix handles enabled inherited repositories, verified by fresh-cache
+	     online checks. PR2192 only handles disabled policies and is insufficient. -->
+	<repositories>
+		<repository>
+			<id>jvnet-nexus-releases</id>
+			<url>https://repo.maven.apache.org/maven2/</url>
+			<releases><enabled>true</enabled></releases>
+			<snapshots><enabled>false</enabled></snapshots>
+		</repository>
+	</repositories>
+
+	<pluginRepositories>
+		<pluginRepository>
+			<id>jvnet-nexus-releases</id>
+			<url>https://repo.maven.apache.org/maven2/</url>
+			<releases><enabled>true</enabled></releases>
+			<snapshots><enabled>false</enabled></snapshots>
+		</pluginRepository>
+	</pluginRepositories>
+
 	<build>
 		<directory>${tooling.build.root}/${project.artifactId}</directory>
 		<pluginManagement>
