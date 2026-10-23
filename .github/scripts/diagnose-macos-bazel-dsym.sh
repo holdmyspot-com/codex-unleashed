@@ -8,6 +8,95 @@
 # The diagnostic job owns evidence cleanup after its always-run artifact upload.
 set -euo pipefail
 
+# Retains bounded server diagnostics before owned sandbox cleanup, preserving the caller's status.
+# Arguments: 1: Original status; 2: Owned sandbox; 3: Evidence directory; 4: Configured output base.
+# The CI setup passes this exact output base to setup-bazel; no default path is inferred.
+finish_dsym_diagnostic() {
+  local status="$1" sandbox="$2" evidence="$3" output_base="$4"
+  trap - EXIT
+  if [[ "$status" != 0 && "$output_base" == /* && -f "$output_base/server/jvm.out" ]]; then
+    tail -c 65536 -- "$output_base/server/jvm.out" > "$evidence/bazel-jvm-tail.log" || true
+  fi
+  rm -rf -- "$sandbox" || true
+  exit "$status"
+}
+
+# Exercises the EXIT boundary without starting Bazel or changing the caller's traps.
+test_jvm_retention() {
+  local fixture="$1/jvm-retention" expected actual
+  mkdir -p "$fixture/base/server" "$fixture/unrelated"
+  # A recognizable suffix proves that retention selects the tail rather than the prefix.
+  { head -c 70000 /dev/zero; printf 'terminal JVM evidence\n'; } > "$fixture/base/server/jvm.out"
+  tail -c 65536 "$fixture/base/server/jvm.out" > "$fixture/expected-tail"
+  printf 'unrelated\n' > "$fixture/unrelated/keep"
+  for expected in 0 33 37 130 143; do
+    mkdir -p "$fixture/sandbox" "$fixture/evidence"
+    printf 'retained GC evidence\n' > "$fixture/evidence/bazel-gc.log"
+    actual=0
+    (
+      trap 'finish_dsym_diagnostic "$?" "$fixture/sandbox" "$fixture/evidence" "$fixture/base"' EXIT
+      exit "$expected"
+    ) || actual=$?
+    [[ "$actual" == "$expected" && ! -e "$fixture/sandbox" ]]
+    grep -Fxq 'retained GC evidence' "$fixture/evidence/bazel-gc.log"
+    if [[ "$expected" == 0 ]]; then
+      [[ ! -e "$fixture/evidence/bazel-jvm-tail.log" ]]
+    else
+      cmp "$fixture/expected-tail" "$fixture/evidence/bazel-jvm-tail.log"
+      [[ "$(wc -c < "$fixture/evidence/bazel-jvm-tail.log" | tr -d ' ')" == 65536 ]]
+    fi
+    rm -rf -- "$fixture/evidence"
+  done
+  # Use a separate Bash process so actual signals cannot cancel the self-test's owner.
+  {
+    declare -f finish_dsym_diagnostic
+    cat <<'SIGNAL_TEST'
+set -euo pipefail
+fixture="$1"
+trap 'finish_dsym_diagnostic "$?" "$fixture/sandbox" "$fixture/evidence" "$fixture/base"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+kill -s "$2" "$$"
+exit 99
+SIGNAL_TEST
+  } > "$fixture/signal-test.sh"
+  for expected in INT TERM; do
+    mkdir -p "$fixture/sandbox" "$fixture/evidence"
+    actual=0
+    bash "$fixture/signal-test.sh" "$fixture" "$expected" || actual=$?
+    case "$expected" in
+      INT) [[ "$actual" == 130 ]] ;;
+      TERM) [[ "$actual" == 143 ]] ;;
+    esac
+    [[ ! -e "$fixture/sandbox" ]]
+    cmp "$fixture/expected-tail" "$fixture/evidence/bazel-jvm-tail.log"
+    rm -rf -- "$fixture/evidence"
+  done
+  for expected in missing-base missing-log copy-failure; do
+    mkdir -p "$fixture/sandbox" "$fixture/evidence"
+    actual=0
+    (
+      local output_base="$fixture/base"
+      case "$expected" in
+        missing-base) output_base= ;;
+        missing-log) output_base="$fixture/unrelated" ;;
+        copy-failure) mkdir "$fixture/evidence/bazel-jvm-tail.log" ;;
+      esac
+      trap 'finish_dsym_diagnostic "$?" "$fixture/sandbox" "$fixture/evidence" "$output_base"' EXIT
+      exit 37
+    ) 2> "$fixture/retention.stderr" || actual=$?
+    [[ "$actual" == 37 && ! -e "$fixture/sandbox" ]]
+    if [[ "$expected" == copy-failure ]]; then
+      [[ -d "$fixture/evidence/bazel-jvm-tail.log" ]]
+    else
+      [[ ! -e "$fixture/evidence/bazel-jvm-tail.log" ]]
+    fi
+    rm -rf -- "$fixture/evidence"
+  done
+  [[ "$(cat "$fixture/unrelated/keep")" == unrelated ]]
+  echo 'PASS: bounded JVM tail retention preserves cleanup and failure/cancellation status'
+}
+
 # Rejects paths that could escape an action's execution root.
 # Arguments: 1: Execution-root-relative input or output path.
 # Exit status: Zero for a nonempty relative path without traversal or control characters.
@@ -596,6 +685,7 @@ self_test() (
   local fixture status retain_failed_self_test="${3:-false}"
   fixture="$(mktemp -d "${1:?temporary parent required}/macos-dsym-self-test-XXXXXX")"
   trap 'status=$?; if [[ "$status" == 0 || "$retain_failed_self_test" != true ]]; then rm -rf -- "$fixture"; else printf "Retained failed self-test evidence: %s\n" "$fixture" >&2; fi' EXIT
+  test_jvm_retention "$fixture"
   mkdir -p "$fixture/source/bazel/tools" "$fixture/evidence" \
     "$fixture/source/bazel-out/native/bin/codex-rs/cli/codex.dSYM/Contents/Resources/DWARF"
   cat > "$fixture/source/bazel/tools/dsymutil" <<'WRAPPER'
@@ -749,7 +839,7 @@ else
   mkdir "$evidence"
   { uname -a; printf 'Rust target: %s\ndwarfdump: %s\n' "$native_target" "$dwarf_tool"; } > "$evidence/native-host.txt"
   sandbox_base="$(mktemp -d "$evidence/sandboxes.XXXXXX")"
-  trap 'rm -rf -- "$sandbox_base"' EXIT
+  trap 'finish_dsym_diagnostic "$?" "$sandbox_base" "$evidence" "${BAZEL_OUTPUT_BASE:-}"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
   cd "$source_root"
@@ -757,8 +847,9 @@ else
   # A distinct inert cfg per run attempt forces only this binary's action to execute, retaining dependency caches.
   # ci-macos enables Linux RBE when credentials exist. Cache-only ci-bazel keeps execution native;
   # the maintained Java wrapper still owns compiler scheduling, credentials, and repository caches.
-  # Retain heap/GC evidence without changing the JVM memory budget or dumping process memory.
+  # Cap this diagnostic's JVM heap above the runner default and retain GC evidence without dumping memory.
   bash "$script_dir/run-bazel-with-buildbuddy.sh" \
+    --host_jvm_args=-Xmx2560m \
     "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
     build --config=ci-bazel \
     --jobs=2 --loading_phase_threads=1 --local_resources=cpu=1 \
