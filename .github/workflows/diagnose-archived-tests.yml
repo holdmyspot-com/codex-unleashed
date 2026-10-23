@@ -6,6 +6,9 @@ on:
       source-run:
         type: string
         required: true
+      upstream-ref:
+        type: string
+        default: 83086188ae0614bd882818ff1aa23f3194962012
       runner:
         type: string
         required: true
@@ -35,6 +38,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          persist-credentials: false
+
+      - name: Check out the archived workspace source
+        uses: actions/checkout@v6
+        with:
+          repository: openai/codex
+          ref: ${{ inputs.upstream-ref }}
+          path: archived-workspace
           persist-credentials: false
 
       - uses: taiki-e/install-action@v2
@@ -74,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
-          mkdir "$diagnostic_root/workspace" "$diagnostic_root/extracted"
+          mkdir "$diagnostic_root/extracted"
           cat > "$diagnostic_root/nextest.toml" <<'CONFIG'
           [profile.archived-diagnostic]
           slow-timeout = { period = "60s", terminate-after = 10 }
@@ -87,7 +98,7 @@ jobs:
           "${trace_command[@]}" cargo nextest run \
             --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
             --extract-to "$diagnostic_root/extracted" \
-            --workspace-remap "$diagnostic_root/workspace" \
+            --workspace-remap "$GITHUB_WORKSPACE/archived-workspace/codex-rs" \
             --config-file "$diagnostic_root/nextest.toml" \
             --profile archived-diagnostic --test-threads 1 --retries 0 \
             --failure-output immediate-final \
@@ -108,4 +119,4 @@ jobs:
       - name: Remove downloaded and extracted test inputs
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native"
+        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native" "$GITHUB_WORKSPACE/archived-workspace"
