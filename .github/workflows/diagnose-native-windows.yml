@@ -147,6 +147,8 @@ jobs:
             ${{ runner.temp }}/dsym-wrapper-preflight/preflight.log
             ${{ runner.temp }}/dsym-wrapper-preflight/macos-dsym-self-test-*/
             ~/Library/Logs/DiagnosticReports/process_wrapper*.ips
+            ~/Library/Logs/DiagnosticReports/env*.ips
+            ~/Library/Logs/DiagnosticReports/sandbox-exec*.ips
           if-no-files-found: error
           retention-days: 1
       - name: Remove native wrapper preflight inputs

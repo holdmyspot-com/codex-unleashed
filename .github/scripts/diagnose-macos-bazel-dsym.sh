@@ -101,11 +101,15 @@ collect_darwin_replay_evidence() (
     --predicate 'process == "sandboxd" OR eventMessage CONTAINS "process_wrapper"' \
     2>&1 | head -c 65536 > "$capture/sandbox-log.txt" || true
   /usr/bin/lldb --batch --no-lldbinit \
-    --one-line-on-crash 'thread backtrace all' --one-line-on-crash 'process kill' \
+    --one-line-on-crash 'thread backtrace all' \
+    --one-line-on-crash 'register read x0 x1 x2 x3 x4 x5' \
+    --one-line-on-crash "memory read --format s --count 1 \$x4" \
+    --one-line-on-crash 'process kill' \
     -o 'settings set target.disable-aslr false' \
     -o 'settings set target.process.stop-on-exec false' \
     -o 'process handle SIGABRT -s true -n true -p true' \
-    -o run -o 'thread backtrace all' -o 'process kill' -- \
+    -o run -o 'thread backtrace all' -o 'register read x0 x1 x2 x3 x4 x5' \
+    -o "memory read --format s --count 1 \$x4" -o 'process kill' -- \
     /usr/bin/sandbox-exec -f "$capture/replay.sb" "$@" \
     > "$capture/debugger.txt" 2>&1 &
   debugger=$!
