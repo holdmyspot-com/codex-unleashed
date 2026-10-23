@@ -68,6 +68,17 @@ jobs:
       upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
+  tests-linux-x64-remote:
+    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
+    with:
+      runner: ubuntu-latest
+      target: x86_64-unknown-linux-gnu
+      profile: ci-test
+      artifact_id: linux-x64-remote
+      remote_env: true
+      upstream_ref: ${{ inputs.upstream_ref }}
+    secrets: inherit
+
   tests-macos-arm64:
     uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
     with:
@@ -130,6 +141,7 @@ jobs:
       - bazel
       - v8-canary
       - tests-linux-x64
+      - tests-linux-x64-remote
       - tests-macos-arm64
       - tests-macos-x64
       - tests-windows-x64

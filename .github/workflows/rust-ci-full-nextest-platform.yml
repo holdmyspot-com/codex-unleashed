@@ -23,6 +23,11 @@ on:
         required: true
         type: string
         default: linux-x64
+      remote_env:
+        description: Run Linux test shards against a Docker remote environment.
+        required: false
+        type: boolean
+        default: false
       upstream_ref:
         description: Optional upstream ref; defaults to the repository release pin.
         required: false
@@ -41,6 +46,11 @@ on:
       artifact_id:
         required: true
         type: string
+      remote_env:
+        description: Run Linux test shards against a Docker remote environment.
+        required: false
+        type: boolean
+        default: false
       upstream_ref:
         required: false
         type: string
@@ -245,6 +255,7 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
       TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
+      CODEX_TEST_REMOTE_ENV_CONTAINER_NAME: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.artifact_id }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
       matrix:
@@ -319,6 +330,27 @@ jobs:
           )
 
       - uses: ./.github/actions/configure-nextest-native-sdk
+
+      - name: Configure rusty_v8 for the remote test server build
+        if: ${{ runner.os == 'Linux' && inputs.remote_env }}
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ inputs.target }}
+
+      - name: Set up remote test env (Docker)
+        if: ${{ runner.os == 'Linux' && inputs.remote_env }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" bash -euo pipefail -c '
+          source "${GITHUB_WORKSPACE}/upstream/scripts/test-remote-env.sh"
+          {
+            echo "CODEX_TEST_ENVIRONMENT=${CODEX_TEST_ENVIRONMENT}"
+            echo "CODEX_TEST_REMOTE_ENV=${CODEX_TEST_REMOTE_ENV}"
+            echo "CODEX_TEST_REMOTE_ENV_CONTAINER_NAME=${CODEX_TEST_REMOTE_ENV_CONTAINER_NAME}"
+            echo "CODEX_TEST_REMOTE_EXEC_SERVER_URL=${CODEX_TEST_REMOTE_EXEC_SERVER_URL}"
+          } >> "$GITHUB_ENV"
+          '
 
       - name: Run nextest shard
         id: test
@@ -399,6 +431,16 @@ jobs:
           path: upstream/codex-rs/target/nextest/default/junit.xml
           retention-days: 1
           if-no-files-found: warn
+
+      - name: Tear down remote test env
+        if: ${{ always() && runner.os == 'Linux' && inputs.remote_env }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker info > /dev/null
+          if docker container inspect "$CODEX_TEST_REMOTE_ENV_CONTAINER_NAME" > /dev/null 2>&1; then
+            docker rm -f "$CODEX_TEST_REMOTE_ENV_CONTAINER_NAME"
+          fi
 
       - name: Remove staged native test dependencies
         if: always()
