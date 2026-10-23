@@ -355,6 +355,15 @@ jobs:
             --partition "hash:${{ matrix.shard }}/4"
           )
 
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            # WORKAROUND: https://github.com/openai/codex/issues/32915
+            # Keep the approved legacy sandbox regression exclusion aligned with
+            # Bazel CI. Remove when writable-root deletion confinement is fixed.
+            nextest_args+=(
+              -E 'not (package(codex-windows-sandbox) & test(=unified_exec::tests::legacy_workspace_write_delete_is_limited_to_writable_roots))'
+            )
+          fi
+
           test_command=(cargo nextest "${nextest_args[@]}")
           if [[ "${RUNNER_OS}" == "Linux" ]]; then
             sandbox_helper="${helper_target_dir}/codex-linux-sandbox"
