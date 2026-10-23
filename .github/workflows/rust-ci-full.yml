@@ -88,6 +88,16 @@ jobs:
       upstream_ref: ${{ inputs.upstream_ref }}
     secrets: inherit
 
+  tests-windows-arm64:
+    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
+    with:
+      runner: windows-11-arm
+      target: aarch64-pc-windows-msvc
+      profile: ci-test
+      artifact_id: windows-arm64
+      upstream_ref: ${{ inputs.upstream_ref }}
+    secrets: inherit
+
   tests-linux-arm64:
     uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
     with:
@@ -123,6 +133,7 @@ jobs:
       - tests-macos-arm64
       - tests-macos-x64
       - tests-windows-x64
+      - tests-windows-arm64
       - tests-linux-arm64
     runs-on: ubuntu-latest
     steps:
