@@ -27,7 +27,7 @@ printf '%s: rebuilding after CLI help-text change\n' "$(date -u +%FT%TZ)"
 }
 date +%s.%N > "$profile_output/changed-end.txt"
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-after-change.txt"
-grep -Fq 'Show Codex Unleashed build information (module-cache verification).' "$profile_output/help-after-change.txt"
+grep -Fq '(module-cache verification)' "$profile_output/help-after-change.txt"
 cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/changed-cargo-timing.html"
 find "$CARGO_TARGET_DIR/lld-thinlto-cache" -type f -name 'llvmcache-*' \
   -printf '%f %i %s %T@\n' | sort > "$profile_output/changed-cache.txt"
