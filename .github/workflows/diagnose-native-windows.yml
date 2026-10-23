@@ -9,6 +9,7 @@ on:
         default: credentials
         options:
           - credentials
+          - windows-test-timeouts
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -43,13 +44,13 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: windows-2022
 
   regressions:
-    if: inputs.focus == 'credentials'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts'
     needs: prepare-tooling
     runs-on: windows-2022
     timeout-minutes: 90
@@ -70,6 +71,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Repeat complete credential regression target
+        if: inputs.focus == 'credentials'
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -82,6 +84,23 @@ jobs:
             --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
             --nocache_test_results --runs_per_test=5 --test_output=errors \
             -- //codex-rs/model-provider:model-provider-unit-tests
+
+      - name: Diagnose native test timeout boundaries
+        if: inputs.focus == 'windows-test-timeouts'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --nocache_test_results --runs_per_test=5 --test_timeout=300 --test_output=all \
+            --test_arg=--nocapture \
+            -- //codex-rs/http-client:custom_ca_probe-bin-unit-tests \
+            //codex-rs/voice-host:voice-host-installed_client-test
 
   compiler-scheduler-baseline:
     if: inputs.focus == 'compiler-scheduler-baseline' || inputs.focus == 'compiler-scheduler-native'
