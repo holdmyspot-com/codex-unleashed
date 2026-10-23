@@ -26,6 +26,7 @@ runs:
         fi
         {
           printf 'PKG_CONFIG_PATH=%s/sdk/lib/pkgconfig\n' "$root"
+          printf 'CODEX_TEST_VOICE_RUNTIME=%s/runtime\n' "$root"
           printf 'GST_PLUGIN_PATH_1_0=%s\n' "$plugins"
           printf 'GST_PLUGIN_SYSTEM_PATH_1_0=\n'
         } >> "$GITHUB_ENV"

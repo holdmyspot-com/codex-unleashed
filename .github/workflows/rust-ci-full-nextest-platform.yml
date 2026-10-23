@@ -45,10 +45,13 @@ on:
         required: false
         type: string
 
+env:
+  CARGO_NEXTEST_VERSION: "0.9.149"
+
 jobs:
   archive:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_PROFILE_CI_TEST_DEBUG: "0"
@@ -121,8 +124,7 @@ jobs:
 
       - uses: taiki-e/install-action@v2
         with:
-          tool: nextest
-          version: 0.9.103
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
 
       - name: Build nextest archive
         working-directory: upstream/codex-rs
@@ -134,6 +136,7 @@ jobs:
           cargo nextest archive \
             --target "${{ inputs.target }}" \
             --cargo-profile "${{ inputs.profile }}" \
+            --features codex-v8-poc/sandbox \
             --timings \
             --archive-file "${archive_dir}/${NEXTEST_ARCHIVE_FILE}"
 
@@ -258,8 +261,7 @@ jobs:
 
       - uses: taiki-e/install-action@v2
         with:
-          tool: nextest
-          version: 0.9.103
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
 
       - name: Download nextest archive
         env:
@@ -354,6 +356,7 @@ jobs:
           "${test_command[@]}"
         env:
           RUST_BACKTRACE: 1
+          RUST_LIB_BACKTRACE: 0
           RUST_MIN_STACK: "8388608"
           NEXTEST_STATUS_LEVEL: leak
 
