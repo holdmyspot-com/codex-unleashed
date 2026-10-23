@@ -41,3 +41,4 @@ comm -13 "$profile_output/warm-cache.txt" "$profile_output/changed-cache.txt" \
 test -s "$profile_output/unchanged-cache-entries.txt"
 test -s "$profile_output/rebuilt-cache-entries.txt"
 wc -l "$profile_output/unchanged-cache-entries.txt" "$profile_output/rebuilt-cache-entries.txt"
+bash .github/diagnostics/benchmark-linker-workers.sh
