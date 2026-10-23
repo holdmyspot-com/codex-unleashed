@@ -23,6 +23,16 @@ on:
         required: true
         type: string
         default: linux-x64
+      reuse_archive:
+        description: Reuse test artifacts uploaded by a completed same-target and same-profile producer in this run.
+        required: false
+        type: boolean
+        default: false
+      archive_artifact_id:
+        description: Artifact identifier of the producer; defaults to artifact_id.
+        required: false
+        type: string
+        default: ''
       remote_env:
         description: Run Linux test shards against a Docker remote environment.
         required: false
@@ -46,6 +56,16 @@ on:
       artifact_id:
         required: true
         type: string
+      reuse_archive:
+        description: Reuse test artifacts uploaded by a completed same-target and same-profile producer in this run.
+        required: false
+        type: boolean
+        default: false
+      archive_artifact_id:
+        description: Artifact identifier of the producer; defaults to artifact_id.
+        required: false
+        type: string
+        default: ''
       remote_env:
         description: Run Linux test shards against a Docker remote environment.
         required: false
@@ -60,13 +80,14 @@ env:
 
 jobs:
   archive:
+    if: ${{ !inputs.reuse_archive }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 180
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       CARGO_PROFILE_CI_TEST_DEBUG: "0"
-      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
-      TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
+      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.archive_artifact_id || inputs.artifact_id }}.tar.zst
+      TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.archive_artifact_id || inputs.artifact_id }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -204,7 +225,7 @@ jobs:
       - name: Upload nextest archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: nextest-archive-${{ inputs.artifact_id }}
+          name: nextest-archive-${{ inputs.archive_artifact_id || inputs.artifact_id }}
           path: ${{ runner.temp }}/nextest-archive/${{ env.NEXTEST_ARCHIVE_FILE }}
           if-no-files-found: error
           retention-days: 1
@@ -218,7 +239,7 @@ jobs:
       - name: Upload native test dependencies
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: nextest-native-${{ inputs.artifact_id }}
+          name: nextest-native-${{ inputs.archive_artifact_id || inputs.artifact_id }}
           path: ${{ runner.temp }}/nextest-native.tar.gz
           if-no-files-found: error
           retention-days: 1
@@ -246,6 +267,7 @@ jobs:
   shard:
     name: Tests shard ${{ matrix.shard }}/4
     needs: archive
+    if: ${{ !cancelled() && (needs.archive.result == 'success' || (inputs.reuse_archive && needs.archive.result == 'skipped')) }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 60
     permissions:
@@ -253,8 +275,8 @@ jobs:
       contents: read
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
-      TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
+      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.archive_artifact_id || inputs.artifact_id }}.tar.zst
+      TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.archive_artifact_id || inputs.artifact_id }}
       CODEX_TEST_REMOTE_ENV_CONTAINER_NAME: codex-remote-test-env-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.artifact_id }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
@@ -295,7 +317,7 @@ jobs:
       - name: Download nextest archive
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT_NAME: nextest-archive-${{ inputs.artifact_id }}
+          ARTIFACT_NAME: nextest-archive-${{ inputs.archive_artifact_id || inputs.artifact_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -316,7 +338,7 @@ jobs:
       - name: Download native test dependencies
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT_NAME: nextest-native-${{ inputs.artifact_id }}
+          ARTIFACT_NAME: nextest-native-${{ inputs.archive_artifact_id || inputs.artifact_id }}
         shell: bash
         run: |
           set -euo pipefail
