@@ -7,7 +7,7 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /** Checks the complete Cargo cache size manifest's root selection, ordering, raw paths and file sizes. */
@@ -47,19 +47,20 @@ public final class CargoCacheManifestTest
 			CargoCacheManifest.write(output, environment);
 			String expected = "2\t" + first + "\n5\t" + nested + "\n2\t" + link + "\n5\t" + archive +
 				"\n3\t" + checkout + "\n";
-			assertEquals(Files.readString(output), expected.replace("\n", System.lineSeparator()));
+			requireThat(Files.readString(output), "manifest").isEqualTo(expected.replace("\n", System.lineSeparator()));
 			CargoCacheManifest.write(output, environment);
-			assertEquals(Files.readString(output), expected.replace("\n", System.lineSeparator()));
+			requireThat(Files.readString(output), "repeatedManifest").
+				isEqualTo(expected.replace("\n", System.lineSeparator()));
 			Path targetLink = Files.createSymbolicLink(root.resolve("target-link"), target);
 			CargoCacheManifest.write(output, Map.of("CARGO_TARGET_DIR", targetLink.toString(), "CARGO_HOME", ""));
 			String linked = "2\t" + targetLink.resolve("a") + "\n5\t" + targetLink.resolve("nested/last") +
 				"\n2\t" + targetLink.resolve("z-link") + "\n";
-			assertEquals(Files.readString(output), linked.replace("\n", System.lineSeparator()));
+			requireThat(Files.readString(output), "linkedManifest").isEqualTo(linked.replace("\n", System.lineSeparator()));
 			CargoCacheManifest.write(output, Map.of("CARGO_TARGET_DIR", root.resolve("missing").toString()));
-			assertEquals(Files.readString(output), "");
+			requireThat(Files.readString(output), "missingManifest").isEmpty();
 			Files.writeString(output, "preserve");
 			expectThrows(IOException.class, () -> CargoCacheManifest.write(output, Map.of()));
-			assertEquals(Files.readString(output), "preserve");
+			requireThat(Files.readString(output), "preservedManifest").isEqualTo("preserve");
 		}
 		finally
 		{

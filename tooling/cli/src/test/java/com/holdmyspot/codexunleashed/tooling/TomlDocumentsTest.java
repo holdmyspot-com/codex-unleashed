@@ -10,8 +10,7 @@ import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /** Verifies native TOML temporal values remain distinct from quoted strings at producer boundaries. */
@@ -34,11 +33,12 @@ public final class TomlDocumentsTest
 			quoted = ["2000-01-01", "12:34:56", "2000-01-01T12:34:56", "2000-01-01T12:34:56Z"]
 			""");
 		for (String name : new String[]{"date", "time", "local", "offset"})
-			assertTrue(document.path(name).isPojo(), name);
+			requireThat(document.path(name).isPojo(), "nativeTemporalType").isTrue();
 		for (JsonNode quoted : document.path("quoted"))
-			assertTrue(quoted.isString());
+			requireThat(quoted.isString(), "quotedString").isTrue();
 		expectThrows(JacksonException.class, () -> TomlDocuments.parse("date = 2000-02-31\n"));
-		assertEquals(TomlDocuments.parse("date = \"2000-02-31\"\n").path("date").stringValue(), "2000-02-31");
+		requireThat(TomlDocuments.parse("date = \"2000-02-31\"\n").path("date").stringValue(), "quotedDate").
+			isEqualTo("2000-02-31");
 	}
 
 	/** Rejects native dates as V8 versions while retaining identical quoted text. */
@@ -47,7 +47,7 @@ public final class TomlDocumentsTest
 	{
 		String prefix = "[[package]]\nname = \"v8\"\nversion = ";
 		expectThrows(IOException.class, () -> V8Versions.resolveLockfile(prefix + "2000-01-01\n"));
-		assertEquals(uncheckedVersion(prefix + "\"2000-01-01\"\n"), "2000-01-01");
+		requireThat(uncheckedVersion(prefix + "\"2000-01-01\"\n"), "quotedVersion").isEqualTo("2000-01-01");
 	}
 
 	/**
@@ -66,7 +66,7 @@ public final class TomlDocumentsTest
 			Files.writeString(manifest, "[workspace.package]\nversion = 2000-01-01\n");
 			expectThrows(IOException.class, () -> PackageVersions.resolve(root, Map.of()));
 			Files.writeString(manifest, "[workspace.package]\nversion = \"2000-01-01\"\n");
-			assertEquals(PackageVersions.resolve(root, Map.of()), "2000-01-01+dev");
+			requireThat(PackageVersions.resolve(root, Map.of()), "quotedPackageVersion").isEqualTo("2000-01-01+dev");
 		}
 		finally
 		{

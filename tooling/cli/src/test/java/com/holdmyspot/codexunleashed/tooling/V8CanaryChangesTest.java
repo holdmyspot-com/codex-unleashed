@@ -3,9 +3,7 @@ package com.holdmyspot.codexunleashed.tooling;
 import java.io.IOException;
 import java.util.Set;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /**
@@ -27,26 +25,26 @@ public final class V8CanaryChangesTest
 	public void distinguishesBuildMatrices()
 	{
 		V8CanaryChanges.Decision cargo = V8CanaryChanges.decide(Set.of("codex-rs/Cargo.toml"), "149.2.0", "149.2.0");
-		assertTrue(cargo.canaryRequired());
-		assertFalse(cargo.windowsSourceRequired());
-		assertEquals(cargo.canaryReason(), "codex-rs/Cargo.toml");
-		assertEquals(cargo.windowsSourceReason(), "no relevant changes");
+		requireThat(cargo.canaryRequired(), "canaryRequired").isTrue();
+		requireThat(cargo.windowsSourceRequired(), "windowsSourceRequired").isFalse();
+		requireThat(cargo.canaryReason(), "canaryReason").isEqualTo("codex-rs/Cargo.toml");
+		requireThat(cargo.windowsSourceReason(), "windowsSourceReason").isEqualTo("no relevant changes");
 		for (String path : new String[]{".github/scripts/rusty_v8_module_bazel.py",
 			".github/actions/setup-ci/action.yml", ".github/scripts/setup-dev-drive.ps1"})
 		{
 			V8CanaryChanges.Decision decision = V8CanaryChanges.decide(Set.of(path), "149.2.0", "149.2.0");
-			assertTrue(decision.canaryRequired());
-			assertTrue(decision.windowsSourceRequired());
-			assertEquals(decision.canaryReason(), path);
-			assertEquals(decision.windowsSourceReason(), path);
+			requireThat(decision.canaryRequired(), "canaryRequired").isTrue();
+			requireThat(decision.windowsSourceRequired(), "windowsSourceRequired").isTrue();
+			requireThat(decision.canaryReason(), "canaryReason").isEqualTo(path);
+			requireThat(decision.windowsSourceReason(), "windowsSourceReason").isEqualTo(path);
 		}
 		V8CanaryChanges.Decision version = V8CanaryChanges.decide(Set.of(), "149.2.0", "150.0.0");
-		assertTrue(version.canaryRequired());
-		assertTrue(version.windowsSourceRequired());
-		assertEquals(version.canaryReason(), "v8 version changed from 149.2.0 to 150.0.0");
-		assertEquals(version.windowsSourceReason(), version.canaryReason());
-		assertEquals(V8CanaryChanges.forced(), new V8CanaryChanges.Decision(true, "manual workflow dispatch",
-			true, "manual workflow dispatch"));
+		requireThat(version.canaryRequired(), "canaryRequired").isTrue();
+		requireThat(version.windowsSourceRequired(), "windowsSourceRequired").isTrue();
+		requireThat(version.canaryReason(), "canaryReason").isEqualTo("v8 version changed from 149.2.0 to 150.0.0");
+		requireThat(version.windowsSourceReason(), "windowsSourceReason").isEqualTo(version.canaryReason());
+		requireThat(V8CanaryChanges.forced(), "forced").
+			isEqualTo(new V8CanaryChanges.Decision(true, "manual workflow dispatch", true, "manual workflow dispatch"));
 	}
 
 	/**
@@ -57,17 +55,19 @@ public final class V8CanaryChangesTest
 	{
 		V8CanaryChanges.Decision paths = V8CanaryChanges.decide(Set.of("patches/v8_nested/deep.patch",
 			"third_party/v8/nested/source.cc", ".BAZELRC", "unrelated.txt"), "149.2.0", "149.2.0");
-		assertTrue(paths.canaryRequired());
-		assertFalse(paths.windowsSourceRequired());
-		assertEquals(paths.canaryReason(), "patches/v8_nested/deep.patch, third_party/v8/nested/source.cc");
+		requireThat(paths.canaryRequired(), "canaryRequired").isTrue();
+		requireThat(paths.windowsSourceRequired(), "windowsSourceRequired").isFalse();
+		requireThat(paths.canaryReason(), "canaryReason").
+			isEqualTo("patches/v8_nested/deep.patch, third_party/v8/nested/source.cc");
 		V8CanaryChanges.Decision unrelated = V8CanaryChanges.decide(Set.of(".BAZELRC", "unrelated.txt"),
 			"149.2.0", "149.2.0");
-		assertFalse(unrelated.canaryRequired());
-		assertFalse(unrelated.windowsSourceRequired());
-		assertEquals(unrelated.canaryReason(), "no relevant changes");
+		requireThat(unrelated.canaryRequired(), "canaryRequired").isFalse();
+		requireThat(unrelated.windowsSourceRequired(), "windowsSourceRequired").isFalse();
+		requireThat(unrelated.canaryReason(), "canaryReason").isEqualTo("no relevant changes");
 		V8CanaryChanges.Decision unicode = V8CanaryChanges.decide(Set.of("third_party/v8/\uE000",
 			"third_party/v8/\uD800\uDC00"), "149.2.0", "149.2.0");
-		assertEquals(unicode.canaryReason(), "third_party/v8/\uE000, third_party/v8/\uD800\uDC00");
+		requireThat(unicode.canaryReason(), "canaryReason").
+			isEqualTo("third_party/v8/\uE000, third_party/v8/\uD800\uDC00");
 	}
 
 	/**
@@ -81,10 +81,10 @@ public final class V8CanaryChangesTest
 		{
 			String path = root + source;
 			V8CanaryChanges.Decision decision = V8CanaryChanges.decide(Set.of(path), "149.2.0", "149.2.0");
-			assertTrue(decision.canaryRequired());
-			assertTrue(decision.windowsSourceRequired());
-			assertEquals(decision.canaryReason(), path);
-			assertEquals(decision.windowsSourceReason(), path);
+			requireThat(decision.canaryRequired(), "canaryRequired").isTrue();
+			requireThat(decision.windowsSourceRequired(), "windowsSourceRequired").isTrue();
+			requireThat(decision.canaryReason(), "canaryReason").isEqualTo(path);
+			requireThat(decision.windowsSourceReason(), "windowsSourceReason").isEqualTo(path);
 		}
 	}
 
@@ -98,9 +98,9 @@ public final class V8CanaryChangesTest
 	{
 		String cargoLock = "[[package]]\nname = 'other'\nversion = '1.0.0'\n" +
 			"[[package]]\nname = 'v8'\nversion = '149.2.0'\n";
-		assertEquals(V8Versions.resolveLockfile(cargoLock), "149.2.0");
-		assertEquals(V8Versions.resolveLockfile(cargoLock + "[[package]]\nname='v8'\nversion='149.2.0'\n"),
-			"149.2.0");
+		requireThat(V8Versions.resolveLockfile(cargoLock), "version").isEqualTo("149.2.0");
+		String repeated = cargoLock + "[[package]]\nname='v8'\nversion='149.2.0'\n";
+		requireThat(V8Versions.resolveLockfile(repeated), "repeatedVersion").isEqualTo("149.2.0");
 		expectThrows(IOException.class, () -> V8Versions.resolveLockfile(cargoLock.replace("'v8'", "'other'")));
 		expectThrows(IOException.class, () -> V8Versions.resolveLockfile(cargoLock +
 			"[[package]]\nname='v8'\nversion='150.0.0'\n"));
