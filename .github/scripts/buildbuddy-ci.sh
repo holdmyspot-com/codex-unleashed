@@ -90,7 +90,10 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
             bash "$project_root/.github/scripts/test-v8-release-manifest.sh"
             bash "$project_root/.github/scripts/test-argument-comment-lint-package-runner.sh"
             bash "$project_root/.github/scripts/test-publish-github-release.sh"
-            bash "$project_root/.github/scripts/test-code-mode-host-symbol-address.sh" "$RUNNER_TEMP"
+            rustup component add llvm-tools-preview
+            rust_host="$(rustc -vV | sed -n 's/^host: //p')"
+            NM="$(rustc --print sysroot)/lib/rustlib/$rust_host/bin/llvm-nm" \
+              bash "$project_root/.github/scripts/test-code-mode-host-symbol-address.sh" "$RUNNER_TEMP"
             export NODE_OPTIONS=--max-old-space-size=4096
             export ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1
             ./scripts/run-upstream-repo-checks.sh upstream

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Prints the exact demangled code-mode host entrypoint address from debug symbols.
 # Arguments: target triple and executable or extracted DWARF/debug file.
-# Fails when nm fails or the entrypoint is absent or ambiguous.
+# NM selects the symbol tool; the default is nm.
+# Fails when the symbol tool fails or the entrypoint is absent or ambiguous.
 set -euo pipefail
 if [[ $# != 2 ]]; then
   echo 'Usage: code-mode-host-symbol-address.sh TARGET SYMBOLS' >&2
@@ -11,7 +12,7 @@ nm_args=(-C)
 if [[ "$1" == *linux* ]]; then
   nm_args+=(--defined-only)
 fi
-nm "${nm_args[@]}" "$2" | awk '
+"${NM:-nm}" "${nm_args[@]}" "$2" | awk '
   $2 ~ /^[tT]$/ {
     address = $1
     sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/, "")

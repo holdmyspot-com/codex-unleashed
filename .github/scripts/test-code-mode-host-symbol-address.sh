@@ -17,11 +17,11 @@ else
   for diagnostic in nm-path nm-version rustc-version raw-symbols demangled-symbols; do
     printf 'Symbol fixture diagnostic: %s\n' "$diagnostic" >&2
     case "$diagnostic" in
-      nm-path) diagnostic_command=(command -v nm) ;;
-      nm-version) diagnostic_command=(nm --version) ;;
+      nm-path) diagnostic_command=(command -v "${NM:-nm}") ;;
+      nm-version) diagnostic_command=("${NM:-nm}" --version) ;;
       rustc-version) diagnostic_command=(rustc --version) ;;
-      raw-symbols) diagnostic_command=(nm --defined-only "$fixture/entrypoint") ;;
-      demangled-symbols) diagnostic_command=(nm -C --defined-only "$fixture/entrypoint") ;;
+      raw-symbols) diagnostic_command=("${NM:-nm}" --defined-only "$fixture/entrypoint") ;;
+      demangled-symbols) diagnostic_command=("${NM:-nm}" -C --defined-only "$fixture/entrypoint") ;;
     esac
     if [[ "$diagnostic" == *-symbols ]]; then
       if "${diagnostic_command[@]}" | awk '/main|codex_code_mode_host/ { print }' >&2; then
@@ -40,7 +40,8 @@ else
   exit "$selector_status"
 fi
 resolved="$(addr2line -C -f -e "$fixture/entrypoint" "$address")"
-[[ "$resolved" == codex_code_mode_host::main*$'\n'*entrypoint.rs:* ]]
+source_location="${resolved#*$'\n'}"
+[[ "$source_location" == *entrypoint.rs:* ]]
 
 cat > "$fixture/instantiation.rs" <<'RS'
 mod codex_code_mode_host { pub struct Marker; }
