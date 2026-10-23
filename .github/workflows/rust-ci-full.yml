@@ -13,6 +13,10 @@ on:
         required: false
         type: string
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   cargo-deny:
     uses: ./.github/workflows/cargo-deny.yml
