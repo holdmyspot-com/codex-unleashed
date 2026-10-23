@@ -405,6 +405,9 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
       env_var="${env_binding%%:*}"
       uppercase_env_var="${env_binding#*:}"
       env_value="${!env_var:-${!uppercase_env_var:-}}"
+      if [[ "$env_var" == PROCESSOR_ARCHITECTURE ]]; then
+        env_value="${VOICE_WINDOWS_HOST_ARCH:-$env_value}"
+      fi
       if [[ -n "$env_value" ]]; then
         post_config_bazel_args+=("--action_env=${env_var}=${env_value}" "--host_action_env=${env_var}=${env_value}")
       fi

@@ -26,3 +26,22 @@ for client_host in Linux Windows; do
     fi
   done
 done
+
+for host_binding in AMD64:ARM64 ARM64:AMD64 AMD64:; do
+  process_architecture="${host_binding%%:*}"
+  native_architecture="${host_binding#*:}"
+  expected_architecture="${native_architecture:-$process_architecture}"
+  RUNNER_OS=Windows BUILDBUDDY_API_KEY='' PROCESSOR_ARCHITECTURE="$process_architecture" \
+    VOICE_WINDOWS_HOST_ARCH="$native_architecture" \
+    CODEX_BAZEL_WINDOWS_PATH='C:/Windows/System32' \
+    CODEX_UNLEASHED_TOOLING="$work_root/capture-command" CAPTURE_ARGUMENTS="$work_root/arguments" \
+    bash "$project_root/.github/scripts/run-bazel-ci.sh" -- build -- //:windows_target
+
+  for option in action_env host_action_env; do
+    expected="--${option}=PROCESSOR_ARCHITECTURE=${expected_architecture}"
+    if ! grep -Fxq -- "$expected" "$work_root/arguments"; then
+      printf 'Windows host binding %s did not pass %s to Bazel.\n' "$host_binding" "$expected" >&2
+      exit 1
+    fi
+  done
+done

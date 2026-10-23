@@ -65,8 +65,9 @@ public final class BazelCallerTest
 			String systemRoot = environment.getOrDefault("SystemRoot",
 				environment.getOrDefault("SYSTEMROOT", "E:\\Windows Root"));
 			environment.put("SystemRoot", systemRoot);
-			String processorArchitecture = environment.getOrDefault("PROCESSOR_ARCHITECTURE", "AMD64");
-			environment.put("PROCESSOR_ARCHITECTURE", processorArchitecture);
+			String processorArchitecture = "ARM64";
+			environment.put("VOICE_WINDOWS_HOST_ARCH", processorArchitecture);
+			environment.put("PROCESSOR_ARCHITECTURE", "AMD64");
 			String voiceRepository = Files.createDirectory(root.resolve("voice inputs")).toString();
 			environment.put("VOICE_WINDOWS_BAZEL_REPOSITORY", voiceRepository);
 			Path scripts = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().resolve("scripts");
