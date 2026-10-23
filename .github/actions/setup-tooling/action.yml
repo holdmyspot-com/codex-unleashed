@@ -69,7 +69,7 @@ runs:
         path: ${{ steps.checkout.outputs.runtime }}
         fail-on-cache-miss: ${{ inputs.require-cache == 'true' }}
         # Verification exercises the workflow and script consumers as well as the Java sources.
-        key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-jdk-${{ steps['jdk-platform'].outputs.effective }}-${{ steps['jdk-platform'].outputs.distribution }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
+        key: tooling-runtime-v2-${{ runner.os }}-${{ runner.arch }}-jdk-${{ steps['jdk-platform'].outputs.effective }}-${{ steps['jdk-platform'].outputs.distribution }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root), format('{0}/.codespellignore', steps.checkout.outputs.root)) }}
 
     - name: Restore Maven dependencies and wrapper
       id: dependencies
