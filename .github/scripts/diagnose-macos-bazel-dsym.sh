@@ -133,11 +133,17 @@ collect_darwin_replay_evidence() (
 # Argument: Fresh owned capture directory; output: replay.sb below that directory.
 write_replay_profile() {
   # dyld opens the root directory before starting env; literal grants no descendants.
+  # mkdir -p inspects existing ancestors of its absolute output without reading contents.
   jq -nr --arg capture "$1" '
+    ($capture | split("/")) as $parts |
+    [range(2; $parts | length) as $end | $parts[0:$end] | join("/")] as $ancestors |
     "(version 1)\n(allow default)\n(deny file-write*)\n(deny file-read*)\n" +
     "(allow file-read* (literal \"/\") (subpath \"/System\") (subpath \"/usr\") (subpath \"/bin\") " +
     "(subpath \"/dev\") (subpath \"/private/etc\") (subpath \"/opt/homebrew\") " +
     "(subpath \"/usr/local\") (subpath " + ($capture|tojson) + "))\n" +
+    (if ($ancestors | length) > 0 then
+      "(allow file-read-metadata " + ($ancestors | map("(literal " + tojson + ")") | join(" ")) + ")\n"
+    else "" end) +
     "(allow file-write* (subpath " + (($capture + "/work")|tojson) + ") " +
     "(literal " + (($capture + "/replay.stdout")|tojson) + ") " +
     "(literal " + (($capture + "/replay.stderr")|tojson) + "))"
@@ -297,11 +303,18 @@ RECORDER
 # Argument: Self-test-owned fixture; artifacts remain below its policy directory.
 test_replay_policy() (
   set -euo pipefail
-  local fixture="$1" capture="$1/policy" status=0
+  local fixture="$1" capture="$1/policy" status=0 ancestor metadata_rule
   mkdir -p "$capture/raw" "$capture/work"
   write_replay_profile "$capture"
   grep -Fq -- '(literal "/")' "$capture/replay.sb"
   grep -Fxq -- '(deny file-read*)' "$capture/replay.sb"
+  metadata_rule="$(grep -F '(allow file-read-metadata ' "$capture/replay.sb")"
+  [[ "$metadata_rule" != *'(subpath '* ]]
+  ancestor="${capture%/*}"
+  while [[ -n "$ancestor" && "$ancestor" != / ]]; do
+    grep -Fq -- "(literal \"$ancestor\")" <<< "$metadata_rule"
+    ancestor="${ancestor%/*}"
+  done
   if grep -Fq -- '(subpath "/")' "$capture/replay.sb"; then
     echo 'Self-test: root access must not authorize descendant reads' >&2
     exit 1
@@ -317,12 +330,22 @@ test_replay_policy() (
   run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/cat "$capture/raw/read-control" \
     > allowed.stdout 2> allowed.stderr
   cmp "$capture/raw/read-control" allowed.stdout
+  mkdir -p "$capture/work/existing/output"
+  run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/mkdir -p \
+    "$capture/work/existing/output/expanded/nested" > mkdir.stdout 2> mkdir.stderr
+  [[ -d "$capture/work/existing/output/expanded/nested" ]]
   run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/cat "$fixture/unrelated-read-control" \
     > denied.stdout 2> denied.stderr || status=$?
   [[ "$status" == 1 && ! -s denied.stdout ]]
   grep -Fq -- "$fixture/unrelated-read-control" denied.stderr
   grep -Eq -- 'Operation not permitted|Permission denied' denied.stderr
-  echo 'PASS: Darwin loader root access and unrelated-read denial'
+  status=0
+  run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/mkdir -p "$fixture/unrelated-output" \
+    > denied-mkdir.stdout 2> denied-mkdir.stderr || status=$?
+  [[ "$status" == 1 && ! -e "$fixture/unrelated-output" ]]
+  grep -Fq -- "$fixture/unrelated-output" denied-mkdir.stderr
+  grep -Eq -- 'Operation not permitted|Permission denied' denied-mkdir.stderr
+  echo 'PASS: Darwin loader root access, nested mkdir, unrelated-read and outside-write denial'
 )
 
 # Exercises recording and isolation with the real pinned wrapper, without running rustc.
