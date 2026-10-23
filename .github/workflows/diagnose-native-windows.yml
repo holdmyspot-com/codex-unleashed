@@ -27,6 +27,7 @@ on:
           - compiler-scheduler-macos
           - compiler-scheduler-tooling
           - compiler-scheduler-tooling-windows
+          - windows-arm-tooling-locks
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
         type: string
@@ -36,6 +37,58 @@ permissions:
   contents: read
 
 jobs:
+  windows-arm-tooling-locks:
+    if: inputs.focus == 'windows-arm-tooling-locks'
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 26.12.1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '27'
+          architecture: x64
+      - uses: ./.github/actions/setup-msvc-env
+        with:
+          target: aarch64-pc-windows-msvc
+      - name: Exercise bundled runtime tests
+        id: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/windows-arm-tooling-locks"
+          set +e
+          tooling/mvnw -q -pl distribution -am \
+            -Dtest=DistributionMainTest,PackageCommandRuntimeTest,WindowsShardWorkflowTest \
+            -Dsurefire.failIfNoSpecifiedTests=false verify \
+            2>&1 | tee "$RUNNER_TEMP/windows-arm-tooling-locks/maven.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+      - name: Inspect remaining runtime DLLs before cleanup
+        if: failure() && steps.tests.outcome == 'failure'
+        shell: pwsh
+        run: |
+          & .github/scripts/diagnose-windows-tooling-locks.ps1 `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'windows-arm-tooling-locks')
+      - name: Retain Windows ARM tooling failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-arm-tooling-locks
+          path: |
+            ${{ runner.temp }}/windows-arm-tooling-locks
+            .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
+            .cat/work/temp/build-caches/maven/target/tooling-distribution/surefire-reports
+          if-no-files-found: ignore
+          retention-days: 1
+
   windows-archived-failures:
     if: inputs.focus == 'windows-archived-failures'
     strategy:
