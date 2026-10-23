@@ -74,8 +74,11 @@ jobs:
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
             --name "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
           mkdir "$RUNNER_TEMP/nextest-native"
-          tar -C "$RUNNER_TEMP/nextest-native" \
-            -xzf - < "$diagnostic_root/native/nextest-native.tar.gz"
+          (
+            cd "$RUNNER_TEMP"
+            tar -C nextest-native -xzf - \
+              < archived-test-diagnostic/native/nextest-native.tar.gz
+          )
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
