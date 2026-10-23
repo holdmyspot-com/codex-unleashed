@@ -2,6 +2,7 @@
 # Builds only the native Codex Bazel binary and verifies its hermetic dSYM generation.
 # Usage: diagnose-macos-bazel-dsym.sh <patched-upstream> <new-evidence-directory>
 #        diagnose-macos-bazel-dsym.sh --self-test <temporary-parent> [patched-process-wrapper]
+#        diagnose-macos-bazel-dsym.sh --self-test-evidence <temporary-parent> <patched-process-wrapper>
 # Native execution requires macOS, the maintained CI setup, jq, dwarfdump, and sandbox-exec.
 # Real-wrapper self-tests additionally accept an executable wrapper; Linux uses bubblewrap.
 # The diagnostic job owns evidence cleanup after its always-run artifact upload.
@@ -87,6 +88,42 @@ run_isolated_wrapper() {
   esac
 }
 
+# Collects bounded native diagnostics after a failed opt-in self-test replay.
+# Arguments: Capture directory, authenticated wrapper path, then exact replay command.
+# Side effects: Retains loader, sandbox and debugger output under the owned capture.
+# Debugger failure is evidence, not a replacement for recording or acceptance.
+collect_darwin_replay_evidence() (
+  local capture="$1" wrapper="$2" debugger watchdog status=0
+  shift 2
+  /usr/bin/otool -L "$wrapper" > "$capture/loader.txt" 2>&1 || true
+  /usr/bin/codesign --display --verbose=4 "$wrapper" > "$capture/codesign.txt" 2>&1 || true
+  /usr/bin/log show --last 1m --style compact \
+    --predicate 'process == "sandboxd" OR eventMessage CONTAINS "process_wrapper"' \
+    2>&1 | head -c 65536 > "$capture/sandbox-log.txt" || true
+  /usr/bin/lldb --batch --no-lldbinit \
+    --one-line-on-crash 'thread backtrace all' --one-line-on-crash 'process kill' \
+    -o 'settings set target.disable-aslr false' \
+    -o 'process handle SIGABRT -s true -n true -p true' \
+    -o run -o 'thread backtrace all' -o 'process kill' -- \
+    /usr/bin/sandbox-exec -f "$capture/replay.sb" "$@" \
+    > "$capture/debugger.txt" 2>&1 &
+  debugger=$!
+  (
+    sleep 30 &
+    timer=$!
+    trap 'kill -TERM "$timer" 2>/dev/null || true; wait "$timer" 2>/dev/null || true' EXIT
+    trap 'exit 143' TERM
+    wait "$timer"
+    kill -TERM "$debugger" 2>/dev/null || true
+  ) &
+  watchdog=$!
+  wait "$debugger" || status=$?
+  kill -TERM "$watchdog" 2>/dev/null || true
+  wait "$watchdog" 2>/dev/null || true
+  printf 'Debugger status: %s (30-second bound; launch denial is inconclusive)\n' "$status" \
+    >> "$capture/debugger.txt"
+)
+
 # Captures effective compiler arguments using the action's own process_wrapper.
 # Arguments: 1: Selected native spawn; 2: Existing sandbox base; 3: Fresh capture directory;
 #   4: Platform name (Darwin in CI, Linux for real-wrapper self-tests).
@@ -98,8 +135,8 @@ run_isolated_wrapper() {
 capture_effective_arguments() (
   set -euo pipefail
   local spawn="$1" sandbox_base="$2" capture="$3" platform="$4"
-  local wrapper params0 params1 candidate root="" matches=0 path llvm status=0 argument
-  local -a environment=()
+  local wrapper params0 params1 candidate root="" matches=0 path llvm status=0 capture_status=0 argument
+  local -a environment=() replay_command=()
   jq -e '
     .mnemonic == "Rustc" and (.targetLabel | endswith("//codex-rs/cli:codex")) and
     (.environmentVariables | all(.[]; (.name | test("^[A-Za-z_][A-Za-z0-9_]*$")) and
@@ -131,7 +168,7 @@ capture_effective_arguments() (
   capture="$(cd -P "$capture" && pwd -P)"
   mkdir "$capture/raw" "$capture/work"
   # Scratch writes end here; the uploaded capture belongs to the caller.
-  trap 'rm -rf -- "$capture/work"' EXIT
+  trap 'capture_status=$?; if [[ "${retain_failed_replay:-false}" != true || "$capture_status" == 0 ]]; then rm -rf -- "$capture/work"; fi' EXIT
   cp "$spawn" "$capture/spawn.json"
   while IFS= read -r -d '' candidate; do
     candidate="${candidate%/"$params1".expanded}"
@@ -220,12 +257,15 @@ RECORDER
   while IFS= read -r -d '' argument; do environment+=("$argument"); done < <(
     jq -j '.environmentVariables[] | .name + "=" + .value + "\u0000"' "$spawn"
   )
+  replay_command=(/usr/bin/env -i "${environment[@]}" "TMPDIR=$capture/work" "HOME=$capture/work"
+    "$capture/raw/$wrapper" "@$params0" -- "$capture/record-child" "@$params1")
   (
     cd "$capture/work"
-    run_isolated_wrapper "$capture" "$platform" /usr/bin/env -i "${environment[@]}" \
-      "TMPDIR=$capture/work" "HOME=$capture/work" \
-      "$capture/raw/$wrapper" "@$params0" -- "$capture/record-child" "@$params1"
+    run_isolated_wrapper "$capture" "$platform" "${replay_command[@]}"
   ) > "$capture/replay.stdout" 2> "$capture/replay.stderr" || status=$?
+  if [[ "$status" != 73 && "$platform" == Darwin && "${retain_failed_replay:-false}" == true ]]; then
+    (cd "$capture/work"; collect_darwin_replay_evidence "$capture" "$capture/raw/$wrapper" "${replay_command[@]}")
+  fi
   [[ "$status" == 73 && "$(cat "$capture/work/_recording/complete")" == 73 ]] || {
     printf 'Wrapper recording did not complete with sentinel status 73 (status %s)\n' "$status" >&2
     cat "$capture/replay.stderr" >&2
@@ -247,7 +287,8 @@ RECORDER
 test_wrapper_capture() (
   set -euo pipefail
   local fixture="$1/wrapper-capture" executable="$2" root params0 params1 wrapper flags path hash size mutation status
-  local empty_links=empty.linksearchpaths native_links=native.linksearchpaths
+  local empty_links=empty.linksearchpaths native_links=native.linksearchpaths false_command
+  local retain_failed_replay="${retain_failed_self_test:-false}"
   mkdir "$fixture"
   root="$fixture/sandboxes/one/execroot/_main"
   params0=bazel-out/native/bin/codex-rs/cli/codex-0.params
@@ -270,10 +311,15 @@ test_wrapper_capture() (
   printf '%s\n' "\\" 'empty-line-successor' >> "$root/$params1"
   printf '%s\r\n' 'literal CRLF argument' >> "$root/$params1"
   printf '%s\n' '-Csplit-debuginfo=packed' > "$root/$flags"
-  # /bin/false is a process-only fixture: wrapper preparation runs, rustc never runs.
+  # Resolve an external command: a spawn error also exits 1 and is not this control.
+  false_command="$(type -P false)"
+  [[ -x "$false_command" ]]
   status=0
-  (cd "$root"; "$root/$wrapper" "@$params0" -- /bin/false "@$params1") || status=$?
+  (cd "$root"; "$root/$wrapper" "@$params0" -- "$false_command" "@$params1") \
+    > "$fixture/control.stdout" 2> "$fixture/control.stderr" || status=$?
   [[ "$status" == 1 ]]
+  [[ ! -s "$fixture/control.stderr" && -f "$root/$params1.expanded" ]]
+  printf 'Intentional child status 1: %s\n' "$false_command" > "$fixture/control.txt"
   : > "$fixture/inputs.jsonl"
   for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     hash="$(shasum -a 256 "$root/$path" | awk '{print $1}')"
@@ -308,6 +354,8 @@ test_wrapper_capture() (
   for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     check_input_digest "$fixture/baseline.json" "$root" "$path"
   done
+  # Expected rejection cases keep their normal cleanup and do not launch a debugger.
+  retain_failed_replay=false
   for path in "$empty_links" "$native_links"; do
     rm "$root/$path"
     expect_capture_rejection "$fixture/baseline.json" "$fixture/sandboxes" "$fixture/rejected" "$(uname -s)"
@@ -474,12 +522,13 @@ verify_dsym_execution() {
 # Exercises the acceptance boundary with Bazel SpawnExec and dwarfdump command fixtures.
 # Arguments: 1: Existing temporary parent; the function removes its fresh child on exit.
 #   2: Optional executable patched process_wrapper, enabling real recording/isolation tests.
+#   3: Optional true retains failed fixtures for caller-owned upload and cleanup.
 # Output: A pass message after positive and negative acceptance cases complete.
 # Exit status: Nonzero when the acceptance boundary accepts invalid evidence or skips verification.
 self_test() (
-  local fixture
+  local fixture status retain_failed_self_test="${3:-false}"
   fixture="$(mktemp -d "${1:?temporary parent required}/macos-dsym-self-test-XXXXXX")"
-  trap 'rm -rf -- "$fixture"' EXIT
+  trap 'status=$?; if [[ "$status" == 0 || "$retain_failed_self_test" != true ]]; then rm -rf -- "$fixture"; else printf "Retained failed self-test evidence: %s\n" "$fixture" >&2; fi' EXIT
   mkdir -p "$fixture/source/bazel/tools" "$fixture/evidence" \
     "$fixture/source/bazel-out/native/bin/codex-rs/cli/codex.dSYM/Contents/Resources/DWARF"
   cat > "$fixture/source/bazel/tools/dsymutil" <<'WRAPPER'
@@ -602,7 +651,9 @@ DWARFDUMP
   echo 'PASS: native dSYM acceptance boundary; command fixtures do not verify macOS compilation or DWARF validity'
 )
 
-if [[ "${1:-}" == --self-test ]]; then
+if [[ "${1:-}" == --self-test-evidence ]]; then
+  self_test "${2:?temporary parent required}" "${3:?patched process_wrapper required}" true
+elif [[ "${1:-}" == --self-test ]]; then
   self_test "${2:?temporary parent required}" "${3:-}"
 else
   if [[ $# != 2 ]]; then

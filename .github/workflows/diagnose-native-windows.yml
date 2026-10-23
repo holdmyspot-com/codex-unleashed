@@ -135,7 +135,7 @@ jobs:
             "$native_wrapper" | shasum -a 256 --check
           cp "$native_wrapper" "$evidence/process_wrapper"
           chmod +x "$evidence/process_wrapper"
-          bash .github/scripts/diagnose-macos-bazel-dsym.sh --self-test \
+          bash .github/scripts/diagnose-macos-bazel-dsym.sh --self-test-evidence \
             "$evidence" "$evidence/process_wrapper"
       - name: Retain native wrapper preflight evidence
         if: always()
@@ -144,6 +144,7 @@ jobs:
           name: macos-dsym-wrapper-preflight-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/dsym-wrapper-preflight/preflight.log
+            ${{ runner.temp }}/dsym-wrapper-preflight/macos-dsym-self-test-*/
             ~/Library/Logs/DiagnosticReports/process_wrapper*.ips
           if-no-files-found: error
           retention-days: 1
@@ -153,6 +154,7 @@ jobs:
         run: |
           rm -rf -- "$RUNNER_TEMP/dsym-wrapper-preflight/input"
           rm -f -- "$RUNNER_TEMP/dsym-wrapper-preflight/process_wrapper"
+          rm -rf -- "$RUNNER_TEMP/dsym-wrapper-preflight"/macos-dsym-self-test-*
 
   linux-docker-scope:
     if: inputs.focus == 'linux-docker-scope'
