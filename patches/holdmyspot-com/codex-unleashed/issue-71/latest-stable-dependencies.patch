@@ -1,4 +1,4 @@
-From 27ca4bf77e7ef106eff58c3d808db8bfb25618d8 Mon Sep 17 00:00:00 2001
+From 527c1f8da9a5aefadfc0d9d43f37383d04032f43 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Wed, 21 Oct 2026 09:15:59 -0400
 Subject: [PATCH] config: upgrade direct dependencies and their compatibility
@@ -505,7 +505,8 @@ Select Tokio 1.54.1 because RUSTSEC-2026-0384 affects the yanked 1.54.0 release.
  codex-rs/tui/src/markdown.rs                  |    4 +-
  codex-rs/tui/src/markdown_render.rs           |   24 +-
  codex-rs/tui/src/markdown_render/math.rs      |    2 +-
- ...ask_list_tests__lists_preserve_layout.snap |   12 +-
+ ...ask_list_tests__lists_preserve_layout.snap |   88 +-
+ .../src/markdown_render/task_list_tests.rs    |    2 +-
  codex-rs/tui/src/pets/model.rs                |    4 +-
  codex-rs/tui/src/status/remote_connection.rs  |    5 +-
  codex-rs/tui/src/test_backend.rs              |   14 +-
@@ -566,7 +567,7 @@ Select Tokio 1.54.1 because RUSTSEC-2026-0384 affects the yanked 1.54.0 release.
  ...es_rust_release_build_script_profile.patch |   51 +-
  .../rules_rust_unwind_driver_selection.patch  |   15 +-
  ...les_rust_windows_execroot_separators.patch |   32 +-
- ...s_rust_windows_msvc_direct_link_args.patch |   76 +-
+ ...s_rust_windows_msvc_direct_link_args.patch |   70 +-
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rules_rust_working_dir_context.patch  |   67 +
  patches/v8_array_sort_elements_kind.patch     |  163 +
@@ -598,7 +599,7 @@ Select Tokio 1.54.1 because RUSTSEC-2026-0384 affects the yanked 1.54.0 release.
  tools/argument-comment-lint/Cargo.toml        |    4 +-
  tools/argument-comment-lint/README.md         |    2 +-
  tools/argument-comment-lint/wrapper_common.py |    4 +-
- 578 files changed, 19706 insertions(+), 21978 deletions(-)
+ 579 files changed, 19716 insertions(+), 22040 deletions(-)
  create mode 100644 codex-rs/network-proxy/src/connection_lifecycle/executor_context.rs
  create mode 100644 codex-rs/protocol/src/schema_nullability.rs
  create mode 100644 patches/abseil_mingw_o_nonblock.patch
@@ -744,7 +745,7 @@ index d24ff83..5914f19 100644
          uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
          with:
 diff --git a/MODULE.bazel b/MODULE.bazel
-index a688f07..af9c9d2 100644
+index d270e2e..6da8ff0 100644
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
 @@ -5,9 +5,9 @@ bazel_dep(name = "bazel_skylib", version = "1.9.2")
@@ -862,7 +863,7 @@ index a688f07..af9c9d2 100644
      ],
      strip = 1,
  )
-@@ -356,7 +351,7 @@ toolchains.toolchain(
+@@ -361,7 +356,7 @@ toolchains.toolchain(
  )
  use_repo(toolchains, "default_rust_toolchains")
  
@@ -871,7 +872,7 @@ index a688f07..af9c9d2 100644
  
  register_toolchains("@rust_toolchains//:all")
  
-@@ -410,7 +405,7 @@ crate.from_cargo(
+@@ -415,7 +410,7 @@ crate.from_cargo(
      ],
  )
  
@@ -880,7 +881,7 @@ index a688f07..af9c9d2 100644
  
  crate.annotation(
      # Daemon tests repeatedly hash large CLI binaries, even in fastbuild mode.
-@@ -418,11 +413,13 @@ crate.annotation(
+@@ -423,11 +418,13 @@ crate.annotation(
      build_script_env = {"OPT_LEVEL": "3"},
      # The Windows lint toolchain cannot reliably materialize blake3's native x86 assembly archives.
      crate = "blake3",
@@ -897,7 +898,7 @@ index a688f07..af9c9d2 100644
  crate.annotation(
      crate = "zstd-sys",
      gen_build_script = "on",
-@@ -464,7 +461,7 @@ inject_repo(crate, "zstd")
+@@ -469,7 +466,7 @@ inject_repo(crate, "zstd")
  
  use_repo(crate, "argument_comment_lint_crates")
  
@@ -906,7 +907,7 @@ index a688f07..af9c9d2 100644
  single_version_override(
      module_name = "bzip2",
      patch_strip = 1,
-@@ -481,7 +478,7 @@ crate.annotation(
+@@ -486,7 +483,7 @@ crate.annotation(
  
  inject_repo(crate, "bzip2")
  
@@ -915,7 +916,7 @@ index a688f07..af9c9d2 100644
  
  crate.annotation(
      crate = "libz-sys",
-@@ -533,6 +530,13 @@ crate.annotation(
+@@ -538,6 +535,13 @@ crate.annotation(
      data = ["@openssl//:gen_dir"],
      gen_build_script = "on",
  )
@@ -929,7 +930,7 @@ index a688f07..af9c9d2 100644
  
  inject_repo(crate, "openssl")
  
-@@ -637,20 +641,6 @@ crate.annotation(
+@@ -642,20 +646,6 @@ crate.annotation(
          "RUSTY_V8_SRC_BINDING_PATH": "$(execpath @v8_targets//:rusty_v8_binding_for_target)",
      },
      crate = "v8",
@@ -950,7 +951,7 @@ index a688f07..af9c9d2 100644
      extra_aliased_targets = {"v8_link_metadata_build_script": "link_metadata_build_script"},
      gen_build_script = "on",
      patch_args = ["-p1"],
-@@ -659,6 +649,23 @@ crate.annotation(
+@@ -664,6 +654,23 @@ crate.annotation(
          "//patches:rusty_v8_windows_registry.patch",
      ],
  )
@@ -974,7 +975,7 @@ index a688f07..af9c9d2 100644
  
  inject_repo(crate, "v8_targets")
  
-@@ -666,11 +673,42 @@ llvm = use_extension("@llvm//extensions:llvm.bzl", "llvm")
+@@ -671,11 +678,42 @@ llvm = use_extension("@llvm//extensions:llvm.bzl", "llvm")
  use_repo(llvm, "llvm-project")
  
  crate.annotation(
@@ -1020,7 +1021,7 @@ index a688f07..af9c9d2 100644
  )
  crate.annotation(
      # Provide the hermetic SDK path so the build script doesn't try to invoke an unhermetic `xcrun --show-sdk-path`.
-@@ -690,7 +728,37 @@ crate.annotation(
+@@ -695,7 +733,37 @@ crate.annotation(
      gen_build_script = "on",
  )
  
@@ -1059,7 +1060,7 @@ index a688f07..af9c9d2 100644
  
  # The bundled Opus encoder uses CMake; supply executable tools and their data,
  # rather than relying on a build worker's PATH. Versions are pinned by the module.
-@@ -880,10 +948,10 @@ inject_repo(crate, "alsa_lib")
+@@ -885,10 +953,10 @@ inject_repo(crate, "alsa_lib")
      ]
  ]
  
@@ -1072,7 +1073,7 @@ index a688f07..af9c9d2 100644
      patch_strip = 3,
      patches = [
          "//patches:v8_warning_policy.patch",
-@@ -891,6 +959,7 @@ archive_override(
+@@ -896,6 +964,7 @@ archive_override(
          "//patches:v8_python_execution_platforms.patch",
          "//patches:v8_bazel_rules.patch",
          "//patches:v8_source_portability.patch",
@@ -1080,7 +1081,7 @@ index a688f07..af9c9d2 100644
          "//patches:v8_icu_mutex_annotations.patch",
          "//patches:v8_clang_mingw_detection.patch",
          "//patches:v8_windows_stack_assembly.patch",
-@@ -899,17 +968,17 @@ archive_override(
+@@ -904,17 +973,17 @@ archive_override(
          "//patches:v8_windows_assembly_abi.patch",
          "//patches:v8_warning_feature_guards.patch",
      ],
@@ -1104,7 +1105,7 @@ index a688f07..af9c9d2 100644
  )
  
  git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-@@ -917,7 +986,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
+@@ -922,7 +991,7 @@ git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "g
  git_repository(
      name = "rusty_v8_libcxx",
      build_file = "//third_party/v8:libcxx.BUILD.bazel",
@@ -1113,7 +1114,7 @@ index a688f07..af9c9d2 100644
      remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git",
  )
  
-@@ -931,103 +1000,157 @@ git_repository(
+@@ -936,103 +1005,157 @@ git_repository(
  git_repository(
      name = "rusty_v8_llvm_libc",
      build_file = "//third_party/v8:llvm_libc.BUILD.bazel",
@@ -108211,48 +108212,111 @@ index fbd53cc..5eadff2 100644
              }
              matches!(
 diff --git a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
-index 636eba4..6702cf6 100644
+index 636eba4..29c1bd6 100644
 --- a/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
 +++ b/codex-rs/tui/src/markdown_render/snapshots/codex_tui__markdown_render__task_list_tests__lists_preserve_layout.snap
-@@ -1,6 +1,6 @@
+@@ -1,73 +1,19 @@
  ---
  source: tui/src/markdown_render/task_list_tests.rs
 -expression: "stages.join(\"\\n\\n---\\n\\n\")"
-+expression: "stages.join(\"\\n---\\n\")"
- ---
- ☐ Unchecked
- ☑ Checked
-@@ -32,8 +32,8 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
- 
- ☑ Next task
- ---
+----
+-☐ Unchecked
+-☑ Checked
+-☑ Uppercase
+-• Ordinary
+----
+-☐ Parent task with
+-  enough words to wrap
+-    ☑ Nested task
+-    • Ordinary child
+-
+-☑ Done
+----
+-9. ☐ Numbered task with
+-     enough words to
+-     wrap
+-
+-10. ☑ Done
+-11. Ordinary
+----
+-> ☐ Quoted task with
+->   enough words to wrap
+-> 
+-> ☑ Done
+----
+-☐ First paragraph
+-
+-  Second paragraph
+-
+-☑ Next task
+----
 -• [ ]
 -• [x]
-+☐ 
-+☑ 
- ---
- ☑ Bold, italic, and code
- 
-@@ -50,9 +50,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
- 
- ☑ # title
- ☑ > quote
+----
+-☑ Bold, italic, and code
+-
+-- [x] inline
+-
+-- [x] fenced
+-
+-[ ] Plain text
+-
+-• [x] Escaped
+----
+-☐ 
+-    • child
+-
+-☑ # title
+-☑ > quote
 -☑ 
 -
 -  ———
-+☑ ---
- ---
- •     
-       [x] code, not a task
-@@ -63,7 +61,7 @@ expression: "stages.join(\"\\n\\n---\\n\\n\")"
- 
-   Continued paragraph
- ---
+----
+-•     
+-      [x] code, not a task
+----
+-☑ <b>done</b>
+-• Parent
+-    ☑ 
+-
+-  Continued paragraph
+----
 -☑  <div>done</div>
-+☑ <div>done</div>
- ---
- ☑ <div>done</div>
- ---
+----
+-☑ <div>done</div>
+----
+-> • Parent
+->     ☑ 
+->   
+->   Continued paragraph
++expression: stages
++---
++[
++    "☐ Unchecked\n☑ Checked\n☑ Uppercase\n• Ordinary",
++    "☐ Parent task with\n  enough words to wrap\n    ☑ Nested task\n    • Ordinary child\n\n☑ Done",
++    "9. ☐ Numbered task with\n     enough words to\n     wrap\n\n10. ☑ Done\n11. Ordinary",
++    "> ☐ Quoted task with\n>   enough words to wrap\n> \n> ☑ Done",
++    "☐ First paragraph\n\n  Second paragraph\n\n☑ Next task",
++    "☐ \n☑ ",
++    "☑ Bold, italic, and code\n\n- [x] inline\n\n- [x] fenced\n\n[ ] Plain text\n\n• [x] Escaped",
++    "☐ \n    • child\n\n☑ # title\n☑ > quote\n☑ ---",
++    "•     \n      [x] code, not a task",
++    "☑ <b>done</b>\n• Parent\n    ☑ \n\n  Continued paragraph",
++    "☑ <div>done</div>",
++    "☑ <div>done</div>",
++    "> • Parent\n>     ☑ \n>   \n>   Continued paragraph",
++]
+diff --git a/codex-rs/tui/src/markdown_render/task_list_tests.rs b/codex-rs/tui/src/markdown_render/task_list_tests.rs
+index 408b6e8..f9cc1d2 100644
+--- a/codex-rs/tui/src/markdown_render/task_list_tests.rs
++++ b/codex-rs/tui/src/markdown_render/task_list_tests.rs
+@@ -39,5 +39,5 @@ fn lists_preserve_layout() {
+         );
+         stages.push(rendered.to_string());
+     }
+-    insta::assert_snapshot!(stages.join("\n---\n"));
++    insta::assert_debug_snapshot!(stages);
+ }
 diff --git a/codex-rs/tui/src/pets/model.rs b/codex-rs/tui/src/pets/model.rs
 index aa02731..e90c080 100644
 --- a/codex-rs/tui/src/pets/model.rs
@@ -108270,7 +108334,7 @@ index aa02731..e90c080 100644
          ))
      }
 diff --git a/codex-rs/tui/src/status/remote_connection.rs b/codex-rs/tui/src/status/remote_connection.rs
-index 546dcbc..712406f 100644
+index 9695fd8..201acd5 100644
 --- a/codex-rs/tui/src/status/remote_connection.rs
 +++ b/codex-rs/tui/src/status/remote_connection.rs
 @@ -161,7 +161,10 @@ pub(crate) fn server_version_notice_key(
@@ -109641,7 +109705,7 @@ index a090664..9f4654c 100644
      } | rustc_env
  
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
-index 47bcd1c..2074c21 100644
+index a0d4d86..2d29df4 100644
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
 @@ -9,30 +9,32 @@ exports_files([
@@ -109757,7 +109821,7 @@ index 0000000..244412d
 +         let mut cfg = cc::Build::new();
 diff --git a/patches/rama-dns_lowercase_dnsapi.patch b/patches/rama-dns_lowercase_dnsapi.patch
 new file mode 100644
-index 0000000..970ea1f
+index 0000000..2e9ff1f
 --- /dev/null
 +++ b/patches/rama-dns_lowercase_dnsapi.patch
 @@ -0,0 +1,16 @@
@@ -109771,7 +109835,7 @@ index 0000000..970ea1f
 +@@ -957,7 +957,7 @@
 +         pub(super) strings: [*const u16; 1],
 +     }
-+ 
++
 +-    #[link(name = "Dnsapi")]
 ++    #[link(name = "dnsapi")]
 +     unsafe extern "system" {
@@ -109844,7 +109908,7 @@ index 2f38c2b..ca8b790 100644
       "gen_build_script": attr.string(),
  -    "build_script_deps": attr.label_list(),
 diff --git a/patches/rules_rs_rust_debug_modes.patch b/patches/rules_rs_rust_debug_modes.patch
-index e655ba7..aa17788 100644
+index e655ba7..992a735 100644
 --- a/patches/rules_rs_rust_debug_modes.patch
 +++ b/patches/rules_rs_rust_debug_modes.patch
 @@ -1,11 +1,10 @@
@@ -109859,7 +109923,7 @@ index e655ba7..aa17788 100644
 +@@ -129,6 +129,14 @@
 +             "//conditions:default": rust_std_label,
 +         })
-+ 
++
  +    # Apple targets default to packed dSYMs and invoke dsymutil at link time.
  +    # The Linux remote Rust action has no dsymutil. Match Cargo release's
  +    # split-debuginfo policy so line/full info remains available before packaging.
@@ -110155,7 +110219,7 @@ index 59df3c6..aa7f663 100644
 +     if linker_config.rust_linker:
 +         # Make sure we include RPATHs for Rust ABI dylibs even when no cc_toolchain.
 diff --git a/patches/rules_rust_windows_execroot_separators.patch b/patches/rules_rust_windows_execroot_separators.patch
-index 187b37f..b89fdce 100644
+index 187b37f..47e4c90 100644
 --- a/patches/rules_rust_windows_execroot_separators.patch
 +++ b/patches/rules_rust_windows_execroot_separators.patch
 @@ -1,14 +1,19 @@
@@ -110201,7 +110265,7 @@ index 187b37f..b89fdce 100644
 +@@ -657,6 +667,28 @@
 +         );
 +     }
-+ 
++
  +    #[cfg(windows)]
  +    #[test]
  +    fn windows_include_metadata_redacts_both_root_spellings() {
@@ -110219,7 +110283,7 @@ index 187b37f..b89fdce 100644
 +     fn nonhermetic_absolute_paths_are_detected() {
 +         let existing_path = std::env::current_dir().unwrap();
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
-index a8eba2b..556516e 100644
+index a8eba2b..5104126 100644
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ b/patches/rules_rust_windows_msvc_direct_link_args.patch
 @@ -1,8 +1,21 @@
@@ -110236,10 +110300,10 @@ index a8eba2b..556516e 100644
 ++    "target_os",
 +     "variables",
 + ])
-+ 
++
 +@@ -457,7 +459,14 @@
 +         )
-+ 
++
       use_bpf_linker = toolchain.target_arch in ("bpfeb", "bpfel") and toolchain.linker
 --    if not ld or toolchain.linker_preference == "rust" or use_bpf_linker:
 +-    use_rust_linker = not cc_linker or toolchain.linker_preference == "rust" or use_bpf_linker
@@ -110257,7 +110321,7 @@ index a8eba2b..556516e 100644
 ++    use_rust_linker = not cc_linker or toolchain.linker_preference == "rust" or use_bpf_linker or use_windows_msvc_linker
 +     if use_rust_linker and not toolchain.linker:
 +         fail("No linker available for rustc. Either `rust_toolchain.linker` must be set or a `cc_toolchain` configured for the current configuration.")
-+ 
++
 +@@ -469,7 +478,9 @@
 +         variables = link_variables,
 +         rust_linker = toolchain.linker if use_rust_linker else None,
@@ -110267,7 +110331,7 @@ index a8eba2b..556516e 100644
 ++        target_os = toolchain.target_os,
 +         rpaths = rpaths,
 +     )
-+ 
++
 +@@ -513,6 +524,11 @@
 +             link_args = []
 +         elif linker_config.variables != None and link_args:
@@ -110283,8 +110347,7 @@ index a8eba2b..556516e 100644
 +@@ -533,11 +549,25 @@
                       filtered_args.append(version)
                       # Keep library search path flags
--
-+ 
+ 
  +                elif processed_arg == "-L" and i + 1 < len(link_args):
  +                    path = link_args[i + 1]
 -+                    if ld_is_direct_driver and toolchain.target_os == "windows" and toolchain.target_abi == "msvc":
@@ -110315,24 +110378,17 @@ index a8eba2b..556516e 100644
           use_pic,
           ambiguous_libs,
           get_lib_name,
-@@ -49,9 +85,9 @@
- +        flavor_msvc = False,
- +        use_direct_driver = False):
+@@ -51,7 +87,7 @@
       """_summary_
--
-+ 
+ 
       Args:
 -@@ -2952,8 +2968,10 @@
 +@@ -3313,8 +3345,10 @@
           use_pic (_type_): _description_
           ambiguous_libs (_type_): _description_
           get_lib_name (_type_): _description_
-@@ -59,10 +95,10 @@
-          for_darwin (bool, optional): _description_. Defaults to False.
-          flavor_msvc (bool, optional): _description_. Defaults to False.
- +        use_direct_driver (bool, optional): _description_. Defaults to False.
--
-+ 
+@@ -62,7 +98,7 @@
+ 
       Returns:
           _type_: _description_
 -@@ -2997,6 +3015,11 @@
@@ -110398,7 +110454,7 @@ index 52c5ae8..0000000
 -             }
 diff --git a/patches/rules_rust_working_dir_context.patch b/patches/rules_rust_working_dir_context.patch
 new file mode 100644
-index 0000000..47f43b6
+index 0000000..860d112
 --- /dev/null
 +++ b/patches/rules_rust_working_dir_context.patch
 @@ -0,0 +1,67 @@
@@ -110408,7 +110464,7 @@ index 0000000..47f43b6
 +@@ -358,6 +358,32 @@ fn contains_byte_sequence(reader: &mut impl io::Read, needle: &[u8]) -> io::Resu
 +     }
 + }
-+ 
++
 ++/// Describes the first occurrence of `needle` in `contents` by its offset and the printable string around it, so a
 ++/// rejected output names the embedded value rather than only the directory it contains.
 ++fn working_dir_context(contents: &[u8], needle: &[u8]) -> Option<String> {
@@ -110440,7 +110496,7 @@ index 0000000..47f43b6
 +     working_dir: &str,
 +@@ -368,8 +394,12 @@ fn check_output_for_working_dir(
 +         .map_err(|error| ProcessWrapperError(format!("failed to scan {output_path}: {error}")))?;
-+ 
++
 +     if contains_working_dir {
 ++        let context = fs::read(output_path)
 ++            .ok()
@@ -110455,7 +110511,7 @@ index 0000000..47f43b6
 +@@ -522,6 +552,16 @@ mod test {
 +         assert!(contains_byte_sequence(&mut contents, working_dir).unwrap());
 +     }
-+ 
++
 ++    #[test]
 ++    fn test_working_dir_context_reports_surrounding_string() {
 ++        let contents = b"\x00\x01D:\\o\\execroot\\_main\\external\\crate\\src\\lib.rs\x00tail";
@@ -111811,7 +111867,7 @@ index beb41a4..08329bc 100644
  +// Copyright 2026 the V8 project authors. All rights reserved.
  +// Use of this source code is governed by a BSD-style license that can be
 diff --git a/patches/windows-support-native-tools.patch b/patches/windows-support-native-tools.patch
-index 8d480d0..278d4c2 100644
+index 8d480d0..fe9ac21 100644
 --- a/patches/windows-support-native-tools.patch
 +++ b/patches/windows-support-native-tools.patch
 @@ -1,32 +1,7 @@
@@ -111886,7 +111942,7 @@ index 8d480d0..278d4c2 100644
 +@@ -204,6 +204,23 @@ def _keep_only_children(repository_ctx, directory, child_names):
 +             continue
 +         repository_ctx.delete(entry)
-+ 
++
 ++def _rename_case_variant(repository_ctx, directory, name):
 ++    # Payloads spell some directories differently, such as HostX64 and Hostx64. A case-insensitive filesystem merges
 ++    # them under the spelling of the first payload extracted, which exact-name pruning would otherwise delete.
@@ -111995,7 +112051,7 @@ index 8d480d0..278d4c2 100644
 +@@ -39,6 +39,11 @@ def _keep_exposed_windows_sdk_files(repository_ctx, sysroot_dir, include_version
 +         ["ucrt", "shared", "um", "winrt"],
 +     )
-+ 
++
 ++    # Resource and manifest tools share the selected SDK's versioned bin tree.
 ++    bin_dir = "{}/base/c/bin".format(sysroot_dir)
 ++    _keep_only_children(repository_ctx, repository_ctx.path(bin_dir), [include_version])
