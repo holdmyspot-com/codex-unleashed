@@ -92,6 +92,28 @@ public final class PackageCommand
 			return 0;
 		}
 
+		Path voiceRelease = result.matchedOptionValue("--voice-release-dir", null);
+		String buildCommit = result.matchedOptionValue("--build-commit", null);
+		PackageVariant variant = result.matchedOptionValue("--variant", PackageVariant.CODEX);
+		if ((voiceRelease == null) != (buildCommit == null))
+		{
+			err.println("ERROR: --voice-release-dir and --build-commit must be supplied together");
+			return 2;
+		}
+		if (voiceRelease != null)
+		{
+			if (variant != PackageVariant.CODEX)
+			{
+				err.println("ERROR: Voice resources require --variant codex");
+				return 2;
+			}
+			if (!VoicePackage.isBuildCommit(buildCommit))
+			{
+				err.println("ERROR: --build-commit requires exactly 40 lowercase hexadecimal characters");
+				return 2;
+			}
+		}
+
 		Path repository = result.<Path>matchedOptionValue("--repo", null).toRealPath();
 		Path workspace = result.matchedOptionValue("--workspace", null);
 		if (workspace == null)
@@ -103,7 +125,6 @@ public final class PackageCommand
 		PackageTarget target = result.matchedOptionValue("--target", null);
 		if (target == null)
 			target = PackageTarget.forHost(hostSystem(), System.getProperty("os.arch"));
-		PackageVariant variant = result.matchedOptionValue("--variant", PackageVariant.CODEX);
 		PackageSourceBuilds.Inputs prebuilt = new PackageSourceBuilds.Inputs(
 			input(result, "--entrypoint-bin", "prebuilt entrypoint executable"),
 			input(result, "--code-mode-host-bin", "prebuilt code-mode host executable"),
@@ -149,6 +170,8 @@ public final class PackageCommand
 				return metadata.stdout();
 			});
 			PackageLayout.validate(destination.directory, variant, target, zsh.isPresent());
+			if (voiceRelease != null)
+				VoicePackage.assemble(destination.directory, workspace, voiceRelease, target, version, buildCommit);
 			List<Path> archives = result.matchedOptionValue("--archive-output", List.of());
 			for (Path archive : archives)
 			{
@@ -196,6 +219,10 @@ public final class PackageCommand
 			converters(PackageVariant::fromName).defaultValue("codex").build());
 		specification.addOption(OptionSpec.builder("--archive-output").type(List.class).auxiliaryTypes(Path.class).
 			arity("1").build());
+		specification.addOption(OptionSpec.builder("--voice-release-dir").type(Path.class).
+			description("Prepared public voice release directory; requires --build-commit and --variant codex.").build());
+		specification.addOption(OptionSpec.builder("--build-commit").type(String.class).
+			description("Full lowercase source commit matching the prepared runtime; requires --voice-release-dir.").build());
 		specification.addOption(OptionSpec.builder("--cargo").type(String.class).defaultValue("cargo").build());
 		specification.addOption(OptionSpec.builder("--cargo-profile").type(String.class).defaultValue("dev-small").build());
 		specification.addOption(OptionSpec.builder("--force").type(boolean.class).arity("0").build());
