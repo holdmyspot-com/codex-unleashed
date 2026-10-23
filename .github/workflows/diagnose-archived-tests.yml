@@ -58,9 +58,9 @@ jobs:
           gh run view "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
             --json headSha,url --jq '[.headSha,.url] | @tsv'
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --pattern "nextest-archive-$ARTIFACT_ID" --dir "$diagnostic_root/archive"
+            --name "nextest-archive-$ARTIFACT_ID" --dir "$diagnostic_root/archive"
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --pattern "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
+            --name "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
           mkdir "$RUNNER_TEMP/nextest-native"
           tar -C "$RUNNER_TEMP/nextest-native" \
             -xzf "$diagnostic_root/native/nextest-native.tar.gz"
