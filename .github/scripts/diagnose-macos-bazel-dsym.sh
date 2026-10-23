@@ -129,6 +129,21 @@ collect_darwin_replay_evidence() (
     >> "$capture/debugger.txt"
 )
 
+# Writes the Darwin replay policy shared by capture and its executable regression.
+# Argument: Fresh owned capture directory; output: replay.sb below that directory.
+write_replay_profile() {
+  # dyld opens the root directory before starting env; literal grants no descendants.
+  jq -nr --arg capture "$1" '
+    "(version 1)\n(allow default)\n(deny file-write*)\n(deny file-read*)\n" +
+    "(allow file-read* (literal \"/\") (subpath \"/System\") (subpath \"/usr\") (subpath \"/bin\") " +
+    "(subpath \"/dev\") (subpath \"/private/etc\") (subpath \"/opt/homebrew\") " +
+    "(subpath \"/usr/local\") (subpath " + ($capture|tojson) + "))\n" +
+    "(allow file-write* (subpath " + (($capture + "/work")|tojson) + ") " +
+    "(literal " + (($capture + "/replay.stdout")|tojson) + ") " +
+    "(literal " + (($capture + "/replay.stderr")|tojson) + "))"
+  ' > "$1/replay.sb"
+}
+
 # Captures effective compiler arguments using the action's own process_wrapper.
 # Arguments: 1: Selected native spawn; 2: Existing sandbox base; 3: Fresh capture directory;
 #   4: Platform name (Darwin in CI, Linux for real-wrapper self-tests).
@@ -250,15 +265,7 @@ exit 73
 RECORDER
   } > "$capture/record-child"
   chmod +x "$capture/record-child"
-  jq -nr --arg capture "$capture" '
-    "(version 1)\n(allow default)\n(deny file-write*)\n(deny file-read*)\n" +
-    "(allow file-read* (subpath \"/System\") (subpath \"/usr\") (subpath \"/bin\") " +
-    "(subpath \"/dev\") (subpath \"/private/etc\") (subpath \"/opt/homebrew\") " +
-    "(subpath \"/usr/local\") (subpath " + ($capture|tojson) + "))\n" +
-    "(allow file-write* (subpath " + (($capture + "/work")|tojson) + ") " +
-    "(literal " + (($capture + "/replay.stdout")|tojson) + ") " +
-    "(literal " + (($capture + "/replay.stderr")|tojson) + "))"
-  ' > "$capture/replay.sb"
+  write_replay_profile "$capture"
   while IFS= read -r -d '' argument; do environment+=("$argument"); done < <(
     jq -j '.environmentVariables[] | .name + "=" + .value + "\u0000"' "$spawn"
   )
@@ -284,6 +291,38 @@ RECORDER
   cp "$capture/recording/effective-arguments.json" "$capture/effective-arguments.json"
   jq -Rs 'split("\u0000") | .[:-1]' "$capture/recording/child-argv.nul" > "$capture/child-argv.json"
   rm "$capture/native.normalized"
+)
+
+# Verifies root loader access while unrelated file reads remain denied on Darwin.
+# Argument: Self-test-owned fixture; artifacts remain below its policy directory.
+test_replay_policy() (
+  set -euo pipefail
+  local fixture="$1" capture="$1/policy" status=0
+  mkdir -p "$capture/raw" "$capture/work"
+  write_replay_profile "$capture"
+  grep -Fq -- '(literal "/")' "$capture/replay.sb"
+  grep -Fxq -- '(deny file-read*)' "$capture/replay.sb"
+  if grep -Fq -- '(subpath "/")' "$capture/replay.sb"; then
+    echo 'Self-test: root access must not authorize descendant reads' >&2
+    exit 1
+  fi
+  if [[ "$(uname -s)" != Darwin ]]; then return; fi
+  printf 'allowed replay bytes\n' > "$capture/raw/read-control"
+  printf 'unrelated private bytes\n' > "$fixture/unrelated-read-control"
+  [[ -r "$fixture/unrelated-read-control" ]]
+  cd "$capture/work"
+  run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/ls -d / \
+    > root.stdout 2> root.stderr
+  grep -Fxq / root.stdout
+  run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/cat "$capture/raw/read-control" \
+    > allowed.stdout 2> allowed.stderr
+  cmp "$capture/raw/read-control" allowed.stdout
+  run_isolated_wrapper "$capture" Darwin /usr/bin/env -i /bin/cat "$fixture/unrelated-read-control" \
+    > denied.stdout 2> denied.stderr || status=$?
+  [[ "$status" == 1 && ! -s denied.stdout ]]
+  grep -Fq -- "$fixture/unrelated-read-control" denied.stderr
+  grep -Eq -- 'Operation not permitted|Permission denied' denied.stderr
+  echo 'PASS: Darwin loader root access and unrelated-read denial'
 )
 
 # Exercises recording and isolation with the real pinned wrapper, without running rustc.
@@ -652,6 +691,7 @@ DWARFDUMP
     exit 1
   fi
   [[ ! -e "$fixture/dwarfdump-calls" ]]
+  test_replay_policy "$fixture"
   if [[ -n "${2:-}" ]]; then test_wrapper_capture "$fixture" "$2"; fi
   echo 'PASS: native dSYM acceptance boundary; command fixtures do not verify macOS compilation or DWARF validity'
 )
