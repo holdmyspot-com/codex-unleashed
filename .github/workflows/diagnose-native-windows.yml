@@ -34,6 +34,7 @@ on:
           - native-voice-runtime
           - native-voice-runtime-windows-x64
           - native-voice-runtime-windows-arm64
+          - native-platform-tests-except-windows-x64
           - linux-docker-scope
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
@@ -208,6 +209,65 @@ jobs:
           printf 'Scoped Docker probe status: %s\n' "$scope_status"
           test "$direct_status" -eq 0
           exit "$scope_status"
+
+  native-platform-tests:
+    if: inputs.focus == 'native-platform-tests-except-windows-x64'
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_id: linux-arm64
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            artifact_id: macos-arm64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact_id: macos-x64
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_id: windows-arm64
+    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
+    secrets: inherit
+    with:
+      runner: ${{ matrix.runner }}
+      target: ${{ matrix.target }}
+      profile: ci-test
+      artifact_id: ${{ matrix.artifact_id }}
+
+  native-platform-tests-linux:
+    if: inputs.focus == 'native-platform-tests-except-windows-x64'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
+    secrets: inherit
+    with:
+      runner: ubuntu-latest
+      target: x86_64-unknown-linux-gnu
+      profile: ci-test
+      artifact_id: linux-x64
+
+  native-platform-tests-linux-remote:
+    needs: native-platform-tests-linux
+    if: inputs.focus == 'native-platform-tests-except-windows-x64'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
+    secrets: inherit
+    with:
+      runner: ubuntu-latest
+      target: x86_64-unknown-linux-gnu
+      profile: ci-test
+      artifact_id: linux-x64-remote
+      reuse_archive: true
+      archive_artifact_id: linux-x64
+      remote_env: true
 
   native-voice-runtime-windows-x64:
     if: inputs.focus == 'native-voice-runtime-windows-x64'
