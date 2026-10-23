@@ -35,6 +35,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
+      ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
       TEST_FILTER: ${{ inputs.test-filter }}
@@ -83,13 +84,43 @@ jobs:
           path: upstream
           persist-credentials: false
 
+      - name: Restore the original verified bundled tooling runtime
+        if: inputs.original-source-policy
+        id: original_tooling
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        with:
+          path: ${{ github.workspace }}/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+          key: ${{ env.ORIGINAL_TOOLING_CACHE_KEY }}
+          fail-on-cache-miss: true
+
+      - name: Probe the original bundled runtime without rebuilding it
+        if: inputs.original-source-policy
+        shell: bash
+        env:
+          TOOLING_RUNTIME_CACHE_HIT: ${{ steps.original_tooling.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          [[ "$TOOLING_RUNTIME_CACHE_HIT" == true ]]
+          runtime="$GITHUB_WORKSPACE/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+          test -f "$runtime/.complete"
+          test -x "$runtime/bin/codex-tooling"
+          GITHUB_ACTION_PATH="$GITHUB_WORKSPACE/.github/actions/setup-tooling" \
+            bash .github/actions/setup-tooling/setup.sh
+          printf '%s\n' "$ORIGINAL_TOOLING_CACHE_KEY" > "$RUNNER_TEMP/archived-test-diagnostic/original-tooling-cache-key.txt"
+
       - name: Restore the original patched workspace and nextest configuration
         if: inputs.original-source-policy
-        uses: ./.github/actions/prepare-patched-upstream
-        with:
-          require-tooling-cache: 'true'
-          upstream-ref: ${{ inputs.upstream-ref }}
-          expected-upstream-commit: ${{ inputs.upstream-ref }}
+        shell: bash
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream-ref }}
+          EXPECTED_UPSTREAM_COMMIT: ${{ inputs.upstream-ref }}
+          UPSTREAM_REPO: openai/codex
+          CHECKOUT_PATH: upstream
+          FALLBACK_TO_DEFAULT_BRANCH: 'false'
+        run: |
+          set -euo pipefail
+          bash .github/actions/prepare-patched-upstream/clone.sh
+          bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
 
       - uses: taiki-e/install-action@v2
         with:
@@ -217,6 +248,7 @@ jobs:
             ${{ runner.temp }}/archived-test-diagnostic/original-nextest.sha256
             ${{ runner.temp }}/archived-test-diagnostic/provenance.txt
             ${{ runner.temp }}/archived-test-diagnostic/selected-tests.json
+            ${{ runner.temp }}/archived-test-diagnostic/original-tooling-cache-key.txt
           if-no-files-found: warn
           retention-days: 1
 
