@@ -157,7 +157,7 @@ capture_effective_arguments() (
   jq -er --arg wrapper "$wrapper" '
     .inputs | map(.path) |
     if length == (unique | length) then .[] else error("Duplicate input paths") end |
-    select(. == $wrapper or test("[.](params|flags|env|txt)$"))
+    select(. == $wrapper or test("[.](params|flags|env|txt|linksearchpaths)$"))
   ' "$spawn" > "$capture/preparation-inputs.txt"
   while IFS= read -r path; do
     check_input_digest "$spawn" "$root" "$path"
@@ -213,7 +213,9 @@ RECORDER
     "(allow file-read* (subpath \"/System\") (subpath \"/usr\") (subpath \"/bin\") " +
     "(subpath \"/dev\") (subpath \"/private/etc\") (subpath \"/opt/homebrew\") " +
     "(subpath \"/usr/local\") (subpath " + ($capture|tojson) + "))\n" +
-    "(allow file-write* (subpath " + (($capture + "/work")|tojson) + "))"
+    "(allow file-write* (subpath " + (($capture + "/work")|tojson) + ") " +
+    "(literal " + (($capture + "/replay.stdout")|tojson) + ") " +
+    "(literal " + (($capture + "/replay.stderr")|tojson) + "))"
   ' > "$capture/replay.sb"
   while IFS= read -r -d '' argument; do environment+=("$argument"); done < <(
     jq -j '.environmentVariables[] | .name + "=" + .value + "\u0000"' "$spawn"
@@ -245,6 +247,7 @@ RECORDER
 test_wrapper_capture() (
   set -euo pipefail
   local fixture="$1/wrapper-capture" executable="$2" root params0 params1 wrapper flags path hash size mutation status
+  local empty_links=empty.linksearchpaths native_links=native.linksearchpaths
   mkdir "$fixture"
   root="$fixture/sandboxes/one/execroot/_main"
   params0=bazel-out/native/bin/codex-rs/cli/codex-0.params
@@ -255,7 +258,10 @@ test_wrapper_capture() (
   cp "$executable" "$root/$wrapper"
   cp "$1/source/bazel/tools/dsymutil" "$root/bazel/tools/dsymutil"
   printf 'fixture dsymutil input\n' > "$root/external/llvm/bin/dsymutil"
-  printf '%s\n' '--arg-file' "$flags" '--env-file' 'build.env' '--subst' "pwd=\${pwd}" > "$root/$params0"
+  printf '%s\n' '--arg-file' "$empty_links" '--arg-file' "$native_links" '--arg-file' "$flags" \
+    '--env-file' 'build.env' '--subst' "pwd=\${pwd}" > "$root/$params0"
+  : > "$root/$empty_links"
+  printf '%s\n' '-Lnative=fixture literal path' '-Csplit-debuginfo=off' > "$root/$native_links"
   printf '%s\n' 'FIXTURE_ENV=literal value' > "$root/build.env"
   printf '%s\n' 'nested literal argument' > "$root/nested.params"
   printf '%s\n' '--target=aarch64-apple-darwin' '-Csplit-debuginfo=off' \
@@ -269,7 +275,7 @@ test_wrapper_capture() (
   (cd "$root"; "$root/$wrapper" "@$params0" -- /bin/false "@$params1") || status=$?
   [[ "$status" == 1 ]]
   : > "$fixture/inputs.jsonl"
-  for path in "$params0" "$params1" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
+  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     hash="$(shasum -a 256 "$root/$path" | awk '{print $1}')"
     size="$(wc -c < "$root/$path" | tr -d ' ')"
     jq -nc --arg path "$path" --arg hash "$hash" --arg size "$size" \
@@ -287,18 +293,35 @@ test_wrapper_capture() (
   }' > "$fixture/baseline.json"
   capture_effective_arguments "$fixture/baseline.json" "$fixture/sandboxes" "$fixture/valid" "$(uname -s)"
   check_effective_arguments "$fixture/valid/effective-arguments.json" aarch64-apple-darwin
-  jq -e '.[-1] == "-Csplit-debuginfo=packed" and
+  jq -e '.[-1] == "-Csplit-debuginfo=packed" and .[-2] == "-Csplit-debuginfo=off" and
+    .[-3] == "-Lnative=fixture literal path" and
     index("literal space \"quote\" \\backslash") != null and
     index("") != null and index("literal CRLF argument") != null and index("nested literal argument") != null' "$fixture/valid/effective-arguments.json" > /dev/null
   [[ -f "$fixture/valid/native.params.expanded" && -f "$fixture/valid/raw/$wrapper" &&
-     -f "$fixture/valid/raw/$flags" && ! -e "$fixture/valid/work" ]]
+     -f "$fixture/valid/raw/$empty_links" && ! -s "$fixture/valid/raw/$empty_links" &&
+     -s "$fixture/valid/raw/$native_links" && -f "$fixture/valid/raw/$flags" && ! -e "$fixture/valid/work" ]]
   mkdir "$fixture/local-sandboxes"
   jq '.runner="local"' "$fixture/baseline.json" > "$fixture/local.json"
   capture_effective_arguments "$fixture/local.json" "$fixture/local-sandboxes" "$fixture/local-capture" "$(uname -s)" "$root"
   check_effective_arguments "$fixture/local-capture/effective-arguments.json" aarch64-apple-darwin
   [[ ! -e "$fixture/local-capture/work" ]]
-  for path in "$params0" "$params1" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
+  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     check_input_digest "$fixture/baseline.json" "$root" "$path"
+  done
+  for path in "$empty_links" "$native_links"; do
+    rm "$root/$path"
+    expect_capture_rejection "$fixture/baseline.json" "$fixture/sandboxes" "$fixture/rejected" "$(uname -s)"
+    grep -Fxq -- "Missing replay input: $path" "$fixture/rejected.rejection.log"
+    [[ ! -e "$fixture/rejected/replay.stdout" && ! -e "$fixture/rejected/work" ]]
+    rm -rf -- "$fixture/rejected"
+    cp "$fixture/valid/raw/$path" "$root/$path"
+    jq --arg path "$path" \
+      '(.inputs[] | select(.path == $path) | .digest.hash) = "0000000000000000000000000000000000000000000000000000000000000000"' \
+      "$fixture/baseline.json" > "$fixture/invalid.json"
+    expect_capture_rejection "$fixture/invalid.json" "$fixture/sandboxes" "$fixture/rejected" "$(uname -s)"
+    grep -Fxq -- "Input bytes differ from SpawnExec receipt: $path" "$fixture/rejected.rejection.log"
+    [[ ! -e "$fixture/rejected/replay.stdout" && ! -e "$fixture/rejected/work" ]]
+    rm -rf -- "$fixture/rejected"
   done
   for mutation in '-Csplit-debuginfo=off' '-Cdebuginfo=0' '--target=x86_64-apple-darwin'; do
     printf '%s\n' "$mutation" > "$root/$flags"

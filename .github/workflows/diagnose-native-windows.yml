@@ -19,6 +19,7 @@ on:
           - macos-tui-integration-timeouts
           - macos-bazel-tui-timeouts
           - macos-bazel-dsym
+          - macos-dsym-wrapper-preflight
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -39,6 +40,54 @@ permissions:
   contents: read
 
 jobs:
+  macos-dsym-wrapper-preflight:
+    if: inputs.focus == 'macos-dsym-wrapper-preflight'
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Exercise the authenticated native wrapper without rebuilding Codex
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/dsym-wrapper-preflight"
+          mkdir "$evidence"
+          exec > >(tee "$evidence/preflight.log") 2>&1
+          test "$(uname -m)" = arm64
+          gh run download 40020320537 --name macos-bazel-dsym-40020320537-1 \
+            --dir "$evidence/input"
+          native_wrapper="$evidence/input/argument-capture/raw/bazel-out/darwin_arm64-opt-exec-ST-fd45d9624a1f/bin/external/rules_rs++rules_rust+rules_rust/util/process_wrapper/process_wrapper"
+          printf '%s  %s\n' aab7636cee589b0adb603a37c1ff3fb132d588205cccefa57ca4d196ab1257b4 \
+            "$native_wrapper" | shasum -a 256 --check
+          cp "$native_wrapper" "$evidence/process_wrapper"
+          chmod +x "$evidence/process_wrapper"
+          bash .github/scripts/diagnose-macos-bazel-dsym.sh --self-test \
+            "$evidence" "$evidence/process_wrapper"
+      - name: Retain native wrapper preflight evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: macos-dsym-wrapper-preflight-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsym-wrapper-preflight/preflight.log
+            ~/Library/Logs/DiagnosticReports/process_wrapper*.ips
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove native wrapper preflight inputs
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/dsym-wrapper-preflight/input"
+          rm -f -- "$RUNNER_TEMP/dsym-wrapper-preflight/process_wrapper"
+
   linux-docker-scope:
     if: inputs.focus == 'linux-docker-scope'
     runs-on: ubuntu-latest
