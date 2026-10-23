@@ -48,6 +48,16 @@ native-TLS fallback. Production certificate handling stays the same. This
 test-only patch requires the dependency patch and its prerequisites because
 it uses reqwest 0.13's `tls_backend_native` API.
 
+Two independent test-fixture patches also apply directly to the declared
+upstream base:
+
+- `startup-directory-fixture.patch` normalizes the directory exactly as the
+  UI displays it, including home-directory abbreviation, before snapshot
+  comparison.
+- `sandbox-temp-fixture.patch` puts redirected temporary-directory fixtures
+  inside the test's writable workspace. The sandbox permission assertions
+  remain unchanged.
+
 These direct dependencies stay behind their newest release because a
 dependency requires an exact or bounded version:
 
@@ -161,6 +171,9 @@ cargo update --workspace --manifest-path codex-rs/Cargo.toml
 just fmt-check
 cargo nextest run --manifest-path codex-rs/Cargo.toml --locked \
   --cargo-profile ci-test -p codex-http-client --lib --no-fail-fast
+cargo nextest run --manifest-path codex-rs/Cargo.toml --locked \
+  --cargo-profile ci-test -p codex-tui -p codex-linux-sandbox \
+  -E 'test(fresh_startup_reads_destination_and_cleared_model_uses_catalog) | test(sandbox_keeps_parent_repo_discovery_while_blocking_child_metadata)'
 just bazel-lock-check
 cargo deny --manifest-path codex-rs/Cargo.toml check --deny unmatched-source \
   --deny license-not-encountered --deny unused-wrapper --deny advisory-not-detected
@@ -204,6 +217,10 @@ Full tests and release builds must pass on their required platforms.
 The HTTP-client library check passes all 115 tests, including the seven TLS
 fallback regressions, with the fixture patch applied and a custom CA path
 inherited through `SSL_CERT_FILE`.
+Run the two native fixture regressions on a Linux host where the test-owned
+temporary directory is outside a project and the daemon socket directory
+is available. A failure before the snapshot or sandbox permission assertions
+does not verify either fixture correction.
 
 ## Upstream status
 

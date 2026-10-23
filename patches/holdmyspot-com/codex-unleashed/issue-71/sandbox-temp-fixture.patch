@@ -1,0 +1,33 @@
+From d5c7fe8b0493a812b0f4a725bb0e31e83d06d0d5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 23 Oct 2026 03:04:59 -0400
+Subject: [PATCH] test: create redirected sandbox metadata fixtures inside
+ writable roots
+
+Place the redirected temporary directory and temporary-directory symlink inside the declared writable workspace. The command can then create the fixture registries before proving their metadata remains protected. Retain every existing permission assertion.
+
+Base: rust-v0.163.0, 83086188ae0614bd882818ff1aa23f3194962012. No prerequisite patches. Hosted reproduction: run 39893402008, job 120227265075 fails sandbox_keeps_parent_repo_discovery_while_blocking_child_metadata while creating the redirected registry on a read-only filesystem. Local verification cannot reach that assertion because the outer sandbox masks /tmp/codex-daemon-1000. Hosted patched verification remains required.
+---
+ codex-rs/linux-sandbox/tests/suite/sandbox.rs | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/linux-sandbox/tests/suite/sandbox.rs b/codex-rs/linux-sandbox/tests/suite/sandbox.rs
+index e0167df..e8d5ad0 100644
+--- a/codex-rs/linux-sandbox/tests/suite/sandbox.rs
++++ b/codex-rs/linux-sandbox/tests/suite/sandbox.rs
+@@ -1120,12 +1120,12 @@ async fn sandbox_keeps_parent_repo_discovery_while_blocking_child_metadata() {
+     let repo = tmpdir.path().join("repo");
+     let subdir = repo.join("sub");
+     let real_tmp = tmpdir.path().join("real-tmp");
+-    let redirected_tmp = tmpdir.path().join("redirected-tmp");
+-    let tmp_alias = tmpdir.path().join("tmp-alias");
++    let redirected_tmp = subdir.join("redirected-tmp");
++    let tmp_alias = subdir.join("tmp-alias");
++    std::fs::create_dir_all(&subdir).expect("create nested workspace");
+     std::fs::create_dir(&real_tmp).expect("create real temp directory");
+     std::fs::create_dir(&redirected_tmp).expect("create redirected temp directory");
+     std::os::unix::fs::symlink(&real_tmp, &tmp_alias).expect("create temp directory alias");
+-    std::fs::create_dir_all(&subdir).expect("create nested workspace");
+     assert!(
+         std::process::Command::new("git")
+             .arg("init")
