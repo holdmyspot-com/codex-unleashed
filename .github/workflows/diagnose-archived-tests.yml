@@ -6,6 +6,10 @@ on:
       source-run:
         type: string
         required: true
+      original-source-policy:
+        description: Restore the original Intel diagnostic driver and its default nextest policy.
+        type: boolean
+        default: false
       upstream-ref:
         type: string
         default: 83086188ae0614bd882818ff1aa23f3194962012
@@ -30,6 +34,7 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
+      ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
       TEST_FILTER: ${{ inputs.test-filter }}
@@ -37,17 +42,54 @@ jobs:
       RUST_LIB_BACKTRACE: "0"
       RUST_MIN_STACK: "8388608"
     steps:
+      - name: Authenticate the original driver and archive identities
+        if: inputs.original-source-policy
+        id: source_identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_RUN" == 39995637785 ]]
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
+          original_sha="$(jq -er '.head_sha' "$diagnostic_root/source-run.json")"
+          [[ "$original_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$original_sha" == c5ec3807915d9e86ab945f30c9dc7e650e4e2e42 ]]
+          printf 'head-sha=%s\n' "$original_sha" >> "$GITHUB_OUTPUT"
+          for artifact in 12526481642 12526217273; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
+          done
+          jq -e '.id == 12526481642 and .name == "nextest-archive-macos-x64" and .expired == false and
+            .workflow_run.id == 39995637785 and .workflow_run.head_sha == "c5ec3807915d9e86ab945f30c9dc7e650e4e2e42" and
+            .digest == "sha256:ceaf9200abaef9576fb33085b867ded410821d4b63d0420ff6fd7bb3c8e512b3"' \
+            "$diagnostic_root/artifact-12526481642.json"
+          jq -e '.id == 12526217273 and .name == "nextest-native-macos-x64" and .expired == false and
+            .workflow_run.id == 39995637785 and .workflow_run.head_sha == "c5ec3807915d9e86ab945f30c9dc7e650e4e2e42" and
+            .digest == "sha256:c7e4611c21d8f8edd2b5b19c06fb66cd2421d3338e7231fff3d61174cbc8dfba"' \
+            "$diagnostic_root/artifact-12526217273.json"
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ inputs.original-source-policy && steps.source_identity.outputs.head-sha || github.sha }}
           persist-credentials: false
 
       - name: Check out the archived workspace source
+        if: ${{ !inputs.original-source-policy }}
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: openai/codex
           ref: ${{ inputs.upstream-ref }}
           path: upstream
           persist-credentials: false
+
+      - name: Restore the original patched workspace and nextest configuration
+        if: inputs.original-source-policy
+        uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+          upstream-ref: ${{ inputs.upstream-ref }}
+          expected-upstream-commit: ${{ inputs.upstream-ref }}
 
       - uses: taiki-e/install-action@v2
         with:
@@ -66,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
-          mkdir "$diagnostic_root"
+          mkdir -p "$diagnostic_root"
           gh run view "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
             --json headSha,url --jq '[.headSha,.url] | @tsv'
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
@@ -91,21 +133,48 @@ jobs:
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir "$diagnostic_root/extracted"
-          cat > "$diagnostic_root/nextest.toml" <<'CONFIG'
+          config_args=(--config-file "$diagnostic_root/nextest.toml" --profile archived-diagnostic)
+          archive_args=(--archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst"
+            --extract-to "$diagnostic_root/extracted"
+            --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs")
+          if [[ "$ORIGINAL_SOURCE_POLICY" == true ]]; then
+            cd "$GITHUB_WORKSPACE/upstream/codex-rs"
+            test -f .config/nextest.toml
+            cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
+            shasum -a 256 "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
+            config_args=(--config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default)
+            printf 'diagnostic-sha=%s\noriginal-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=1\nretries=0\nfilter=%s\n' \
+              "$GITHUB_SHA" "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" "$(git rev-parse HEAD)" \
+              "$SOURCE_RUN" "$TEST_FILTER" > "$diagnostic_root/provenance.txt"
+            cargo nextest list "${archive_args[@]}" "${config_args[@]}" \
+              --message-format json -E "$TEST_FILTER" > "$diagnostic_root/selected-tests.json"
+            jq -e '
+              [."rust-suites"[] | ."package-name" as $package |
+                .testcases | to_entries[] |
+                select(.value."filter-match".status == "matches" and .value.ignored == false) |
+                [$package, .key]] | sort == ([
+                  ["codex-core", "client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits"],
+                  ["codex-core", "shell_snapshot::tests::snapshot_discovers_and_restores_inherited_credential_aliases"],
+                  ["codex-tui", "bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent"]
+                ] | sort)
+              ' "$diagnostic_root/selected-tests.json"
+            printf 'Verified exactly three selected archived tests.\n'
+            # Listing already extracted this archive; overwrite only those owned files for the run.
+            archive_args+=(--extract-overwrite)
+          else
+            cat > "$diagnostic_root/nextest.toml" <<'CONFIG'
           [profile.archived-diagnostic]
           slow-timeout = { period = "60s", terminate-after = 10 }
           CONFIG
+          fi
 
           trace_command=(env)
           if [[ "$RUNNER_OS" == Linux ]]; then
             trace_command=(strace -f -tt -T -e 'trace=execve,clone,clone3,wait4,waitid,kill,exit_group' -o "$diagnostic_root/processes.log")
           fi
           "${trace_command[@]}" cargo nextest run \
-            --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
-            --extract-to "$diagnostic_root/extracted" \
-            --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
-            --config-file "$diagnostic_root/nextest.toml" \
-            --profile archived-diagnostic --test-threads 1 --retries 0 --no-fail-fast \
+            "${archive_args[@]}" "${config_args[@]}" \
+            --test-threads 1 --retries 0 --no-fail-fast \
             --failure-output immediate-final \
             --no-tests fail \
             -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
@@ -123,12 +192,12 @@ jobs:
           export TMP="$TEMP"
           export TMPDIR="$fixture_root"
 
+          config_args=(--config-file "$diagnostic_root/nextest.toml" --profile archived-diagnostic)
           cargo nextest run \
             --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
             --extract-to "$diagnostic_root/writable-fixture-extracted" \
             --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
-            --config-file "$diagnostic_root/nextest.toml" \
-            --profile archived-diagnostic --test-threads 1 --retries 0 --no-fail-fast \
+            "${config_args[@]}" --test-threads 1 --retries 0 --no-fail-fast \
             --failure-output immediate-final \
             --no-tests fail \
             -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/writable-fixtures.log"
@@ -142,6 +211,12 @@ jobs:
             ${{ runner.temp }}/archived-test-diagnostic/tests.log
             ${{ runner.temp }}/archived-test-diagnostic/writable-fixtures.log
             ${{ runner.temp }}/archived-test-diagnostic/processes.log
+            ${{ runner.temp }}/archived-test-diagnostic/source-run.json
+            ${{ runner.temp }}/archived-test-diagnostic/artifact-*.json
+            ${{ runner.temp }}/archived-test-diagnostic/original-nextest.toml
+            ${{ runner.temp }}/archived-test-diagnostic/original-nextest.sha256
+            ${{ runner.temp }}/archived-test-diagnostic/provenance.txt
+            ${{ runner.temp }}/archived-test-diagnostic/selected-tests.json
           if-no-files-found: warn
           retention-days: 1
 

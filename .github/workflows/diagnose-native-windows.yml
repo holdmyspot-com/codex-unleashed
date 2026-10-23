@@ -15,6 +15,7 @@ on:
           - windows-archived-failures
           - arm-daemon-lifecycle
           - arm-daemon-hashing
+          - macos-x64-original-timeouts
           - macos-tui-timeouts
           - macos-tui-integration-timeouts
           - macos-bazel-tui-timeouts
@@ -360,6 +361,20 @@ jobs:
       runner: ubuntu-24.04-arm
       artifact-id: linux-arm64
       test-filter: 'binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_starts_ensure_one_updater_and_recover_a_missing_one) | test(=restart_applies_saved_updater_preference))'
+
+  macos-x64-original-timeouts:
+    if: inputs.focus == 'macos-x64-original-timeouts'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      original-source-policy: true
+      upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: '(package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)) | (package(codex-core) & test(=shell_snapshot::tests::snapshot_discovers_and_restores_inherited_credential_aliases)) | (package(codex-tui) & test(=bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent))'
 
   macos-tui-timeouts:
     if: inputs.focus == 'macos-tui-timeouts'
