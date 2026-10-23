@@ -96,6 +96,19 @@ jobs:
         with:
           target: ${{ inputs.target }}
 
+      - name: Cache Cargo dependency downloads
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            upstream/codex-rs -> target
+          shared-key: nextest-downloads-${{ runner.os }}-${{ runner.arch }}
+          add-rust-environment-hash-key: false
+          cache-targets: false
+          cache-workspace-crates: false
+          cache-bin: false
+          save-if: true
+          cache-on-failure: true
+
       - name: Build native test dependencies
         uses: ./.github/actions/build-nextest-native-sdk
         env:
