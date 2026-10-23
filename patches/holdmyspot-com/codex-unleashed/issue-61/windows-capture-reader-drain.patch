@@ -1,0 +1,285 @@
+From 54378b456020c81bf72acf96ebc2848539b23859 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 23 Oct 2026 20:19:28 +0000
+Subject: [PATCH] bugfix: Finish legacy Windows capture after the root process
+ exits
+
+Drain the output already buffered when capture finishes instead of waiting for inherited pipe handles held by surviving descendants. Own and close both read handles. The regression checks complete stdout and stderr beyond one read buffer, plus descendant survival.
+
+Base: rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012), no prerequisite patches. Native red: run40008639744 on windows-2022 and windows-latest waits until the descendant deadline after normal root exit. Maintained just fmt-check passes. Native patched behavior remains unverified until the focused lifecycle matrix executes.
+---
+ codex-rs/windows-sandbox-rs/src/lib.rs        | 128 ++++++++++--------
+ .../src/unified_exec/tests.rs                 |  50 +++++--
+ 2 files changed, 106 insertions(+), 72 deletions(-)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
+index f3de67d5..895565be 100644
+--- a/codex-rs/windows-sandbox-rs/src/lib.rs
++++ b/codex-rs/windows-sandbox-rs/src/lib.rs
+@@ -571,9 +571,14 @@ mod windows_impl {
+     use codex_utils_absolute_path::AbsolutePathBuf;
+     use std::collections::HashMap;
+     use std::io;
++    use std::os::windows::io::AsRawHandle;
++    use std::os::windows::io::FromRawHandle;
++    use std::os::windows::io::OwnedHandle;
+     use std::path::Path;
+     use std::ptr;
+     use std::sync::Arc;
++    use std::sync::atomic::AtomicBool;
++    use std::sync::atomic::Ordering;
+     use std::time::Duration;
+     use std::time::Instant;
+     use windows_sys::Win32::Foundation::CloseHandle;
+@@ -581,23 +586,67 @@ mod windows_impl {
+     use windows_sys::Win32::Foundation::HANDLE;
+     use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+     use windows_sys::Win32::Foundation::SetHandleInformation;
++    use windows_sys::Win32::Storage::FileSystem::ReadFile;
+     use windows_sys::Win32::System::Pipes::CreatePipe;
++    use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+     use windows_sys::Win32::System::Threading::GetExitCodeProcess;
+     use windows_sys::Win32::System::Threading::INFINITE;
+     use windows_sys::Win32::System::Threading::WaitForSingleObject;
+
+     type PipeHandles = ((HANDLE, HANDLE), (HANDLE, HANDLE), (HANDLE, HANDLE));
+
+-    struct NonOwningPipeHandle(HANDLE);
+-
+-    // SAFETY: Pipe handles are opaque process-wide tokens that may be used from
+-    // any thread. This wrapper does not own the handle or extend its lifetime.
+-    unsafe impl Send for NonOwningPipeHandle {}
+-
+-    impl NonOwningPipeHandle {
+-        fn raw(&self) -> HANDLE {
+-            self.0
++    fn read_capture_pipe(pipe: OwnedHandle, finished: Arc<AtomicBool>) -> Vec<u8> {
++        let mut output = Vec::new();
++        let mut buffer = [0u8; 8192];
++        let mut remaining = None;
++        loop {
++            let has_finished = finished.load(Ordering::Acquire);
++            let mut available = 0;
++            let ok = unsafe {
++                PeekNamedPipe(
++                    pipe.as_raw_handle() as _,
++                    ptr::null_mut(),
++                    0,
++                    ptr::null_mut(),
++                    &mut available,
++                    ptr::null_mut(),
++                )
++            };
++            if ok == 0 {
++                break;
++            }
++            if has_finished && remaining.is_none() {
++                // Descendants may keep writing after root exit. Drain only the
++                // bytes already pending when completion is first observed.
++                remaining = Some(available);
++            }
++            let to_read = available.min(remaining.unwrap_or(available));
++            if to_read == 0 {
++                if has_finished {
++                    break;
++                }
++                std::thread::sleep(Duration::from_millis(5));
++                continue;
++            }
++            let mut read_bytes = 0;
++            let ok = unsafe {
++                ReadFile(
++                    pipe.as_raw_handle() as _,
++                    buffer.as_mut_ptr(),
++                    to_read.min(buffer.len() as u32),
++                    &mut read_bytes,
++                    ptr::null_mut(),
++                )
++            };
++            if ok == 0 || read_bytes == 0 {
++                break;
++            }
++            output.extend_from_slice(&buffer[..read_bytes as usize]);
++            if let Some(remaining) = remaining.as_mut() {
++                *remaining -= read_bytes;
++            }
+         }
++        output
+     }
+
+     enum WaitOutcome {
+@@ -822,52 +871,13 @@ mod windows_impl {
+             CloseHandle(err_w);
+         }
+
+-        let (tx_out, rx_out) = std::sync::mpsc::channel::<Vec<u8>>();
+-        let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
+-        let out_r = NonOwningPipeHandle(out_r);
+-        let err_r = NonOwningPipeHandle(err_r);
+-        let t_out = std::thread::spawn(move || {
+-            let mut buf = Vec::new();
+-            let mut tmp = [0u8; 8192];
+-            loop {
+-                let mut read_bytes: u32 = 0;
+-                let ok = unsafe {
+-                    windows_sys::Win32::Storage::FileSystem::ReadFile(
+-                        out_r.raw(),
+-                        tmp.as_mut_ptr(),
+-                        tmp.len() as u32,
+-                        &mut read_bytes,
+-                        std::ptr::null_mut(),
+-                    )
+-                };
+-                if ok == 0 || read_bytes == 0 {
+-                    break;
+-                }
+-                buf.extend_from_slice(&tmp[..read_bytes as usize]);
+-            }
+-            let _ = tx_out.send(buf);
+-        });
+-        let t_err = std::thread::spawn(move || {
+-            let mut buf = Vec::new();
+-            let mut tmp = [0u8; 8192];
+-            loop {
+-                let mut read_bytes: u32 = 0;
+-                let ok = unsafe {
+-                    windows_sys::Win32::Storage::FileSystem::ReadFile(
+-                        err_r.raw(),
+-                        tmp.as_mut_ptr(),
+-                        tmp.len() as u32,
+-                        &mut read_bytes,
+-                        std::ptr::null_mut(),
+-                    )
+-                };
+-                if ok == 0 || read_bytes == 0 {
+-                    break;
+-                }
+-                buf.extend_from_slice(&tmp[..read_bytes as usize]);
+-            }
+-            let _ = tx_err.send(buf);
+-        });
++        let out_r = unsafe { OwnedHandle::from_raw_handle(out_r as _) };
++        let err_r = unsafe { OwnedHandle::from_raw_handle(err_r as _) };
++        let finished = Arc::new(AtomicBool::new(false));
++        let stdout_finished = Arc::clone(&finished);
++        let stderr_finished = Arc::clone(&finished);
++        let t_out = std::thread::spawn(move || read_capture_pipe(out_r, stdout_finished));
++        let t_err = std::thread::spawn(move || read_capture_pipe(err_r, stderr_finished));
+
+         let wait_outcome = wait_for_process(pi.hProcess, timeout_ms, cancellation.as_ref());
+         let timed_out = matches!(wait_outcome, WaitOutcome::TimedOut);
+@@ -903,6 +913,8 @@ mod windows_impl {
+             );
+         }
+
++        finished.store(true, Ordering::Release);
++
+         unsafe {
+             if !pi.hThread.is_null() {
+                 CloseHandle(pi.hThread);
+@@ -912,10 +924,8 @@ mod windows_impl {
+             }
+             CloseHandle(security.h_token);
+         }
+-        let _ = t_out.join();
+-        let _ = t_err.join();
+-        let stdout = rx_out.recv().unwrap_or_default();
+-        let stderr = rx_err.recv().unwrap_or_default();
++        let stdout = t_out.join().unwrap_or_default();
++        let stderr = t_err.join().unwrap_or_default();
+         let exit_code = if timed_out {
+             128 + 64
+         } else {
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index be2d1bf0..3a50918d 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -105,6 +105,24 @@ fn powershell_literal(path: &Path) -> String {
+     path.to_string_lossy().replace('\'', "''")
+ }
+
++fn workload_temp_env(temp_dir: &Path) -> HashMap<String, String> {
++    let temp_dir = temp_dir.to_string_lossy().into_owned();
++    HashMap::from([
++        ("TEMP".to_string(), temp_dir.clone()),
++        ("TMP".to_string(), temp_dir),
++    ])
++}
++
++fn publish_pid_command(path: &Path) -> String {
++    let pending = path.with_extension("pending");
++    format!(
++        "Set-Content -LiteralPath '{}' -Value $PID; Move-Item -LiteralPath '{}' -Destination '{}'",
++        powershell_literal(&pending),
++        powershell_literal(&pending),
++        powershell_literal(path),
++    )
++}
++
+ fn start_powershell_child(
+     pwsh: &Path,
+     stdio_dir: &Path,
+@@ -669,15 +687,16 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+         return;
+     };
+     let _guard = legacy_process_test_guard();
+-    let cwd = sandbox_cwd();
++    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
++    let cwd = workspace.path().to_path_buf();
+     let codex_home = sandbox_home("legacy-capture-pwsh");
+     println!("capture pwsh codex_home={}", codex_home.path().display());
+-    let ready_marker = codex_home.path().join("descendant-started");
+-    let release_marker = codex_home.path().join("release-descendant");
+-    let survival_marker = codex_home.path().join("descendant-survived");
++    let ready_marker = cwd.join("descendant-started");
++    let release_marker = cwd.join("release-descendant");
++    let survival_marker = cwd.join("descendant-survived");
+     let descendant_command = format!(
+-        "$deadline=(Get-Date).AddSeconds(30); Set-Content -LiteralPath '{}' -Value $PID; while (-not (Test-Path -LiteralPath '{}')) {{ if ((Get-Date) -ge $deadline) {{ exit 3 }}; Start-Sleep -Milliseconds 25 }}; Set-Content -LiteralPath '{}' -Value survived",
+-        powershell_literal(&ready_marker),
++        "$deadline=(Get-Date).AddSeconds(30); {}; while (-not (Test-Path -LiteralPath '{}')) {{ if ((Get-Date) -ge $deadline) {{ exit 3 }}; Start-Sleep -Milliseconds 25 }}; Set-Content -LiteralPath '{}' -Value survived",
++        publish_pid_command(&ready_marker),
+         powershell_literal(&release_marker),
+         powershell_literal(&survival_marker),
+     );
+@@ -685,9 +704,15 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+         "while (-not (Test-Path -LiteralPath '{}')) {{ Start-Sleep -Milliseconds 25 }}",
+         powershell_literal(&ready_marker),
+     );
++    let output_len = 16_384;
++    let expected_stdout = format!(
++        "LEGACY-CAPTURE-DIRECT{}LEGACY-CAPTURE-STDOUT-END",
++        "O".repeat(output_len)
++    );
++    let expected_stderr = format!("{}LEGACY-CAPTURE-STDERR-END", "E".repeat(output_len));
+     let parent_command = format!(
+-        "{ASSERT_NO_CONSOLE} Write-Output LEGACY-CAPTURE-DIRECT; {}",
+-        start_powershell_child(&pwsh, codex_home.path(), &descendant_command, &parent_tail,),
++        "{ASSERT_NO_CONSOLE} [Console]::Out.Write('LEGACY-CAPTURE-DIRECT' + ('O' * {output_len})); [Console]::Error.Write('E' * {output_len}); {}; [Console]::Out.Write('LEGACY-CAPTURE-STDOUT-END'); [Console]::Error.Write('LEGACY-CAPTURE-STDERR-END')",
++        start_powershell_child(&pwsh, &cwd, &descendant_command, &parent_tail,),
+     );
+     let permission_profile = PermissionProfile::workspace_write();
+     let result = run_windows_sandbox_capture(
+@@ -701,7 +726,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        workload_temp_env(&cwd),
+         Some(10_000),
+         /*cancellation*/ None,
+     )
+@@ -721,10 +746,9 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+     let stderr = String::from_utf8_lossy(&result.stderr);
+     println!("capture pwsh stderr={stderr:?}");
+     assert_eq!(result.exit_code, 0, "stdout={stdout:?} stderr={stderr:?}");
+-    assert!(
+-        stdout.contains("LEGACY-CAPTURE-DIRECT"),
+-        "stdout={stdout:?}"
+-    );
++    assert!(!result.timed_out, "capture timed out");
++    assert_eq!(stdout, expected_stdout);
++    assert_eq!(stderr, expected_stderr);
+     assert!(
+         wait_for_path(&survival_marker, Duration::from_secs(10)),
+         "sandbox descendant did not survive normal capture exit"

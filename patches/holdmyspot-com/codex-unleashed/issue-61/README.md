@@ -2654,3 +2654,27 @@ build; the release's musl preparation steps provide that acceptance gate.
 The complete upstream formatting gate is `just fmt-check` from the checkout
 root, using upstream's declared formatter dependencies. The focused shell
 checks supplement that gate.
+
+## Legacy Windows capture completion
+
+`windows-capture-reader-drain.patch` lets legacy Windows command capture return
+when its root process finishes, even when a surviving descendant retains an
+inherited output pipe. Capture drains the output already buffered at completion
+and closes its read handles. Normal exit preserves descendants; timeout and
+cancellation retain process-tree termination. The patch requires no prerequisite
+patches on the declared upstream base.
+
+The regression checks exact stdout and stderr payloads larger than one read
+buffer, their final markers, successful root exit and descendant survival. Its
+marker files and temporary files stay inside its declared writable workspace.
+Verify a standalone patched checkout with `just fmt-check` and, on native
+Windows with PowerShell 7, run:
+
+```powershell
+just test -p codex-windows-sandbox -E 'test(legacy_capture_emits_output_and_preserves_descendant_after_normal_exit)'
+```
+
+The downstream `windows-lifecycle-source` diagnostic also requires both capture
+cases and both TTY phases to execute and pass on Windows 2022 and Windows latest.
+Its timing overlay supplies execution evidence; the production patch supplies
+the normal-capture fixture and output assertions independently.
