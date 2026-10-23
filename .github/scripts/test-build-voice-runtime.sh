@@ -68,8 +68,10 @@ plugin_names='["app","audioconvert","audioresample","coreelements","opus","rtp",
 while IFS=$'\t' read -r target prefix plugin_directory plugin_suffix required_library; do
   runtime="$fixture/upstream/bazel-bin/third_party/voice/native_runtime_$prefix"
   mkdir -p "$runtime"
+  plugin_prefix=libgst
+  if [[ "$target" == *-pc-windows-msvc ]]; then plugin_prefix=gst; fi
   plugins="$(jq -c --arg directory "$plugin_directory" --arg suffix "$plugin_suffix" \
-    'map($directory + "/libgst" + . + $suffix) | sort' <<< "$plugin_names")"
+    --arg prefix "$plugin_prefix" 'map($directory + "/" + $prefix + . + $suffix) | sort' <<< "$plugin_names")"
   records='[]'
   while IFS= read -r name; do
     library="$runtime/$name"
@@ -87,6 +89,8 @@ while IFS=$'\t' read -r target prefix plugin_directory plugin_suffix required_li
 done <<'RUNTIMES'
 x86_64-unknown-linux-gnu	linux_x86_64	lib/gstreamer-1.0	.so	lib/libgio-2.0.so.0
 aarch64-apple-darwin	macos_aarch64	plugins	.dylib	lib/libgio-2.0.0.dylib
+x86_64-pc-windows-msvc	windows_x86_64	bin	.dll	bin/gio-2.0-0.dll
+aarch64-pc-windows-msvc	windows_aarch64	bin	.dll	bin/gio-2.0-0.dll
 RUNTIMES
 printf '%s' 'fixture helper' > "$fixture/upstream/bazel-bin/codex-rs/voice-host/codex-voice-host"
 for target in x86_64-unknown-linux-musl aarch64-apple-darwin; do
@@ -97,6 +101,56 @@ for target in x86_64-unknown-linux-musl aarch64-apple-darwin; do
   jq -e '.developmentOnly == false and .distribution == "publicRelease"' \
     "$fixture/extracted-$target/runtime/runtime.json" >/dev/null
 done
+
+# A CRT-updater process double checks the shell's staged-file ownership, not native CRT loading.
+mkdir "$fixture/crt-tools"
+VOICE_FIXTURE_PYTHON="$(command -v python3)"
+export VOICE_FIXTURE_PYTHON
+cat > "$fixture/crt-tools/python" <<'CRT_PYTHON'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" != */windows_crt.py ]]; then exec "$VOICE_FIXTURE_PYTHON" "$@"; fi
+[[ "$2" == --root && "$4" == --target && "$6" == --helper ]]
+receipt="$3/runtime.json"
+[[ -w "$receipt" ]] || { echo 'Staged CRT receipt is read-only' >&2; exit 28; }
+if [[ "${VOICE_FIXTURE_CRT_FAILURE:-}" == 1 ]]; then
+  echo 'Controlled CRT updater failure' >&2
+  exit 29
+fi
+updated="$(jq '.crtFixtureUpdated = true' "$receipt")"
+printf '%s\n' "$updated" > "$receipt"
+CRT_PYTHON
+chmod +x "$fixture/crt-tools/python"
+printf '%s' 'fixture Windows helper' > "$fixture/upstream/bazel-bin/codex-rs/voice-host/codex-voice-host.exe"
+for prefix in windows_x86_64 windows_aarch64; do
+  target=x86_64-pc-windows-msvc
+  if [[ "$prefix" == windows_aarch64 ]]; then target=aarch64-pc-windows-msvc; fi
+  receipt="$fixture/upstream/bazel-bin/third_party/voice/native_runtime_$prefix/runtime.json"
+  cp "$receipt" "$fixture/original-$prefix.json"
+  chmod a-w "$receipt"
+  [[ -z "$(find "$receipt" -prune \( -perm -0200 -o -perm -0020 -o -perm -0002 \) -print)" ]]
+  PATH="$fixture/crt-tools:$PATH" bash "$producer" package "$fixture/upstream" "$target" \
+    "$fixture/crt-$prefix" 1111111111111111111111111111111111111111 > "$fixture/stdout" 2> "$fixture/stderr"
+  cmp "$receipt" "$fixture/original-$prefix.json"
+  [[ -z "$(find "$receipt" -prune \( -perm -0200 -o -perm -0020 -o -perm -0002 \) -print)" ]]
+  mkdir "$fixture/crt-extracted-$prefix"
+  tar -xzf "$fixture/crt-$prefix/voice-runtime-$target.tar.gz" -C "$fixture/crt-extracted-$prefix"
+  jq -e '.crtFixtureUpdated == true and .developmentOnly == false and .distribution == "publicRelease"' \
+    "$fixture/crt-extracted-$prefix/runtime/runtime.json" >/dev/null
+  if PATH="$fixture/crt-tools:$PATH" VOICE_FIXTURE_CRT_FAILURE=1 bash "$producer" package \
+    "$fixture/upstream" "$target" "$fixture/crt-failure-$prefix" \
+    1111111111111111111111111111111111111111 > "$fixture/stdout" 2> "$fixture/stderr"; then
+    echo 'Packaging accepted failed CRT update' >&2
+    exit 1
+  fi
+  grep -Fq 'Controlled CRT updater failure' "$fixture/stderr"
+  [[ ! -e "$fixture/crt-failure-$prefix/voice-runtime-$target.tar.gz" ]]
+  [[ -z "$(find "$fixture/crt-$prefix" "$fixture/crt-failure-$prefix" -name '.voice-stage-*' -print)" ]]
+  cmp "$receipt" "$fixture/original-$prefix.json"
+  [[ -z "$(find "$receipt" -prune \( -perm -0200 -o -perm -0020 -o -perm -0002 \) -print)" ]]
+  chmod u+w "$receipt"
+done
+
 if bash "$producer" package "$fixture/upstream" x86_64-unknown-linux-musl "$fixture/wrong-commit" \
   2222222222222222222222222222222222222222 > "$fixture/stdout" 2> "$fixture/stderr"; then
   echo 'Mismatched source commit accepted' >&2

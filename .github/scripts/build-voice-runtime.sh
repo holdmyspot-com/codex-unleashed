@@ -70,6 +70,7 @@ package_voice() (
   cp "$checkout/bazel-bin/codex-rs/voice-host/$helper" "$stage/$helper"
   chmod 0755 "$stage/$helper"
   if [[ "$target" == *-pc-windows-msvc ]]; then
+    chmod u+w "$stage/runtime/runtime.json"
     PYTHONDONTWRITEBYTECODE=1 "$python" "$checkout/third_party/voice/windows_crt.py" \
       --root "$stage/runtime" --target "$voice_target" --helper "$stage/$helper"
   fi
