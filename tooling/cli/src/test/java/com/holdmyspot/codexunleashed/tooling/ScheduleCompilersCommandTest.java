@@ -265,7 +265,7 @@ public final class ScheduleCompilersCommandTest
 				ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX))
 			{
 				root.register(watcher, StandardWatchEventKinds.ENTRY_CREATE);
-				server.bind(UnixDomainSocketAddress.of(endpoint));
+				server.bind(UnixDomainSocketAddress.of(Path.of("").toAbsolutePath().relativize(endpoint)));
 				ProcessBuilder builder = new ProcessBuilder(executable.toString(), "node", compiler.toString(),
 					"--crate-name", "fixture");
 				builder.directory(root.toFile()).redirectOutput(outputLog.toFile()).redirectError(errorLog.toFile());
