@@ -67,7 +67,7 @@ index 895565be..43ff241b 100644
              128 + 64
          } else {
 diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-index 3a50918d..d8854f7f 100644
+index 3a50918d..8da99e81 100644
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 @@ -687,6 +687,10 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
@@ -198,7 +198,28 @@ index 3a50918d..d8854f7f 100644
          Some(30_000),
          &[],
          &[],
-@@ -1041,6 +1052,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -1008,10 +1019,16 @@ async fn assert_legacy_tty_descendant_lifecycle(
+     )
+     .await
+     .expect("spawn legacy sandbox ConPTY lifecycle test");
+-    assert!(
+-        wait_for_path(&ready_marker, Duration::from_secs(10)),
+-        "{lifecycle:?} descendant did not start"
+-    );
++    if !wait_for_path(&ready_marker, Duration::from_secs(10)) {
++        spawned.session.request_terminate();
++        let (stdout, exit_code) =
++            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(15)).await;
++        panic!(
++            "{lifecycle:?} descendant did not start; exit_code={exit_code} stdout={:?}\n{}",
++            String::from_utf8_lossy(&stdout),
++            sandbox_log(codex_home.path())
++        );
++    }
+     let descendant_pid = fs::read_to_string(&ready_marker)
+         .expect("read descendant pid")
+         .trim()
+@@ -1041,6 +1058,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
      }
      wait_for_process_exit(&descendant_process, Duration::from_secs(10))
          .expect("sandbox ConPTY descendant did not exit");
@@ -209,7 +230,7 @@ index 3a50918d..d8854f7f 100644
  }
 
  #[test]
-@@ -1050,11 +1065,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
+@@ -1050,11 +1071,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
          return;
      };
      let _guard = legacy_process_test_guard();
