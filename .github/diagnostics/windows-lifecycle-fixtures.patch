@@ -1,5 +1,5 @@
 diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
-index 895565be..43ff241b 100644
+index 895565b..43ff241 100644
 --- a/codex-rs/windows-sandbox-rs/src/lib.rs
 +++ b/codex-rs/windows-sandbox-rs/src/lib.rs
 @@ -876,12 +876,37 @@ mod windows_impl {
@@ -67,7 +67,7 @@ index 895565be..43ff241b 100644
              128 + 64
          } else {
 diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-index 3a50918d..8da99e81 100644
+index 3a50918..5ac6a7d 100644
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 @@ -687,6 +687,10 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
@@ -198,7 +198,7 @@ index 3a50918d..8da99e81 100644
          Some(30_000),
          &[],
          &[],
-@@ -1008,10 +1019,16 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -1008,10 +1019,18 @@ async fn assert_legacy_tty_descendant_lifecycle(
      )
      .await
      .expect("spawn legacy sandbox ConPTY lifecycle test");
@@ -211,15 +211,17 @@ index 3a50918d..8da99e81 100644
 +        let (stdout, exit_code) =
 +            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(15)).await;
 +        panic!(
-+            "{lifecycle:?} descendant did not start; exit_code={exit_code} stdout={:?}\n{}",
++            "{lifecycle:?} descendant did not start; exit_code={exit_code} stdout={:?} descendant_stdout={:?} descendant_stderr={:?}\n{}",
 +            String::from_utf8_lossy(&stdout),
++            fs::read_to_string(codex_home.path().join("descendant.stdout")),
++            fs::read_to_string(codex_home.path().join("descendant.stderr")),
 +            sandbox_log(codex_home.path())
 +        );
 +    }
      let descendant_pid = fs::read_to_string(&ready_marker)
          .expect("read descendant pid")
          .trim()
-@@ -1041,6 +1058,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -1041,6 +1060,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
      }
      wait_for_process_exit(&descendant_process, Duration::from_secs(10))
          .expect("sandbox ConPTY descendant did not exit");
@@ -230,7 +232,7 @@ index 3a50918d..8da99e81 100644
  }
 
  #[test]
-@@ -1050,11 +1071,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
+@@ -1050,11 +1073,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
          return;
      };
      let _guard = legacy_process_test_guard();
