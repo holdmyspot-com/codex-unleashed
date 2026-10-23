@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - arm-daemon-lifecycle
+          - arm-daemon-hashing
           - macos-tui-timeouts
           - compiler-profile
           - linker-profile
@@ -29,6 +30,52 @@ permissions:
   contents: read
 
 jobs:
+  arm-daemon-hashing:
+    if: inputs.focus == 'arm-daemon-hashing'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    env:
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - name: Compare executable hashing with and without package optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_dir=$(mktemp -d "$RUNNER_TEMP/daemon-hashing-XXXXXX")
+          trap 'rm -rf -- "$probe_dir"' EXIT
+          export TMPDIR="$probe_dir/tmp"
+          export CARGO_HOME="$probe_dir/cargo-home"
+          export CARGO_TARGET_DIR="$probe_dir/target"
+          mkdir -p "$probe_dir/src" "$TMPDIR"
+          cat > "$probe_dir/Cargo.toml" <<'MANIFEST'
+          [package]
+          name = "daemon-hash-benchmark"
+          version = "0.0.0"
+          edition = "2024"
+          [dependencies]
+          blake3 = "=1.8.2"
+          [profile.optimized-hash]
+          inherits = "dev"
+          [profile.optimized-hash.package.blake3]
+          opt-level = 3
+          MANIFEST
+          cat > "$probe_dir/src/main.rs" <<'SOURCE'
+          use std::io::Read;
+          fn main() -> std::io::Result<()> {
+              let bytes = 1024_u64 * 1024 * 1024;
+              let start = std::time::Instant::now();
+              let mut hasher = blake3::Hasher::new();
+              hasher.update_reader(std::io::repeat(37).take(bytes))?;
+              println!("bytes={bytes} elapsed={:?} digest={}", start.elapsed(), hasher.finalize());
+              Ok(())
+          }
+          SOURCE
+          rustc --version
+          uname -m
+          cd "$probe_dir"
+          cargo run
+          cargo run --profile optimized-hash
+
   arm-daemon-lifecycle:
     if: inputs.focus == 'arm-daemon-lifecycle'
     permissions:
