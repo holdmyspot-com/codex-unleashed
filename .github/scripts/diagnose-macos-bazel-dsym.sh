@@ -103,6 +103,7 @@ collect_darwin_replay_evidence() (
   /usr/bin/lldb --batch --no-lldbinit \
     --one-line-on-crash 'thread backtrace all' --one-line-on-crash 'process kill' \
     -o 'settings set target.disable-aslr false' \
+    -o 'settings set target.process.stop-on-exec false' \
     -o 'process handle SIGABRT -s true -n true -p true' \
     -o run -o 'thread backtrace all' -o 'process kill' -- \
     /usr/bin/sandbox-exec -f "$capture/replay.sb" "$@" \
