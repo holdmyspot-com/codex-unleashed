@@ -1,13 +1,25 @@
 package com.holdmyspot.codexunleashed.tooling;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.Channels;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -201,6 +213,143 @@ public final class ScheduleCompilersCommandTest
 					Files.delete(path);
 			}
 		}
+	}
+
+	/**
+	 * On Windows, aborts a partially suspended compiler and its descendant before accepting a fresh generation.
+	 *
+	 * @throws IOException if native compilation, protocol or fixture operations fail
+	 * @throws InterruptedException if waiting for the owned wrapper is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void recoversDeniedWindowsSuspension() throws IOException, InterruptedException
+	{
+		if (!System.getProperty("os.name").startsWith("Windows"))
+			throw new SkipException("Requires native Windows thread and job control");
+		Path root = Files.createTempDirectory("pause-");
+		try
+		{
+			Path source = root.resolve("deny.cc");
+			try (InputStream fixture = getClass().getResourceAsStream("/native/deny-second-suspension.cc"))
+			{
+				requireThat(fixture, "fixture").isNotNull();
+				Files.copy(fixture, source);
+			}
+			Path project = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
+			Path nativeSource = project.resolve("tooling/cli/src/main/native");
+			Path executable = root.resolve("deny.exe");
+			SystemCommands.Result compilation = SystemCommands.capture(List.of("cl.exe", "/nologo", "/std:c++17",
+				"/O2", "/EHsc", "/utf-8", "/W4", "/WX", "/I" + nativeSource, source.toString(),
+				"/Fo" + root.resolve("deny.obj"), "/Fe" + executable, "/link", "ws2_32.lib"),
+				root, root, System.getenv());
+			requireThat(compilation.status(), "compilationStatus").withContext(compilation.stdout(), "stdout").
+				withContext(compilation.stderr(), "stderr").isEqualTo(0);
+			Path compiler = Files.writeString(root.resolve("compiler.cjs"), """
+				const fs = require('node:fs');
+				if (fs.existsSync('attempt')) {
+				  process.stdout.write('retry output');
+				  process.stderr.write('retry diagnostic');
+				  process.exit(0);
+				}
+				fs.writeFileSync('attempt', 'first');
+				const child = require('node:child_process').spawn(process.execPath,
+				  ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});
+				fs.writeFileSync('ready.tmp', process.pid + '\\n' + child.pid + '\\n');
+				fs.renameSync('ready.tmp', 'ready');
+				setInterval(() => {}, 1000);
+				""");
+			Path errorLog = root.resolve("stderr");
+			Path outputLog = root.resolve("stdout");
+			Path endpoint = root.resolve("socket");
+			try (WatchService watcher = root.getFileSystem().newWatchService();
+				ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX))
+			{
+				root.register(watcher, StandardWatchEventKinds.ENTRY_CREATE);
+				server.bind(UnixDomainSocketAddress.of(endpoint));
+				ProcessBuilder builder = new ProcessBuilder(executable.toString(), "node", compiler.toString(),
+					"--crate-name", "fixture");
+				builder.directory(root.toFile()).redirectOutput(outputLog.toFile()).redirectError(errorLog.toFile());
+				builder.environment().put("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint.toString());
+				try (Process wrapper = builder.start())
+				{
+					try (SocketChannel connection = server.accept();
+						DataInputStream input = new DataInputStream(Channels.newInputStream(connection));
+						DataOutputStream output = new DataOutputStream(Channels.newOutputStream(connection)))
+					{
+						sendSchedulerPacket(output, 1, 1);
+						requireThat(readSchedulerPacket(input, errorLog), "started").isEqualTo(List.of(8, 1, 0));
+						while (!Files.exists(root.resolve("ready")))
+						{
+							WatchKey key = watcher.poll(10, TimeUnit.SECONDS);
+							requireThat(key, "compilerReadinessEvent").isNotNull();
+							key.pollEvents();
+							key.reset();
+						}
+						List<ProcessHandle> descendants = Files.readAllLines(root.resolve("ready")).stream().
+							map(Long::parseLong).map(pid -> ProcessHandle.of(pid).orElseThrow()).toList();
+						sendSchedulerPacket(output, 2, 1);
+						requireThat(readSchedulerPacket(input, errorLog), "abortedAttempt").isEqualTo(List.of(11, 1, 137));
+						for (ProcessHandle descendant : descendants)
+							requireThat(descendant.isAlive(), "abortedDescendantAlive").isFalse();
+						sendSchedulerPacket(output, 5, 1);
+						sendSchedulerPacket(output, 1, 2);
+						requireThat(readSchedulerPacket(input, errorLog), "retryStarted").isEqualTo(List.of(8, 2, 0));
+						requireThat(readSchedulerPacket(input, errorLog), "retryCompleted").isEqualTo(List.of(9, 2, 0));
+						requireThat(wrapper.waitFor(10, TimeUnit.SECONDS), "wrapperTerminated").isTrue();
+						requireThat(wrapper.exitValue(), "wrapperStatus").isEqualTo(0);
+						requireThat(Files.readString(outputLog), "stdout").isEqualTo("retry output");
+						requireThat(Files.readString(errorLog), "stderr").contains("retry diagnostic");
+						requireThat(Files.readString(errorLog), "stderr").
+							contains("fixture: denied suspension after one successful suspension");
+					}
+					finally
+					{
+						wrapper.destroyForcibly();
+						wrapper.waitFor();
+					}
+				}
+			}
+		}
+		finally
+		{
+			try (Stream<Path> paths = Files.walk(root))
+			{
+				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+					Files.delete(path);
+			}
+		}
+	}
+
+	/**
+	 * Writes one raw scheduler command for an attempt generation.
+	 *
+	 * @param output borrowed scheduler connection
+	 * @param command wire command
+	 * @param generation attempt generation
+	 * @throws IOException if the connection rejects the packet
+	 */
+	private static void sendSchedulerPacket(DataOutputStream output, int command, int generation) throws IOException
+	{
+		output.writeInt(command);
+		output.writeInt(generation);
+		output.writeInt(0);
+		output.flush();
+	}
+
+	/**
+	 * Reads a complete raw reply, including the controller's retained diagnostics when it closes early.
+	 *
+	 * @param input borrowed scheduler connection
+	 * @param errorLog owned controller diagnostics
+	 * @return command, generation and value
+	 * @throws IOException if the connection or diagnostics cannot be read
+	 */
+	private static List<Integer> readSchedulerPacket(DataInputStream input, Path errorLog) throws IOException
+	{
+		byte[] packet = input.readNBytes(12);
+		requireThat(packet.length, "replyBytes").withContext(Files.readString(errorLog), "stderr").isEqualTo(12);
+		java.nio.ByteBuffer message = java.nio.ByteBuffer.wrap(packet);
+		return List.of(message.getInt(), message.getInt(), message.getInt());
 	}
 
 	/**
