@@ -88,7 +88,6 @@ jobs:
           target: ${{ inputs.target }}
 
       - name: Configure rusty_v8 artifact overrides
-        if: ${{ runner.os != 'Windows' }}
         uses: ./.github/actions/setup-rusty-v8
         with:
           target: ${{ inputs.target }}
