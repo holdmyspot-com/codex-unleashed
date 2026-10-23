@@ -1,0 +1,153 @@
+diff --git a/codex-rs/app-server/tests/common/test_app_server.rs b/codex-rs/app-server/tests/common/test_app_server.rs
+index 1e688ae..4903e32 100644
+--- a/codex-rs/app-server/tests/common/test_app_server.rs
++++ b/codex-rs/app-server/tests/common/test_app_server.rs
+@@ -148,6 +148,7 @@ use crate::rpc_delay::WebsocketDelayInterposer;
+
+ pub struct TestAppServer {
+     next_request_id: AtomicI64,
++    diagnostic_started: std::time::Instant,
+     /// Retain this child process until the client is dropped. The Tokio runtime
+     /// will make a "best effort" to reap the process after it exits, but it is
+     /// not a guarantee. See the `kill_on_drop` documentation for details.
+@@ -259,6 +260,10 @@ impl TestAppServer {
+         env_overrides: &[(&str, Option<&str>)],
+         args: &[&str],
+     ) -> anyhow::Result<Self> {
++        let diagnostic_started = std::time::Instant::now();
++        eprintln!(
++            "[wine initialize] spawn begin program={program:?} args={args:?} home={codex_home:?}"
++        );
+         let mut cmd = Command::new(program);
+
+         cmd.stdin(Stdio::piped());
+@@ -300,6 +305,11 @@ impl TestAppServer {
+             retries += 1;
+             tokio::time::sleep(Duration::from_millis(10)).await;
+         };
++        eprintln!(
++            "[wine initialize] spawned pid={:?} elapsed={:?}",
++            process.id(),
++            diagnostic_started.elapsed()
++        );
+         let stdin = process
+             .stdin
+             .take()
+@@ -317,14 +327,29 @@ impl TestAppServer {
+             let json_logs = json_logs.clone();
+             let mut stderr_reader = BufReader::new(stderr).lines();
+             tokio::spawn(async move {
+-                while let Ok(Some(line)) = stderr_reader.next_line().await {
+-                    json_logs.record(line.clone());
+-                    eprintln!("[mcp stderr] {line}");
++                loop {
++                    match stderr_reader.next_line().await {
++                        Ok(Some(line)) => {
++                            json_logs.record(line.clone());
++                            eprintln!(
++                                "[mcp stderr elapsed={:?}] {line}",
++                                diagnostic_started.elapsed()
++                            );
++                        }
++                        result => {
++                            eprintln!(
++                                "[wine initialize] stderr reader ended elapsed={:?} result={result:?}",
++                                diagnostic_started.elapsed()
++                            );
++                            break;
++                        }
++                    }
+                 }
+             });
+         }
+         Ok(Self {
+             next_request_id: AtomicI64::new(0),
++            diagnostic_started,
+             process,
+             stdin: Some(stdin),
+             stdout,
+@@ -1635,20 +1660,53 @@ impl TestAppServer {
+     }
+
+     async fn send_jsonrpc_message(&mut self, message: JSONRPCMessage) -> anyhow::Result<()> {
+-        eprintln!("writing message to stdin: {message:?}");
++        eprintln!(
++            "[wine initialize] write begin pid={:?} elapsed={:?} message={message:?}",
++            self.process.id(),
++            self.diagnostic_started.elapsed()
++        );
+         let Some(stdin) = self.stdin.as_mut() else {
+             anyhow::bail!("mcp stdin closed");
+         };
+         let payload = serde_json::to_string(&message)?;
+         stdin.write_all(payload.as_bytes()).await?;
++        eprintln!(
++            "[wine initialize] payload written elapsed={:?}",
++            self.diagnostic_started.elapsed()
++        );
+         stdin.write_all(b"\n").await?;
++        eprintln!(
++            "[wine initialize] newline written elapsed={:?}",
++            self.diagnostic_started.elapsed()
++        );
+         stdin.flush().await?;
++        eprintln!(
++            "[wine initialize] flush complete elapsed={:?}",
++            self.diagnostic_started.elapsed()
++        );
+         Ok(())
+     }
+
+     async fn read_jsonrpc_message(&mut self) -> anyhow::Result<JSONRPCMessage> {
++        eprintln!(
++            "[wine initialize] stdout wait elapsed={:?}",
++            self.diagnostic_started.elapsed()
++        );
++        let available = self.stdout.fill_buf().await?;
++        eprintln!(
++            "[wine initialize] stdout available elapsed={:?} bytes={} preview={:?}",
++            self.diagnostic_started.elapsed(),
++            available.len(),
++            &available[..available.len().min(128)]
++        );
+         let mut line = String::new();
+         self.stdout.read_line(&mut line).await?;
++        eprintln!(
++            "[wine initialize] stdout line elapsed={:?} bytes={} newline={}",
++            self.diagnostic_started.elapsed(),
++            line.len(),
++            line.ends_with('\n')
++        );
+         let message = serde_json::from_str::<JSONRPCMessage>(&line)?;
+         eprintln!("read message from stdout: {message:?}");
+         Ok(message)
+@@ -1962,7 +2020,14 @@ impl TestAppServerBuilder {
+         timeout: Duration,
+     ) -> anyhow::Result<TestAppServer> {
+         let mut server = self.build().await?;
+-        tokio::time::timeout(timeout, server.initialize()).await??;
++        let result = tokio::time::timeout(timeout, server.initialize()).await;
++        let pid = server.process.id();
++        let child_status = server.process.try_wait();
++        eprintln!(
++            "[wine initialize] initialize finished pid={pid:?} elapsed={:?} deadline={timeout:?} result={result:?} child_status={child_status:?}",
++            server.diagnostic_started.elapsed()
++        );
++        result??;
+         Ok(server)
+     }
+
+diff --git a/codex-rs/app-server/tests/prompt_prefix.rs b/codex-rs/app-server/tests/prompt_prefix.rs
+index 2281c19..e90f1b9 100644
+--- a/codex-rs/app-server/tests/prompt_prefix.rs
++++ b/codex-rs/app-server/tests/prompt_prefix.rs
+@@ -37,6 +37,9 @@ async fn prompt_prefix_matches_release() -> Result<()> {
+             .with_model("gpt-6-astra")
+             .write(home.path())?;
+         let mut builder = TestAppServer::builder()
++            .with_json_logging(
++                "warn,codex_app_server=trace,codex_exec_server=trace,codex_core=debug",
++            )
+             .with_codex_home(home.path())
+             .with_plugin_startup_tasks()
+             .without_managed_config();

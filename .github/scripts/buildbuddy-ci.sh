@@ -54,7 +54,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-argument-comment-lint|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross|zsh-release)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-wine-prompt-prefix|bazel-clippy|bazel-argument-comment-lint|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross|zsh-release)
     source .github/scripts/buildbuddy-bootstrap.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
@@ -121,6 +121,9 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
               --deny unused-wrapper --deny advisory-not-detected)
             ;;
         esac
+        ;;
+      bazel-wine-prompt-prefix)
+        bash "$project_root/.github/scripts/diagnose-wine-prompt-prefix.sh" "$project_root"
         ;;
       bazel-test)
         cd upstream
