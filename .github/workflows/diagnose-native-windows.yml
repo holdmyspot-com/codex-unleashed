@@ -10,6 +10,7 @@ on:
         options:
           - credentials
           - windows-test-timeouts
+          - windows-archive-extraction
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-tui-timeouts
@@ -31,6 +32,18 @@ permissions:
   contents: read
 
 jobs:
+  windows-archive-extraction:
+    if: inputs.focus == 'windows-archive-extraction'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      runner: windows-2022
+      artifact-id: windows-x64
+      test-filter: 'package(codex-ansi-escape)'
+
   arm-daemon-hashing:
     if: inputs.focus == 'arm-daemon-hashing'
     runs-on: ubuntu-24.04-arm

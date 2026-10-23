@@ -312,7 +312,8 @@ jobs:
           "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
             "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RUNNER_TEMP/nextest-native-download"
           mkdir "$RUNNER_TEMP/nextest-native"
-          tar -C "$RUNNER_TEMP/nextest-native" -xzf "$RUNNER_TEMP/nextest-native-download/nextest-native.tar.gz"
+          tar -C "$RUNNER_TEMP/nextest-native" -xzf - \
+            < "$RUNNER_TEMP/nextest-native-download/nextest-native.tar.gz"
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
