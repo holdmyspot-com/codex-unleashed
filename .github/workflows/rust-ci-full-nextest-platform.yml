@@ -380,7 +380,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: nextest-junit-rust-ci-${{ inputs.artifact_id }}-shard-${{ matrix.shard }}
-          path: ${{ env.CARGO_TARGET_DIR }}/nextest/default/junit.xml
+          path: upstream/codex-rs/target/nextest/default/junit.xml
           retention-days: 1
           if-no-files-found: warn
 
