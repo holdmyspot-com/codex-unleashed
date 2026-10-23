@@ -10,51 +10,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cargo-deny:
-    name: cargo-deny
-    uses: ./.github/workflows/cargo-deny.yml
-    secrets: inherit
-
-  codespell:
-    name: Codespell
-    uses: ./.github/workflows/codespell.yml
-    secrets: inherit
-
-  repo-checks:
-    name: repo-checks
-    uses: ./.github/workflows/repo-checks.yml
-    secrets: inherit
-
-  rust-ci:
-    name: rust-ci
-    uses: ./.github/workflows/rust-ci.yml
-    secrets: inherit
-
-  sdk:
-    name: sdk
-    uses: ./.github/workflows/sdk.yml
-    secrets: inherit
-
-  bazel:
-    name: bazel
-    uses: ./.github/workflows/bazel.yml
-    secrets: inherit
-
-  v8-canary:
-    name: v8-canary
-    uses: ./.github/workflows/v8-canary.yml
+  full-ci:
+    name: Full scheduled checks
+    uses: ./.github/workflows/rust-ci-full.yml
     secrets: inherit
 
   results:
     name: Postmerge CI results
-    needs:
-      - cargo-deny
-      - codespell
-      - repo-checks
-      - rust-ci
-      - sdk
-      - bazel
-      - v8-canary
+    needs: full-ci
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
