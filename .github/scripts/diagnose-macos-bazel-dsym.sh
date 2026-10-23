@@ -264,7 +264,7 @@ for argument do
 done
 "$jq_tool" -s 'add' "$recording/argument-arrays.jsonl" > "$recording/effective-arguments.json"
 "$jq_tool" -e 'all(.[]; contains("shell-argfiles") | not)' \
-  "$recording/effective-arguments.json" > /dev/null
+  "$recording/effective-arguments.json" > "$recording/argument-validation.json"
 printf '73\n' > "$recording/complete"
 # The pinned wrapper skips compiler-output postprocessing for this child status.
 exit 73
