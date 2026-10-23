@@ -22,7 +22,11 @@ if [[ "$1" == true ]]; then
   exit
 fi
 if [[ "$1" == systemctl ]]; then printf 'sudo-manager-probe\n' >> "$EVENT_LOG"; fi
-if [[ "$1" == --preserve-env ]]; then shift; fi
+if [[ "$1" == --preserve-env ]]; then
+  printf '%s\0' -n "$@" > "$SCOPE_ARGUMENTS.sudo"
+  shift
+  if [[ "$1" == --preserve-groups ]]; then shift; fi
+fi
 exec "$@"
 SUDO
   cat > "$root/bin/systemctl" <<'SYSTEMCTL'
@@ -117,6 +121,11 @@ CHILD
         "$root/bin/tooling" schedule-compilers -- "$root/bin/child" \
         'first argument' '' "\$literal" '*.rs' '--flag=a b' > "$root/expected-scope-arguments"
       cmp "$root/expected-scope-arguments" "$root/scope-arguments"
+      {
+        printf '%s\0' -n --preserve-env --preserve-groups systemd-run
+        cat "$root/expected-scope-arguments"
+      } > "$root/expected-sudo-arguments"
+      cmp "$root/expected-sudo-arguments" "$root/scope-arguments.sudo"
       ;;
     manager-unavailable)
       if ! grep -q 'systemd manager is unavailable' "$root/output"; then

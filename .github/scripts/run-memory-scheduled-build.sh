@@ -27,7 +27,7 @@ if ! sudo -n systemctl show --property=SystemState --value > /dev/null 2>&1; the
 fi
 
 # The scope keeps the caller's environment, working directory, and standard streams, and runs as the caller.
-exec sudo -n --preserve-env systemd-run --scope --quiet --collect \
+exec sudo -n --preserve-env --preserve-groups systemd-run --scope --quiet --collect \
   --uid="$(id -u)" --gid="$(id -g)" \
   --property=MemorySwapMax=0 \
   --property=OOMPolicy=continue \

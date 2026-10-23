@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Compare Docker access before and inside the build memory scope
         shell: bash
         run: |
@@ -65,12 +66,21 @@ jobs:
           set -e
           printf 'Direct Docker probe status: %s\n' "$direct_status"
 
-          printf 'Memory-scope context with the maintained runner identity options\n'
+          fixture="$(mktemp -d "$RUNNER_TEMP/docker-scope-XXXXXX")"
+          trap 'rm -rf -- "$fixture"' EXIT
+          cat > "$fixture/scheduler-pass-through" <<'SCHEDULER'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == schedule-compilers && "$2" == -- ]]
+          shift 2
+          exec "$@"
+          SCHEDULER
+          chmod +x "$fixture/scheduler-pass-through"
+
+          printf 'Memory-scope context through the maintained wrapper with a pass-through scheduler fixture\n'
           set +e
-          sudo -n --preserve-env systemd-run --scope --quiet --collect \
-            --uid="$(id -u)" --gid="$(id -g)" \
-            --property=MemorySwapMax=0 --property=OOMPolicy=continue \
-            -- env "PATH=$PATH" "HOME=$HOME" bash -c "$probe"
+          CODEX_UNLEASHED_TOOLING="$fixture/scheduler-pass-through" \
+            bash .github/scripts/run-memory-scheduled-build.sh bash -c "$probe"
           scope_status=$?
           set -e
           printf 'Scoped Docker probe status: %s\n' "$scope_status"
