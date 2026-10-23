@@ -1,4 +1,4 @@
-From bd17f669d427ff20ae0f739fe0ec5de3cfc97db2 Mon Sep 17 00:00:00 2001
+From 653ed62050c8f15c6fb084ec7362a7c6ecd70af8 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Fri, 16 Oct 2026 00:49:27 +0000
 Subject: [PATCH] bugfix: Preserve mailbox work across interrupted task starts
@@ -425,7 +425,7 @@ z(e0*#dsS-yo2s4UIN<$*N2duerCvaT^+8fIrDM<y=}M>c<-jy49p1`sPXE&xfK6nn
 sn0AI8yyHk}+$Z1C{p1b%Hdxzap6?l3<SAF@%w=sn7}Csz9)hHKdjg_us{jB1
 
 diff --git a/codex-rs/core/src/session/input_queue.rs b/codex-rs/core/src/session/input_queue.rs
-index de46d6a1d..e7f3432f9 100644
+index de46d6a1..e7f3432f 100644
 --- a/codex-rs/core/src/session/input_queue.rs
 +++ b/codex-rs/core/src/session/input_queue.rs
 @@ -104,6 +104,11 @@ pub(crate) struct PendingMailboxCommunication {
@@ -545,7 +545,7 @@ index de46d6a1d..e7f3432f9 100644
      use super::*;
 diff --git a/codex-rs/core/src/session/mailbox_retention_tests.rs b/codex-rs/core/src/session/mailbox_retention_tests.rs
 new file mode 100644
-index 000000000..8ad7f4cf9
+index 00000000..a75e94c7
 --- /dev/null
 +++ b/codex-rs/core/src/session/mailbox_retention_tests.rs
 @@ -0,0 +1,64 @@
@@ -564,7 +564,7 @@ index 000000000..8ad7f4cf9
 +        codex_protocol::AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    if !explicit {
 +        mail.wake_policy = codex_protocol::MailboxWakePolicy::UnlessInterrupted;
@@ -614,7 +614,7 @@ index 000000000..8ad7f4cf9
 +    assert!(queue.drain_mailbox_input_items().await.0.is_empty());
 +}
 diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
-index 74a7592de..4d711c34a 100644
+index 74a7592d..4d711c34 100644
 --- a/codex-rs/core/src/session/turn_input.rs
 +++ b/codex-rs/core/src/session/turn_input.rs
 @@ -712,6 +712,9 @@ impl Session {
@@ -628,7 +628,7 @@ index 74a7592de..4d711c34a 100644
          if !needs_new_turn && !self.has_outstanding_durable_sleep() {
              return None;
 diff --git a/codex-rs/core/src/state/turn.rs b/codex-rs/core/src/state/turn.rs
-index aa43776d8..7b8eb1532 100644
+index aa43776d..7b8eb153 100644
 --- a/codex-rs/core/src/state/turn.rs
 +++ b/codex-rs/core/src/state/turn.rs
 @@ -9,6 +9,7 @@ use tokio_util::task::AbortOnDropHandle;
@@ -650,7 +650,7 @@ index aa43776d8..7b8eb1532 100644
      pub(crate) has_memory_citation: bool,
 diff --git a/codex-rs/core/src/tasks/mailbox_wake_tests.rs b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 new file mode 100644
-index 000000000..1fbdc9052
+index 00000000..1380fdb8
 --- /dev/null
 +++ b/codex-rs/core/src/tasks/mailbox_wake_tests.rs
 @@ -0,0 +1,244 @@
@@ -696,7 +696,7 @@ index 000000000..1fbdc9052
 +        AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
 +    let turn_state = {
@@ -808,7 +808,7 @@ index 000000000..1fbdc9052
 +        AgentPath::root(),
 +        Vec::new(),
 +        "finished".to_string(),
-+        true,
++        /*trigger_turn*/ true,
 +    );
 +    mail.wake_policy = MailboxWakePolicy::UnlessInterrupted;
 +    let unrelated = InterAgentCommunication::new(
@@ -899,7 +899,7 @@ index 000000000..1fbdc9052
 +    );
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index 5612045b9..648d33538 100644
+index 5612045b..a7ed3813 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -280,16 +280,34 @@ impl Session {
@@ -912,7 +912,7 @@ index 5612045b9..648d33538 100644
 +        input: Vec<TurnInput>,
 +        task: T,
 +    ) {
-+        self.start_task_with_reservation(turn_context, input, task, None)
++        self.start_task_with_reservation(turn_context, input, task, /*reservation*/ None)
 +            .await;
 +    }
 +
@@ -1078,7 +1078,7 @@ index 5612045b9..648d33538 100644
              self.mark_interrupted();
          }
 diff --git a/codex-rs/core/src/tasks/mod_tests.rs b/codex-rs/core/src/tasks/mod_tests.rs
-index beeda1022..8b62ddee8 100644
+index beeda102..8b62ddee 100644
 --- a/codex-rs/core/src/tasks/mod_tests.rs
 +++ b/codex-rs/core/src/tasks/mod_tests.rs
 @@ -494,3 +494,6 @@ fn emit_compact_metric_records_auto_local() {
@@ -1089,7 +1089,7 @@ index beeda1022..8b62ddee8 100644
 +#[path = "mailbox_wake_tests.rs"]
 +mod mailbox_wake_tests;
 diff --git a/codex-rs/protocol/src/lib.rs b/codex-rs/protocol/src/lib.rs
-index 17e22cc5a..606f63655 100644
+index 17e22cc5..606f6365 100644
 --- a/codex-rs/protocol/src/lib.rs
 +++ b/codex-rs/protocol/src/lib.rs
 @@ -1,6 +1,7 @@
@@ -1110,7 +1110,7 @@ index 17e22cc5a..606f63655 100644
  pub use response_item_id::ResponseItemId;
 diff --git a/codex-rs/protocol/src/mailbox_wake.rs b/codex-rs/protocol/src/mailbox_wake.rs
 new file mode 100644
-index 000000000..5d58afd2e
+index 00000000..5d58afd2
 --- /dev/null
 +++ b/codex-rs/protocol/src/mailbox_wake.rs
 @@ -0,0 +1,19 @@
@@ -1135,7 +1135,7 @@ index 000000000..5d58afd2e
 +}
 diff --git a/codex-rs/protocol/src/mailbox_wake_tests.rs b/codex-rs/protocol/src/mailbox_wake_tests.rs
 new file mode 100644
-index 000000000..4f294a2d2
+index 00000000..4f294a2d
 --- /dev/null
 +++ b/codex-rs/protocol/src/mailbox_wake_tests.rs
 @@ -0,0 +1,45 @@
@@ -1185,7 +1185,7 @@ index 000000000..4f294a2d2
 +    assert!(serde_json::from_value::<InterAgentCommunication>(value).is_err());
 +}
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 146209407..607abd790 100644
+index 14620940..607abd79 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
 @@ -921,6 +921,8 @@ pub struct InterAgentCommunication {

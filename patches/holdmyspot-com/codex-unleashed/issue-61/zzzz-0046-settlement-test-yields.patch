@@ -1,6 +1,6 @@
-From 159b9ff8639a3cfe5c1c580bd5ff2fdb99961751 Mon Sep 17 00:00:00 2001
+From 503c8bf5f249275e5c7e1a184dfc9d18be167a69 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 16 Oct 2026 12:20:02 -0400
+Date: Fri, 16 Oct 2026 16:20:02 +0000
 Subject: [PATCH] Follow yielded cells in settlement regression tests
 
 A forced initial yield reproduces the intended baseline panic (settled-yield-red.log). Collect output across waits under a 30-second bound, keeping settlement assertions. Focused test suite: 8 passed (settled-yield-green-final.log). Native macOS and fresh emitted queue verification remain required.
@@ -9,7 +9,7 @@ A forced initial yield reproduces the intended baseline panic (settled-yield-red
  1 file changed, 57 insertions(+), 11 deletions(-)
 
 diff --git a/codex-rs/code-mode-runtime/tests/settled.rs b/codex-rs/code-mode-runtime/tests/settled.rs
-index d9ed6a5c7..1d8b3c028 100644
+index d9ed6a5c..51167664 100644
 --- a/codex-rs/code-mode-runtime/tests/settled.rs
 +++ b/codex-rs/code-mode-runtime/tests/settled.rs
 @@ -10,12 +10,17 @@ use codex_code_mode_runtime::InProcessCodeModeSession;
@@ -20,10 +20,10 @@ index d9ed6a5c7..1d8b3c028 100644
  use pretty_assertions::assert_eq;
  use serde_json::Value;
  use serde_json::json;
- 
+
 -#[allow(clippy::expect_used)]
  async fn assert_output(source: &str, expected: Value) {
-+    assert_output_with_yield(source, expected, 5_000).await;
++    assert_output_with_yield(source, expected, /*yield_time_ms*/ 5_000).await;
 +}
 +
 +#[allow(clippy::expect_used)]
@@ -99,7 +99,7 @@ index d9ed6a5c7..1d8b3c028 100644
 @@ -52,6 +88,16 @@ async fn assert_output(source: &str, expected: Value) {
      assert_eq!(actual, vec![expected]);
  }
- 
+
 +#[tokio::test]
 +async fn collects_output_after_execution_yields() {
 +    assert_output_with_yield(
@@ -113,6 +113,3 @@ index d9ed6a5c7..1d8b3c028 100644
  #[tokio::test]
  async fn preserves_settlement_order_before_and_during_iteration() {
      assert_output(
--- 
-2.43.0
-

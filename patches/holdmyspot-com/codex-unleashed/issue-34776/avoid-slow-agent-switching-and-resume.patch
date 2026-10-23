@@ -1,4 +1,4 @@
-From 7b6d61b6d901bf1a2d019d3affb61335c9ecd80b Mon Sep 17 00:00:00 2001
+From 755dd19b97f72392ff1cae85b0527d6a94580806 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Thu, 15 Oct 2026 23:47:02 +0000
 Subject: [PATCH] Keep history replay and subagent switches responsive
@@ -10,7 +10,7 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  codex-rs/tui/src/app/session_lifecycle.rs     |   4 +-
  codex-rs/tui/src/app/tests.rs                 |   2 +-
  .../app/tests/pagination_completion_tests.rs  |  13 ++
- .../app/tests/session_lifecycle_requests.rs   | 205 ++++++++++++++++++
+ .../app/tests/session_lifecycle_requests.rs   | 209 ++++++++++++++++++
  codex-rs/tui/src/app/thread_events.rs         |  26 ++-
  codex-rs/tui/src/app/thread_routing.rs        |  13 +-
  codex-rs/tui/src/chatwidget/streaming.rs      |   6 +-
@@ -18,10 +18,10 @@ Subject: [PATCH] Keep history replay and subagent switches responsive
  codex-rs/tui/src/inline_visualization.rs      |  12 +
  .../tui/src/inline_visualization_tests.rs     |  59 +++++
  codex-rs/tui/src/thread_transcript.rs         |  14 +-
- 14 files changed, 466 insertions(+), 9 deletions(-)
+ 14 files changed, 470 insertions(+), 9 deletions(-)
 
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 5c69ac3eb..5ec881958 100644
+index 5c69ac3e..5ec88195 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -1270,6 +1270,9 @@
@@ -45,7 +45,7 @@ index 5c69ac3eb..5ec881958 100644
            "type": "boolean"
          },
 diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
-index 18cd83063..2950fc5cc 100644
+index 18cd8306..2950fc5c 100644
 --- a/codex-rs/features/src/lib.rs
 +++ b/codex-rs/features/src/lib.rs
 @@ -119,6 +119,8 @@ pub enum Feature {
@@ -71,7 +71,7 @@ index 18cd83063..2950fc5cc 100644
          id: Feature::TranscriptV2,
          key: "transcript_v2",
 diff --git a/codex-rs/tui/src/app/reconnect.rs b/codex-rs/tui/src/app/reconnect.rs
-index 97e8d65d1..9d2c35c35 100644
+index 97e8d65d..9d2c35c3 100644
 --- a/codex-rs/tui/src/app/reconnect.rs
 +++ b/codex-rs/tui/src/app/reconnect.rs
 @@ -458,7 +458,9 @@ impl App {
@@ -86,7 +86,7 @@ index 97e8d65d1..9d2c35c35 100644
              self.active_thread_id = Some(id);
              self.active_thread_rx = Some(receiver);
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index a4fff209a..50e9f94ad 100644
+index a4fff209..50e9f94a 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -632,7 +632,9 @@ impl App {
@@ -101,7 +101,7 @@ index a4fff209a..50e9f94ad 100644
              self.add_agents_overview_error(format!("Agent thread {thread_id} is already active."));
              if let Some(previous_thread_id) = previous_thread_id {
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 40c30df92..67f20168b 100644
+index 40c30df9..67f20168 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -1282,7 +1282,7 @@ async fn replay_thread_snapshot_renders_only_retained_agent_message_deltas() {
@@ -114,7 +114,7 @@ index 40c30df92..67f20168b 100644
          .expect("detached thread should reactivate for replay");
      app.replay_thread_snapshot(snapshot, /*resume_restored_queue*/ false);
 diff --git a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
-index 7cfc88a95..3ca2f3b9c 100644
+index 7cfc88a9..3ca2f3b9 100644
 --- a/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
 +++ b/codex-rs/tui/src/app/tests/pagination_completion_tests.rs
 @@ -208,6 +208,19 @@ async fn beginning_navigation_holds_the_view_until_the_last_page_arrives() -> Re
@@ -138,10 +138,10 @@ index 7cfc88a95..3ca2f3b9c 100644
              Some(thread_id),
              &app.config.cwd,
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 062efa383..9aaa37852 100644
+index 062efa38..15eaea0b 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1101,6 +1101,211 @@ fn spawn_approved_task_tool_call(
+@@ -1101,6 +1101,215 @@ fn spawn_approved_task_tool_call(
      });
  }
 
@@ -245,8 +245,12 @@ index 062efa383..9aaa37852 100644
 +        )
 +        .map_err(|err| color_eyre::eyre::eyre!("failed to create child rollout: {err}"))?,
 +    )?;
-+    let (mut app_server, _requests, proxy) =
-+        start_recording_app_server(&app.config, None, None).await?;
++    let (mut app_server, _requests, proxy) = start_recording_app_server(
++        &app.config,
++        /*blocked_thread_list*/ None,
++        /*failed_thread_name*/ None,
++    )
++    .await?;
 +    let root = app_server
 +        .resume_thread(
 +            &app.local_settings,
@@ -354,7 +358,7 @@ index 062efa383..9aaa37852 100644
  async fn external_transport_registers_dynamic_tools_and_finds_task_mentions() -> Result<()> {
      let (app, _codex_home) = make_history_test_app().await?;
 diff --git a/codex-rs/tui/src/app/thread_events.rs b/codex-rs/tui/src/app/thread_events.rs
-index d7ef85824..3a8cc00fc 100644
+index d7ef8582..3a8cc00f 100644
 --- a/codex-rs/tui/src/app/thread_events.rs
 +++ b/codex-rs/tui/src/app/thread_events.rs
 @@ -18,6 +18,12 @@ pub(super) struct ThreadEventSnapshot {
@@ -401,7 +405,7 @@ index d7ef85824..3a8cc00fc 100644
              // interactive prompts that are still pending, or answered approvals/input will reappear.
              events: self
 diff --git a/codex-rs/tui/src/app/thread_routing.rs b/codex-rs/tui/src/app/thread_routing.rs
-index c8d16dc9c..5741a4987 100644
+index c8d16dc9..5741a498 100644
 --- a/codex-rs/tui/src/app/thread_routing.rs
 +++ b/codex-rs/tui/src/app/thread_routing.rs
 @@ -121,12 +121,23 @@ impl App {
@@ -430,7 +434,7 @@ index c8d16dc9c..5741a4987 100644
      }
 
 diff --git a/codex-rs/tui/src/chatwidget/streaming.rs b/codex-rs/tui/src/chatwidget/streaming.rs
-index 1957cc4b3..d52fdebcb 100644
+index 1957cc4b..d52fdebc 100644
 --- a/codex-rs/tui/src/chatwidget/streaming.rs
 +++ b/codex-rs/tui/src/chatwidget/streaming.rs
 @@ -126,9 +126,10 @@ impl ChatWidget {
@@ -458,7 +462,7 @@ index 1957cc4b3..d52fdebcb 100644
              });
              self.add_to_history(
 diff --git a/codex-rs/tui/src/chatwidget/tests/history_replay.rs b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
-index 93662ffac..4e0285578 100644
+index 93662ffa..4e028557 100644
 --- a/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/history_replay.rs
 @@ -115,6 +115,109 @@ async fn resumed_initial_messages_render_history() {
@@ -572,7 +576,7 @@ index 93662ffac..4e0285578 100644
  async fn replayed_failed_turns_preserve_overload_warnings_between_retries() {
      let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/inline_visualization.rs b/codex-rs/tui/src/inline_visualization.rs
-index 5f5c9cd5b..143ec233f 100644
+index 5f5c9cd5..143ec233 100644
 --- a/codex-rs/tui/src/inline_visualization.rs
 +++ b/codex-rs/tui/src/inline_visualization.rs
 @@ -46,6 +46,18 @@ impl InlineVisualizationContext {
@@ -595,7 +599,7 @@ index 5f5c9cd5b..143ec233f 100644
          config: &crate::legacy_core::config::Config,
          thread_id: ThreadId,
 diff --git a/codex-rs/tui/src/inline_visualization_tests.rs b/codex-rs/tui/src/inline_visualization_tests.rs
-index 7105d7c40..7c1a9146a 100644
+index 7105d7c4..7c1a9146 100644
 --- a/codex-rs/tui/src/inline_visualization_tests.rs
 +++ b/codex-rs/tui/src/inline_visualization_tests.rs
 @@ -22,6 +22,65 @@ fn context_with_fragment(fragment: &str) -> (TempDir, InlineVisualizationContext
@@ -665,7 +669,7 @@ index 7105d7c40..7c1a9146a 100644
  fn unterminated_visualization_preview_uses_the_stream_context() {
      let (codex_home, context) = context_with_fragment("<div>chart</div>");
 diff --git a/codex-rs/tui/src/thread_transcript.rs b/codex-rs/tui/src/thread_transcript.rs
-index 22e156c3e..a323124c2 100644
+index 22e156c3..a323124c 100644
 --- a/codex-rs/tui/src/thread_transcript.rs
 +++ b/codex-rs/tui/src/thread_transcript.rs
 @@ -128,9 +128,19 @@ pub(crate) fn thread_items_to_transcript_cells(

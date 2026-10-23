@@ -100,9 +100,10 @@ inventory alone does not establish behavioral equivalence.
 - The asset-name subset check accepts incomplete package contents. It cannot
   serve as proof of runtime-content parity. Canonical assembly validates voice
   receipts and inventory; publication still requires accepted native payloads.
-- Hosted argument-comment lint reports 174 missing parameter comments in
-  downstream patches. Repair belongs in those owning patches; lint is not
-  suppressed or excluded. The full aspect requires a passing hosted rerun.
+- Downstream patches include the 174 required parameter comments identified by
+  hosted argument-comment lint. The combined queue preserves those annotations
+  and passes formatting. Lint is not suppressed or excluded; the full aspect
+  requires a passing hosted rerun.
 - The scheduled full matrix, Windows ARM environment, and Docker remote tests
   require hosted execution. Local workflow checks establish wiring only.
 - Native Windows lifecycle diagnostics remain separate from fixture validation;

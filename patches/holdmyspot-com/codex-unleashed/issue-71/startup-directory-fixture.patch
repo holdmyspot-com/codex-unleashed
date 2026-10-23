@@ -1,6 +1,6 @@
-From 75aaa02bd96f089d9f62e53521787a19e85ea960 Mon Sep 17 00:00:00 2001
+From 2e765f35abbdb335e5e027fa76160ce97df30b84 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 23 Oct 2026 03:05:17 -0400
+Date: Fri, 23 Oct 2026 07:05:17 +0000
 Subject: [PATCH] test: normalize the displayed startup directory before
  snapshot comparison
 
@@ -8,14 +8,14 @@ Use the UI directory formatter when replacing the temporary project path. It abb
 
 Base: rust-v0.163.0, 83086188ae0614bd882818ff1aa23f3194962012. No prerequisite patches. Hosted reproduction: run 39893402008, job 120227266378 fails fresh_startup_reads_destination_and_cleared_model_uses_catalog because ~/work/_temp/<temporary-directory> remains in the snapshot. Local verification reaches an earlier projectless-directory assertion because its required temporary directory is inside the repository. Hosted patched verification remains required.
 ---
- codex-rs/tui/src/app/tests/startup_defaults_tests.rs | 6 ++++--
- 1 file changed, 4 insertions(+), 2 deletions(-)
+ codex-rs/tui/src/app/tests/startup_defaults_tests.rs | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/tui/src/app/tests/startup_defaults_tests.rs b/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
-index 86e0da6..45cc701 100644
+index 86e0da6f..1a01b075 100644
 --- a/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
-@@ -553,10 +553,12 @@ async fn fresh_startup_reads_destination_and_cleared_model_uses_catalog() -> Res
+@@ -553,10 +553,15 @@ async fn fresh_startup_reads_destination_and_cleared_model_uses_catalog() -> Res
          }
          let (mut app, _, _) = make_test_app_with_channels().await;
          app.chat_widget.handle_thread_session_quiet(started.session);
@@ -23,7 +23,10 @@ index 86e0da6..45cc701 100644
 -            let rendered = render_bottom_popup(&app.chat_widget, /*width*/ 80)
 -                .replace(&destination.path().display().to_string(), "<PROJECT>");
 +            let rendered = render_bottom_popup(&app.chat_widget, /*width*/ 80).replace(
-+                &crate::status::format_directory_display(destination.path(), None),
++                &crate::status::format_directory_display(
++                    destination.path(),
++                    /*max_width*/ None,
++                ),
 +                "<PROJECT>",
 +            );
              insta::assert_snapshot!(rendered, @r"

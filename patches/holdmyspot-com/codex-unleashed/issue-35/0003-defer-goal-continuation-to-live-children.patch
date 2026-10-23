@@ -1,4 +1,4 @@
-From fa9e7563d18e0a8c42d3732f56058d9eb1ac38ec Mon Sep 17 00:00:00 2001
+From 1d1b56b20c61811f66950bb058deb13e0a5eb146 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 18 Oct 2026 09:07:38 +0000
 Subject: [PATCH] bugfix: Keep active-goal parents available while children run
@@ -10,15 +10,15 @@ Scope: live-process best-effort delivery; no restart replay, task UI, or Monitor
 ---
  .../suite/v2/background_subagent_tests.rs     | 293 ++++++++++++++++++
  .../app-server/tests/suite/v2/turn_start.rs   |   3 +
- codex-rs/core/src/codex_thread.rs             |  34 ++
+ codex-rs/core/src/codex_thread.rs             |  39 +++
  .../tests/suite/background_subagent_tests.rs  |   6 +
  codex-rs/ext/goal/src/runtime.rs              |   8 +
- 5 files changed, 344 insertions(+)
+ 5 files changed, 349 insertions(+)
  create mode 100644 codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 
 diff --git a/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 new file mode 100644
-index 000000000..311b07f9e
+index 00000000..311b07f9
 --- /dev/null
 +++ b/codex-rs/app-server/tests/suite/v2/background_subagent_tests.rs
 @@ -0,0 +1,293 @@
@@ -316,13 +316,13 @@ index 000000000..311b07f9e
 +    Ok(())
 +}
 diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
-index ab566dc09..9139af63e 100644
+index ab566dc0..9139af63 100644
 --- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
 +++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
 @@ -120,6 +120,9 @@ use super::analytics::mount_analytics_capture;
  use super::analytics::wait_for_analytics_event;
  use super::analytics::wait_for_matching_analytics_event;
- 
+
 +#[path = "background_subagent_tests.rs"]
 +mod background_subagents;
 +
@@ -330,13 +330,13 @@ index ab566dc09..9139af63e 100644
  const DEFAULT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
  #[cfg(not(windows))]
 diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
-index a63dc8f4d..161b2c24a 100644
+index a63dc8f4..ca2616a0 100644
 --- a/codex-rs/core/src/codex_thread.rs
 +++ b/codex-rs/core/src/codex_thread.rs
-@@ -1039,6 +1039,40 @@ impl CodexThread {
+@@ -1039,6 +1039,45 @@ impl CodexThread {
          self.session.multi_agent_version()
      }
- 
+
 +    /// Reports whether a direct V2 child is running or starting with automatic
 +    /// completion delivery enabled. Idle goal continuation can defer to that
 +    /// child's result without blocking user input or loading historical children.
@@ -358,7 +358,12 @@ index a63dc8f4d..161b2c24a 100644
 +            return Ok(false);
 +        }
 +        let agents = control
-+            .list(self.session.thread_id, None, &self.session_source, None)
++            .list(
++                self.session.thread_id,
++                /*parent*/ None,
++                &self.session_source,
++                /*path_prefix*/ None,
++            )
 +            .await?;
 +        Ok(agents.into_iter().any(|agent| {
 +            matches!(
@@ -375,13 +380,13 @@ index a63dc8f4d..161b2c24a 100644
      pub async fn conversation_history_snapshot(&self) -> Arc<dyn ConversationHistorySnapshot> {
          self.session.conversation_history_snapshot().await
 diff --git a/codex-rs/core/tests/suite/background_subagent_tests.rs b/codex-rs/core/tests/suite/background_subagent_tests.rs
-index 9cdc27d87..7ba359315 100644
+index 9cdc27d8..7ba35931 100644
 --- a/codex-rs/core/tests/suite/background_subagent_tests.rs
 +++ b/codex-rs/core/tests/suite/background_subagent_tests.rs
 @@ -218,6 +218,7 @@ async fn background_subagent_guidance_reaches_model_only_with_wakeup_enabled(
          .build_with_auto_env(&server)
          .await?;
- 
+
 +    assert!(!test.codex.has_running_background_subagents().await?);
      test.submit_turn("Inspect the available tools.").await?;
      let request = response.single_request();
@@ -405,7 +410,7 @@ index 9cdc27d87..7ba359315 100644
      Ok(())
  }
 diff --git a/codex-rs/ext/goal/src/runtime.rs b/codex-rs/ext/goal/src/runtime.rs
-index 8744473a0..6188beb5b 100644
+index 8744473a..6188beb5 100644
 --- a/codex-rs/ext/goal/src/runtime.rs
 +++ b/codex-rs/ext/goal/src/runtime.rs
 @@ -477,6 +477,14 @@ impl GoalRuntimeHandle {

@@ -1,6 +1,6 @@
-From 85ea7f65630929f33ef8ae098db314bd5106e8f8 Mon Sep 17 00:00:00 2001
+From 43770d3782de03246358089a8ff63bd2285ff762 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Tue, 6 Oct 2026 10:19:15 -0400
+Date: Tue, 6 Oct 2026 14:19:15 +0000
 Subject: [PATCH] Make composer shortcut snapshots independent of host WSL
  status
 
@@ -10,15 +10,15 @@ Declared base: rust-v0.160.0 (a956835d020762cb2b570053af06f643a11c0ecc).
 Red and green reproductions are retained in the task-owned baseline repair execution record.
 The full authoring queue passes 21,106 tests; emitted-patch replay gates remain required.
 ---
- codex-rs/tui/src/bottom_pane/chat_composer.rs | 21 +++++++++++++++++++
+ codex-rs/tui/src/bottom_pane/chat_composer.rs | 24 +++++++++++++++++++
  .../bottom_pane/chat_composer/footer_state.rs |  8 +++++--
- 2 files changed, 27 insertions(+), 2 deletions(-)
+ 2 files changed, 30 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index c919e31c9..2da376226 100644
+index 2ad3f1cd..fa2335cb 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -594,6 +594,8 @@ impl ChatComposerConfig {
+@@ -603,6 +603,8 @@ impl ChatComposerConfig {
  }
 
  pub(crate) struct ChatComposer {
@@ -27,7 +27,7 @@ index c919e31c9..2da376226 100644
      draft: DraftState,
      popups: PopupState,
      app_event_tx: AppEventSender,
-@@ -725,6 +727,8 @@ impl ChatComposer {
+@@ -734,6 +736,8 @@ impl ChatComposer {
          let default_vim_normal_keymap = default_keymap.vim_normal.clone();
 
          let mut this = Self {
@@ -36,7 +36,7 @@ index c919e31c9..2da376226 100644
              draft: DraftState::new(),
              popups: PopupState::default(),
              app_event_tx,
-@@ -5022,6 +5026,23 @@ mod tests {
+@@ -5040,6 +5044,26 @@ mod tests {
          )
      }
 
@@ -47,7 +47,10 @@ index c919e31c9..2da376226 100644
 +
 +        for (is_wsl, expected_hint) in [(false, "⌃v"), (true, "⌃⌥v")] {
 +            composer.is_wsl = is_wsl;
-+            let lines = crate::bottom_pane::shortcut_overlay::lines(&composer.footer_props(), 120);
++            let lines = crate::bottom_pane::shortcut_overlay::lines(
++                &composer.footer_props(),
++                /*width*/ 120,
++            );
 +            let paste_line = lines
 +                .iter()
 +                .map(ToString::to_string)
@@ -61,10 +64,10 @@ index c919e31c9..2da376226 100644
      fn parent_owned_thread_placeholder_snapshot() {
          snapshot_composer_state(
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-index 5b8784a4f..c287135c9 100644
+index bcc92a3e..81d96f5c 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-@@ -85,14 +85,18 @@ impl super::ChatComposer {
+@@ -87,14 +87,18 @@ impl super::ChatComposer {
      pub(super) fn footer_props(&self) -> FooterProps {
          let mode = self.footer_mode();
          let is_wsl = {
@@ -85,6 +88,3 @@ index 5b8784a4f..c287135c9 100644
          };
 
          FooterProps {
--- 
-2.43.0
-

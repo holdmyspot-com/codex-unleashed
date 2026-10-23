@@ -1,6 +1,6 @@
-From 3e5a1bf1f517bb66bcbb5cbccd28a8dff2047f4c Mon Sep 17 00:00:00 2001
+From 73e3a012090094a40f8c67e735ad7b026bcbd7a6 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 2 Oct 2026 22:54:16 -0400
+Date: Sat, 3 Oct 2026 02:54:16 +0000
 Subject: [PATCH] Defer implicit skill index construction until first use
 
 Keep configured skill discovery in startup and resolve the derived document
@@ -20,11 +20,11 @@ Validation receipts: workspace .cat/work/reports/resume-attribution/.
 Author formatting: just fmt-check passes.
 ---
  codex-rs/ext/skills/src/host_outcome.rs       | 70 ++++++++++++-------
- codex-rs/ext/skills/src/host_service_tests.rs | 65 +++++++++++++++++
- 2 files changed, 108 insertions(+), 27 deletions(-)
+ codex-rs/ext/skills/src/host_service_tests.rs | 68 ++++++++++++++++++
+ 2 files changed, 111 insertions(+), 27 deletions(-)
 
 diff --git a/codex-rs/ext/skills/src/host_outcome.rs b/codex-rs/ext/skills/src/host_outcome.rs
-index 96d16214d..eb52e19f2 100644
+index 96d16214..eb52e19f 100644
 --- a/codex-rs/ext/skills/src/host_outcome.rs
 +++ b/codex-rs/ext/skills/src/host_outcome.rs
 @@ -3,6 +3,7 @@ use std::collections::HashSet;
@@ -132,10 +132,10 @@ index 96d16214d..eb52e19f2 100644
  }
 
 diff --git a/codex-rs/ext/skills/src/host_service_tests.rs b/codex-rs/ext/skills/src/host_service_tests.rs
-index fd8d450a5..217a0e802 100644
+index fd8d450a..c2eabd70 100644
 --- a/codex-rs/ext/skills/src/host_service_tests.rs
 +++ b/codex-rs/ext/skills/src/host_service_tests.rs
-@@ -1012,3 +1012,68 @@ async fn skills_for_config_ignores_cwd_cache_when_session_flags_reenable_skill()
+@@ -1012,3 +1012,71 @@ async fn skills_for_config_ignores_cwd_cache_when_session_flags_reenable_skill()
          .expect("demo skill should be discovered");
      assert_eq!(child_outcome.is_skill_enabled(child_skill), true);
  }
@@ -153,7 +153,10 @@ index fd8d450a5..217a0e802 100644
 +    fs::create_dir(&old_scripts).unwrap();
 +    fs::create_dir(&new_scripts).unwrap();
 +    std::os::unix::fs::symlink(&old_scripts, &scripts).unwrap();
-+    let service = HostSkillsService::new(codex_home.path().abs(), false);
++    let service = HostSkillsService::new(
++        codex_home.path().abs(),
++        /*bundled_skills_enabled*/ false,
++    );
 +    let stack = config_stack(&codex_home, "");
 +    let outcome = skills_for_config_with_stack(&service, &cwd, &stack, &[]).await;
 +    let skill = outcome
@@ -204,6 +207,3 @@ index fd8d450a5..217a0e802 100644
 +        Some(skill)
 +    );
 +}
--- 
-2.43.0
-

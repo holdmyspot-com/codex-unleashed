@@ -1,6 +1,6 @@
-From 8061e3804728911a1ccd755fbba3832643be5ab7 Mon Sep 17 00:00:00 2001
+From 6be5de350b0ca1ad0565778340f557ed47b2c866 Mon Sep 17 00:00:00 2001
 From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
-Date: Wed, 30 Sep 2026 17:17:25 -0400
+Date: Wed, 30 Sep 2026 21:17:25 +0000
 Subject: [PATCH] Show background terminal transcript hints
 
 Base: openai/codex rust-v0.159.2
@@ -39,7 +39,7 @@ and COLORTERM for the upstream noninteractive snapshot environment.
  12 files changed, 68 insertions(+), 8 deletions(-)
 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
-index 85259b0b1..3b64049f8 100644
+index 85259b0b..3b64049f 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_unknown_end_with_active_exploring_cell.snap
 @@ -1,10 +1,12 @@
@@ -53,16 +53,16 @@ index 85259b0b1..3b64049f8 100644
  • Ran echo repro-marker
    └ repro-marker
 +(⌃t to view transcript)
- 
+
  Active:
  • Exploring
 diff --git a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
-index 4e1127ba4..80c0a10c1 100644
+index 4e1127ba..80c0a10c 100644
 --- a/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/exec_flow.rs
 @@ -47,7 +47,7 @@ async fn external_writer_snapshot_freezes_active_command_and_mcp_rows() {
  }
- 
+
  #[tokio::test]
 -async fn replayed_command_completion_preserves_tracking_without_duplicate_starts() {
 +async fn replayed_command_completion_preserves_tracking_and_transcript_hint() {
@@ -77,9 +77,9 @@ index 4e1127ba4..80c0a10c1 100644
 +        vec!["• Ran cat replay\n  └ (no output)\n(⌃t to view transcript)\n".to_string()]
      );
  }
- 
+
 diff --git a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
-index d4e4fe599..5fdea505d 100644
+index d4e4fe59..5fdea505 100644
 --- a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
 +++ b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__exec_flow__adjacent_exploration_groups_across_reasoning_live_and_replayed.snap
 @@ -1,5 +1,6 @@
@@ -90,20 +90,20 @@ index d4e4fe599..5fdea505d 100644
  ---
  Compact:
 @@ -9,6 +10,7 @@ Compact:
- 
+
  • Ran echo boundary
    └ run output
 +(⌃t to view transcript)
- 
+
  • Explored
    └ Read later.txt
 diff --git a/codex-rs/tui/src/exec_cell/render.rs b/codex-rs/tui/src/exec_cell/render.rs
-index bae014ea1..36e186b36 100644
+index bae014ea..9fa599b1 100644
 --- a/codex-rs/tui/src/exec_cell/render.rs
 +++ b/codex-rs/tui/src/exec_cell/render.rs
 @@ -448,7 +448,14 @@ impl ExecCell {
      }
- 
+
      fn command_display_lines(&self, width: u16) -> Vec<HyperlinkLine> {
 -        self.command_display_lines_with_hidden_details(width).lines
 +        let mut lines = self.command_display_lines_with_hidden_details(width).lines;
@@ -115,12 +115,12 @@ index bae014ea1..36e186b36 100644
 +        }
 +        lines
      }
- 
+
      fn command_display_lines_with_hidden_details(&self, width: u16) -> CommandDisplay {
 @@ -851,6 +858,30 @@ mod tests {
              .collect::<String>()
      }
- 
+
 +    #[test]
 +    fn completed_background_terminal_includes_transcript_hint() {
 +        let cell = ExecCell::new(
@@ -128,7 +128,7 @@ index bae014ea1..36e186b36 100644
 +                call_id: "call-id".to_string(),
 +                command: vec!["echo".into(), "done".into()],
 +                parsed: Vec::new(),
-+                output: Some(CommandOutput::new(0, String::new())),
++                output: Some(CommandOutput::new(/*exit_code*/ 0, String::new())),
 +                source: ExecCommandSource::UnifiedExecStartup,
 +                start_time: None,
 +                duration: Some(std::time::Duration::from_millis(1)),
@@ -149,7 +149,7 @@ index bae014ea1..36e186b36 100644
      fn user_shell_output_is_limited_by_screen_lines() {
          let long_url_like = format!(
 diff --git a/codex-rs/tui/src/history_cell/exec.rs b/codex-rs/tui/src/history_cell/exec.rs
-index 57c2f166c..4851e4474 100644
+index 57c2f166..4851e447 100644
 --- a/codex-rs/tui/src/history_cell/exec.rs
 +++ b/codex-rs/tui/src/history_cell/exec.rs
 @@ -141,13 +141,20 @@ impl HistoryCell for UnifiedExecProcessesCell {
@@ -157,13 +157,13 @@ index 57c2f166c..4851e4474 100644
          let mut out: Vec<Line<'static>> = Vec::new();
          out.push(vec!["Background terminals".bold()].into());
 -        out.push("".into());
- 
+
          if self.processes.is_empty() {
 +            out.push("".into());
              out.push("  • No background terminals running.".italic().into());
              return out;
          }
- 
+
 +        out.push(
 +            "  (transcript will be available after terminal completes)"
 +                .dim()
@@ -175,7 +175,7 @@ index 57c2f166c..4851e4474 100644
          let prefix_width = display_width(prefix);
          let truncation_suffix = " [...]";
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
-index e13dcf0a1..1cab3f93a 100644
+index e13dcf0a..1cab3f93 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_chunk_leading_whitespace_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -185,26 +185,26 @@ index e13dcf0a1..1cab3f93a 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • just fix
      ↳   indented first
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
-index a39929e48..76c0c1793 100644
+index a39929e4..76c0c179 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_halfwidth_sound_marks_snapshot.snap
 @@ -5,6 +5,7 @@ expression: rendered
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • echo ｶﾞﾊﾟｶﾞﾊﾟ [...]
      ↳ output ｶﾞﾊﾟ [...]
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
-index 2bd4bf9fb..cac551593 100644
+index 2bd4bf9f..cac55159 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_long_command_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -214,14 +214,14 @@ index 2bd4bf9fb..cac551593 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • rg "foo" src --glob '**/*. [...]
      ↳ searching...
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
-index d0138b274..2b021a3af 100644
+index d0138b27..2b021a3a 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_many_sessions_snapshot.snap
 @@ -1,10 +1,11 @@
@@ -231,37 +231,37 @@ index d0138b274..2b021a3af 100644
  expression: rendered
  ---
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • command 0
    • command 1
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
-index ce48f3512..eda1e79a5 100644
+index ce48f351..eda1e79a 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_long_command_snapshot.snap
 @@ -5,5 +5,6 @@ expression: rendered
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • (↵  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [...]
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
-index 609bafd3b..69b027b21 100644
+index 609bafd3..69b027b2 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__ps_output_multiline_snapshot.snap
 @@ -5,6 +5,7 @@ expression: rendered
  /ps
- 
+
  Background terminals
 +  (transcript will be available after terminal completes)
- 
+
    • echo hello↵and then some extra text
      ↳ hello
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index ea59afbbe..f0adad31e 100644
+index f3b62e10..c6f30be0 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -732,9 +732,21 @@ fn final_message_separator_includes_worked_label_after_one_minute() {
@@ -271,7 +271,7 @@ index ea59afbbe..f0adad31e 100644
 +    assert!(!rendered.contains("transcript will be available after terminal completes"));
      insta::assert_snapshot!(rendered);
  }
- 
+
 +#[test]
 +fn ps_output_explains_when_running_transcript_is_available() {
 +    let cell = new_unified_exec_processes_output(vec![UnifiedExecProcessDetails {
@@ -286,6 +286,3 @@ index ea59afbbe..f0adad31e 100644
  #[tokio::test]
  async fn session_info_uses_availability_nux_tooltip_override() {
      let config = test_config().await;
--- 
-2.43.0
-
