@@ -34,8 +34,7 @@ for phase in seed warm; do
   date +%s.%N > "$profile_output/$phase-start.txt"
   printf '%s: starting %s build with linker-managed ThinLTO\n' "$(date -u +%FT%TZ)" "$phase"
   /usr/bin/time -v -o "$profile_output/$phase-resources.txt" "${build[@]}" \
-    2>&1 | tee "$profile_output/$phase.log" | \
-    awk '/Heartbeat:|Finished|Compiling|error:|warning:|^Running|^Skipping/ { print; fflush() }' || {
+    2>&1 | tee "$profile_output/$phase.log" || {
     cat "$profile_output/$phase.log" >&2
     exit 1
   }

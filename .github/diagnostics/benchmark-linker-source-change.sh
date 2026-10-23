@@ -20,8 +20,7 @@ date +%s.%N > "$profile_output/changed-start.txt"
 printf '%s: rebuilding after CLI help-text change\n' "$(date -u +%FT%TZ)"
 /usr/bin/time -v -o "$profile_output/changed-resources.txt" \
   bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream \
-    "$RUNNER_TEMP/linker-profile-build-output" 2>&1 | tee "$profile_output/changed.log" | \
-    awk '/Heartbeat:|Finished|Compiling|error:|warning:|^Running|^Skipping/ { print; fflush() }' || {
+    "$RUNNER_TEMP/linker-profile-build-output" 2>&1 | tee "$profile_output/changed.log" || {
   cat "$profile_output/changed.log" >&2
   exit 1
 }
