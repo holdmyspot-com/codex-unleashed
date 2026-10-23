@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - arm-daemon-lifecycle
+          - macos-tui-timeouts
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -20,7 +21,7 @@ on:
           - compiler-scheduler-tooling
           - compiler-scheduler-tooling-windows
       source-run:
-        description: Workflow run supplying archived binaries for the ARM daemon diagnostic.
+        description: Workflow run supplying compiled binaries for an archived-test diagnostic.
         type: string
         required: false
 
@@ -33,9 +34,24 @@ jobs:
     permissions:
       actions: read
       contents: read
-    uses: ./.github/workflows/diagnose-daemon-lifecycle.yml
+    uses: ./.github/workflows/diagnose-archived-tests.yml
     with:
       source-run: ${{ inputs.source-run }}
+      runner: ubuntu-24.04-arm
+      artifact-id: linux-arm64
+      test-filter: 'binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_starts_ensure_one_updater_and_recover_a_missing_one) | test(=restart_applies_saved_updater_preference))'
+
+  macos-tui-timeouts:
+    if: inputs.focus == 'macos-tui-timeouts'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: 'package(codex-tui) & (test(command_center_new_checkout_and_worktree_preserve_source_and_default_branch) | test(switching_back_replays_only_latest_compacted_conversation))'
 
   compiler-profile:
     if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile' || inputs.focus == 'crate-local-profile'

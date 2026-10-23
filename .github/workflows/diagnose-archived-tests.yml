@@ -1,4 +1,4 @@
-name: Diagnose archived ARM daemon lifecycle tests
+name: Diagnose archived native tests
 
 on:
   workflow_call:
@@ -6,10 +6,13 @@ on:
       source-run:
         type: string
         required: true
-  workflow_dispatch:
-    inputs:
-      source-run:
-        description: Workflow run containing the Linux ARM64 nextest archive and native runtime.
+      runner:
+        type: string
+        required: true
+      artifact-id:
+        type: string
+        required: true
+      test-filter:
         type: string
         required: true
 
@@ -18,13 +21,15 @@ permissions:
   contents: read
 
 jobs:
-  daemon-lifecycle:
+  archived-tests:
     name: Diagnose existing binaries without compiling Codex
-    runs-on: ubuntu-24.04-arm
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN: ${{ inputs.source-run }}
+      ARTIFACT_ID: ${{ inputs.artifact-id }}
+      TEST_FILTER: ${{ inputs.test-filter }}
       RUST_BACKTRACE: "1"
       RUST_LIB_BACKTRACE: "0"
     steps:
@@ -37,6 +42,7 @@ jobs:
           tool: cargo-nextest@0.9.149
 
       - name: Install process tracing
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends strace
@@ -47,55 +53,59 @@ jobs:
           TMPDIR: ${{ runner.temp }}
         run: |
           set -euo pipefail
-          diagnostic_root="$RUNNER_TEMP/daemon-diagnostic"
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir "$diagnostic_root"
           gh run view "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
             --json headSha,url --jq '[.headSha,.url] | @tsv'
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --pattern nextest-archive-linux-arm64 --dir "$diagnostic_root/archive"
+            --pattern "nextest-archive-$ARTIFACT_ID" --dir "$diagnostic_root/archive"
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --pattern nextest-native-linux-arm64 --dir "$diagnostic_root/native"
+            --pattern "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
           mkdir "$RUNNER_TEMP/nextest-native"
           tar -C "$RUNNER_TEMP/nextest-native" \
             -xzf "$diagnostic_root/native/nextest-native.tar.gz"
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
-      - name: Trace the three daemon lifecycle timeouts
+      - name: Run the selected archived tests
         shell: bash
         env:
           TMPDIR: ${{ runner.temp }}
         run: |
           set -euo pipefail
-          diagnostic_root="$RUNNER_TEMP/daemon-diagnostic"
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir "$diagnostic_root/workspace"
           cat > "$diagnostic_root/nextest.toml" <<'CONFIG'
-          [profile.daemon-diagnostic]
+          [profile.archived-diagnostic]
           slow-timeout = { period = "60s", terminate-after = 10 }
           CONFIG
 
-          strace -f -tt -T -e trace=execve,clone,clone3,wait4,waitid,kill,exit_group \
-            -o "$diagnostic_root/processes.log" \
-            cargo nextest run \
-            --archive-file "$diagnostic_root/archive/nextest-linux-arm64.tar.zst" \
+          trace_command=()
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            trace_command=(strace -f -tt -T -e 'trace=execve,clone,clone3,wait4,waitid,kill,exit_group' -o "$diagnostic_root/processes.log")
+          fi
+          "${trace_command[@]}" cargo nextest run \
+            --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
             --extract-to "$diagnostic_root/extracted" \
             --workspace-remap "$diagnostic_root/workspace" \
             --config-file "$diagnostic_root/nextest.toml" \
-            --profile daemon-diagnostic --test-threads 1 --retries 0 \
+            --profile archived-diagnostic --test-threads 1 --retries 0 \
             --failure-output immediate-final \
             --no-tests fail \
-            -E 'binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_starts_ensure_one_updater_and_recover_a_missing_one) | test(=restart_applies_saved_updater_preference))'
+            -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
 
-      - name: Retain process timing evidence
+      - name: Retain test and process timing evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: daemon-lifecycle-arm64-processes
-          path: ${{ runner.temp }}/daemon-diagnostic/processes.log
+          name: archived-tests-${{ inputs.artifact-id }}
+          path: |
+            ${{ runner.temp }}/archived-test-diagnostic/tests.log
+            ${{ runner.temp }}/archived-test-diagnostic/processes.log
           if-no-files-found: warn
           retention-days: 1
 
       - name: Remove downloaded and extracted test inputs
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/daemon-diagnostic" "$RUNNER_TEMP/nextest-native"
+        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native"
