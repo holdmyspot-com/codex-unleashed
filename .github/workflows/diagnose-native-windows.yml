@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - windows-archive-extraction
+          - windows-archived-failures
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-tui-timeouts
@@ -33,6 +34,22 @@ permissions:
   contents: read
 
 jobs:
+  windows-archived-failures:
+    if: inputs.focus == 'windows-archived-failures'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-2022]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      runner: ${{ matrix.runner }}
+      artifact-id: windows-x64
+      test-filter: '(package(codex-core) & test(subagent_stop_replaces_stop_and_skips_internal_subagents)) | (package(codex-utils-pty) & test(conpty_ctrl_c_interrupts_powershell_foreground_child)) | (package(codex-windows-sandbox) & (test(legacy_capture_cancellation_terminates_descendants_without_timeout) | test(legacy_capture_emits_output_and_preserves_descendant_after_normal_exit) | test(legacy_tty_job_terminates_and_preserves_descendants)))'
+
   windows-archive-extraction:
     if: inputs.focus == 'windows-archive-extraction'
     permissions:
