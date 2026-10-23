@@ -8,7 +8,7 @@ fi
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 upstream_root="$(cd "$1" && pwd)"
 package_cache="${CI_BUILD_ROOT:?CI_BUILD_ROOT is required}/argument-comment-lint"
-tool_root="$package_cache/tools-6.1.0"
+tool_root="$package_cache/tools-6.2.0"
 toolchain=nightly-2026-08-20
 
 # Upstream preparation removes the shared native toolchain and registry; package checks retain their own downloads.
@@ -31,7 +31,7 @@ rustup toolchain install "$toolchain" \
 for package in cargo-dylint dylint-link; do
   if [[ ! -x "$tool_root/bin/$package" ]]; then
     bash "$project_root/.github/scripts/run-memory-scheduled-build.sh" \
-      cargo "+$toolchain" install --locked "$package" --version 6.1.0 --root "$tool_root"
+      cargo "+$toolchain" install --locked "$package" --version 6.2.0 --root "$tool_root"
   fi
 done
 

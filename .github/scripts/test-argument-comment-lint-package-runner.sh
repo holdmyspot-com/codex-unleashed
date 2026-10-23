@@ -101,8 +101,8 @@ TOOLING
         printf 'rustup toolchain install nightly-2026-08-20 --profile minimal --component llvm-tools-preview --component rustc-dev --component rust-src --no-self-update\n'
         if [[ "$run" == 1 ]]; then
           for package in cargo-dylint dylint-link; do
-            printf 'schedule cargo +nightly-2026-08-20 install --locked %s --version 6.1.0 --root %s/cache/argument-comment-lint/tools-6.1.0\n' "$package" "$root"
-            printf 'cargo +nightly-2026-08-20 install --locked %s --version 6.1.0 --root %s/cache/argument-comment-lint/tools-6.1.0\n' "$package" "$root"
+            printf 'schedule cargo +nightly-2026-08-20 install --locked %s --version 6.2.0 --root %s/cache/argument-comment-lint/tools-6.2.0\n' "$package" "$root"
+            printf 'cargo +nightly-2026-08-20 install --locked %s --version 6.2.0 --root %s/cache/argument-comment-lint/tools-6.2.0\n' "$package" "$root"
           done
         fi
         printf 'python3 -m py_compile tools/argument-comment-lint/wrapper_common.py tools/argument-comment-lint/run.py tools/argument-comment-lint/run-prebuilt-linter.py tools/argument-comment-lint/test_wrapper_common.py\n'
