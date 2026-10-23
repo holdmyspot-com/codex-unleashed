@@ -1,0 +1,238 @@
+diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
+index f3de67d..e402440 100644
+--- a/codex-rs/windows-sandbox-rs/src/lib.rs
++++ b/codex-rs/windows-sandbox-rs/src/lib.rs
+@@ -826,6 +826,8 @@ mod windows_impl {
+         let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
+         let out_r = NonOwningPipeHandle(out_r);
+         let err_r = NonOwningPipeHandle(err_r);
++        #[cfg(test)]
++        let capture_started_at = Instant::now();
+         let t_out = std::thread::spawn(move || {
+             let mut buf = Vec::new();
+             let mut tmp = [0u8; 8192];
+@@ -845,6 +847,12 @@ mod windows_impl {
+                 }
+                 buf.extend_from_slice(&tmp[..read_bytes as usize]);
+             }
++            #[cfg(test)]
++            eprintln!(
++                "capture stdout reader ended: elapsed={:?} bytes={}",
++                capture_started_at.elapsed(),
++                buf.len()
++            );
+             let _ = tx_out.send(buf);
+         });
+         let t_err = std::thread::spawn(move || {
+@@ -866,12 +874,23 @@ mod windows_impl {
+                 }
+                 buf.extend_from_slice(&tmp[..read_bytes as usize]);
+             }
++            #[cfg(test)]
++            eprintln!(
++                "capture stderr reader ended: elapsed={:?} bytes={}",
++                capture_started_at.elapsed(),
++                buf.len()
++            );
+             let _ = tx_err.send(buf);
+         });
+
+         let wait_outcome = wait_for_process(pi.hProcess, timeout_ms, cancellation.as_ref());
+         let timed_out = matches!(wait_outcome, WaitOutcome::TimedOut);
+         let cancelled = matches!(wait_outcome, WaitOutcome::Cancelled);
++        #[cfg(test)]
++        eprintln!(
++            "capture root wait ended: elapsed={:?} timed_out={timed_out} cancelled={cancelled}",
++            capture_started_at.elapsed()
++        );
+         let mut exit_code_u32: u32 = 1;
+         if !timed_out && !cancelled {
+             unsafe {
+@@ -912,8 +931,23 @@ mod windows_impl {
+             }
+             CloseHandle(security.h_token);
+         }
++        #[cfg(test)]
++        eprintln!(
++            "capture joining stdout: elapsed={:?}",
++            capture_started_at.elapsed()
++        );
+         let _ = t_out.join();
++        #[cfg(test)]
++        eprintln!(
++            "capture joining stderr: elapsed={:?}",
++            capture_started_at.elapsed()
++        );
+         let _ = t_err.join();
++        #[cfg(test)]
++        eprintln!(
++            "capture readers joined: elapsed={:?}",
++            capture_started_at.elapsed()
++        );
+         let stdout = rx_out.recv().unwrap_or_default();
+         let stderr = rx_err.recv().unwrap_or_default();
+         let exit_code = if timed_out {
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index be2d1bf..a3890a5 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -101,10 +101,28 @@ fn workspace_roots_for(root: &Path) -> Vec<AbsolutePathBuf> {
+     vec![AbsolutePathBuf::from_absolute_path(root).expect("absolute workspace root")]
+ }
+
++fn workload_temp_env(temp_dir: &Path) -> HashMap<String, String> {
++    let temp_dir = temp_dir.to_string_lossy().into_owned();
++    HashMap::from([
++        ("TEMP".to_string(), temp_dir.clone()),
++        ("TMP".to_string(), temp_dir),
++    ])
++}
++
+ fn powershell_literal(path: &Path) -> String {
+     path.to_string_lossy().replace('\'', "''")
+ }
+
++fn publish_pid_command(path: &Path) -> String {
++    let pending = path.with_extension("pending");
++    format!(
++        "Set-Content -LiteralPath '{}' -Value $PID; Move-Item -LiteralPath '{}' -Destination '{}'",
++        powershell_literal(&pending),
++        powershell_literal(&pending),
++        powershell_literal(path),
++    )
++}
++
+ fn start_powershell_child(
+     pwsh: &Path,
+     stdio_dir: &Path,
+@@ -669,15 +687,16 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+         return;
+     };
+     let _guard = legacy_process_test_guard();
+-    let cwd = sandbox_cwd();
++    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
++    let cwd = workspace.path().to_path_buf();
+     let codex_home = sandbox_home("legacy-capture-pwsh");
+     println!("capture pwsh codex_home={}", codex_home.path().display());
+-    let ready_marker = codex_home.path().join("descendant-started");
+-    let release_marker = codex_home.path().join("release-descendant");
+-    let survival_marker = codex_home.path().join("descendant-survived");
++    let ready_marker = cwd.join("descendant-started");
++    let release_marker = cwd.join("release-descendant");
++    let survival_marker = cwd.join("descendant-survived");
+     let descendant_command = format!(
+-        "$deadline=(Get-Date).AddSeconds(30); Set-Content -LiteralPath '{}' -Value $PID; while (-not (Test-Path -LiteralPath '{}')) {{ if ((Get-Date) -ge $deadline) {{ exit 3 }}; Start-Sleep -Milliseconds 25 }}; Set-Content -LiteralPath '{}' -Value survived",
+-        powershell_literal(&ready_marker),
++        "$deadline=(Get-Date).AddSeconds(30); {}; while (-not (Test-Path -LiteralPath '{}')) {{ if ((Get-Date) -ge $deadline) {{ exit 3 }}; Start-Sleep -Milliseconds 25 }}; Set-Content -LiteralPath '{}' -Value survived",
++        publish_pid_command(&ready_marker),
+         powershell_literal(&release_marker),
+         powershell_literal(&survival_marker),
+     );
+@@ -687,7 +706,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+     );
+     let parent_command = format!(
+         "{ASSERT_NO_CONSOLE} Write-Output LEGACY-CAPTURE-DIRECT; {}",
+-        start_powershell_child(&pwsh, codex_home.path(), &descendant_command, &parent_tail,),
++        start_powershell_child(&pwsh, &cwd, &descendant_command, &parent_tail,),
+     );
+     let permission_profile = PermissionProfile::workspace_write();
+     let result = run_windows_sandbox_capture(
+@@ -701,7 +720,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        workload_temp_env(&cwd),
+         Some(10_000),
+         /*cancellation*/ None,
+     )
+@@ -849,21 +868,18 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+         return;
+     };
+     let _guard = legacy_process_test_guard();
+-    let cwd = sandbox_cwd();
++    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
++    let cwd = workspace.path().to_path_buf();
+     let codex_home = sandbox_home("legacy-capture-cancel");
+-    let descendant_marker = codex_home.path().join("descendant-survived");
+-    let ready_marker = codex_home.path().join("descendant-started");
++    let descendant_marker = cwd.join("descendant-survived");
++    let ready_marker = cwd.join("descendant-started");
+     let descendant_command = format!(
+-        "Set-Content -LiteralPath '{}' -Value $PID; Start-Sleep -Seconds 1; Set-Content -LiteralPath '{}' -Value survived",
+-        powershell_literal(&ready_marker),
++        "{}; Start-Sleep -Seconds 1; Set-Content -LiteralPath '{}' -Value survived",
++        publish_pid_command(&ready_marker),
+         powershell_literal(&descendant_marker),
+     );
+-    let parent_command = start_powershell_child(
+-        &pwsh,
+-        codex_home.path(),
+-        &descendant_command,
+-        "Start-Sleep -Seconds 30",
+-    );
++    let parent_command =
++        start_powershell_child(&pwsh, &cwd, &descendant_command, "Start-Sleep -Seconds 30");
+     let descendant_process = Arc::new(Mutex::new(None));
+     let descendant_process_for_cancellation = Arc::clone(&descendant_process);
+     let cancellation = WindowsSandboxCancellationToken::new(move || {
+@@ -896,7 +912,7 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        workload_temp_env(&cwd),
+         Some(30_000),
+         /*cancellation*/ Some(cancellation),
+     )
+@@ -934,14 +950,15 @@ async fn assert_legacy_tty_descendant_lifecycle(
+     pwsh: &Path,
+     lifecycle: LegacyTtyDescendantLifecycle,
+ ) {
+-    let cwd = sandbox_cwd();
++    let workspace = tempfile::tempdir().expect("create lifecycle workspace");
++    let cwd = workspace.path().to_path_buf();
+     let codex_home = sandbox_home(match lifecycle {
+         LegacyTtyDescendantLifecycle::Terminate => "legacy-tty-descendant-terminate",
+         LegacyTtyDescendantLifecycle::Preserve => "legacy-tty-descendant-preserve",
+     });
+-    let ready_marker = codex_home.path().join("descendant-started");
+-    let release_marker = codex_home.path().join("release-descendant");
+-    let survival_marker = codex_home.path().join("descendant-survived");
++    let ready_marker = cwd.join("descendant-started");
++    let release_marker = cwd.join("release-descendant");
++    let survival_marker = cwd.join("descendant-survived");
+     let child_tail = match lifecycle {
+         LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
+         LegacyTtyDescendantLifecycle::Preserve => format!(
+@@ -950,10 +967,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+             powershell_literal(&survival_marker),
+         ),
+     };
+-    let child_command = format!(
+-        "Set-Content -LiteralPath '{}' -Value $PID; {child_tail}",
+-        powershell_literal(&ready_marker),
+-    );
++    let child_command = format!("{}; {child_tail}", publish_pid_command(&ready_marker),);
+     let parent_tail = match lifecycle {
+         LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
+         LegacyTtyDescendantLifecycle::Preserve => format!(
+@@ -961,8 +975,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+             powershell_literal(&ready_marker),
+         ),
+     };
+-    let parent_command =
+-        start_powershell_child(pwsh, codex_home.path(), &child_command, &parent_tail);
++    let parent_command = start_powershell_child(pwsh, &cwd, &child_command, &parent_tail);
+     let permission_profile = PermissionProfile::workspace_write();
+     let spawned = spawn_windows_sandbox_session_legacy(
+         &permission_profile,
+@@ -975,7 +988,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        workload_temp_env(&cwd),
+         Some(30_000),
+         &[],
+         &[],

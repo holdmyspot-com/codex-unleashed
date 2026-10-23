@@ -10,6 +10,7 @@ on:
         options:
           - credentials
           - windows-test-timeouts
+          - windows-lifecycle-source
           - windows-archive-extraction
           - windows-archived-failures
           - arm-daemon-lifecycle
@@ -165,7 +166,7 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || 'windows-2022' }}
@@ -201,6 +202,67 @@ jobs:
             test --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings \
             --nocache_test_results "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" -- \
             //codex-rs/tui:tui-all-test //codex-rs/tui:tui-unit-tests
+
+  windows-lifecycle-source:
+    if: inputs.focus == 'windows-lifecycle-source'
+    needs: prepare-tooling
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Apply lifecycle fixture and capture timing diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream apply --check ../.github/diagnostics/windows-lifecycle-fixtures.patch
+          git -C upstream apply ../.github/diagnostics/windows-lifecycle-fixtures.patch
+      - name: Rebuild and diagnose legacy Windows descendant lifecycles
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/windows-lifecycle-source"
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+            --nocache_test_results --test_output=all --test_arg=--nocapture \
+            --test_arg=legacy_capture_cancellation_terminates_descendants_without_timeout \
+            --test_arg=legacy_capture_emits_output_and_preserves_descendant_after_normal_exit \
+            --test_arg=legacy_tty_job_terminates_and_preserves_descendants \
+            -- //codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests \
+            2>&1 | tee "$RUNNER_TEMP/windows-lifecycle-source/console.log"
+      - name: Retain lifecycle source diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-lifecycle-source-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/windows-lifecycle-source
+            ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: ignore
+          retention-days: 1
 
   regressions:
     if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts'
