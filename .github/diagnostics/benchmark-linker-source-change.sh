@@ -9,10 +9,11 @@ set -euo pipefail
 test "$UPSTREAM_TARGET" = x86_64-unknown-linux-musl
 profile_output="$RUNNER_TEMP/codex-compiler-profile"
 source_file=upstream/codex-rs/cli/src/main.rs
-test "$(grep -c '^/// Codex CLI$' "$source_file")" = 1
+test "$(grep -Fc '/// Show Codex Unleashed build information.' "$source_file")" = 1
 cp "$source_file" "$profile_output/cli-main-before-change.rs"
 trap 'cp "$profile_output/cli-main-before-change.rs" "$source_file"' EXIT
-sed -i 's/^\/\/\/ Codex CLI$/\/\/\/ Codex CLI module-cache verification/' "$source_file"
+sed -i 's/Show Codex Unleashed build information\./Show Codex Unleashed build information (module-cache verification)./' "$source_file"
+grep -Fq '/// Show Codex Unleashed build information (module-cache verification).' "$source_file"
 
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-before-change.txt"
 date +%s.%N > "$profile_output/changed-start.txt"
@@ -26,7 +27,7 @@ printf '%s: rebuilding after CLI help-text change\n' "$(date -u +%FT%TZ)"
 }
 date +%s.%N > "$profile_output/changed-end.txt"
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-after-change.txt"
-grep -Fq 'Codex CLI module-cache verification' "$profile_output/help-after-change.txt"
+grep -Fq 'Show Codex Unleashed build information (module-cache verification).' "$profile_output/help-after-change.txt"
 cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/changed-cargo-timing.html"
 find "$CARGO_TARGET_DIR/lld-thinlto-cache" -type f -name 'llvmcache-*' \
   -printf '%f %i %s %T@\n' | sort > "$profile_output/changed-cache.txt"
