@@ -13,6 +13,7 @@ on:
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-tui-timeouts
+          - macos-tui-integration-timeouts
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -99,6 +100,18 @@ jobs:
       runner: macos-15-intel
       artifact-id: macos-x64
       test-filter: 'package(codex-tui) & (test(command_center_new_checkout_and_worktree_preserve_source_and_default_branch) | test(switching_back_replays_only_latest_compacted_conversation))'
+
+  macos-tui-integration-timeouts:
+    if: inputs.focus == 'macos-tui-integration-timeouts'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: 'package(codex-tui) & (test(history_lookup_uses_server_provider_with_local_and_embedded_servers) | test(automatic_reconnect_restores_draft_and_routes_new_notifications))'
 
   compiler-profile:
     if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile' || inputs.focus == 'crate-local-profile'
