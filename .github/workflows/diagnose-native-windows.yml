@@ -133,7 +133,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/windows-arm-tooling-locks"
           set +e
           tooling/mvnw -q -pl distribution -am \
-            -Dtest=DistributionMainTest,PackageCommandRuntimeTest,WindowsShardWorkflowTest \
+            -Dtest=DistributionMainTest,PackageCommandRuntimeTest,WindowsShardWorkflowTest,WindowsResourceUsersTest \
             -Dsurefire.failIfNoSpecifiedTests=false verify \
             2>&1 | tee "$RUNNER_TEMP/windows-arm-tooling-locks/maven.log"
           status=${PIPESTATUS[0]}

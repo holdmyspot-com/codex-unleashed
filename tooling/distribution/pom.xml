@@ -11,7 +11,7 @@
 	<artifactId>tooling-distribution</artifactId>
 	<name>Bundled tooling runtime</name>
 	<properties>
-		<tooling.test.jvm.options>--add-modules=jdk.httpserver,java.xml --add-reads=com.holdmyspot.codexunleashed.distribution=jdk.httpserver --add-reads=com.holdmyspot.codexunleashed.distribution=java.xml</tooling.test.jvm.options>
+		<tooling.test.jvm.options>--enable-native-access=com.holdmyspot.codexunleashed.distribution --add-modules=jdk.httpserver,java.xml --add-reads=com.holdmyspot.codexunleashed.distribution=jdk.httpserver --add-reads=com.holdmyspot.codexunleashed.distribution=java.xml</tooling.test.jvm.options>
 	</properties>
 	<dependencies>
 		<dependency><groupId>io.github.cowwoc.requirements</groupId><artifactId>requirements-java</artifactId></dependency>

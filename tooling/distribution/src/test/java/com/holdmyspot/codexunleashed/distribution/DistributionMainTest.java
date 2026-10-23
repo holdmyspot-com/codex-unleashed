@@ -439,6 +439,14 @@ public final class DistributionMainTest
 					{
 						try
 						{
+							failure.addSuppressed(WindowsResourceUsers.observe(path).diagnostic());
+						}
+						catch (RuntimeException | UnsatisfiedLinkError inspection)
+						{
+							failure.addSuppressed(new IOException("Cannot observe resource users for " + path, inspection));
+						}
+						try
+						{
 							attachDeletionContext(path, failure);
 						}
 						catch (RuntimeException inspection)
