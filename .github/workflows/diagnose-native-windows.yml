@@ -28,6 +28,7 @@ on:
           - compiler-scheduler-tooling
           - compiler-scheduler-tooling-windows
           - windows-arm-tooling-locks
+          - native-voice-runtime
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
         type: string
@@ -37,6 +38,25 @@ permissions:
   contents: read
 
 jobs:
+  native-voice-runtime:
+    if: inputs.focus == 'native-voice-runtime'
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-voice-runtime.yml
+    secrets: inherit
+    with:
+      focus_target: ${{ matrix.target }}
+
   windows-arm-tooling-locks:
     if: inputs.focus == 'windows-arm-tooling-locks'
     runs-on: windows-11-arm
