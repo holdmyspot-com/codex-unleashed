@@ -1,4 +1,4 @@
-From c95e13acf7d340be36223bcf9350beba6cfb6254 Mon Sep 17 00:00:00 2001
+From 6991b1c79f5dff9a69cc119bcbc213f016bd5d04 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
 Date: Sun, 18 Oct 2026 09:08:09 +0000
 Subject: [PATCH] Scope generated Rust test deadlines to their suites and
@@ -26,7 +26,7 @@ Fresh emitted-queue verification is a separate acceptance gate.
  .../agent-message-board-client/BUILD.bazel    | 12 +++-
  codex-rs/ansi-escape/BUILD.bazel              |  9 +++
  codex-rs/app-server-transport/BUILD.bazel     | 11 ++++
- codex-rs/app-server/BUILD.bazel               | 52 +++++++++++++++-
+ codex-rs/app-server/BUILD.bazel               | 56 ++++++++++++++++-
  codex-rs/cli/BUILD.bazel                      | 23 ++++++-
  codex-rs/core/BUILD.bazel                     | 26 +++++++-
  codex-rs/exec-server/BUILD.bazel              | 34 ++++++++++
@@ -40,12 +40,12 @@ Fresh emitted-queue verification is a separate acceptance gate.
  defs.bzl                                      | 62 +++++++++++++++----
  .../build-warnings/test-timeouts/BUILD.bazel  | 27 ++++++++
  .../test-timeouts/timeouts_test.bzl           | 22 +++++++
- 18 files changed, 363 insertions(+), 20 deletions(-)
+ 18 files changed, 367 insertions(+), 20 deletions(-)
  create mode 100644 tools/build-warnings/test-timeouts/BUILD.bazel
  create mode 100644 tools/build-warnings/test-timeouts/timeouts_test.bzl
 
 diff --git a/bazel/rules/testing/compat/exec_server_compat_test.bzl b/bazel/rules/testing/compat/exec_server_compat_test.bzl
-index 8e9f6c753..6e3bf5c5f 100644
+index 8e9f6c75..6e3bf5c5 100644
 --- a/bazel/rules/testing/compat/exec_server_compat_test.bzl
 +++ b/bazel/rules/testing/compat/exec_server_compat_test.bzl
 @@ -43,5 +43,6 @@ def exec_server_compat_test(
@@ -56,7 +56,7 @@ index 8e9f6c753..6e3bf5c5f 100644
          workspace_root_marker = "//codex-rs/utils/cargo-bin:repo_root.marker",
      )
 diff --git a/codex-rs/agent-message-board-client/BUILD.bazel b/codex-rs/agent-message-board-client/BUILD.bazel
-index cd4f32e25..e27ff908a 100644
+index cd4f32e2..e27ff908 100644
 --- a/codex-rs/agent-message-board-client/BUILD.bazel
 +++ b/codex-rs/agent-message-board-client/BUILD.bazel
 @@ -1,6 +1,16 @@
@@ -78,7 +78,7 @@ index cd4f32e25..e27ff908a 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/ansi-escape/BUILD.bazel b/codex-rs/ansi-escape/BUILD.bazel
-index 27622583b..43c69a21b 100644
+index 27622583..43c69a21 100644
 --- a/codex-rs/ansi-escape/BUILD.bazel
 +++ b/codex-rs/ansi-escape/BUILD.bazel
 @@ -1,6 +1,15 @@
@@ -98,7 +98,7 @@ index 27622583b..43c69a21b 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/app-server-transport/BUILD.bazel b/codex-rs/app-server-transport/BUILD.bazel
-index f6ecba680..5a58a27fe 100644
+index f6ecba68..5a58a27f 100644
 --- a/codex-rs/app-server-transport/BUILD.bazel
 +++ b/codex-rs/app-server-transport/BUILD.bazel
 @@ -1,6 +1,17 @@
@@ -120,7 +120,7 @@ index f6ecba680..5a58a27fe 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
  )
 diff --git a/codex-rs/app-server/BUILD.bazel b/codex-rs/app-server/BUILD.bazel
-index 051a7dd8e..747a55edc 100644
+index 051a7dd8..45489857 100644
 --- a/codex-rs/app-server/BUILD.bazel
 +++ b/codex-rs/app-server/BUILD.bazel
 @@ -1,5 +1,7 @@
@@ -143,7 +143,7 @@ index 051a7dd8e..747a55edc 100644
      run_tests_with_wine_exec = True,
      test_shard_counts = {
          # Note app-server-all-test has a large number of integration tests, so
-@@ -34,3 +38,47 @@ codex_rust_crate(
+@@ -34,3 +38,51 @@ codex_rust_crate(
  release_binary(
      binary = ":codex-app-server",
  )
@@ -169,6 +169,8 @@ index 051a7dd8e..747a55edc 100644
 +    name = "wine_override_test",
 +    size = "small",
 +    expected_timeout = "long",
++    # This source-free analysis test traverses a foreign-platform data dependency.
++    tags = ["no-argument-comment-lint"],
 +    target_compatible_with = WINE_TEST_TARGET_COMPATIBLE_WITH,
 +    target_under_test = ":app-server-all-wine-exec-test",
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
@@ -187,12 +189,14 @@ index 051a7dd8e..747a55edc 100644
 +    name = "fast_wine_deadline_test",
 +    size = "small",
 +    expected_timeout = "short",
++    # This source-free analysis test traverses a foreign-platform data dependency.
++    tags = ["no-argument-comment-lint"],
 +    target_compatible_with = WINE_TEST_TARGET_COMPATIBLE_WITH,
 +    target_under_test = ":app-server-prompt_prefix-wine-exec-test",
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/cli/BUILD.bazel b/codex-rs/cli/BUILD.bazel
-index d9673f989..8d57048a5 100644
+index d9673f98..8d57048a 100644
 --- a/codex-rs/cli/BUILD.bazel
 +++ b/codex-rs/cli/BUILD.bazel
 @@ -1,7 +1,8 @@
@@ -237,7 +241,7 @@ index d9673f989..8d57048a5 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/core/BUILD.bazel b/codex-rs/core/BUILD.bazel
-index 9ff585216..533353fb5 100644
+index 9ff58521..533353fb 100644
 --- a/codex-rs/core/BUILD.bazel
 +++ b/codex-rs/core/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -282,7 +286,7 @@ index 9ff585216..533353fb5 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/exec-server/BUILD.bazel b/codex-rs/exec-server/BUILD.bazel
-index 88114f96a..7ad38a27d 100644
+index 88114f96..7ad38a27 100644
 --- a/codex-rs/exec-server/BUILD.bazel
 +++ b/codex-rs/exec-server/BUILD.bazel
 @@ -1,5 +1,6 @@
@@ -333,7 +337,7 @@ index 88114f96a..7ad38a27d 100644
  
  exec_server_compat_test(
 diff --git a/codex-rs/exec/BUILD.bazel b/codex-rs/exec/BUILD.bazel
-index 6aec3e0b7..f3f227e26 100644
+index 6aec3e0b..f3f227e2 100644
 --- a/codex-rs/exec/BUILD.bazel
 +++ b/codex-rs/exec/BUILD.bazel
 @@ -1,10 +1,31 @@
@@ -370,7 +374,7 @@ index 6aec3e0b7..f3f227e26 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/ext/guardian-v2/BUILD.bazel b/codex-rs/ext/guardian-v2/BUILD.bazel
-index e10e27c05..f5b14edd4 100644
+index e10e27c0..f5b14edd 100644
 --- a/codex-rs/ext/guardian-v2/BUILD.bazel
 +++ b/codex-rs/ext/guardian-v2/BUILD.bazel
 @@ -11,4 +11,5 @@ codex_rust_crate(
@@ -380,7 +384,7 @@ index e10e27c05..f5b14edd4 100644
 +    unit_test_timeout = "moderate",
  )
 diff --git a/codex-rs/feedback/BUILD.bazel b/codex-rs/feedback/BUILD.bazel
-index a53efd5f7..151af2e7a 100644
+index a53efd5f..151af2e7 100644
 --- a/codex-rs/feedback/BUILD.bazel
 +++ b/codex-rs/feedback/BUILD.bazel
 @@ -1,6 +1,16 @@
@@ -401,7 +405,7 @@ index a53efd5f7..151af2e7a 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
  )
 diff --git a/codex-rs/login/BUILD.bazel b/codex-rs/login/BUILD.bazel
-index 78eea8c3d..bd38b7980 100644
+index 78eea8c3..bd38b798 100644
 --- a/codex-rs/login/BUILD.bazel
 +++ b/codex-rs/login/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -423,7 +427,7 @@ index 78eea8c3d..bd38b7980 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
 +)
 diff --git a/codex-rs/thread-store/BUILD.bazel b/codex-rs/thread-store/BUILD.bazel
-index 5d800f51f..57c711034 100644
+index 5d800f51..57c71103 100644
 --- a/codex-rs/thread-store/BUILD.bazel
 +++ b/codex-rs/thread-store/BUILD.bazel
 @@ -1,6 +1,22 @@
@@ -450,7 +454,7 @@ index 5d800f51f..57c711034 100644
 +    }),
  )
 diff --git a/codex-rs/tui/BUILD.bazel b/codex-rs/tui/BUILD.bazel
-index 8f4f27d44..1c7ea7a74 100644
+index 8f4f27d4..1c7ea7a7 100644
 --- a/codex-rs/tui/BUILD.bazel
 +++ b/codex-rs/tui/BUILD.bazel
 @@ -1,4 +1,5 @@
@@ -488,7 +492,7 @@ index 8f4f27d44..1c7ea7a74 100644
 +    visibility = ["//tools/build-warnings/test-timeouts:__pkg__"],
  )
 diff --git a/codex-rs/utils/image/BUILD.bazel b/codex-rs/utils/image/BUILD.bazel
-index 0bc9e6b17..7d41e1f8c 100644
+index 0bc9e6b1..7d41e1f8 100644
 --- a/codex-rs/utils/image/BUILD.bazel
 +++ b/codex-rs/utils/image/BUILD.bazel
 @@ -1,6 +1,30 @@
@@ -523,7 +527,7 @@ index 0bc9e6b17..7d41e1f8c 100644
 +    }),
  )
 diff --git a/defs.bzl b/defs.bzl
-index a297207b8..ff34b9ce5 100644
+index a297207b..ff34b9ce 100644
 --- a/defs.bzl
 +++ b/defs.bzl
 @@ -141,6 +141,28 @@ def _windows_workspace_root_setup(ctx):
@@ -675,7 +679,7 @@ index a297207b8..ff34b9ce5 100644
              windows_cross_test_kwargs["flaky"] = True
 diff --git a/tools/build-warnings/test-timeouts/BUILD.bazel b/tools/build-warnings/test-timeouts/BUILD.bazel
 new file mode 100644
-index 000000000..ff140d662
+index 00000000..ff140d66
 --- /dev/null
 +++ b/tools/build-warnings/test-timeouts/BUILD.bazel
 @@ -0,0 +1,27 @@
@@ -708,7 +712,7 @@ index 000000000..ff140d662
 +)
 diff --git a/tools/build-warnings/test-timeouts/timeouts_test.bzl b/tools/build-warnings/test-timeouts/timeouts_test.bzl
 new file mode 100644
-index 000000000..64ee601a8
+index 00000000..64ee601a
 --- /dev/null
 +++ b/tools/build-warnings/test-timeouts/timeouts_test.bzl
 @@ -0,0 +1,22 @@
