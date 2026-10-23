@@ -83,6 +83,7 @@ jobs:
       - uses: ./.github/actions/configure-nextest-native-sdk
 
       - name: Run the selected archived tests
+        id: original_tests
         shell: bash
         env:
           TMPDIR: ${{ runner.temp }}
@@ -109,6 +110,29 @@ jobs:
             --no-tests fail \
             -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
 
+      - name: Compare Windows tests with fixtures inside their writable workspace
+        if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          fixture_root="$GITHUB_WORKSPACE/upstream/codex-rs/.diagnostic-temp"
+          mkdir -p "$fixture_root" "$diagnostic_root/writable-fixture-extracted"
+          TEMP="$(cygpath -w "$fixture_root")"
+          export TEMP
+          export TMP="$TEMP"
+          export TMPDIR="$fixture_root"
+
+          cargo nextest run \
+            --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
+            --extract-to "$diagnostic_root/writable-fixture-extracted" \
+            --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
+            --config-file "$diagnostic_root/nextest.toml" \
+            --profile archived-diagnostic --test-threads 1 --retries 0 --no-fail-fast \
+            --failure-output immediate-final \
+            --no-tests fail \
+            -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/writable-fixtures.log"
+
       - name: Retain test and process timing evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -116,6 +140,7 @@ jobs:
           name: archived-tests-${{ inputs.artifact-id }}
           path: |
             ${{ runner.temp }}/archived-test-diagnostic/tests.log
+            ${{ runner.temp }}/archived-test-diagnostic/writable-fixtures.log
             ${{ runner.temp }}/archived-test-diagnostic/processes.log
           if-no-files-found: warn
           retention-days: 1
