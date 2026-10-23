@@ -1,0 +1,44 @@
+From 88cdbc987d474c74cb051f59e35752352351ec8d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 23 Oct 2026 10:04:54 -0400
+Subject: [PATCH] fix: use constant-time ctutils 0.4.4
+
+Select the fixed ctutils release for RUSTSEC-2026-0385 and update its
+Bazel crate metadata, including the optional subtle requirement, together.
+
+Base: openai/codex rust-v0.163.0
+(83086188ae0614bd882818ff1aa23f3194962012).
+Reference: https://rustsec.org/advisories/RUSTSEC-2026-0385
+Upstream fix: https://github.com/RustCrypto/utils/pull/1569
+
+Regression: the maintained full-queue cargo-deny check exits 1 and reports
+RUSTSEC-2026-0385 with ctutils 0.4.2, then exits 0 with ctutils 0.4.4.
+The current queue retains Tokio 1.54.1. The maintained just bazel-lock-check
+passes with the queue's Bazel 9.3.1 pin. Baseline Bazel 9.3.0 changes extension
+digests; it does not establish a product lockfile defect.
+---
+ MODULE.bazel.lock   | 2 +-
+ codex-rs/Cargo.lock | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/MODULE.bazel.lock b/MODULE.bazel.lock
+index b4a21c2..2359d49 100644
+--- a/MODULE.bazel.lock
++++ b/MODULE.bazel.lock
+@@ -903,3 +903,3 @@
+       "ctr_0.9.2": "{\"dependencies\":[{\"kind\":\"dev\",\"name\":\"aes\",\"req\":\"^0.8\"},{\"name\":\"cipher\",\"req\":\"^0.4.2\"},{\"features\":[\"dev\"],\"kind\":\"dev\",\"name\":\"cipher\",\"req\":\"^0.4.2\"},{\"kind\":\"dev\",\"name\":\"hex-literal\",\"req\":\"^0.3.3\"},{\"kind\":\"dev\",\"name\":\"kuznyechik\",\"req\":\"^0.8\"},{\"kind\":\"dev\",\"name\":\"magma\",\"req\":\"^0.8\"}],\"features\":{\"alloc\":[\"cipher/alloc\"],\"block-padding\":[\"cipher/block-padding\"],\"std\":[\"cipher/std\",\"alloc\"],\"zeroize\":[\"cipher/zeroize\"]}}",
+-      "ctutils_0.4.2": "{\"dependencies\":[{\"name\":\"cmov\",\"req\":\"^0.5.3\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.11\"},{\"default_features\":false,\"name\":\"subtle\",\"optional\":true,\"req\":\"^2\"}],\"features\":{\"alloc\":[],\"subtle\":[\"dep:subtle\"]}}",
++      "ctutils_0.4.4": "{\"dependencies\":[{\"name\":\"cmov\",\"req\":\"^0.5.3\"},{\"kind\":\"dev\",\"name\":\"proptest\",\"req\":\"^1.11\"},{\"default_features\":false,\"name\":\"subtle\",\"optional\":true,\"req\":\"^2.6\"}],\"features\":{\"alloc\":[],\"subtle\":[\"dep:subtle\"]}}",
+       "curve25519-dalek-derive_0.1.1": "{\"dependencies\":[{\"name\":\"proc-macro2\",\"req\":\"^1.0.66\"},{\"name\":\"quote\",\"req\":\"^1.0.31\"},{\"features\":[\"full\"],\"name\":\"syn\",\"req\":\"^2.0.27\"}],\"features\":{}}",
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 72658b9..f160163 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -5982,5 +5982,5 @@ dependencies = [
+ name = "ctutils"
+-version = "0.4.2"
++version = "0.4.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
++checksum = "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865"
+ dependencies = [
