@@ -1,0 +1,96 @@
+From 72afb2a46dbc3ce0c525d2180ff4b210cf550b43 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 16:49:55 +0000
+Subject: [PATCH] config: isolate disk-heavy daemon package tests
+
+Backport openai/codex #53897 scheduling isolation while preserving the existing daemon integration binary and downstream lifecycle fixtures. Reserve all nextest slots for package cases; select exclusive Bazel scheduling and one libtest thread for the existing target.
+
+Verification: formatting rejects unsorted attributes. The formatted standalone patch and full queue pass maintained just fmt-check. Target-keyed parameters sort after test_data_extra, keeping the independent patch applicable beside existing daemon timeout and macOS serialization configuration. Native daemon execution and hosted contention verification remain required.
+---
+ codex-rs/.config/nextest.toml |  2 ++
+ codex-rs/cli/BUILD.bazel      |  7 +++++++
+ defs.bzl                      | 22 ++++++++++++++++------
+ 3 files changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/.config/nextest.toml b/codex-rs/.config/nextest.toml
+index f370a0aa..87b6ea54 100644
+--- a/codex-rs/.config/nextest.toml
++++ b/codex-rs/.config/nextest.toml
+@@ -16,2 +16,3 @@ filter = 'package(codex-cli) & binary(app_server_daemon) & test(=packaged_daemon
+ slow-timeout = { period = "1m", terminate-after = 3 }
++threads-required = "num-test-threads"
+
+@@ -21,2 +22,3 @@ filter = 'package(codex-cli) & binary(app_server_daemon) & test(packaged_daemon_
+ slow-timeout = { period = "1m", terminate-after = 2 }
++threads-required = "num-test-threads"
+
+diff --git a/codex-rs/cli/BUILD.bazel b/codex-rs/cli/BUILD.bazel
+index d9673f98..73eabb40 100644
+--- a/codex-rs/cli/BUILD.bazel
++++ b/codex-rs/cli/BUILD.bazel
+@@ -14,2 +14,9 @@ codex_rust_crate(
+     test_data_extra = glob(["src/**/snapshots/**"]),
++    test_integration_args = {
++        "cli-app_server_daemon-test": ["--test-threads=1"],
++    },
++    # Package installation copies must not compete with other tests for disk I/O.
++    test_integration_tags = {
++        "cli-app_server_daemon-test": ["exclusive"],
++    },
+ )
+diff --git a/defs.bzl b/defs.bzl
+index a297207b..5efabae3 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -204,2 +204,4 @@ def codex_rust_crate(
+         integration_test_args = [],
++        test_integration_args = {},
++        test_integration_tags = {},
+         unit_test_args = [],
+@@ -252,2 +254,6 @@ def codex_rust_crate(
+         integration_test_args: Optional args for integration test binaries.
++        test_integration_args: Arguments keyed by generated integration
++            test target name, replacing integration_test_args for matching targets.
++        test_integration_tags: Extra Bazel tags keyed by generated integration
++            test target name. Other integration targets keep test_tags unchanged.
+         unit_test_args: Optional args for the unit test binary.
+@@ -530,2 +536,3 @@ def codex_rust_crate(
+         windows_cross_test_binary = test_name + "-windows-cross-bin"
++        integration_tags = test_tags + test_integration_tags.get(test_name, [])
+
+@@ -543,2 +550,5 @@ def codex_rust_crate(
+
++        if test_name in test_integration_args:
++            test_kwargs["args"] = test_integration_args[test_name]
++
+         integration_test_binary = test_name + "-bin"
+@@ -583,3 +593,3 @@ def codex_rust_crate(
+                 target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
+-                tags = test_tags + ["manual"],
++                tags = integration_tags + ["manual"],
+                 version = crate_version,
+@@ -599,3 +609,3 @@ def codex_rust_crate(
+                 target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
+-                tags = test_tags,
++                tags = integration_tags,
+                 **test_kwargs
+@@ -625,3 +635,3 @@ def codex_rust_crate(
+                 target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
+-                tags = test_tags,
++                tags = integration_tags,
+                 version = crate_version,
+@@ -673,3 +683,3 @@ def codex_rust_crate(
+                 # dependency to a Windows toolchain the lint does not register.
+-                tags = test_tags + ["no-argument-comment-lint"],
++                tags = integration_tags + ["no-argument-comment-lint"],
+                 **wine_test_kwargs
+@@ -698,3 +708,3 @@ def codex_rust_crate(
+             target_compatible_with = WINDOWS_GNULLVM_ONLY,
+-            tags = test_tags + ["manual"],
++            tags = integration_tags + ["manual"],
+             version = crate_version,
+@@ -710,3 +720,3 @@ def codex_rust_crate(
+             target_compatible_with = WINDOWS_GNULLVM_ONLY,
+-            tags = test_tags,
++            tags = integration_tags,
+             **windows_cross_test_kwargs

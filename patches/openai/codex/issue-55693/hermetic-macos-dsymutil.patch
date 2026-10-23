@@ -1,0 +1,48 @@
+From 1375751a787f2a98d4e249795a8d719899abcd3f Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 16:49:55 +0000
+Subject: [PATCH] config: use the pinned LLVM toolchain for macOS debug symbols
+
+Backport openai/codex PR #55693 so rustc can invoke dsymutil from its declared C toolchain rather than depending on the host PATH. Release artifacts continue to use the existing Cargo pipeline.
+---
+ bazel/tools/BUILD.bazel |  1 +
+ bazel/tools/dsymutil    |  3 +++
+ defs.bzl                | 10 ++++++++--
+ 3 files changed, 12 insertions(+), 2 deletions(-)
+ create mode 100644 bazel/tools/BUILD.bazel
+ create mode 100755 bazel/tools/dsymutil
+
+diff --git a/bazel/tools/BUILD.bazel b/bazel/tools/BUILD.bazel
+new file mode 100644
+index 00000000..3b9ea63a
+--- /dev/null
++++ b/bazel/tools/BUILD.bazel
+@@ -0,0 +1 @@
++exports_files(["dsymutil"])
+diff --git a/bazel/tools/dsymutil b/bazel/tools/dsymutil
+new file mode 100755
+index 00000000..ff65a74d
+--- /dev/null
++++ b/bazel/tools/dsymutil
+@@ -0,0 +1,3 @@
++#!/bin/sh
++# rustc invokes dsymutil by name; the C toolchain supplies its hermetic path.
++exec "${LLVM_DSYMUTIL:?missing hermetic dsymutil}" "$@"
+diff --git a/defs.bzl b/defs.bzl
+index 2da52fb1..e8784af7 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -423,5 +423,11 @@ def codex_rust_crate(
+             # rust_binary so they do not affect sibling binaries.
+-            compile_data = binary_compile_data_extra.get(binary, []),
++            compile_data = binary_compile_data_extra.get(binary, []) + select({
++                "@platforms//os:macos": ["//bazel/tools:dsymutil"],
++                "//conditions:default": [],
++            }),
+             rustc_flags = rustc_flags_extra + binary_rustc_flags_extra.get(binary, []) + WINDOWS_RUSTC_LINK_FLAGS,
+-            rustc_env = rustc_env,
++            rustc_env = select({
++                "@platforms//os:macos": rustc_env | {"PATH": "$${pwd}/bazel/tools:/bin:/usr/bin:/usr/local/bin"},
++                "//conditions:default": rustc_env,
++            }),
+             # Keep stamp = 0: rules_rust otherwise makes stable-status.txt and
