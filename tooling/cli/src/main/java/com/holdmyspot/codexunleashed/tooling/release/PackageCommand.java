@@ -109,7 +109,8 @@ public final class PackageCommand
 			input(result, "--code-mode-host-bin", "prebuilt code-mode host executable"),
 			input(result, "--bwrap-bin", "prebuilt Linux bwrap executable"),
 			input(result, "--codex-command-runner-bin", "prebuilt Windows command-runner executable"),
-			input(result, "--codex-windows-sandbox-setup-bin", "prebuilt Windows sandbox-setup executable"));
+			input(result, "--codex-windows-sandbox-setup-bin", "prebuilt Windows sandbox-setup executable"),
+			input(result, "--codex-windows-sandbox-service-bin", "prebuilt Windows sandbox-service executable"));
 		PackageSourceBuilds.Options options = new PackageSourceBuilds.Options(result.matchedOptionValue("--cargo", "cargo"),
 			result.matchedOptionValue("--cargo-profile", "dev-small"), cache, variables, V8_RELEASES);
 
@@ -130,7 +131,7 @@ public final class PackageCommand
 				result.matchedOptionValue("--zsh-manifest", repository.resolve("scripts/codex_package/codex-zsh")), "zsh",
 				target.triple() + "-zsh", "zsh", true, cache));
 			PackageInputs inputs = new PackageInputs(source.entrypoint(), source.codeModeHost(), ripgrep, zsh, source.bwrap(),
-				source.commandRunner(), source.sandboxSetup());
+				source.commandRunner(), source.sandboxSetup(), source.sandboxService());
 			boolean force = result.matchedOptionValue("--force", false);
 			PackageLayout.prepare(destination.directory, force);
 			Path metadataWorking = workspace;
@@ -187,7 +188,7 @@ public final class PackageCommand
 		specification.usageMessage().description("Build a canonical Codex package directory and optional archives.");
 		for (String option : new String[]{"--repo", "--workspace", "--cache-root", "--package-dir", "--entrypoint-bin",
 			"--code-mode-host-bin", "--bwrap-bin", "--rg-bin", "--rg-manifest", "--zsh-manifest",
-			"--codex-command-runner-bin", "--codex-windows-sandbox-setup-bin"})
+			"--codex-command-runner-bin", "--codex-windows-sandbox-setup-bin", "--codex-windows-sandbox-service-bin"})
 			specification.addOption(OptionSpec.builder(option).type(Path.class).required(option.equals("--repo")).build());
 		specification.addOption(OptionSpec.builder("--target").type(PackageTarget.class).
 			converters(PackageTarget::fromTriple).build());

@@ -28,23 +28,25 @@ public final class PackageSourceBuilds
 	/**
 	 * Supplies optional prebuilt binaries instead of their corresponding Cargo targets.
 	 *
-	 * @param entrypoint the selected variant's entrypoint
-	 * @param codeModeHost the code-mode host
-	 * @param bwrap the Linux sandbox helper
-	 * @param commandRunner the Windows command runner
-	 * @param sandboxSetup the Windows sandbox setup helper
+	 * @param entrypoint     the selected variant's entrypoint
+	 * @param codeModeHost   the code-mode host
+	 * @param bwrap          the Linux sandbox helper
+	 * @param commandRunner  the Windows command runner
+	 * @param sandboxSetup   the Windows sandbox setup helper
+	 * @param sandboxService the Windows sandbox service helper
 	 */
 	public record Inputs(Optional<Path> entrypoint, Optional<Path> codeModeHost, Optional<Path> bwrap,
-		Optional<Path> commandRunner, Optional<Path> sandboxSetup)
+		Optional<Path> commandRunner, Optional<Path> sandboxSetup, Optional<Path> sandboxService)
 	{
 		/**
 		 * Validates explicit override containers.
 		 *
-		 * @param entrypoint the selected variant's entrypoint
-		 * @param codeModeHost the code-mode host
-		 * @param bwrap the Linux sandbox helper
-		 * @param commandRunner the Windows command runner
-		 * @param sandboxSetup the Windows sandbox setup helper
+		 * @param entrypoint     the selected variant's entrypoint
+		 * @param codeModeHost   the code-mode host
+		 * @param bwrap          the Linux sandbox helper
+		 * @param commandRunner  the Windows command runner
+		 * @param sandboxSetup   the Windows sandbox setup helper
+		 * @param sandboxService the Windows sandbox service helper
 		 * @throws NullPointerException if any container is null
 		 */
 		public Inputs
@@ -54,6 +56,7 @@ public final class PackageSourceBuilds
 			Objects.requireNonNull(bwrap, "bwrap");
 			Objects.requireNonNull(commandRunner, "commandRunner");
 			Objects.requireNonNull(sandboxSetup, "sandboxSetup");
+			Objects.requireNonNull(sandboxService, "sandboxService");
 		}
 
 		/**
@@ -63,7 +66,8 @@ public final class PackageSourceBuilds
 		 */
 		public static Inputs empty()
 		{
-			return new Inputs(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+			return new Inputs(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+				Optional.empty());
 		}
 	}
 
@@ -132,23 +136,25 @@ public final class PackageSourceBuilds
 	/**
 	 * Contains the resolved entrypoint, host, and target-specific resource binaries.
 	 *
-	 * @param entrypoint the selected variant executable
-	 * @param codeModeHost the code-mode host executable
-	 * @param bwrap the Linux sandbox helper
-	 * @param commandRunner the Windows command runner
-	 * @param sandboxSetup the Windows sandbox setup helper
+	 * @param entrypoint     the selected variant executable
+	 * @param codeModeHost   the code-mode host executable
+	 * @param bwrap          the Linux sandbox helper
+	 * @param commandRunner  the Windows command runner
+	 * @param sandboxSetup   the Windows sandbox setup helper
+	 * @param sandboxService the Windows sandbox service helper
 	 */
 	public record Outputs(Path entrypoint, Path codeModeHost, Optional<Path> bwrap,
-		Optional<Path> commandRunner, Optional<Path> sandboxSetup)
+		Optional<Path> commandRunner, Optional<Path> sandboxSetup, Optional<Path> sandboxService)
 	{
 		/**
 		 * Validates resolved output containers.
 		 *
-		 * @param entrypoint the selected variant executable
-		 * @param codeModeHost the code-mode host executable
-		 * @param bwrap the Linux sandbox helper
-		 * @param commandRunner the Windows command runner
-		 * @param sandboxSetup the Windows sandbox setup helper
+		 * @param entrypoint     the selected variant executable
+		 * @param codeModeHost   the code-mode host executable
+		 * @param bwrap          the Linux sandbox helper
+		 * @param commandRunner  the Windows command runner
+		 * @param sandboxSetup   the Windows sandbox setup helper
+		 * @param sandboxService the Windows sandbox service helper
 		 * @throws NullPointerException if any path or container is null
 		 */
 		public Outputs
@@ -158,6 +164,7 @@ public final class PackageSourceBuilds
 			Objects.requireNonNull(bwrap, "bwrap");
 			Objects.requireNonNull(commandRunner, "commandRunner");
 			Objects.requireNonNull(sandboxSetup, "sandboxSetup");
+			Objects.requireNonNull(sandboxService, "sandboxService");
 		}
 	}
 
@@ -210,11 +217,14 @@ public final class PackageSourceBuilds
 			request.target().executableSuffix())), resolveOptional(inputs.bwrap(), request.target().isLinux(),
 			directory.resolve("bwrap")), resolveOptional(inputs.commandRunner(), request.target().isWindows(),
 			directory.resolve("codex-command-runner.exe")), resolveOptional(inputs.sandboxSetup(),
-			request.target().isWindows(), directory.resolve("codex-windows-sandbox-setup.exe")));
+			request.target().isWindows(), directory.resolve("codex-windows-sandbox-setup.exe")),
+			resolveOptional(inputs.sandboxService(), request.target().isWindows(),
+				directory.resolve("codex-windows-sandbox-service.exe")));
 		List<Path> paths = new ArrayList<>(List.of(outputs.entrypoint(), outputs.codeModeHost()));
 		outputs.bwrap().ifPresent(paths::add);
 		outputs.commandRunner().ifPresent(paths::add);
 		outputs.sandboxSetup().ifPresent(paths::add);
+		outputs.sandboxService().ifPresent(paths::add);
 		for (Path path : paths)
 		{
 			if (!Files.isRegularFile(path))
@@ -238,6 +248,8 @@ public final class PackageSourceBuilds
 			throw new IOException("--codex-command-runner-bin is only supported for Windows targets");
 		if (inputs.sandboxSetup().isPresent() && !target.isWindows())
 			throw new IOException("--codex-windows-sandbox-setup-bin is only supported for Windows targets");
+		if (inputs.sandboxService().isPresent() && !target.isWindows())
+			throw new IOException("--codex-windows-sandbox-service-bin is only supported for Windows targets");
 	}
 
 	/**
@@ -262,6 +274,8 @@ public final class PackageSourceBuilds
 				binaries.add("codex-command-runner");
 			if (inputs.sandboxSetup().isEmpty())
 				binaries.add("codex-windows-sandbox-setup");
+			if (inputs.sandboxService().isEmpty())
+				binaries.add("codex-windows-sandbox-service");
 		}
 		return binaries;
 	}

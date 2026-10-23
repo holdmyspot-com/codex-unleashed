@@ -261,7 +261,8 @@ public final class PackageCommandTest
 				arguments.addAll(List.of("--bwrap-bin", binary.toString()));
 			if (target.isWindows())
 				arguments.addAll(List.of("--codex-command-runner-bin", binary.toString(),
-					"--codex-windows-sandbox-setup-bin", binary.toString()));
+					"--codex-windows-sandbox-setup-bin", binary.toString(),
+					"--codex-windows-sandbox-service-bin", binary.toString()));
 			return arguments;
 		}
 

@@ -176,7 +176,7 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/prepare-patched-upstream
@@ -186,7 +186,7 @@ jobs:
         with:
           target: x86_64-apple-darwin
           cache-scope: bazel-test
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Reproduce terminal suites with the maintained Bazel runner
@@ -210,7 +210,7 @@ jobs:
     env:
       BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/prepare-patched-upstream
@@ -220,7 +220,7 @@ jobs:
         with:
           target: x86_64-pc-windows-msvc
           cache-scope: bazel-test-windows-native-main
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install pinned Windows voice build prerequisites
@@ -276,7 +276,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Preserve the diagnostic patch independently of the verified driver
@@ -291,7 +291,7 @@ jobs:
           else
             cp .github/diagnostics/compiler-scheduler-tests.patch .cat/work/temp/scheduler-diagnostics/tests.patch
           fi
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           # This pin supplies the exact verified driver independently of diagnostic edits.
           ref: 2d04175e11d005db8bb2ba90e00ad6ea3b9dacb6
@@ -303,7 +303,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel-ci
         with:
           target: x86_64-pc-windows-msvc
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: hermeticbuild/rules_rust
           ref: a20387a3b3e7baec859b53f3cb15b026fbc8a423
@@ -353,7 +353,7 @@ jobs:
           printf 'Unpatched native Windows compiler runs without scheduler admission.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain focused baseline evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compiler-scheduler-windows-baseline
           path: .cat/work/temp/scheduler-diagnostics
@@ -373,10 +373,10 @@ jobs:
       USE_BAZEL_VERSION: 9.3.1
       VARIANT: ${{ matrix.variant }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: hermeticbuild/rules_rust
           ref: a20387a3b3e7baec859b53f3cb15b026fbc8a423
@@ -424,7 +424,7 @@ jobs:
           fi
       - name: Retain focused macOS evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compiler-scheduler-${{ matrix.runner }}-${{ matrix.variant }}
           path: .cat/work/temp/scheduler-diagnostics
@@ -440,7 +440,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
@@ -465,7 +465,7 @@ jobs:
         uses: ./.github/actions/setup-tooling
       - name: Retain compiler scheduler test evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compiler-scheduler-tooling-${{ matrix.runner }}
           path: |

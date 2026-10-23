@@ -1,9 +1,6 @@
 name: Profile release compiler
 
 on:
-  push:
-    tags:
-      - "rust-v*.*.*"
   workflow_call:
     inputs:
       linker-lto:

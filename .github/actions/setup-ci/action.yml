@@ -109,8 +109,16 @@ runs:
       shell: bash
       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
 
+    - name: Configure curl retries for DotSlash
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/dotslash-curl"
+        printf '%s\n' retry-all-errors > "$RUNNER_TEMP/dotslash-curl/.curlrc"
+
     - name: Install DotSlash
       uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+      env:
+        CURL_HOME: ${{ runner.temp }}/dotslash-curl
 
     - name: Install just
       uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21

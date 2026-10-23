@@ -473,8 +473,8 @@ jobs:
             {"runner":"macos-15","target":"aarch64-apple-darwin","bundle":"primary","timeout_minutes":180,"artifact_name":"aarch64-apple-darwin","binaries":"codex codex-code-mode-host codex-responses-api-proxy"}
           ]'
           windows_matrix='[
-            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"},
-            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-command-runner"}
+            {"target":"x86_64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner"},
+            {"target":"aarch64-pc-windows-msvc","bundle":"primary","timeout_minutes":180,"binaries":"codex codex-code-mode-host codex-responses-api-proxy","helper_binaries":"codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner"}
           ]'
           filter_matrix() {
             jq -c --arg target "$FOCUS_TARGET" --arg bundle "$FOCUS_BUNDLE" \
@@ -984,6 +984,13 @@ jobs:
             fi
             binary_path="${staged_dir}/${binary}"
             cp "${release_dir}/${binary}" "$binary_path"
+            if [[ "$binary" == codex-code-mode-host ]]; then
+              symbols="$binary_path"
+              if [[ "$TARGET" == *apple-darwin ]]; then
+                symbols="${release_dir}/${binary}.dSYM/Contents/Resources/DWARF/${binary}"
+              fi
+              bash .github/scripts/code-mode-host-symbol-address.sh "$TARGET" "$symbols"
+            fi
             if [[ "${TARGET}" == *linux-musl ]]; then
               # build-release.sh strips bwrap before calculating its embedded
               # digest. The other binaries are stripped here. Do not add a
@@ -1594,7 +1601,7 @@ jobs:
           - x86_64-pc-windows-msvc
           - aarch64-pc-windows-msvc
     env:
-      WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner"
+      WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner"
       CODEX_UNLEASHED_BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
       CODEX_PACKAGE_ARCHIVE_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_mtime }}
       CODEX_PACKAGE_ARCHIVE_GZIP_MTIME: ${{ fromJSON(needs.prepare.outputs.build_metadata)[format('{0}|primary', matrix.target)].archive_gzip_mtime }}
@@ -1934,13 +1941,11 @@ jobs:
           make_latest="$("$CODEX_UNLEASHED_TOOLING" release-is-latest \
             --repository "$GITHUB_REPOSITORY" \
             --tag "${{ needs.prepare.outputs.patched_tag }}")"
-          gh release create "${{ needs.prepare.outputs.patched_tag }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --latest="$make_latest" \
-            --title "${{ needs.prepare.outputs.release_name }}" \
-            --notes-file RELEASE_NOTES.md \
-            release-stage/*
+          bash .github/scripts/publish-github-release.sh \
+            "$GITHUB_REPOSITORY" \
+            "${{ needs.prepare.outputs.patched_tag }}" \
+            "${{ needs.prepare.outputs.release_name }}" \
+            RELEASE_NOTES.md release-stage "$make_latest"
 
       - name: Publish npm packages
         if: ${{ inputs.publish_npm }}

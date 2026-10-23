@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -45,7 +46,7 @@ public final class PackageLayoutTest
 			{
 				target = PackageTarget.WINDOWS_X86;
 				inputs = new PackageInputs(fixture.binary, fixture.binary, fixture.binary, Optional.empty(), Optional.empty(),
-					Optional.of(fixture.binary), Optional.of(fixture.binary));
+					Optional.of(fixture.binary), Optional.of(fixture.binary), Optional.of(fixture.binary));
 			}
 			PackageLayout.Request request = fixture.request(target, PackageVariant.APP_SERVER, inputs);
 			PackageLayout.prepare(fixture.output, false);
@@ -99,7 +100,8 @@ public final class PackageLayoutTest
 		try (Fixture fixture = Fixture.create())
 		{
 			PackageInputs inputs = new PackageInputs(fixture.binary, fixture.binary, fixture.binary,
-				Optional.empty(), Optional.empty(), Optional.of(fixture.binary), Optional.of(fixture.binary));
+				Optional.empty(), Optional.empty(), Optional.of(fixture.binary), Optional.of(fixture.binary),
+				Optional.of(fixture.binary));
 			PackageLayout.Request request = fixture.request(PackageTarget.WINDOWS_X86, PackageVariant.CODEX, inputs);
 			PackageLayout.prepare(fixture.output, false);
 			PackageLayout.build(request, command ->
@@ -111,9 +113,36 @@ public final class PackageLayoutTest
 				"codex-resources/codex-command-runner.exe", "codex-resources/codex-windows-sandbox-setup.exe"))
 				assertTrue(Files.isRegularFile(fixture.output.resolve(name)));
 			assertFalse(Files.exists(fixture.output.resolve("codex-resources/zsh")));
+			requireThat(fixture.output.resolve("codex-resources/codex-windows-sandbox-service.exe"),
+				"sandboxService").isRegularFile();
 			Files.delete(fixture.output.resolve("codex-resources/codex-command-runner.exe"));
 			expectThrows(IOException.class, () -> PackageLayout.validate(fixture.output, request.variant(),
 				request.target(), false));
+		}
+	}
+
+	/**
+	 * Rejects Windows packages whose service executable is removed after assembly.
+	 *
+	 * @throws IOException if fixture access, assembly, or validation fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*codex-windows-sandbox-service[.]exe.*")
+	public void rejectsMissingWindowsSandboxService() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			PackageInputs inputs = new PackageInputs(fixture.binary, fixture.binary, fixture.binary,
+				Optional.empty(), Optional.empty(), Optional.of(fixture.binary), Optional.of(fixture.binary),
+				Optional.of(fixture.binary));
+			PackageLayout.Request request = fixture.request(PackageTarget.WINDOWS_X86, PackageVariant.CODEX, inputs);
+			PackageLayout.prepare(fixture.output, false);
+			PackageLayout.build(request, command ->
+			{
+				throw new AssertionError("No workspace metadata is required");
+			});
+			Files.delete(fixture.output.resolve("codex-resources/codex-windows-sandbox-service.exe"));
+			PackageLayout.validate(fixture.output, request.variant(), request.target(), false);
 		}
 	}
 
@@ -245,7 +274,8 @@ public final class PackageLayoutTest
 		 */
 		private PackageInputs inputs(Optional<Path> zsh, Optional<Path> bwrap)
 		{
-			return new PackageInputs(binary, binary, binary, zsh, bwrap, Optional.empty(), Optional.empty());
+			return new PackageInputs(binary, binary, binary, zsh, bwrap, Optional.empty(), Optional.empty(),
+				Optional.empty());
 		}
 
 		/**

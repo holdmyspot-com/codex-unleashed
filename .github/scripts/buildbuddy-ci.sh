@@ -54,7 +54,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
   tooling)
     source .github/scripts/buildbuddy-bootstrap.sh
     ;;
-  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross|zsh-release)
+  codespell|repo-checks|format|cargo-shear|cargo-deny|bazel-test|bazel-clippy|bazel-argument-comment-lint|bazel-verify-release|sdk|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt|windows-cross|zsh-release)
     source .github/scripts/buildbuddy-bootstrap.sh
     if [[ "$BUILDBUDDY_CI_TASK" == codespell ]]; then
       uv tool run --from 'codespell[toml]>=2.2.4' codespell --count --skip ./.git --ignore-words .codespellignore
@@ -86,6 +86,8 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
           repo-checks)
             bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
             bash "$project_root/.github/scripts/test-ci-memory.sh" "$project_root"
+            bash "$project_root/.github/scripts/test-publish-github-release.sh"
+            bash "$project_root/.github/scripts/test-code-mode-host-symbol-address.sh" "$RUNNER_TEMP"
             export NODE_OPTIONS=--max-old-space-size=4096
             export ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION=1
             ./scripts/run-upstream-repo-checks.sh upstream
@@ -135,6 +137,14 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
           "$project_root/.github/scripts/run-bazel-ci.sh" -- cquery --output=label -- \
           'deps(//tools/build-warnings/rpaths:all)' > "$RUNNER_TEMP/native-sdk-labels.txt"
         bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" "$RUNNER_TEMP/native-sdk-labels.txt"
+        ;;
+      bazel-argument-comment-lint)
+        cd upstream
+        target_lines="$(./tools/argument-comment-lint/list-bazel-targets.sh)"
+        mapfile -t targets <<< "$target_lines"
+        "$project_root/.github/scripts/run-bazel-ci.sh" --print-failed-action-summary -- build \
+          --config=argument-comment-lint "--build_metadata=COMMIT_SHA=$GITHUB_SHA" \
+          --build_metadata=TAG_job=argument-comment-lint -- "${targets[@]}"
         ;;
       bazel-clippy|bazel-verify-release)
         cd upstream

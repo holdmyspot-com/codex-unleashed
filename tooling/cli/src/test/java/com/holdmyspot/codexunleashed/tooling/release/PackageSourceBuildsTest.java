@@ -91,7 +91,7 @@ public final class PackageSourceBuildsTest
 				if (fixture.helpers().isEmpty())
 					prebuiltHost = Optional.empty();
 				PackageSourceBuilds.Inputs inputs = new PackageSourceBuilds.Inputs(Optional.of(entrypoint), prebuiltHost,
-					Optional.empty(), Optional.empty(), Optional.empty());
+					Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 				for (String target : List.of("../../relative-target", fixture.root.resolve("absolute-target").toString()))
 				{
 					fixture.trace.reset();
@@ -142,14 +142,14 @@ public final class PackageSourceBuildsTest
 			{
 				Path binary = Files.write(fixture.root.resolve("binary"), new byte[] {1});
 				PackageSourceBuilds.Inputs complete = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
-					Optional.of(binary), Optional.empty(), Optional.empty());
+					Optional.of(binary), Optional.empty(), Optional.empty(), Optional.empty());
 				PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(
 					fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, complete, "release", Map.of()), output);
 				assertEquals(built.entrypoint(), binary.toRealPath());
 				assertEquals(fixture.trace.size(), 0);
 				assertFalse(Files.exists(fixture.cache));
 				PackageSourceBuilds.Inputs unsupported = new PackageSourceBuilds.Inputs(Optional.of(binary),
-					Optional.of(binary), Optional.of(binary), Optional.of(binary), Optional.empty());
+					Optional.of(binary), Optional.of(binary), Optional.of(binary), Optional.empty(), Optional.empty());
 				expectThrows(IOException.class, () -> PackageSourceBuilds.build(
 					fixture.request(PackageTarget.LINUX_X86_GNU, PackageVariant.CODEX, unsupported, "release", Map.of()),
 					output));
@@ -177,7 +177,7 @@ public final class PackageSourceBuildsTest
 		{
 			Path binary = Files.write(fixture.root.resolve("binary.exe"), new byte[] {1});
 			PackageSourceBuilds.Inputs inputs = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
-				Optional.empty(), Optional.of(binary), Optional.of(binary));
+				Optional.empty(), Optional.of(binary), Optional.of(binary), Optional.of(binary));
 			PackageSourceBuilds.Request initial = fixture.request(PackageVariant.APP_SERVER, inputs, "release", Map.of());
 			PackageSourceBuilds.Outputs built = PackageSourceBuilds.build(new PackageSourceBuilds.Request(fixture.workspace,
 				PackageTarget.WINDOWS_X86, initial.variant(), inputs, initial.options()), output);
@@ -187,11 +187,11 @@ public final class PackageSourceBuildsTest
 			assertTrue(built.bwrap().isEmpty());
 			assertEquals(fixture.trace.size(), 0);
 			PackageSourceBuilds.Inputs unsupported = new PackageSourceBuilds.Inputs(Optional.of(binary), Optional.of(binary),
-				Optional.of(binary), Optional.empty(), Optional.empty());
+				Optional.of(binary), Optional.empty(), Optional.empty(), Optional.empty());
 			expectThrows(IOException.class, () -> PackageSourceBuilds.build(new PackageSourceBuilds.Request(fixture.workspace,
 				PackageTarget.WINDOWS_X86, initial.variant(), unsupported, initial.options()), output));
 			PackageSourceBuilds.Inputs directory = new PackageSourceBuilds.Inputs(Optional.of(fixture.root),
-				Optional.of(binary), Optional.empty(), Optional.of(binary), Optional.of(binary));
+				Optional.of(binary), Optional.empty(), Optional.of(binary), Optional.of(binary), Optional.of(binary));
 			expectThrows(IOException.class, () -> PackageSourceBuilds.build(new PackageSourceBuilds.Request(fixture.workspace,
 				PackageTarget.WINDOWS_X86, initial.variant(), directory, initial.options()), output));
 			assertFalse(Files.exists(fixture.cache));
@@ -290,7 +290,7 @@ public final class PackageSourceBuildsTest
 				inherits = "dev"
 				""");
 			for (String name : List.of("codex", "codex-app-server", "codex-code-mode-host", "bwrap",
-				"codex-command-runner", "codex-windows-sandbox-setup"))
+				"codex-command-runner", "codex-windows-sandbox-setup", "codex-windows-sandbox-service"))
 				Files.writeString(binaries.resolve(name + ".rs"), "fn main() { println!(\"source fixture\"); }\n");
 		}
 
@@ -390,7 +390,7 @@ public final class PackageSourceBuildsTest
 			if (target.isLinux())
 				return List.of("bwrap");
 			if (target.isWindows())
-				return List.of("codex-command-runner", "codex-windows-sandbox-setup");
+				return List.of("codex-command-runner", "codex-windows-sandbox-setup", "codex-windows-sandbox-service");
 			return List.of();
 		}
 

@@ -36,6 +36,7 @@ public final class PackageLayout
 	private static final String BWRAP_RESOURCE = "bwrap";
 	private static final String WINDOWS_RUNNER_RESOURCE = "codex-command-runner.exe";
 	private static final String WINDOWS_SETUP_RESOURCE = "codex-windows-sandbox-setup.exe";
+	private static final String WINDOWS_SERVICE_RESOURCE = "codex-windows-sandbox-service.exe";
 	private static final Set<PosixFilePermission> EXECUTE_PERMISSIONS =
 		PosixFilePermissions.fromString("--x--x--x");
 	private static final List<String> LEGAL_DOCUMENTS = List.of("LICENSE.md",
@@ -149,6 +150,7 @@ public final class PackageLayout
 		copyOptional(inputs.bwrap(), resources.resolve(BWRAP_RESOURCE), false);
 		copyOptional(inputs.windowsCommandRunner(), resources.resolve(WINDOWS_RUNNER_RESOURCE), true);
 		copyOptional(inputs.windowsSandboxSetup(), resources.resolve(WINDOWS_SETUP_RESOURCE), true);
+		copyOptional(inputs.windowsSandboxService(), resources.resolve(WINDOWS_SERVICE_RESOURCE), true);
 
 		Map<String, Object> document = new LinkedHashMap<>();
 		document.put("layoutVersion", 1);
@@ -211,6 +213,7 @@ public final class PackageLayout
 		{
 			executables.add(RESOURCES_DIRECTORY + "/" + WINDOWS_RUNNER_RESOURCE);
 			executables.add(RESOURCES_DIRECTORY + "/" + WINDOWS_SETUP_RESOURCE);
+			executables.add(RESOURCES_DIRECTORY + "/" + WINDOWS_SERVICE_RESOURCE);
 		}
 		for (String name : LEGAL_DOCUMENTS)
 			requireFile(directory.resolve(name));

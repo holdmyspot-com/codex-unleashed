@@ -15,7 +15,7 @@ runs:
         cache-scope: nextest-native-sdk
         common-setup-complete: 'true'
 
-    - uses: actions/setup-python@v6
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: "3.12"
 
@@ -94,7 +94,7 @@ runs:
 
     - name: Save Bazel repository cache
       if: always() && !cancelled() && steps.prepare-bazel.outputs.repository-cache-key != '' && steps.prepare-bazel.outputs.repository-cache-hit != 'true' && steps.repository-cache-before-save.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
       with:
         path: ${{ steps.prepare-bazel.outputs.repository-cache-path }}
         key: ${{ steps.prepare-bazel.outputs.repository-cache-key }}

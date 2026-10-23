@@ -39,13 +39,13 @@ export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="${BUILDBUDDY_ARTIFACTS_DIRECTORY:?
 mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
 
 case "$BUILDBUDDY_CI_TASK" in
-  bazel-test|bazel-clippy|bazel-verify-release|sdk|windows-cross|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
+  bazel-test|bazel-clippy|bazel-argument-comment-lint|bazel-verify-release|sdk|windows-cross|v8-release|v8-sandbox|v8-release-opt|v8-sandbox-opt)
     source "$project_root/.github/scripts/buildbuddy-prepare-bazel.sh"
     ;;
 esac
 
 case "$BUILDBUDDY_CI_TASK" in
-  bazel-test|bazel-clippy|bazel-verify-release|sdk|windows-cross)
+  bazel-test|bazel-clippy|bazel-argument-comment-lint|bazel-verify-release|sdk|windows-cross)
     # Maven verification and Cargo lock normalization are the last native Rust consumers.
     # Bazel supplies its own toolchains and source repositories for the remote actions.
     (

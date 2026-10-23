@@ -14,6 +14,7 @@ Usage: build-codex-package-archive.sh \
   [--rg-manifest <path>] \
   [--codex-command-runner-bin <path>] \
   [--codex-windows-sandbox-setup-bin <path>] \
+  [--codex-windows-sandbox-service-bin <path>] \
   [--target-suffixed-entrypoint]
 EOF
 }
@@ -28,6 +29,7 @@ bwrap_bin_provided="false"
 code_mode_host_bin_provided="false"
 command_runner_bin_provided="false"
 sandbox_setup_bin_provided="false"
+sandbox_service_bin_provided="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -79,6 +81,14 @@ while [[ $# -gt 0 ]]; do
         "${2:?--codex-windows-sandbox-setup-bin requires a value}"
       )
       sandbox_setup_bin_provided="true"
+      shift 2
+      ;;
+    --codex-windows-sandbox-service-bin)
+      resource_args+=(
+        --codex-windows-sandbox-service-bin
+        "${2:?--codex-windows-sandbox-service-bin requires a value}"
+      )
+      sandbox_service_bin_provided="true"
       shift 2
       ;;
     --target-suffixed-entrypoint)
@@ -146,11 +156,15 @@ case "$target" in
   *windows*)
     command_runner_bin="${entrypoint_dir%/}/codex-command-runner.exe"
     sandbox_setup_bin="${entrypoint_dir%/}/codex-windows-sandbox-setup.exe"
+    sandbox_service_bin="${entrypoint_dir%/}/codex-windows-sandbox-service.exe"
     if [[ "$command_runner_bin_provided" == "false" && -f "$command_runner_bin" ]]; then
       resource_args+=(--codex-command-runner-bin "$command_runner_bin")
     fi
     if [[ "$sandbox_setup_bin_provided" == "false" && -f "$sandbox_setup_bin" ]]; then
       resource_args+=(--codex-windows-sandbox-setup-bin "$sandbox_setup_bin")
+    fi
+    if [[ "$sandbox_service_bin_provided" == "false" && -f "$sandbox_service_bin" ]]; then
+      resource_args+=(--codex-windows-sandbox-service-bin "$sandbox_service_bin")
     fi
     ;;
 esac

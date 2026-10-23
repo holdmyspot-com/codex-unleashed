@@ -56,7 +56,7 @@ public final class PackageCommandRuntimeTest
 			for (String name : List.of("codex-app-server", "codex-app-server.exe", "codex-x86_64-unknown-linux-gnu",
 				"codex-code-mode-host", "bwrap",
 				"codex-x86_64-pc-windows-msvc.exe", "codex-code-mode-host.exe", "codex-command-runner.exe",
-				"codex-windows-sandbox-setup.exe"))
+				"codex-windows-sandbox-setup.exe", "codex-windows-sandbox-service.exe"))
 			{
 				Path binary = Files.write(binaries.resolve(name), payload);
 				if (Files.getFileAttributeView(binary, PosixFileAttributeView.class) != null)
@@ -215,7 +215,8 @@ public final class PackageCommandRuntimeTest
 				directory.toString()));
 			if (hostTarget.equals("x86_64-pc-windows-msvc"))
 				command.addAll(List.of("--codex-command-runner-bin", binary.toString(),
-					"--codex-windows-sandbox-setup-bin", binary.toString()));
+					"--codex-windows-sandbox-setup-bin", binary.toString(),
+					"--codex-windows-sandbox-service-bin", binary.toString()));
 			else
 				command.addAll(List.of("--bwrap-bin", binary.toString()));
 			List<Path> archives = new ArrayList<>();
