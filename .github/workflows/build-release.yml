@@ -583,15 +583,31 @@ jobs:
             echo "- Cargo cache: managed by Swatinem/rust-cache"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  voice-runtime:
+    needs: prepare
+    if: >-
+      ${{
+        !cancelled() &&
+        needs.prepare.outputs.should_release == 'true' &&
+        needs.prepare.outputs.artifact_run_id == github.run_id
+      }}
+    uses: ./.github/workflows/build-voice-runtime.yml
+    with:
+      upstream_ref: ${{ needs.prepare.outputs.upstream_sha }}
+      focus_target: ${{ inputs.focus_target }}
+    secrets: inherit
+
   build-unix:
     needs:
       - prepare
       - verify
+      - voice-runtime
     if: >-
       ${{
         always() &&
         !cancelled() &&
         needs.verify.result == 'success' &&
+        needs.voice-runtime.result == 'success' &&
         needs.prepare.outputs.should_release == 'true' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
         (
@@ -604,6 +620,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout_minutes || 180 }}
     permissions:
+      actions: read
       contents: read
       id-token: write
       packages: write
@@ -1059,6 +1076,18 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
+      - name: Download matching prepared voice payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          voice_dir="$RUNNER_TEMP/voice-runtime-$TARGET"
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "voice-runtime-$TARGET" "$voice_dir"
+          (cd "$voice_dir" && tar -xzf "voice-runtime-$TARGET.tar.gz")
+
       - name: Build Codex package archive
         shell: bash
         env:
@@ -1069,6 +1098,8 @@ jobs:
           bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
             --target "$TARGET" \
             --bundle "$BUNDLE" \
+            --voice-release-dir "$RUNNER_TEMP/voice-runtime-$TARGET" \
+            --build-commit "${{ needs.prepare.outputs.upstream_sha }}" \
             --entrypoint-dir "${CARGO_TARGET_DIR}/${TARGET}/release/staged-${BUNDLE}" \
             --archive-dir "dist/${TARGET}" \
             --zsh-manifest "${GITHUB_WORKSPACE}/scripts/codex_package/codex-zsh" \
@@ -1582,12 +1613,14 @@ jobs:
     needs:
       - build-windows-binaries
       - prepare
+      - voice-runtime
     if: >-
       ${{
         always() &&
         !cancelled() &&
         needs.prepare.outputs.should_release == 'true' &&
         needs.build-windows-binaries.result == 'success' &&
+        needs.voice-runtime.result == 'success' &&
         needs.prepare.outputs.artifact_run_id == github.run_id &&
         (inputs.verification_level == '' || inputs.verification_level == 'full') &&
         inputs.focus_target == '' && inputs.focus_bundle == ''
@@ -1651,6 +1684,18 @@ jobs:
               "$dest/${binary}-${{ matrix.target }}.exe"
           done
 
+      - name: Download matching prepared voice payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          voice_dir="$RUNNER_TEMP/voice-runtime-$TARGET"
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "voice-runtime-$TARGET" "$voice_dir"
+          (cd "$voice_dir" && tar -xzf "voice-runtime-$TARGET.tar.gz")
+
       - name: Build Codex package archives
         shell: bash
         env:
@@ -1671,6 +1716,8 @@ jobs:
             bash "$archive_script" \
               --target "$target" \
               --bundle "$bundle" \
+              --voice-release-dir "$RUNNER_TEMP/voice-runtime-$target" \
+              --build-commit "${{ needs.prepare.outputs.upstream_sha }}" \
               --entrypoint-dir "$CARGO_TARGET_DIR/$target/release" \
               --archive-dir "dist/$target" \
               --zsh-manifest "${GITHUB_WORKSPACE}/scripts/codex_package/codex-zsh" \

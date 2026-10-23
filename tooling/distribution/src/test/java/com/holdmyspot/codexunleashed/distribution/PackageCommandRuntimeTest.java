@@ -16,16 +16,19 @@ import java.util.Map;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies standalone package production and native archive consumption without external Java or Python commands.
  */
 public final class PackageCommandRuntimeTest
 {
+	private static final String BUILD_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
 	/**
 	 * Creates package runtime tests.
 	 */
@@ -34,15 +37,27 @@ public final class PackageCommandRuntimeTest
 	}
 
 	/**
+	 * Supplies ordinary and prepared-voice archive wrapper invocations.
+	 *
+	 * @return voice selection modes
+	 */
+	@DataProvider
+	public Object[][] voiceSelections()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
 	 * Runs the maintained release wrapper with rejected Python commands and verifies archive output and staging cleanup.
 	 *
-	 * @throws IOException if fixture access, linking, command execution, or cleanup fails
-	 * @throws URISyntaxException if rejected command fixture locations cannot be represented as URIs
-	 * @throws InterruptedException if a child process is interrupted
+	 * @param includeVoice indicates whether to include a prepared public voice runtime
+	 * @throws IOException              if fixture access, linking, command execution, or cleanup fails
+	 * @throws URISyntaxException       if rejected command fixture locations cannot be represented as URIs
+	 * @throws InterruptedException     if a child process is interrupted
 	 * @throws NoSuchAlgorithmException if the required SHA-256 implementation is unavailable
 	 */
-	@Test
-	public void buildsReleaseWrapperArchives()
+	@Test(dataProvider = "voiceSelections")
+	public void buildsReleaseWrapperArchives(boolean includeVoice)
 		throws IOException, URISyntaxException, InterruptedException, NoSuchAlgorithmException
 	{
 		Path root = Files.createTempDirectory("package-wrapper-");
@@ -109,6 +124,8 @@ public final class PackageCommandRuntimeTest
 				List.of("primary", hostTarget)));
 			if (!hostTarget.equals("x86_64-pc-windows-msvc"))
 				selections.add(List.of("primary", "x86_64-pc-windows-msvc"));
+			if (includeVoice)
+				selections.removeIf(selection -> selection.getFirst().equals("app-server"));
 			for (List<String> selection : selections)
 			{
 				List<String> command = new ArrayList<>(List.of(
@@ -117,8 +134,15 @@ public final class PackageCommandRuntimeTest
 					"--rg-manifest", rg.toString(), "--zsh-manifest", zsh.toString()));
 				if (selection.getFirst().equals("primary"))
 					command.add("--target-suffixed-entrypoint");
-				assertEquals(runScript(command, root, environment, stdout, stderr), 0,
-					Files.readString(stdout) + Files.readString(stderr));
+				Path voiceRelease = root.resolve("voice release " + selection.get(1));
+				if (includeVoice)
+				{
+					prepareVoiceRelease(voiceRelease, workspace, selection.get(1));
+					command.addAll(List.of("--voice-release-dir", voiceRelease.toString(), "--build-commit", BUILD_COMMIT));
+				}
+				requireThat(runScript(command, root, environment, stdout, stderr),
+					"wrapperStatus").withContext(Files.readString(stdout), "stdout").
+					withContext(Files.readString(stderr), "stderr").isEqualTo(0);
 				String stem = "codex-app-server-package";
 				String binary = "codex-app-server";
 				if (selection.getFirst().equals("primary"))
@@ -136,22 +160,28 @@ public final class PackageCommandRuntimeTest
 						consumer = List.of(NativeUtilities.tarExecutable(), "--zstd", "-xOf", archive.toString(), "bin/" + binary);
 					else
 						consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/" + binary);
-					assertEquals(run(consumer, root, environment, stdout, stderr), 0, Files.readString(stderr));
-					assertEquals(Files.readAllBytes(stdout), payload);
+					requireThat(run(consumer, root, environment, stdout, stderr), "consumerStatus").
+						withContext(Files.readString(stderr), "stderr").isEqualTo(0);
+					requireThat(Files.readAllBytes(stdout), "entrypointBytes").isEqualTo(payload);
+					if (includeVoice)
+					{
+						verifyArchivedVoice(archive, suffix, selection.get(1), voiceRelease, workspace, root, environment,
+							stdout, stderr);
+					}
 				}
 				try (Stream<Path> paths = Files.list(temporary))
 				{
-					assertEquals(paths.count(), 0L, "Release staging remains after success");
+					requireThat(paths.count(), "stagingEntriesAfterSuccess").isEqualTo(0L);
 				}
 				Files.delete(notices);
-				assertEquals(runScript(command, root, environment, stdout, stderr), 1);
+				requireThat(runScript(command, root, environment, stdout, stderr), "wrapperStatusWithoutNotices").isEqualTo(1);
 				try (Stream<Path> paths = Files.list(temporary))
 				{
-					assertEquals(paths.count(), 0L, "Release staging remains after failure");
+					requireThat(paths.count(), "stagingEntriesAfterFailure").isEqualTo(0L);
 				}
 				Files.writeString(notices, "prepared notices\n");
 			}
-			assertFalse(Files.exists(root.resolve("cargo-home")));
+			requireThat(Files.exists(root.resolve("cargo-home")), "cargoHomeExists").isFalse();
 		}
 		finally
 		{
@@ -162,8 +192,8 @@ public final class PackageCommandRuntimeTest
 	/**
 	 * Produces all supported archive formats with a fresh bundled image and verifies their extracted binary payloads.
 	 *
-	 * @throws IOException if fixture access, linking, command execution, or cleanup fails
-	 * @throws URISyntaxException if rejected command fixture locations cannot be represented as URIs
+	 * @throws IOException          if fixture access, linking, command execution, or cleanup fails
+	 * @throws URISyntaxException   if rejected command fixture locations cannot be represented as URIs
 	 * @throws InterruptedException if a child process is interrupted
 	 */
 	@Test
@@ -228,13 +258,17 @@ public final class PackageCommandRuntimeTest
 			}
 			Path stdout = root.resolve("stdout");
 			Path stderr = root.resolve("stderr");
-			assertEquals(runScript(command, root, environment, stdout, stderr), 0,
-				Files.readString(stdout) + Files.readString(stderr));
-			assertTrue(Files.readString(directory.resolve("codex-package.json")).contains("\"version\": \"0.160.0+42\""));
-			assertEquals(Files.readAllBytes(directory.resolve("bin").resolve(entrypoint)), payload);
-			assertTrue(Files.isRegularFile(directory.resolve("licenses/rust/THIRD_PARTY_NOTICES.md")));
-			assertFalse(Files.exists(workspace.resolve("scripts/get_codex_package_version.py")));
-			assertFalse(Files.exists(root.resolve("cargo-home")));
+			requireThat(runScript(command, root, environment, stdout, stderr),
+				"toolingStatus").withContext(Files.readString(stdout), "stdout").
+				withContext(Files.readString(stderr), "stderr").isEqualTo(0);
+			requireThat(Files.readString(directory.resolve("codex-package.json")), "packageMetadata").
+				contains("\"version\": \"0.160.0+42\"");
+			requireThat(Files.readAllBytes(directory.resolve("bin").resolve(entrypoint)), "entrypointBytes").
+				isEqualTo(payload);
+			requireThat(directory.resolve("licenses/rust/THIRD_PARTY_NOTICES.md"), "rustNotices").isRegularFile();
+			requireThat(Files.exists(workspace.resolve("scripts/get_codex_package_version.py")), "pythonVersionHelperExists").
+				isFalse();
+			requireThat(Files.exists(root.resolve("cargo-home")), "cargoHomeExists").isFalse();
 			for (Path archive : archives)
 			{
 				List<String> consumer;
@@ -246,16 +280,18 @@ public final class PackageCommandRuntimeTest
 						"bin/" + entrypoint);
 				else
 					consumer = List.of(NativeUtilities.tarExecutable(), "-xOzf", archive.toString(), "bin/" + entrypoint);
-				assertEquals(run(consumer, root, environment, stdout, stderr), 0, Files.readString(stderr));
-				assertEquals(Files.readAllBytes(stdout), payload);
+				requireThat(run(consumer, root, environment, stdout, stderr), "consumerStatus").
+					withContext(Files.readString(stderr), "stderr").
+					isEqualTo(0);
+				requireThat(Files.readAllBytes(stdout), "archivedBytes").isEqualTo(payload);
 			}
 			try (Stream<Path> paths = Files.list(cache.resolve("archive-temp")))
 			{
-				assertEquals(paths.count(), 0L);
+				requireThat(paths.count(), "temporaryEntries").isEqualTo(0L);
 			}
 			try (Stream<Path> paths = Files.list(temporary))
 			{
-				assertEquals(paths.count(), 0L);
+				requireThat(paths.count(), "temporaryEntries").isEqualTo(0L);
 			}
 		}
 		finally
@@ -265,15 +301,201 @@ public final class PackageCommandRuntimeTest
 	}
 
 	/**
+	 * Supplies malformed voice selections that must fail before invoking Java tooling.
+	 *
+	 * @return option lists and their required diagnostics
+	 */
+	@DataProvider
+	public Object[][] invalidVoiceSelections()
+	{
+		return new Object[][]{
+			{List.of("--voice-release-dir", "voice release"), "must be supplied together"},
+			{List.of("--build-commit", BUILD_COMMIT), "must be supplied together"},
+			{List.of("--voice-release-dir", "voice release", "--build-commit", "short"), "40 lowercase"},
+			{List.of("--voice-release-dir", "voice release", "--build-commit",
+				"ABCDEF0123456789ABCDEF0123456789ABCDEF01"), "40 lowercase"},
+			{List.of("--voice-release-dir", "voice release", "--build-commit", BUILD_COMMIT, "--bundle", "app-server"),
+				"Voice resources require --bundle primary"}
+		};
+	}
+
+	/**
+	 * Rejects invalid voice selections before tooling invocation or archive staging.
+	 *
+	 * @param options    invalid voice options
+	 * @param diagnostic required validation diagnostic
+	 * @throws IOException          if fixture creation, process capture, or cleanup fails
+	 * @throws URISyntaxException   if the rejecting Java fixture location cannot be represented as a URI
+	 * @throws InterruptedException if the wrapper process is interrupted
+	 */
+	@Test(dataProvider = "invalidVoiceSelections")
+	public void rejectsInvalidWrapperVoice(List<String> options, String diagnostic)
+		throws IOException, URISyntaxException, InterruptedException
+	{
+		Path root = Files.createTempDirectory("invalid-wrapper-voice-");
+		try
+		{
+			Path rejected = root.resolve("rejected-tooling");
+			JavaCommandFixtures.writeLauncher(rejected, RejectedCommandFixture.class);
+			Path repository = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
+			Path temporary = Files.createDirectory(root.resolve("temporary"));
+			Path archive = root.resolve("archives");
+			List<String> command = new ArrayList<>(List.of(
+				repository.resolve(".github/scripts/build-codex-package-archive.sh").toString(), "--target",
+				"x86_64-unknown-linux-gnu", "--bundle", "primary", "--entrypoint-dir", root.resolve("binaries").toString(),
+				"--archive-dir", archive.toString()));
+			command.addAll(options);
+			Path stdout = root.resolve("stdout");
+			Path stderr = root.resolve("stderr");
+			requireThat(runScript(command, root, Map.of("CODEX_UNLEASHED_TOOLING", rejected.toString(),
+				"RUNNER_TEMP", temporary.toString(), "TMPDIR", temporary.toString()), stdout, stderr), "status").isEqualTo(1);
+			requireThat(Files.readString(stderr), "diagnostic").contains(diagnostic);
+			requireThat(Files.exists(archive), "archiveDirectoryExists").isFalse();
+			try (Stream<Path> children = Files.list(temporary))
+			{
+				requireThat(children.count(), "stagingEntries").isEqualTo(0L);
+			}
+		}
+		finally
+		{
+			FixtureDirectories.deleteTree(root);
+		}
+	}
+
+	/**
+	 * Writes independent public voice inputs for the actual bundled Java assembler.
+	 *
+	 * @param release   prepared runtime and helper directory
+	 * @param workspace upstream source checkout supplying voice legal materials
+	 * @param target    application target
+	 * @throws IOException              if fixture writing fails
+	 * @throws NoSuchAlgorithmException if SHA-256 is unavailable
+	 */
+	private static void prepareVoiceRelease(Path release, Path workspace, String target)
+		throws IOException, NoSuchAlgorithmException
+	{
+		boolean windows = target.endsWith("windows-msvc");
+		Path legal = workspace.resolve("third_party/voice");
+		for (String name : List.of("NOTICE.md", "sources.json", "windows-crt.json", "licenses/LGPL-2.1.txt",
+			"licenses/Opus.txt", "licenses/PCRE2.md", "licenses/libffi.txt", "licenses/proxy-libintl.txt",
+			"licenses/sljit.txt", "licenses/zlib.txt"))
+		{
+			Path file = legal.resolve(name);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, "upstream voice legal bytes " + name);
+		}
+		Files.createDirectories(release);
+		String helperName = "codex-voice-host";
+		if (windows)
+			helperName += ".exe";
+		Path helper = release.resolve(helperName);
+		Files.writeString(helper, "prepared voice helper");
+		if (Files.getFileAttributeView(helper, PosixFileAttributeView.class) != null)
+			Files.setPosixFilePermissions(helper, PosixFilePermissions.fromString("rwx------"));
+		Path runtime = Files.createDirectory(release.resolve("runtime"));
+		List<String> plugins = new ArrayList<>();
+		for (String name : List.of("app", "audioconvert", "audioresample", "coreelements", "opus", "rtp", "rtpmanager"))
+		{
+			if (windows)
+				plugins.add("bin/gst" + name + ".dll");
+			else
+				plugins.add("lib/gstreamer-1.0/libgst" + name + ".so");
+		}
+		List<String> names = new ArrayList<>(plugins);
+		if (windows)
+			names.add("bin/gio-2.0-0.dll");
+		else
+			names.add("lib/libgio-2.0.so.0");
+		List<Map<String, String>> libraries = new ArrayList<>();
+		for (String name : names)
+		{
+			Path file = runtime.resolve(name);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, "prepared native bytes " + name);
+			libraries.add(Map.of("path", name, "sha256", sha256(file)));
+		}
+		Map<String, Object> receipt = Map.of("schemaVersion", 1, "developmentOnly", false, "distribution", "publicRelease",
+			"sourceCommit", BUILD_COMMIT, "sourceManifestSha256", sha256(legal.resolve("sources.json")),
+			"target", target.replace("linux-musl", "linux-gnu"), "libraries", libraries, "plugins", plugins);
+		Files.writeString(runtime.resolve("runtime.json"), JsonMapper.builder().build().writeValueAsString(receipt));
+	}
+
+	/**
+	 * Verifies source identity, version, native inputs, and legal bytes through the native archive consumer.
+	 *
+	 * @param archive     produced archive
+	 * @param compression tar.gz or tar.zst
+	 * @param target      application target
+	 * @param release     prepared runtime and helper inputs
+	 * @param workspace   upstream source checkout
+	 * @param working     isolated process working directory
+	 * @param environment process environment overrides
+	 * @param stdout      extraction output capture
+	 * @param stderr      extraction diagnostic capture
+	 * @throws IOException          if extraction or file access fails
+	 * @throws InterruptedException if extraction is interrupted
+	 */
+	private static void verifyArchivedVoice(Path archive, String compression, String target, Path release,
+		Path workspace, Path working, Map<String, String> environment, Path stdout, Path stderr)
+		throws IOException, InterruptedException
+	{
+		List<String> consumer = new ArrayList<>(List.of(NativeUtilities.tarExecutable()));
+		if (compression.equals("tar.zst"))
+			consumer.addAll(List.of("--zstd", "-xOf"));
+		else
+			consumer.add("-xOzf");
+		consumer.add(archive.toString());
+		consumer.add("codex-resources/voice/manifest.json");
+		requireThat(run(consumer, working, environment, stdout, stderr), "manifestExtractionStatus").isEqualTo(0);
+		JsonNode manifest = JsonMapper.builder().build().readTree(Files.readString(stdout));
+		requireThat(manifest.path("buildCommit").stringValue(), "buildCommit").isEqualTo(BUILD_COMMIT);
+		requireThat(manifest.path("appVersion").stringValue(), "appVersion").isEqualTo("0.160.0+43");
+		requireThat(manifest.path("appTarget").stringValue(), "appTarget").isEqualTo(target);
+		requireThat(manifest.path("voiceTarget").stringValue(), "voiceTarget").isEqualTo(
+			target.replace("linux-musl", "linux-gnu"));
+		boolean windows = target.endsWith("windows-msvc");
+		String helperName = "codex-voice-host";
+		if (windows)
+			helperName += ".exe";
+		String helper = "bin/" + helperName;
+		String library = "lib/libgio-2.0.so.0";
+		if (windows)
+			library = "bin/gio-2.0-0.dll";
+		Map<String, Path> sources = Map.of(helper, release.resolve(helperName),
+			library, release.resolve("runtime").resolve(library), "runtime.json", release.resolve("runtime/runtime.json"),
+			"sources.json", workspace.resolve("third_party/voice/sources.json"),
+			"licenses/Opus.txt", workspace.resolve("third_party/voice/licenses/Opus.txt"));
+		for (Map.Entry<String, Path> entry : sources.entrySet())
+		{
+			consumer.set(consumer.size() - 1, "codex-resources/voice/" + entry.getKey());
+			requireThat(run(consumer, working, environment, stdout, stderr), "voiceExtractionStatus").isEqualTo(0);
+			requireThat(Files.readAllBytes(stdout), "archivedVoiceBytes").isEqualTo(Files.readAllBytes(entry.getValue()));
+		}
+	}
+
+	/**
+	 * Hashes bounded fixture files for independently generated native receipts.
+	 *
+	 * @param file fixture input
+	 * @return lowercase SHA-256
+	 * @throws IOException              if fixture reading fails
+	 * @throws NoSuchAlgorithmException if SHA-256 is unavailable
+	 */
+	private static String sha256(Path file) throws IOException, NoSuchAlgorithmException
+	{
+		return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+	}
+
+	/**
 	 * Runs the actual image or native consumers with owned output capture and explicit cache overrides.
 	 *
-	 * @param command the direct command arguments
-	 * @param working the selected working directory
+	 * @param command     the direct command arguments
+	 * @param working     the selected working directory
 	 * @param environment the explicit storage and command-path overrides
-	 * @param stdout the raw standard-output capture
-	 * @param stderr the diagnostic capture
+	 * @param stdout      the raw standard-output capture
+	 * @param stderr      the diagnostic capture
 	 * @return the ordinary exit status
-	 * @throws IOException if process startup fails
+	 * @throws IOException          if process startup fails
 	 * @throws InterruptedException if waiting is interrupted
 	 */
 	private static int run(List<String> command, Path working, Map<String, String> environment, Path stdout, Path stderr)
@@ -285,13 +507,13 @@ public final class PackageCommandRuntimeTest
 	/**
 	 * Runs a maintained POSIX launcher through the explicitly selected native Bash.
 	 *
-	 * @param command the script filename and its literal arguments
-	 * @param working the selected working directory
+	 * @param command     the script filename and its literal arguments
+	 * @param working     the selected working directory
 	 * @param environment the explicit storage and command-path overrides
-	 * @param stdout the raw standard-output capture
-	 * @param stderr the diagnostic capture
+	 * @param stdout      the raw standard-output capture
+	 * @param stderr      the diagnostic capture
 	 * @return the ordinary exit status
-	 * @throws IOException if process startup fails
+	 * @throws IOException          if process startup fails
 	 * @throws InterruptedException if waiting is interrupted
 	 */
 	private static int runScript(List<String> command, Path working, Map<String, String> environment,
@@ -304,13 +526,13 @@ public final class PackageCommandRuntimeTest
 	/**
 	 * Executes a prepared native process with owned captures and explicit cache overrides.
 	 *
-	 * @param command the prepared native process
-	 * @param working the selected working directory
+	 * @param command     the prepared native process
+	 * @param working     the selected working directory
 	 * @param environment the explicit storage and command-path overrides
-	 * @param stdout the raw standard-output capture
-	 * @param stderr the diagnostic capture
+	 * @param stdout      the raw standard-output capture
+	 * @param stderr      the diagnostic capture
 	 * @return the ordinary exit status
-	 * @throws IOException if process startup fails
+	 * @throws IOException          if process startup fails
 	 * @throws InterruptedException if waiting is interrupted
 	 */
 	private static int run(ProcessBuilder command, Path working, Map<String, String> environment,

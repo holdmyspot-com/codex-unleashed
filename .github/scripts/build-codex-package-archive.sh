@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prints the supported package archive options.
 usage() {
   cat <<'EOF'
 Usage: build-codex-package-archive.sh \
@@ -15,7 +16,8 @@ Usage: build-codex-package-archive.sh \
   [--codex-command-runner-bin <path>] \
   [--codex-windows-sandbox-setup-bin <path>] \
   [--codex-windows-sandbox-service-bin <path>] \
-  [--target-suffixed-entrypoint]
+  [--target-suffixed-entrypoint] \
+  [--voice-release-dir <path> --build-commit <40-lowercase-hex>]
 EOF
 }
 
@@ -23,6 +25,8 @@ target=""
 bundle=""
 entrypoint_dir=""
 archive_dir=""
+voice_release_dir=""
+build_commit=""
 target_suffixed_entrypoint="false"
 resource_args=()
 bwrap_bin_provided="false"
@@ -47,6 +51,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --archive-dir)
       archive_dir="${2:?--archive-dir requires a value}"
+      shift 2
+      ;;
+    --voice-release-dir)
+      voice_release_dir="${2:?--voice-release-dir requires a value}"
+      shift 2
+      ;;
+    --build-commit)
+      build_commit="${2:?--build-commit requires a value}"
       shift 2
       ;;
     --bwrap-bin)
@@ -110,6 +122,21 @@ done
 if [[ -z "$target" || -z "$bundle" || -z "$entrypoint_dir" || -z "$archive_dir" ]]; then
   usage >&2
   exit 1
+fi
+
+if [[ -n "$voice_release_dir" || -n "$build_commit" ]]; then
+  if [[ -z "$voice_release_dir" || -z "$build_commit" ]]; then
+    echo "--voice-release-dir and --build-commit must be supplied together" >&2
+    exit 1
+  fi
+  if [[ "$bundle" != "primary" ]]; then
+    echo "Voice resources require --bundle primary" >&2
+    exit 1
+  fi
+  if [[ ! "$build_commit" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "--build-commit requires exactly 40 lowercase hexadecimal characters" >&2
+    exit 1
+  fi
 fi
 
 case "$bundle" in
@@ -206,6 +233,12 @@ package_args=(
   --archive-output "$gzip_archive_path"
   --archive-output "$zstd_archive_path"
 )
+if [[ -n "$workspace_root" ]]; then
+  package_args+=(--workspace "$workspace_root")
+fi
+if [[ -n "$voice_release_dir" ]]; then
+  package_args+=(--voice-release-dir "$voice_release_dir" --build-commit "$build_commit")
+fi
 if ((${#resource_args[@]} > 0)); then
   package_args+=("${resource_args[@]}")
 fi
