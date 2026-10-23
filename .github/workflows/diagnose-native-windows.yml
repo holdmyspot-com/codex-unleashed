@@ -18,6 +18,7 @@ on:
           - macos-tui-timeouts
           - macos-tui-integration-timeouts
           - macos-bazel-tui-timeouts
+          - macos-bazel-dsym
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -144,6 +145,58 @@ jobs:
       runner: macos-15-intel
       artifact-id: macos-x64
       test-filter: 'package(codex-tui) & (test(history_lookup_uses_server_provider_with_local_and_embedded_servers) | test(automatic_reconnect_restores_draft_and_routes_new_notifications))'
+
+  macos-bazel-dsym:
+    if: inputs.focus == 'macos-bazel-dsym'
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/prepare-patched-upstream
+
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: aarch64-apple-darwin
+          cache-scope: bazel-test
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Check dSYM diagnostic acceptance regressions
+        shell: bash
+        run: bash .github/scripts/diagnose-macos-bazel-dsym.sh --self-test "$RUNNER_TEMP"
+
+      - name: Build Codex with hermetic native dSYM generation and verify its symbols
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash .github/scripts/diagnose-macos-bazel-dsym.sh "$GITHUB_WORKSPACE/upstream" "$RUNNER_TEMP/macos-bazel-dsym"
+
+      - name: Retain native dSYM acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-bazel-dsym-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/macos-bazel-dsym
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Remove native dSYM evidence and build outputs after upload
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- "$RUNNER_TEMP/macos-bazel-dsym"
+          if [[ -n "${BAZEL_OUTPUT_BASE:-}" && -d "$BAZEL_OUTPUT_BASE" ]]; then
+            cd "$GITHUB_WORKSPACE/upstream"
+            bazel --output_base="$BAZEL_OUTPUT_BASE" shutdown
+            chmod -R u+w "$BAZEL_OUTPUT_BASE"
+            rm -rf -- "$BAZEL_OUTPUT_BASE"
+          fi
 
   compiler-profile:
     if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile' || inputs.focus == 'crate-local-profile'
