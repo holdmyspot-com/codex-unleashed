@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Verifies duration-balanced target selection through the tooling command.
@@ -44,12 +44,12 @@ public final class WindowsBazelShardsTest
 					int status = Main.run(new String[] {"select-windows-bazel-targets", "--shard", Integer.toString(shard),
 						"--shard-count", "2", "--durations", durations.toString()},
 						new ByteArrayInputStream("//unknown\n//c\n//b\n//a\n".getBytes(StandardCharsets.UTF_8)), out, err);
-					assertEquals(status, 0, diagnostics.toString(StandardCharsets.UTF_8));
+					requireThat(status, "status").isEqualTo(0);
 				}
 				String expected = "//a\n//unknown\n";
 				if (shard == 2)
 					expected = "//b\n//c\n";
-				assertEquals(output.toString(StandardCharsets.UTF_8), expected);
+				requireThat(output.toString(StandardCharsets.UTF_8), "output").isEqualTo(expected);
 			}
 		}
 		finally

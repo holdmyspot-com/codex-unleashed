@@ -3,8 +3,7 @@ package com.holdmyspot.codexunleashed.tooling.cache;
 import java.util.List;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /**
@@ -28,7 +27,7 @@ public final class ReleaseCacheKeysTest
 	@Test
 	public void derivesReusableIdentities()
 	{
-		assertEquals(ReleaseCacheKeys.derive(TARGET, FINGERPRINT, "1.2.3", "off"), List.of(
+		requireThat(ReleaseCacheKeys.derive(TARGET, FINGERPRINT, "1.2.3", "off"), "keys").isEqualTo(List.of(
 			"cargo_download_key=codex-release-downloads-v5-" + TARGET,
 			"cargo_target_tag=cargo-v2-" + TARGET + "-off-" + FINGERPRINT,
 			"rusty_v8_key=rusty-v8-v2-" + TARGET + "-1.2.3",
@@ -62,12 +61,12 @@ public final class ReleaseCacheKeysTest
 		List<String> v8 = ReleaseCacheKeys.derive(TARGET, FINGERPRINT, "9.8.7", "off");
 		List<String> target = ReleaseCacheKeys.derive("aarch64-unknown-linux-gnu", FINGERPRINT, "1.2.3", "off");
 		for (List<String> changed : List.of(compiler, mode, v8))
-			assertEquals(changed.get(0), base.get(0));
-		assertNotEquals(target.get(0), base.get(0));
+			requireThat(changed.get(0), "downloadKey").isEqualTo(base.get(0));
+		requireThat(target.get(0), "targetDownloadKey").isNotEqualTo(base.get(0));
 		for (List<String> changed : List.of(compiler, mode, target))
-			assertNotEquals(changed.get(1), base.get(1));
-		assertNotEquals(v8.get(2), base.get(2));
-		assertEquals(compiler.get(2), base.get(2));
-		assertEquals(mode.get(2), base.get(2));
+			requireThat(changed.get(1), "cargoTag").isNotEqualTo(base.get(1));
+		requireThat(v8.get(2), "v8Key").isNotEqualTo(base.get(2));
+		requireThat(compiler.get(2), "compilerV8Key").isEqualTo(base.get(2));
+		requireThat(mode.get(2), "modeV8Key").isEqualTo(base.get(2));
 	}
 }

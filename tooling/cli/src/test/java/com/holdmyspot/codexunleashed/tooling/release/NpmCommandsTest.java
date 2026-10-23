@@ -11,8 +11,7 @@ import java.util.Map;
 import org.apache.commons.io.file.PathUtils;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /**
@@ -43,21 +42,22 @@ public final class NpmCommandsTest
 			Map<String, String> environment = new HashMap<>(System.getenv());
 			environment.put("NPM_TEST_PREFIX", root.resolve("missing global").toString());
 			List<String> command = NpmCommands.windowsCommand(root.resolve("npm.cmd"), root, root, environment);
-			assertEquals(command, List.of("node", cli.toString()));
+			requireThat(command, "command").isEqualTo(List.of("node", cli.toString()));
 			List<String> payload = List.of("space value", "雪", "$literal; `literal`", "\"quoted\"", "& %PATH%");
 			List<String> execution = new ArrayList<>(command);
 			execution.addAll(payload);
 			SystemCommands.Result result = SystemCommands.capture(execution, root, root, environment);
-			assertEquals(result.status(), 0, result.stderr());
-			assertEquals(JsonMapper.builder().build().readValue(result.stdout(), List.class), payload);
+			requireThat(result.status(), "status").isEqualTo(0);
+			List<?> arguments = JsonMapper.builder().build().readValue(result.stdout(), List.class);
+			requireThat(arguments, "arguments").isEqualTo(payload);
 
 			Path global = Files.createDirectories(root.resolve("global & prefix"));
 			Path override = global.resolve("node_modules/npm/bin/npm-cli.js");
 			Files.createDirectories(override.getParent());
 			Files.writeString(override, "process.stdout.write('override')");
 			environment.put("NPM_TEST_PREFIX", global.toString() + System.lineSeparator());
-			assertEquals(NpmCommands.windowsCommand(root.resolve("npm.cmd"), root, root, environment),
-				List.of("node", override.toString()));
+			requireThat(NpmCommands.windowsCommand(root.resolve("npm.cmd"), root, root, environment),
+				"command").isEqualTo(List.of("node", override.toString()));
 		}
 		finally
 		{
@@ -80,7 +80,7 @@ public final class NpmCommandsTest
 			Files.writeString(bin.resolve("npm-prefix.js"), "process.stderr.write('fixture failure');process.exit(7)");
 			IOException failure = expectThrows(IOException.class, () -> NpmCommands.windowsCommand(root.resolve("npm.cmd"),
 				root, root, System.getenv()));
-			assertTrue(failure.getMessage().contains("status 7: fixture failure"));
+			requireThat(failure.getMessage(), "message").contains("status 7: fixture failure");
 		}
 		finally
 		{
