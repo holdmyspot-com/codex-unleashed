@@ -51,6 +51,7 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_PROFILE_CI_TEST_DEBUG: "0"
       NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
       TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
     steps:

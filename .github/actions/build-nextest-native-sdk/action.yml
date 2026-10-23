@@ -13,6 +13,7 @@ runs:
       with:
         target: ${{ inputs.target }}
         cache-scope: nextest-native-sdk
+        common-setup-complete: 'true'
 
     - uses: actions/setup-python@v6
       with:
@@ -97,3 +98,13 @@ runs:
       with:
         path: ${{ steps.prepare-bazel.outputs.repository-cache-path }}
         key: ${{ steps.prepare-bazel.outputs.repository-cache-key }}
+
+    - name: Release native SDK build outputs before Cargo compilation
+      shell: bash
+      working-directory: upstream
+      run: |
+        set -euo pipefail
+        bazel --output_base="$BAZEL_OUTPUT_BASE" shutdown
+        chmod -R u+w "$BAZEL_OUTPUT_BASE"
+        rm -rf -- "$BAZEL_OUTPUT_BASE"
+        df -h . "$RUNNER_TEMP"
