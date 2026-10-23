@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -132,8 +133,10 @@ public final class BazelCallerTest
 						assertTrue(test.contains("--action_env=SystemRoot=" + systemRoot),
 							"Expected native Windows directory " + systemRoot + "; received arguments " + test);
 						assertTrue(test.contains("--host_action_env=SystemRoot=" + systemRoot));
-						assertTrue(test.contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
-						assertTrue(test.contains("--host_action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture));
+						requireThat(test, "bazelArguments").
+							contains("--action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture);
+						requireThat(test, "bazelArguments").
+							contains("--host_action_env=PROCESSOR_ARCHITECTURE=" + processorArchitecture);
 						assertTrue(test.contains("--inject_repository=voice_windows_tools=" + voiceRepository),
 							"Native voice actions require the provisioned and verified Windows tool repository");
 						assertTrue(test.contains("--//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools"));
