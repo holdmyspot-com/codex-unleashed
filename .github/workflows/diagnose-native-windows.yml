@@ -11,6 +11,7 @@ on:
           - credentials
           - compiler-profile
           - linker-profile
+          - crate-local-profile
           - compiler-scheduler-baseline
           - compiler-scheduler-native
           - compiler-scheduler-macos
@@ -22,7 +23,7 @@ permissions:
 
 jobs:
   compiler-profile:
-    if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile'
+    if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile' || inputs.focus == 'crate-local-profile'
     permissions:
       actions: read
       attestations: write
@@ -38,6 +39,7 @@ jobs:
       publish_npm: false
       ghcr_cache: true
       linker-lto: ${{ inputs.focus == 'linker-profile' }}
+      crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
     if: inputs.focus == 'credentials'

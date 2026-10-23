@@ -20,9 +20,16 @@ export CARGO_INCREMENTAL=1
 export CFLAGS="${CFLAGS:-} -fno-lto"
 export CXXFLAGS="${CXXFLAGS:-} -fno-lto"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$bundled_linker"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--lto-O3 -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache -Clink-arg=--time-trace=$profile_output/linker-time-trace.json -Clink-arg=--time-trace-granularity=1000"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-flavor=ld.lld -Clink-self-contained=yes"
+if [[ "${PROFILE_CRATE_LOCAL_LTO:-false}" == true ]]; then
+  export CARGO_PROFILE_RELEASE_LTO=false
+else
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS+=" -Clinker-plugin-lto -Clink-arg=--lto-O3 -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
+fi
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS+=" -Clink-arg=--time-trace=$profile_output/linker-time-trace.json -Clink-arg=--time-trace-granularity=1000"
 unset RUSTFLAGS
 printf '%s\n' "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS" > "$profile_output/rustflags.txt"
+printf '%s\n' "${PROFILE_CRATE_LOCAL_LTO:-false}" > "$profile_output/crate-local-lto.txt"
 build=(bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream
   "$RUNNER_TEMP/linker-profile-build-output")
 
@@ -31,7 +38,7 @@ for phase in seed warm; do
 
   date +%s.%N > "$profile_output/$phase-start.txt"
   rm -f "$profile_output/linker-time-trace.json"
-  printf '%s: starting %s build with linker-managed ThinLTO\n' "$(date -u +%FT%TZ)" "$phase"
+  printf '%s: starting %s build (crate-local LTO: %s)\n' "$(date -u +%FT%TZ)" "$phase" "${PROFILE_CRATE_LOCAL_LTO:-false}"
   /usr/bin/time -v -o "$profile_output/$phase-resources.txt" "${build[@]}" \
     2>&1 | tee "$profile_output/$phase.log" || {
     cat "$profile_output/$phase.log" >&2
@@ -44,9 +51,13 @@ for phase in seed warm; do
   cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/$phase-cargo-timing.html"
   "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --version > "$profile_output/$phase-version.txt"
   stat --printf='%s\n' "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" > "$profile_output/$phase-binary-size.txt"
+  PROFILE_OUTPUT="$profile_output" PROFILE_BINARY="$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" \
+    PROFILE_PHASE="$phase" bash .github/diagnostics/benchmark-release-startup.sh
   find "$CARGO_TARGET_DIR/lld-thinlto-cache" -type f -name 'llvmcache-*' \
     -printf '%f %i %s %T@\n' | sort > "$profile_output/$phase-cache.txt"
-  test -s "$profile_output/$phase-cache.txt"
+  if [[ "${PROFILE_CRATE_LOCAL_LTO:-false}" == false ]]; then
+    test -s "$profile_output/$phase-cache.txt"
+  fi
 
   if [[ "$phase" == seed && "${PROFILE_SEED_CACHE_ENABLED:-false}" == true && "${PROFILE_SEED_CACHE_HIT:-false}" != true ]]; then
     printf '%s: saving seed build and module cache to GHCR\n' "$(date -u +%FT%TZ)"

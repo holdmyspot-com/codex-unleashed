@@ -31,14 +31,19 @@ cp "$profile_output/linker-time-trace.json" "$profile_output/changed-linker-time
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-after-change.txt"
 grep -Fq '(module-cache verification)' "$profile_output/help-after-change.txt"
 cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/changed-cargo-timing.html"
+stat --printf='%s\n' "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" > "$profile_output/changed-binary-size.txt"
+PROFILE_OUTPUT="$profile_output" PROFILE_BINARY="$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" \
+  PROFILE_PHASE=changed bash .github/diagnostics/benchmark-release-startup.sh
 find "$CARGO_TARGET_DIR/lld-thinlto-cache" -type f -name 'llvmcache-*' \
   -printf '%f %i %s %T@\n' | sort > "$profile_output/changed-cache.txt"
-test -s "$profile_output/changed-cache.txt"
-comm -12 "$profile_output/warm-cache.txt" "$profile_output/changed-cache.txt" \
-  > "$profile_output/unchanged-cache-entries.txt"
-comm -13 "$profile_output/warm-cache.txt" "$profile_output/changed-cache.txt" \
-  > "$profile_output/rebuilt-cache-entries.txt"
-test -s "$profile_output/unchanged-cache-entries.txt"
-test -s "$profile_output/rebuilt-cache-entries.txt"
-wc -l "$profile_output/unchanged-cache-entries.txt" "$profile_output/rebuilt-cache-entries.txt"
-bash .github/diagnostics/benchmark-linker-workers.sh
+if [[ "${PROFILE_CRATE_LOCAL_LTO:-false}" == false ]]; then
+  test -s "$profile_output/changed-cache.txt"
+  comm -12 "$profile_output/warm-cache.txt" "$profile_output/changed-cache.txt" \
+    > "$profile_output/unchanged-cache-entries.txt"
+  comm -13 "$profile_output/warm-cache.txt" "$profile_output/changed-cache.txt" \
+    > "$profile_output/rebuilt-cache-entries.txt"
+  test -s "$profile_output/unchanged-cache-entries.txt"
+  test -s "$profile_output/rebuilt-cache-entries.txt"
+  wc -l "$profile_output/unchanged-cache-entries.txt" "$profile_output/rebuilt-cache-entries.txt"
+  bash .github/diagnostics/benchmark-linker-workers.sh
+fi
