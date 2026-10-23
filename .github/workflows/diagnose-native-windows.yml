@@ -15,6 +15,7 @@ on:
           - arm-daemon-hashing
           - macos-tui-timeouts
           - macos-tui-integration-timeouts
+          - macos-bazel-tui-timeouts
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -147,10 +148,42 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
-      runner: windows-2022
+      runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || 'windows-2022' }}
+
+  macos-bazel-tui-timeouts:
+    if: inputs.focus == 'macos-bazel-tui-timeouts'
+    needs: prepare-tooling
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-apple-darwin
+          cache-scope: bazel-test
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Reproduce terminal suites with the maintained Bazel runner
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs -- \
+            test --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings \
+            --nocache_test_results "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" -- \
+            //codex-rs/tui:tui-all-test //codex-rs/tui:tui-unit-tests
 
   regressions:
     if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts'
