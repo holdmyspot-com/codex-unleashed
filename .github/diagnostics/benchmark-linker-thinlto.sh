@@ -61,3 +61,4 @@ done
 
 cmp "$profile_output/seed-version.txt" "$profile_output/warm-version.txt"
 du -sk "$CARGO_TARGET_DIR/lld-thinlto-cache" > "$profile_output/linker-cache-size-kib.txt"
+bash .github/diagnostics/benchmark-linker-source-change.sh

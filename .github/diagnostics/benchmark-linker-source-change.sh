@@ -4,6 +4,8 @@ set -euo pipefail
 : "${RUNNER_TEMP:?}"
 : "${CARGO_TARGET_DIR:?}"
 : "${UPSTREAM_TARGET:?}"
+: "${CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:?}"
+: "${CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS:?}"
 test "$UPSTREAM_TARGET" = x86_64-unknown-linux-musl
 profile_output="$RUNNER_TEMP/codex-compiler-profile"
 source_file=upstream/codex-rs/cli/src/main.rs
@@ -11,15 +13,6 @@ test "$(grep -c '^/// Codex CLI$' "$source_file")" = 1
 cp "$source_file" "$profile_output/cli-main-before-change.rs"
 trap 'cp "$profile_output/cli-main-before-change.rs" "$source_file"' EXIT
 sed -i 's/^\/\/\/ Codex CLI$/\/\/\/ Codex CLI module-cache verification/' "$source_file"
-
-compiler_sysroot="$(rustc --print sysroot)"
-compiler_host="$(rustc -vV | sed -n 's/^host: //p')"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$compiler_sysroot/lib/rustlib/$compiler_host/bin/rust-lld"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS
-CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="$(cat "$profile_output/rustflags.txt")"
-unset RUSTFLAGS
-export CARGO_INCREMENTAL=1 CFLAGS="${CFLAGS:-} -fno-lto" CXXFLAGS="${CXXFLAGS:-} -fno-lto"
-export PATCHES_ALREADY_APPLIED=1 SKIP_UPSTREAM_TESTS=1 SKIP_ARTIFACT_COLLECTION=1
 
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-before-change.txt"
 date +%s.%N > "$profile_output/changed-start.txt"
