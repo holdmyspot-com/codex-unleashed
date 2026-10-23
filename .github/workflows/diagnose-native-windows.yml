@@ -33,6 +33,7 @@ on:
           - windows-arm-tooling-locks
           - native-voice-runtime
           - native-voice-runtime-windows-x64
+          - native-voice-runtime-windows-arm64
           - linux-docker-scope
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
@@ -216,6 +217,15 @@ jobs:
     secrets: inherit
     with:
       focus_target: x86_64-pc-windows-msvc
+
+  native-voice-runtime-windows-arm64:
+    if: inputs.focus == 'native-voice-runtime-windows-arm64'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-voice-runtime.yml
+    secrets: inherit
+    with:
+      focus_target: aarch64-pc-windows-msvc
 
   native-voice-runtime:
     if: inputs.focus == 'native-voice-runtime'
