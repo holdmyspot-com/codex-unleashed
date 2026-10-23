@@ -2,9 +2,9 @@
 # Runs a build whose rustc invocations the tooling's compiler scheduler pauses, kills, and reruns to keep the
 # build within memory.
 #
-# On Linux, the build runs in a transient systemd scope that cannot swap and whose out-of-memory kills end only the victim, so
-# that if the scheduler reacts too late, the kernel kills one compiler, preferring the newest, instead of stalling
-# the runner in swap or ending the whole build.
+# When a systemd manager is available on Linux, the build runs in a transient scope that cannot swap and whose
+# out-of-memory kills end only the victim. If the scheduler reacts too late, the kernel kills one compiler,
+# preferring the newest, instead of stalling the runner in swap or ending the whole build.
 set -euo pipefail
 
 if [[ "$#" -eq 0 ]]; then
@@ -16,8 +16,13 @@ scheduled=("${CODEX_UNLEASHED_TOOLING:?CODEX_UNLEASHED_TOOLING is required}" sch
 if [[ "${RUNNER_OS:-$(uname -s)}" != Linux ]]; then
   exec "${scheduled[@]}"
 fi
-if ! command -v systemd-run > /dev/null || ! sudo -n true 2> /dev/null; then
-  echo 'Running without a memory scope: systemd-run or passwordless sudo is unavailable' >&2
+if ! command -v systemd-run > /dev/null || ! command -v systemctl > /dev/null \
+  || ! command -v sudo > /dev/null || ! sudo -n true 2> /dev/null; then
+  echo 'Running without a memory scope: systemd-run, systemctl, or passwordless sudo is unavailable' >&2
+  exec "${scheduled[@]}"
+fi
+if ! sudo -n systemctl show --property=SystemState --value > /dev/null 2>&1; then
+  echo 'Running without a memory scope: systemd manager is unavailable' >&2
   exec "${scheduled[@]}"
 fi
 
