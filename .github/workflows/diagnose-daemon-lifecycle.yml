@@ -1,6 +1,11 @@
 name: Diagnose archived ARM daemon lifecycle tests
 
 on:
+  workflow_call:
+    inputs:
+      source-run:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       source-run:

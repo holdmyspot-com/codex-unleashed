@@ -10,6 +10,7 @@ on:
         options:
           - credentials
           - windows-test-timeouts
+          - arm-daemon-lifecycle
           - compiler-profile
           - linker-profile
           - crate-local-profile
@@ -18,11 +19,24 @@ on:
           - compiler-scheduler-macos
           - compiler-scheduler-tooling
           - compiler-scheduler-tooling-windows
+      source-run:
+        description: Workflow run supplying archived binaries for the ARM daemon diagnostic.
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 jobs:
+  arm-daemon-lifecycle:
+    if: inputs.focus == 'arm-daemon-lifecycle'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-daemon-lifecycle.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+
   compiler-profile:
     if: inputs.focus == 'compiler-profile' || inputs.focus == 'linker-profile' || inputs.focus == 'crate-local-profile'
     permissions:
