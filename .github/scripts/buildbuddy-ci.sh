@@ -87,6 +87,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
             bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
             bash "$project_root/.github/scripts/test-ci-memory.sh" "$project_root"
             bash "$project_root/.github/scripts/test-v8-release-manifest.sh"
+            bash "$project_root/.github/scripts/test-argument-comment-lint-package-runner.sh"
             bash "$project_root/.github/scripts/test-publish-github-release.sh"
             bash "$project_root/.github/scripts/test-code-mode-host-symbol-address.sh" "$RUNNER_TEMP"
             export NODE_OPTIONS=--max-old-space-size=4096
@@ -140,6 +141,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
         bash tools/build-warnings/rpaths/check-sdk-analysis.sh "$RUNNER_OS" "$RUNNER_TEMP/native-sdk-labels.txt"
         ;;
       bazel-argument-comment-lint)
+        bash "$project_root/.github/scripts/test-argument-comment-lint-package.sh" "$project_root/upstream"
         cd upstream
         target_lines="$(./tools/argument-comment-lint/list-bazel-targets.sh)"
         mapfile -t targets <<< "$target_lines"
