@@ -183,6 +183,9 @@ cat > "$fixture/project/.github/scripts/run-bazel-ci.sh" <<'BAZEL'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$VOICE_FIXTURE_BUILD_LOG"
+if [[ "${VOICE_FIXTURE_BUILD_ONLY:-}" == 1 ]]; then
+  exit 23
+fi
 BAZEL
 chmod +x "$fixture/native-test" "$fixture/tools/"* "$fixture/upstream/bazel-bin/codex-rs/voice-host/codex-voice-host"
 cp "$fixture/native-test" "$fixture/upstream/bazel-bin/codex-rs/voice-host/voice-host-packaged_runtime-test-bin"
@@ -240,3 +243,33 @@ bash "$build_producer" build "$fixture/upstream" x86_64-unknown-linux-musl \
 [[ -f "$fixture/build-output/voice-runtime-x86_64-unknown-linux-musl.tar.gz" ]]
 grep -Fxq '//codex-rs/voice-host:voice-host-packaged_runtime-test-bin' "$VOICE_FIXTURE_BUILD_LOG"
 [[ -z "$(find "$fixture/build-output" -maxdepth 1 -name '.voice-*' -print)" ]]
+
+for target in x86_64-pc-windows-msvc aarch64-pc-windows-msvc; do
+  prefix=windows_x86_64
+  host_arch=AMD64
+  if [[ "$target" == aarch64-pc-windows-msvc ]]; then
+    prefix=windows_aarch64
+    host_arch=ARM64
+  fi
+  status=0
+  VOICE_FIXTURE_BUILD_ONLY=1 VOICE_WINDOWS_BAZEL_REPOSITORY="$fixture/tools" \
+    VOICE_WINDOWS_SYSTEM_ROOT='C:\Windows' VOICE_WINDOWS_HOST_ARCH="$host_arch" \
+    bash "$build_producer" build "$fixture/upstream" "$target" "$fixture/windows-build" \
+    > "$fixture/stdout" 2> "$fixture/stderr" || status=$?
+  [[ "$status" == 23 ]]
+  if grep -Fxq build "$VOICE_FIXTURE_BUILD_LOG"; then
+    :
+  else
+    printf 'Windows voice producer did not select artifact build for %s\n' "$target" >&2
+    exit 1
+  fi
+  printf '%s\n' "//third_party/voice:native_runtime_$prefix" \
+    //codex-rs/voice-host:codex-voice-host \
+    //codex-rs/voice-host:voice-host-packaged_runtime-test-bin > "$fixture/expected-targets"
+  grep -E '^//|^@' "$VOICE_FIXTURE_BUILD_LOG" > "$fixture/actual-targets"
+  cmp "$fixture/expected-targets" "$fixture/actual-targets"
+  grep -Fxq -- --windows-msvc-host-platform "$VOICE_FIXTURE_BUILD_LOG"
+  grep -Fxq -- --platforms=//:local_windows_msvc "$VOICE_FIXTURE_BUILD_LOG"
+  grep -Fxq -- --output_groups=default,receipt,sdk "$VOICE_FIXTURE_BUILD_LOG"
+  grep -Fxq -- "--action_env=PROCESSOR_ARCHITECTURE=$host_arch" "$VOICE_FIXTURE_BUILD_LOG"
+done

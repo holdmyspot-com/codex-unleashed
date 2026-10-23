@@ -171,8 +171,6 @@ build_voice() (
     *-apple-darwin) options+=(--macos_minimum_os=14.0) ;;
     *-pc-windows-msvc)
       export VOICE_ARCH="${prefix#windows_}"
-      options[0]="test"
-      targets+=(@rules_rust//cargo/private/cargo_build_script_runner:test)
       wrapper+=(--windows-msvc-host-platform)
       options+=(
         --platforms=//:local_windows_msvc
