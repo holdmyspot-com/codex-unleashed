@@ -3,9 +3,12 @@ package com.holdmyspot.codexunleashed.distribution;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -427,8 +430,91 @@ public final class DistributionMainTest
 			try (Stream<Path> paths = Files.walk(root))
 			{
 				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
-					Files.delete(path);
+				{
+					try
+					{
+						Files.delete(path);
+					}
+					catch (IOException failure)
+					{
+						try
+						{
+							attachDeletionContext(path, failure);
+						}
+						catch (RuntimeException inspection)
+						{
+							failure.addSuppressed(new IOException("Cannot complete deletion context for " + path, inspection));
+						}
+						throw failure;
+					}
+				}
 			}
+		}
+
+		/**
+		 * Attaches immediate filesystem and descendant observations without identifying a file owner.
+		 *
+		 * @param path    the path whose deletion failed
+		 * @param failure the original deletion failure that receives diagnostic exceptions
+		 */
+		private static void attachDeletionContext(Path path, IOException failure)
+		{
+			StringBuilder context = new StringBuilder(512).append("Deletion context observedAt=").append(Instant.now()).
+				append(" failedPath=").append(path).append(" parent=").append(path.getParent()).
+				append(" currentJvmPid=").append(ProcessHandle.current().pid()).append('\n');
+			for (Path inspected : new Path[]{path, path.getParent()})
+			{
+				try
+				{
+					context.append("Writability observation path=").append(inspected).
+						append(" isWritable=").append(Files.isWritable(inspected)).append('\n');
+				}
+				catch (RuntimeException inspection)
+				{
+					failure.addSuppressed(new IOException("Cannot inspect writability of " + inspected, inspection));
+				}
+				for (String view : List.of("basic", "dos", "acl"))
+				{
+					try
+					{
+						context.append("Attributes path=").append(inspected).append(" view=").append(view).append(' ');
+						if (Files.getFileStore(inspected).supportsFileAttributeView(view))
+							context.append(Files.readAttributes(inspected, view + ":*", LinkOption.NOFOLLOW_LINKS));
+						else
+							context.append("unsupported");
+						context.append('\n');
+					}
+					catch (IOException | RuntimeException inspection)
+					{
+						context.append("inspection failed\n");
+						failure.addSuppressed(new IOException("Cannot inspect " + view + " attributes of " + inspected,
+							inspection));
+					}
+				}
+			}
+
+			try (Stream<ProcessHandle> descendants = ProcessHandle.current().descendants())
+			{
+				List<ProcessHandle> snapshot = descendants.toList();
+				context.append("Current JVM descendants (not file-owner evidence): ").append(snapshot.size()).append('\n');
+				for (ProcessHandle descendant : snapshot)
+				{
+					try
+					{
+						context.append("pid=").append(descendant.pid()).append(" alive=").append(descendant.isAlive()).
+							append(" info=").append(descendant.info()).append('\n');
+					}
+					catch (RuntimeException inspection)
+					{
+						failure.addSuppressed(new IOException("Cannot inspect descendant " + descendant.pid(), inspection));
+					}
+				}
+			}
+			catch (RuntimeException inspection)
+			{
+				failure.addSuppressed(new IOException("Cannot inspect current JVM descendants", inspection));
+			}
+			failure.addSuppressed(new IOException(context.toString()));
 		}
 	}
 }
