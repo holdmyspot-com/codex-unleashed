@@ -13,6 +13,7 @@ import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -110,6 +111,87 @@ public final class ScheduleCompilersCommandTest
 			assertEquals(result.stderr(), stderr);
 			assertFalse(Files.exists(Path.of(Files.readString(root.resolve("scheduler-socket"))).getParent()));
 			assertFalse(Files.exists(Path.of(Files.readString(root.resolve("scheduler-wrapper")))));
+		}
+		finally
+		{
+			try (Stream<Path> paths = Files.walk(root))
+			{
+				for (Path path : paths.sorted(Comparator.reverseOrder()).toList())
+					Files.delete(path);
+			}
+		}
+	}
+
+	/**
+	 * Supplies a compiler launch failure and an actual compiler exit with the same status.
+	 *
+	 * @return indicates whether the compiler executable is missing
+	 */
+	@DataProvider
+	public Object[][] exit125Cases()
+	{
+		return new Object[][]{{true}, {false}};
+	}
+
+	/**
+	 * On Windows, identifies the producer of status 125 through the packaged wrapper and real scheduler admission.
+	 *
+	 * @param missing indicates whether the compiler executable is missing
+	 * @throws IOException if fixture creation, execution or cleanup fails
+	 */
+	@Test(dataProvider = "exit125Cases")
+	public void identifiesWindowsExit125(boolean missing) throws IOException
+	{
+		if (!System.getProperty("os.name").startsWith("Windows"))
+			return;
+		Path root = Files.createTempDirectory("compiler-status-125-");
+		try
+		{
+			Path compiler = Files.writeString(root.resolve("compiler.cjs"), """
+				process.stdout.write('compiled');
+				process.stderr.write('diagnostic\\n');
+				process.exit(125);
+				""");
+			Path build = Files.writeString(root.resolve("build.cjs"), """
+				const result = require('node:child_process').spawnSync(process.env.RUSTC_WRAPPER,
+				  [process.argv[2], process.argv[3], '--crate-name', 'fixture'],
+				  {encoding: 'utf8', timeout: 10000});
+				if (result.error) throw result.error;
+				process.stdout.write(result.stdout);
+				process.stderr.write(result.stderr);
+				process.exit(result.status);
+				""");
+			String executable = "node";
+			if (missing)
+				executable = root.resolve("missing-compiler.exe").toString();
+			Map<String, String> environment = new HashMap<>(System.getenv());
+			environment.put("NODE_OPTIONS", "");
+			SystemCommands.Result result = cli(root, environment,
+				List.of("node", build.toString(), executable, compiler.toString()));
+
+			requireThat(result.status(), "status").isEqualTo(125);
+			if (missing)
+			{
+				requireThat(result.stdout(), "stdout").isEmpty();
+				requireThat(result.stderr(), "stderr").contains("origin=wrapper operation=CreateProcessW");
+				requireThat(result.stderr(), "stderr").contains("error_domain=win32 error=2");
+				requireThat(result.stderr(), "stderr").contains("child_pid=0 generation=1 command=1");
+				requireThat(result.stderr(), "stderr").contains("child_exit_known=false");
+				requireThat(result.stderr(), "stderr").doesNotContain("origin=child");
+			}
+			else
+			{
+				requireThat(result.stdout(), "stdout").isEqualTo("compiled");
+				requireThat(result.stderr(), "stderr").contains("diagnostic\n");
+				requireThat(result.stderr(), "stderr").contains("origin=child operation=compiler_exit");
+				requireThat(result.stderr(), "stderr").contains("error_domain=none error=0");
+				requireThat(result.stderr(), "stderr").contains("child_exit_known=true child_exit=125");
+				requireThat(result.stderr(), "stderr").doesNotContain("origin=wrapper");
+				requireThat(result.stderr(), "stderr").doesNotContain("child_pid=0");
+			}
+			requireThat(result.stderr(), "stderr").contains("packet_generation=1");
+			requireThat(result.stderr(), "stderr").contains("return=125");
+			requireThat(result.stderr(), "stderr").doesNotContain("wrapper_pid=0");
 		}
 		finally
 		{
