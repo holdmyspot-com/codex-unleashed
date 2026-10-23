@@ -101,7 +101,7 @@ jobs:
   tests-macos-x64:
     uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
     with:
-      runner: macos-15
+      runner: macos-15-intel
       target: x86_64-apple-darwin
       profile: ci-test
       artifact_id: macos-x64

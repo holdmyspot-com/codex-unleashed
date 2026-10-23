@@ -50,6 +50,11 @@ jobs:
         with:
           targets: ${{ inputs.target }}
 
+      - name: Install target for the workspace Rust toolchain
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: rustup target add "${{ inputs.target }}"
+
       - name: Configure MSVC linker environment
         if: ${{ runner.os == 'Windows' }}
         uses: ./.github/actions/setup-msvc-env
@@ -174,6 +179,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ inputs.target }}
+
+      - name: Install target for the workspace Rust toolchain
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: rustup target add "${{ inputs.target }}"
 
       - uses: taiki-e/install-action@v2
         with:
