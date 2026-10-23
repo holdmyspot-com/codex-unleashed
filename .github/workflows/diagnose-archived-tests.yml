@@ -35,6 +35,7 @@ jobs:
       TEST_FILTER: ${{ inputs.test-filter }}
       RUST_BACKTRACE: "1"
       RUST_LIB_BACKTRACE: "0"
+      RUST_MIN_STACK: "8388608"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -100,7 +101,7 @@ jobs:
             --extract-to "$diagnostic_root/extracted" \
             --workspace-remap "$GITHUB_WORKSPACE/archived-workspace/codex-rs" \
             --config-file "$diagnostic_root/nextest.toml" \
-            --profile archived-diagnostic --test-threads 1 --retries 0 \
+            --profile archived-diagnostic --test-threads 1 --retries 0 --no-fail-fast \
             --failure-output immediate-final \
             --no-tests fail \
             -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
