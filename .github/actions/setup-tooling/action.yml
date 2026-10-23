@@ -19,22 +19,27 @@ runs:
       with:
         node-version: 26.12.1
 
-    - name: Select JDK architecture
+    - name: Select JDK platform
       id: jdk-platform
       shell: bash
       run: |
         architecture=
+        distribution=temurin
         if [[ "$RUNNER_OS" == Windows && "$RUNNER_ARCH" == ARM64 ]]; then
-          architecture=x64
+          architecture=aarch64
+          distribution=liberica
+        elif [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 ]]; then
+          distribution=zulu
         fi
         printf 'architecture=%s\n' "$architecture" >> "$GITHUB_OUTPUT"
         printf 'effective=%s\n' "${architecture:-$RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+        printf 'distribution=%s\n' "$distribution" >> "$GITHUB_OUTPUT"
 
     - name: Set up JDK 27
       id: jdk
       uses: actions/setup-java@v5
       with:
-        distribution: ${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}
+        distribution: ${{ steps['jdk-platform'].outputs.distribution }}
         java-version: '27'
         architecture: ${{ steps['jdk-platform'].outputs.architecture }}
 
@@ -64,7 +69,7 @@ runs:
         path: ${{ steps.checkout.outputs.runtime }}
         fail-on-cache-miss: ${{ inputs.require-cache == 'true' }}
         # Verification exercises the workflow and script consumers as well as the Java sources.
-        key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-jdk-${{ steps['jdk-platform'].outputs.effective }}-${{ runner.os == 'macOS' && runner.arch == 'X64' && 'zulu' || 'temurin' }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
+        key: tooling-runtime-v1-${{ runner.os }}-${{ runner.arch }}-jdk-${{ steps['jdk-platform'].outputs.effective }}-${{ steps['jdk-platform'].outputs.distribution }}-${{ steps.jdk.outputs.version }}-${{ hashFiles(format('{0}/tooling/**', steps.checkout.outputs.root), format('{0}/.github/**', steps.checkout.outputs.root), format('{0}/scripts/**', steps.checkout.outputs.root), format('{0}/patches/**', steps.checkout.outputs.root)) }}
 
     - name: Restore Maven dependencies and wrapper
       id: dependencies
