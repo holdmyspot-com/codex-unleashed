@@ -20,18 +20,17 @@ export CARGO_INCREMENTAL=1
 export CFLAGS="${CFLAGS:-} -fno-lto"
 export CXXFLAGS="${CXXFLAGS:-} -fno-lto"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$bundled_linker"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--lto-O3 -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--lto-O3 -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache -Clink-arg=--time-trace=$profile_output/linker-time-trace.json -Clink-arg=--time-trace-granularity=1000"
 unset RUSTFLAGS
 printf '%s\n' "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS" > "$profile_output/rustflags.txt"
 build=(bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream
   "$RUNNER_TEMP/linker-profile-build-output")
 
 for phase in seed warm; do
-  if [[ "$phase" == warm ]]; then
-    touch upstream/codex-rs/cli/src/main.rs
-  fi
+  touch upstream/codex-rs/cli/src/main.rs
 
   date +%s.%N > "$profile_output/$phase-start.txt"
+  rm -f "$profile_output/linker-time-trace.json"
   printf '%s: starting %s build with linker-managed ThinLTO\n' "$(date -u +%FT%TZ)" "$phase"
   /usr/bin/time -v -o "$profile_output/$phase-resources.txt" "${build[@]}" \
     2>&1 | tee "$profile_output/$phase.log" || {
@@ -39,6 +38,8 @@ for phase in seed warm; do
     exit 1
   }
   date +%s.%N > "$profile_output/$phase-end.txt"
+  test -s "$profile_output/linker-time-trace.json"
+  cp "$profile_output/linker-time-trace.json" "$profile_output/$phase-linker-time-trace.json"
   printf '%s: completed %s build\n' "$(date -u +%FT%TZ)" "$phase"
   cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/$phase-cargo-timing.html"
   "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --version > "$profile_output/$phase-version.txt"

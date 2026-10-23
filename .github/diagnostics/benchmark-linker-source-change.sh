@@ -17,6 +17,7 @@ grep -Fq '/// Show Codex Unleashed build information (module-cache verification)
 
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-before-change.txt"
 date +%s.%N > "$profile_output/changed-start.txt"
+rm -f "$profile_output/linker-time-trace.json"
 printf '%s: rebuilding after CLI help-text change\n' "$(date -u +%FT%TZ)"
 /usr/bin/time -v -o "$profile_output/changed-resources.txt" \
   bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream \
@@ -25,6 +26,8 @@ printf '%s: rebuilding after CLI help-text change\n' "$(date -u +%FT%TZ)"
   exit 1
 }
 date +%s.%N > "$profile_output/changed-end.txt"
+test -s "$profile_output/linker-time-trace.json"
+cp "$profile_output/linker-time-trace.json" "$profile_output/changed-linker-time-trace.json"
 "$CARGO_TARGET_DIR/$UPSTREAM_TARGET/release/codex" --help > "$profile_output/help-after-change.txt"
 grep -Fq '(module-cache verification)' "$profile_output/help-after-change.txt"
 cp "$CARGO_TARGET_DIR/cargo-timings/cargo-timing.html" "$profile_output/changed-cargo-timing.html"
