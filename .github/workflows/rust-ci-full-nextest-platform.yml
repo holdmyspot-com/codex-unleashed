@@ -133,7 +133,7 @@ jobs:
           set -euo pipefail
           archive_dir="${RUNNER_TEMP}/nextest-archive"
           mkdir -p "${archive_dir}"
-          cargo nextest archive \
+          bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" cargo nextest archive \
             --target "${{ inputs.target }}" \
             --cargo-profile "${{ inputs.profile }}" \
             --features codex-v8-poc/sandbox \
@@ -149,14 +149,14 @@ jobs:
           helper_dir="${RUNNER_TEMP}/${TEST_HELPERS_ARTIFACT}"
           mkdir -p "${helper_dir}"
           if [[ "${RUNNER_OS}" == "Linux" ]]; then
-            cargo build \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" cargo build \
               --target "${{ inputs.target }}" \
               --profile "${{ inputs.profile }}" \
               -p codex-linux-sandbox \
               --bin codex-linux-sandbox
             cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/codex-linux-sandbox" "${helper_dir}/"
           else
-            cargo build \
+            bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" cargo build \
               --target "${{ inputs.target }}" \
               --profile "${{ inputs.profile }}" \
               -p codex-windows-sandbox \
