@@ -1,7 +1,7 @@
 package com.holdmyspot.codexunleashed.tooling;
 
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Checks Windows argument encoding against the documented Microsoft C runtime parsing rules. */
 public final class WindowsArgumentsTest
@@ -15,12 +15,12 @@ public final class WindowsArgumentsTest
 	@Test
 	public void encodesLiteralArguments()
 	{
-		assertEquals(WindowsArguments.quote(""), "\"\"");
-		assertEquals(WindowsArguments.quote("plain"), "\"plain\"");
-		assertEquals(WindowsArguments.quote("two words"), "\"two words\"");
-		assertEquals(WindowsArguments.quote("\"quoted\""), "\"\\\"quoted\\\"\"");
-		assertEquals(WindowsArguments.quote("a\\"), "\"a\\\\\"");
-		assertEquals(WindowsArguments.quote("a\\\"b"), "\"a\\\\\\\"b\"");
-		assertEquals(WindowsArguments.quote("a\\\\b"), "\"a\\\\b\"");
+		requireThat(WindowsArguments.quote(""), "quoted").isEqualTo("\"\"");
+		requireThat(WindowsArguments.quote("plain"), "quoted").isEqualTo("\"plain\"");
+		requireThat(WindowsArguments.quote("two words"), "quoted").isEqualTo("\"two words\"");
+		requireThat(WindowsArguments.quote("\"quoted\""), "quoted").isEqualTo("\"\\\"quoted\\\"\"");
+		requireThat(WindowsArguments.quote("a\\"), "quoted").isEqualTo("\"a\\\\\"");
+		requireThat(WindowsArguments.quote("a\\\"b"), "quoted").isEqualTo("\"a\\\\\\\"b\"");
+		requireThat(WindowsArguments.quote("a\\\\b"), "quoted").isEqualTo("\"a\\\\b\"");
 	}
 }

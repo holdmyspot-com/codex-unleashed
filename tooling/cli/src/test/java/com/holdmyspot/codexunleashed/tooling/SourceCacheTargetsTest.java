@@ -2,8 +2,7 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import java.util.List;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /** Checks target filename identity before the cache coordinator can create or remove files. */
@@ -18,11 +17,12 @@ public final class SourceCacheTargetsTest
 	@Test
 	public void retainsTargetFilenameSemantics()
 	{
-		assertEquals(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "x86_64-unknown-linux-gnu");
-		assertEquals(SourceCacheTargets.directoryName("custom.target.json"), "custom.target");
-		assertEquals(SourceCacheTargets.directoryName("custom.JSON"), "custom.JSON");
-		assertEquals(SourceCacheTargets.directoryName(".json"), ".json");
-		assertEquals(SourceCacheTargets.directoryName(".custom.json"), ".custom");
+		requireThat(SourceCacheTargets.directoryName("x86_64-unknown-linux-gnu"), "directoryName").isEqualTo(
+			"x86_64-unknown-linux-gnu");
+		requireThat(SourceCacheTargets.directoryName("custom.target.json"), "directoryName").isEqualTo("custom.target");
+		requireThat(SourceCacheTargets.directoryName("custom.JSON"), "directoryName").isEqualTo("custom.JSON");
+		requireThat(SourceCacheTargets.directoryName(".json"), "directoryName").isEqualTo(".json");
+		requireThat(SourceCacheTargets.directoryName(".custom.json"), "directoryName").isEqualTo(".custom");
 	}
 
 	/** Rejects absolute, nested, normalized, and traversal paths using the original target-directory diagnostic. */
@@ -34,7 +34,7 @@ public final class SourceCacheTargetsTest
 		{
 			IllegalArgumentException failure = expectThrows(IllegalArgumentException.class,
 				() -> SourceCacheTargets.directoryName(target));
-			assertTrue(failure.getMessage().startsWith("Invalid Cargo target directory name: "));
+			requireThat(failure.getMessage(), "message").startsWith("Invalid Cargo target directory name: ");
 		}
 	}
 }

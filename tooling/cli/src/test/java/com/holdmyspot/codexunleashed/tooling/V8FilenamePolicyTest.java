@@ -7,7 +7,7 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.testng.annotations.Test;
-import static org.testng.Assert.assertEquals;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /** Checks Windows and Unix filename policies with explicit filesystem providers, without claiming native execution. */
 public final class V8FilenamePolicyTest
@@ -31,10 +31,10 @@ public final class V8FilenamePolicyTest
 			Path directory = Files.createDirectories(root.resolve("x86_64-pc-windows-msvc/release/build/a/out"));
 			Path library = Files.writeString(directory.resolve("RUSTY_V8.LIB"), "archive");
 			Path binding = Files.writeString(directory.resolve("SRC_BINDING.RS"), "binding");
-			assertEquals(library.getFileName(), filesystem.getPath("rusty_v8.lib"));
+			requireThat(library.getFileName(), "filename").isEqualTo(filesystem.getPath("rusty_v8.lib"));
 			V8Artifacts.Pair selected = V8Artifacts.upstreamPaths("x86_64-pc-windows-msvc", root);
-			assertEquals(selected.library().toString(), library.toString());
-			assertEquals(selected.binding().toString(), binding.toString());
+			requireThat(selected.library().toString(), "library").isEqualTo(library.toString());
+			requireThat(selected.binding().toString(), "binding").isEqualTo(binding.toString());
 		}
 	}
 
@@ -55,10 +55,11 @@ public final class V8FilenamePolicyTest
 			V8Artifacts.Pair expected = new V8Artifacts.Pair(
 				root.resolve("x86_64-unknown-linux-gnu/release/gn_out/obj/librusty_v8.a"),
 				root.resolve("x86_64-unknown-linux-gnu/release/gn_out/src_binding.rs"));
-			assertEquals(V8Artifacts.upstreamPaths("x86_64-unknown-linux-gnu", root), expected);
+			requireThat(V8Artifacts.upstreamPaths("x86_64-unknown-linux-gnu", root), "paths").isEqualTo(expected);
 			Path library = Files.writeString(directory.resolve("librusty_v8.a"), "correct archive");
 			Path binding = Files.writeString(directory.resolve("src_binding.rs"), "correct binding");
-			assertEquals(V8Artifacts.upstreamPaths("x86_64-unknown-linux-gnu", root), new V8Artifacts.Pair(library, binding));
+			requireThat(V8Artifacts.upstreamPaths("x86_64-unknown-linux-gnu", root), "paths").isEqualTo(
+				new V8Artifacts.Pair(library, binding));
 		}
 	}
 }
