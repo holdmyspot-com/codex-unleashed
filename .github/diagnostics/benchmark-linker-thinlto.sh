@@ -20,7 +20,7 @@ export CARGO_INCREMENTAL=1
 export CFLAGS="${CFLAGS:-} -fno-lto"
 export CXXFLAGS="${CXXFLAGS:-} -fno-lto"
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$bundled_linker"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${RUSTFLAGS:-} -Clinker-plugin-lto -Clinker-flavor=ld.lld -Clink-self-contained=yes -Clink-arg=--lto-O3 -Clink-arg=--thinlto-cache-dir=$CARGO_TARGET_DIR/lld-thinlto-cache"
 unset RUSTFLAGS
 printf '%s\n' "$CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS" > "$profile_output/rustflags.txt"
 build=(bash .github/scripts/run-memory-scheduled-build.sh ./scripts/build-release.sh upstream
