@@ -41,6 +41,13 @@ The affected crates are ported to these APIs without new lint suppressions.
 Regenerated app-server protocol schemas and the Python SDK's generated
 bindings reflect the schemars 1 output.
 
+`tls-fallback-native-client-fixture.patch` follows the dependency upgrade and
+constructs the native-TLS client explicitly in the fallback tests. Otherwise,
+an inherited custom CA setting can select rustls before the tests exercise
+native-TLS fallback. Production certificate handling stays the same. This
+test-only patch requires the dependency patch and its prerequisites because
+it uses reqwest 0.13's `tls_backend_native` API.
+
 These direct dependencies stay behind their newest release because a
 dependency requires an exact or bounded version:
 
@@ -152,6 +159,8 @@ From the patched checkout root, resolve workspace package versions, then run:
 ```sh
 cargo update --workspace --manifest-path codex-rs/Cargo.toml
 just fmt-check
+cargo nextest run --manifest-path codex-rs/Cargo.toml --locked \
+  --cargo-profile ci-test -p codex-http-client --lib --no-fail-fast
 just bazel-lock-check
 cargo deny --manifest-path codex-rs/Cargo.toml check --deny unmatched-source \
   --deny license-not-encountered --deny unused-wrapper --deny advisory-not-detected
@@ -192,6 +201,9 @@ including their tests. The two rules_rs
 "well-known crate annotation" warnings for `tikv-jemalloc-sys` and
 `libgit2-sys` remain visible; the generated build-script modes behave the same.
 Full tests and release builds must pass on their required platforms.
+The HTTP-client library check passes all 115 tests, including the seven TLS
+fallback regressions, with the fixture patch applied and a custom CA path
+inherited through `SSL_CERT_FILE`.
 
 ## Upstream status
 
