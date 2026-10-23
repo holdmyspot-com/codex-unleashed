@@ -198,7 +198,9 @@ jobs:
 
       - name: Package native test dependencies
         shell: bash
-        run: tar -C "$RUNNER_TEMP/nextest-native" -czf "$RUNNER_TEMP/nextest-native.tar.gz" sdk runtime
+        run: |
+          cd "$RUNNER_TEMP"
+          tar -C nextest-native -czf nextest-native.tar.gz sdk runtime
 
       - name: Upload native test dependencies
         uses: actions/upload-artifact@v6
