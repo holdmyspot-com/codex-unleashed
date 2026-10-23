@@ -29,6 +29,7 @@ on:
           - compiler-scheduler-tooling-windows
           - windows-arm-tooling-locks
           - native-voice-runtime
+          - linux-docker-scope
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
         type: string
@@ -38,6 +39,44 @@ permissions:
   contents: read
 
 jobs:
+  linux-docker-scope:
+    if: inputs.focus == 'linux-docker-scope'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Compare Docker access before and inside the build memory scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$(cat <<'PROBE'
+          set -uo pipefail
+          id
+          printf "Docker host: %s\nDocker context: %s\n" "${DOCKER_HOST:-unset}" "${DOCKER_CONTEXT:-unset}"
+          docker context show
+          stat -Lc "%a %u %g %n" /var/run/docker.sock
+          docker info
+          PROBE
+          )"
+
+          printf 'Direct runner context\n'
+          set +e
+          bash -c "$probe"
+          direct_status=$?
+          set -e
+          printf 'Direct Docker probe status: %s\n' "$direct_status"
+
+          printf 'Memory-scope context with the maintained runner identity options\n'
+          set +e
+          sudo -n --preserve-env systemd-run --scope --quiet --collect \
+            --uid="$(id -u)" --gid="$(id -g)" \
+            --property=MemorySwapMax=0 --property=OOMPolicy=continue \
+            -- env "PATH=$PATH" "HOME=$HOME" bash -c "$probe"
+          scope_status=$?
+          set -e
+          printf 'Scoped Docker probe status: %s\n' "$scope_status"
+          test "$direct_status" -eq 0
+          exit "$scope_status"
+
   native-voice-runtime:
     if: inputs.focus == 'native-voice-runtime'
     strategy:
