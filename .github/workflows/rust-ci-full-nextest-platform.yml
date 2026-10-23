@@ -142,13 +142,16 @@ jobs:
       - name: Build nextest archive
         working-directory: upstream/codex-rs
         shell: bash
+        env:
+          ARCHIVE_CARGO_PROFILE: ${{ inputs.profile }}
         run: |
           set -euo pipefail
           archive_dir="${RUNNER_TEMP}/nextest-archive"
           mkdir -p "${archive_dir}"
           bash "${GITHUB_WORKSPACE}/.github/scripts/run-memory-scheduled-build.sh" cargo nextest archive \
             --target "${{ inputs.target }}" \
-            --cargo-profile "${{ inputs.profile }}" \
+            --cargo-profile "$ARCHIVE_CARGO_PROFILE" \
+            --config "profile.${ARCHIVE_CARGO_PROFILE}.package.blake3.opt-level=3" \
             --features codex-v8-poc/sandbox \
             --timings \
             --archive-file "${archive_dir}/${NEXTEST_ARCHIVE_FILE}"
