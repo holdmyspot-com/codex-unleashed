@@ -1,0 +1,176 @@
+name: Build voice runtime
+
+on:
+  workflow_call:
+    inputs:
+      upstream_ref:
+        description: Upstream ref to patch and build; defaults to .github/upstream-ref.
+        required: false
+        type: string
+      focus_target:
+        description: Optional app release target for a single native diagnostic build.
+        required: false
+        type: string
+    secrets:
+      BUILDBUDDY_API_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Upstream ref to patch and build; defaults to .github/upstream-ref.
+        required: false
+        type: string
+      focus_target:
+        description: Optional app release target for a single native diagnostic build.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - id: select
+        shell: bash
+        env:
+          FOCUS_TARGET: ${{ inputs.focus_target }}
+        run: |
+          set -euo pipefail
+          matrix="$(bash .github/scripts/build-voice-runtime.sh matrix "$FOCUS_TARGET")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  prepare-tooling:
+    needs: select
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.matrix) }}
+    uses: ./.github/workflows/prepare-tooling.yml
+    with:
+      runner: ${{ matrix.runner }}
+
+  build:
+    needs: [select, prepare-tooling]
+    name: Native voice runtime - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.matrix) }}
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - uses: ./.github/actions/setup-pnpm
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: ${{ inputs.upstream_ref }}
+          require-tooling-cache: 'true'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+      - name: Configure native MSVC
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ matrix.target }}
+      - name: Prepare cached Bazel and scheduler
+        id: bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          common-setup-complete: 'true'
+          target: ${{ matrix.voice_target }}
+          cache-scope: release-voice-runtime
+      - name: Refresh native MSVC Bazel path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./.github/scripts/compute-bazel-windows-path.ps1 -Target '${{ matrix.target }}'
+      - name: Obtain pinned Windows binary and source snapshots
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw upstream/.github/scripts/voice-cygwin-snapshot.json | ConvertFrom-Json
+          $pin = $manifest.archive
+          $source = $manifest.sourceArchive
+          $directory = Join-Path $env:RUNNER_TEMP 'voice-cygwin-snapshot'
+          New-Item -ItemType Directory -Path $directory | Out-Null
+          # These immutable third-party inputs are published by upstream, not by our fork.
+          gh release download $pin.tag --repo openai/codex --pattern $pin.name --pattern $source.name --dir $directory
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot obtain pinned public Cygwin binary and source snapshots' }
+          foreach ($record in @($pin, $source)) {
+            $file = Join-Path $directory $record.name
+            if ((Get-Item $file).Length -ne $record.bytes -or
+                (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $record.sha256) {
+              throw "Cygwin snapshot size or SHA256 mismatch: $($record.name)"
+            }
+          }
+          "VOICE_CYGWIN_ARCHIVE=$(Join-Path $directory $pin.name)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install and verify native Windows voice tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VOICE_TARGET: ${{ matrix.target }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./upstream/.github/scripts/setup-voice-windows.ps1 -Target $env:VOICE_TARGET -SnapshotArchive $env:VOICE_CYGWIN_ARCHIVE
+          if (-not $env:SystemRoot) { throw 'Windows SystemRoot is required for native audio actions' }
+          "VOICE_WINDOWS_SYSTEM_ROOT=$env:SystemRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $hostArch = $env:PROCESSOR_ARCHITEW6432
+          if (-not $hostArch) { $hostArch = $env:PROCESSOR_ARCHITECTURE }
+          if (-not $hostArch) { throw 'Windows host architecture is required' }
+          "VOICE_WINDOWS_HOST_ARCH=$hostArch" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Check producer target and staging contract
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        shell: bash
+        run: bash .github/scripts/test-build-voice-runtime.sh upstream "$RUNNER_TEMP"
+      - name: Build and seal unsigned runtime and matching helper
+        shell: bash
+        env:
+          APP_TARGET: ${{ matrix.target }}
+        run: bash .github/scripts/build-voice-runtime.sh build upstream "$APP_TARGET" voice-dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: voice-runtime-${{ matrix.target }}
+          path: voice-dist/voice-runtime-${{ matrix.target }}.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+      - name: Recheck Bazel repository cache before saving
+        id: repository_cache_before_save
+        if: always() && !cancelled() && steps.bazel.outputs.repository-cache-key != '' && steps.bazel.outputs.repository-cache-hit != 'true'
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        with:
+          path: ${{ steps.bazel.outputs.repository-cache-path }}
+          key: ${{ steps.bazel.outputs.repository-cache-key }}
+          lookup-only: true
+      - name: Save Bazel repository cache
+        if: always() && !cancelled() && steps.bazel.outputs.repository-cache-key != '' && steps.bazel.outputs.repository-cache-hit != 'true' && steps.repository_cache_before_save.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7
+        with:
+          path: ${{ steps.bazel.outputs.repository-cache-path }}
+          key: ${{ steps.bazel.outputs.repository-cache-key }}
+      - name: Remove voice staging and Windows build inputs
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($path in @('voice-dist',
+              (Join-Path $env:RUNNER_TEMP 'voice-cygwin-snapshot'),
+              (Join-Path $env:RUNNER_TEMP 'voice-windows-build-tools'))) {
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+          }
