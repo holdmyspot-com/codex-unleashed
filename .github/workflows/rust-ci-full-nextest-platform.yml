@@ -1,6 +1,32 @@
 name: rust-ci-full nextest platform
 
 on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Native GitHub runner matching the target architecture.
+        required: true
+        type: string
+        default: ubuntu-latest
+      target:
+        description: Native Rust target triple.
+        required: true
+        type: string
+        default: x86_64-unknown-linux-gnu
+      profile:
+        description: Cargo profile used to build the test archive.
+        required: true
+        type: string
+        default: ci-test
+      artifact_id:
+        description: Platform identifier for this run's test artifacts.
+        required: true
+        type: string
+        default: linux-x64
+      upstream_ref:
+        description: Optional upstream ref; defaults to the repository release pin.
+        required: false
+        type: string
   workflow_call:
     inputs:
       runner:
@@ -67,6 +93,27 @@ jobs:
         with:
           target: ${{ inputs.target }}
 
+      - name: Build native test dependencies
+        uses: ./.github/actions/build-nextest-native-sdk
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        with:
+          target: ${{ inputs.target }}
+
+      - uses: ./.github/actions/configure-nextest-native-sdk
+
+      - name: Check native SDK version probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg_config="${PKG_CONFIG:-pkg-config}"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            pkg_config="$(cygpath -u "$pkg_config")"
+          fi
+          "$pkg_config" --atleast-version=2.56 glib-2.0
+          "$pkg_config" --atleast-version=1.28 gstreamer-1.0
+          "$pkg_config" --modversion glib-2.0 gstreamer-1.0
+
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
@@ -128,6 +175,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Package native test dependencies
+        shell: bash
+        run: tar -C "$RUNNER_TEMP/nextest-native" -czf "$RUNNER_TEMP/nextest-native.tar.gz" sdk runtime
+
+      - name: Upload native test dependencies
+        uses: actions/upload-artifact@v6
+        with:
+          name: nextest-native-${{ inputs.artifact_id }}
+          path: ${{ runner.temp }}/nextest-native.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload runtime test helpers
         if: ${{ runner.os == 'Linux' || runner.os == 'Windows' }}
         uses: actions/upload-artifact@v6
@@ -136,6 +195,13 @@ jobs:
           path: ${{ runner.temp }}/${{ env.TEST_HELPERS_ARTIFACT }}/*
           if-no-files-found: error
           retention-days: 1
+
+      - name: Remove staged native test dependencies
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/nextest-native" "$RUNNER_TEMP/nextest-native.tar.gz" \
+            "$RUNNER_TEMP/nextest-voice-cygwin" "$RUNNER_TEMP/voice-windows-build-tools"
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
@@ -211,6 +277,20 @@ jobs:
             "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$TEST_HELPERS_ARTIFACT" \
             "$RUNNER_TEMP/$TEST_HELPERS_ARTIFACT"
 
+      - name: Download native test dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: nextest-native-${{ inputs.artifact_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$CODEX_UNLEASHED_TOOLING" download-workflow-artifact \
+            "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$ARTIFACT_NAME" "$RUNNER_TEMP/nextest-native-download"
+          mkdir "$RUNNER_TEMP/nextest-native"
+          tar -C "$RUNNER_TEMP/nextest-native" -xzf "$RUNNER_TEMP/nextest-native-download/nextest-native.tar.gz"
+
+      - uses: ./.github/actions/configure-nextest-native-sdk
+
       - name: Run nextest shard
         id: test
         working-directory: upstream/codex-rs
@@ -280,6 +360,11 @@ jobs:
           path: ${{ env.CARGO_TARGET_DIR }}/nextest/default/junit.xml
           retention-days: 1
           if-no-files-found: warn
+
+      - name: Remove staged native test dependencies
+        if: always()
+        shell: bash
+        run: rm -rf -- "$RUNNER_TEMP/nextest-native" "$RUNNER_TEMP/nextest-native-download"
 
       - name: Check for a clean worktree
         if: always() && !cancelled()

@@ -1,0 +1,32 @@
+name: Configure nextest native SDK
+description: Use the staged SDK for linking and its matching runtime for tests.
+
+runs:
+  using: composite
+  steps:
+    - name: Configure native library and plugin paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        root="$RUNNER_TEMP/nextest-native"
+        test -f "$root/sdk/sdk.json"
+        test -f "$root/runtime/runtime.json"
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          root="$(cygpath -m "$root")"
+          printf '%s/runtime/bin\n' "$root" >> "$GITHUB_PATH"
+          plugins="$root/runtime/bin"
+        else
+          printf 'LD_LIBRARY_PATH=%s/runtime/lib%s\n' "$root" "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          printf 'DYLD_LIBRARY_PATH=%s/runtime/lib%s\n' "$root" "${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            plugins="$root/runtime/plugins"
+          else
+            plugins="$root/runtime/lib/gstreamer-1.0"
+          fi
+        fi
+        {
+          printf 'PKG_CONFIG_LIBDIR=%s/sdk/lib/pkgconfig\n' "$root"
+          printf 'PKG_CONFIG_PATH=\n'
+          printf 'GST_PLUGIN_PATH_1_0=%s\n' "$plugins"
+          printf 'GST_PLUGIN_SYSTEM_PATH_1_0=\n'
+        } >> "$GITHUB_ENV"

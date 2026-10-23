@@ -1,0 +1,98 @@
+name: Build nextest native SDK
+description: Build the inspected voice SDK and runtime used by Cargo tests.
+inputs:
+  target:
+    description: Native Rust target triple for this runner.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/prepare-bazel-ci
+      id: prepare-bazel
+      with:
+        target: ${{ inputs.target }}
+        cache-scope: nextest-native-sdk
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+
+    - name: Install Unix pkg-config
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v pkg-config >/dev/null; then
+          pkg-config --version
+        else
+          brew install pkgconf
+        fi
+
+    - name: Install pinned Windows native build prerequisites
+      if: runner.os == 'Windows'
+      working-directory: upstream
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        $ErrorActionPreference = "Stop"
+        $manifest = Get-Content -Raw .github/scripts/voice-cygwin-snapshot.json | ConvertFrom-Json
+        $pin = $manifest.archive
+        $directory = Join-Path $env:RUNNER_TEMP "nextest-voice-cygwin"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        gh release download $pin.tag --repo openai/codex --pattern $pin.name --dir $directory
+        if ($LASTEXITCODE -ne 0) { throw "Cannot download the pinned upstream Cygwin build inputs" }
+        & ./.github/scripts/setup-voice-windows.ps1 -Target $env:TARGET -SnapshotArchive (Join-Path $directory $pin.name)
+        if ($LASTEXITCODE -ne 0) { throw "Cannot install the pinned native build prerequisites" }
+
+    - name: Build inspected native SDK and runtime
+      shell: bash
+      working-directory: upstream
+      env:
+        TARGET: ${{ inputs.target }}
+        BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: "1"
+      run: |
+        set -euo pipefail
+        options=()
+        build_options=()
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          options+=(--windows-msvc-host-platform)
+          build_options+=(--config=ci-windows-msvc --platforms=//:local_windows_msvc)
+        fi
+        "$GITHUB_WORKSPACE/.github/scripts/run-bazel-ci.sh" \
+          "${options[@]}" --remote-download-toplevel --print-failed-action-summary \
+          -- build "${build_options[@]}" -- //third_party/voice:native_sdk //third_party/voice:native_runtime
+
+        arch="${TARGET%%-*}"
+        case "$RUNNER_OS" in
+          Linux) platform=linux ;;
+          macOS) platform=macos ;;
+          Windows) platform=windows ;;
+          *) printf 'Unsupported native SDK runner: %s\n' "$RUNNER_OS" >&2; exit 1 ;;
+        esac
+        source="bazel-bin/third_party/voice/native_runtime_${platform}_${arch}"
+        destination="$RUNNER_TEMP/nextest-native"
+        mkdir "$destination"
+        cp -R "${source}_sdk" "$destination/sdk"
+        cp -R "$source" "$destination/runtime"
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          printf 'PKG_CONFIG=%s\n' "$VOICE_PKG_CONFIG" >> "$GITHUB_ENV"
+        fi
+
+    - name: Check whether another job saved the repository cache
+      id: repository-cache-before-save
+      if: always() && !cancelled() && steps.prepare-bazel.outputs.repository-cache-key != '' && steps.prepare-bazel.outputs.repository-cache-hit != 'true'
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7
+      with:
+        path: ${{ steps.prepare-bazel.outputs.repository-cache-path }}
+        key: ${{ steps.prepare-bazel.outputs.repository-cache-key }}
+        lookup-only: true
+
+    - name: Save Bazel repository cache
+      if: always() && !cancelled() && steps.prepare-bazel.outputs.repository-cache-key != '' && steps.prepare-bazel.outputs.repository-cache-hit != 'true' && steps.repository-cache-before-save.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ steps.prepare-bazel.outputs.repository-cache-path }}
+        key: ${{ steps.prepare-bazel.outputs.repository-cache-key }}
