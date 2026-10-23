@@ -757,7 +757,10 @@ else
   # A distinct inert cfg per run attempt forces only this binary's action to execute, retaining dependency caches.
   # ci-macos enables Linux RBE when credentials exist. Cache-only ci-bazel keeps execution native;
   # the maintained Java wrapper still owns compiler scheduling, credentials, and repository caches.
-  bash "$script_dir/run-bazel-with-buildbuddy.sh" build --config=ci-bazel \
+  # Retain heap/GC evidence without changing the JVM memory budget or dumping process memory.
+  bash "$script_dir/run-bazel-with-buildbuddy.sh" \
+    "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
+    build --config=ci-bazel \
     --jobs=2 --loading_phase_threads=1 --local_resources=cpu=1 \
     --notrack_incremental_state --nokeep_state_after_build --remote_download_outputs=toplevel \
     --materialize_param_files --sandbox_debug "--sandbox_base=$sandbox_base" \
