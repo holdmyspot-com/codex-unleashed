@@ -37,6 +37,7 @@ runs:
         archive_path="${binding_dir}/${archive_name}"
         binding_path="${binding_dir}/${binding_name}"
         checksums_path="${binding_dir}/${checksums_name}"
+        trusted_checksums="${GITHUB_WORKSPACE}/upstream/third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
 
         mkdir -p "${cache_dir}"
         mkdir -p "${binding_dir}"
@@ -47,6 +48,9 @@ runs:
           fi
           cp "${cached_path}" "${binding_dir}/${name}"
         done
+
+        bash "${GITHUB_WORKSPACE}/.github/scripts/verify-v8-release-manifest.sh" \
+          "${trusted_checksums}" "${checksums_path}"
 
         if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
           echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2

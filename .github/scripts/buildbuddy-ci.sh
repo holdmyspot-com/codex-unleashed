@@ -86,6 +86,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
           repo-checks)
             bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
             bash "$project_root/.github/scripts/test-ci-memory.sh" "$project_root"
+            bash "$project_root/.github/scripts/test-v8-release-manifest.sh"
             bash "$project_root/.github/scripts/test-publish-github-release.sh"
             bash "$project_root/.github/scripts/test-code-mode-host-symbol-address.sh" "$RUNNER_TEMP"
             export NODE_OPTIONS=--max-old-space-size=4096
