@@ -3,10 +3,86 @@
 # Usage: diagnose-macos-bazel-dsym.sh <patched-upstream> <new-evidence-directory>
 #        diagnose-macos-bazel-dsym.sh --self-test <temporary-parent> [patched-process-wrapper]
 #        diagnose-macos-bazel-dsym.sh --self-test-evidence <temporary-parent> <patched-process-wrapper>
+#        diagnose-macos-bazel-dsym.sh --finish-profile <patched-upstream> <evidence-directory> <full-jdk>
 # Native execution requires macOS, the maintained CI setup, jq, dwarfdump, and sandbox-exec.
 # Real-wrapper self-tests additionally accept an executable wrapper; Linux uses bubblewrap.
 # The diagnostic job owns evidence cleanup after its always-run artifact upload.
 set -euo pipefail
+
+# Runs a Bazel command with the diagnostic's shared JVM startup options.
+# Arguments: 1: Owned evidence directory; 2: Compatible full JDK; remaining: Bazel command and arguments.
+# Identical startup options let shutdown flush the recording without replacing the profiled server.
+run_profiled_bazel() {
+  local evidence="$1" profiling_jdk="$2" script_dir
+  shift 2
+  if [[ "$profiling_jdk" != /* || ! -x "$profiling_jdk/bin/java" || ! -x "$profiling_jdk/bin/jfr" ]]; then
+    echo 'Bazel allocation profiling requires an absolute full JDK path containing java and jfr' >&2
+    return 2
+  fi
+  # WORKAROUND: https://github.com/bazelbuild/bazel/issues/31786
+  # Remove this launcher when our pinned Bazel includes commit 5cf14d47ab994b6004a1e12387c6fc1d6395dc94.
+  # JDK 27 rejects the launcher's obsolete verification option; forward every other argument unchanged.
+  mkdir -p "$evidence/bazel-jdk/bin"
+  {
+    printf '#!/usr/bin/env bash\nreal_java=%q\n' "$profiling_jdk/bin/java"
+    cat <<'JAVA_LAUNCHER'
+arguments=()
+for argument in "$@"; do
+  if [[ "$argument" != -Xverify:none ]]; then arguments+=("$argument"); fi
+done
+exec "$real_java" "${arguments[@]}"
+JAVA_LAUNCHER
+  } > "$evidence/bazel-jdk/bin/java"
+  chmod +x "$evidence/bazel-jdk/bin/java"
+
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  bash "$script_dir/run-bazel-with-buildbuddy.sh" \
+    "--server_javabase=$evidence/bazel-jdk" \
+    --host_jvm_args=--enable-native-access=ALL-UNNAMED \
+    --host_jvm_args=-Xmx2560m \
+    "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
+    "--host_jvm_args=-XX:FlightRecorderOptions=repository=$evidence/bazel-jfr-repository,preserve-repository=true,maxchunksize=4m" \
+    "--host_jvm_args=-XX:StartFlightRecording=name=bazel-allocation,settings=none,disk=true,maxsize=32m,maxage=10m,dumponexit=true,filename=$evidence/bazel-allocation.jfr,+jdk.ObjectAllocationSample#enabled=true,+jdk.ObjectAllocationSample#stackTrace=true,+jdk.ObjectAllocationSample#throttle=100/s" \
+    "$@"
+}
+
+# Checks literal startup and command forwarding; the tool double does not verify JVM or JFR behavior.
+# Argument: 1: Owned self-test fixture.
+test_profiled_startup() {
+  local root="$1/profile startup" status=0 argument
+  local -a actual=()
+  mkdir -p "$root/jdk/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$root/jdk/bin/java"
+  cp "$root/jdk/bin/java" "$root/jdk/bin/jfr"
+  cat > "$root/tooling" <<'PROFILE_TOOL'
+#!/usr/bin/env bash
+printf '%s\0' "$@" > "$PROFILE_ARGUMENTS"
+PROFILE_TOOL
+  chmod +x "$root/jdk/bin/java" "$root/jdk/bin/jfr" "$root/tooling"
+  CODEX_UNLEASHED_TOOLING="$root/tooling" PROFILE_ARGUMENTS="$root/arguments" \
+    run_profiled_bazel "$root" "$root/jdk" build '--test_arg=two words' //fixture:target
+  while IFS= read -r -d '' argument; do actual+=("$argument"); done < "$root/arguments"
+  [[ "${#actual[@]}" == 10 && "${actual[0]}" == run-bazel-with-buildbuddy ]]
+  [[ "${actual[1]}" == "--server_javabase=$root/bazel-jdk" ]]
+  [[ "${actual[6]}" == *settings=none* && "${actual[6]}" == *'jdk.ObjectAllocationSample#stackTrace=true'* ]]
+  [[ "${actual[7]}" == build && "${actual[8]}" == '--test_arg=two words' && "${actual[9]}" == //fixture:target ]]
+  cat > "$root/jdk/bin/java" <<'JAVA_TOOL'
+#!/usr/bin/env bash
+printf '%s\0' "$@" > "$PROFILE_ARGUMENTS"
+exit 23
+JAVA_TOOL
+  PROFILE_ARGUMENTS="$root/java-arguments" "$root/bazel-jdk/bin/java" \
+    -Xverify:none '' 'two words' -noverify '--property=-Xverify:none' -Xverify:none || status=$?
+  [[ "$status" == 23 ]]
+  printf '%s\0' '' 'two words' -noverify '--property=-Xverify:none' > "$root/expected-java-arguments"
+  cmp "$root/expected-java-arguments" "$root/java-arguments"
+  status=0
+  rm "$root/jdk/bin/jfr" "$root/arguments"
+  CODEX_UNLEASHED_TOOLING="$root/tooling" PROFILE_ARGUMENTS="$root/arguments" \
+    run_profiled_bazel "$root" "$root/jdk" shutdown > "$root/missing-tool.log" 2>&1 || status=$?
+  [[ "$status" == 2 && ! -e "$root/arguments" ]]
+  echo 'PASS: profiled startup preserves literal arguments and rejects an incomplete JDK before launching Bazel'
+}
 
 # Retains bounded server diagnostics before owned sandbox cleanup, preserving the caller's status.
 # Arguments: 1: Original status; 2: Owned sandbox; 3: Evidence directory; 4: Configured output base.
@@ -686,6 +762,7 @@ self_test() (
   fixture="$(mktemp -d "${1:?temporary parent required}/macos-dsym-self-test-XXXXXX")"
   trap 'status=$?; if [[ "$status" == 0 || "$retain_failed_self_test" != true ]]; then rm -rf -- "$fixture"; else printf "Retained failed self-test evidence: %s\n" "$fixture" >&2; fi' EXIT
   test_jvm_retention "$fixture"
+  test_profiled_startup "$fixture"
   mkdir -p "$fixture/source/bazel/tools" "$fixture/evidence" \
     "$fixture/source/bazel-out/native/bin/codex-rs/cli/codex.dSYM/Contents/Resources/DWARF"
   cat > "$fixture/source/bazel/tools/dsymutil" <<'WRAPPER'
@@ -809,7 +886,16 @@ DWARFDUMP
   echo 'PASS: native dSYM acceptance boundary; command fixtures do not verify macOS compilation or DWARF validity'
 )
 
-if [[ "${1:-}" == --self-test-evidence ]]; then
+if [[ "${1:-}" == --finish-profile ]]; then
+  source_root="$(cd -- "${2:?patched upstream required}" && pwd)"
+  evidence="${3:?evidence directory required}"
+  profiling_jdk="${4:?profiling JDK required}"
+  if [[ -d "$evidence" ]]; then
+    cd "$source_root"
+    run_profiled_bazel "$evidence" "$profiling_jdk" shutdown
+    "$profiling_jdk/bin/jfr" summary "$evidence/bazel-allocation.jfr" > "$evidence/bazel-allocation-summary.txt"
+  fi
+elif [[ "${1:-}" == --self-test-evidence ]]; then
   self_test "${2:?temporary parent required}" "${3:?patched process_wrapper required}" true
 elif [[ "${1:-}" == --self-test ]]; then
   self_test "${2:?temporary parent required}" "${3:-}"
@@ -833,11 +919,13 @@ else
   [[ "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}" =~ ^[0-9]+$ ]]
   [[ "${GITHUB_RUN_ATTEMPT:?GITHUB_RUN_ATTEMPT is required}" =~ ^[0-9]+$ ]]
   command -v jq > /dev/null
+  profiling_jdk="${BAZEL_PROFILING_JAVA_HOME:?BAZEL_PROFILING_JAVA_HOME is required}"
   dwarf_tool="$(command -v dwarfdump)"
-  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
   # The job uploads this evidence before its always-run cleanup removes it.
   mkdir "$evidence"
   { uname -a; printf 'Rust target: %s\ndwarfdump: %s\n' "$native_target" "$dwarf_tool"; } > "$evidence/native-host.txt"
+  "$profiling_jdk/bin/java" -version >> "$evidence/native-host.txt" 2>&1
+  "$profiling_jdk/bin/java" --list-modules | grep '^jdk.jfr@' >> "$evidence/native-host.txt"
   sandbox_base="$(mktemp -d "$evidence/sandboxes.XXXXXX")"
   trap 'finish_dsym_diagnostic "$?" "$sandbox_base" "$evidence" "${BAZEL_OUTPUT_BASE:-}"' EXIT
   trap 'exit 130' INT
@@ -847,10 +935,8 @@ else
   # A distinct inert cfg per run attempt forces only this binary's action to execute, retaining dependency caches.
   # ci-macos enables Linux RBE when credentials exist. Cache-only ci-bazel keeps execution native;
   # the maintained Java wrapper still owns compiler scheduling, credentials, and repository caches.
-  # Cap this diagnostic's JVM heap above the runner default and retain GC evidence without dumping memory.
-  bash "$script_dir/run-bazel-with-buildbuddy.sh" \
-    --host_jvm_args=-Xmx2560m \
-    "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
+  # Record allocation samples with stacks; settings=none excludes initial environment and system properties.
+  run_profiled_bazel "$evidence" "$profiling_jdk" \
     build --config=ci-bazel \
     --jobs=2 --loading_phase_threads=1 --local_resources=cpu=1 \
     --notrack_incremental_state --nokeep_state_after_build --remote_download_outputs=toplevel \

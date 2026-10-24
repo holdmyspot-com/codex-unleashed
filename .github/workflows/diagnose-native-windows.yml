@@ -570,6 +570,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up JDK 27 with allocation profiling tools
+        id: profiling-jdk
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '27'
+
       - name: Check dSYM diagnostic acceptance regressions
         shell: bash
         run: bash .github/scripts/diagnose-macos-bazel-dsym.sh --self-test "$RUNNER_TEMP"
@@ -578,7 +585,18 @@ jobs:
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          BAZEL_PROFILING_JAVA_HOME: ${{ steps.profiling-jdk.outputs.path }}
         run: bash .github/scripts/diagnose-macos-bazel-dsym.sh "$GITHUB_WORKSPACE/upstream" "$RUNNER_TEMP/macos-bazel-dsym"
+
+      - name: Flush and inspect the allocation recording before upload
+        if: always() && steps.profiling-jdk.outcome == 'success'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          bash .github/scripts/diagnose-macos-bazel-dsym.sh --finish-profile \
+            "$GITHUB_WORKSPACE/upstream" "$RUNNER_TEMP/macos-bazel-dsym" \
+            '${{ steps.profiling-jdk.outputs.path }}'
 
       - name: Retain native dSYM acceptance evidence
         if: always()
