@@ -123,6 +123,21 @@ main() {
   "${sha256[@]}" "$evidence/original-nextest.toml" > "$evidence/original-nextest.sha256"
   printf '%s  %s\n' f411d7e8ea0a8b60a3cdd9a1e47223ad964e2d2fd5f80d0abe4d877b41851817 \
     "$evidence/original-nextest.toml" | "${sha256[@]}" -c
+  # Diagnostic-only: retain the authenticated policy and add only pool reservations.
+  # The original full workload, deadlines, retries and test binaries remain unchanged.
+  cp .config/nextest.toml "$evidence/baseline-nextest.toml"
+  cat >> .config/nextest.toml <<'RESERVATION'
+
+[[profile.default.overrides]]
+platform = "x86_64-apple-darwin"
+filter = """
+(package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)) |
+(package(codex-exec) & test(=suite::daybreak::exec_resumes_and_forks_the_saved_daybreak_choice))
+"""
+threads-required = "num-test-threads"
+RESERVATION
+  cp .config/nextest.toml "$evidence/reservation-nextest.toml"
+  "${sha256[@]}" "$evidence/reservation-nextest.toml" > "$evidence/reservation-nextest.sha256"
   local -a archive=(--archive-file "$evidence/archive/nextest-macos-x64.tar.zst"
     --extract-to "$evidence/extracted" --workspace-remap "$workspace"
     --config-file "$workspace/.config/nextest.toml" --profile default)
