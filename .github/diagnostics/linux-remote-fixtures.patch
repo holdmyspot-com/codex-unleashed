@@ -1,0 +1,853 @@
+diff --git a/codex-rs/core/tests/suite/command_lifecycle_tests.rs b/codex-rs/core/tests/suite/command_lifecycle_tests.rs
+index 3d0545df..ddb36be9 100644
+--- a/codex-rs/core/tests/suite/command_lifecycle_tests.rs
++++ b/codex-rs/core/tests/suite/command_lifecycle_tests.rs
+@@ -151,6 +151,7 @@ async fn command_start_receives_rewritten_command_and_executor_workdir(
+     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
+     extensions.tool_lifecycle_contributor(recorder.clone());
+     let builder = test_codex()
++        .with_separate_host_cwd()
+         .with_extensions(Arc::new(extensions.build()))
+         .with_config(configure_command_test_permissions)
+         .with_pre_build_hook(move |home| {
+diff --git a/codex-rs/core/tests/suite/exec_policy.rs b/codex-rs/core/tests/suite/exec_policy.rs
+index aef95b4d..ab7715f1 100644
+--- a/codex-rs/core/tests/suite/exec_policy.rs
++++ b/codex-rs/core/tests/suite/exec_policy.rs
+@@ -24,6 +24,7 @@ use codex_protocol::protocol::GranularApprovalConfig;
+ use codex_protocol::protocol::Op;
+ use codex_protocol::protocol::ReviewDecision;
+ use codex_protocol::protocol::ThreadSettingsOverrides;
++use codex_protocol::protocol::TurnEnvironmentRequests;
+ use codex_protocol::user_input::UserInput;
+ use core_test_support::responses::ev_assistant_message;
+ use core_test_support::responses::ev_completed;
+@@ -73,7 +74,10 @@ async fn submit_user_turn(
+                 text_elements: Vec::new(),
+             }])
+             .with_thread_settings(ThreadSettingsOverrides {
+-                environments: Some(local_requests(test.config.cwd.clone())),
++                environments: Some(TurnEnvironmentRequests::new(
++                    test.config.cwd.clone(),
++                    vec![test.executor_environment().request()],
++                )),
+                 approval_policy: Some(approval_policy),
+                 sandbox_policy: Some(sandbox_policy),
+                 permission_profile,
+@@ -387,8 +391,15 @@ async fn deeply_nested_forced_rm_is_rejected_before_execution_when_approvals_are
+     let server = start_mock_server().await;
+     let mut builder = test_codex();
+     let test = builder.build_with_auto_env(&server).await?;
+-    let sentinel = test.config.cwd.join("forced-rm-sentinel");
+-    fs::write(&sentinel, "must not be deleted")?;
++    let sentinel = test.workspace_path_uri("forced-rm-sentinel")?;
++    test.fs()
++        .write_file(
++            &sentinel,
++            b"must not be deleted".to_vec(),
++            Default::default(),
++            /*sandbox*/ None,
++        )
++        .await?;
+     let call_id = "deeply-nested-forced-rm";
+     let args = json!({
+         "cmd": "env env env env env env env env env rm -rf forced-rm-sentinel",
+@@ -436,7 +447,13 @@ async fn deeply_nested_forced_rm_is_rejected_before_execution_when_approvals_are
+         output.contains("rejected: blocked by policy"),
+         "unexpected output: {output}"
+     );
+-    assert!(sentinel.exists(), "the rejected command must not execute");
++    assert_eq!(
++        test.fs()
++            .read_file_text(&sentinel, Default::default(), /*sandbox*/ None)
++            .await?,
++        "must not be deleted",
++        "the rejected command must not execute"
++    );
+ 
+     Ok(())
+ }
+diff --git a/codex-rs/core/tests/suite/hooks.rs b/codex-rs/core/tests/suite/hooks.rs
+index 4cbfa5c8..e587c47e 100644
+--- a/codex-rs/core/tests/suite/hooks.rs
++++ b/codex-rs/core/tests/suite/hooks.rs
+@@ -3122,6 +3122,7 @@ async fn permission_request_hook_allow_bypasses_strict_auto_review() -> Result<(
+     .await;
+ 
+     let mut builder = test_codex()
++        .with_separate_host_cwd()
+         .with_pre_build_hook(|home| {
+             install_allow_permission_request_hook(home)
+                 .expect("failed to write permission request hook test fixture");
+diff --git a/codex-rs/core/tests/suite/hooks_mcp.rs b/codex-rs/core/tests/suite/hooks_mcp.rs
+index 62056b2b..79f78a4b 100644
+--- a/codex-rs/core/tests/suite/hooks_mcp.rs
++++ b/codex-rs/core/tests/suite/hooks_mcp.rs
+@@ -27,6 +27,7 @@ use core_test_support::skip_if_no_network;
+ use core_test_support::skip_if_wine_exec;
+ use core_test_support::stdio_server_bin;
+ use core_test_support::test_codex::test_codex;
++use core_test_support::test_codex::test_env;
+ use core_test_support::wait_for_mcp_server;
+ use pretty_assertions::assert_eq;
+ use serde_json::Value;
+@@ -356,7 +357,10 @@ async fn run_mcp_permission_request_hook_test(outcome: PermissionRequestHookOutc
+     };
+     let arguments = json!({ "message": RMCP_ECHO_MESSAGE }).to_string();
+     let rmcp_test_server_bin = remote_aware_stdio_server_bin()?;
++    let test_env = test_env().await?;
++    let mcp_cwd = LegacyAppPathString::from_path(test_env.cwd().as_path());
+     let mut builder = test_codex()
++        .with_separate_host_cwd()
+         .with_pre_build_hook(move |home| {
+             write_permission_request_hook(home, outcome)
+                 .expect("failed to write MCP permission request hook fixture");
+@@ -370,8 +374,21 @@ async fn run_mcp_permission_request_hook_test(outcome: PermissionRequestHookOutc
+                 AppToolApproval::Prompt,
+                 remote_aware_environment_id(),
+             );
++
++            let mut servers = config.mcp_servers.get().clone();
++            let server = servers
++                .get_mut(RMCP_SERVER)
++                .expect("RMCP test server is configured");
++            let McpServerTransportConfig::Stdio { cwd, .. } = &mut server.transport else {
++                panic!("RMCP test server transport is not stdio");
++            };
++            *cwd = Some(mcp_cwd);
++            config
++                .mcp_servers
++                .set(servers)
++                .expect("test mcp servers should accept any configuration");
+         });
+-    let test = builder.build_with_remote_and_local_env(&server).await?;
++    let test = builder.build_with_environment(&server, test_env).await?;
+     wait_for_mcp_server(&test.codex, RMCP_SERVER).await?;
+ 
+     let responses = mount_sse_sequence(
+diff --git a/codex-rs/core/tests/suite/hooks_plugin_policy_refresh.rs b/codex-rs/core/tests/suite/hooks_plugin_policy_refresh.rs
+index 4021e964..094df895 100644
+--- a/codex-rs/core/tests/suite/hooks_plugin_policy_refresh.rs
++++ b/codex-rs/core/tests/suite/hooks_plugin_policy_refresh.rs
+@@ -25,6 +25,7 @@ use core_test_support::responses::mount_sse_sequence;
+ use core_test_support::responses::sse;
+ use core_test_support::responses::start_mock_server;
+ use core_test_support::skip_if_no_network;
++use core_test_support::startup::expect_startup;
+ use core_test_support::test_codex::test_codex;
+ use core_test_support::wait_for_event;
+ use core_test_support::wait_for_event_match;
+@@ -124,7 +125,7 @@ async fn native_stop_hook_uses_plugin_policy_refreshed_during_turn() -> Result<(
+         })
+         .build_with_auto_env(&server)
+         .await?;
+-    wait_for_mcp_server(&test.codex, "hook_observer").await?;
++    expect_startup(wait_for_mcp_server(&test.codex, "hook_observer")).await;
+     test.submit_text_turn("finish the enabled baseline turn")
+         .await?;
+     assert_eq!(recorded_apps_tool_calls(&server).await.len(), 1);
+diff --git a/codex-rs/core/tests/suite/mcp_startup_refresh_http_proxy.rs b/codex-rs/core/tests/suite/mcp_startup_refresh_http_proxy.rs
+index 4590ed9b..13f0f305 100644
+--- a/codex-rs/core/tests/suite/mcp_startup_refresh_http_proxy.rs
++++ b/codex-rs/core/tests/suite/mcp_startup_refresh_http_proxy.rs
+@@ -67,12 +67,13 @@ async fn local_mcp_startup_and_refresh_use_configured_http_client() -> Result<()
+         for &key in codex_network_proxy::PROXY_ENV_KEYS {
+             command.env_remove(key);
+         }
++        let no_proxy = super::proxy_test_no_proxy_value();
+         command
+             .env(PROXY_TEST_SUBPROCESS_ENV_VAR, "1")
+             .env("HTTP_PROXY", proxy.uri())
+             .env("http_proxy", proxy.uri())
+-            .env("NO_PROXY", codex_network_proxy::DEFAULT_NO_PROXY_VALUE)
+-            .env("no_proxy", codex_network_proxy::DEFAULT_NO_PROXY_VALUE);
++            .env("NO_PROXY", &no_proxy)
++            .env("no_proxy", no_proxy);
+ 
+         let output = command.output().await?;
+         let requests = proxy
+@@ -248,6 +249,7 @@ async fn skill_mcp_dependency_oauth_uses_configured_http_client() -> Result<()>
+         for &key in codex_network_proxy::PROXY_ENV_KEYS {
+             command.env_remove(key);
+         }
++        let no_proxy = super::proxy_test_no_proxy_value();
+         command
+             .env(PROXY_TEST_SUBPROCESS_ENV_VAR, "1")
+             .env(SKILL_CALLBACK_PORT_ENV_VAR, skill_callback_port.to_string())
+@@ -257,8 +259,8 @@ async fn skill_mcp_dependency_oauth_uses_configured_http_client() -> Result<()>
+             )
+             .env("HTTP_PROXY", proxy.uri())
+             .env("http_proxy", proxy.uri())
+-            .env("NO_PROXY", codex_network_proxy::DEFAULT_NO_PROXY_VALUE)
+-            .env("no_proxy", codex_network_proxy::DEFAULT_NO_PROXY_VALUE);
++            .env("NO_PROXY", &no_proxy)
++            .env("no_proxy", no_proxy);
+ 
+         let output = command.output().await?;
+         let requests = proxy
+diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
+index b95cc011..d3fc4a5f 100644
+--- a/codex-rs/core/tests/suite/mod.rs
++++ b/codex-rs/core/tests/suite/mod.rs
+@@ -36,6 +36,21 @@ pub static CODEX_ALIASES_TEMP_DIR: Option<TestBinaryDispatchGuard> = {
+     })
+ };
+ 
++// Tungstenite does not match NO_PROXY CIDRs, so the remote exec-server needs an exact
++// host exclusion to keep its WebSocket connection out of HTTP-only mock proxies.
++fn proxy_test_no_proxy_value() -> String {
++    let mut no_proxy = codex_network_proxy::DEFAULT_NO_PROXY_VALUE.to_string();
++    if let Some(remote_exec_server_host) = std::env::var("CODEX_TEST_REMOTE_EXEC_SERVER_URL")
++        .ok()
++        .and_then(|value| url::Url::parse(value.trim()).ok())
++        .and_then(|url| url.host_str().map(str::to_owned))
++    {
++        no_proxy.push(',');
++        no_proxy.push_str(&remote_exec_server_host);
++    }
++    no_proxy
++}
++
+ mod abort_lifecycle;
+ #[cfg(not(target_os = "windows"))]
+ mod abort_tasks;
+diff --git a/codex-rs/core/tests/suite/network_approval.rs b/codex-rs/core/tests/suite/network_approval.rs
+index 9bf595e6..4af3b99b 100644
+--- a/codex-rs/core/tests/suite/network_approval.rs
++++ b/codex-rs/core/tests/suite/network_approval.rs
+@@ -230,7 +230,7 @@ async fn guardian_network_approval_preserves_action_and_outcome_routing() -> Res
+         submit_managed_network_turn(
+             &test,
+             prompt,
+-            vec![local(test.config.cwd.clone())],
++            vec![local(test.cwd.path().abs())],
+             ApprovalsReviewer::AutoReview,
+             AskForApproval::OnRequest,
+         )
+@@ -258,7 +258,7 @@ async fn guardian_network_approval_preserves_action_and_outcome_routing() -> Res
+             "trigger": {
+                 "callId": first_call_id,
+                 "command": expected_command,
+-                "cwd": test.config.cwd,
++                "cwd": test.cwd.path().abs(),
+                 "sandboxPermissions": "use_default",
+                 "toolName": "exec_command",
+                 "tty": false,
+@@ -388,7 +388,7 @@ async fn strict_auto_review_routes_network_approval_to_guardian_when_user_review
+     submit_managed_network_turn(
+         &test,
+         "grant turn permissions, then automatically review network access",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -488,7 +488,7 @@ async fn cancelled_guardian_network_review_fails_closed_without_rewriting_turn_s
+     submit_managed_network_turn(
+         &test,
+         marker,
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::AutoReview,
+         AskForApproval::OnRequest,
+     )
+@@ -526,7 +526,7 @@ async fn cancelled_guardian_network_review_fails_closed_without_rewriting_turn_s
+     submit_managed_network_turn(
+         &test,
+         "verify preserved state",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -623,14 +623,14 @@ PY"#
+     submit_managed_network_turn(
+         &test,
+         "explain why the network request fails",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::AutoReview,
+         AskForApproval::OnRequest,
+     )
+     .await?;
+     wait_for_guardian_request(&pending_guardian).await;
+     wait_for_response_request(&parent_poll).await;
+-    fs::write(test.config.cwd.join("disconnect-now"), "close")?;
++    fs::write(test.cwd.path().join("disconnect-now"), "close")?;
+     wait_for_completion_without_network_prompt(&test).await;
+ 
+     let output = parent_final
+@@ -733,7 +733,7 @@ async fn timed_out_guardian_network_review_uses_timeout_outcome_without_user_fal
+     submit_managed_network_turn(
+         &test,
+         "time out the Guardian network review",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::AutoReview,
+         AskForApproval::OnRequest,
+     )
+@@ -889,7 +889,7 @@ async fn background_network_approval_uses_current_review_settings_and_original_e
+     submit_managed_network_turn(
+         &test,
+         "start a background terminal that waits before requesting network access",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -1009,7 +1009,7 @@ async fn background_network_approval_uses_current_review_settings_and_original_e
+             "callId": start_call_id,
+             "toolName": "exec_command",
+             "command": original_command,
+-            "cwd": test.config.cwd,
++            "cwd": test.cwd.path().abs(),
+             "sandboxPermissions": "use_default",
+             "tty": true,
+         })
+@@ -1043,12 +1043,7 @@ async fn background_network_approval_uses_current_review_settings_and_original_e
+     let pwd_output = reviews[2]
+         .function_call_output_text("guardian-pwd")
+         .context("Guardian pwd output")?;
+-    let original_cwd = test
+-        .config
+-        .cwd
+-        .as_path()
+-        .to_str()
+-        .context("UTF-8 original cwd")?;
++    let original_cwd = test.cwd.path().to_str().context("UTF-8 original cwd")?;
+     let current_cwd = current_cwd.to_str().context("UTF-8 current cwd")?;
+     assert!(pwd_output.contains(original_cwd));
+     assert!(!pwd_output.contains(current_cwd));
+@@ -1086,7 +1081,7 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
+ 
+     let server = start_mock_server().await;
+     let test = managed_network_unified_exec_test(&server).await?;
+-    let environments = vec![local(test.config.cwd.clone())];
++    let environments = vec![local(test.cwd.path().abs())];
+ 
+     mount_exec_network_turn(
+         &server,
+@@ -1112,7 +1107,7 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
+     assert_eq!(approval.approval_id.as_deref(), None);
+     let first_approval_call_id = approval.call_id.clone();
+     assert!(!approval.turn_id.is_empty());
+-    assert_eq!(approval.cwd, test.config.cwd.clone().into());
++    assert_eq!(approval.cwd, test.cwd.path().abs().into());
+     assert_eq!(
+         approval.reason.as_deref(),
+         Some("codex-network-test.invalid is not in the allowed_domains")
+@@ -1232,7 +1227,7 @@ async fn user_network_approval_once_session_and_denial_semantics() -> Result<()>
+     submit_managed_network_turn(
+         &test,
+         "a different protocol must prompt and the user abort must stay a user outcome",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -1481,7 +1476,7 @@ async fn allowing_network_policy_amendment_persists_context_and_bypasses_prompt(
+ 
+     let server = start_mock_server().await;
+     let test = managed_network_unified_exec_test(&server).await?;
+-    let environments = vec![local(test.config.cwd.clone())];
++    let environments = vec![local(test.cwd.path().abs())];
+     let first_responses = mount_exec_network_turn(
+         &server,
+         "resp-network-amendment-1",
+@@ -1578,7 +1573,7 @@ async fn denying_network_policy_amendment_persists_and_blocks_request() -> Resul
+     submit_managed_network_turn(
+         &test,
+         "persist a deny rule for this host",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -1624,7 +1619,7 @@ async fn failed_network_policy_amendment_denies_request_and_does_not_approve_hos
+ 
+     let server = start_mock_server().await;
+     let test = managed_network_unified_exec_test(&server).await?;
+-    let environments = vec![local(test.config.cwd.clone())];
++    let environments = vec![local(test.cwd.path().abs())];
+     let first_responses = mount_exec_network_turn(
+         &server,
+         "resp-network-failed-amendment-1",
+@@ -1711,9 +1706,9 @@ async fn unattributed_network_request_uses_active_turn_environment_fallback(
+         &[]
+     };
+     let test = managed_network_unified_exec_test_with_features(&server, features).await?;
+-    let mut selection = local(test.config.cwd.clone());
++    let mut selection = local(test.cwd.path().abs());
+     if approvals_reviewer == ApprovalsReviewer::User {
+-        let cwd = test.config.cwd.join("late-environment");
++        let cwd = test.cwd.path().abs().join("late-environment");
+         fs::create_dir(&cwd)?;
+         selection = local(cwd);
+         selection.config = EnvironmentConfigState::Pending;
+@@ -1917,7 +1912,7 @@ async fn ambiguous_unattributed_network_request_is_not_assigned_to_active_calls(
+     submit_managed_network_turn(
+         &test,
+         "start two active commands",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::User,
+         AskForApproval::OnRequest,
+     )
+@@ -2179,7 +2174,7 @@ async fn guardian_receives_exact_triggers_for_concurrent_network_requests() -> R
+     submit_managed_network_turn(
+         &test,
+         "run both network requests",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::AutoReview,
+         AskForApproval::OnRequest,
+     )
+@@ -2310,7 +2305,7 @@ async fn guardian_receives_exact_trigger_for_single_network_request() -> Result<
+     submit_managed_network_turn(
+         &test,
+         "run one network request",
+-        vec![local(test.config.cwd.clone())],
++        vec![local(test.cwd.path().abs())],
+         ApprovalsReviewer::AutoReview,
+         AskForApproval::OnRequest,
+     )
+@@ -2447,7 +2442,14 @@ async fn remote_guardian_network_decisions_are_scoped_to_each_request_and_enviro
+                 AskForApproval::OnRequest,
+             )
+             .await?;
+-            let approval = expect_network_approval(&test, REMOTE_ENVIRONMENT_ID).await?;
++            let approval = expect_network_approval_target_with_diagnostics(
++                &test,
++                REMOTE_ENVIRONMENT_ID,
++                NETWORK_TEST_TARGET,
++                NetworkApprovalProtocol::Http,
++                Some((&responses, session_call_id)),
++            )
++            .await?;
+             test.codex
+                 .submit(Op::ExecApproval {
+                     id: approval.effective_approval_id(),
+@@ -3034,7 +3036,10 @@ async fn escalated_owner_network_terminal_requires_stdin_approval(
+                 launch_call.to_string(),
+                 Some(stdin_call.to_string()),
+             ),
+-        ]
++        ],
++        "launch output: {:?}; stdin output: {:?}",
++        network_tool_output_diagnostic(&responses, launch_call),
++        network_tool_output_diagnostic(&responses, stdin_call),
+     );
+     let output = responses
+         .function_call_output_text(stdin_call)
+@@ -3096,6 +3101,7 @@ async fn approved_network_host_for_one_environment_still_prompts_in_another() ->
+         AskForApproval::UnlessTrusted,
+     )
+     .await?;
++    approve_network_fetch_command(&test, LOCAL_ENVIRONMENT_ID, "exec-network-local").await?;
+     let approval = expect_network_approval(&test, LOCAL_ENVIRONMENT_ID).await?;
+     test.codex
+         .submit(Op::ExecApproval {
+@@ -3121,6 +3127,7 @@ async fn approved_network_host_for_one_environment_still_prompts_in_another() ->
+         AskForApproval::UnlessTrusted,
+     )
+     .await?;
++    approve_network_fetch_command(&test, REMOTE_ENVIRONMENT_ID, "exec-network-remote").await?;
+     let approval = expect_network_approval(&test, REMOTE_ENVIRONMENT_ID).await?;
+     let rejection = "approval request failed because the client disconnected";
+     test.codex
+@@ -3436,9 +3443,9 @@ async fn submit_managed_network_turn(
+         /*exclude_slash_tmp*/ false,
+     );
+     let (sandbox_policy, permission_profile) =
+-        turn_permission_fields(permission_profile, test.config.cwd.as_path());
++        turn_permission_fields(permission_profile, test.cwd.path());
+     let turn_environment_selections =
+-        TurnEnvironmentSelections::new(test.config.cwd.clone(), environments);
++        TurnEnvironmentSelections::new(test.cwd.path().abs(), environments);
+ 
+     test.codex
+         .start_or_steer_turn(
+@@ -3582,6 +3589,51 @@ fn guardian_network_actions(responses: &ResponseMock) -> Result<Vec<Value>> {
+         .collect()
+ }
+ 
++fn network_tool_output_diagnostic(responses: &ResponseMock, call_id: &str) -> Option<String> {
++    responses
++        .function_call_output_text(call_id)
++        .map(|output| output.chars().take(2_048).collect())
++}
++
++async fn approve_network_fetch_command(
++    test: &TestCodex,
++    environment_id: &str,
++    call_id: &str,
++) -> Result<()> {
++    let event = wait_for_event(&test.codex, |event| {
++        matches!(
++            event,
++            EventMsg::ExecApprovalRequest(_) | EventMsg::TurnComplete(_)
++        )
++    })
++    .await;
++    let EventMsg::ExecApprovalRequest(approval) = event else {
++        panic!("expected command approval before network access, got {event:?}");
++    };
++    assert_eq!(approval.kind, ExecApprovalKind::Command);
++    assert_eq!(approval.call_id, call_id);
++    assert_eq!(approval.environment_id.as_deref(), Some(environment_id));
++    assert_eq!(approval.network_approval_context, None);
++    let args = network_fetch_args(environment_id);
++    let command = args["cmd"].as_str().context("network fetch command")?;
++    let expected_command = if environment_id == LOCAL_ENVIRONMENT_ID {
++        get_shell(ShellType::Sh)
++            .context("expected local sh")?
++            .derive_exec_args(command, /*use_login_shell*/ false)
++    } else {
++        vec!["/bin/sh".to_string(), "-c".to_string(), command.to_string()]
++    };
++    assert_eq!(approval.command, expected_command);
++    test.codex
++        .submit(Op::ExecApproval {
++            id: approval.effective_approval_id(),
++            turn_id: Some(approval.turn_id),
++            decision: ReviewDecision::Approved,
++        })
++        .await?;
++    Ok(())
++}
++
+ async fn expect_network_approval(
+     test: &TestCodex,
+     expected_environment_id: &str,
+@@ -3600,6 +3652,23 @@ async fn expect_network_approval_target(
+     expected_environment_id: &str,
+     expected_target: &str,
+     expected_protocol: NetworkApprovalProtocol,
++) -> Result<ExecApprovalRequestEvent> {
++    expect_network_approval_target_with_diagnostics(
++        test,
++        expected_environment_id,
++        expected_target,
++        expected_protocol,
++        None,
++    )
++    .await
++}
++
++async fn expect_network_approval_target_with_diagnostics(
++    test: &TestCodex,
++    expected_environment_id: &str,
++    expected_target: &str,
++    expected_protocol: NetworkApprovalProtocol,
++    diagnostic_output: Option<(&ResponseMock, &str)>,
+ ) -> Result<ExecApprovalRequestEvent> {
+     let deadline = std::time::Instant::now() + Duration::from_secs(30);
+     let remaining = deadline
+@@ -3636,7 +3705,10 @@ async fn expect_network_approval_target(
+             Ok(approval)
+         }
+         EventMsg::TurnComplete(_) => {
+-            panic!("expected network approval request before completion");
++            let output = diagnostic_output.and_then(|(responses, call_id)| {
++                network_tool_output_diagnostic(responses, call_id)
++            });
++            panic!("expected network approval request before completion; tool output: {output:?}");
+         }
+         other => panic!("unexpected event: {other:?}"),
+     }
+diff --git a/codex-rs/core/tests/suite/remote_env.rs b/codex-rs/core/tests/suite/remote_env.rs
+index e945e9fd..a6fb221e 100644
+--- a/codex-rs/core/tests/suite/remote_env.rs
++++ b/codex-rs/core/tests/suite/remote_env.rs
+@@ -225,7 +225,7 @@ fn test_codex_with_wait_for_environment() -> TestCodexBuilder {
+ }
+ 
+ async fn unified_exec_test(server: &wiremock::MockServer) -> Result<TestCodex> {
+-    let mut builder = test_codex();
++    let mut builder = test_codex().with_separate_host_cwd();
+     builder.build_with_remote_and_local_env(server).await
+ }
+ 
+@@ -3249,6 +3249,7 @@ async fn deferred_executor_guardian_uses_newly_ready_step_environment(
+     )
+     .await;
+     let mut builder = test_codex()
++        .with_separate_host_cwd()
+         .with_exec_server_url(format!("ws://{}", listener.local_addr()?))
+         .with_config(move |config| {
+             config.project_doc_max_bytes = 0;
+@@ -3276,7 +3277,11 @@ async fn deferred_executor_guardian_uses_newly_ready_step_environment(
+     ));
+     let test = expect_startup(builder.build_with_remote_and_local_env(&server)).await;
+     if tool == "mcp_elicitation" {
+-        core_test_support::wait_for_mcp_server(&test.codex, "cua_repl").await?;
++        expect_startup(core_test_support::wait_for_mcp_server(
++            &test.codex,
++            "cua_repl",
++        ))
++        .await;
+     }
+     let remote_cwd = test.cwd.path().join("guardian-remote").abs();
+     let local_cwd = test.cwd.path().abs();
+@@ -3961,7 +3966,11 @@ async fn remote_exec_materializes_target_roots_before_sandbox_selection() -> Res
+                 ..Default::default()
+             }),
+         )
+-        .await?;
++        .await
++        .unwrap_or_else(|error| {
++            let diagnostic = format!("{error:#}").chars().take(4_096).collect::<String>();
++            panic!("start remote target-root turn failed: {diagnostic}");
++        });
+     wait_for_event(&test.codex, |event| {
+         matches!(event, EventMsg::TurnComplete(_))
+     })
+@@ -4535,7 +4544,7 @@ async fn apply_patch_intercepted_exec_command_routes_to_selected_remote_environm
+         format!("*** Begin Patch\n*** Add File: {file_name}\n+patched remote exec\n*** End Patch");
+     let command = format!("apply_patch <<'EOF'\n{patch}\nEOF\n");
+     let call_id = "apply-patch-remote-exec";
+-    mount_sse_sequence(
++    let response_mock = mount_sse_sequence(
+         &server,
+         vec![
+             sse(vec![
+@@ -4575,7 +4584,11 @@ async fn apply_patch_intercepted_exec_command_routes_to_selected_remote_environm
+             },
+         ]),
+     )
+-    .await?;
++    .await
++    .unwrap_or_else(|error| {
++        let diagnostic = format!("{error:#}").chars().take(4_096).collect::<String>();
++        panic!("start intercepted remote apply_patch turn failed: {diagnostic}");
++    });
+ 
+     let remote_contents = test
+         .fs()
+@@ -4584,7 +4597,21 @@ async fn apply_patch_intercepted_exec_command_routes_to_selected_remote_environm
+             Default::default(),
+             /*sandbox*/ None,
+         )
+-        .await?;
++        .await
++        .unwrap_or_else(|error| {
++            let requests = response_mock.requests();
++            let tool_output = requests.iter().rev().find_map(|request| {
++                request.function_call_output_content_and_success(call_id)
++            });
++            let diagnostic = format!("{error:#}; tool_output={tool_output:?}")
++                .chars()
++                .take(4_096)
++                .collect::<String>();
++            panic!(
++                "read intercepted remote apply_patch result failed after {} model requests: {diagnostic}",
++                requests.len()
++            );
++        });
+     assert_eq!(remote_contents, "patched remote exec\n");
+     assert!(
+         !local_cwd.path().join(file_name).exists(),
+diff --git a/codex-rs/core/tests/suite/responses_system_proxy.rs b/codex-rs/core/tests/suite/responses_system_proxy.rs
+index 2581f8c6..3b797c00 100644
+--- a/codex-rs/core/tests/suite/responses_system_proxy.rs
++++ b/codex-rs/core/tests/suite/responses_system_proxy.rs
+@@ -77,14 +77,15 @@ async fn regular_responses_turn_honors_respect_system_proxy() -> Result<()> {
+         for &key in codex_network_proxy::PROXY_ENV_KEYS {
+             command.env_remove(key);
+         }
++        let no_proxy = super::proxy_test_no_proxy_value();
+         // Keep the test harness's loopback HTTP and WebSocket traffic out of the proxy. The fake
+         // API origin is not covered, so the inference request must still traverse the proxy.
+         command
+             .env(SYSTEM_PROXY_TEST_SUBPROCESS_ENV_VAR, "1")
+             .env("HTTP_PROXY", &proxy_url)
+             .env("http_proxy", proxy_url)
+-            .env("NO_PROXY", codex_network_proxy::DEFAULT_NO_PROXY_VALUE)
+-            .env("no_proxy", codex_network_proxy::DEFAULT_NO_PROXY_VALUE);
++            .env("NO_PROXY", &no_proxy)
++            .env("no_proxy", no_proxy);
+ 
+         let output = command.output().await?;
+         if !output.status.success() {
+diff --git a/codex-rs/core/tests/suite/scenarios.rs b/codex-rs/core/tests/suite/scenarios.rs
+index b05a136d..789d58f6 100644
+--- a/codex-rs/core/tests/suite/scenarios.rs
++++ b/codex-rs/core/tests/suite/scenarios.rs
+@@ -1922,11 +1922,18 @@ async fn guardian_code_mode_messaging_request_history() -> Result<()> {
+             r#"(?m)^(\s*"environment_id": )"(?:local|remote)""#,
+             "$1\"<ENVIRONMENT>\"",
+         ),
++        (
++            r#"(The active permission profile for environment )"(?:local|remote)""#,
++            "$1\"<ENVIRONMENT>\"",
++        ),
+         (
+             r#"(For this action on environment )"(?:local|remote)","#,
+             "$1\"<ENVIRONMENT>\",",
+         ),
+-        (r#"(?m)^(\s*"cwd": )"[^"]*""#, "$1\"<CWD>\""),
++        (
++            r#"(?m)^(\s*"cwd": )"[^"]*"(,?)(?: \[hash=[0-9a-f]{16}\])?$"#,
++            "$1\"<CWD>\"$2",
++        ),
+         (
+             r#""command": \[\s*(?:"[^"]*",\s*)*"true"\s*\]"#,
+             "\"command\": [\"<SHELL>\", \"true\"]",
+diff --git a/codex-rs/core/tests/suite/scenarios_incremental_tools.rs b/codex-rs/core/tests/suite/scenarios_incremental_tools.rs
+index 16e7f58c..35c0d7c1 100644
+--- a/codex-rs/core/tests/suite/scenarios_incremental_tools.rs
++++ b/codex-rs/core/tests/suite/scenarios_incremental_tools.rs
+@@ -13,6 +13,7 @@ use core_test_support::responses;
+ use core_test_support::skip_if_no_network;
+ use core_test_support::skip_if_wine_exec;
+ use core_test_support::test_codex::test_codex;
++use core_test_support::test_codex::test_env;
+ use core_test_support::wait_for_mcp_server;
+ use serde_json::json;
+ use test_case::test_case;
+@@ -123,10 +124,13 @@ async fn tool_removal_appends_a_standalone_notice_without_rewriting_history(
+     let server = responses::start_mock_server().await;
+     let command = remote_aware_stdio_server_bin()?;
+     let environment_id = remote_aware_environment_id();
++    let test_env = test_env().await?;
++    let server_cwd = test_env.cwd().clone();
+     let server_config = |enabled_tools: &[&str], instructions: &str| {
+         serde_json::from_value(json!({
+             "command": command,
+             "environment_id": environment_id,
++            "cwd": server_cwd,
+             "env": {"MCP_TEST_SERVER_INSTRUCTIONS": instructions},
+             "enabled_tools": enabled_tools,
+             "default_tools_approval_mode": "approve",
+@@ -178,7 +182,7 @@ async fn tool_removal_appends_a_standalone_notice_without_rewriting_history(
+                 )]))
+                 .expect("set MCP fixture");
+         })
+-        .build_with_auto_env(&server)
++        .build_with_environment(&server, test_env)
+         .await?;
+     wait_for_mcp_server(&test.codex, "echo_service").await?;
+     let response_count = if catalog_messages { 11 } else { 7 };
+diff --git a/codex-rs/core/tests/suite/skills.rs b/codex-rs/core/tests/suite/skills.rs
+index 35e407b3..a6305d82 100644
+--- a/codex-rs/core/tests/suite/skills.rs
++++ b/codex-rs/core/tests/suite/skills.rs
+@@ -36,7 +36,6 @@ use core_test_support::responses::start_mock_server;
+ use core_test_support::skip_if_no_network;
+ use core_test_support::skip_if_remote;
+ use core_test_support::skip_if_wine_exec;
+-use core_test_support::test_codex::local_requests;
+ use core_test_support::test_codex::test_codex;
+ use core_test_support::test_codex::turn_permission_fields;
+ use pretty_assertions::assert_eq;
+@@ -148,7 +147,10 @@ async fn user_turn_includes_skill_instructions() -> Result<()> {
+                 },
+             ])
+             .with_thread_settings(ThreadSettingsOverrides {
+-                environments: Some(local_requests(test.config.cwd.clone())),
++                environments: Some(codex_protocol::protocol::TurnEnvironmentRequests::new(
++                    test.config.cwd.clone(),
++                    vec![test.executor_environment().request()],
++                )),
+                 approval_policy: Some(AskForApproval::Never),
+                 sandbox_policy: Some(sandbox_policy),
+                 permission_profile,
+diff --git a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_code_mode_messaging.snap b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_code_mode_messaging.snap
+index 0cbd8d08..11a79f31 100644
+--- a/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_code_mode_messaging.snap
++++ b/codex-rs/core/tests/suite/snapshots/all__suite__scenarios__guardian_code_mode_messaging.snap
+@@ -128,7 +128,7 @@ Scenario: A root uses Code Mode to send a confirmation and receives a real user
+     [11]
+         >>> PARENT TURN PERMISSION CONTEXT START
+ 
+-    [12] The active permission profile for environment "local" has no explicit denied-read paths/globs.
++    [12] The active permission profile for environment "<ENVIRONMENT>" has no explicit denied-read paths/globs.
+ 
+     [13] >>> PARENT TURN PERMISSION CONTEXT END
+ 
+@@ -199,7 +199,7 @@ Scenario: A root uses Code Mode to send a confirmation and receives a real user
+     [04]
+         >>> PARENT TURN PERMISSION CONTEXT START
+ 
+-    [05] The active permission profile for environment "local" has no explicit denied-read paths/globs.
++    [05] The active permission profile for environment "<ENVIRONMENT>" has no explicit denied-read paths/globs.
+ 
+     [06] >>> PARENT TURN PERMISSION CONTEXT END
+ 
+diff --git a/codex-rs/core/tests/suite/tool_lifecycle.rs b/codex-rs/core/tests/suite/tool_lifecycle.rs
+index 645a71dd..201fa89a 100644
+--- a/codex-rs/core/tests/suite/tool_lifecycle.rs
++++ b/codex-rs/core/tests/suite/tool_lifecycle.rs
+@@ -610,6 +610,7 @@ async fn tool_start_receives_rewritten_payload_and_post_hook_history() -> Result
+     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
+     extensions.tool_lifecycle_contributor(recorder.clone());
+     let test = test_codex()
++        .with_separate_host_cwd()
+         .with_extensions(Arc::new(extensions.build()))
+         .with_pre_build_hook(move |home| {
+             write_pre_tool_hook(home, "^update_plan$", &hook_output)
+@@ -701,6 +702,7 @@ async fn tool_start_is_not_called_when_pre_tool_hook_prevents_execution() -> Res
+         let mut extensions = ExtensionRegistryBuilder::<Config>::new();
+         extensions.tool_lifecycle_contributor(recorder.clone());
+         let test = test_codex()
++            .with_separate_host_cwd()
+             .with_extensions(Arc::new(extensions.build()))
+             .with_pre_build_hook(move |home| {
+                 write_pre_tool_hook(home, matcher, &hook_output)
+diff --git a/codex-rs/core/tests/suite/unified_exec.rs b/codex-rs/core/tests/suite/unified_exec.rs
+index b6f99461..d04557ad 100644
+--- a/codex-rs/core/tests/suite/unified_exec.rs
++++ b/codex-rs/core/tests/suite/unified_exec.rs
+@@ -1451,7 +1451,8 @@ allow_local_binding = true
+             #[cfg(windows)]
+             config.set_windows_sandbox_enabled(/*value*/ true);
+         });
+-    let test = builder.build_with_auto_env(server).await?;
++    // The limited-MITM proxy is host-managed; the remote executor rejects MITM.
++    let test = builder.build(server).await?;
+     assert!(
+         test.config.permissions.network.is_some(),
+         "expected managed network proxy config to be present"
+@@ -3476,7 +3477,8 @@ shell_tool = true
+ "#,
+         ),
+     );
+-    let test = builder.build_with_auto_env(&server).await?;
++    // PID-file and process-liveness assertions inspect the host process namespace.
++    let test = builder.build(&server).await?;
+     let temp_dir = tempfile::tempdir()?;
+     let pid_path = temp_dir.path().join("managed_one_shot_pid");
+     let command = format!(
+diff --git a/codex-rs/ext/queue/tests/queue_service.rs b/codex-rs/ext/queue/tests/queue_service.rs
+index 305b8ed6..4cd5eb07 100644
+--- a/codex-rs/ext/queue/tests/queue_service.rs
++++ b/codex-rs/ext/queue/tests/queue_service.rs
+@@ -737,6 +737,7 @@ async fn rejected_queue_messages_are_consumed_without_retrying_or_blocking_follo
+     .await;
+     let (installed, extensions) = registered_queue_extensions();
+     let test = test_codex()
++        .with_separate_host_cwd()
+         .with_extensions(extensions)
+         .with_pre_build_hook(write_rejecting_prompt_hook)
+         .with_config(trust_discovered_hooks)
+@@ -793,6 +794,7 @@ async fn explicitly_started_rejected_queue_messages_are_consumed() -> anyhow::Re
+     let responses =
+         responses::mount_sse_once(&server, responses::sse_completed("unexpected-turn")).await;
+     let test = test_codex()
++        .with_separate_host_cwd()
+         .with_pre_build_hook(write_rejecting_prompt_hook)
+         .with_config(trust_discovered_hooks)
+         .with_config(|config| config.include_environment_context = false)
+diff --git a/scripts/test-remote-env.sh b/scripts/test-remote-env.sh
+index 7fcdd1ca..2eee963b 100755
+--- a/scripts/test-remote-env.sh
++++ b/scripts/test-remote-env.sh
+@@ -59,7 +59,7 @@ setup_remote_env() {
+     --privileged \
+     --security-opt seccomp=unconfined \
+     ubuntu:24.04 sleep infinity >/dev/null
+-  if ! docker exec "${container_name}" sh -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 zsh bubblewrap"; then
++  if ! docker exec "${container_name}" sh -lc "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 zsh bubblewrap git"; then
+     docker rm -f "${container_name}" >/dev/null 2>&1 || true
+     return 1
+   fi
