@@ -2798,11 +2798,14 @@ this result. This fixture change does not address MXC invalid-drive failures.
 
 `zzzz-0083-local-stdio-mcp-fixtures.patch` explicitly registers local runtime
 capability for the host Python stdio MCP fixtures used by guardian elicitation,
-subagent elicitation and user verification tests. Seven setup sites retain the
-selected remote executor through the existing mixed remote/local builder. The
-interruption fixture uses a local workspace because its turn explicitly selects
-`local_requests(test.config.cwd)`. The browser-auth scenario delegates to the
-repaired subagent setup. Runtime permissions, assertions and skips are unchanged.
+subagent elicitation and user verification tests. Setup retains the selected
+remote executor through the existing mixed remote/local builder and supplies
+the test-owned Codex home as an existing host cwd for local stdio startup.
+The interruption fixture uses a local workspace because its turn explicitly
+selects `local_requests(test.config.cwd)`. The yielded-cell fixture enables
+the upstream code-mode host so its custom tool calls exercise the intended
+runtime. The browser-auth scenario delegates to the repaired subagent setup.
+Runtime permissions, assertions and skips are unchanged.
 
 The standalone base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
