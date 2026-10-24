@@ -192,3 +192,117 @@ expect_rejected 'incomplete cached runtime' env TOOLING_RUNTIME_CACHE_HIT=true b
 grep -Fq 'runtime is incomplete' "$fixture/stderr"
 grep -Fq 'refusing to build' "$fixture/stderr"
 echo 'PASS 9: incomplete cached runtime refuses rebuilding'
+
+# The same driver functions run in hosted CI; controlled command executables stand
+# only at its external process boundary. They do not claim native test coverage.
+if extract_step 'Validate current release contention mode' > "$fixture/contention-mode.sh"; then
+  :
+else
+  echo 'FAIL: current release contention mode boundary is missing' >&2
+  exit 1
+fi
+for shard in 1 2; do
+  expect_ok "current contention shard $shard" env CONTENTION_CONTROLS=true ARCHIVE_SHARD="$shard" TEST_FILTER='all()' bash "$fixture/contention-mode.sh"
+  expect_ok "authenticated contention shard $shard" env CONTENTION_CONTROLS=true ARCHIVE_SHARD="$shard" bash "$fixture/auth.sh"
+done
+for override in ARCHIVE_SHARD=4 SOURCE_RUN=40038389605 ORIGINAL_SOURCE_POLICY=true RUNNER_ARCH=ARM64 PRESERVE_ARCHIVE_POLICY=false TEST_FILTER=unrelated; do
+  expect_rejected "contention $override" env CONTENTION_CONTROLS=true ARCHIVE_SHARD=1 TEST_FILTER='all()' "$override" bash "$fixture/contention-mode.sh"
+done
+expect_rejected 'foreign source cannot request current controls' env CONTENTION_CONTROLS=true SOURCE_RUN=40038389605 ARCHIVE_SHARD=1 bash "$fixture/auth.sh"
+for mutation in '.["40093103558"].head_sha = ("0" * 40)' '.["12563197007"].digest = ("sha256:" + ("0" * 64))'; do
+  jq "$mutation" "$fixture/valid.json" > "$FIXTURE_METADATA"
+  expect_rejected "contention $mutation" env CONTENTION_CONTROLS=true ARCHIVE_SHARD=1 bash "$fixture/auth.sh"
+done
+cp "$fixture/valid.json" "$FIXTURE_METADATA"
+echo 'PASS 10: only explicit current Intel shard1/2 contention mode authenticates'
+
+source "$script_dir/diagnose-intel-contention.sh"
+required='[["codex-core","original_timeout"]]'
+for count in 1 2 5498 5457; do
+  jq -n --argjson count "$count" '
+    {"rust-suites":{"core":{"package-name":"codex-core",testcases:
+      ([range($count) | {key:(if . == 0 then "original_timeout" else "filler_\(.)" end),
+        value:{"filter-match":{status:"matches"},ignored:false}}] | from_entries)}}}
+  ' > "$fixture/selection.json"
+  expect_ok "full shard count $count" verify_selection "$fixture/selection.json" "$count" "$required"
+  expect_rejected 'wrong count' verify_selection "$fixture/selection.json" "$((count-1))" "$required"
+  expect_rejected 'wrong membership' verify_selection "$fixture/selection.json" "$count" '[["codex-feedback","missing"]]'
+  jq '."rust-suites".core.testcases.original_timeout.ignored=true' "$fixture/selection.json" > "$fixture/ignored.json"
+  expect_rejected 'ignored timeout test' verify_selection "$fixture/ignored.json" "$count" "$required"
+done
+echo 'PASS 11: current full-shard count and nonignored membership are required'
+
+mkdir "$fixture/phase-bin"
+real_tee=$(command -v tee)
+export PHASE_FIXTURE="$fixture" REAL_TEE="$real_tee"
+cat > "$fixture/phase-bin/cargo" <<'CARGO'
+#!/usr/bin/env bash
+set -euo pipefail
+index=$(cat "$PHASE_FIXTURE/phase-index")
+index=$((index+1))
+printf '%s\n' "$index" > "$PHASE_FIXTURE/phase-index"
+printf '%s\n' "$*" >> "$PHASE_FIXTURE/phase-args"
+printf 'controlled external nextest phase %s\n' "$index"
+sleep 0.05
+IFS=, read -r -a statuses <<< "$PHASE_STATUSES"
+exit "${statuses[index-1]}"
+CARGO
+cat > "$fixture/phase-bin/tee" <<'TEE'
+#!/usr/bin/env bash
+set -euo pipefail
+"$REAL_TEE" "$@"
+if [[ "${TEE_FAIL_INDEX:-0}" == "$(cat "$PHASE_FIXTURE/phase-index")" ]]; then exit 24; fi
+TEE
+# Fixture telemetry includes an absolute executable path but no arguments.
+cat > "$fixture/phase-bin/ps" <<'PS'
+#!/usr/bin/env bash
+printf '123 25.0 1024 /private/example/fixture-process\n'
+PS
+for name in sysctl top vm_stat memory_pressure; do
+  printf '#!/usr/bin/env bash\nprintf "controlled telemetry\\n"\n' > "$fixture/phase-bin/$name"
+done
+chmod +x "$fixture/phase-bin/"*
+export PATH="$fixture/phase-bin:$PATH"
+for scenario in '0,0,0:0' '0,100,0:100' '7,100,9:100' '7,0,0:7' '0,0,9:9'; do
+  statuses=${scenario%:*}
+  expected=${scenario##*:}
+  printf '0\n' > "$fixture/phase-index"
+  : > "$fixture/phase-args"
+  export PHASE_STATUSES="$statuses" TEE_FAIL_INDEX=0
+  result=0
+  run_phases "$fixture" "$fixture/workspace" 2 exact-filter > "$fixture/phase-output" 2>&1 || result=$?
+  [[ "$result" == "$expected" ]]
+  [[ "$(cat "$fixture/phase-index")" == 3 ]]
+  [[ "$(wc -l < "$fixture/phase-args" | tr -d ' ')" == 3 ]]
+  grep -F -- '--test-threads 1 -E exact-filter --retries 0' "$fixture/phase-args" > /dev/null
+  full_args=$(sed -n '2p' "$fixture/phase-args")
+  [[ "$full_args" == *'--partition hash:2/4 --retries 0'* ]]
+  [[ "$full_args" != *' -E '* && "$full_args" != *'--test-threads'* ]]
+  if kill -0 "$(cat "$fixture/sampler.pid")" 2>/dev/null; then
+    echo 'Sampler survives phase completion' >&2; exit 1
+  fi
+done
+echo 'PASS 12: all phases execute, full-shard status wins, serial failures propagate, sampler is reaped'
+
+printf '0\n' > "$fixture/phase-index"
+export PHASE_STATUSES=0,0,0 TEE_FAIL_INDEX=2
+result=0
+run_phases "$fixture" "$fixture/workspace" 1 exact-filter > "$fixture/phase-output" 2>&1 || result=$?
+[[ "$result" == 24 && "$(cat "$fixture/phase-index")" == 3 ]]
+grep -Fxq 'nextest=0' "$fixture/original-workload.status"
+grep -Fxq 'tee=24' "$fixture/original-workload.status"
+echo 'PASS 13: tee failure propagates without losing the after-control'
+
+sample_resources > "$fixture/sampler-output" 2>&1 &
+sampler_pid=$!
+# Allow its first sample to finish and enter the cancellable sleep.
+sleep 0.1
+sleeper_pid=$(pgrep -P "$sampler_pid" sleep)
+kill "$sampler_pid"
+wait "$sampler_pid"
+if kill -0 "$sleeper_pid" 2>/dev/null; then
+  echo 'Sampler sleep child survives cancellation' >&2; exit 1
+fi
+grep -Fxq '123 25.0 1024 fixture-process' "$fixture/sampler-output"
+if grep -F '/private/example' "$fixture/sampler-output"; then exit 1; fi
+echo 'PASS 14: sampler cancellation reaps its sleep child and logs only command basename'

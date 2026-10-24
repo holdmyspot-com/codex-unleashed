@@ -25,6 +25,7 @@ on:
           - arm-daemon-hashing
           - macos-x64-original-timeouts
           - macos-x64-release-timeouts
+          - macos-x64-release-shard-controls
           - macos-x64-current-timeouts
           - macos-x64-current-shards
           - macos-tui-timeouts
@@ -584,6 +585,27 @@ jobs:
       source-run: ${{ inputs.source-run }}
       preserve-archive-policy: true
       archive-shard: ${{ matrix.shard }}
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: 'all()'
+
+  macos-x64-release-shard-controls:
+    if: inputs.focus == 'macos-x64-release-shard-controls'
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1', '2']
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    secrets: inherit
+    with:
+      source-run: '40093103558'
+      preserve-archive-policy: true
+      contention-controls: true
+      archive-shard: ${{ matrix.shard }}
+      upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
       runner: macos-15-intel
       artifact-id: macos-x64
       test-filter: 'all()'

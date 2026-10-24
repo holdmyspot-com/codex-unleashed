@@ -18,6 +18,10 @@ on:
         description: Restore the current archive's exact driver and default nextest policy without rebuilding.
         type: boolean
         default: false
+      contention-controls:
+        description: Sandwich current release shard 1 or 2 between same-host serial controls.
+        type: boolean
+        default: false
       archive-shard:
         description: Restore original Intel hash shard 1 or 4 of 4 with default concurrency and resource evidence.
         type: string
@@ -43,13 +47,15 @@ jobs:
   archived-tests:
     name: Diagnose existing binaries without compiling Codex
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 60
+    # Original full shard test stages take 28m03s and 21m04s; allow acquisition plus controls.
+    timeout-minutes: ${{ inputs.contention-controls && 75 || 60 }}
     env:
       GH_TOKEN: ${{ github.token }}
       ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
       ARM_LAUNCH_CONTROLS: ${{ inputs.arm-launch-controls }}
       PRESERVE_ARCHIVE_POLICY: ${{ inputs.preserve-archive-policy }}
       ARCHIVE_SHARD: ${{ inputs.archive-shard }}
+      CONTENTION_CONTROLS: ${{ inputs.contention-controls }}
       ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
@@ -59,13 +65,39 @@ jobs:
       RUST_MIN_STACK: "8388608"
     steps:
       - name: Validate the original shard workload mode
-        if: inputs.archive-shard != ''
+        if: inputs.archive-shard != '' && !inputs.contention-controls
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ORIGINAL_SOURCE_POLICY" == false && "$ARM_LAUNCH_CONTROLS" == false ]]
           [[ "$ARCHIVE_SHARD" == 1 || "$ARCHIVE_SHARD" == 4 ]]
           [[ "$TEST_FILTER" == 'all()' ]]
+
+      - name: Validate current release contention mode
+        if: inputs.contention-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" == 40093103558 && "$ARTIFACT_ID" == macos-x64 ]]
+          [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 ]]
+          [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ORIGINAL_SOURCE_POLICY" == false && "$ARM_LAUNCH_CONTROLS" == false ]]
+          [[ "$ARCHIVE_SHARD" == 1 || "$ARCHIVE_SHARD" == 2 ]]
+          [[ "$TEST_FILTER" == 'all()' ]]
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: inputs.contention-controls
+        with:
+          persist-credentials: false
+
+      - name: Stage current release contention driver
+        if: inputs.contention-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          cp .github/scripts/diagnose-intel-contention.sh "$diagnostic_root/contention.sh"
+          shasum -a 256 "$diagnostic_root/contention.sh" > "$diagnostic_root/contention-driver.sha256"
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: inputs.arm-launch-controls
@@ -120,7 +152,12 @@ jobs:
           [[ "$ORIGINAL_SOURCE_POLICY" == false ]]
           [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 && "$ARTIFACT_ID" == macos-x64 ]]
           if [[ "$SOURCE_RUN" == 40093103558 ]]; then
-            [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ARM_LAUNCH_CONTROLS" == false && -z "$ARCHIVE_SHARD" ]]
+            [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ARM_LAUNCH_CONTROLS" == false ]]
+            if [[ "${CONTENTION_CONTROLS:-false}" == true ]]; then
+              [[ "$ARCHIVE_SHARD" == 1 || "$ARCHIVE_SHARD" == 2 ]]
+            else
+              [[ -z "$ARCHIVE_SHARD" ]]
+            fi
             diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
             mkdir -p "$diagnostic_root"
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
@@ -139,6 +176,7 @@ jobs:
               ]' "$diagnostic_root/artifact-12563197007.json" "$diagnostic_root/artifact-12563476183.json"
             printf 'head-sha=%s\narchive-id=12563197007\nnative-id=12563476183\n' "$source_sha" >> "$GITHUB_OUTPUT"
           else
+            [[ "${CONTENTION_CONTROLS:-false}" == false ]]
             [[ "$SOURCE_RUN" == 40038389605 ]]
             diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
             mkdir -p "$diagnostic_root"
@@ -430,7 +468,7 @@ jobs:
       - uses: ./.github/actions/configure-nextest-native-sdk
 
       - name: Verify the current default policy and archived test selection
-        if: inputs.preserve-archive-policy
+        if: inputs.preserve-archive-policy && !inputs.contention-controls
         shell: bash
         env:
           TMPDIR: ${{ runner.temp }}
@@ -525,7 +563,21 @@ jobs:
             printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
           fi
 
+      - name: Run same-host current release contention controls
+        if: inputs.contention-controls
+        timeout-minutes: 50
+        shell: bash
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          shasum -a 256 -c "$diagnostic_root/contention-driver.sha256"
+          cp "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" "$diagnostic_root/original-nextest.toml"
+          bash "$diagnostic_root/contention.sh"
+
       - name: Run the selected archived tests
+        if: ${{ !inputs.contention-controls }}
         id: original_tests
         shell: bash
         env:
@@ -670,6 +722,14 @@ jobs:
           name: archived-tests-${{ inputs.artifact-id }}${{ inputs.archive-shard != '' && format('-shard-{0}', inputs.archive-shard) || '' }}
           path: |
             ${{ runner.temp }}/archived-test-diagnostic/tests.log
+            ${{ runner.temp }}/archived-test-diagnostic/serial-*.log
+            ${{ runner.temp }}/archived-test-diagnostic/original-workload.log
+            ${{ runner.temp }}/archived-test-diagnostic/*.status
+            ${{ runner.temp }}/archived-test-diagnostic/phase-status.txt
+            ${{ runner.temp }}/archived-test-diagnostic/resource-samples.log
+            ${{ runner.temp }}/archived-test-diagnostic/*-selection.json
+            ${{ runner.temp }}/archived-test-diagnostic/contention-provenance.txt
+            ${{ runner.temp }}/archived-test-diagnostic/contention-driver.sha256
             ${{ runner.temp }}/archived-test-diagnostic/arm-launch-controls.json
             ${{ runner.temp }}/archived-test-diagnostic/controls.sha256
             ${{ runner.temp }}/archived-test-diagnostic/writable-fixtures.log
