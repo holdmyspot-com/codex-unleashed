@@ -1,0 +1,39 @@
+From 7a0a92d1477b541304eb185f8fdb4bcb4d492166 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 16:50:51 +0000
+Subject: [PATCH] config: compose AWS-LC TLS and C-standard overlay
+ registrations
+
+The existing queue already registers a TLS overlay, while the standalone
+C-standard correction registers its own override. Bazel needs one override
+for that module. Keep the existing TLS overlay first, append the standard
+overlay, and remove its duplicate registration.
+
+This explicit integration adapter depends on both registrations and follows
+the existing dependency upgrade. It changes no dependency source or overlay
+implementation. Configuration checks preserve every other module byte;
+full queue and native acceptance remain parent gates.
+---
+ MODULE.bazel | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index fd3c8d2..12aa4de 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -176,3 +176,6 @@ single_version_override(
+     patch_strip = 1,
+-    patches = ["//patches:aws_lc_windows_tls.patch"],
++    patches = [
++        "//patches:aws_lc_windows_tls.patch",
++        "//patches:aws_lc_c_standard.patch",
++    ],
+ )
+@@ -1164,7 +1167 @@ rbe_platform_repository(
+ )
+-
+-single_version_override(
+-    module_name = "aws-lc",
+-    patch_strip = 1,
+-    patches = ["//patches:aws_lc_c_standard.patch"],
+-)

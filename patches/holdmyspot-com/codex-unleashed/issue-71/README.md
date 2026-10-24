@@ -227,3 +227,29 @@ does not verify either fixture correction.
 The selected upstream release pins the older dependency versions. Remove the CVE-2026-85046 backport once the selected rusty_v8 release ships a
 V8 version that contains the upstream fix. Remove `abseil_mingw_o_nonblock.patch` once the
 selected Abseil release includes the cctz fix.
+
+## AWS-LC overlay composition
+
+`zzzz-0097-aws-lc-override-integration.patch` combines the queue's AWS-LC TLS
+and C-standard patches in one Bazel module override, with TLS first. It
+changes only the module registration. It requires issue 61's
+`native-aws-lc-windows-tls.patch` and
+`zzzz-0095-aws-lc-single-c-standard.patch`, and follows
+`latest-stable-dependencies.patch`, which updates the original TLS-only
+registration. The adapter depends on this queue context; the C-standard
+correction remains independently applicable to the declared upstream base.
+
+Apply the entire queue with `scripts/apply-patches.sh` to a fresh checkout of
+`rust-v0.163.0` (`83086188ae0614bd882818ff1aa23f3194962012`), then run:
+
+```sh
+just fmt-check
+just bazel-lock-check
+bazel test //tools/aws-lc-standard:standard_tests
+```
+
+The module must contain exactly one AWS-LC override whose patch list contains
+TLS followed by the C-standard correction. Both nested patches must apply to
+the selected AWS-LC release and produce valid Starlark. The action tests must
+retain fatal MSVC warnings and select C11 once. Full native release builds
+remain required; module application and analysis do not prove runtime behavior.

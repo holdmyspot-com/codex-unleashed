@@ -1,0 +1,116 @@
+From e6d5cb83d9975ba399fdb21115c6a05a295c1baf Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 16:25:59 +0000
+Subject: [PATCH] bugfix: avoid conflicting Opus fortification definitions
+
+Opus adds _FORTIFY_SOURCE=2 while the native toolchain already supplies
+_FORTIFY_SOURCE=1. Disable the supported Opus default when explicit C
+compiler flags own that definition, preserving the effective toolchain
+level and the default when no definition is supplied.
+
+Focused command-construction tests fail for all three explicit forms on
+the unmodified recipe and pass after this change. The complete native
+recipe suite passes 18 tests with one platform skip; just fmt-check passes.
+Native release compilation remains an acceptance gate.
+---
+ third_party/voice/build_native.py      |  9 ++++
+ third_party/voice/test_build_native.py | 66 ++++++++++++++++++++++++++
+ 2 files changed, 75 insertions(+)
+
+diff --git a/third_party/voice/build_native.py b/third_party/voice/build_native.py
+index 58d4828..e498377 100644
+--- a/third_party/voice/build_native.py
++++ b/third_party/voice/build_native.py
+@@ -481,6 +481,15 @@ class NativeBuild:
+                 "-DOPUS_BUILD_SHARED_LIBRARY=ON",
+                 "-DOPUS_BUILD_TESTING=OFF",
+                 "-DOPUS_BUILD_PROGRAMS=OFF",
++                *(
++                    ["-DOPUS_FORTIFY_SOURCE=OFF"]
++                    if any(
++                        flag == "-D_FORTIFY_SOURCE"
++                        or flag.startswith("-D_FORTIFY_SOURCE=")
++                        for flag in self.flags["CFLAGS"]
++                    )
++                    else []
++                ),
+                 # Windows ARM64 guarantees NEON; upstream misses its ARM64 spelling.
+                 *(
+                     ["-DOPUS_PRESUME_NEON=ON"]
+diff --git a/third_party/voice/test_build_native.py b/third_party/voice/test_build_native.py
+index 9cd6703..285acea 100644
+--- a/third_party/voice/test_build_native.py
++++ b/third_party/voice/test_build_native.py
+@@ -233,6 +233,72 @@ class NativeBuildTests(unittest.TestCase):
+                 )
+                 self.assertEqual(result.stdout, expected)
+ 
++    @unittest.skipIf(
++        os.name == "nt", "Unix toolchain owns explicit fortification flags"
++    )
++    def test_opus_uses_declared_toolchain_fortification_once(self):
++        for index, flags in enumerate(
++            (
++                ["-O2", "-D_FORTIFY_SOURCE=1"],
++                ["-O2", "-D_FORTIFY_SOURCE=2"],
++                ["-O2", "-D_FORTIFY_SOURCE"],
++            )
++        ):
++            with self.subTest(flags=flags):
++                self.args.output = self.root / f"fortification-{index}"
++                self.args.c_flag = flags
++                build = NativeBuild(self.args, self.environment)
++                with (
++                    patch(
++                        "build_native.prepare_sources",
++                        side_effect=lambda *args: (build.output / "build").mkdir(),
++                    ),
++                    patch.object(build, "cmake") as cmake,
++                    patch.object(build, "meson"),
++                    patch.object(build, "run"),
++                ):
++                    build.build()
++
++                opus_options = next(
++                    call.args[1]
++                    for call in cmake.call_args_list
++                    if call.args[0] == "opus"
++                )
++                self.assertIn("-DOPUS_FORTIFY_SOURCE=OFF", opus_options)
++                self.assertEqual(shlex.split(build.environment["CFLAGS"]), flags)
++
++    @unittest.skipIf(
++        os.name == "nt", "Unix toolchain owns explicit fortification flags"
++    )
++    def test_opus_retains_its_default_fortification_without_toolchain_definition(self):
++        for index, flags in enumerate(([], ["-O2", "-D_FORTIFY_SOURCE_OTHER=1"])):
++            with self.subTest(flags=flags):
++                self.args.output = self.root / f"opus-default-{index}"
++                self.args.c_flag = flags
++                build = NativeBuild(self.args, self.environment)
++                with (
++                    patch(
++                        "build_native.prepare_sources",
++                        side_effect=lambda *args: (build.output / "build").mkdir(),
++                    ),
++                    patch.object(build, "cmake") as cmake,
++                    patch.object(build, "meson"),
++                    patch.object(build, "run"),
++                ):
++                    build.build()
++
++                opus_options = next(
++                    call.args[1]
++                    for call in cmake.call_args_list
++                    if call.args[0] == "opus"
++                )
++                self.assertFalse(
++                    any(
++                        option.startswith("-DOPUS_FORTIFY_SOURCE=")
++                        for option in opus_options
++                    )
++                )
++
+     @unittest.skipIf(os.name == "nt", "Unix install paths; Windows layout is unchanged")
+     def test_cmake_installs_relative_library_paths(self):
+         for argument, tool in (

@@ -1,0 +1,309 @@
+From 7b0a8b2853fc5073f7dc87b585e779ff771cafb3 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 16:32:10 +0000
+Subject: [PATCH] config: select AWS-LC C11 without a conflicting toolchain
+ default
+
+MSVC toolchains add /std:c17 before AWS-LC explicitly selects /std:c11,
+producing D9025 once per C compilation. Register a build-overlay patch
+excluding only the default C standard feature for explicit C11 targets.
+Retain the other target features, C++ options, and warning flags.
+
+Focused real MSVC action analysis fails for crypto and ssl on the base
+with both standards, then passes after the configuration correction.
+An independent control retains the toolchain C17 default. Native Windows
+compilation remains an acceptance gate.
+---
+ MODULE.bazel                            |   6 ++
+ patches/BUILD.bazel                     |   1 +
+ patches/aws_lc_c_standard.patch         | 100 ++++++++++++++++++++++++
+ tools/aws-lc-standard/BUILD.bazel       |  91 +++++++++++++++++++++
+ tools/aws-lc-standard/default.c         |   1 +
+ tools/aws-lc-standard/standard_test.bzl |  41 ++++++++++
+ 6 files changed, 240 insertions(+)
+ create mode 100644 patches/aws_lc_c_standard.patch
+ create mode 100644 tools/aws-lc-standard/BUILD.bazel
+ create mode 100644 tools/aws-lc-standard/default.c
+ create mode 100644 tools/aws-lc-standard/standard_test.bzl
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+index d946666..7eaabd4 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -944,3 +944,9 @@ rbe_platform_repository = use_repo_rule("//:rbe.bzl", "rbe_platform_repository")
+ rbe_platform_repository(
+     name = "rbe_platform",
+ )
++
++single_version_override(
++    module_name = "aws-lc",
++    patch_strip = 1,
++    patches = ["//patches:aws_lc_c_standard.patch"],
++)
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index e442235..a150e85 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -34,4 +34,5 @@ exports_files([
+     "windows-support-native-tools.patch",
+     "xz_windows_stack_args.patch",
+     "zstd-sys_windows_msvc_include_dirs.patch",
++    "aws_lc_c_standard.patch",
+ ])
+diff --git a/patches/aws_lc_c_standard.patch b/patches/aws_lc_c_standard.patch
+new file mode 100644
+index 0000000..daecb1d
+--- /dev/null
++++ b/patches/aws_lc_c_standard.patch
+@@ -0,0 +1,100 @@
++From d3abf6cfb864e40db761d83587531c623f3655d3 Mon Sep 17 00:00:00 2001
++From: Gili Tzabari <cowwoc2020@gmail.com>
++Date: Sat, 24 Oct 2026 16:30:07 +0000
++Subject: [PATCH] config: avoid conflicting C standards in AWS-LC actions
++
++AWS-LC selects C11 explicitly, while modern MSVC toolchains also enable
++their default C17 feature. Exclude that default for targets owning a C11
++selection, retaining their other features and C++ options.
++---
++ BUILD.bazel | 14 +++++++++++++-
++ 1 file changed, 13 insertions(+), 1 deletion(-)
++
++diff --git a/BUILD.bazel b/BUILD.bazel
++index 58cac9f..202fd2c 100755
++--- a/BUILD.bazel
+++++ b/BUILD.bazel
++@@ -31,6 +31,10 @@ BORINGSSL_CONLYOPTS = select({
++     "//conditions:default": ["-std=c11"],
++ })
++
+++# Explicit C11 targets exclude the toolchain default, such as MSVC C17,
+++# so each C compilation receives one standard flag.
+++BORINGSSL_C_FEATURES = ["-default_c_std"]
+++
++ BORINGSSL_CXXOPTS = select({
++     "@platforms//os:windows": [],
++     "//conditions:default": [
++@@ -228,7 +232,7 @@ cc_library(
++         ],
++     }) + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
++-    features = ["-opt"],
+++    features = ["-opt"] + BORINGSSL_C_FEATURES,
++     includes = [
++         "include",
++         "third_party/jitterentropy/jitterentropy-library",
++@@ -504,6 +508,7 @@ cc_library(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     implementation_deps = [
++         ":jitterentropy",
++     ],
++@@ -567,6 +572,7 @@ cc_library(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     includes = ["include"],
++     visibility = ["//visibility:public"],
++     deps = [
++@@ -587,6 +593,7 @@ cc_binary(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = COMMON_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     includes = [
++         "include",
++         "tool",
++@@ -615,6 +622,7 @@ cc_library(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     includes = ["include"],
++     local_defines = ["BORINGSSL_USE_BAZEL_RUNFILES"],
++     deps = [
++@@ -637,6 +645,7 @@ cc_library(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     includes = ["crypto/test"],
++     deps = [
++         ":crypto_test_support",
++@@ -764,6 +773,7 @@ cc_test(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + ["-DAWS_LC_TEST_ENV"] + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     linkstatic = True,
++     shard_count = 30,
++@@ -782,6 +792,7 @@ cc_test(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     deps = [
++         ":crypto",
++@@ -813,6 +824,7 @@ cc_test(
++     conlyopts = BORINGSSL_CONLYOPTS,
++     copts = TEST_COPTS + BORINGSSL_COPTS,
++     cxxopts = BORINGSSL_CXXOPTS,
+++    features = BORINGSSL_C_FEATURES,
++     data = CRYPTO_TEST_DATA,
++     linkstatic = True,
++     deps = [
+diff --git a/tools/aws-lc-standard/BUILD.bazel b/tools/aws-lc-standard/BUILD.bazel
+new file mode 100644
+index 0000000..958b7b6
+--- /dev/null
++++ b/tools/aws-lc-standard/BUILD.bazel
+@@ -0,0 +1,91 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++load("@rules_cc//cc/private/toolchain:windows_cc_toolchain_config.bzl", "cc_toolchain_config")
++load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
++load(":standard_test.bzl", "native_c_standard_test", "toolchain_default_test")
++
++filegroup(name = "empty")
++
++cc_toolchain_config(
++    name = "config",
++    abi_libc_version = "local",
++    abi_version = "local",
++    compiler = "msvc-cl",
++    cpu = "x64_windows",
++    host_system_name = "local",
++    msvc_cl_path = "cl.exe",
++    msvc_lib_path = "lib.exe",
++    msvc_link_path = "link.exe",
++    msvc_ml_path = "ml64.exe",
++    supports_parse_showincludes = True,
++    target_libc = "msvcrt",
++    target_system_name = "windows",
++    tool_paths = {
++        "gcc": "cl.exe",
++        "ld": "link.exe",
++        "ar": "lib.exe",
++        "cpp": "cl.exe",
++        "gcov": "unused",
++        "nm": "unused",
++        "objdump": "unused",
++        "strip": "unused",
++    },
++    toolchain_identifier = "native-msvc-analysis",
++)
++
++cc_toolchain(
++    name = "cc_toolchain",
++    all_files = ":empty",
++    ar_files = ":empty",
++    as_files = ":empty",
++    compiler_files = ":empty",
++    dwp_files = ":empty",
++    linker_files = ":empty",
++    objcopy_files = ":empty",
++    strip_files = ":empty",
++    supports_param_files = 1,
++    toolchain_config = ":config",
++    toolchain_identifier = "native-msvc-analysis",
++)
++
++toolchain(
++    name = "analysis_toolchain",
++    target_compatible_with = [
++        "@platforms//os:windows",
++        "@platforms//cpu:x86_64",
++        "@llvm//constraints/windows/abi:msvc",
++    ],
++    toolchain = ":cc_toolchain",
++    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
++)
++
++cc_library(
++    name = "toolchain_default",
++    srcs = ["default.c"],
++)
++
++toolchain_default_test(
++    name = "toolchain_default_test",
++    size = "small",
++    target_under_test = ":toolchain_default",
++)
++
++native_c_standard_test(
++    name = "crypto_standard_test",
++    size = "small",
++    target_under_test = "@aws-lc//:crypto",
++)
++
++native_c_standard_test(
++    name = "ssl_standard_test",
++    size = "small",
++    target_under_test = "@aws-lc//:ssl",
++)
++
++test_suite(
++    name = "standard_tests",
++    tests = [
++        ":crypto_standard_test",
++        ":ssl_standard_test",
++        ":toolchain_default_test",
++    ],
++)
+diff --git a/tools/aws-lc-standard/default.c b/tools/aws-lc-standard/default.c
+new file mode 100644
+index 0000000..3cf8728
+--- /dev/null
++++ b/tools/aws-lc-standard/default.c
+@@ -0,0 +1 @@
++int aws_lc_standard_control(void) { return 0; }
+diff --git a/tools/aws-lc-standard/standard_test.bzl b/tools/aws-lc-standard/standard_test.bzl
+new file mode 100644
+index 0000000..90f3c2c
+--- /dev/null
++++ b/tools/aws-lc-standard/standard_test.bzl
+@@ -0,0 +1,41 @@
++load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
++
++def _native_c_standard_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [
++        action
++        for action in analysistest.target_actions(env)
++        if action.mnemonic == "CppCompile" and any([arg.endswith(".c") for arg in action.argv])
++    ]
++    asserts.true(env, len(actions) > 0, "The fixture must compile native C sources")
++    for action in actions:
++        asserts.true(env, action.argv[0].endswith("cl.exe"), "The fixture uses the native MSVC compiler configuration")
++        standards = [arg for arg in action.argv if arg.startswith("/std:")]
++        asserts.equals(env, ["/std:c11"], standards, "Each C action selects C11 exactly once")
++        asserts.true(env, "/WX" in action.argv, "C compilation retains fatal warnings")
++    return analysistest.end(env)
++
++native_c_standard_test = analysistest.make(
++    _native_c_standard_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:extra_toolchains": [str(Label("//tools/aws-lc-standard:analysis_toolchain"))],
++        "//command_line_option:features": ["static_link_msvcrt", "-dynamic_link_msvcrt", "treat_warnings_as_errors"],
++    },
++)
++
++def _toolchain_default_test_impl(ctx):
++    env = analysistest.begin(ctx)
++    actions = [action for action in analysistest.target_actions(env) if action.mnemonic == "CppCompile"]
++    asserts.true(env, len(actions) > 0, "The control must compile a C source")
++    for action in actions:
++        asserts.equals(env, ["/std:c17"], [arg for arg in action.argv if arg.startswith("/std:")])
++    return analysistest.end(env)
++
++toolchain_default_test = analysistest.make(
++    _toolchain_default_test_impl,
++    config_settings = {
++        "//command_line_option:platforms": str(Label("//:windows_x86_64_msvc")),
++        "//command_line_option:extra_toolchains": [str(Label("//tools/aws-lc-standard:analysis_toolchain"))],
++    },
++)

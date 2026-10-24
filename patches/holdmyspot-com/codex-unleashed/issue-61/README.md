@@ -3146,3 +3146,44 @@ permission, revalidation, reuse and cancellation assertions. The remote run must
 retain both registered capabilities; a local-only pass does not establish that
 boundary. A sandbox setup failure or skipped body does not satisfy the gate.
 The full Linux remote-environment shards remain required.
+
+## Native dependency compiler flag ownership
+
+`zzzz-0095-aws-lc-single-c-standard.patch` excludes the toolchain's default
+C-language standard from AWS-LC targets that explicitly select C11. MSVC
+receives C11 once instead of conflicting C17 and C11 options. Other target
+features, C++ options and warning flags remain enabled. The dependency's
+C/C++ sources retain their released behavior.
+
+`zzzz-0096-opus-toolchain-fortification.patch` uses Opus's supported
+`OPUS_FORTIFY_SOURCE=OFF` option when the native recipe's compiler flags
+already define `_FORTIFY_SOURCE`. The existing definition and hardening level
+remain authoritative; without an explicit definition, Opus retains its default.
+This changes build configuration without suppressing compiler diagnostics or
+modifying Opus C sources.
+
+Both patches apply independently to `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`) without other downstream patches.
+Their canonical reference is [issue 61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+The complete release queue also needs issue 71's
+`zzzz-0097-aws-lc-override-integration.patch` after its dependency upgrade:
+Bazel requires one AWS-LC override combining the existing TLS fix with the
+C-standard correction. That adapter is queue integration only; neither
+standalone correction depends on it.
+
+Run from a freshly patched checkout root with the declared build tools on
+`PATH` and an owned `TMPDIR`:
+
+```sh
+bazel test //tools/aws-lc-standard:standard_tests
+python3 -m unittest discover -s third_party/voice -p test_build_native.py
+just fmt-check
+```
+
+The action tests require one C11 option and retained `/WX` for the actual
+AWS-LC crypto and SSL C actions, plus a control retaining the normal C17
+toolchain default. They analyze the MSVC configuration without executing its
+compiler. The native recipe tests cover explicit fortification definitions
+and the unchanged Opus default. Native Windows compilation and Unix native
+voice builds remain separate acceptance gates; action analysis and recipe
+checks alone do not establish those results.
