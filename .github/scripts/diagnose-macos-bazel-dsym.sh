@@ -99,6 +99,9 @@ finish_dsym_diagnostic() {
   if [[ "$status" != 0 && "$output_base" == /* && -f "$output_base/server/jvm.out" ]]; then
     tail -c 65536 -- "$output_base/server/jvm.out" > "$evidence/bazel-jvm-tail.log" || true
   fi
+  if [[ -f "$evidence/compact-log/compact-converter-owner" ]]; then
+    bash "$script_dir/bazel-compact-execution-log.sh" cleanup "$evidence/compact-log" || true
+  fi
   rm -rf -- "$sandbox" || true
   exit "$status"
 }
@@ -113,6 +116,8 @@ test_jvm_retention() {
   printf 'unrelated\n' > "$fixture/unrelated/keep"
   for expected in 0 33 37 130 143; do
     mkdir -p "$fixture/sandbox" "$fixture/evidence"
+    mkdir -p "$fixture/evidence/compact-log/runtime"
+    printf '%s\n' 'bazel-compact-execution-log-v1' > "$fixture/evidence/compact-log/compact-converter-owner"
     printf 'retained GC evidence\n' > "$fixture/evidence/bazel-gc.log"
     actual=0
     (
@@ -120,6 +125,9 @@ test_jvm_retention() {
       exit "$expected"
     ) || actual=$?
     [[ "$actual" == "$expected" && ! -e "$fixture/sandbox" ]]
+    [[ ! -e "$fixture/evidence/compact-log/runtime" ]] || {
+      printf 'Compact converter runtime remains after diagnostic status %s\n' "$expected" >&2; return 1;
+    }
     grep -Fxq 'retained GC evidence' "$fixture/evidence/bazel-gc.log"
     if [[ "$expected" == 0 ]]; then
       [[ ! -e "$fixture/evidence/bazel-jvm-tail.log" ]]
@@ -936,23 +944,32 @@ else
   trap 'finish_dsym_diagnostic "$?" "$sandbox_base" "$evidence" "${BAZEL_OUTPUT_BASE:-}"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+  # Fail cheaply on native converter/JNI incompatibility before the uncached Codex action.
+  bash "$script_dir/bazel-compact-execution-log.sh" prepare "$evidence/compact-log" "$profiling_jdk"
   cd "$source_root"
   # Scope packed/full debug information to Codex; dependency and exec-tool profiles stay unchanged.
   # A distinct inert cfg per run attempt forces only this binary's action to execute, retaining dependency caches.
   # ci-macos enables Linux RBE when credentials exist. Cache-only ci-bazel keeps execution native;
   # the maintained Java wrapper still owns compiler scheduling, credentials, and repository caches.
   # Record allocation samples with stacks; settings=none excludes initial environment and system properties.
+  build_status=0
   run_profiled_bazel "$evidence" "$profiling_jdk" \
     build --config=ci-bazel \
     --jobs=2 --loading_phase_threads=1 --local_resources=cpu=1 \
     --notrack_incremental_state --nokeep_state_after_build --remote_download_outputs=toplevel \
     --materialize_param_files --sandbox_debug "--sandbox_base=$sandbox_base" \
     --output_groups=+dsym_folder \
-    "--execution_log_json_file=$evidence/execution.json" \
+    "--execution_log_compact_file=$evidence/execution.compact" \
     --@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@-Csplit-debuginfo=packed \
     --@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@-Cdebuginfo=2 \
     "--@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@--cfg=codex_dsym_diagnostic_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
-    "--build_metadata=COMMIT_SHA=${GITHUB_SHA:?GITHUB_SHA is required}" -- //codex-rs/cli:codex
+    "--build_metadata=COMMIT_SHA=${GITHUB_SHA:?GITHUB_SHA is required}" -- //codex-rs/cli:codex || build_status=$?
+  # Decode outside Bazel's JVM, retaining build failure as the primary result if decoding also fails.
+  conversion_status=0
+  bash "$script_dir/bazel-compact-execution-log.sh" convert "$evidence/compact-log" "$profiling_jdk" \
+    "$evidence/execution.compact" "$evidence/execution.json" || conversion_status=$?
+  if [[ "$build_status" != 0 ]]; then exit "$build_status"; fi
+  if [[ "$conversion_status" != 0 ]]; then exit "$conversion_status"; fi
   jq -c 'select(.mnemonic == "Rustc" and (.targetLabel | endswith("//codex-rs/cli:codex")))' \
     "$evidence/execution.json" > "$evidence/codex-spawn.json"
   [[ "$(jq -s length "$evidence/codex-spawn.json")" == 1 ]]
