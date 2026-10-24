@@ -10,6 +10,10 @@ on:
         description: Restore the original Intel diagnostic driver and its default nextest policy.
         type: boolean
         default: false
+      preserve-archive-policy:
+        description: Restore the current Intel archive's exact driver and default nextest policy without rebuilding.
+        type: boolean
+        default: false
       upstream-ref:
         type: string
         default: 83086188ae0614bd882818ff1aa23f3194962012
@@ -35,6 +39,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
+      PRESERVE_ARCHIVE_POLICY: ${{ inputs.preserve-archive-policy }}
       ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
@@ -43,6 +48,34 @@ jobs:
       RUST_LIB_BACKTRACE: "0"
       RUST_MIN_STACK: "8388608"
     steps:
+      - name: Authenticate the current archive source and artifact identities
+        if: inputs.preserve-archive-policy
+        id: archive_identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ORIGINAL_SOURCE_POLICY" == false ]]
+          [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 && "$ARTIFACT_ID" == macos-x64 ]]
+          [[ "$SOURCE_RUN" == 40038389605 ]]
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
+          source_sha="$(jq -er '.head_sha' "$diagnostic_root/source-run.json")"
+          [[ "$source_sha" == 72118e7a449834add11bbcb8fef63642430ea200 ]]
+          jq -e '.id == 40038389605 and .status == "completed"' "$diagnostic_root/source-run.json"
+          printf 'head-sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          for artifact in 12541876650 12541762119; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
+          done
+          jq -e --arg sha "$source_sha" '.id == 12541876650 and .name == "nextest-archive-macos-x64" and
+            .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
+            .digest == "sha256:236d917b0c71b77aad333c4ea95c2b08759434c425d4aae509572762d8807230"' \
+            "$diagnostic_root/artifact-12541876650.json"
+          jq -e --arg sha "$source_sha" '.id == 12541762119 and .name == "nextest-native-macos-x64" and
+            .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
+            .digest == "sha256:c5839312e781b23659ebd6dbc98ec6741dbe51d9bdb4ca379b5b2d18367c9962"' \
+            "$diagnostic_root/artifact-12541762119.json"
+
       - name: Authenticate the original driver and archive identities
         if: inputs.original-source-policy
         id: source_identity
@@ -72,11 +105,11 @@ jobs:
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.original-source-policy && steps.source_identity.outputs.head-sha || github.sha }}
+          ref: ${{ inputs.preserve-archive-policy && steps.archive_identity.outputs.head-sha || inputs.original-source-policy && steps.source_identity.outputs.head-sha || github.sha }}
           persist-credentials: false
 
       - name: Check out the archived workspace source
-        if: ${{ !inputs.original-source-policy }}
+        if: ${{ !inputs.original-source-policy && !inputs.preserve-archive-policy }}
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: openai/codex
@@ -122,6 +155,13 @@ jobs:
           bash .github/actions/prepare-patched-upstream/clone.sh
           bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
 
+      - name: Restore the current archive's exact patched workspace from cached tooling
+        if: inputs.preserve-archive-policy
+        uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+          expected-upstream-commit: ${{ inputs.upstream-ref }}
+
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.149
@@ -142,10 +182,23 @@ jobs:
           mkdir -p "$diagnostic_root"
           gh run view "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
             --json headSha,url --jq '[.headSha,.url] | @tsv'
-          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --name "nextest-archive-$ARTIFACT_ID" --dir "$diagnostic_root/archive"
-          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
-            --name "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
+          if [[ "$PRESERVE_ARCHIVE_POLICY" == true ]]; then
+            # Verify the actual downloaded ZIP bytes against the authenticated run metadata.
+            for entry in '12541876650 archive' '12541762119 native'; do
+              read -r artifact directory <<< "$entry"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$diagnostic_root/$directory.zip"
+              digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$")) | sub("^sha256:"; "")' \
+                "$diagnostic_root/artifact-$artifact.json")"
+              printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | shasum -a 256 --check
+              mkdir "$diagnostic_root/$directory"
+              unzip -q "$diagnostic_root/$directory.zip" -d "$diagnostic_root/$directory"
+            done
+          else
+            gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+              --name "nextest-archive-$ARTIFACT_ID" --dir "$diagnostic_root/archive"
+            gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" \
+              --name "nextest-native-$ARTIFACT_ID" --dir "$diagnostic_root/native"
+          fi
           mkdir "$RUNNER_TEMP/nextest-native"
           (
             cd "$RUNNER_TEMP"
@@ -155,6 +208,40 @@ jobs:
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
+      - name: Verify the current default policy and exactly two selected tests
+        if: inputs.preserve-archive-policy
+        shell: bash
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          [[ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" == 72118e7a449834add11bbcb8fef63642430ea200 ]]
+          cd "$GITHUB_WORKSPACE/upstream/codex-rs"
+          test -f .config/nextest.toml
+          cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
+          shasum -a 256 "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
+          printf 'diagnostic-sha=%s\narchive-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=1\nretries=0\nfilter=%s\n' \
+            "$GITHUB_SHA" "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" "$(git rev-parse HEAD)" \
+            "$SOURCE_RUN" "$TEST_FILTER" > "$diagnostic_root/provenance.txt"
+          mkdir "$diagnostic_root/extracted"
+          cargo nextest list \
+            --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
+            --extract-to "$diagnostic_root/extracted" \
+            --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
+            --config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default \
+            --message-format json -E "$TEST_FILTER" > "$diagnostic_root/selected-tests.json"
+          jq -e '
+            [."rust-suites"[] | ."package-name" as $package |
+              .testcases | to_entries[] |
+              select(.value."filter-match".status == "matches" and .value.ignored == false) |
+              [$package, .key]] | sort == ([
+                ["codex-core", "client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits"],
+                ["codex-tui", "bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent"]
+              ] | sort)
+            ' "$diagnostic_root/selected-tests.json"
+          printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
+
       - name: Run the selected archived tests
         id: original_tests
         shell: bash
@@ -163,12 +250,20 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
-          mkdir "$diagnostic_root/extracted"
+          if [[ "$PRESERVE_ARCHIVE_POLICY" != true ]]; then
+            mkdir "$diagnostic_root/extracted"
+          fi
           config_args=(--config-file "$diagnostic_root/nextest.toml" --profile archived-diagnostic)
           archive_args=(--archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst"
             --extract-to "$diagnostic_root/extracted"
             --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs")
-          if [[ "$ORIGINAL_SOURCE_POLICY" == true ]]; then
+          if [[ "$PRESERVE_ARCHIVE_POLICY" == true ]]; then
+            cd "$GITHUB_WORKSPACE/upstream/codex-rs"
+            # Selection already extracted the archive and authenticated its source policy.
+            cmp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
+            config_args=(--config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default)
+            archive_args+=(--extract-overwrite)
+          elif [[ "$ORIGINAL_SOURCE_POLICY" == true ]]; then
             cd "$GITHUB_WORKSPACE/upstream/codex-rs"
             test -f .config/nextest.toml
             cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
