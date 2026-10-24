@@ -263,7 +263,7 @@ run_isolated_wrapper() {
       "$(command -v bwrap)" "${mounts[@]}" --dev /dev --proc /proc \
         --ro-bind "$capture/raw" "$capture/raw" \
         --ro-bind "$capture/record-child" "$capture/record-child" \
-        --bind "$capture/work" "$capture/work" --remount-ro / --chdir "$capture/work" -- "$@"
+        --bind "$capture/work" "$capture/work" --remount-ro / --chdir "$PWD" -- "$@"
       ;;
     *) echo 'No supported OS isolation for wrapper replay' >&2; return 1 ;;
   esac
@@ -391,6 +391,8 @@ capture_effective_arguments() (
     fi
   )
   [[ "$matches" == 1 ]] || { printf 'Expected one authenticated native root sandbox; found %s\n' "$matches" >&2; exit 1; }
+  local replay_root="$capture/work/$(basename -- "$root")"
+  mkdir -p "$replay_root/external"
   cp "$root/$params1.expanded" "$capture/native.params.expanded"
   llvm="$(jq -r '.environmentVariables[] | select(.name == "LLVM_DSYMUTIL") | .value |
     ltrimstr("$${pwd}/") | ltrimstr("${pwd}/")' "$spawn")"
@@ -405,23 +407,23 @@ capture_effective_arguments() (
   ' "$spawn" > "$capture/preparation-inputs.txt"
   while IFS= read -r path; do
     check_input_digest "$spawn" "$root" "$path"
-    mkdir -p "$capture/raw/$(dirname -- "$path")" "$capture/work/$(dirname -- "$path")"
+    mkdir -p "$capture/raw/$(dirname -- "$path")" "$replay_root/$(dirname -- "$path")"
     cp "$root/$path" "$capture/raw/$path"
     check_input_digest "$spawn" "$capture/raw" "$path"
     chmod a-w "$capture/raw/$path"
-    ln -s "$capture/raw/$path" "$capture/work/$path"
+    ln -s "$capture/raw/$path" "$replay_root/$path"
   done < "$capture/preparation-inputs.txt"
   chmod +x "$capture/raw/$wrapper"
   while IFS= read -r path; do
     check_relative_path "$path"
-    mkdir -p "$capture/work/$(dirname -- "$path")"
+    mkdir -p "$replay_root/$(dirname -- "$path")"
   done < <(jq -r '.listedOutputs[]' "$spawn")
-  mkdir "$capture/work/_recording"
+  mkdir "$replay_root/_recording"
   # Rust 1.99.1 args.rs consumes the wrapper's UTF-8 output as literal lines,
   # including empty arguments, without shell parsing or recursive @ expansion.
   {
     printf '#!/bin/bash\nset -euo pipefail\nrecording=%q\njq_tool=%q\n' \
-      "$capture/work/_recording" "$(command -v jq)"
+      "$replay_root/_recording" "$(command -v jq)"
     cat <<'RECORDER'
 printf '%s\0' "$@" > "$recording/child-argv.nul"
 : > "$recording/argument-arrays.jsonl"
@@ -459,22 +461,22 @@ RECORDER
   replay_command=(/usr/bin/env -i "${environment[@]}" "TMPDIR=$capture/work" "HOME=$capture/work"
     "$capture/raw/$wrapper" "@$params0" -- "$capture/record-child" "@$params1")
   (
-    cd "$capture/work"
+    cd "$replay_root"
     run_isolated_wrapper "$capture" "$platform" "${replay_command[@]}"
   ) > "$capture/replay.stdout" 2> "$capture/replay.stderr" || status=$?
   if [[ "$status" != 73 && "$platform" == Darwin && "${retain_failed_replay:-false}" == true ]]; then
-    (cd "$capture/work"; collect_darwin_replay_evidence "$capture" "$capture/raw/$wrapper" "${replay_command[@]}")
+    (cd "$replay_root"; collect_darwin_replay_evidence "$capture" "$capture/raw/$wrapper" "${replay_command[@]}")
   fi
-  [[ "$status" == 73 && "$(cat "$capture/work/_recording/complete")" == 73 ]] || {
+  [[ "$status" == 73 && "$(cat "$replay_root/_recording/complete")" == 73 ]] || {
     printf 'Wrapper recording did not complete with sentinel status 73 (status %s)\n' "$status" >&2
     cat "$capture/replay.stderr" >&2
     exit 1
   }
-  # Only the working-directory substitution differs; retain and compare all other bytes.
-  jq -jRs --arg native_root "$root" --arg replay_root "$capture/work" \
+  # The matching workspace layout keeps all three directory substitutions equivalent.
+  jq -jRs --arg native_root "$root" --arg replay_root "$replay_root" \
     'split($native_root) | join($replay_root)' "$capture/native.params.expanded" > "$capture/native.normalized"
-  cmp "$capture/native.normalized" "$capture/work/$params1.expanded"
-  mv "$capture/work/_recording" "$capture/recording"
+  cmp "$capture/native.normalized" "$replay_root/$params1.expanded"
+  mv "$replay_root/_recording" "$capture/recording"
   cp "$capture/recording/effective-arguments.json" "$capture/effective-arguments.json"
   jq -Rs 'split("\u0000") | .[:-1]' "$capture/recording/child-argv.nul" > "$capture/child-argv.json"
   rm "$capture/native.normalized"
@@ -549,7 +551,9 @@ test_wrapper_capture() (
   cp "$1/source/bazel/tools/dsymutil" "$root/bazel/tools/dsymutil"
   printf 'fixture dsymutil input\n' > "$root/external/llvm/bin/dsymutil"
   printf '%s\n' '--arg-file' "$empty_links" '--arg-file' "$native_links" '--arg-file' "$flags" \
-    '--arg-file' "$empty_link_flags" '--arg-file' "$link_flags" '--env-file' 'build.env' '--subst' "pwd=\${pwd}" > "$root/$params0"
+    '--arg-file' "$empty_link_flags" '--arg-file' "$link_flags" '--env-file' 'build.env' \
+    '--subst' "pwd=\${pwd}" '--subst' "output_base=\${output_base}" \
+    '--subst' "exec_root=\${exec_root}" > "$root/$params0"
   : > "$root/$empty_links"
   : > "$root/$empty_link_flags"
   printf '%s\n' '-Lnative=fixture literal path' '-Csplit-debuginfo=off' > "$root/$native_links"
@@ -557,7 +561,8 @@ test_wrapper_capture() (
   printf '%s\n' 'nested literal argument' > "$root/nested.params"
   printf '%s\n' '--target=aarch64-apple-darwin' '-Csplit-debuginfo=off' \
     '-Csplit-debuginfo=packed' '-Cdebuginfo=2' 'literal space "quote" \backslash' \
-    '@nested.params' "\${pwd}/literal-path" > "$root/$params1"
+    '@nested.params' "\${pwd}/literal-path" "\${output_base}/output-base-path" \
+    "\${exec_root}/exec-root-path" > "$root/$params1"
   printf '%s\n' "\\" 'empty-line-successor' >> "$root/$params1"
   printf '%s\r\n' 'literal CRLF argument' >> "$root/$params1"
   printf '%s\n' '-Csplit-debuginfo=packed' > "$root/$flags"
