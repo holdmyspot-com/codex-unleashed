@@ -28,6 +28,7 @@ on:
           - macos-x64-original-timeouts
           - macos-x64-release-timeouts
           - macos-x64-release-shard-controls
+          - macos-x64-daybreak-invocations
           - macos-x64-current-timeouts
           - macos-x64-current-shards
           - macos-tui-timeouts
@@ -60,6 +61,170 @@ permissions:
   contents: read
 
 jobs:
+  macos-x64-daybreak-invocations:
+    if: inputs.focus == 'macos-x64-daybreak-invocations'
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_PROFILE_CI_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          upstream-ref: '83086188ae0614bd882818ff1aa23f3194962012'
+          expected-upstream-commit: '83086188ae0614bd882818ff1aa23f3194962012'
+
+      - name: Authenticate and apply daybreak invocation timing
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/daybreak-invocations"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/project-commit.txt"
+          git -C upstream rev-parse HEAD > "$evidence/upstream-commit.txt"
+          git -C upstream diff --binary > "$evidence/prepared-source.diff"
+          overlay="$GITHUB_WORKSPACE/.github/diagnostics/daybreak-invocation-timing.patch"
+          printf '%s  %s\n' \
+            1035326469f99e324f640156a8386f5503138c4b10aec0060c7bc7f8726032bd "$overlay" \
+            9a2e9ae3a3aa2ac268e4e02751033aa66ac2f26cec4c411868002d7dcb830c73 upstream/codex-rs/exec/tests/suite/daybreak.rs \
+            f411d7e8ea0a8b60a3cdd9a1e47223ad964e2d2fd5f80d0abe4d877b41851817 upstream/codex-rs/.config/nextest.toml \
+            | shasum -a 256 --check | tee "$evidence/preimage-verification.txt"
+          cp "$overlay" "$evidence/invocation-timing.patch"
+          cp upstream/codex-rs/.config/nextest.toml "$evidence/nextest.toml"
+          git -C upstream apply --check "$overlay"
+          git -C upstream apply "$overlay"
+          printf '%s  %s\n' \
+            dd7e1e28c85eefff42f0b68076ef562ba4c692eed9d83efa77fa23de8e613b9e upstream/codex-rs/exec/tests/suite/daybreak.rs \
+            | shasum -a 256 --check | tee "$evidence/postimage-verification.txt"
+          git -C upstream diff --binary > "$evidence/instrumented-source.diff"
+          cp upstream/codex-rs/exec/tests/suite/daybreak.rs "$evidence/instrumented-daybreak.rs"
+          {
+            printf 'run=%s attempt=%s job=%s runner=%s arch=%s\n' \
+              "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" "$RUNNER_OS" "$RUNNER_ARCH"
+            printf 'cargo_profile=ci-test nextest_profile=default retries=0 test_threads=1 deadline_seconds=60\n'
+            uname -a
+            sw_vers
+          } > "$evidence/run-identity.txt"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Install target for the workspace Rust toolchain
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: rustup target add x86_64-apple-darwin
+
+      - uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-apple-darwin
+
+      - name: Cache Cargo dependency downloads
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            upstream/codex-rs -> target
+          shared-key: nextest-downloads-${{ runner.os }}-${{ runner.arch }}
+          add-rust-environment-hash-key: false
+          cache-targets: false
+          cache-workspace-crates: false
+          cache-bin: false
+          save-if: true
+          cache-on-failure: true
+
+      - uses: ./.github/actions/build-nextest-native-sdk
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        with:
+          target: x86_64-apple-darwin
+
+      - uses: ./.github/actions/configure-nextest-native-sdk
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+
+      - name: Build instrumented native exec tests with the compiler scheduler
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/daybreak-invocations"
+          cp "$RUNNER_TEMP/nextest-native/sdk/sdk.json" "$evidence/native-sdk.json"
+          cp "$RUNNER_TEMP/nextest-native/runtime/runtime.json" "$evidence/native-runtime.json"
+          {
+            rustc -Vv
+            cargo -V
+            cargo nextest --version
+            printf 'PKG_CONFIG_PATH=%s\nCODEX_TEST_VOICE_RUNTIME=%s\nDYLD_FALLBACK_LIBRARY_PATH=%s\n' \
+              "$PKG_CONFIG_PATH" "$CODEX_TEST_VOICE_RUNTIME" "${DYLD_FALLBACK_LIBRARY_PATH:-}"
+          } > "$evidence/toolchain-runtime.txt"
+          command=(bash "$GITHUB_WORKSPACE/.github/scripts/run-memory-scheduled-build.sh" \
+            cargo nextest archive -p codex-exec --test all \
+            --target x86_64-apple-darwin --cargo-profile ci-test \
+            --config profile.ci-test.package.blake3.opt-level=3 \
+            --features codex-v8-poc/sandbox --timings \
+            --archive-file "$RUNNER_TEMP/daybreak-native.tar.zst")
+          printf '%q ' "${command[@]}" > "$evidence/build-command.txt"
+          printf '\n' >> "$evidence/build-command.txt"
+          set +e
+          "${command[@]}" 2>&1 | tee "$evidence/build.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/build.exit"
+          if [[ "$status" -eq 0 ]]; then
+            shasum -a 256 "$RUNNER_TEMP/daybreak-native.tar.zst" > "$evidence/native-archive.sha256"
+          fi
+          exit "$status"
+
+      - name: Run exactly the daybreak case serially with the original deadline
+        working-directory: upstream/codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/daybreak-invocations"
+          command=(cargo nextest run \
+            --archive-file "$RUNNER_TEMP/daybreak-native.tar.zst" \
+            --extract-to "$RUNNER_TEMP/daybreak-native-extracted" \
+            --workspace-remap "$PWD" --config-file "$PWD/.config/nextest.toml" \
+            --profile default --test-threads 1 --retries 0 --no-tests fail --no-fail-fast \
+            --failure-output immediate-final --success-output immediate \
+            -E 'package(codex-exec) & binary(=all) & test(=suite::daybreak::exec_resumes_and_forks_the_saved_daybreak_choice)')
+          printf '%q ' "${command[@]}" > "$evidence/test-command.txt"
+          printf '\n' >> "$evidence/test-command.txt"
+          set +e
+          "${command[@]}" 2>&1 | tee "$evidence/test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > "$evidence/test.exit"
+          exit "$status"
+
+      - name: Retain raw invocation timing and native build evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: macos-x64-daybreak-invocations-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/daybreak-invocations
+            ${{ runner.temp }}/daybreak-native-extracted/**/nextest/default/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/default/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned daybreak diagnostic outputs
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "$RUNNER_TEMP/daybreak-invocations" "$RUNNER_TEMP/daybreak-native.tar.zst" \
+            "$RUNNER_TEMP/daybreak-native-extracted" "$RUNNER_TEMP/nextest-native"
+
   windows-arm-mxc-volumes:
     if: inputs.focus == 'windows-arm-mxc-volumes'
     runs-on: windows-11-arm
