@@ -3077,8 +3077,12 @@ Windows file-lock or sandbox behavior.
 `SystemRoot` and owned `TEMP`/`TMP` directories to the five legacy Windows
 sandbox PowerShell fixtures. Temporary files stay beneath each fixture's
 existing writable workspace. Descendants inherit the same environment.
-Sandbox policies, commands, output assertions, readiness and cancellation
-deadlines, and descendant survival/termination checks remain unchanged.
+Cancellation and ConPTY lifecycle markers and redirected child I/O also stay
+in that owned writable workload directory, rather than the sandbox's Codex
+home. The ConPTY child publishes its PID to a pending file and then moves it
+to the readiness path, so file-existence readiness cannot expose an empty PID.
+Sandbox policies, output assertions, readiness and cancellation deadlines,
+and descendant survival/termination checks remain unchanged.
 
 The base is `rust-v0.163.0`
 (`83086188ae0614bd882818ff1aa23f3194962012`). The exact minimal prerequisite
@@ -3104,7 +3108,16 @@ just fmt-check
 The gate selects and executes all five test bodies, including both TTY
 lifecycle phases, and passes their existing readiness, output, cancellation,
 survival and termination assertions. A missing-PowerShell early return does
-not satisfy this gate. Full native Windows suite gates remain required.
+not satisfy this gate.
+
+Native acceptance requires zero failed or ignored tests and complete Rust
+summaries for five legacy tests (including both TTY lifecycle phases), ten
+helper-staging tests and one elevated sandbox test on each architecture.
+Reference evidence:
+[ARM64](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40137741662/job/121011617201)
+and [x64](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40137741662/job/121011617327).
+Full native Windows suite gates remain required.
+
 The older `windows-lifecycle-fixtures.patch` diagnostic overlay rewrites the
 same fixture setup and requires a separate rebase; these direct source tests
 do not require that overlay.
