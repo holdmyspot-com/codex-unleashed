@@ -327,7 +327,7 @@ jobs:
               else
                 sha256=(shasum -a 256)
               fi
-              printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | "${sha256[@]}" --check
+              printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | "${sha256[@]}" -c
               mkdir "$diagnostic_root/$directory"
               unzip -q "$diagnostic_root/$directory.zip" -d "$diagnostic_root/$directory"
             done
