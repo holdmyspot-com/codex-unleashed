@@ -15,6 +15,7 @@ on:
           - windows-archive-extraction
           - windows-archived-failures
           - windows-arm-launch-inputs
+          - windows-arm-mxc-policy
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-x64-original-timeouts
@@ -690,10 +691,10 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-arm-mxc-policy'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
-      runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || 'windows-2022' }}
+      runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || inputs.focus == 'windows-arm-mxc-policy' && 'windows-11-arm' || 'windows-2022' }}
 
   macos-bazel-tui-timeouts:
     if: inputs.focus == 'macos-bazel-tui-timeouts'
@@ -1146,4 +1147,134 @@ jobs:
             .cat/work/temp/build-caches/maven/target/tooling-cli/surefire-reports
             .cat/work/temp/build-caches/maven/target/tooling-distribution/surefire-reports
           if-no-files-found: ignore
+          retention-days: 1
+
+  windows-arm-mxc-policy:
+    if: inputs.focus == 'windows-arm-mxc-policy'
+    needs: prepare-tooling
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+          upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
+          expected-upstream-commit: 83086188ae0614bd882818ff1aa23f3194962012
+      - uses: ./.github/actions/setup-ci
+      - uses: ./.github/actions/setup-msvc-env
+        with:
+          target: aarch64-pc-windows-msvc
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: aarch64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+          common-setup-complete: 'true'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Authenticate native runtime and prepared source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'windows-arm-mxc'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($architecture -ne 'Arm64') { throw "Expected native ARM64 Windows, found $architecture" }
+          @("os_architecture=$architecture", "process_architecture=$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)", "os_version=$([Environment]::OSVersion.Version)") |
+            Set-Content (Join-Path $evidence 'runtime.txt')
+      - name: Apply bounded MXC policy inventory overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-arm-mxc"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = 83086188ae0614bd882818ff1aa23f3194962012
+          git -C upstream diff --binary > "$evidence/prepared-queue.diff"
+          git -C upstream apply --check ../.github/diagnostics/windows-mxc-policy.patch
+          git -C upstream apply ../.github/diagnostics/windows-mxc-policy.patch
+          git -C upstream diff --binary > "$evidence/instrumented-source.diff"
+          {
+            printf 'dispatch_head=%s\nupstream_commit=%s\nrun_id=%s\nrun_attempt=%s\n' \
+              "$GITHUB_SHA" "$(git -C upstream rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            sha256sum .github/diagnostics/windows-mxc-policy.patch
+            find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 sha256sum
+            sha256sum upstream/codex-rs/mxc-sandbox/src/native.rs upstream/codex-rs/exec-server/tests/exec_process.rs
+          } > "$evidence/provenance.txt"
+      - name: Rebuild and execute the exact MXC pipe regression
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-arm-mxc"
+          cd upstream
+          status=0
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:local_windows_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+            --nocache_test_results --test_output=all --test_arg=--nocapture --test_arg=--exact \
+            --test_arg=remote_windows_sandbox_process_accepts_process_write::test_case_2_mxc_pipe \
+            -- //codex-rs/exec-server:exec-server-exec_process-test \
+            2>&1 | tee "$evidence/console.log" || status=$?
+          printf '%s\n' "$status" > "$evidence/bazel.status"
+          log=bazel-testlogs/codex-rs/exec-server/exec-server-exec_process-test/test.log
+          if [[ -f "$log" ]]; then
+            cp "$log" "$evidence/test.log"
+          fi
+          # The inventory is emitted inside the actual MXC child launch path;
+          # neither libtest's success line nor a capability skip proves execution.
+          proof_status=0
+          for marker in 'category=readwrite count=' 'category=readonly count=' 'category=deny count=' 'runner_spawn begin'; do
+            if ! grep -F "MXC policy diagnostic: $marker" "$evidence/console.log" > /dev/null; then
+              printf 'Missing MXC body evidence: %s\n' "$marker" >&2
+              proof_status=1
+            fi
+          done
+          if ! grep -E 'MXC policy diagnostic: runner_spawn (failed|child_created)' "$evidence/console.log" > /dev/null; then
+            printf 'Missing MXC launch outcome evidence\n' >&2
+            proof_status=1
+          fi
+          printf '%s\n' "$proof_status" > "$evidence/body-proof.status"
+          if [[ "$status" -ne 0 ]]; then exit "$status"; fi
+          exit "$proof_status"
+      - name: Authenticate the compiled native ARM test executable
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = Join-Path $env:GITHUB_WORKSPACE 'upstream/bazel-bin/codex-rs/exec-server/exec-server-exec_process-test.exe'
+          $receipt = Join-Path $env:RUNNER_TEMP 'windows-arm-mxc/test-binary.txt'
+          if (-not (Test-Path -LiteralPath $binary)) {
+            'binary_absent=true' | Set-Content $receipt
+            throw 'The native test executable was not produced.'
+          }
+          $reader = [System.IO.BinaryReader]::new([System.IO.File]::OpenRead($binary))
+          try {
+            if ($reader.ReadUInt16() -ne 0x5A4D) { throw 'Expected a Windows test executable.' }
+            $reader.BaseStream.Position = 0x3C
+            $offset = $reader.ReadUInt32()
+            $reader.BaseStream.Position = $offset
+            if ($reader.ReadUInt32() -ne 0x4550) { throw 'Missing PE signature.' }
+            $machine = $reader.ReadUInt16()
+          } finally {
+            $reader.Dispose()
+          }
+          @("machine=0x$($machine.ToString('x4'))", "sha256=$((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash)") | Set-Content $receipt
+          if ($machine -ne 0xAA64) { throw 'Expected a native ARM64 test executable.' }
+      - name: Retain authenticated source and native diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-arm-mxc-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/windows-arm-mxc
+            ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: error
           retention-days: 1

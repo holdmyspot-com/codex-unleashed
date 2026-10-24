@@ -1,0 +1,171 @@
+diff --git a/codex-rs/exec-server/tests/exec_process.rs b/codex-rs/exec-server/tests/exec_process.rs
+index f905eb8..75e126c 100644
+--- a/codex-rs/exec-server/tests/exec_process.rs
++++ b/codex-rs/exec-server/tests/exec_process.rs
+@@ -1608,6 +1608,16 @@ async fn assert_remote_windows_sandbox_process_write(
+     let wake_rx = process.subscribe_wake();
+     let (output, exit_code, closed) = collect_process_output_from_reads(process, wake_rx).await?;
+
++    // Diagnostic overlay: expose only the bounded policy inventory, including
++    // successful launches whose captured stderr would otherwise remain hidden.
++    if expected_sandbox_type == codex_sandboxing::SandboxType::WindowsMxc && !tty {
++        for line in output.lines() {
++            if line.starts_with("MXC policy diagnostic: ") {
++                eprintln!("{line}");
++            }
++        }
++    }
++
+     assert!(
+         output.contains("from-stdin:hello"),
+         "unexpected output: {output:?}"
+diff --git a/codex-rs/mxc-sandbox/src/native.rs b/codex-rs/mxc-sandbox/src/native.rs
+index 2121711..f9abc42 100644
+--- a/codex-rs/mxc-sandbox/src/native.rs
++++ b/codex-rs/mxc-sandbox/src/native.rs
+@@ -1,10 +1,19 @@
+ //! Run an already prepared MXC request with inherited stdio and job ownership.
+
++use std::os::windows::ffi::OsStrExt;
++use std::os::windows::ffi::OsStringExt;
++use std::path::Component;
++use std::path::Path;
++use std::path::Prefix;
++
+ use anyhow::Context;
+ use anyhow::Result;
+ use anyhow::ensure;
+ use appcontainer_common::base_container_runner::BaseContainerRunner;
+ use learning_mode_windows::SecurityEnvironmentApi;
++use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
++use windows_sys::Win32::Storage::FileSystem::GetVolumePathNameW;
++use windows_sys::Win32::Storage::FileSystem::QueryDosDeviceW;
+ use wxc_common::logger::Logger;
+ use wxc_common::logger::Mode;
+ use wxc_common::models::ExecutionRequest;
+@@ -33,11 +42,124 @@ pub(super) fn launch(request: &ExecutionRequest) -> Result<i32> {
+             "this Windows build cannot enforce native MXC deny paths"
+         );
+     }
++    diagnose_policy_paths(request);
++    eprintln!("MXC policy diagnostic: runner_spawn begin");
+     let mut logger = Logger::new(Mode::Buffer);
+     let mut child = BaseContainerRunner::new()
+         .spawn(request, &mut logger, StdioMode::Inherit)
+-        .map_err(|error| anyhow::anyhow!("{}", error.error_message))?;
++        .map_err(|error| {
++            eprintln!("MXC policy diagnostic: runner_spawn failed");
++            anyhow::anyhow!("{}", error.error_message)
++        })?;
++    eprintln!("MXC policy diagnostic: runner_spawn child_created");
+     // Do not publish the SDK diagnostic buffer: it may contain command or
+     // environment data. This wrapper emits only the resulting launch error.
+     child.wait().context("waiting for the MXC command")
+ }
++
++// Diagnostic only: never print paths, environment entries, commands, or SDK
++// buffers. Category/index identifies the unchanged policy entry; only its
++// structural prefix, drive letter and OS status codes leave this process.
++fn path_prefix(path: &Path) -> (&'static str, Option<char>) {
++    match path.components().next() {
++        Some(Component::Prefix(prefix)) => match prefix.kind() {
++            Prefix::Disk(drive) => ("disk", Some(char::from(drive))),
++            Prefix::VerbatimDisk(drive) => ("verbatim_disk", Some(char::from(drive))),
++            Prefix::UNC(_, _) => ("unc", None),
++            Prefix::VerbatimUNC(_, _) => ("verbatim_unc", None),
++            Prefix::DeviceNS(_) => ("device", None),
++            Prefix::Verbatim(_) => ("verbatim", None),
++        },
++        Some(Component::RootDir) => ("root_relative", None),
++        _ => ("relative", None),
++    }
++}
++
++fn diagnose_policy_paths(request: &ExecutionRequest) {
++    for (category, paths) in [
++        ("readwrite", &request.policy.readwrite_paths),
++        ("readonly", &request.policy.readonly_paths),
++        ("deny", &request.policy.denied_paths),
++    ] {
++        const LIMIT: usize = 64;
++        eprintln!(
++            "MXC policy diagnostic: category={category} count={} inspected={} truncated={}",
++            paths.len(),
++            paths.len().min(LIMIT),
++            paths.len() > LIMIT
++        );
++        for (index, entry) in paths.iter().take(LIMIT).enumerate() {
++            let path = Path::new(entry);
++            let (prefix, drive) = path_prefix(path);
++            let metadata_error = std::fs::metadata(path)
++                .err()
++                .and_then(|error| error.raw_os_error());
++            let canonical = std::fs::canonicalize(path);
++            let canonical_error = canonical
++                .as_ref()
++                .err()
++                .and_then(|error| error.raw_os_error());
++            let (canonical_prefix, canonical_drive) = canonical
++                .as_ref()
++                .map(|path| path_prefix(path))
++                .unwrap_or(("unresolved", None));
++            let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
++            let has_nul = wide.contains(&0);
++            let units = wide.len();
++            wide.push(0);
++            let mut volume = vec![0u16; 32768];
++            let volume_ok = !has_nul
++                && unsafe {
++                    GetVolumePathNameW(wide.as_ptr(), volume.as_mut_ptr(), volume.len() as u32)
++                } != 0;
++            let volume_error = if volume_ok {
++                None
++            } else if has_nul {
++                Some(87)
++            } else {
++                std::io::Error::last_os_error().raw_os_error()
++            };
++            let (volume_prefix, volume_drive, drive_type) = if volume_ok {
++                let length = volume
++                    .iter()
++                    .position(|unit| *unit == 0)
++                    .unwrap_or(volume.len());
++                let root = std::ffi::OsString::from_wide(&volume[..length]);
++                let (prefix, drive) = path_prefix(Path::new(&root));
++                (
++                    prefix,
++                    drive,
++                    Some(unsafe { GetDriveTypeW(volume.as_ptr()) }),
++                )
++            } else {
++                ("unresolved", None, None)
++            };
++            let (dos_device_error, dos_device_kind) = if let Some(drive) = drive {
++                let name = [drive as u16, u16::from(b':'), 0];
++                let mut target = vec![0u16; 32768];
++                if unsafe {
++                    QueryDosDeviceW(name.as_ptr(), target.as_mut_ptr(), target.len() as u32)
++                } == 0
++                {
++                    (std::io::Error::last_os_error().raw_os_error(), "unresolved")
++                } else {
++                    let subst: Vec<u16> = r"\??\".encode_utf16().collect();
++                    (
++                        None,
++                        if target.starts_with(&subst) {
++                            "dos_path"
++                        } else {
++                            "device"
++                        },
++                    )
++                }
++            } else {
++                (None, "not_disk")
++            };
++            eprintln!(
++                "MXC policy diagnostic: category={category} index={index} units={units} absolute={} has_nul={has_nul} prefix={prefix} drive={drive:?} metadata_error={metadata_error:?} canonical_error={canonical_error:?} canonical_prefix={canonical_prefix} canonical_drive={canonical_drive:?} volume_error={volume_error:?} volume_prefix={volume_prefix} volume_drive={volume_drive:?} drive_type={drive_type:?} dos_device_error={dos_device_error:?} dos_device_kind={dos_device_kind}",
++                path.is_absolute()
++            );
++        }
++    }
++}
