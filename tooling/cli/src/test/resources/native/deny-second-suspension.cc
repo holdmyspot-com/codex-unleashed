@@ -28,6 +28,21 @@ BOOL WINAPI terminate_owned_job(HANDLE job, UINT exit_code) {
 
 #define SuspendThread deny_second_suspension
 #define TerminateJobObject terminate_owned_job
+#if defined(CODEX_SCHEDULER_FIXTURE_BAZEL)
+#include "compiler_scheduler_windows.h"
+#else
 #include "compiler-wrapper.cc"
+#endif
 #undef TerminateJobObject
 #undef SuspendThread
+
+#if defined(CODEX_SCHEDULER_FIXTURE_BAZEL)
+int main(int argc, char** argv) {
+  if (argc < 2) return 125;
+  constexpr DWORD capacity = 32768;
+  char endpoint[capacity];
+  DWORD length = GetEnvironmentVariableA("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint, capacity);
+  if (length == 0 || length >= capacity) return 125;
+  return compiler_scheduler::run(endpoint, argv + 1);
+}
+#endif

@@ -216,25 +216,27 @@ public final class ScheduleCompilersCommandTest
 	}
 
 	/**
-	 * Provides successful and denied termination of a partially suspended compiler job.
+	 * Provides successful and denied termination for the tooling and emitted Bazel controllers.
 	 *
-	 * @return whether native job termination fails
+	 * @return whether native job termination fails and whether the emitted Bazel header is used
 	 */
 	@DataProvider
 	public Object[][] pauseFailureCases()
 	{
-		return new Object[][] {{false}, {true}};
+		return new Object[][] {{false, false}, {true, false}, {false, true}, {true, true}};
 	}
 
 	/**
 	 * On Windows, retries a partially suspended compiler only after its job terminates successfully.
 	 *
 	 * @param stopFails whether the native fixture denies job termination
+	 * @param bazelController whether the controller comes from the emitted rules_rust patch
 	 * @throws IOException if native compilation, protocol or fixture operations fail
 	 * @throws InterruptedException if waiting for the owned wrapper is interrupted
 	 */
 	@Test(dataProvider = "pauseFailureCases", timeOut = 60_000)
-	public void recoversDeniedWindowsSuspension(boolean stopFails) throws IOException, InterruptedException
+	public void recoversDeniedWindowsSuspension(boolean stopFails, boolean bazelController)
+		throws IOException, InterruptedException
 	{
 		if (!System.getProperty("os.name").startsWith("Windows"))
 			throw new SkipException("Requires native Windows thread and job control");
@@ -249,9 +251,26 @@ public final class ScheduleCompilersCommandTest
 			}
 			Path project = Path.of(System.getProperty("tooling.release.workflow")).getParent().getParent().getParent();
 			Path nativeSource = project.resolve("tooling/cli/src/main/native");
+			if (bazelController)
+			{
+				SystemCommands.Result initialization = SystemCommands.capture(List.of("git", "init", "--quiet"),
+					root, root, System.getenv());
+				requireThat(initialization.status(), "fixtureRepositoryStatus").
+					withContext(initialization.stderr(), "stderr").isEqualTo(0);
+				Path patch = project.resolve(".github/diagnostics/compiler-scheduler-native.patch");
+				SystemCommands.Result extraction = SystemCommands.capture(List.of("git", "apply",
+					"--whitespace=error-all", "--include=util/process_wrapper/private/compiler_scheduler_windows.h",
+					patch.toString()), root, root, System.getenv());
+				requireThat(extraction.status(), "bazelControllerExtractionStatus").
+					withContext(extraction.stderr(), "stderr").isEqualTo(0);
+				nativeSource = root.resolve("util/process_wrapper/private");
+			}
 			Path executable = root.resolve("deny.exe");
+			String controllerDefinition = "/DCODEX_SCHEDULER_FIXTURE_TOOLING";
+			if (bazelController)
+				controllerDefinition = "/DCODEX_SCHEDULER_FIXTURE_BAZEL";
 			SystemCommands.Result compilation = SystemCommands.capture(List.of("cl.exe", "/nologo", "/std:c++17",
-				"/O2", "/EHsc", "/utf-8", "/W4", "/WX", "/I" + nativeSource, source.toString(),
+				"/O2", "/EHsc", "/utf-8", "/W4", "/WX", controllerDefinition, "/I" + nativeSource, source.toString(),
 				"/Fo" + root.resolve("deny.obj"), "/Fe" + executable, "/link", "ws2_32.lib"),
 				root, root, System.getenv());
 			requireThat(compilation.status(), "compilationStatus").withContext(compilation.stdout(), "stdout").
@@ -311,8 +330,10 @@ public final class ScheduleCompilersCommandTest
 							for (ProcessHandle descendant : descendants)
 								descendant.onExit().orTimeout(10, TimeUnit.SECONDS).join();
 							requireThat(wrapper.exitValue(), "failedStopWrapperStatus").isEqualTo(125);
-							requireThat(Files.readString(errorLog), "stderr").
-								contains("origin=wrapper operation=TerminateJobObject error_domain=win32 error=5");
+							String expectedFailure = "origin=wrapper operation=TerminateJobObject error_domain=win32 error=5";
+							if (bazelController)
+								expectedFailure = "operation=TerminateJobObject error_domain=win32 error=5";
+							requireThat(Files.readString(errorLog), "stderr").contains(expectedFailure);
 							return;
 						}
 						requireThat(readSchedulerPacket(input, errorLog), "abortedAttempt").isEqualTo(List.of(11, 1, 137));
