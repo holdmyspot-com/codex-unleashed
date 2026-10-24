@@ -167,7 +167,7 @@ jobs:
               "$PKG_CONFIG_PATH" "$CODEX_TEST_VOICE_RUNTIME" "${DYLD_FALLBACK_LIBRARY_PATH:-}"
           } > "$evidence/toolchain-runtime.txt"
           command=(bash "$GITHUB_WORKSPACE/.github/scripts/run-memory-scheduled-build.sh" \
-            cargo nextest archive -p codex-exec --test all \
+            cargo nextest archive \
             --target x86_64-apple-darwin --cargo-profile ci-test \
             --config profile.ci-test.package.blake3.opt-level=3 \
             --features codex-v8-poc/sandbox --timings \
@@ -190,6 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/daybreak-invocations"
+          mkdir -p "$RUNNER_TEMP/daybreak-native-extracted"
           command=(cargo nextest run \
             --archive-file "$RUNNER_TEMP/daybreak-native.tar.zst" \
             --extract-to "$RUNNER_TEMP/daybreak-native-extracted" \
