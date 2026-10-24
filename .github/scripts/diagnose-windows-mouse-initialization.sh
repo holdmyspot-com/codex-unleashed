@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 evidence="$RUNNER_TEMP/windows-tui-proxy-phases"
-overlay=.github/diagnostics/windows-mouse-initialization-red.patch
+mode=${1:-red}
+case "$mode" in
+  red)
+    overlay=.github/diagnostics/windows-mouse-initialization-red.patch
+    overlay_sha256=a1c3b0b7b63b9b17d667a4e93462ff08a22dca233527b54c01a5bf3c2322934a
+    ;;
+  green)
+    overlay=.github/diagnostics/windows-mouse-initialization-green.patch
+    overlay_sha256=92bcbf6bf4c7816f3159f4ac37f9562dd07ca724ab1be5a2ab6bdf96d396edec
+    ;;
+  *) printf 'Unsupported mouse diagnostic mode: %s\n' "$mode" >&2; exit 2 ;;
+esac
 mkdir -p "$evidence"
 {
   printf 'project_sha='; git rev-parse HEAD
@@ -10,7 +21,7 @@ mkdir -p "$evidence"
   printf 'runner_name=%s run_id=%s run_attempt=%s\n' "$RUNNER_NAME" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
 } > "$evidence/provenance.txt"
 find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 sha256sum > "$evidence/queue-sha256.txt"
-printf '%s  %s\n' a1c3b0b7b63b9b17d667a4e93462ff08a22dca233527b54c01a5bf3c2322934a "$overlay" | sha256sum --check > "$evidence/overlay-sha256.txt"
+printf '%s  %s\n' "$overlay_sha256" "$overlay" | sha256sum --check > "$evidence/overlay-sha256.txt"
 git -C upstream diff --binary > "$evidence/pre-overlay.diff"
 sha256sum upstream/codex-rs/tui/src/tui/alternate_screen_windows_tests.rs > "$evidence/test-before-sha256.txt"
 git -C upstream apply --check "../$overlay"
@@ -31,7 +42,19 @@ status=0
   2>&1 | tee "$evidence/mouse-console.log" || status=$?
 printf '%s\n' "$status" > "$evidence/mouse-console.status"
 classification=unclassified_failure
-if [[ "$status" == 0 ]]; then
+if [[ "$mode" == green ]]; then
+  if [[ "$status" == 0 ]] \
+    && grep -Fq 'test tui::alternate_screen::windows_tests::mouse_capture_restores_console_mode_and_encoding ... ok' "$evidence/mouse-console.log" \
+    && grep -Fq 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$evidence/mouse-console.log" \
+    && ! grep -Eq '^(error: could not compile|ERROR: Build did NOT complete successfully)' "$evidence/mouse-console.log"; then
+    classification=expected_native_green
+  else
+    classification=unverified_native_green
+    if [[ "$status" == 0 ]]; then
+      status=1
+    fi
+  fi
+elif [[ "$status" == 0 ]]; then
   classification=unexpected_green
 elif grep -Fq 'releasing input during capture setup should not restore an uninitialized mode' "$evidence/mouse-console.log" \
   && grep -Fq 'Initial console modes not set' "$evidence/mouse-console.log" \

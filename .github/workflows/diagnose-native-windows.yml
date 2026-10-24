@@ -12,6 +12,7 @@ on:
           - windows-test-timeouts
           - windows-tui-proxy-phases
           - windows-mouse-initialization-red
+          - windows-mouse-initialization-green
           - windows-bazel-full-workload-phases
           - windows-lifecycle-source
           - windows-sandbox-fixtures
@@ -935,7 +936,7 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red') || inputs.focus == 'windows-bazel-full-workload-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red' || inputs.focus == 'windows-mouse-initialization-green') || inputs.focus == 'windows-bazel-full-workload-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || (inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp') && 'windows-11-arm' || 'windows-2022' }}
@@ -1075,7 +1076,7 @@ jobs:
           retention-days: 1
 
   windows-tui-proxy-phases:
-    if: (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red')
+    if: (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red' || inputs.focus == 'windows-mouse-initialization-green')
     needs: prepare-tooling
     runs-on: windows-2022
     timeout-minutes: 90
@@ -1133,6 +1134,12 @@ jobs:
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: bash .github/scripts/diagnose-windows-mouse-initialization.sh
+      - name: Verify native mouse initialization fix
+        if: inputs.focus == 'windows-mouse-initialization-green'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash .github/scripts/diagnose-windows-mouse-initialization.sh green
       - name: Run exact startup defaults proxy lifecycle test
         if: inputs.focus == 'windows-tui-proxy-phases'
         shell: bash
