@@ -119,25 +119,47 @@ jobs:
           set -euo pipefail
           [[ "$ORIGINAL_SOURCE_POLICY" == false ]]
           [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 && "$ARTIFACT_ID" == macos-x64 ]]
-          [[ "$SOURCE_RUN" == 40038389605 ]]
-          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
-          mkdir -p "$diagnostic_root"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
-          source_sha="$(jq -er '.head_sha' "$diagnostic_root/source-run.json")"
-          [[ "$source_sha" == 72118e7a449834add11bbcb8fef63642430ea200 ]]
-          jq -e '.id == 40038389605 and .status == "completed"' "$diagnostic_root/source-run.json"
-          printf 'head-sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
-          for artifact in 12541876650 12541762119; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
-          done
-          jq -e --arg sha "$source_sha" '.id == 12541876650 and .name == "nextest-archive-macos-x64" and
-            .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
-            .digest == "sha256:236d917b0c71b77aad333c4ea95c2b08759434c425d4aae509572762d8807230"' \
-            "$diagnostic_root/artifact-12541876650.json"
-          jq -e --arg sha "$source_sha" '.id == 12541762119 and .name == "nextest-native-macos-x64" and
-            .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
-            .digest == "sha256:c5839312e781b23659ebd6dbc98ec6741dbe51d9bdb4ca379b5b2d18367c9962"' \
-            "$diagnostic_root/artifact-12541762119.json"
+          if [[ "$SOURCE_RUN" == 40093103558 ]]; then
+            [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ARM_LAUNCH_CONTROLS" == false && -z "$ARCHIVE_SHARD" ]]
+            diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+            mkdir -p "$diagnostic_root"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
+            source_sha=84ba3d0eafea32eb6c2da055891263c70e5abd9e
+            jq -e --arg sha "$source_sha" '.id == 40093103558 and .status == "completed" and
+              .head_sha == $sha and .path == ".github/workflows/rust-ci-full.yml" and
+              .repository.full_name == "holdmyspot-com/codex-unleashed" and
+              .head_repository.full_name == "holdmyspot-com/codex-unleashed"' "$diagnostic_root/source-run.json"
+            for artifact in 12563197007 12563476183; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
+            done
+            jq -es --arg sha "$source_sha" '
+              sort_by(.id) | map([.id, .name, .digest, .expired, .workflow_run.id, .workflow_run.head_sha]) == [
+                [12563197007, "nextest-archive-macos-x64", "sha256:ad342d508886a363f215e3367d5136e6c0beaed52306f75c559d2806db41133f", false, 40093103558, $sha],
+                [12563476183, "nextest-native-macos-x64", "sha256:1d8939c44f0416019b16ba24908092da6d00e3774a26637580edf4088f06b3b7", false, 40093103558, $sha]
+              ]' "$diagnostic_root/artifact-12563197007.json" "$diagnostic_root/artifact-12563476183.json"
+            printf 'head-sha=%s\narchive-id=12563197007\nnative-id=12563476183\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          else
+            [[ "$SOURCE_RUN" == 40038389605 ]]
+            diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+            mkdir -p "$diagnostic_root"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
+            source_sha="$(jq -er '.head_sha' "$diagnostic_root/source-run.json")"
+            [[ "$source_sha" == 72118e7a449834add11bbcb8fef63642430ea200 ]]
+            jq -e '.id == 40038389605 and .status == "completed"' "$diagnostic_root/source-run.json"
+            printf 'head-sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+            for artifact in 12541876650 12541762119; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
+            done
+            jq -e --arg sha "$source_sha" '.id == 12541876650 and .name == "nextest-archive-macos-x64" and
+              .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
+              .digest == "sha256:236d917b0c71b77aad333c4ea95c2b08759434c425d4aae509572762d8807230"' \
+              "$diagnostic_root/artifact-12541876650.json"
+            jq -e --arg sha "$source_sha" '.id == 12541762119 and .name == "nextest-native-macos-x64" and
+              .expired == false and .workflow_run.id == 40038389605 and .workflow_run.head_sha == $sha and
+              .digest == "sha256:c5839312e781b23659ebd6dbc98ec6741dbe51d9bdb4ca379b5b2d18367c9962"' \
+              "$diagnostic_root/artifact-12541762119.json"
+            printf 'archive-id=12541876650\nnative-id=12541762119\n' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Authenticate the original driver and archive identities
         if: inputs.original-source-policy
@@ -219,11 +241,55 @@ jobs:
           bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
 
       - name: Restore the current archive's exact patched workspace from cached tooling
-        if: inputs.preserve-archive-policy && !inputs.arm-launch-controls
+        if: inputs.preserve-archive-policy && !inputs.arm-launch-controls && inputs.source-run != '40093103558'
         uses: ./.github/actions/prepare-patched-upstream
         with:
           require-tooling-cache: 'true'
           expected-upstream-commit: ${{ inputs.upstream-ref }}
+
+      - name: Restore the pinned release tooling runtime without rebuilding
+        if: inputs.preserve-archive-policy && inputs.source-run == '40093103558'
+        id: release_tooling
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ github.workspace }}/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+          key: tooling-runtime-v2-macOS-X64-jdk-X64-zulu-27.0.1+9-753cdc3af5bce3449875766ba0b8c771b7c2627437c120fbebdf9428763243ad
+          fail-on-cache-miss: true
+
+      - name: Probe the pinned release runtime without rebuilding
+        if: inputs.preserve-archive-policy && inputs.source-run == '40093103558'
+        shell: bash
+        env:
+          TOOLING_RUNTIME_CACHE_HIT: ${{ steps.release_tooling.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [[ "$TOOLING_RUNTIME_CACHE_HIT" != true ]]; then
+            echo 'Pinned release tooling cache unavailable; source reconstruction cannot proceed without rebuilding.' >&2
+            exit 1
+          fi
+          runtime="$GITHUB_WORKSPACE/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+          if [[ ! -f "$runtime/.complete" || ! -x "$runtime/bin/codex-tooling" ]]; then
+            echo "Pinned release tooling runtime is incomplete at $runtime; refusing to build." >&2
+            exit 1
+          fi
+          GITHUB_ACTION_PATH="$GITHUB_WORKSPACE/.github/actions/setup-tooling" \
+            bash .github/actions/setup-tooling/setup.sh
+          printf '%s\n' 'tooling-runtime-v2-macOS-X64-jdk-X64-zulu-27.0.1+9-753cdc3af5bce3449875766ba0b8c771b7c2627437c120fbebdf9428763243ad' \
+            > "$RUNNER_TEMP/archived-test-diagnostic/original-tooling-cache-key.txt"
+
+      - name: Restore the pinned release patched workspace
+        if: inputs.preserve-archive-policy && inputs.source-run == '40093103558'
+        shell: bash
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream-ref }}
+          EXPECTED_UPSTREAM_COMMIT: 83086188ae0614bd882818ff1aa23f3194962012
+          UPSTREAM_REPO: openai/codex
+          CHECKOUT_PATH: upstream
+          FALLBACK_TO_DEFAULT_BRANCH: 'false'
+        run: |
+          set -euo pipefail
+          bash .github/actions/prepare-patched-upstream/clone.sh
+          bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
 
       - uses: ./.github/actions/setup-ci
         if: inputs.arm-launch-controls
@@ -305,6 +371,8 @@ jobs:
         shell: bash
         env:
           TMPDIR: ${{ runner.temp }}
+          ARCHIVE_ZIP_ID: ${{ steps.archive_identity.outputs.archive-id }}
+          NATIVE_ZIP_ID: ${{ steps.archive_identity.outputs.native-id }}
         run: |
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
@@ -313,7 +381,7 @@ jobs:
             --json headSha,url --jq '[.headSha,.url] | @tsv'
           if [[ "$PRESERVE_ARCHIVE_POLICY" == true ]]; then
             # Verify the actual downloaded ZIP bytes against the authenticated run metadata.
-            entries=('12541876650 archive' '12541762119 native')
+            entries=("$ARCHIVE_ZIP_ID archive" "$NATIVE_ZIP_ID native")
             if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
               entries=('12542125686 archive' '12541583459 native' '12541438951 helpers')
             fi
@@ -369,7 +437,11 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
-          [[ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" == 72118e7a449834add11bbcb8fef63642430ea200 ]]
+          expected_driver=72118e7a449834add11bbcb8fef63642430ea200
+          if [[ "$SOURCE_RUN" == 40093103558 ]]; then
+            expected_driver=84ba3d0eafea32eb6c2da055891263c70e5abd9e
+          fi
+          [[ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" == "$expected_driver" ]]
           cd "$GITHUB_WORKSPACE/upstream/codex-rs"
           test -f .config/nextest.toml
           cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
@@ -379,6 +451,10 @@ jobs:
             sha256=(sha256sum)
           fi
           "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
+          if [[ "$SOURCE_RUN" == 40093103558 ]]; then
+            printf '%s  %s\n' f411d7e8ea0a8b60a3cdd9a1e47223ad964e2d2fd5f80d0abe4d877b41851817 \
+              "$diagnostic_root/original-nextest.toml" | "${sha256[@]}" -c
+          fi
           selection_args=(-E "$TEST_FILTER")
           effective_filter="$TEST_FILTER"
           test_threads=1
@@ -425,6 +501,17 @@ jobs:
               ' "$diagnostic_root/selected-tests.json"
             printf 'Verified original hash shard %s/4: %s selected tests, including its terminal timeout test.\n' \
               "$ARCHIVE_SHARD" "$expected_count"
+          elif [[ "$SOURCE_RUN" == 40093103558 ]]; then
+            jq -e '
+              [."rust-suites"[] | ."package-name" as $package |
+                .testcases | to_entries[] |
+                select(.value."filter-match".status == "matches" and .value.ignored == false) |
+                [$package, .key]] | sort == ([
+                  ["codex-core", "client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits"],
+                  ["codex-exec", "suite::daybreak::exec_resumes_and_forks_the_saved_daybreak_choice"],
+                  ["codex-feedback", "tests::feedback_upload_delivers_large_files_intact"]
+                ] | sort)' "$diagnostic_root/selected-tests.json"
+            printf 'Verified exactly three pinned release timeout tests with the unchanged default policy.\n'
           else
             jq -e '
               [."rust-suites"[] | ."package-name" as $package |

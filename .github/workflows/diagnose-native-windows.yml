@@ -23,6 +23,7 @@ on:
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-x64-original-timeouts
+          - macos-x64-release-timeouts
           - macos-x64-current-timeouts
           - macos-x64-current-shards
           - macos-tui-timeouts
@@ -585,6 +586,20 @@ jobs:
       runner: macos-15-intel
       artifact-id: macos-x64
       test-filter: 'all()'
+
+  macos-x64-release-timeouts:
+    if: inputs.focus == 'macos-x64-release-timeouts'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: '40093103558'
+      preserve-archive-policy: true
+      upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: '(package(codex-core) & test(=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits)) | (package(codex-exec) & test(=suite::daybreak::exec_resumes_and_forks_the_saved_daybreak_choice)) | (package(codex-feedback) & test(=tests::feedback_upload_delivers_large_files_intact))'
 
   macos-x64-current-timeouts:
     if: inputs.focus == 'macos-x64-current-timeouts'
