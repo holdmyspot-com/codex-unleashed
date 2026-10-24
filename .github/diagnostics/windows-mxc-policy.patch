@@ -172,7 +172,7 @@ index 2121711..f9abc42 100644
 diff --git a/MODULE.bazel b/MODULE.bazel
 --- a/MODULE.bazel
 +++ b/MODULE.bazel
-@@ -550,6 +550,13 @@ crate.annotation(
+@@ -550,14 +550,21 @@ crate.annotation(
      workspace_cargo_toml = "rust/runfiles/Cargo.toml",
  )
 
@@ -181,11 +181,20 @@ diff --git a/MODULE.bazel b/MODULE.bazel
 +    crate = "appcontainer_common",
 +    patch_args = ["-p1"],
 +    patches = ["//patches:windows_mxc_sdk_policy.patch"],
++    workspace_cargo_toml = "src/Cargo.toml",
 +)
 +
  # MXC keeps its Rust workspace below the repository root.
  [
      crate.annotation(
+         crate = name,
+         workspace_cargo_toml = "src/Cargo.toml",
+     )
+     for name in [
+-        "appcontainer_common",
+         "learning_mode_core",
+         "learning_mode_windows",
+         "mxc_config_contract",
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 --- a/patches/BUILD.bazel
 +++ b/patches/BUILD.bazel
