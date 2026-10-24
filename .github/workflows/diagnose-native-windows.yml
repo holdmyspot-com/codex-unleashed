@@ -58,6 +58,12 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Provision the same build volume as the sandbox regression
+        shell: pwsh
+        run: ./.github/scripts/setup-dev-drive.ps1
       - name: Inspect MXC filesystem enforcement prerequisites on both drives
         shell: pwsh
         run: |
