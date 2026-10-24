@@ -2711,3 +2711,34 @@ All five focused tests must pass, covering IPv4, IPv6, exact port, foreign Host,
 default policy and invalid configuration. The remote core integration gate
 also needs rebuilt helper and core test executables under the maintained
 Docker test environment; remapping an older archive cannot verify this change.
+
+## Host hook working directory in remote sessions
+
+`zzzz-0080-host-hook-cwd.patch` lets host command hooks execute when the
+selected executor workspace exists only on a remote machine. Tool and lifecycle
+hooks prefer the selected local environment's working directory when available;
+otherwise they use the session's retained host working directory. Remote tool
+working directories retain their executor paths. A read-only host root remains
+a valid fallback; the resolver does not substitute `CODEX_HOME` or require a
+writable directory.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+The patch fixes production hook cwd selection and includes its own regression
+fixtures. It adds no feature flag or configuration property and requires no
+installed third-party plugin.
+
+Run the maintained focused tests and complete upstream formatting gate from
+the patched checkout root:
+
+```sh
+just test -p codex-core --lib -E 'test(hook_runtime::tests)'
+just fmt-check
+```
+
+All eight focused tests must pass on Unix. The regression executes a host
+PostToolUse command for a remote-only selection and checks its blocking
+feedback, selected-local priority, and preserved remote tool cwd. The shell
+execution fixture is Unix-only. The maintained Docker integration lane remains
+the gate for the remote guardian scenario; the local command regression does
+not establish complete Docker coverage.
