@@ -850,6 +850,12 @@ jobs:
           ref: a20387a3b3e7baec859b53f3cb15b026fbc8a423
           path: scheduler-upstream
           persist-credentials: false
+      - name: Normalize Windows paths before writing Bazel cache configuration
+        id: scheduler_bazel_paths
+        shell: bash
+        run: |
+          printf 'base=%s/.cat/work/temp/build-caches/native-scheduler/bazel-output\n' \
+            "$(cygpath -m "$GITHUB_WORKSPACE")" >> "$GITHUB_OUTPUT"
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-version: 1.30.0
@@ -857,7 +863,7 @@ jobs:
           bazelisk-cache: true
           repository-cache: true
           disk-cache: true
-          output-base: ${{ github.workspace }}/.cat/work/temp/build-caches/native-scheduler/bazel-output
+          output-base: ${{ steps.scheduler_bazel_paths.outputs.base }}
       - name: Apply standalone scheduler regression tests
         shell: bash
         run: |
@@ -868,6 +874,7 @@ jobs:
         env:
           USE_BAZEL_VERSION: 9.3.1
           FOCUS: ${{ inputs.focus }}
+          BAZEL_OUTPUT_BASE: ${{ steps.scheduler_bazel_paths.outputs.base }}
         run: |
           set -euo pipefail
           mkdir -p .cat/work/temp/scheduler-diagnostics
@@ -877,9 +884,9 @@ jobs:
           if [[ "$FOCUS" == compiler-scheduler-baseline ]]; then
             arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
           fi
-          output_base="${GITHUB_WORKSPACE}/.cat/work/temp/build-caches/native-scheduler/bazel-output"
+          output_base="$BAZEL_OUTPUT_BASE"
           set +e
-          bazel --client_debug "--output_base=$(cygpath -m "$output_base")" \
+          bazel --client_debug "--output_base=$output_base" \
             test //test/process_wrapper:compiler_scheduler_test \
             "${arguments[@]}" \
             --nocache_test_results --test_output=all --lockfile_mode=update \
