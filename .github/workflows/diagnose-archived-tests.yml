@@ -80,10 +80,10 @@ jobs:
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir -p "$diagnostic_root"
           cp .github/scripts/diagnose-windows-arm-launch-inputs.ps1 "$diagnostic_root/controls.ps1"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256=(sha256sum)
-          else
+          if command -v shasum >/dev/null 2>&1; then
             sha256=(shasum -a 256)
+          else
+            sha256=(sha256sum)
           fi
           "${sha256[@]}" "$diagnostic_root/controls.ps1" > "$diagnostic_root/controls.sha256"
 
@@ -322,10 +322,10 @@ jobs:
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$diagnostic_root/$directory.zip"
               digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$")) | sub("^sha256:"; "")' \
                 "$diagnostic_root/artifact-$artifact.json")"
-              if command -v sha256sum >/dev/null 2>&1; then
-                sha256=(sha256sum)
-              else
+              if command -v shasum >/dev/null 2>&1; then
                 sha256=(shasum -a 256)
+              else
+                sha256=(sha256sum)
               fi
               printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | "${sha256[@]}" -c
               mkdir "$diagnostic_root/$directory"
@@ -373,10 +373,10 @@ jobs:
           cd "$GITHUB_WORKSPACE/upstream/codex-rs"
           test -f .config/nextest.toml
           cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256=(sha256sum)
-          else
+          if command -v shasum >/dev/null 2>&1; then
             sha256=(shasum -a 256)
+          else
+            sha256=(sha256sum)
           fi
           "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
           selection_args=()
@@ -468,10 +468,10 @@ jobs:
             cd "$GITHUB_WORKSPACE/upstream/codex-rs"
             test -f .config/nextest.toml
             cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
-            if command -v sha256sum >/dev/null 2>&1; then
-              sha256=(sha256sum)
-            else
+            if command -v shasum >/dev/null 2>&1; then
               sha256=(shasum -a 256)
+            else
+              sha256=(sha256sum)
             fi
             "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
             config_args=(--config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default)
