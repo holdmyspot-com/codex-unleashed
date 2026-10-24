@@ -13,6 +13,7 @@ on:
           - windows-lifecycle-source
           - windows-archive-extraction
           - windows-archived-failures
+          - windows-arm-launch-inputs
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-x64-original-timeouts
@@ -442,6 +443,20 @@ jobs:
       runner: ${{ matrix.runner }}
       artifact-id: windows-x64
       test-filter: '(package(codex-core) & test(subagent_stop_replaces_stop_and_skips_internal_subagents)) | (package(codex-utils-pty) & test(conpty_ctrl_c_interrupts_powershell_foreground_child)) | (package(codex-windows-sandbox) & (test(legacy_capture_cancellation_terminates_descendants_without_timeout) | test(legacy_capture_emits_output_and_preserves_descendant_after_normal_exit) | test(legacy_tty_job_terminates_and_preserves_descendants)))'
+
+  windows-arm-launch-inputs:
+    if: inputs.focus == 'windows-arm-launch-inputs'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: '40038389605'
+      runner: windows-11-arm
+      artifact-id: windows-arm64
+      arm-launch-controls: true
+      preserve-archive-policy: true
+      test-filter: '(package(codex-exec-server) & binary(exec_process) & test(=remote_windows_sandbox_process_accepts_process_write::test_case_2_mxc_pipe)) | (package(codex-core) & binary(all) & test(=suite::unified_exec::exec_command_uses_installed_environment_shell_policy_with_explicit_overrides))'
 
   windows-archive-extraction:
     if: inputs.focus == 'windows-archive-extraction'

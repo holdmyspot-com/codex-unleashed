@@ -6,12 +6,16 @@ on:
       source-run:
         type: string
         required: true
+      arm-launch-controls:
+        description: Authenticate retained ARM inputs and collect independent PowerShell startup controls.
+        type: boolean
+        default: false
       original-source-policy:
         description: Restore the original Intel diagnostic driver and its default nextest policy.
         type: boolean
         default: false
       preserve-archive-policy:
-        description: Restore the current Intel archive's exact driver and default nextest policy without rebuilding.
+        description: Restore the current archive's exact driver and default nextest policy without rebuilding.
         type: boolean
         default: false
       upstream-ref:
@@ -39,6 +43,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
+      ARM_LAUNCH_CONTROLS: ${{ inputs.arm-launch-controls }}
       PRESERVE_ARCHIVE_POLICY: ${{ inputs.preserve-archive-policy }}
       ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
@@ -48,8 +53,47 @@ jobs:
       RUST_LIB_BACKTRACE: "0"
       RUST_MIN_STACK: "8388608"
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: inputs.arm-launch-controls
+        with:
+          persist-credentials: false
+
+      - name: Stage reviewed ARM controls before restoring the archive driver
+        if: inputs.arm-launch-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          cp .github/scripts/diagnose-windows-arm-launch-inputs.ps1 "$diagnostic_root/controls.ps1"
+          shasum -a 256 "$diagnostic_root/controls.ps1" > "$diagnostic_root/controls.sha256"
+
+      - name: Authenticate retained ARM launch inputs
+        if: inputs.arm-launch-controls
+        id: arm_identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PRESERVE_ARCHIVE_POLICY" == true ]]
+          [[ "$SOURCE_RUN" == 40038389605 && "$ARTIFACT_ID" == windows-arm64 ]]
+          [[ "$RUNNER_OS" == Windows && "$RUNNER_ARCH" == ARM64 && "$ORIGINAL_SOURCE_POLICY" == false ]]
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > "$diagnostic_root/source-run.json"
+          jq -e ' .id == 40038389605 and .status == "completed" and .head_sha == "72118e7a449834add11bbcb8fef63642430ea200" ' "$diagnostic_root/source-run.json"
+          printf 'head-sha=72118e7a449834add11bbcb8fef63642430ea200\n' >> "$GITHUB_OUTPUT"
+          for artifact in 12542125686 12541583459 12541438951; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "$diagnostic_root/artifact-$artifact.json"
+          done
+          jq -es '
+            sort_by(.id) | map([.id, .name, .digest, .expired, .workflow_run.id, .workflow_run.head_sha]) == [
+              [12541438951, "nextest-test-helpers-windows-arm64", "sha256:3f2a62413f8b98f84f567091e5fee84f7a763615b33735e3683d43d87965d3be", false, 40038389605, "72118e7a449834add11bbcb8fef63642430ea200"],
+              [12541583459, "nextest-native-windows-arm64", "sha256:ca628818f5d79daff4528ce7b1055431ada52e884d6648e347491d7b647343f5", false, 40038389605, "72118e7a449834add11bbcb8fef63642430ea200"],
+              [12542125686, "nextest-archive-windows-arm64", "sha256:01fcc2c4f2e6b34dea300f902d8280f5372747de45b86fc869d9a8caf399ab43", false, 40038389605, "72118e7a449834add11bbcb8fef63642430ea200"]
+            ]' "$diagnostic_root"/artifact-*.json
+
       - name: Authenticate the current archive source and artifact identities
-        if: inputs.preserve-archive-policy
+        if: inputs.preserve-archive-policy && !inputs.arm-launch-controls
         id: archive_identity
         shell: bash
         run: |
@@ -105,7 +149,7 @@ jobs:
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ inputs.preserve-archive-policy && steps.archive_identity.outputs.head-sha || inputs.original-source-policy && steps.source_identity.outputs.head-sha || github.sha }}
+          ref: ${{ inputs.arm-launch-controls && steps.arm_identity.outputs.head-sha || inputs.preserve-archive-policy && steps.archive_identity.outputs.head-sha || inputs.original-source-policy && steps.source_identity.outputs.head-sha || github.sha }}
           persist-credentials: false
 
       - name: Check out the archived workspace source
@@ -156,11 +200,67 @@ jobs:
           bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
 
       - name: Restore the current archive's exact patched workspace from cached tooling
-        if: inputs.preserve-archive-policy
+        if: inputs.preserve-archive-policy && !inputs.arm-launch-controls
         uses: ./.github/actions/prepare-patched-upstream
         with:
           require-tooling-cache: 'true'
           expected-upstream-commit: ${{ inputs.upstream-ref }}
+
+      - uses: ./.github/actions/setup-ci
+        if: inputs.arm-launch-controls
+
+      - name: Select the archived native ARM tooling JDK
+        if: inputs.arm-launch-controls
+        id: arm_jdk
+        uses: actions/setup-java@v5
+        with:
+          distribution: liberica
+          java-version: '27.0.1+11'
+          architecture: aarch64
+
+      - name: Restore the exact archived ARM tooling runtime
+        if: inputs.arm-launch-controls
+        id: arm_tooling
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ github.workspace }}/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+          key: tooling-runtime-v1-Windows-ARM64-jdk-aarch64-liberica-27.0.1+11-64ac20488e11c8d568f4e8d133da7daf288645003cfe90c4a12eb7f855bc0d9b
+          fail-on-cache-miss: true
+
+      - name: Require the archived ARM launcher without a build fallback
+        if: inputs.arm-launch-controls
+        shell: bash
+        env:
+          TOOLING_RUNTIME_CACHE_HIT: ${{ steps.arm_tooling.outputs.cache-hit }}
+          TOOLING_RUNTIME_CACHE_KEY: ${{ steps.arm_tooling.outputs.cache-primary-key }}
+        run: |
+          set -euo pipefail
+          [[ "$TOOLING_RUNTIME_CACHE_HIT" == true ]]
+          runtime="$GITHUB_WORKSPACE/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+          test -f "$runtime/.complete"
+          test -x "$runtime/bin/codex-tooling"
+          [[ "$("$runtime/bin/codex-tooling" next-release-build-number rust-v0.0.0 </dev/null)" == 1 ]]
+          printf 'CODEX_UNLEASHED_TOOLING=%s\n' "$runtime/bin/codex-tooling" >> "$GITHUB_ENV"
+          printf '%s\n' "$TOOLING_RUNTIME_CACHE_KEY" > "$RUNNER_TEMP/archived-test-diagnostic/original-tooling-cache-key.txt"
+
+      - name: Restore the exact patched ARM archive source
+        if: inputs.arm-launch-controls
+        shell: bash
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream-ref }}
+          EXPECTED_UPSTREAM_COMMIT: ${{ inputs.upstream-ref }}
+          UPSTREAM_REPO: openai/codex
+          CHECKOUT_PATH: upstream
+          FALLBACK_TO_DEFAULT_BRANCH: 'false'
+        run: |
+          set -euo pipefail
+          bash .github/actions/prepare-patched-upstream/clone.sh
+          bash scripts/apply-patches.sh "$GITHUB_WORKSPACE/upstream"
+
+      - name: Collect independent ARM PowerShell startup controls
+        if: inputs.arm-launch-controls
+        shell: pwsh
+        run: '& "$env:RUNNER_TEMP/archived-test-diagnostic/controls.ps1" -OutputDirectory "$env:RUNNER_TEMP/archived-test-diagnostic"'
 
       - uses: taiki-e/install-action@v2
         with:
@@ -184,7 +284,11 @@ jobs:
             --json headSha,url --jq '[.headSha,.url] | @tsv'
           if [[ "$PRESERVE_ARCHIVE_POLICY" == true ]]; then
             # Verify the actual downloaded ZIP bytes against the authenticated run metadata.
-            for entry in '12541876650 archive' '12541762119 native'; do
+            entries=('12541876650 archive' '12541762119 native')
+            if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
+              entries=('12542125686 archive' '12541583459 native' '12541438951 helpers')
+            fi
+            for entry in "${entries[@]}"; do
               read -r artifact directory <<< "$entry"
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$diagnostic_root/$directory.zip"
               digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$")) | sub("^sha256:"; "")' \
@@ -205,6 +309,21 @@ jobs:
             tar -C nextest-native -xzf - \
               < archived-test-diagnostic/native/nextest-native.tar.gz
           )
+
+      - name: Restore retained ARM sandbox helpers
+        if: inputs.arm-launch-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          helper_target_dir="$CARGO_TARGET_DIR/aarch64-pc-windows-msvc/ci-test"
+          mkdir -p "$helper_target_dir"
+          cp "$diagnostic_root/helpers/codex-windows-sandbox-setup.exe" "$helper_target_dir/"
+          cp "$diagnostic_root/helpers/codex-command-runner.exe" "$helper_target_dir/"
+          setup_helper="$(cygpath -w "$helper_target_dir/codex-windows-sandbox-setup.exe")"
+          command_runner="$(cygpath -w "$helper_target_dir/codex-command-runner.exe")"
+          printf 'CARGO_BIN_EXE_codex_windows_sandbox_setup=%s\nCARGO_BIN_EXE_codex_command_runner=%s\n' \
+            "$setup_helper" "$command_runner" >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
@@ -231,15 +350,26 @@ jobs:
             --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
             --config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default \
             --message-format json -E "$TEST_FILTER" > "$diagnostic_root/selected-tests.json"
-          jq -e '
-            [."rust-suites"[] | ."package-name" as $package |
-              .testcases | to_entries[] |
-              select(.value."filter-match".status == "matches" and .value.ignored == false) |
-              [$package, .key]] | sort == ([
-                ["codex-core", "client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits"],
-                ["codex-tui", "bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent"]
-              ] | sort)
-            ' "$diagnostic_root/selected-tests.json"
+          if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
+            jq -e '
+              [."rust-suites"[] | ."package-name" as $package |
+                .testcases | to_entries[] |
+                select(.value."filter-match".status == "matches" and .value.ignored == false) |
+                [$package, .key]] | sort == ([
+                  ["codex-exec-server", "remote_windows_sandbox_process_accepts_process_write::test_case_2_mxc_pipe"],
+                  ["codex-core", "suite::unified_exec::exec_command_uses_installed_environment_shell_policy_with_explicit_overrides"]
+                ] | sort)' "$diagnostic_root/selected-tests.json"
+          else
+            jq -e '
+              [."rust-suites"[] | ."package-name" as $package |
+                .testcases | to_entries[] |
+                select(.value."filter-match".status == "matches" and .value.ignored == false) |
+                [$package, .key]] | sort == ([
+                  ["codex-core", "client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits"],
+                  ["codex-tui", "bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent"]
+                ] | sort)
+              ' "$diagnostic_root/selected-tests.json"
+          fi
           printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
 
       - name: Run the selected archived tests
@@ -263,6 +393,9 @@ jobs:
             cmp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
             config_args=(--config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default)
             archive_args+=(--extract-overwrite)
+            if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
+              config_args+=(--success-output immediate-final)
+            fi
           elif [[ "$ORIGINAL_SOURCE_POLICY" == true ]]; then
             cd "$GITHUB_WORKSPACE/upstream/codex-rs"
             test -f .config/nextest.toml
@@ -306,7 +439,7 @@ jobs:
             -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
 
       - name: Compare Windows tests with fixtures inside their writable workspace
-        if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure'
+        if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure' && !inputs.arm-launch-controls
         shell: bash
         run: |
           set -euo pipefail
@@ -335,6 +468,8 @@ jobs:
           name: archived-tests-${{ inputs.artifact-id }}
           path: |
             ${{ runner.temp }}/archived-test-diagnostic/tests.log
+            ${{ runner.temp }}/archived-test-diagnostic/arm-launch-controls.json
+            ${{ runner.temp }}/archived-test-diagnostic/controls.sha256
             ${{ runner.temp }}/archived-test-diagnostic/writable-fixtures.log
             ${{ runner.temp }}/archived-test-diagnostic/processes.log
             ${{ runner.temp }}/archived-test-diagnostic/source-run.json
@@ -350,4 +485,9 @@ jobs:
       - name: Remove downloaded and extracted test inputs
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native" "$GITHUB_WORKSPACE/upstream"
+        run: |
+          rm -rf -- "$RUNNER_TEMP/archived-test-diagnostic" "$RUNNER_TEMP/nextest-native" "$GITHUB_WORKSPACE/upstream"
+          if [[ "$ARM_LAUNCH_CONTROLS" == true && -n "${CARGO_TARGET_DIR:-}" ]]; then
+            rm -f -- "$CARGO_TARGET_DIR/aarch64-pc-windows-msvc/ci-test/codex-windows-sandbox-setup.exe" \
+              "$CARGO_TARGET_DIR/aarch64-pc-windows-msvc/ci-test/codex-command-runner.exe"
+          fi
