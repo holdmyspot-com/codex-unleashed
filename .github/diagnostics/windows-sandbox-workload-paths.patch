@@ -1,0 +1,44 @@
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -883,8 +883,8 @@
+     let cwd = sandbox_cwd();
+     let workload_temp = tempfile::tempdir_in(&cwd).expect("create PowerShell workload tempdir");
+     let codex_home = sandbox_home("legacy-capture-cancel");
+-    let descendant_marker = codex_home.path().join("descendant-survived");
+-    let ready_marker = codex_home.path().join("descendant-started");
++    let descendant_marker = workload_temp.path().join("descendant-survived");
++    let ready_marker = workload_temp.path().join("descendant-started");
+     let descendant_command = format!(
+         "Set-Content -LiteralPath '{}' -Value $PID; Start-Sleep -Seconds 1; Set-Content -LiteralPath '{}' -Value survived",
+         powershell_literal(&ready_marker),
+@@ -892,7 +892,7 @@
+     );
+     let parent_command = start_powershell_child(
+         &pwsh,
+-        codex_home.path(),
++        workload_temp.path(),
+         &descendant_command,
+         "Start-Sleep -Seconds 30",
+     );
+@@ -972,9 +972,9 @@
+         LegacyTtyDescendantLifecycle::Terminate => "legacy-tty-descendant-terminate",
+         LegacyTtyDescendantLifecycle::Preserve => "legacy-tty-descendant-preserve",
+     });
+-    let ready_marker = codex_home.path().join("descendant-started");
+-    let release_marker = codex_home.path().join("release-descendant");
+-    let survival_marker = codex_home.path().join("descendant-survived");
++    let ready_marker = workload_temp.path().join("descendant-started");
++    let release_marker = workload_temp.path().join("release-descendant");
++    let survival_marker = workload_temp.path().join("descendant-survived");
+     let child_tail = match lifecycle {
+         LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
+         LegacyTtyDescendantLifecycle::Preserve => format!(
+@@ -995,7 +995,7 @@
+         ),
+     };
+     let parent_command =
+-        start_powershell_child(pwsh, codex_home.path(), &child_command, &parent_tail);
++        start_powershell_child(pwsh, workload_temp.path(), &child_command, &parent_tail);
+     let permission_profile = PermissionProfile::workspace_write();
+     let spawned = spawn_windows_sandbox_session_legacy(
+         &permission_profile,

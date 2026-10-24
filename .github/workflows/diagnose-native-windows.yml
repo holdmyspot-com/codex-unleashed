@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - windows-tui-proxy-phases
+          - windows-mouse-initialization-red
           - windows-bazel-full-workload-phases
           - windows-lifecycle-source
           - windows-sandbox-fixtures
@@ -767,7 +768,7 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-bazel-full-workload-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red') || inputs.focus == 'windows-bazel-full-workload-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || (inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp') && 'windows-11-arm' || 'windows-2022' }}
@@ -907,7 +908,7 @@ jobs:
           retention-days: 1
 
   windows-tui-proxy-phases:
-    if: inputs.focus == 'windows-tui-proxy-phases'
+    if: (inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-mouse-initialization-red')
     needs: prepare-tooling
     runs-on: windows-2022
     timeout-minutes: 90
@@ -951,6 +952,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing the pinned Windows voice prerequisites failed.' }
       - name: Apply test-only Windows fixture phase diagnostics
         id: phase_overlays
+        if: inputs.focus == 'windows-tui-proxy-phases'
         shell: bash
         run: |
           set -euo pipefail
@@ -958,7 +960,14 @@ jobs:
           git -C upstream apply ../.github/diagnostics/windows-tui-proxy-phases.patch
           git -C upstream apply --check ../.github/diagnostics/sandbox-cloud-config-phases.patch
           git -C upstream apply ../.github/diagnostics/sandbox-cloud-config-phases.patch
+      - name: Run native mouse initialization regression
+        if: inputs.focus == 'windows-mouse-initialization-red'
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: bash .github/scripts/diagnose-windows-mouse-initialization.sh
       - name: Run exact startup defaults proxy lifecycle test
+        if: inputs.focus == 'windows-tui-proxy-phases'
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -1126,11 +1135,16 @@ jobs:
           git -C upstream diff --binary > "$evidence/prepared-queue.diff"
           git -C upstream apply --check ../.github/diagnostics/windows-sandbox-fixture-acceptance.patch
           git -C upstream apply ../.github/diagnostics/windows-sandbox-fixture-acceptance.patch
+          git -C upstream apply --check ../.github/diagnostics/windows-sandbox-workload-paths.patch
+          git -C upstream apply ../.github/diagnostics/windows-sandbox-workload-paths.patch
+          git -C upstream apply --check ../.github/diagnostics/windows-tty-pid-publication.patch
+          git -C upstream apply ../.github/diagnostics/windows-tty-pid-publication.patch
           git -C upstream diff --binary > "$evidence/instrumented-source.diff"
           {
             printf 'dispatch_head=%s\nupstream_commit=%s\nrun_id=%s\nrun_attempt=%s\n' \
               "$GITHUB_SHA" "$(git -C upstream rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
             sha256sum .github/diagnostics/windows-sandbox-fixture-acceptance.patch
+            sha256sum .github/diagnostics/windows-sandbox-workload-paths.patch .github/diagnostics/windows-tty-pid-publication.patch
             sha256sum patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-009{2,3}-*.patch
             sha256sum upstream/codex-rs/core/tests/windows_sandbox.rs upstream/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
           } > "$evidence/provenance.txt"
@@ -1176,6 +1190,21 @@ jobs:
               --test_arg=--test-threads=1 --test_arg=--format=pretty --test_arg=--color=never \
               "${test_args[@]}" -- "$target" 2>&1 | tee "$evidence/$gate.log" || status=$?
             printf '%s\n' "$status" > "$evidence/$gate.status"
+
+            raw_evidence="$evidence/$gate-raw"
+            mkdir -p "$raw_evidence"
+            target_log_path="${target#//}"
+            target_log_path="${target_log_path/:/\/}"
+            for artifact in test.log test.xml; do
+              source_artifact="bazel-testlogs/$target_log_path/$artifact"
+              if [[ -f "$source_artifact" ]]; then
+                cp -- "$source_artifact" "$raw_evidence/$artifact"
+                sha256sum "$raw_evidence/$artifact" >> "$raw_evidence/sha256.txt"
+              else
+                printf 'Raw Bazel test artifact unavailable: %s\n' "$source_artifact" \
+                  >> "$raw_evidence/missing.txt"
+              fi
+            done
           done
           bash "${GITHUB_WORKSPACE}/.github/scripts/assert-windows-sandbox-fixture-evidence.sh" "$evidence" "$EXPECTED_RUST_ARCH"
       - name: Retain focused Windows sandbox fixture acceptance evidence
