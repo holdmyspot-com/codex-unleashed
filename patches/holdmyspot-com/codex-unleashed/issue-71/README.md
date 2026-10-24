@@ -37,6 +37,10 @@ The lockfiles also resolve aws-config 1.13.0, aws-credential-types 1.3.1,
 aws-sigv4 1.6.2, aws-types 1.7.0 and wildmatch 2.7.0. Their supporting AWS
 crates follow the versions required by those releases.
 
+The Windows clipboard dependency resolves to the non-yanked `clipboard-win 5.4.3`
+release with matching Cargo and Bazel lock metadata. Its dependency
+requirements match the replaced `5.4.1` entry.
+
 The affected crates are ported to these APIs without new lint suppressions.
 Regenerated app-server protocol schemas and the Python SDK's generated
 bindings reflect the schemars 1 output.

@@ -117,6 +117,7 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
                 -C "$CI_BUILD_ROOT/bin" --wildcards '*/cargo-deny'
               rm -- "$RUNNER_TEMP/cargo-deny.tar.gz"
             fi
+            TMPDIR="$RUNNER_TEMP" bash upstream/scripts/check-crypto-bigint-backport.sh "$PWD/upstream"
             (cd upstream/codex-rs && cargo deny check --deny unmatched-source --deny license-not-encountered \
               --deny unused-wrapper --deny advisory-not-detected)
             ;;

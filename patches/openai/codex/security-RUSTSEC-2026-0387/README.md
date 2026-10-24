@@ -1,10 +1,10 @@
-# RUSTSEC-2026-0387: compatible constant-time arithmetic update
+# RUSTSEC-2026-0387: constant-time arithmetic
 
 ## Intent
 
-Codex uses the fixed compatible `crypto-bigint` release for its upgraded
-P-256 dependency. The older `crypto-bigint` dependency through `age` remains
-an unresolved security blocker.
+Codex uses corrected constant-time arithmetic in both affected `crypto-bigint`
+dependency branches. The current P-256 branch uses a compatible registry
+update; the older branch required by `age` uses a reviewed source backport.
 
 ## Reference and base
 
@@ -12,68 +12,84 @@ an unresolved security blocker.
 - **Upstream resolution**: https://github.com/RustCrypto/crypto-bigint/pull/1365
 - **Upstream base**: `rust-v0.163.0`, commit
   `83086188ae0614bd882818ff1aa23f3194962012`.
-- **Patch**: `compatible-constant-time-arithmetic.patch`.
-- **Prerequisites**: Apply the release patch queue in repository filename
-  order through
-  `patches/holdmyspot-com/codex-unleashed/issue-71/latest-stable-dependencies.patch`,
-  including that patch's earlier queue prerequisites. Its expected SHA-256 is
-  `61240207b38e24fde33696459f2fbaef813014560911855dc33410a94df7a4eb`.
-  Also apply `security-RUSTSEC-2026-0385/update-ctutils.patch`, which establishes
-  the `ctutils 0.4.4` lock entries that this patch updates.
-- **Application order**: This security patch follows issue #71. The existing
-  security patches for RUSTSEC-2024-0449, RUSTSEC-2026-0346, and
-  RUSTSEC-2026-0367 retain their positions before this advisory directory.
-  The RUSTSEC-2026-0385 patch also precedes this directory.
+- **Application order**: Apply the repository release queue in filename order.
+  Within this directory, apply `compatible-constant-time-arithmetic.patch`
+  before `vendored-legacy-constant-time-arithmetic.patch`.
+- **Queue prerequisites**: These emitted patches use the dependency context
+  established by issue #71 and the preceding security patches, including
+  `security-RUSTSEC-2026-0385/update-ctutils.patch`. The issue #71 patch
+  `patches/holdmyspot-com/codex-unleashed/issue-71/latest-stable-dependencies.patch`
+  has SHA-256
+  `ab9281acbb3936c32b8c56f2bf22086e6855d4610bceb884b4fc6a647e4610bf`.
 
-The patch requires the dependency queue context and does not apply to the
-clean upstream base by itself. The focused verification below covers the
-complete current release queue and a fresh checkout of the declared base
-with that queue context and the emitted patch applied.
+The queue artifacts require that lockfile context. The underlying legacy
+backport needs only upstream's normal dependencies and `ctutils 0.4.5`;
+it does not require a third-party plugin. A clean-base standalone packaging
+check covers that minimal prerequisite separately. The queue replay checks
+cover the exact artifacts distributed here.
 
-## Scope and remaining blocker
+## Scope
 
-`codex-rs/Cargo.lock` resolves `crypto-bigint` from `0.7.5` to `0.7.7` and
-`ctutils` from `0.4.4` to its required minimum `0.4.5`. The three existing
-qualified dependency references and registry checksums follow those versions.
-`MODULE.bazel.lock` contains the matching published registry metadata.
-There are no dependency-manifest changes or advisory suppressions.
+`compatible-constant-time-arithmetic.patch` updates registry `crypto-bigint`
+from `0.7.5` to `0.7.7` and `ctutils` from `0.4.4` to `0.4.5`, with matching
+Cargo and Bazel registry metadata. RustSec identifies `crypto-bigint >=0.7.6`
+as patched. This branch serves `p256 0.14.0` in `codex-user-verification`.
 
-RustSec identifies `crypto-bigint >=0.7.6` as patched. The `0.7.7` release
-provides a compatible fix for the branch used by `p256 0.14.0` in
-`codex-user-verification`.
+`vendored-legacy-constant-time-arithmetic.patch` retains the compatible chain
+`codex-secrets -> age 0.12.1 -> p256 0.13.2 -> elliptic-curve 0.13.8 -> crypto-bigint 0.5.5`.
+Cargo resolves its final package to the corrected local source under
+`codex-rs/vendor/crypto-bigint-0.5.5`. The patch includes the original source
+archive, the frozen library backport, and a guard that reconstructs and
+compares every vendored file before checking the actual locked dependency
+chain. Other `crypto-bigint` versions, when present, must retain unique
+registry identities. No advisory exception is added.
 
-The separate chain
-`codex-secrets -> age 0.12.1 -> p256 0.13.2 -> elliptic-curve 0.13.8 -> crypto-bigint 0.5.5`
-is unchanged. `age 0.12.1` is the latest stable age release and requires
-`p256 ^0.13`; its elliptic-curve dependency requires `crypto-bigint ^0.5`.
-The fixed `0.7` release does not satisfy that requirement. This patch does
-not resolve the advisory for the `0.5.5` branch, and the complete advisory
-check continues to fail for that package. A separate supported dependency
-migration or verified cryptographic backport is necessary before that gate
-can pass.
+The reviewed library patch has SHA-256
+`daab4a04c34beea7f417fae1b348ada597221bed826c9fc0b6c0cdcef00d0002`.
+The queue patch containing it has SHA-256
+`ee43fab3a586b693c58029836b897a89279a6bb289a793d47cdf142cbf060658`.
+The backport's constant-time analysis covers control flow and memory access;
+it does not establish constant instruction latency on every processor.
 
-## Focused verification
+## Verification
 
-From the patched upstream checkout root, use these commands. Local Rust
-commands run through the project's `tooling/bin/codex-tooling run-local-rust`
-helper with explicit project, checkout, and task-owned cache arguments.
+From the patched upstream checkout root, run the maintained checks below.
+Local Rust commands use the project's
+`tooling/bin/codex-tooling run-local-rust` helper with explicit project,
+checkout, and task-owned cache arguments. `TMPDIR` names caller-owned
+scratch storage under the project's build-cache directory.
+
+First normalize Cargo's workspace lockfile versions to the patched manifests.
+BuildBuddy's upstream preparation performs this step; a checkout prepared only
+by applying patches needs it before the guard's locked metadata check.
 
 ```sh
-cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1
+(cd codex-rs && cargo metadata --format-version 1 > /dev/null)
+just fmt-check
 just bazel-lock-check
+python3 scripts/test_check_crypto_bigint_backport.py
+bash scripts/check-crypto-bigint-backport.sh "$PWD"
 cargo deny --manifest-path codex-rs/Cargo.toml check --deny unmatched-source \
   --deny license-not-encountered --deny unused-wrapper --deny advisory-not-detected
+just test -p codex-secrets
 ```
 
-- **Cargo metadata**: Passes on the candidate and emitted-patch replay.
-- **Bazel lock consistency**: Passes on the candidate and emitted-patch replay.
-- **Strict cargo-deny**: Exits with status `1`; the sole error is
-  RUSTSEC-2026-0387 for the unchanged `crypto-bigint 0.5.5`. Bans, licenses,
-  and sources checks pass. The `0.7.7` package has no vulnerability error.
-- **Change scope**: Only two lockfiles change. The `crypto-bigint 0.5.5`
-  package and all other locked package versions remain unchanged apart from
-  the explicitly listed `crypto-bigint` and `ctutils` upgrades.
-- **Emitted patch**: Applies to the fresh base-plus-queue checkout and
-  reproduces the candidate lockfiles byte for byte.
-- **Broader gates**: Builds, runtime tests, and final release-queue acceptance
-  remain outside these focused checks.
+The guard's 28 regression cases cover corrupted provenance, changed vendor
+source, symlinks, invalid package identities, and broken dependency edges.
+The source guard, strict advisory audit, formatting, and Bazel lock checks
+must pass. The strict audit does not suppress RUSTSEC-2026-0387: the guard
+establishes the corrected local source identity before the audit runs.
+BuildBuddy's `cargo-deny` task invokes the guard before the strict audit.
+
+When local test fixtures would inherit the enclosing project's `.git`
+through `TMPDIR`, use Nextest's supported target runner to remove `TMPDIR`
+only from the test processes, preserving compiler scratch and cache paths:
+
+```sh
+env 'CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/usr/bin/env -u TMPDIR' \
+  just test -p codex-secrets
+```
+
+Bazel consumer compilation and native release-platform tests are separate
+required release checks; formatting, lock consistency, and advisory checks
+do not establish those outcomes.
