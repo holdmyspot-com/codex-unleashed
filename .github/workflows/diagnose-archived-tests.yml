@@ -379,13 +379,11 @@ jobs:
             sha256=(sha256sum)
           fi
           "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
-          selection_args=()
-          filter_args=(-E "$TEST_FILTER")
+          selection_args=(-E "$TEST_FILTER")
           effective_filter="$TEST_FILTER"
           test_threads=1
           if [[ -n "$ARCHIVE_SHARD" ]]; then
             selection_args=(--partition "hash:$ARCHIVE_SHARD/4")
-            filter_args=()
             effective_filter='<none>'
             test_threads=default
           fi
@@ -398,7 +396,7 @@ jobs:
             --extract-to "$diagnostic_root/extracted" \
             --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
             --config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default \
-            "${selection_args[@]}" --message-format json "${filter_args[@]}" > "$diagnostic_root/selected-tests.json"
+            "${selection_args[@]}" --message-format json > "$diagnostic_root/selected-tests.json"
           if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
             jq -e '
               [."rust-suites"[] | ."package-name" as $package |
@@ -504,8 +502,7 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             trace_command=(strace -f -tt -T -e 'trace=execve,clone,clone3,wait4,waitid,kill,exit_group' -o "$diagnostic_root/processes.log")
           fi
-          concurrency_args=(--test-threads 1)
-          filter_args=(-E "$TEST_FILTER")
+          execution_args=(--test-threads 1 -E "$TEST_FILTER")
           monitor_pid=
           stop_monitor() {
             if [[ -n "$monitor_pid" ]]; then
@@ -516,10 +513,8 @@ jobs:
           }
           trap stop_monitor EXIT
           if [[ -n "$ARCHIVE_SHARD" ]]; then
-            archive_args+=(--partition "hash:$ARCHIVE_SHARD/4")
-            concurrency_args=()
-            # Match the original shard invocation: no additional filter expression.
-            filter_args=()
+            # Match the original shard invocation: default concurrency and no filter expression.
+            execution_args=(--partition "hash:$ARCHIVE_SHARD/4")
             (
               set +e
               date -u
@@ -545,10 +540,10 @@ jobs:
           set +e
           "${trace_command[@]}" cargo nextest run \
             "${archive_args[@]}" "${config_args[@]}" \
-            "${concurrency_args[@]}" --retries 0 --no-fail-fast \
+            "${execution_args[@]}" --retries 0 --no-fail-fast \
             --failure-output immediate-final \
             --no-tests fail \
-            "${filter_args[@]}" 2>&1 | tee "$diagnostic_root/tests.log"
+            2>&1 | tee "$diagnostic_root/tests.log"
           pipeline_status=("${PIPESTATUS[@]}")
           set -e
           stop_monitor
