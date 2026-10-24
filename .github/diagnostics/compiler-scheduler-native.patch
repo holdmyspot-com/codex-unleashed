@@ -1,11 +1,18 @@
 diff --git a/test/process_wrapper/BUILD.bazel b/test/process_wrapper/BUILD.bazel
-index 09af719..b809132 100644
+index 09af719..aea3747 100644
 --- a/test/process_wrapper/BUILD.bazel
 +++ b/test/process_wrapper/BUILD.bazel
-@@ -204,3 +204,34 @@ rust_test(
+@@ -204,3 +204,46 @@ rust_test(
      },
      deps = ["//rust/runfiles"],
  )
++
++# Runtime paths shared by ordinary admission and Windows partial-suspension regression cases.
++_compiler_scheduler_env = {
++    "BOOTSTRAP_RLOCATIONPATH": "$(rlocationpath //util/process_wrapper:bootstrap_process_wrapper)",
++    "FAKE_RUSTC_RLOCATIONPATH": "$(rlocationpath :fake_rustc)",
++    "SCHEDULER_SERVER_RLOCATIONPATH": "$(rlocationpath :compiler_scheduler_server)",
++}
 +
 +rust_test(
 +    name = "compiler_scheduler_test",
@@ -15,13 +22,18 @@ index 09af719..b809132 100644
 +        ":compiler_scheduler_server",
 +        ":fake_rustc",
 +        "//util/process_wrapper:bootstrap_process_wrapper",
-+    ],
++    ] + select({
++        "@platforms//os:windows": ["//util/process_wrapper/private:compiler_scheduler_pause_fault"],
++        "//conditions:default": [],
++    }),
 +    edition = "2018",
-+    rustc_env = {
-+        "BOOTSTRAP_RLOCATIONPATH": "$(rlocationpath //util/process_wrapper:bootstrap_process_wrapper)",
-+        "FAKE_RUSTC_RLOCATIONPATH": "$(rlocationpath :fake_rustc)",
-+        "SCHEDULER_SERVER_RLOCATIONPATH": "$(rlocationpath :compiler_scheduler_server)",
-+    },
++    rustc_env = select({
++        "@platforms//os:windows": dict(
++            _compiler_scheduler_env,
++            PAUSE_FAULT_WRAPPER_RLOCATIONPATH = "$(rlocationpath //util/process_wrapper/private:compiler_scheduler_pause_fault)",
++        ),
++        "//conditions:default": _compiler_scheduler_env,
++    }),
 +    deps = ["//rust/runfiles"],
 +)
 +
@@ -39,10 +51,10 @@ index 09af719..b809132 100644
 +)
 diff --git a/test/process_wrapper/compiler_scheduler.rs b/test/process_wrapper/compiler_scheduler.rs
 new file mode 100644
-index 0000000..15460a6
+index 0000000..80af2fe
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler.rs
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,173 @@
 +//! Compiler admission checks through the executable bootstrap wrapper.
 +
 +use std::path::PathBuf;
@@ -90,15 +102,29 @@ index 0000000..15460a6
 +
 +#[test]
 +fn long_socket_directory_preserves_compiler_working_directory() {
-+    exercise_fixture(false);
++    exercise_fixture(FixtureMode::WorkingDirectory);
 +}
 +
 +#[test]
 +fn compiler_pauses_resumes_and_retries_without_replaying_failed_attempt_output() {
-+    exercise_fixture(true);
++    exercise_fixture(FixtureMode::Control);
 +}
 +
-+fn exercise_fixture(controlled: bool) {
++#[cfg(windows)]
++#[test]
++fn denied_partial_suspension_terminates_the_attempt_before_retry() {
++    exercise_fixture(FixtureMode::DeniedPause);
++}
++
++#[derive(Clone, Copy)]
++enum FixtureMode {
++    WorkingDirectory,
++    Control,
++    #[cfg(windows)]
++    DeniedPause,
++}
++
++fn exercise_fixture(mode: FixtureMode) {
 +    use std::io::{BufRead, BufReader};
 +    use std::process::{Child, Stdio};
 +
@@ -118,14 +144,28 @@ index 0000000..15460a6
 +    let runfiles = Runfiles::create().expect("cannot locate runfiles");
 +    let server = runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH"))
 +        .expect("scheduler server fixture is missing");
-+    let bootstrap = runfiles::rlocation!(runfiles, env!("BOOTSTRAP_RLOCATIONPATH"))
-+        .expect("bootstrap wrapper is missing");
++    let (bootstrap_location, server_argument, prefix) = match mode {
++        FixtureMode::WorkingDirectory => (env!("BOOTSTRAP_RLOCATIONPATH"), "--cwd-server", "deep-"),
++        FixtureMode::Control => (
++            env!("BOOTSTRAP_RLOCATIONPATH"),
++            "--control-server",
++            "control-",
++        ),
++        #[cfg(windows)]
++        FixtureMode::DeniedPause => (
++            env!("PAUSE_FAULT_WRAPPER_RLOCATIONPATH"),
++            "--failed-pause-server",
++            "failed-pause-",
++        ),
++    };
++    let bootstrap = runfiles::rlocation!(runfiles, bootstrap_location)
++        .expect("compiler controller fixture is missing");
 +    let directory = PathBuf::from(std::env::var_os("TEST_TMPDIR").expect("TEST_TMPDIR is missing"))
-+        .join(if controlled { "control-" } else { "deep-" }.to_owned() + &"x".repeat(128));
++        .join(prefix.to_owned() + &"x".repeat(128));
 +    std::fs::create_dir(&directory).expect("cannot create private socket directory");
 +    let mut fixture = Fixture {
 +        server: Command::new(server)
-+            .arg(if controlled { "--control-server" } else { "--cwd-server" })
++            .arg(server_argument)
 +            .current_dir(&directory)
 +            .stdout(Stdio::piped())
 +            .spawn()
@@ -138,26 +178,49 @@ index 0000000..15460a6
 +        .expect("cannot read scheduler readiness");
 +    assert_eq!(ready.trim_end(), "ready");
 +    let mut command = Command::new(bootstrap);
-+    command.arg("--")
++    command
++        .arg("--")
 +        .arg(runfiles::rlocation!(runfiles, env!("SCHEDULER_SERVER_RLOCATIONPATH")).unwrap());
-+    if controlled {
-+        command.arg("--heartbeat").arg(fixture.directory.join("heartbeat"));
-+    } else {
-+        command.arg("--compiler");
++    match mode {
++        FixtureMode::WorkingDirectory => {
++            command.arg("--compiler");
++        }
++        FixtureMode::Control => {
++            command
++                .arg("--heartbeat")
++                .arg(fixture.directory.join("heartbeat"));
++        }
++        #[cfg(windows)]
++        FixtureMode::DeniedPause => {
++            command
++                .arg("--threaded-heartbeat")
++                .arg(fixture.directory.join("heartbeat"));
++        }
 +    }
 +    let output = command
-+        .env("CODEX_COMPILER_SCHEDULER_SOCKET", fixture.directory.join("s"))
++        .env(
++            "CODEX_COMPILER_SCHEDULER_SOCKET",
++            fixture.directory.join("s"),
++        )
 +        .output()
 +        .expect("cannot start compiler stand-in");
 +    assert!(output.status.success(), "{:?}", output);
 +    assert_eq!(
 +        String::from_utf8(output.stdout).unwrap().trim_end(),
-+        if controlled {
-+            "compiler attempt".to_owned()
++        if matches!(mode, FixtureMode::WorkingDirectory) {
++            std::env::current_dir()
++                .unwrap()
++                .to_string_lossy()
++                .into_owned()
 +        } else {
-+            std::env::current_dir().unwrap().to_string_lossy().into_owned()
++            "compiler attempt".to_owned()
 +        }
 +    );
++    #[cfg(windows)]
++    if matches!(mode, FixtureMode::DeniedPause) {
++        assert!(String::from_utf8_lossy(&output.stderr)
++            .contains("fixture: denied suspension after one successful suspension"));
++    }
 +    let completion = fixture.server.wait().unwrap();
 +    assert!(
 +        completion.success(),
@@ -167,10 +230,10 @@ index 0000000..15460a6
 +}
 diff --git a/test/process_wrapper/compiler_scheduler_server.cc b/test/process_wrapper/compiler_scheduler_server.cc
 new file mode 100644
-index 0000000..bae3818
+index 0000000..ec2832c
 --- /dev/null
 +++ b/test/process_wrapper/compiler_scheduler_server.cc
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,219 @@
 +#include <array>
 +#include <cstdio>
 +#include <cstdlib>
@@ -310,7 +373,21 @@ index 0000000..bae3818
 +  return 1;
 +}
 +
-+int server(bool controlled) {
++int failed_pause(NativeSocket socket) {
++  if (!progress(0) || !command(socket, 2, 1) || !event(socket, 11, 1, 137)) return 12;
++  auto stopped = heartbeat_size();
++  std::this_thread::sleep_for(std::chrono::milliseconds(100));
++  if (heartbeat_size() != stopped) return 13;
++  if (!command(socket, 3, 1) || !command(socket, 2, 1) || !command(socket, 4, 1) ||
++      !command(socket, 5, 1) || !command(socket, 1, 2) || !event(socket, 8, 2) ||
++      !progress(stopped)) return 14;
++  std::ofstream finish("heartbeat-finish");
++  finish << "finish";
++  finish.close();
++  return event(socket, 9, 2) ? 0 : 15;
++}
++
++int server(const char* mode) {
 +  Socket listener(socket(AF_UNIX, SOCK_STREAM, 0));
 +  if (listener.value == kInvalidSocket) return 2;
 +  struct sockaddr_un address = {};
@@ -347,7 +424,8 @@ index 0000000..bae3818
 +  if (!packet(client.value, &bytes, true)) return 3;
 +  if (!packet(client.value, &bytes, false) ||
 +      bytes != std::array<char, 12>{0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
-+  if (controlled) return control(client.value);
++  if (std::strcmp(mode, "--control-server") == 0) return control(client.value);
++  if (std::strcmp(mode, "--failed-pause-server") == 0) return failed_pause(client.value);
 +  if (!packet(client.value, &bytes, false) ||
 +      bytes != std::array<char, 12>{0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0}) return 3;
 +  return 0;
@@ -358,11 +436,17 @@ index 0000000..bae3818
 +int main(int argc, char** argv) {
 +  if (argc == 2 && std::strcmp(argv[1], "--compiler") == 0) return compiler();
 +  if (argc == 3 && std::strcmp(argv[1], "--heartbeat") == 0) return heartbeat(argv[2]);
++  if (argc == 3 && std::strcmp(argv[1], "--threaded-heartbeat") == 0) {
++    int outcome = 1;
++    std::thread worker([&] { outcome = heartbeat(argv[2]); });
++    worker.join();
++    return outcome;
++  }
 +#if defined(_WIN32)
 +  WSADATA data;
 +  if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return 2;
 +#endif
-+  int status = server(argc == 2 && std::strcmp(argv[1], "--control-server") == 0);
++  int status = server(argc == 2 ? argv[1] : "");
 +#if defined(_WIN32)
 +  WSACleanup();
 +#endif
@@ -370,11 +454,21 @@ index 0000000..bae3818
 +  return status;
 +}
 diff --git a/util/process_wrapper/private/BUILD.bazel b/util/process_wrapper/private/BUILD.bazel
-index 6cbbbc0..2466692 100644
+index 6cbbbc0..34b98d5 100644
 --- a/util/process_wrapper/private/BUILD.bazel
 +++ b/util/process_wrapper/private/BUILD.bazel
-@@ -2,6 +2,14 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+@@ -1,7 +1,24 @@
+ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
++cc_binary(
++    name = "compiler_scheduler_pause_fault",
++    srcs = ["compiler_scheduler_pause_fault.cc", "compiler_scheduler_windows.h"],
++    copts = ["/std:c++17", "/W4", "/WX"],
++    linkopts = ["-DEFAULTLIB:ws2_32.lib"],
++    target_compatible_with = ["@platforms//os:windows"],
++    visibility = ["//test/process_wrapper:__pkg__"],
++)
++
  cc_binary(
      name = "bootstrap_process_wrapper",
 -    srcs = ["bootstrap_process_wrapper.cc"],
@@ -1081,12 +1175,49 @@ index 0000000..f599011
 +}  // namespace compiler_scheduler
 +#endif
 +#endif
+diff --git a/util/process_wrapper/private/compiler_scheduler_pause_fault.cc b/util/process_wrapper/private/compiler_scheduler_pause_fault.cc
+new file mode 100644
+index 0000000..f9315e2
+--- /dev/null
++++ b/util/process_wrapper/private/compiler_scheduler_pause_fault.cc
+@@ -0,0 +1,31 @@
++// Exercises the controller after one thread suspends and the next suspension is denied.
++#include <winsock2.h>
++#include <windows.h>
++#include <cstdio>
++
++namespace {
++DWORD WINAPI deny_second_suspension(HANDLE thread) {
++  static unsigned int successful_suspensions = 0;
++  if (successful_suspensions == 1) {
++    std::fputs("fixture: denied suspension after one successful suspension\n", stderr);
++    SetLastError(ERROR_ACCESS_DENIED);
++    return static_cast<DWORD>(-1);
++  }
++  DWORD previous_count = ::SuspendThread(thread);
++  if (previous_count != static_cast<DWORD>(-1)) ++successful_suspensions;
++  return previous_count;
++}
++}  // namespace
++
++#define SuspendThread deny_second_suspension
++#include "compiler_scheduler_windows.h"
++#undef SuspendThread
++
++int main(int argc, char** argv) {
++  if (argc < 3 || std::strcmp(argv[1], "--") != 0) return 125;
++  constexpr DWORD capacity = 32768;
++  char endpoint[capacity];
++  DWORD length = GetEnvironmentVariableA("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint, capacity);
++  if (length == 0 || length >= capacity) return 125;
++  return compiler_scheduler::run(endpoint, argv + 2);
++}
 diff --git a/util/process_wrapper/private/compiler_scheduler_windows.h b/util/process_wrapper/private/compiler_scheduler_windows.h
 new file mode 100644
-index 0000000..48eafeb
+index 0000000..8ec9a86
 --- /dev/null
 +++ b/util/process_wrapper/private/compiler_scheduler_windows.h
-@@ -0,0 +1,440 @@
+@@ -0,0 +1,466 @@
 +#ifndef RULES_RUST_COMPILER_SCHEDULER_WINDOWS_H_
 +#define RULES_RUST_COMPILER_SCHEDULER_WINDOWS_H_
 +
@@ -1353,16 +1484,19 @@ index 0000000..48eafeb
 +    while (true) {
 +      bool added = false;
 +      Handle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0));
-+      if (!snapshot.valid()) return false;
++      if (!snapshot.valid()) return pause_failed("CreateToolhelp32Snapshot", GetLastError());
 +      THREADENTRY32 entry = {};
 +      entry.dwSize = sizeof(entry);
-+      if (!Thread32First(snapshot.get(), &entry)) return GetLastError() == ERROR_NO_MORE_FILES;
++      if (!Thread32First(snapshot.get(), &entry)) {
++        DWORD error = GetLastError();
++        return error == ERROR_NO_MORE_FILES || pause_failed("Thread32First", error);
++      }
 +      do {
 +        Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
 +                                   FALSE, entry.th32OwnerProcessID));
 +        if (!process.valid()) continue;
 +        BOOL owned = FALSE;
-+        if (!IsProcessInJob(process.get(), job_.get(), &owned)) return false;
++        if (!IsProcessInJob(process.get(), job_.get(), &owned)) return pause_failed("IsProcessInJob", GetLastError());
 +        if (!owned || WaitForSingleObject(process.get(), 0) == WAIT_OBJECT_0) continue;
 +        bool known = false;
 +        for (const Handle& suspended : paused_)
@@ -1371,18 +1505,21 @@ index 0000000..48eafeb
 +        Handle thread(OpenThread(THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
 +                                 FALSE, entry.th32ThreadID));
 +        if (!thread.valid()) {
-+          if (GetLastError() == ERROR_INVALID_PARAMETER) continue;
-+          return false;
++          DWORD error = GetLastError();
++          if (error == ERROR_INVALID_PARAMETER) continue;
++          return pause_failed("OpenThread", error);
 +        }
 +        if (GetProcessIdOfThread(thread.get()) != entry.th32OwnerProcessID) continue;
 +        if (SuspendThread(thread.get()) == static_cast<DWORD>(-1)) {
++          DWORD error = GetLastError();
 +          if (WaitForSingleObject(thread.get(), 0) == WAIT_OBJECT_0) continue;
-+          return false;
++          return pause_failed("SuspendThread", error);
 +        }
 +        paused_.push_back(std::move(thread));
 +        added = true;
 +      } while (Thread32Next(snapshot.get(), &entry));
-+      if (GetLastError() != ERROR_NO_MORE_FILES) return false;
++      DWORD error = GetLastError();
++      if (error != ERROR_NO_MORE_FILES) return pause_failed("Thread32Next", error);
 +      if (!added) return true;
 +    }
 +  }
@@ -1398,7 +1535,11 @@ index 0000000..48eafeb
 +
 +  bool stop() {
 +    if (!job_.valid()) return true;
-+    if (!TerminateJobObject(job_.get(), 137)) return false;
++    if (!TerminateJobObject(job_.get(), 137)) {
++      DWORD error = GetLastError();
++      std::fprintf(stderr, "compiler_scheduler: operation=TerminateJobObject error_domain=win32 error=%lu\n", error);
++      return false;
++    }
 +    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
 +    do {
 +      if (!QueryInformationJobObject(job_.get(), JobObjectBasicAccountingInformation,
@@ -1415,6 +1556,13 @@ index 0000000..48eafeb
 +  }
 +
 + private:
++  // Saves the producer's error before snapshot and thread handles are closed.
++  static bool pause_failed(const char* operation, DWORD error) {
++    std::fprintf(stderr, "compiler_scheduler: origin=wrapper operation=%s error_domain=win32 "
++                         "error=%lu return=abort_attempt\n", operation, error);
++    return false;
++  }
++
 +  bool child_environment(std::vector<wchar_t>* result) const {
 +    std::unique_ptr<wchar_t, decltype(&FreeEnvironmentStringsW)> original(
 +        GetEnvironmentStringsW(), &FreeEnvironmentStringsW);
@@ -1489,10 +1637,19 @@ index 0000000..48eafeb
 +          attempt.reset(new Attempt());
 +          if (!attempt->launch(arguments) || !connection.send(STARTED, generation, 0)) return 125;
 +        } else if (attempt && !awaiting_retry && packet.generation == generation) {
-+          if (packet.command == PAUSE) { if (!attempt->pause()) return 125; }
++          if (packet.command == PAUSE) {
++            if (!attempt->pause()) {
++              if (!attempt->stop()) return 125;
++              killed = true;
++            }
++          }
 +          else if (packet.command == RESUME) { if (!attempt->resume()) return 125; }
 +          else if (packet.command == KILL) { killed = true; if (!attempt->stop()) return 125; }
 +          else return 125;
++        } else if (awaiting_retry && packet.generation == generation &&
++                   (packet.command == PAUSE || packet.command == RESUME || packet.command == KILL)) {
++          // Commands already in flight cannot change the terminated attempt.
++          continue;
 +        } else if (packet.command == RETRY && awaiting_retry && packet.generation == generation) {
 +          attempt.reset();
 +          awaiting_retry = false;

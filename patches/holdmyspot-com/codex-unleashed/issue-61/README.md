@@ -2603,13 +2603,21 @@ rules_rust revision and run its maintained Bazel test entry point, narrowed to:
 
 ```sh
 bazel test //test/process_wrapper:compiler_scheduler_test \
-  --cache_test_results=no --test_output=errors \
-  --copt=-Wall --copt=-Wextra --copt=-Werror
+  --config=rustfmt --config=clippy \
+  --cache_test_results=no --test_output=errors
 ```
 
 The target checks ordinary invocation, unavailable-controller failure,
 long socket paths without changing the compiler working directory, and
 pause/resume/kill/retry cleanup with diagnostics from the final attempt.
+Windows also checks a denied suspension after one thread has already been
+suspended. The controller terminates the owned job before reporting the killed
+attempt, accepts same-generation control messages already in flight, and starts
+the retry with clean output. Its diagnostic retains the failing Win32 operation
+and error. A failure to terminate the job remains fatal rather than permitting
+a retry. All five Windows tests, or all four POSIX tests, must execute and pass.
+The Windows controller and native fixtures compile with `/W4 /WX`; for Linux
+verification, add `--copt=-Wall --copt=-Wextra --copt=-Werror`.
 On local environments whose default TestRunner sandbox cannot execute the
 fixture, `--strategy=TestRunner=processwrapper-sandbox` selects the supported
 test runner without changing compiler action strategies. This focused check

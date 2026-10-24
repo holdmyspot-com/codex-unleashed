@@ -886,8 +886,9 @@ jobs:
           set -e
           if [[ "$FOCUS" == compiler-scheduler-native ]]; then
             if [[ "$status" != 0 ]]; then exit "$status"; fi
-            grep -F 'test result: ok. 4 passed;' "$diagnostic"
-            printf 'Patched Windows admission, working-directory, pause/resume and retry checks pass.\n' >> "$GITHUB_STEP_SUMMARY"
+            grep -F 'test result: ok. 5 passed;' "$diagnostic"
+            grep -F 'test denied_partial_suspension_terminates_the_attempt_before_retry ... ok' "$diagnostic"
+            printf 'Patched Windows admission, working-directory, pause/resume, retry and denied-suspension checks pass.\n' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [[ "$status" != 3 ]]; then
