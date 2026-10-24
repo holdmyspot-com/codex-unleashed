@@ -203,7 +203,7 @@ index 3a50918dd378e7e885d705f843e67772b38b634f..7feaa60c11ce6a509857e85bd01d47dc
      let permission_profile = PermissionProfile::workspace_write();
      let spawned = spawn_windows_sandbox_session_legacy(
          &permission_profile,
-@@ -999,7 +1028,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -999,19 +1028,35 @@ async fn assert_legacy_tty_descendant_lifecycle(
              parent_command,
          ],
          cwd.as_path(),
@@ -212,7 +212,9 @@ index 3a50918dd378e7e885d705f843e67772b38b634f..7feaa60c11ce6a509857e85bd01d47dc
          Some(30_000),
          &[],
          &[],
-@@ -1008,10 +1037,26 @@ async fn assert_legacy_tty_descendant_lifecycle(
+         /*tty*/ true,
+-        /*stdin_open*/ false,
++        /*stdin_open*/ true,
      )
      .await
      .expect("spawn legacy sandbox ConPTY lifecycle test");
