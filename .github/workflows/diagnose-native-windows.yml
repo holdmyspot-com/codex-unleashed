@@ -823,6 +823,8 @@ jobs:
     if: inputs.focus == 'compiler-scheduler-baseline' || inputs.focus == 'compiler-scheduler-native'
     runs-on: windows-2022
     timeout-minutes: 20
+    env:
+      USE_BAZEL_VERSION: 9.3.1
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -839,16 +841,7 @@ jobs:
           else
             cp .github/diagnostics/compiler-scheduler-tests.patch .cat/work/temp/scheduler-diagnostics/tests.patch
           fi
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          # This pin supplies the exact verified driver independently of diagnostic edits.
-          ref: 2d04175e11d005db8bb2ba90e00ad6ea3b9dacb6
-          clean: false
-          persist-credentials: false
-      - uses: ./.github/actions/setup-tooling
-        with:
-          require-cache: 'true'
-      - uses: ./.github/actions/setup-bazel-ci
+      - uses: ./.github/actions/setup-msvc-env
         with:
           target: x86_64-pc-windows-msvc
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -857,6 +850,14 @@ jobs:
           ref: a20387a3b3e7baec859b53f3cb15b026fbc8a423
           path: scheduler-upstream
           persist-credentials: false
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-version: 1.30.0
+          module-root: scheduler-upstream
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
+          output-base: ${{ github.workspace }}/.cat/work/temp/build-caches/native-scheduler/bazel-output
       - name: Apply standalone scheduler regression tests
         shell: bash
         run: |
@@ -877,8 +878,7 @@ jobs:
             arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
           fi
           set +e
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-with-buildbuddy.sh" \
-            test //test/process_wrapper:compiler_scheduler_test \
+          bazel test //test/process_wrapper:compiler_scheduler_test \
             "${arguments[@]}" \
             --nocache_test_results --test_output=all --lockfile_mode=update \
             2>&1 | tee "$diagnostic"
