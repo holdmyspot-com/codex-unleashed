@@ -43,7 +43,7 @@ JAVA_LAUNCHER
     --host_jvm_args=--enable-native-access=ALL-UNNAMED \
     --host_jvm_args=-Xmx2560m \
     "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
-    "--host_jvm_args=-XX:FlightRecorderOptions=repository=$evidence/bazel-jfr-repository,preserve-repository=true,maxchunksize=4m" \
+    "--host_jvm_args=-XX:FlightRecorderOptions=repository=$evidence/bazel-jfr-repository,preserve-repository=true,maxchunksize=1m" \
     "--host_jvm_args=-XX:StartFlightRecording=name=bazel-allocation,settings=none,disk=true,maxsize=32m,maxage=10m,dumponexit=true,filename=$evidence/bazel-allocation.jfr,+jdk.ObjectAllocationSample#enabled=true,+jdk.ObjectAllocationSample#stackTrace=true,+jdk.ObjectAllocationSample#throttle=100/s" \
     "$@"
 }
@@ -69,6 +69,7 @@ PROFILE_TOOL
   while IFS= read -r -d '' argument; do actual+=("$argument"); done < "$root/arguments"
   [[ "${#actual[@]}" == 10 && "${actual[0]}" == run-bazel-with-buildbuddy ]]
   [[ "${actual[1]}" == "--server_javabase=$root/bazel-jdk" ]]
+  [[ "${actual[5]}" == "--host_jvm_args=-XX:FlightRecorderOptions=repository=$root/bazel-jfr-repository,preserve-repository=true,maxchunksize=1m" ]]
   [[ "${actual[6]}" == *settings=none* && "${actual[6]}" == *'jdk.ObjectAllocationSample#stackTrace=true'* ]]
   [[ "${actual[7]}" == build && "${actual[8]}" == '--test_arg=two words' && "${actual[9]}" == //fixture:target ]]
   cat > "$root/jdk/bin/java" <<'JAVA_TOOL'
