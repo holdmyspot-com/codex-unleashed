@@ -51,6 +51,7 @@ on:
           - native-voice-runtime-windows-x64
           - native-voice-runtime-windows-arm64
           - native-platform-tests-except-windows-x64
+          - linux-x64-native-and-remote
           - linux-docker-scope
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
@@ -520,7 +521,7 @@ jobs:
       artifact_id: ${{ matrix.artifact_id }}
 
   native-platform-tests-linux:
-    if: inputs.focus == 'native-platform-tests-except-windows-x64'
+    if: inputs.focus == 'native-platform-tests-except-windows-x64' || inputs.focus == 'linux-x64-native-and-remote'
     permissions:
       actions: read
       contents: read
@@ -534,7 +535,7 @@ jobs:
 
   native-platform-tests-linux-remote:
     needs: native-platform-tests-linux
-    if: inputs.focus == 'native-platform-tests-except-windows-x64'
+    if: inputs.focus == 'native-platform-tests-except-windows-x64' || inputs.focus == 'linux-x64-native-and-remote'
     permissions:
       actions: read
       contents: read
