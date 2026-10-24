@@ -334,11 +334,13 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
     exit 1
   fi
   execution_root="${execution_root//\\//}"
+  # Scope MSVC reproducibility flags to C/C++ compilation actions. Global copts also enter
+  # Cargo build-script CFLAGS, where an independently selected clang-cl rejects /pathmap.
+  # Per-file options escape commas inside the path so each root remains one compiler argument.
+  execution_root="${execution_root//,/\\,}"
   post_config_bazel_args+=(
-    --copt=/experimental:deterministic
-    --host_copt=/experimental:deterministic
-    "--copt=/pathmap:${execution_root}=."
-    "--host_copt=/pathmap:${execution_root}=."
+    "--per_file_copt=.*@/experimental:deterministic,/pathmap:${execution_root}=."
+    "--host_per_file_copt=.*@/experimental:deterministic,/pathmap:${execution_root}=."
   )
 fi
 
