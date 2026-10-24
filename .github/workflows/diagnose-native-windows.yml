@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - windows-tui-proxy-phases
+          - windows-bazel-full-workload-phases
           - windows-lifecycle-source
           - windows-sandbox-fixtures
           - windows-conpty-ctrl-c
@@ -766,10 +767,144 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'windows-bazel-full-workload-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || (inputs.focus == 'windows-arm-mxc-policy' || inputs.focus == 'windows-arm-mxc-temp') && 'windows-11-arm' || 'windows-2022' }}
+
+  windows-bazel-full-workload-phases:
+    if: inputs.focus == 'windows-bazel-full-workload-phases'
+    needs: prepare-tooling
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Restore Windows voice build inputs
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/voice-cygwin-snapshot
+          key: voice-cygwin-${{ hashFiles('upstream/.github/scripts/voice-cygwin-snapshot.json') }}
+      - name: Install verified Windows voice build tools
+        shell: pwsh
+        working-directory: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content .github/scripts/voice-cygwin-snapshot.json -Raw | ConvertFrom-Json).archive
+          $directory = Join-Path $env:RUNNER_TEMP 'voice-cygwin-snapshot'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $archive = Join-Path $directory $pin.name
+          if (-not (Test-Path -LiteralPath $archive)) {
+            gh release download $pin.tag --repo openai/codex --pattern $pin.name --dir $directory
+            if ($LASTEXITCODE -ne 0) { throw 'Downloading the pinned Windows voice archive failed.' }
+          }
+          & ./.github/scripts/setup-voice-windows.ps1 -Target x86_64-pc-windows-msvc -SnapshotArchive $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the pinned Windows voice prerequisites failed.' }
+      - name: Check Windows Bazel PATH stability
+        shell: pwsh
+        run: ./.github/scripts/test-compute-bazel-windows-path.ps1 -WorkDirectory '${{ runner.temp }}/windows-path-check'
+      - name: Verify Windows test launcher selection and batching
+        shell: pwsh
+        run: ./upstream/tools/build-warnings/windows-launcher/selected_tests.ps1 -TempRoot '${{ runner.temp }}'
+      - name: Record source identity and apply fixture-only phase tracing
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-bazel-full-workload-phases"
+          mkdir -p "$evidence"
+          {
+            printf 'project_sha='; git rev-parse HEAD
+            printf 'upstream_base='; git -C upstream rev-parse HEAD
+            printf 'runner_os=%s runner_arch=%s image_os=%s image_version=%s\n' \
+              "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+            printf 'runner_name=%s run_id=%s run_attempt=%s\n' "$RUNNER_NAME" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+          } > "$evidence/provenance.txt"
+          powershell.exe -NoProfile -NonInteractive -Command '[Environment]::OSVersion.VersionString' >> "$evidence/provenance.txt"
+          find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 sha256sum > "$evidence/queue-sha256.txt"
+          sha256sum .github/diagnostics/windows-tui-proxy-phases.patch \
+            .github/diagnostics/sandbox-cloud-config-output-phases.patch > "$evidence/overlays-sha256.txt"
+          git -C upstream apply --check ../.github/diagnostics/windows-tui-proxy-phases.patch
+          git -C upstream apply ../.github/diagnostics/windows-tui-proxy-phases.patch
+          git -C upstream apply --check ../.github/diagnostics/sandbox-cloud-config-output-phases.patch
+          git -C upstream apply ../.github/diagnostics/sandbox-cloud-config-output-phases.patch
+          (cd upstream && sha256sum codex-rs/cli/tests/sandbox_cloud_config.rs \
+            codex-rs/tui/src/app/tests/session_lifecycle_requests.rs \
+            codex-rs/tui/src/app/tests/startup_defaults_tests.rs) > "$evidence/emitted-sha256.txt"
+      - name: Run original full native Bazel workload with phase tracing
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-bazel-full-workload-phases"
+          cd upstream
+          bazel_targets=(
+            //...
+            -//third_party/v8:all
+            -//codex-rs/v8-poc:v8-poc-unit-tests
+          )
+          bazel_test_args=(
+            test
+            --config=ci-windows-msvc
+            --platforms=//:windows_x86_64_msvc
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1
+            --test_tag_filters=-argument-comment-lint
+            --test_verbose_timeout_warnings
+            "--build_metadata=COMMIT_SHA=${GITHUB_SHA}"
+            --build_metadata=TAG_windows_native_main=true
+            --test_env=CODEX_TUI_PROXY_PHASE_DIAGNOSTIC=1
+            --test_env=RUST_TEST_NOCAPTURE=1
+            --nocache_test_results
+          )
+          status=0
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- "${bazel_test_args[@]}" -- "${bazel_targets[@]}" \
+            2>&1 | tee "$evidence/native.log" || status=$?
+          printf '%s\n' "$status" > "$evidence/native.status"
+          exit "$status"
+      - name: Retain every test attempt and reject missing fixture completion
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-bazel-full-workload-phases"
+          mkdir -p "$evidence"
+          # Copy the complete tree, including test_attempts, before the runner is discarded.
+          if [[ -d upstream/bazel-testlogs ]]; then
+            cp -R -L upstream/bazel-testlogs "$evidence/testlogs"
+          fi
+          [[ -f "$evidence/native.status" ]] || exit 1
+          [[ "$(cat "$evidence/native.status")" == 0 ]] || exit 1
+          grep -RFq 'test app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_falls_back_only_for_unsupported_config_read ... ok' "$evidence/testlogs"
+          grep -RFq 'test sandbox_fetches_and_enforces_cloud_managed_permission_profile ... ok' "$evidence/testlogs"
+          grep -RFq 'mock_verify_complete; test_complete' "$evidence/testlogs"
+          grep -RFq 'phase=proxy-join-complete' "$evidence/testlogs"
+      - name: Upload full-workload phase evidence and execution logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-bazel-full-workload-phases
+          path: |
+            ${{ runner.temp }}/windows-bazel-full-workload-phases/
+            ${{ runner.temp }}/bazel-execution-logs/
+          if-no-files-found: error
+          retention-days: 1
 
   windows-tui-proxy-phases:
     if: inputs.focus == 'windows-tui-proxy-phases'

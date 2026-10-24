@@ -1,0 +1,165 @@
+diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
+index 81fbf07..6403a7e 100644
+--- a/codex-rs/cli/tests/sandbox_cloud_config.rs
++++ b/codex-rs/cli/tests/sandbox_cloud_config.rs
+@@ -1,4 +1,5 @@
+ use std::process::Command;
++use std::time::Instant;
+
+ use anyhow::Context;
+ use anyhow::Result;
+@@ -34,7 +35,13 @@ enabled = true
+
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Result<()> {
++    let started = Instant::now();
++    record_phase(started, "test_begin; mock_server_start_begin");
+     let server = MockServer::start().await;
++    record_phase(
++        started,
++        format!("mock_server_start_complete uri={}", server.uri()),
++    );
+     let chatgpt_base_url = format!("{}/backend-api", server.uri());
+     let expected_requirements = json!([{
+         "id": "req-managed-cloud",
+@@ -42,6 +49,7 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         "contents": CLOUD_MANAGED_PERMISSION_PROFILE_REQUIREMENTS,
+     }]);
+
++    record_phase(started, "config_write_begin");
+     let codex_home = TempDir::new()?;
+     std::fs::write(
+         codex_home.path().join("config.toml"),
+@@ -49,6 +57,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             "cli_auth_credentials_store = \"file\"\nchatgpt_base_url = \"{chatgpt_base_url}\"\n",
+         ),
+     )?;
++    record_phase(
++        started,
++        "config_write_complete; bootstrap_config_load_begin",
++    );
+     let bootstrap_config = load_config_toml_with_layer_stack(
+         codex_home.path(),
+         Some(&AbsolutePathBuf::from_absolute_path(codex_home.path())?),
+@@ -65,6 +77,7 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         ConfigLoadOptions::default(),
+     )
+     .await?;
++    record_phase(started, "bootstrap_config_load_complete");
+     if bootstrap_config.config_toml.cli_auth_credentials_store
+         != Some(AuthCredentialsStoreMode::File)
+         || bootstrap_config.config_toml.chatgpt_base_url.as_deref()
+@@ -73,9 +86,11 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         eprintln!(
+             "skipping cloud-managed sandbox subprocess: host-managed authentication or backend routing prevents isolated mock credentials"
+         );
++        record_phase(started, "host_managed_config_skip");
+         return Ok(());
+     }
+
++    record_phase(started, "auth_write_begin");
+     write_chatgpt_auth(
+         codex_home.path(),
+         ChatGptAuthFixture::new("chatgpt-token")
+@@ -85,20 +100,43 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             .plan_type("enterprise"),
+         AuthCredentialsStoreMode::File,
+     )?;
++    record_phase(started, "auth_write_complete; mock_mount_begin");
++    let response_requirements = expected_requirements.clone();
+     Mock::given(method("GET"))
+         .and(path("/backend-api/wham/config/bundle"))
+         .and(header("authorization", "Bearer chatgpt-token"))
+         .and(header("chatgpt-account-id", "workspace-123"))
+-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+-            "requirements_toml": {
+-                "enterprise_managed": expected_requirements.clone(),
+-            },
+-        })))
++        .respond_with(move |request: &wiremock::Request| {
++            record_phase(
++                started,
++                format!(
++                    "cloud_bundle_request_received method={} path={}",
++                    request.method,
++                    request.url.path()
++                ),
++            );
++            let response = ResponseTemplate::new(200).set_body_json(json!({
++                "requirements_toml": {
++                    "enterprise_managed": response_requirements.clone(),
++                },
++            }));
++            record_phase(started, "cloud_bundle_response_returned_to_mock_server");
++            response
++        })
+         .expect(1)
+         .mount(&server)
+         .await;
+
++    record_phase(started, "mock_mount_complete; binary_resolve_begin");
+     let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
++    record_phase(
++        started,
++        format!(
++            "binary_resolve_complete path={} cwd={}; child_output_begin",
++            codex.display(),
++            codex_home.path().display()
++        ),
++    );
+     let chatgpt_base_url_override = format!("chatgpt_base_url=\"{chatgpt_base_url}\"");
+     let output = Command::new(&codex)
+         .current_dir(codex_home.path())
+@@ -119,6 +157,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         .arg(&codex)
+         .arg("--version")
+         .output()?;
++    record_phase(
++        started,
++        format!("child_output_complete status={}", output.status),
++    );
+     let cloud_bundle_request_paths: Vec<_> = server
+         .received_requests()
+         .await
+@@ -126,6 +168,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         .into_iter()
+         .map(|request| request.url.path().to_string())
+         .collect();
++    record_phase(
++        started,
++        format!("received_requests_complete paths={cloud_bundle_request_paths:?}"),
++    );
+     let stderr = String::from_utf8_lossy(&output.stderr);
+     let nested_macos_sandbox_unavailable = cfg!(target_os = "macos")
+         && output.status.code() == Some(71)
+@@ -145,9 +191,11 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         );
+     }
+
++    record_phase(started, "child_assertions_complete; cache_read_begin");
+     let cache: Value = serde_json::from_slice(&std::fs::read(
+         codex_home.path().join("cloud-config-bundle-cache.json"),
+     )?)?;
++    record_phase(started, "cache_read_complete; cache_assertion_begin");
+     assert_eq!(
+         json!({
+             "chatgpt_user_id": cache["signed_payload"]["chatgpt_user_id"],
+@@ -162,7 +210,18 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             },
+         }),
+     );
++    record_phase(started, "cache_assertion_complete; mock_verify_begin");
+     server.verify().await;
++    record_phase(started, "mock_verify_complete; test_complete");
+
+     Ok(())
+ }
++
++fn record_phase(started: Instant, observation: impl std::fmt::Display) {
++    eprintln!(
++        "sandbox_cloud_config utc={} elapsed={:?} test_pid={} {observation}",
++        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
++        started.elapsed(),
++        std::process::id(),
++    );
++}
