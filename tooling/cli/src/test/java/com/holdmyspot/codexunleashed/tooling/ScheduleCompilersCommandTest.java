@@ -216,13 +216,25 @@ public final class ScheduleCompilersCommandTest
 	}
 
 	/**
-	 * On Windows, aborts a partially suspended compiler and its descendant before accepting a fresh generation.
+	 * Provides successful and denied termination of a partially suspended compiler job.
 	 *
+	 * @return whether native job termination fails
+	 */
+	@DataProvider
+	public Object[][] pauseFailureCases()
+	{
+		return new Object[][] {{false}, {true}};
+	}
+
+	/**
+	 * On Windows, retries a partially suspended compiler only after its job terminates successfully.
+	 *
+	 * @param stopFails whether the native fixture denies job termination
 	 * @throws IOException if native compilation, protocol or fixture operations fail
 	 * @throws InterruptedException if waiting for the owned wrapper is interrupted
 	 */
-	@Test(timeOut = 60_000)
-	public void recoversDeniedWindowsSuspension() throws IOException, InterruptedException
+	@Test(dataProvider = "pauseFailureCases", timeOut = 60_000)
+	public void recoversDeniedWindowsSuspension(boolean stopFails) throws IOException, InterruptedException
 	{
 		if (!System.getProperty("os.name").startsWith("Windows"))
 			throw new SkipException("Requires native Windows thread and job control");
@@ -270,6 +282,10 @@ public final class ScheduleCompilersCommandTest
 					"--crate-name", "fixture");
 				builder.directory(root.toFile()).redirectOutput(outputLog.toFile()).redirectError(errorLog.toFile());
 				builder.environment().put("CODEX_COMPILER_SCHEDULER_SOCKET", endpoint.toString());
+				String stopFailure = "0";
+				if (stopFails)
+					stopFailure = "1";
+				builder.environment().put("CODEX_SCHEDULER_FIXTURE_STOP_FAILURE", stopFailure);
 				try (Process wrapper = builder.start())
 				{
 					try (SocketChannel connection = server.accept();
@@ -288,9 +304,23 @@ public final class ScheduleCompilersCommandTest
 						List<ProcessHandle> descendants = Files.readAllLines(root.resolve("ready")).stream().
 							map(Long::parseLong).map(pid -> ProcessHandle.of(pid).orElseThrow()).toList();
 						sendSchedulerPacket(output, 2, 1);
+						if (stopFails)
+						{
+							requireThat(input.readNBytes(12).length, "failedStopReplyBytes").isEqualTo(0);
+							requireThat(wrapper.waitFor(10, TimeUnit.SECONDS), "failedStopWrapperTerminated").isTrue();
+							for (ProcessHandle descendant : descendants)
+								descendant.onExit().orTimeout(10, TimeUnit.SECONDS).join();
+							requireThat(wrapper.exitValue(), "failedStopWrapperStatus").isEqualTo(125);
+							requireThat(Files.readString(errorLog), "stderr").
+								contains("origin=wrapper operation=TerminateJobObject error_domain=win32 error=5");
+							return;
+						}
 						requireThat(readSchedulerPacket(input, errorLog), "abortedAttempt").isEqualTo(List.of(11, 1, 137));
 						for (ProcessHandle descendant : descendants)
 							requireThat(descendant.isAlive(), "abortedDescendantAlive").isFalse();
+						sendSchedulerPacket(output, 3, 1);
+						sendSchedulerPacket(output, 2, 1);
+						sendSchedulerPacket(output, 4, 1);
 						sendSchedulerPacket(output, 5, 1);
 						sendSchedulerPacket(output, 1, 2);
 						requireThat(readSchedulerPacket(input, errorLog), "retryStarted").isEqualTo(List.of(8, 2, 0));
@@ -301,6 +331,8 @@ public final class ScheduleCompilersCommandTest
 						requireThat(Files.readString(errorLog), "stderr").contains("retry diagnostic");
 						requireThat(Files.readString(errorLog), "stderr").
 							contains("fixture: denied suspension after one successful suspension");
+						requireThat(Files.readString(errorLog), "stderr").contains("operation=SuspendThread");
+						requireThat(Files.readString(errorLog), "stderr").contains("return=abort_attempt");
 					}
 					finally
 					{

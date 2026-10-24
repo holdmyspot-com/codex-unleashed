@@ -544,13 +544,27 @@ inline int run(const char* endpoint, char* const* arguments,
           if (!attempt->launch(arguments) || !connection.send(STARTED, generation, 0))
             return diagnostic.wrapper_exit();
         } else if (attempt && !awaiting_retry && packet.generation == generation) {
-          if (packet.command == PAUSE) { if (!attempt->pause()) return diagnostic.wrapper_exit(); }
+          if (packet.command == PAUSE) {
+            if (!attempt->pause()) {
+              diagnostic.print("wrapper", diagnostic.failure_operation, diagnostic.error_domain,
+                               diagnostic.error, "abort_attempt");
+              diagnostic.failure_operation = nullptr;
+              diagnostic.error_domain = "none";
+              diagnostic.error = 0;
+              if (!attempt->stop()) return diagnostic.wrapper_exit();
+              killed = true;
+            }
+          }
           else if (packet.command == RESUME) { if (!attempt->resume()) return diagnostic.wrapper_exit(); }
           else if (packet.command == KILL) { killed = true; if (!attempt->stop()) return diagnostic.wrapper_exit(); }
           else {
             diagnostic.fail("unexpected_active_command", "protocol");
             return diagnostic.wrapper_exit();
           }
+        } else if (awaiting_retry && packet.generation == generation &&
+                   (packet.command == PAUSE || packet.command == RESUME || packet.command == KILL)) {
+          // Commands already in flight cannot change the terminated attempt.
+          continue;
         } else if (packet.command == RETRY && awaiting_retry && packet.generation == generation) {
           attempt.reset();
           awaiting_retry = false;
