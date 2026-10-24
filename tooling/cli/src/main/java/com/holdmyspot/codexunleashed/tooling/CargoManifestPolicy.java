@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.tooling;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -82,7 +83,9 @@ public final class CargoManifestPolicy
 		Path root = repository.toRealPath();
 		Path cargo = root.resolve("codex-rs");
 		Path workspace = cargo.resolve("Cargo.toml");
-		Map<Path, JsonNode> manifests = loadManifests(cargo, workspace);
+		JsonNode workspaceManifest = read(workspace);
+		Set<Path> excludedRoots = excludedVendorRoots(cargo, workspaceManifest);
+		Map<Path, JsonNode> manifests = loadManifests(cargo, workspace, workspaceManifest, excludedRoots);
 		Set<String> internalNames = new HashSet<>();
 		for (Map.Entry<Path, JsonNode> manifest : manifests.entrySet())
 		{
@@ -96,7 +99,7 @@ public final class CargoManifestPolicy
 		for (Map.Entry<Path, JsonNode> manifest : manifests.entrySet())
 		{
 			List<String> errors = errors(cargo, workspace, manifest.getKey(), manifest.getValue(), internalNames,
-				usedFeatures, featurePaths);
+				usedFeatures, featurePaths, excludedRoots);
 			if (!errors.isEmpty())
 				failures.put(ArtifactPaths.relativeName(root, manifest.getKey()), errors);
 		}
@@ -119,26 +122,80 @@ public final class CargoManifestPolicy
 	}
 
 	/**
-	 * Loads crate manifests in retained filesystem order and then inserts the required root manifest first.
+	 * Loads first-party crate manifests in retained filesystem order with the required root manifest first.
 	 *
 	 * @param cargo the workspace directory
 	 * @param workspace the root manifest
+	 * @param workspaceManifest the parsed root manifest
+	 * @param excludedRoots the validated third-party roots
 	 * @return the root-first ordered manifests
 	 * @throws IOException if enumeration, decoding, or parsing fails
 	 */
-	private static Map<Path, JsonNode> loadManifests(Path cargo, Path workspace) throws IOException
+	private static Map<Path, JsonNode> loadManifests(Path cargo, Path workspace, JsonNode workspaceManifest,
+		Set<Path> excludedRoots) throws IOException
 	{
 		Map<Path, JsonNode> crates = new LinkedHashMap<>();
 		try (Stream<Path> paths = Files.walk(cargo))
 		{
 			for (Path path : paths.filter(path -> path.getFileName().toString().equals("Cargo.toml") &&
-				!path.equals(workspace)).sorted(ArtifactPaths.comparator(cargo)).toList())
+				!path.equals(workspace) && !isExcludedVendorPath(path, excludedRoots)).
+				sorted(ArtifactPaths.comparator(cargo)).toList())
 				crates.put(path, read(path));
 		}
 		Map<Path, JsonNode> result = new LinkedHashMap<>();
-		result.put(workspace, read(workspace));
+		result.put(workspace, workspaceManifest);
 		result.putAll(crates);
 		return result;
+	}
+
+	/**
+	 * Finds literal excluded third-party roots without extending exclusions to first-party source.
+	 *
+	 * @param cargo the workspace directory
+	 * @param manifest the workspace manifest
+	 * @return the resolved strict descendants of the workspace vendor directory
+	 */
+	private static Set<Path> excludedVendorRoots(Path cargo, JsonNode manifest)
+	{
+		Set<Path> roots = new HashSet<>();
+		Path vendor = cargo.resolve("vendor");
+		JsonNode exclusions = manifest.path("workspace").path("exclude");
+		if (!exclusions.isArray())
+			return roots;
+		for (JsonNode exclusion : exclusions)
+		{
+			if (!exclusion.isString() || exclusion.stringValue().matches(".*[\\*?\\[\\]{}].*"))
+				continue;
+			try
+			{
+				Path relative = Path.of(exclusion.stringValue());
+				if (relative.isAbsolute())
+					continue;
+				Path lexical = cargo.resolve(relative).normalize();
+				Path resolved = resolvePath(cargo.resolve(relative), new HashSet<>());
+				if (lexical.startsWith(vendor) && !lexical.equals(vendor) && resolved.startsWith(vendor) &&
+					!resolved.equals(vendor))
+					roots.add(resolved);
+			}
+			catch (InvalidPathException _)
+			{
+				// An invalid literal cannot establish a third-party ownership boundary.
+			}
+		}
+		return roots;
+	}
+
+	/**
+	 * Checks resolved containment using path components rather than text prefixes.
+	 *
+	 * @param path the candidate manifest or dependency
+	 * @param excludedRoots the validated third-party roots
+	 * @return whether the path belongs to an excluded third-party root
+	 */
+	private static boolean isExcludedVendorPath(Path path, Set<Path> excludedRoots)
+	{
+		Path resolved = resolvePath(path, new HashSet<>());
+		return excludedRoots.stream().anyMatch(resolved::startsWith);
 	}
 
 	/**
@@ -171,10 +228,11 @@ public final class CargoManifestPolicy
 	 * @param internalNames the workspace package names
 	 * @param usedFeatures the consumed exception paths
 	 * @param featurePaths the selected feature-exception paths
+	 * @param excludedRoots the validated third-party roots
 	 * @return the policy errors
 	 */
 	private static List<String> errors(Path cargo, Path workspace, Path path, JsonNode manifest,
-		Set<String> internalNames, Set<String> usedFeatures, Set<String> featurePaths)
+		Set<String> internalNames, Set<String> usedFeatures, Set<String> featurePaths, Set<Path> excludedRoots)
 	{
 		JsonNode definition = manifest.path("package");
 		if (!definition.isObject() && !path.equals(workspace))
@@ -210,7 +268,7 @@ public final class CargoManifestPolicy
 		for (Map.Entry<String, JsonNode> section : dependencySections(manifest).entrySet())
 			for (Map.Entry<String, JsonNode> dependency : section.getValue().properties())
 				dependencyErrors(errors, cargo, path, section.getKey(), dependency.getKey(), dependency.getValue(),
-					internalNames);
+					internalNames, excludedRoots);
 		return errors;
 	}
 
@@ -248,9 +306,10 @@ public final class CargoManifestPolicy
 	 * @param name the dependency key
 	 * @param dependency the dependency definition
 	 * @param internalNames the workspace package names
+	 * @param excludedRoots the validated third-party roots
 	 */
 	private static void dependencyErrors(List<String> errors, Path cargo, Path path, String section, String name,
-		JsonNode dependency, Set<String> internalNames)
+		JsonNode dependency, Set<String> internalNames, Set<Path> excludedRoots)
 	{
 		if (!dependency.isObject())
 			return;
@@ -258,7 +317,7 @@ public final class CargoManifestPolicy
 		if (isTrue(dependency.path("optional")))
 			errors.add("remove `optional = true` from `" + label + "`; new optional dependencies are not allowed because " +
 				"they create crate features");
-		if (!isInternal(cargo, path, name, dependency, internalNames))
+		if (!isInternal(cargo, path, name, dependency, internalNames, excludedRoots))
 			return;
 		JsonNode features = dependency.get("features");
 		if (features != null && !features.isNull())
@@ -278,16 +337,19 @@ public final class CargoManifestPolicy
 	 * @param name the dependency key
 	 * @param dependency the dependency definition
 	 * @param internalNames the workspace package names
+	 * @param excludedRoots the validated third-party roots
 	 * @return whether the dependency is internal
 	 */
 	private static boolean isInternal(Path cargo, Path manifest, String name, JsonNode dependency,
-		Set<String> internalNames)
+		Set<String> internalNames, Set<Path> excludedRoots)
 	{
+		JsonNode path = dependency.path("path");
+		if (path.isString() && isExcludedVendorPath(manifest.getParent().resolve(path.stringValue()), excludedRoots))
+			return false;
 		JsonNode packageName = dependency.get("package");
 		if (packageName == null && internalNames.contains(name) || packageName != null && packageName.isString() &&
 			internalNames.contains(packageName.stringValue()))
 			return true;
-		JsonNode path = dependency.path("path");
 		return path.isString() &&
 			resolvePath(manifest.getParent().resolve(path.stringValue()), new HashSet<>()).startsWith(cargo);
 	}

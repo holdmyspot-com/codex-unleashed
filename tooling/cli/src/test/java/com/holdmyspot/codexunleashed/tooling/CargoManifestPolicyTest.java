@@ -268,6 +268,109 @@ public final class CargoManifestPolicyTest
 	}
 
 	/**
+	 * Skips literal excluded vendor roots before parsing, in both policy modes.
+	 *
+	 * @throws IOException if fixture access or cleanup fails
+	 */
+	@Test
+	public void acceptsExcludedVendorSources() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.writeRoot("[workspace]\nexclude = [\"vendor/third-party\"]\n");
+			fixture.write("vendor/third-party", "[package]\nname = \"external\"\nversion = \"1\"\n" +
+				"[features]\ndefault = []\n[dependencies]\noptional = { version = \"1\", optional = true }\n");
+			fixture.write("vendor/third-party/tools", "not valid TOML [");
+			fixture.write("example", packageText("codex-example") + """
+				[dependencies]
+				external = { path = "../vendor/third-party", features = ["allowed"], default-features = false }
+				registry = { package = "external", version = "1", features = ["allowed"] }
+				""");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(0);
+			requireThat(fixture.output(), "output").isEmpty();
+			requireThat(fixture.checkUpstream(Map.of("ALLOW_STALE_CODE_MODE_FEATURE_EXCEPTION", "1")),
+				"upstreamStatus").isEqualTo(0);
+			requireThat(fixture.output(), "output").isEmpty();
+		}
+	}
+
+	/**
+	 * Keeps optional dependency restrictions and first-party identities around excluded sources.
+	 *
+	 * @throws IOException if fixture access or cleanup fails
+	 */
+	@Test
+	public void retainsFirstPartyDependencyChecks() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.writeRoot("[workspace]\nexclude = [\"vendor/third-party\"]\n");
+			fixture.write("vendor/third-party", "[package]\nname = \"codex-v8-poc\"\n");
+			fixture.write("example", packageText("codex-example") + """
+				[dependencies]
+				external = { package = "codex-v8-poc", path = "../vendor/third-party", features = ["allowed"] }
+				optional = { path = "../vendor/third-party", optional = true }
+				renamed = { package = "codex-v8-poc", features = [] }
+				missing = { path = "../missing", default-features = false }
+				""");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("[dependencies].optional");
+			requireThat(fixture.output(), "output").contains("[dependencies].renamed");
+			requireThat(fixture.output(), "output").contains("[dependencies].missing");
+			requireThat(fixture.output(), "output").doesNotContain("[dependencies].external");
+		}
+	}
+
+	/**
+	 * Rejects broad, globbed, absolute, first-party, and sibling exclusions as ownership exemptions.
+	 *
+	 * @throws IOException if fixture access or cleanup fails
+	 */
+	@Test
+	public void retainsUnexcludedManifestChecks() throws IOException
+	{
+		for (String exclusion : new String[]{"vendor", "vendor/*", "example", "vendor/../example",
+			"vendor/third-party", "vendor/third-party/../../example"})
+		{
+			try (Fixture fixture = new Fixture())
+			{
+				fixture.writeRoot("[workspace]\nexclude = [\"" + exclusion + "\"]\n");
+				fixture.write("example", "[package]\nname = \"codex-example\"\n");
+				fixture.write("vendor/third-party-sibling", "[package]\nname = \"external\"\n");
+				requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+				requireThat(fixture.output(), "output").contains("codex-rs/example/Cargo.toml:");
+				requireThat(fixture.output(), "output").contains("codex-rs/vendor/third-party-sibling/Cargo.toml:");
+			}
+		}
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.write("vendor/third-party", "[package]\nname = \"external\"\n");
+			String absolute = fixture.root.resolve("codex-rs/vendor/third-party").toString().replace("\\", "/");
+			fixture.writeRoot("[workspace]\nexclude = [\"" + absolute + "\"]\n");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Prevents a vendor symlink from exempting first-party source.
+	 *
+	 * @throws IOException if fixture access or cleanup fails
+	 */
+	@Test
+	public void rejectsEscapingVendorExclusion() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.write("example", "[package]\nname = \"codex-example\"\n");
+			Files.createDirectories(fixture.root.resolve("codex-rs/vendor"));
+			Files.createSymbolicLink(fixture.root.resolve("codex-rs/vendor/linked"), Path.of("../example"));
+			fixture.writeRoot("[workspace]\nexclude = [\"vendor/linked\"]\n");
+			requireThat(fixture.check(Map.of()), "status").isEqualTo(1);
+			requireThat(fixture.output(), "output").contains("codex-rs/example/Cargo.toml:");
+		}
+	}
+
+	/**
 	 * Returns a policy-compliant crate definition.
 	 *
 	 * @param name the exact crate name
