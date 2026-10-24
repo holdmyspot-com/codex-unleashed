@@ -1,0 +1,110 @@
+From 8437c0bc588bac2a5ad2023742bb696aa2377877 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 15:33:07 +0000
+Subject: [PATCH] test: Supply the legacy PowerShell fixture environment
+
+Retain executor-local SystemRoot and keep TEMP/TMP inside an owned fixture directory under the existing writable workspace. Apply the environment to piped interrupt, capture, cancellation and both ConPTY lifecycle fixtures. Preserve sandbox policies, commands, expected output, assertions and deadlines.
+
+Base: rust-v0.163.0, 83086188ae0614bd882818ff1aa23f3194962012. Prerequisite: issue-61/windows-capture-reader-drain.patch, which supplies the normal-capture owned workspace and temporary-environment helper. The separately maintained zzzz-0081-conpty-lifecycle-input-fixture.patch retains the TTY fixture's connected input.
+---
+ .../src/unified_exec/tests.rs                 | 22 ++++++++++++++-----
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index 3a50918d..1dc4970e 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -105,9 +105,15 @@ fn powershell_literal(path: &Path) -> String {
+     path.to_string_lossy().replace('\'', "''")
+ }
+
+-fn workload_temp_env(temp_dir: &Path) -> HashMap<String, String> {
++fn powershell_env(temp_dir: &Path) -> HashMap<String, String> {
+     let temp_dir = temp_dir.to_string_lossy().into_owned();
++    // PowerShell needs SystemRoot for Windows security policy and module loading.
++    // Keep compilation and redirected child I/O inside the fixture's writable root.
+     HashMap::from([
++        (
++            "SystemRoot".to_string(),
++            std::env::var("SystemRoot").expect("Windows PowerShell requires SystemRoot"),
++        ),
+         ("TEMP".to_string(), temp_dir.clone()),
+         ("TMP".to_string(), temp_dir),
+     ])
+@@ -472,6 +478,7 @@ fn legacy_non_tty_powershell_interrupt_terminates_process() {
+     let runtime = current_thread_runtime();
+     runtime.block_on(async move {
+         let cwd = sandbox_cwd();
++        let workload_temp = tempfile::tempdir_in(&cwd).expect("create PowerShell workload tempdir");
+         let codex_home = sandbox_home("legacy-non-tty-pwsh");
+         println!("pwsh codex_home={}", codex_home.path().display());
+         let permission_profile = PermissionProfile::workspace_write();
+@@ -486,7 +493,7 @@ fn legacy_non_tty_powershell_interrupt_terminates_process() {
+                 format!("{ASSERT_NO_CONSOLE} Write-Output LEGACY-NONTTY-DIRECT; [System.Threading.ManualResetEvent]::new($false).WaitOne()"),
+             ],
+             cwd.as_path(),
+-            HashMap::new(),
++            powershell_env(workload_temp.path()),
+             /*timeout_ms*/ None,
+             &[],
+             &[],
+@@ -726,7 +733,7 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
+             parent_command,
+         ],
+         cwd.as_path(),
+-        workload_temp_env(&cwd),
++        powershell_env(&cwd),
+         Some(10_000),
+         /*cancellation*/ None,
+     )
+@@ -874,6 +881,7 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+     };
+     let _guard = legacy_process_test_guard();
+     let cwd = sandbox_cwd();
++    let workload_temp = tempfile::tempdir_in(&cwd).expect("create PowerShell workload tempdir");
+     let codex_home = sandbox_home("legacy-capture-cancel");
+     let descendant_marker = codex_home.path().join("descendant-survived");
+     let ready_marker = codex_home.path().join("descendant-started");
+@@ -920,7 +928,7 @@ fn legacy_capture_cancellation_terminates_descendants_without_timeout() {
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        powershell_env(workload_temp.path()),
+         Some(30_000),
+         /*cancellation*/ Some(cancellation),
+     )
+@@ -959,6 +967,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+     lifecycle: LegacyTtyDescendantLifecycle,
+ ) {
+     let cwd = sandbox_cwd();
++    let workload_temp = tempfile::tempdir_in(&cwd).expect("create PowerShell workload tempdir");
+     let codex_home = sandbox_home(match lifecycle {
+         LegacyTtyDescendantLifecycle::Terminate => "legacy-tty-descendant-terminate",
+         LegacyTtyDescendantLifecycle::Preserve => "legacy-tty-descendant-preserve",
+@@ -999,7 +1008,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+             parent_command,
+         ],
+         cwd.as_path(),
+-        HashMap::new(),
++        powershell_env(workload_temp.path()),
+         Some(30_000),
+         &[],
+         &[],
+@@ -1066,6 +1075,7 @@ fn legacy_tty_powershell_emits_output_and_accepts_input() {
+     let runtime = current_thread_runtime();
+     runtime.block_on(async move {
+         let cwd = sandbox_cwd();
++        let workload_temp = tempfile::tempdir_in(&cwd).expect("create PowerShell workload tempdir");
+         let codex_home = sandbox_home("legacy-tty-pwsh");
+         println!("tty pwsh codex_home={}", codex_home.path().display());
+         let permission_profile = PermissionProfile::workspace_write();
+@@ -1082,7 +1092,7 @@ fn legacy_tty_powershell_emits_output_and_accepts_input() {
+                 "$PID; Write-Output ready".to_string(),
+             ],
+             cwd.as_path(),
+-            HashMap::new(),
++            powershell_env(workload_temp.path()),
+             Some(10_000),
+             &[],
+             &[],

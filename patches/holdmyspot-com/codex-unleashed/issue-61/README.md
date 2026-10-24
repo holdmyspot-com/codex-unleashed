@@ -3070,3 +3070,41 @@ remain errors, including after a sharing violation or permission failure. The
 original elevated sandbox test must pass with its policy assertions unchanged.
 Local extracted-Rust checks establish fixture decisions; they do not establish
 Windows file-lock or sandbox behavior.
+
+## Legacy PowerShell fixture runtime environment
+
+`zzzz-0093-legacy-powershell-environment.patch` supplies executor-local
+`SystemRoot` and owned `TEMP`/`TMP` directories to the five legacy Windows
+sandbox PowerShell fixtures. Temporary files stay beneath each fixture's
+existing writable workspace. Descendants inherit the same environment.
+Sandbox policies, commands, output assertions, readiness and cancellation
+deadlines, and descendant survival/termination checks remain unchanged.
+
+The base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). The exact minimal prerequisite
+is `windows-capture-reader-drain.patch`: it supplies the normal-capture owned
+workspace and temporary-environment helper that this patch extends. Keep
+`zzzz-0081-conpty-lifecycle-input-fixture.patch` in the native acceptance queue
+so the TTY lifecycle fixture retains its connected input. Canonical tracking:
+[issue 61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+Run from the patched repository root on the matching native Windows x64 or
+ARM64 host, with PowerShell 7 installed beneath `ProgramFiles` and `SystemRoot`
+set. Use the original nextest policy and existing native setup:
+
+```powershell
+$legacy = 'test(=unified_exec::tests::legacy_non_tty_powershell_interrupt_terminates_process) | test(=unified_exec::tests::legacy_capture_emits_output_and_preserves_descendant_after_normal_exit) | test(=unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout) | test(=unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants) | test(=unified_exec::tests::legacy_tty_powershell_emits_output_and_accepts_input)'
+# Native Windows x64:
+just test --target x86_64-pc-windows-msvc --cargo-profile ci-test --profile default -p codex-windows-sandbox --lib --test-threads 1 --retries 0 --success-output immediate-final -E $legacy
+# Native Windows ARM64:
+just test --target aarch64-pc-windows-msvc --cargo-profile ci-test --profile default -p codex-windows-sandbox --lib --test-threads 1 --retries 0 --success-output immediate-final -E $legacy
+just fmt-check
+```
+
+The gate selects and executes all five test bodies, including both TTY
+lifecycle phases, and passes their existing readiness, output, cancellation,
+survival and termination assertions. A missing-PowerShell early return does
+not satisfy this gate. Full native Windows suite gates remain required.
+The older `windows-lifecycle-fixtures.patch` diagnostic overlay rewrites the
+same fixture setup and requires a separate rebase; these direct source tests
+do not require that overlay.
