@@ -86,6 +86,60 @@ jobs:
             Write-Output '::endgroup::'
           }
 
+      - name: Test one volume-local BFS attachment without changing filter policy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'The volume attachment control requires an elevated runner token.'
+          }
+          $drive = $env:CI_BUILD_ROOT
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $drive -notmatch '^[A-Za-z]:$' -or $drive -eq $env:SystemDrive) {
+            throw "Expected a non-system build volume on an ephemeral GitHub-hosted runner; received '$drive'."
+          }
+          $volume = Get-Volume -DriveLetter $drive.Substring(0, 1) -ErrorAction Stop
+          if ($volume.FileSystem -ne 'ReFS') {
+            throw "The provisioned build volume '$drive' uses '$($volume.FileSystem)', not ReFS."
+          }
+          $volume | Format-List DriveLetter, FileSystem, FileSystemLabel, UniqueId, HealthStatus
+
+          & fsutil.exe devdrv query
+          $globalQueryExit = $LASTEXITCODE
+          & fsutil.exe devdrv query $drive
+          $volumeQueryExit = $LASTEXITCODE
+          $beforeInstances = @(& fltmc.exe instances -v $drive 2>&1)
+          $beforeInstancesExit = $LASTEXITCODE
+          $beforeInstances | Write-Output
+          Write-Output "Baseline query statuses: global=$globalQueryExit volume=$volumeQueryExit instances=$beforeInstancesExit"
+          if ($globalQueryExit -ne 0 -or $volumeQueryExit -ne 0 -or $beforeInstancesExit -ne 0) {
+            throw 'A baseline volume or filter query failed; the attachment comparison cannot run.'
+          }
+          if ($beforeInstances -match '^\s*bfs\s+') {
+            throw 'BFS is already attached; this comparison requires a baseline without BFS.'
+          }
+
+          $attachOutput = @(& fltmc.exe attach bfs $drive 2>&1)
+          $attachExit = $LASTEXITCODE
+          $attachOutput | Write-Output
+          Write-Output "Single volume-local BFS attachment exit status: $attachExit"
+
+          $afterInstances = @(& fltmc.exe instances -v $drive 2>&1)
+          $afterInstancesExit = $LASTEXITCODE
+          $afterInstances | Write-Output
+          & fsutil.exe devdrv query $drive
+          $afterVolumeQueryExit = $LASTEXITCODE
+          Write-Output "Post-attachment query statuses: instances=$afterInstancesExit volume=$afterVolumeQueryExit"
+          if ($attachExit -ne 0 -or $afterInstancesExit -ne 0 -or $afterVolumeQueryExit -ne 0) {
+            throw 'The single attachment control failed; no filter policy changes or retries are permitted in this probe.'
+          }
+          if (-not ($afterInstances -match '^\s*bfs\s+')) {
+            throw "The attachment command succeeded but BFS is absent from the '$drive' instance listing."
+          }
+          Write-Output 'BFS attachment availability is verified; secure sandbox behavior remains unverified.'
+
   compiler-scheduler-pause-recovery:
     if: inputs.focus == 'compiler-scheduler-pause-recovery'
     runs-on: windows-latest
