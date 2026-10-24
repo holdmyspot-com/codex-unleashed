@@ -271,7 +271,7 @@ public final class ScheduleCompilersCommandTest
 				controllerDefinition = "/DCODEX_SCHEDULER_FIXTURE_BAZEL";
 			SystemCommands.Result compilation = SystemCommands.capture(List.of("cl.exe", "/nologo", "/std:c++17",
 				"/O2", "/EHsc", "/utf-8", "/W4", "/WX", controllerDefinition, "/I" + nativeSource, source.toString(),
-				"/Fo" + root.resolve("deny.obj"), "/Fe" + executable, "/link", "ws2_32.lib"),
+				"/F" + "o" + root.resolve("deny.obj"), "/Fe" + executable, "/link", "ws2_32.lib"),
 				root, root, System.getenv());
 			requireThat(compilation.status(), "compilationStatus").withContext(compilation.stdout(), "stdout").
 				withContext(compilation.stderr(), "stderr").isEqualTo(0);
