@@ -1,0 +1,284 @@
+From 281add50e61239605456ff9b4f8559f1f35b00f5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 11:28:53 -0400
+Subject: [PATCH] test: verify staged Windows sandbox helper identity before
+ reuse
+
+A running helper can deny replacement with Windows sharing violation 32.
+Reuse a staged helper only when its complete bytes match the executable
+selected for this test run. Check identity before writing and after a
+replace failure; stale, missing or unreadable helpers remain failures.
+Sandbox assertions, helper selection and process lifecycle stay intact.
+
+Standalone base: rust-v0.163.0,
+83086188ae0614bd882818ff1aa23f3194962012.
+
+A focused extraction of the actual fixture logic and regression module
+shows four intended RED failures under the old policy and nine GREEN
+checks under this change. The standalone patch and full 157-patch queue
+apply cleanly; maintained formatting and emitted fixture checks pass.
+These Linux checks establish fixture decisions only. Native Windows
+compilation, the real sharing-lock regression and the original elevated
+sandbox test remain unrun and required for acceptance.
+---
+ codex-rs/core/tests/windows_sandbox.rs | 242 +++++++++++++++++++++++--
+ 1 file changed, 228 insertions(+), 14 deletions(-)
+
+diff --git a/codex-rs/core/tests/windows_sandbox.rs b/codex-rs/core/tests/windows_sandbox.rs
+index cf7f6a87..303c6bf0 100644
+--- a/codex-rs/core/tests/windows_sandbox.rs
++++ b/codex-rs/core/tests/windows_sandbox.rs
+@@ -138,25 +138,239 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
+         let helper = codex_utils_cargo_bin::cargo_bin(helper_name)?;
+         let file_name = Path::new(helper_name).with_extension("exe");
+         let destination = resources_dir.join(file_name);
+-        if let Err(err) = codex_utils_cargo_bin::copy_executable(&helper, &destination) {
+-            // A sandbox helper can briefly remain alive after the sandboxed
+-            // command exits. Bazel may retry the test while that process still
+-            // has the staged executable open, so keep the already-staged copy.
+-            if err.kind() == std::io::ErrorKind::PermissionDenied && destination.exists() {
+-                continue;
+-            }
+-            return Err(err).with_context(|| {
+-                format!(
+-                    "stage Windows sandbox helper {} at {}",
+-                    helper.display(),
+-                    destination.display()
+-                )
+-            });
++        stage_windows_sandbox_helper(
++            &helper,
++            &destination,
++            codex_utils_cargo_bin::copy_executable,
++        )
++        .with_context(|| {
++            format!(
++                "stage Windows sandbox helper {} at {}",
++                helper.display(),
++                destination.display()
++            )
++        })?;
++    }
++    Ok(())
++}
++
++fn stage_windows_sandbox_helper(
++    source: &Path,
++    destination: &Path,
++    copy: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
++) -> std::io::Result<()> {
++    if windows_sandbox_helper_matches(source, destination)? {
++        return Ok(());
++    }
++
++    if let Err(err) = copy(source, destination) {
++        // A helper may still be running, or another test may finish staging it.
++        // Reuse only the exact executable selected for this test run.
++        let cannot_replace =
++            err.kind() == std::io::ErrorKind::PermissionDenied || err.raw_os_error() == Some(32);
++        if cannot_replace && windows_sandbox_helper_matches(source, destination)? {
++            return Ok(());
+         }
++        return Err(err);
+     }
+     Ok(())
+ }
+ 
++fn windows_sandbox_helper_matches(source: &Path, destination: &Path) -> std::io::Result<bool> {
++    use std::io::BufRead;
++
++    let mut source = std::io::BufReader::new(std::fs::File::open(source)?);
++    let destination = match std::fs::File::open(destination) {
++        Ok(file) => file,
++        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
++        Err(err) => return Err(err),
++    };
++    let mut destination = std::io::BufReader::new(destination);
++    loop {
++        let source_bytes = source.fill_buf()?;
++        let destination_bytes = destination.fill_buf()?;
++        if source_bytes.is_empty() || destination_bytes.is_empty() {
++            return Ok(source_bytes.is_empty() && destination_bytes.is_empty());
++        }
++        let count = source_bytes.len().min(destination_bytes.len());
++        if source_bytes[..count] != destination_bytes[..count] {
++            return Ok(false);
++        }
++        source.consume(count);
++        destination.consume(count);
++    }
++}
++
++#[cfg(test)]
++mod helper_staging_tests {
++    use super::stage_windows_sandbox_helper;
++    use std::io;
++    use tempfile::TempDir;
++
++    #[cfg(windows)]
++    #[test]
++    fn reuses_helper_while_windows_denies_replacement() -> io::Result<()> {
++        use std::os::windows::fs::OpenOptionsExt;
++
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        std::fs::write(&destination, b"expected helper")?;
++        let locked = std::fs::OpenOptions::new()
++            .read(true)
++            .share_mode(/* FILE_SHARE_READ */ 1)
++            .open(&destination)?;
++        assert_eq!(
++            std::fs::copy(&source, &destination)
++                .unwrap_err()
++                .raw_os_error(),
++            Some(32)
++        );
++        stage_windows_sandbox_helper(&source, &destination, |source, destination| {
++            std::fs::copy(source, destination).map(|_| ())
++        })?;
++        assert_eq!(std::fs::read(&destination)?, b"expected helper");
++        drop(locked);
++        Ok(())
++    }
++
++    #[test]
++    fn copies_missing_helper() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        stage_windows_sandbox_helper(&source, &destination, |source, destination| {
++            std::fs::copy(source, destination).map(|_| ())
++        })?;
++        assert_eq!(std::fs::read(destination)?, b"expected helper");
++        Ok(())
++    }
++
++    #[test]
++    fn reuses_identical_helper_without_opening_it_for_write() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        std::fs::write(&destination, b"expected helper")?;
++        stage_windows_sandbox_helper(&source, &destination, |_, _| {
++            panic!("an identical helper must not be reopened for writing")
++        })?;
++        Ok(())
++    }
++
++    #[test]
++    fn permission_denied_rejects_stale_helper() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        std::fs::write(&destination, b"different helper")?;
++        let result = stage_windows_sandbox_helper(&source, &destination, |_, _| {
++            Err(io::Error::from(io::ErrorKind::PermissionDenied))
++        });
++        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
++        assert_eq!(std::fs::read(destination)?, b"different helper");
++        Ok(())
++    }
++
++    #[test]
++    fn sharing_violation_accepts_identical_concurrent_publication() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        stage_windows_sandbox_helper(&source, &destination, |source, destination| {
++            // Model the recorded Windows OS32 result after another stager finishes.
++            std::fs::copy(source, destination)?;
++            Err(io::Error::from_raw_os_error(32))
++        })?;
++        assert_eq!(std::fs::read(destination)?, b"expected helper");
++        Ok(())
++    }
++
++    #[test]
++    fn sharing_violation_rejects_different_helper() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        std::fs::write(&destination, b"different helper")?;
++        let result = stage_windows_sandbox_helper(&source, &destination, |_, _| {
++            Err(io::Error::from_raw_os_error(32))
++        });
++        assert_eq!(result.unwrap_err().raw_os_error(), Some(32));
++        assert_eq!(std::fs::read(destination)?, b"different helper");
++        Ok(())
++    }
++
++    #[test]
++    fn sharing_violation_rejects_missing_helper() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        let result = stage_windows_sandbox_helper(&source, &destination, |_, _| {
++            Err(io::Error::from_raw_os_error(32))
++        });
++        assert_eq!(result.unwrap_err().raw_os_error(), Some(32));
++        assert!(!destination.exists());
++        Ok(())
++    }
++
++    #[test]
++    fn sharing_violation_checks_bytes_beyond_first_buffer() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        let expected = vec![0u8; 32769];
++        let mut different = expected.clone();
++        different[32768] = 1;
++        std::fs::write(&source, &expected)?;
++        std::fs::write(&destination, &different)?;
++        let result = stage_windows_sandbox_helper(&source, &destination, |_, _| {
++            Err(io::Error::from_raw_os_error(32))
++        });
++        assert_eq!(result.unwrap_err().raw_os_error(), Some(32));
++        Ok(())
++    }
++
++    #[test]
++    fn permission_denied_rejects_directory_destination() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        std::fs::create_dir(&destination)?;
++        assert!(
++            stage_windows_sandbox_helper(&source, &destination, |_, _| {
++                Err(io::Error::from(io::ErrorKind::PermissionDenied))
++            })
++            .is_err()
++        );
++        Ok(())
++    }
++
++    #[test]
++    fn unrelated_copy_failure_is_preserved() -> io::Result<()> {
++        let dir = TempDir::new()?;
++        let source = dir.path().join("source.exe");
++        let destination = dir.path().join("helper.exe");
++        std::fs::write(&source, b"expected helper")?;
++        let result = stage_windows_sandbox_helper(&source, &destination, |source, destination| {
++            std::fs::copy(source, destination)?;
++            Err(io::Error::other("copy failed after publication"))
++        });
++        assert_eq!(
++            result.unwrap_err().to_string(),
++            "copy failed after publication"
++        );
++        Ok(())
++    }
++}
++
+ fn escape_toml_path(path: &Path) -> String {
+     path.display().to_string().replace('\\', "\\\\")
+ }

@@ -3036,3 +3036,37 @@ prompt cases. The `windows-conpty-fixture` diagnostic focus runs both gates on
 Windows latest and Windows 2022 without diagnostic overlays. Native acceptance
 remains pending; formatting and patch application do not establish runtime
 behavior.
+
+## Windows sandbox helper staging identity fixture
+
+`zzzz-0092-windows-helper-staging-identity.patch` reuses a staged Windows
+sandbox helper only when its complete bytes match the selected test executable.
+It avoids overwriting an identical running helper and rechecks identity after
+PermissionDenied or Windows sharing violation 32. Missing, stale or unreadable
+helpers remain failures. The fixture preserves sandbox assertions, helper
+selection and process lifecycle.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+
+Apply to a clean standalone checkout:
+
+```bash
+git apply /path/to/zzzz-0092-windows-helper-staging-identity.patch
+just fmt-check
+```
+
+Run the focused fixture and original failing test on native Windows from the
+prepared checkout with the maintained test entrypoint:
+
+```bash
+just test -p codex-core --test windows_sandbox helper_staging_tests::
+just test -p codex-core --test windows_sandbox windows_elevated_unified_exec_enforces_large_recursive_deny_reads
+```
+
+The focused fixture must pass on native Windows, including reuse while a real
+Windows file handle denies replacement. Missing or mismatched helper bytes must
+remain errors, including after a sharing violation or permission failure. The
+original elevated sandbox test must pass with its policy assertions unchanged.
+Local extracted-Rust checks establish fixture decisions; they do not establish
+Windows file-lock or sandbox behavior.
