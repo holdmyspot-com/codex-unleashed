@@ -1,0 +1,92 @@
+From de3ef67d483330b97fc04a1074967418193e3e62 Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 24 Oct 2026 15:59:27 +0000
+Subject: [PATCH] test: Register local Guardian execution alongside remote
+ fixtures
+
+Guardian fixtures explicitly select the local executor and inspect host-owned files. Register both capabilities and retain an owned host cwd so remote test selection does not remove or misplace the local execution contract. Materialize the reuse fixture secret in that same host directory; preserve every review, denial, cancellation and lifecycle assertion.
+
+Prerequisite: issue-61 zzzz-0086-interrupt-host-cwd-fixtures.patch on upstream83086188. Historical Docker run40093103558 supplies ten behavior-specific failing identities. Focused rebuilt local/Docker green and maintained formatting remain required; no runtime pass is claimed.
+---
+ .../core/tests/suite/guardian_authorization.rs     |  3 ++-
+ codex-rs/core/tests/suite/guardian_review.rs       | 14 +++-----------
+ .../tests/suite/guardian_review_cancellation.rs    |  3 ++-
+ 3 files changed, 7 insertions(+), 13 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/guardian_authorization.rs b/codex-rs/core/tests/suite/guardian_authorization.rs
+index 3a8afec7..2e8ee85f 100644
+--- a/codex-rs/core/tests/suite/guardian_authorization.rs
++++ b/codex-rs/core/tests/suite/guardian_authorization.rs
+@@ -148,6 +148,7 @@ async fn guardian_revalidates_owning_session_before_allow(
+     let base_url = format!("{}/v1", streaming_server.uri());
+     let server = responses::start_mock_server().await;
+     let mut test = test_codex()
++        .with_separate_host_cwd()
+         .with_model_info_override("test-gpt-5.1-codex", |model| {
+             model.comp_hash = Some("compatible".to_owned());
+             model.auto_review_model_override = Some(model.slug.clone());
+@@ -171,7 +172,7 @@ async fn guardian_revalidates_owning_session_before_allow(
+             }
+         })
+         .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?)
+-        .build_with_auto_env(&server)
++        .build_with_remote_and_local_env(&server)
+         .await?;
+     if review_mode == GuardianContextMode::Legacy {
+         test.codex.ensure_rollout_materialized().await;
+diff --git a/codex-rs/core/tests/suite/guardian_review.rs b/codex-rs/core/tests/suite/guardian_review.rs
+index 77f980f4..682f9cb0 100644
+--- a/codex-rs/core/tests/suite/guardian_review.rs
++++ b/codex-rs/core/tests/suite/guardian_review.rs
+@@ -1573,6 +1573,7 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+     let mut extensions = ExtensionRegistryBuilder::<Config>::new();
+     extensions.tool_lifecycle_contributor(lifecycle_recorder.clone());
+     let mut builder = test_codex()
++        .with_separate_host_cwd()
+         .with_model_info_override("gpt-5.4", |_| {})
+         .with_extensions(Arc::new(extensions.build()))
+         .with_config(move |config| {
+@@ -1601,20 +1602,11 @@ async fn guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm
+                     NetworkSandboxPolicy::Restricted,
+                 ))
+                 .expect("set parent permission profile");
+-        })
+-        .with_workspace_setup(|cwd, fs| async move {
+-            fs.write_file(
+-                &codex_utils_path_uri::PathUri::from_abs_path(&cwd.join("guardian-secret.txt")),
+-                SECRET.as_bytes().to_vec(),
+-                Default::default(),
+-                /*sandbox*/ None,
+-            )
+-            .await?;
+-            Ok(())
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+
+     let secret_file = test.config.cwd.join("guardian-secret.txt");
++    fs::write(&secret_file, SECRET)?;
+     let guardian_output_file = test.cwd.path().join("guardian-write.txt");
+     let first_output_file = test.cwd.path().join("guardian-first.txt");
+     let second_output_file = test.cwd.path().join("guardian-second.txt");
+diff --git a/codex-rs/core/tests/suite/guardian_review_cancellation.rs b/codex-rs/core/tests/suite/guardian_review_cancellation.rs
+index 733f6802..2f91ea1a 100644
+--- a/codex-rs/core/tests/suite/guardian_review_cancellation.rs
++++ b/codex-rs/core/tests/suite/guardian_review_cancellation.rs
+@@ -50,6 +50,7 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation)
+
+     let server = responses::start_mock_server().await;
+     let mut builder = test_codex()
++        .with_separate_host_cwd()
+         .with_model("test-gpt-5.1-codex")
+         .with_config(move |config| {
+             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+@@ -66,7 +67,7 @@ async fn cancelling_tool_aborts_its_guardian_review(cancellation: Cancellation)
+         builder = builder
+             .with_code_mode_host_program(codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?);
+     }
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     let output_file = test.cwd.path().join("cancelled-guardian-command.txt");
+     let output_path = shlex::try_join([output_file.to_string_lossy().as_ref()])?;
+     let tool_args = json!({

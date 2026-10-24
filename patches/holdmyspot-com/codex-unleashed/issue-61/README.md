@@ -3108,3 +3108,41 @@ not satisfy this gate. Full native Windows suite gates remain required.
 The older `windows-lifecycle-fixtures.patch` diagnostic overlay rewrites the
 same fixture setup and requires a separate rebase; these direct source tests
 do not require that overlay.
+
+## Guardian fixtures with local and remote capabilities
+
+`zzzz-0094-guardian-local-capability-fixtures.patch` registers local execution
+alongside the selected remote executor for Guardian authorization, cancellation
+and consecutive-review reuse fixtures. These fixtures explicitly request local
+execution and inspect host files. Their configuration uses an owned host working
+directory; the reuse fixture creates its secret in that same directory. Remote
+registration, permission assertions, review history, cancellation and deadlines
+remain unchanged.
+
+The base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). Apply only
+`zzzz-0086-interrupt-host-cwd-fixtures.patch` before this patch for standalone
+verification. That prerequisite supplies `with_separate_host_cwd`, which keeps
+the owned host directory separate from the selected remote workspace. No other
+downstream patch or installed plugin is required. Canonical tracking:
+[issue 61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+Run the maintained formatting and focused tests from the patched checkout root
+on Linux with its sandbox prerequisites available:
+
+```bash
+just fmt-check
+guardian='test(suite::guardian_authorization::guardian_revalidates_owning_session_before_allow) | test(suite::guardian_review_cancellation::cancelling_tool_aborts_its_guardian_review) | test(suite::guardian_review::guardian_session_is_reused_for_consecutive_tool_reviews_without_prewarm)'
+just test -p codex-core --test all --profile default --retries 0 --test-threads 1 -E "$guardian"
+(
+  source scripts/test-remote-env.sh
+  trap codex_remote_env_cleanup EXIT
+  just test -p codex-core --test all --profile default --retries 0 --test-threads 1 -E "$guardian"
+)
+```
+
+Both test runs must execute all ten selected identities and pass their original
+permission, revalidation, reuse and cancellation assertions. The remote run must
+retain both registered capabilities; a local-only pass does not establish that
+boundary. A sandbox setup failure or skipped body does not satisfy the gate.
+The full Linux remote-environment shards remain required.
