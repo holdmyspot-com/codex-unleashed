@@ -2742,3 +2742,135 @@ feedback, selected-local priority, and preserved remote tool cwd. The shell
 execution fixture is Unix-only. The maintained Docker integration lane remains
 the gate for the remote guardian scenario; the local command regression does
 not establish complete Docker coverage.
+
+
+## ConPTY lifecycle fixture input
+
+`zzzz-0081-conpty-lifecycle-input-fixture.patch` keeps terminal input open while
+the legacy sandbox lifecycle fixture starts PowerShell. Commands, permissions,
+readiness deadlines and descendant termination/preservation assertions stay
+unchanged. Native control `40055759331` exercised all three lifecycle tests and
+both TTY phases on Windows 2022 and Windows Latest. This evidence covers the
+fixture correction; closed-input production behavior is not claimed repaired.
+The diagnostic overlay retains its prior postimage after this patch.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Run the maintained focused tests and formatting gate from the patched root:
+
+```sh
+just test -p codex-windows-sandbox --lib -E 'test(legacy_tty_job_terminates_and_preserves_descendants)'
+just fmt-check
+```
+
+## Windows shell policy fixture runtime prerequisite
+
+`zzzz-0082-windows-shell-policy-system-root.patch` explicitly sets and allows
+`SystemRoot` only in the Windows installed shell policy fixture. Inheritance
+remains disabled, unrelated variables stay filtered, the runtime version still
+overrides its configured value, and expected output remains unchanged. The
+fixture also requires exit status zero. No production security policy changes.
+
+Native ARM diagnostic `40057263286` reproduces PowerShell
+`SecuritySupport.GetSaferPolicy` error 126 with KEEP alone; KEEP plus SystemRoot
+starts successfully. The exact repaired fixture still requires native Windows
+verification. The existing Wine guard returns before this lookup. The harness
+supports local host execution, remote Linux Docker and remote Windows Wine;
+this fixture supplies no explicit executor URL, so its Windows lookup uses the
+selected local Windows host's root. Arbitrary remote native Windows execution
+is not established by this fixture.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Run from the patched root:
+
+```sh
+just test -p codex-core --test all -E 'test(=suite::unified_exec::exec_command_uses_installed_environment_shell_policy_with_explicit_overrides)'
+just fmt-check
+```
+
+The native gate must execute the test body and prove exit zero plus
+`preserved:missing:missing:<runtime version>`; availability skips do not prove
+this result. This fixture change does not address MXC invalid-drive failures.
+
+
+## Local stdio MCP capability in remote test fixtures
+
+`zzzz-0083-local-stdio-mcp-fixtures.patch` explicitly registers local runtime
+capability for the host Python stdio MCP fixtures used by guardian elicitation,
+subagent elicitation and user verification tests. Seven setup sites retain the
+selected remote executor through the existing mixed remote/local builder. The
+interruption fixture uses a local workspace because its turn explicitly selects
+`local_requests(test.config.cwd)`. The browser-auth scenario delegates to the
+repaired subagent setup. Runtime permissions, assertions and skips are unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Historical native run `40038389605` supplies 27 failing identities reporting
+missing local stdio capability. Changed-source formatting, whitespace checks,
+and standalone exact-base application passed. Run the focused behavioral tests
+and complete upstream formatting gate from the patched checkout root:
+
+```sh
+just test -p codex-core --test all -E 'test(suite::guardian_mcp_elicitation::) | test(suite::mcp_subagent_elicitation::) | test(suite::mcp_user_verification::) | test(suite::scenarios::subagent_browser_auth_resolves_user_prompt)'
+just fmt-check
+```
+
+Native Docker acceptance requires rebuilt test/helper binaries and the maintained
+Docker executor endpoint. Local-only success cannot establish that the remote
+capability regression is fixed; no native green result is claimed by this patch.
+
+
+## Local migration and remote shell fixtures
+
+`zzzz-0084-remote-shell-fixtures.patch` keeps legacy zsh configuration migration
+on an explicit local fixture and requests the advertised Bash shell in the
+remote routing and permission-grant fixtures. The migration command uses
+`/bin/sh`; its legacy zsh flags and migration notices remain covered. Remote
+cases retain their actual environment selection, grant boundaries and output
+assertions. Production shell capability validation remains unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+This test-only patch adds no feature flag or configuration property.
+
+From a freshly patched checkout root, run the maintained formatting gate and
+focused tests with zero retries and the default deadlines:
+
+```sh
+just fmt-check
+just test --profile default -p codex-core --test all --test-threads 1 --retries 0 -E 'test(legacy_zsh_config_starts_session_with_migration_notices) | test(exec_command_routes_to_selected_remote_environment) | test(remote_request_permissions_grant_unblocks_later_remote_exec)'
+```
+
+Under the maintained Docker test environment, all three tests must execute:
+the migration fixture runs locally while the other two use the remote Bash
+executor. Existing environment skip guards must not skip the remote cases.
+Local and Docker runtime verification remain unrun; fresh compiled test binaries
+are required. An archive containing older test bodies cannot verify this patch.
+Issue: <https://github.com/holdmyspot-com/codex-unleashed/issues/61>.
+
+## Trusted plugin attribution on the selected executor
+
+`zzzz-0085-trusted-plugin-executor-fixture.patch` makes the app-server trusted
+plugin fixture place matching script bytes on the selected remote executor,
+using its unique test working directory and filesystem interface. The failed
+launch case verifies that its working directory is absent on that executor.
+The fixture retains the expected plugin ID, relative script path, status and
+absolute-path privacy assertions. Production attribution checks remain intact.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+The fixture needs no installed third-party plugin, feature flag or new setting.
+Run the maintained checks from the patched checkout root:
+
+```sh
+just test -p codex-app-server --test all --test-threads 1 --retries 0 --no-tests=fail -E 'test(command_execution_notifications_include_trusted_plugin_id)'
+just fmt-check
+```
+
+Both `completed` and `launch_failure` must pass. Run the same focused test under
+the maintained Docker environment by sourcing `scripts/test-remote-env.sh`
+first and calling `codex_remote_env_cleanup` on every terminal path. The test
+process must reach the exported exec-server endpoint. Local passing tests do
+not establish remote runtime coverage; the intended Docker GREEN remains
+unverified where the host cannot reach the container bridge address.

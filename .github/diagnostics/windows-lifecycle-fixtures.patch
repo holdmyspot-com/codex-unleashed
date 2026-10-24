@@ -213,8 +213,7 @@ index 3a50918dd378e7e885d705f843e67772b38b634f..7feaa60c11ce6a509857e85bd01d47dc
          &[],
          &[],
          /*tty*/ true,
--        /*stdin_open*/ false,
-+        /*stdin_open*/ true,
+         /*stdin_open*/ true,
      )
      .await
      .expect("spawn legacy sandbox ConPTY lifecycle test");

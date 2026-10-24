@@ -1,0 +1,71 @@
+From 956ba53e68de1c4a6920ba12d6754c3a5fd233a2 Mon Sep 17 00:00:00 2001
+From: Codex <codex@localhost>
+Date: Fri, 23 Oct 2026 23:51:08 -0400
+Subject: [PATCH] bugfix: align shell fixtures with local and remote
+ capabilities
+
+Keep legacy zsh configuration migration on an explicit local fixture.
+Request supported Bash for remote routing and permission-grant tests.
+Preserve production capability validation and existing assertions.
+
+Observed remote integration failures reject sh for a Bash-only executor.
+Local and Docker runtime verification remains unrun pending coordinated
+fresh test compilation; source contract and patch applicability checks pass.
+---
+ codex-rs/core/tests/suite/deprecation_notice.rs | 11 +++--------
+ codex-rs/core/tests/suite/remote_env.rs         |  4 ++--
+ 2 files changed, 5 insertions(+), 10 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/deprecation_notice.rs b/codex-rs/core/tests/suite/deprecation_notice.rs
+index 63501fe..87e9591 100644
+--- a/codex-rs/core/tests/suite/deprecation_notice.rs
++++ b/codex-rs/core/tests/suite/deprecation_notice.rs
+@@ -162,7 +162,8 @@ unified_exec_zsh_fork = true
+                 "[features]\nshell_zsh_fork = true\nunified_exec_zsh_fork = true\n",
+             ),
+         );
+-    let test = builder.build_with_auto_env(&server).await?;
++    // Legacy shell migration is a local fixture, independent of the selected remote environment.
++    let test = builder.build(&server).await?;
+
+     for feature in ["shell_zsh_fork", "unified_exec_zsh_fork"] {
+         let expected = DeprecationNoticeEvent {
+@@ -183,15 +184,9 @@ unified_exec_zsh_fork = true
+             (expected.summary, expected.details)
+         );
+     }
+-    let shell = match core_test_support::test_target_os() {
+-        core_test_support::TestTargetOs::Linux | core_test_support::TestTargetOs::MacOs => {
+-            "/bin/sh"
+-        }
+-        core_test_support::TestTargetOs::Windows => "powershell",
+-    };
+     let arguments = serde_json::json!({
+         "cmd": "echo migrated-shell",
+-        "shell": shell,
++        "shell": "/bin/sh",
+         "login": false,
+         "yield_time_ms": 10_000,
+     });
+diff --git a/codex-rs/core/tests/suite/remote_env.rs b/codex-rs/core/tests/suite/remote_env.rs
+index 23acf8c..e945e9f 100644
+--- a/codex-rs/core/tests/suite/remote_env.rs
++++ b/codex-rs/core/tests/suite/remote_env.rs
+@@ -3800,7 +3800,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
+         &server,
+         "call-multi-env",
+         json!({
+-            "shell": "/bin/sh",
++            "shell": "bash",
+             "cmd": format!("cat {remote_marker_name}"),
+             "login": false,
+             "yield_time_ms": 1_000,
+@@ -4083,7 +4083,7 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
+                     "exec-call",
+                     "exec_command",
+                     &json!({
+-                        "shell": "/bin/sh",
++                        "shell": "bash",
+                         "cmd": command,
+                         "login": false,
+                         "yield_time_ms": 1_000,

@@ -1,0 +1,110 @@
+From 702fba1c1c9e724085f899c30dc32b1b887c89b0 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 23 Oct 2026 23:26:50 -0400
+Subject: [PATCH] test: register local capability for host stdio MCP fixtures
+
+Remote automatic fixtures intentionally expose only their remote executor,
+but these elicitation and verification tests launch host Python stdio MCP
+servers. Use the existing mixed environment builder to register local
+capability while retaining remote execution and thread routing.
+
+Build the interruption fixture locally because its turn explicitly selects
+local_requests with the fixture cwd. The browser-auth scenario delegates
+to the repaired subagent fixture. Preserve permission checks and test
+assertions. Historical native failures cover 27 affected identities;
+changed-source rustfmt and diff checks pass. Native remote runtime
+acceptance remains required.
+---
+ .../core/tests/suite/guardian_mcp_elicitation.rs     | 12 ++++++------
+ .../core/tests/suite/mcp_subagent_elicitation.rs     |  4 +++-
+ codex-rs/core/tests/suite/mcp_user_verification.rs   |  4 +++-
+ 3 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs b/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
+index ab6bf48..f6acb51 100644
+--- a/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
++++ b/codex-rs/core/tests/suite/guardian_mcp_elicitation.rs
+@@ -134,7 +134,7 @@ async fn interrupt_aborts_server_initiated_mcp_guardian_review() -> Result<()> {
+             .set(mcp_servers)
+             .expect("set MCP fixture");
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build(&server).await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -300,7 +300,7 @@ async fn server_initiated_mcp_elicitation_can_require_synchronous_auto_review(
+                 .set(mcp_servers)
+                 .expect("set MCP fixture");
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -514,7 +514,7 @@ async fn node_elicitations_attribute_independent_reviews_without_changing_action
+             .set(mcp_servers)
+             .expect("set MCP fixture");
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, server_name).await?;
+     if matches!(
+         call_id_source,
+@@ -767,7 +767,7 @@ async fn strict_browser_nested_review_requires_live_browser_identity(
+             config.permissions.approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
+             config.approvals_reviewer = ApprovalsReviewer::User;
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, "codex_apps").await?;
+     responses::mount_sse_once(
+         &server,
+@@ -860,7 +860,7 @@ async fn user_review_preserves_unsupported_guardian_elicitations(mode: &str) ->
+                 .set(mcp_servers)
+                 .expect("set MCP fixture");
+         })
+-        .build_with_auto_env(&server)
++        .build_with_remote_and_local_env(&server)
+         .await?;
+     wait_for_mcp_server(&test.codex, "elicitation").await?;
+     responses::mount_sse_once(
+@@ -968,7 +968,7 @@ async fn yielded_code_mode_elicitation_keeps_live_invocation_metadata() -> Resul
+             config.approvals_reviewer = ApprovalsReviewer::User;
+             config.mcp_servers.set(mcp_servers).unwrap();
+         });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
+     wait_for_mcp_server(&test.codex, "node_repl").await?;
+     let barrier = r#"await tools.test_sync_tool({barrier: {
+         id: "elicitation-origin", participants: 2, timeout_ms: 60000
+diff --git a/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs b/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
+index 51ac8aa..624445d 100644
+--- a/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
++++ b/codex-rs/core/tests/suite/mcp_subagent_elicitation.rs
+@@ -103,7 +103,9 @@ pub(super) async fn mcp_server_elicitation_scenario(
+     request_kind: RequestKind,
+ ) -> Result<Vec<ResponsesRequest>> {
+     let server = responses::start_mock_server().await;
+-    let test = test_codex().build_with_auto_env(&server).await?;
++    let test = test_codex()
++        .build_with_remote_and_local_env(&server)
++        .await?;
+     let mut elicitation = json!({
+         "mode": "form",
+         "message": "Provide the requested input.",
+diff --git a/codex-rs/core/tests/suite/mcp_user_verification.rs b/codex-rs/core/tests/suite/mcp_user_verification.rs
+index 9fbb641..2978e7f 100644
+--- a/codex-rs/core/tests/suite/mcp_user_verification.rs
++++ b/codex-rs/core/tests/suite/mcp_user_verification.rs
+@@ -72,7 +72,9 @@ async fn mcp_user_verification_rejects_configured_servers(source: CapabilitySour
+     skip_if_no_network!(Ok(()));
+     skip_if_wine_exec!(Ok(()), "the MCP fixture requires a host Python interpreter");
+     let server = responses::start_mock_server().await;
+-    let test = test_codex().build_with_auto_env(&server).await?;
++    let test = test_codex()
++        .build_with_remote_and_local_env(&server)
++        .await?;
+     let declarations = HashMap::from([(
+         OPENAI_ELICITATION_EXTENSION_ID.to_string(),
+         json!({"userVerification": {}}),

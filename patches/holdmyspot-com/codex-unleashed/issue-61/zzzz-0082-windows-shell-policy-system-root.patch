@@ -1,0 +1,73 @@
+From 9b9078fefdb1c5485835c04d5458f0ce97649c69 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 03:50:29 +0000
+Subject: [PATCH] test: Retain SystemRoot in the Windows shell policy fixture
+
+Keep the Windows PowerShell initialization prerequisite while verifying that the explicit shell policy preserves KEEP and removes unrelated variables. Require a successful exit before checking output. The existing Wine guard excludes nonnative Windows and this fixture does not support an arbitrary remote Windows executor.
+
+Native ARM run 40057263286 reproduces SecuritySupport.GetSaferPolicy Win32Exception 126 with KEEP-only environment; its controlled KEEP plus SystemRoot probe starts PowerShell successfully. The emitted exact fixture still requires native verification. No production environment or permission policy changes.
+---
+ codex-rs/core/tests/suite/unified_exec.rs | 36 +++++++++++++++--------
+ 1 file changed, 24 insertions(+), 12 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/unified_exec.rs b/codex-rs/core/tests/suite/unified_exec.rs
+index acdb8144..b6f99461 100644
+--- a/codex-rs/core/tests/suite/unified_exec.rs
++++ b/codex-rs/core/tests/suite/unified_exec.rs
+@@ -549,6 +549,28 @@ async fn exec_command_uses_installed_environment_shell_policy_with_explicit_over
+         .into_iter()
+         .next()
+         .context("thread should select its executor environment")?;
++    let mut shell_environment_policy = ShellEnvironmentPolicy {
++        inherit: ShellEnvironmentPolicyInherit::None,
++        include_only: vec![EnvironmentVariablePattern::new_case_insensitive("KEEP")],
++        r#set: harness
++            .test()
++            .config
++            .permissions
++            .shell_environment_policy
++            .r#set
++            .clone(),
++        ..Default::default()
++    };
++    if core_test_support::test_target_os() == core_test_support::TestTargetOs::Windows {
++        // PowerShell needs SystemRoot to initialize its Windows security policy.
++        shell_environment_policy.include_only.push(
++            EnvironmentVariablePattern::new_case_insensitive("SystemRoot"),
++        );
++        shell_environment_policy.r#set.insert(
++            "SystemRoot".to_string(),
++            std::env::var("SystemRoot").context("Windows PowerShell requires SystemRoot")?,
++        );
++    }
+     harness
+         .test()
+         .codex
+@@ -558,18 +580,7 @@ async fn exec_command_uses_installed_environment_shell_policy_with_explicit_over
+                 allow_login_shell: true,
+                 workspace_roots: selection.workspace_roots.clone(),
+                 permission_profile: PermissionProfileSnapshot::legacy(PermissionProfile::Disabled),
+-                shell_environment_policy: ShellEnvironmentPolicy {
+-                    inherit: ShellEnvironmentPolicyInherit::None,
+-                    include_only: vec![EnvironmentVariablePattern::new_case_insensitive("KEEP")],
+-                    r#set: harness
+-                        .test()
+-                        .config
+-                        .permissions
+-                        .shell_environment_policy
+-                        .r#set
+-                        .clone(),
+-                    ..Default::default()
+-                },
++                shell_environment_policy,
+                 windows_sandbox_level: WindowsSandboxLevel::from_config(&harness.test().config),
+                 windows_sandbox_type: harness.test().config.permissions.windows_sandbox_type,
+                 use_legacy_landlock: harness.test().config.features.use_legacy_landlock(),
+@@ -618,6 +629,7 @@ async fn exec_command_uses_installed_environment_shell_policy_with_explicit_over
+         )
+         .await?;
+     let output = parse_unified_exec_output(&harness.function_call_stdout(call_id).await)?;
++    assert_eq!(output.exit_code, Some(0));
+     assert_eq!(
+         output.output.trim(),
+         concat!("preserved:missing:missing:", env!("CARGO_PKG_VERSION")),

@@ -1,0 +1,26 @@
+From d02657c8376916b0294573faf9b486904fd599f9 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 03:45:25 +0000
+Subject: [PATCH] test: Keep ConPTY input connected during descendant lifecycle
+ checks
+
+The lifecycle fixture tests termination and normal-exit preservation. Keep its terminal input connected while PowerShell starts, rather than introducing early EOF into both scenarios. Commands, permissions, readiness deadlines and descendant assertions remain unchanged.
+
+Native control 40055759331 executes all three lifecycle tests and both TTY phases on Windows2022 and Windows Latest. Earlier unchanged-input controls fail latest before parent-entered. This is fixture correction; closed-input production behavior is not claimed repaired.
+---
+ codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+index be2d1bf0..8de05873 100644
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -980,7 +980,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+         &[],
+         &[],
+         /*tty*/ true,
+-        /*stdin_open*/ false,
++        /*stdin_open*/ true,
+     )
+     .await
+     .expect("spawn legacy sandbox ConPTY lifecycle test");

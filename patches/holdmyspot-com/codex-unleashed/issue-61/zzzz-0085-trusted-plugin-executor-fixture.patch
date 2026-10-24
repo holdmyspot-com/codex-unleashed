@@ -1,0 +1,134 @@
+From 2ebaf9c4a0a602618cc86dee2f9dd95fd1c76dd6 Mon Sep 17 00:00:00 2001
+From: Codex <codex@example.invalid>
+Date: Fri, 23 Oct 2026 22:33:30 -0400
+Subject: [PATCH] test: Arrange trusted plugin scripts on the selected executor
+
+---
+ .../app-server/tests/suite/v2/turn_start.rs   | 86 +++++++++++++++----
+ 1 file changed, 71 insertions(+), 15 deletions(-)
+
+diff --git a/codex-rs/app-server/tests/suite/v2/turn_start.rs b/codex-rs/app-server/tests/suite/v2/turn_start.rs
+index ab566dc0..d3dc197b 100644
+--- a/codex-rs/app-server/tests/suite/v2/turn_start.rs
++++ b/codex-rs/app-server/tests/suite/v2/turn_start.rs
+@@ -75,6 +75,7 @@ use codex_app_server_protocol::TurnSteerParams;
+ use codex_app_server_protocol::UserInput as V2UserInput;
+ use codex_app_server_protocol::WarningNotification;
+ use codex_core::test_support::all_model_presets;
++use codex_exec_server::CreateDirectoryOptions;
+ use codex_exec_server::LOCAL_ENVIRONMENT_ID;
+ use codex_features::Feature;
+ use codex_login::AuthCredentialsStoreMode;
+@@ -5596,7 +5597,6 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+     skip_if_wine_exec!(Ok(()), "plugin attribution fixture is Unix-only");
+
+     let codex_home = TempDir::new()?;
+-    let missing_cwd = codex_home.path().join("missing-work-directory");
+     let launch_failed = expected_status == CommandExecutionStatus::Failed;
+     let curated_sha = "0123456789abcdef0123456789abcdef01234567";
+     let plugin_root = codex_home
+@@ -5633,19 +5633,7 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+   }]
+ }"#,
+     )?;
+-    let responses = vec![
+-        create_command_execution_sse_response(
+-            vec![
+-                "/bin/sh".to_string(),
+-                script_path.to_string_lossy().into_owned(),
+-            ],
+-            launch_failed.then_some(missing_cwd.as_path()),
+-            /*timeout_ms*/ None,
+-            "plugin-command",
+-        )?,
+-        create_final_assistant_message_sse_response("done")?,
+-    ];
+-    let server = create_mock_responses_server_sequence(responses).await;
++    let server = responses::start_mock_server().await;
+     MockResponsesConfig::new(&server.uri())
+         .with_approval_policy("on-request")
+         .with_sandbox_mode("danger-full-access")
+@@ -5660,6 +5648,73 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+         .with_codex_home(codex_home.path())
+         .build_initialized()
+         .await?;
++    let environment = mcp.auto_env()?.environment();
++    let file_system = environment.get_filesystem();
++    let executor_cwd = &mcp.auto_env()?.selection().cwd;
++    let command_script_path = if environment.is_remote() {
++        let executor_script = executor_cwd
++            .join("plugins/cache/openai-api-curated/google-calendar/01234567/scripts/run.sh")?;
++        file_system
++            .create_directory(
++                &executor_script
++                    .parent()
++                    .expect("script path should have parent"),
++                CreateDirectoryOptions {
++                    recursive: true,
++                    follow_symlinks: true,
++                },
++                /*sandbox*/ None,
++            )
++            .await?;
++        let script_bytes = std::fs::read(&script_path)?;
++        file_system
++            .write_file(
++                &executor_script,
++                script_bytes.clone(),
++                Default::default(),
++                /*sandbox*/ None,
++            )
++            .await?;
++        assert_eq!(
++            file_system
++                .read_file(&executor_script, Default::default(), /*sandbox*/ None)
++                .await?,
++            script_bytes
++        );
++        executor_script.to_path_buf()
++    } else {
++        script_path.clone()
++    };
++    let missing_cwd = if launch_failed {
++        let missing_cwd = executor_cwd.join("missing-work-directory")?;
++        assert_eq!(
++            file_system
++                .get_metadata(&missing_cwd, Default::default(), /*sandbox*/ None)
++                .await
++                .expect_err("launch failure cwd must be absent on the selected executor")
++                .kind(),
++            std::io::ErrorKind::NotFound
++        );
++        Some(missing_cwd.to_path_buf())
++    } else {
++        None
++    };
++    let _responses = responses::mount_sse_sequence(
++        &server,
++        vec![
++            create_command_execution_sse_response(
++                vec![
++                    "/bin/sh".to_string(),
++                    command_script_path.to_string_lossy().into_owned(),
++                ],
++                missing_cwd.as_deref(),
++                /*timeout_ms*/ None,
++                "plugin-command",
++            )?,
++            create_final_assistant_message_sse_response("done")?,
++        ],
++    )
++    .await;
+     let ThreadStartResponse { thread, .. } = mcp
+         .start_thread(ThreadStartParams {
+             model: Some("mock-model".to_string()),
+@@ -5698,7 +5753,8 @@ async fn command_execution_notifications_include_trusted_plugin_id(
+                         (Some("google-calendar@openai-api-curated"), "scripts/run.sh")
+                     );
+                     assert!(
+-                        !emitted_script_path.contains(script_path.to_string_lossy().as_ref()),
++                        !emitted_script_path
++                            .contains(command_script_path.to_string_lossy().as_ref()),
+                         "scriptPath must not serialize the absolute fixture path"
+                     );
+                     assert!(
