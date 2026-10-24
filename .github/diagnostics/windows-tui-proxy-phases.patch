@@ -1,0 +1,181 @@
+From 88dd39934c577fa6b5eec3b4e2a94b9fc6291f53 Mon Sep 17 00:00:00 2001
+From: Diagnostic Candidate <diagnostic@localhost>
+Date: Sat, 24 Oct 2026 11:30:25 -0400
+Subject: [PATCH] Trace TUI test proxy phases without changing lifecycle
+ deadlines
+
+---
+ .../app/tests/session_lifecycle_requests.rs   | 43 +++++++++++++++++--
+ .../src/app/tests/startup_defaults_tests.rs   | 23 ++++++++++
+ 2 files changed, 63 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index ae90758..7c1ecc3 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -505,8 +505,20 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+     let listener = TcpListener::bind("127.0.0.1:0").await?;
+     let websocket_url = format!("ws://{}", listener.local_addr()?);
+     let proxy = tokio::spawn(async move {
++        let diagnostic_started = std::time::Instant::now();
++        let diagnostic = |phase: &str, method: Option<&str>| {
++            if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++                eprintln!(
++                    "[tui-proxy-phase] elapsed_ms={} capabilities={history_capabilities:?} phase={phase} method={method:?}",
++                    diagnostic_started.elapsed().as_millis(),
++                );
++            }
++        };
++        diagnostic("accept-start", None);
+         let (stream, _) = listener.accept().await?;
++        diagnostic("accept-complete", None);
+         let mut websocket = accept_async(stream).await?;
++        diagnostic("websocket-handshake-complete", None);
+         let mut inventories = usize::from(failed_thread_name == Some("background"));
+         let mut reject_detach = false;
+         let mut reject_thread_list = history_capabilities == HistoryCapabilities::ThreadListFails;
+@@ -514,12 +526,16 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+             let frame = tokio::select! {
+                 frame = websocket.next() => frame,
+                 event = embedded.next_event() => {
+-                    let Some(event) = event else { break };
++                    let Some(event) = event else {
++                        diagnostic("embedded-event-stream-ended", None);
++                        break;
++                    };
+                     if let codex_app_server_client::InProcessServerEvent::ServerNotification(notification) = event
+                         && matches!(*notification, ServerNotification::ThreadSettingsUpdated(_))
+                     {
+                         let result = websocket.send(Message::Text(serde_json::to_string(&notification)?.into())).await;
+                         if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                            diagnostic("notification-send-client-disconnected", None);
+                             break;
+                         }
+                         result?;
+@@ -527,12 +543,20 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                     continue;
+                 }
+             };
+-            let Some(frame) = frame else { break };
++            let Some(frame) = frame else {
++                diagnostic("websocket-stream-ended", None);
++                break;
++            };
+             // The client can close with requests or notifications pending during shutdown.
+             if frame.as_ref().is_err_and(is_recording_client_disconnect) {
++                diagnostic("websocket-read-client-disconnected", None);
+                 break;
+             }
+-            let Message::Text(text) = frame? else {
++            let frame = frame?;
++            if matches!(&frame, Message::Close(_)) {
++                diagnostic("websocket-close-frame-received", None);
++            }
++            let Message::Text(text) = frame else {
+                 continue;
+             };
+             let message = serde_json::from_str::<JSONRPCMessage>(&text)?;
+@@ -551,11 +575,14 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                         ))
+                         .await;
+                     if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                        diagnostic("initialize-send-client-disconnected", None);
+                         break;
+                     }
+                     result?;
+                 }
+                 JSONRPCMessage::Request(request) => {
++                    diagnostic("request-received", Some(&request.method));
++                    let diagnostic_method = request.method.clone();
+                     request_sink
+                         .lock()
+                         .expect("request recorder lock")
+@@ -803,7 +830,9 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                                     &request,
+                                     ClientRequest::ThreadRealtimeListVoices { .. }
+                                 );
++                            diagnostic("embedded-request-start", Some(&diagnostic_method));
+                             let mut result = embedded.request(request).await?;
++                            diagnostic("embedded-request-complete", Some(&diagnostic_method));
+                             if unknown_voice && let Ok(value) = &mut result {
+                                 value["config"]["realtime"]["voice"] =
+                                     serde_json::json!("future_voice");
+@@ -829,10 +858,16 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                             }
+                         }
+                     };
++                    diagnostic("response-send-start", Some(&diagnostic_method));
+                     let result = websocket
+                         .send(Message::Text(serde_json::to_string(&response)?.into()))
+                         .await;
++                    diagnostic("response-send-complete", Some(&diagnostic_method));
+                     if result.as_ref().is_err_and(is_recording_client_disconnect) {
++                        diagnostic(
++                            "response-send-client-disconnected",
++                            Some(&diagnostic_method),
++                        );
+                         break;
+                     }
+                     result?;
+@@ -870,7 +905,9 @@ pub(super) async fn start_recording_app_server_with_realtime_speech(
+                 }
+             }
+         }
++        diagnostic("embedded-shutdown-start", None);
+         embedded.shutdown().await?;
++        diagnostic("embedded-shutdown-complete", None);
+         Ok(())
+     });
+     let app_server = crate::connect_remote_app_server(crate::RemoteAppServerEndpoint::WebSocket {
+diff --git a/codex-rs/tui/src/app/tests/startup_defaults_tests.rs b/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
+index 1a01b07..9792246 100644
+--- a/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/startup_defaults_tests.rs
+@@ -246,6 +246,13 @@ async fn run_until_thread_start(
+         }
+     })
+     .await??;
++    if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++        eprintln!("[tui-proxy-phase] phase=app-run-cancellation-start");
++    }
++    drop(run);
++    if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++        eprintln!("[tui-proxy-phase] phase=app-run-cancellation-complete");
++    }
+     Ok(())
+ }
+ 
+@@ -595,6 +602,10 @@ async fn fresh_startup_falls_back_only_for_unsupported_config_read() -> Result<(
+         HistoryCapabilities::ConfigReadUnsupported(-32601),
+         HistoryCapabilities::ConfigReadUnsupported(-32600),
+     ] {
++        let diagnostic_started = std::time::Instant::now();
++        if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++            eprintln!("[tui-proxy-phase] capabilities={capabilities:?} phase=case-start");
++        }
+         let home = tempdir()?;
+         std::fs::write(
+             home.path().join("config.toml"),
+@@ -625,7 +636,19 @@ async fn fresh_startup_falls_back_only_for_unsupported_config_read() -> Result<(
+             ),
+             (&serde_json::Value::Null, &serde_json::Value::Null)
+         );
++        if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++            eprintln!(
++                "[tui-proxy-phase] elapsed_ms={} capabilities={capabilities:?} phase=proxy-join-start",
++                diagnostic_started.elapsed().as_millis(),
++            );
++        }
+         tokio::time::timeout(Duration::from_secs(/*secs*/ 15), proxy).await???;
++        if std::env::var_os("CODEX_TUI_PROXY_PHASE_DIAGNOSTIC").is_some() {
++            eprintln!(
++                "[tui-proxy-phase] elapsed_ms={} capabilities={capabilities:?} phase=proxy-join-complete",
++                diagnostic_started.elapsed().as_millis(),
++            );
++        }
+     }
+     Ok(())
+ }
+-- 
+2.43.0
+

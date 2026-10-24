@@ -10,6 +10,7 @@ on:
         options:
           - credentials
           - windows-test-timeouts
+          - windows-tui-proxy-phases
           - windows-lifecycle-source
           - windows-conpty-ctrl-c
           - windows-conpty-fixture
@@ -726,10 +727,123 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'windows-tui-proxy-phases' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c' || inputs.focus == 'windows-conpty-fixture' || inputs.focus == 'windows-arm-mxc-policy'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || inputs.focus == 'windows-arm-mxc-policy' && 'windows-11-arm' || 'windows-2022' }}
+
+  windows-tui-proxy-phases:
+    if: inputs.focus == 'windows-tui-proxy-phases'
+    needs: prepare-tooling
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Restore Windows voice build inputs
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ runner.temp }}/voice-cygwin-snapshot
+          key: voice-cygwin-${{ hashFiles('upstream/.github/scripts/voice-cygwin-snapshot.json') }}
+      - name: Install verified Windows voice build tools
+        shell: pwsh
+        working-directory: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = (Get-Content .github/scripts/voice-cygwin-snapshot.json -Raw | ConvertFrom-Json).archive
+          $directory = Join-Path $env:RUNNER_TEMP 'voice-cygwin-snapshot'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $archive = Join-Path $directory $pin.name
+          if (-not (Test-Path -LiteralPath $archive)) {
+            gh release download $pin.tag --repo openai/codex --pattern $pin.name --dir $directory
+            if ($LASTEXITCODE -ne 0) { throw 'Downloading the pinned Windows voice archive failed.' }
+          }
+          & ./.github/scripts/setup-voice-windows.ps1 -Target x86_64-pc-windows-msvc -SnapshotArchive $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Installing the pinned Windows voice prerequisites failed.' }
+      - name: Apply test-only Windows fixture phase diagnostics
+        id: phase_overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream apply --check ../.github/diagnostics/windows-tui-proxy-phases.patch
+          git -C upstream apply ../.github/diagnostics/windows-tui-proxy-phases.patch
+          git -C upstream apply --check ../.github/diagnostics/sandbox-cloud-config-phases.patch
+          git -C upstream apply ../.github/diagnostics/sandbox-cloud-config-phases.patch
+      - name: Run exact startup defaults proxy lifecycle test
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-tui-proxy-phases"
+          mkdir -p "$evidence"
+          cd upstream
+          status=0
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --test_env=CODEX_TUI_PROXY_PHASE_DIAGNOSTIC=1 \
+            --nocache_test_results --flaky_test_attempts=1 --test_output=all \
+            --test_sharding_strategy=disabled --test_arg=--nocapture --test_arg=--exact \
+            --test_arg=app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_falls_back_only_for_unsupported_config_read \
+            -- //codex-rs/tui:tui-unit-tests \
+            2>&1 | tee "$evidence/native.log" || status=$?
+          if [[ "$status" == 0 ]]; then
+            grep -Fq 'test app::tests::session_lifecycle_requests::startup_defaults_tests::fresh_startup_falls_back_only_for_unsupported_config_read ... ok' \
+              "$evidence/native.log" || status=1
+          fi
+          printf '%s\n' "$status" > "$evidence/native.status"
+          exit "$status"
+      - name: Run cloud-config fixture with subprocess phase diagnostics
+        if: ${{ !cancelled() && steps.phase_overlays.outcome == 'success' }}
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-tui-proxy-phases"
+          mkdir -p "$evidence"
+          cd upstream
+          status=0
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings \
+            --nocache_test_results --flaky_test_attempts=1 --test_output=all \
+            --test_arg=--nocapture -- //codex-rs/cli:cli-sandbox_cloud_config-test \
+            2>&1 | tee "$evidence/cloud-config.log" || status=$?
+          if [[ "$status" == 0 ]]; then
+            grep -Fq 'test sandbox_fetches_and_enforces_cloud_managed_permission_profile ... ok' \
+              "$evidence/cloud-config.log" || status=1
+            grep -Fq 'mock_verify_complete; test_complete' "$evidence/cloud-config.log" || status=1
+          fi
+          printf '%s\n' "$status" > "$evidence/cloud-config.status"
+          exit "$status"
+      - name: Retain Windows fixture phase evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-tui-proxy-phases
+          path: ${{ runner.temp }}/windows-tui-proxy-phases/
+          if-no-files-found: error
+          retention-days: 1
 
   macos-bazel-tui-timeouts:
     if: inputs.focus == 'macos-bazel-tui-timeouts'

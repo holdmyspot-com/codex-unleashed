@@ -1,0 +1,250 @@
+diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
+index 81fbf07c..3382e8da 100644
+--- a/codex-rs/cli/tests/sandbox_cloud_config.rs
++++ b/codex-rs/cli/tests/sandbox_cloud_config.rs
+@@ -1,4 +1,8 @@
++use std::io::Read;
+ use std::process::Command;
++use std::process::Output;
++use std::process::Stdio;
++use std::time::Instant;
+ 
+ use anyhow::Context;
+ use anyhow::Result;
+@@ -34,7 +38,13 @@ enabled = true
+ 
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Result<()> {
++    let started = Instant::now();
++    record_phase(started, "test_begin; mock_server_start_begin");
+     let server = MockServer::start().await;
++    record_phase(
++        started,
++        format!("mock_server_start_complete uri={}", server.uri()),
++    );
+     let chatgpt_base_url = format!("{}/backend-api", server.uri());
+     let expected_requirements = json!([{
+         "id": "req-managed-cloud",
+@@ -42,6 +52,7 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         "contents": CLOUD_MANAGED_PERMISSION_PROFILE_REQUIREMENTS,
+     }]);
+ 
++    record_phase(started, "config_write_begin");
+     let codex_home = TempDir::new()?;
+     std::fs::write(
+         codex_home.path().join("config.toml"),
+@@ -49,6 +60,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             "cli_auth_credentials_store = \"file\"\nchatgpt_base_url = \"{chatgpt_base_url}\"\n",
+         ),
+     )?;
++    record_phase(
++        started,
++        "config_write_complete; bootstrap_config_load_begin",
++    );
+     let bootstrap_config = load_config_toml_with_layer_stack(
+         codex_home.path(),
+         Some(&AbsolutePathBuf::from_absolute_path(codex_home.path())?),
+@@ -65,6 +80,7 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         ConfigLoadOptions::default(),
+     )
+     .await?;
++    record_phase(started, "bootstrap_config_load_complete");
+     if bootstrap_config.config_toml.cli_auth_credentials_store
+         != Some(AuthCredentialsStoreMode::File)
+         || bootstrap_config.config_toml.chatgpt_base_url.as_deref()
+@@ -73,9 +89,11 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         eprintln!(
+             "skipping cloud-managed sandbox subprocess: host-managed authentication or backend routing prevents isolated mock credentials"
+         );
++        record_phase(started, "host_managed_config_skip");
+         return Ok(());
+     }
+ 
++    record_phase(started, "auth_write_begin");
+     write_chatgpt_auth(
+         codex_home.path(),
+         ChatGptAuthFixture::new("chatgpt-token")
+@@ -85,22 +103,45 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             .plan_type("enterprise"),
+         AuthCredentialsStoreMode::File,
+     )?;
++    record_phase(started, "auth_write_complete; mock_mount_begin");
++    let response_requirements = expected_requirements.clone();
+     Mock::given(method("GET"))
+         .and(path("/backend-api/wham/config/bundle"))
+         .and(header("authorization", "Bearer chatgpt-token"))
+         .and(header("chatgpt-account-id", "workspace-123"))
+-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+-            "requirements_toml": {
+-                "enterprise_managed": expected_requirements.clone(),
+-            },
+-        })))
++        .respond_with(move |request: &wiremock::Request| {
++            record_phase(
++                started,
++                format!(
++                    "cloud_bundle_request_received method={} path={}",
++                    request.method,
++                    request.url.path()
++                ),
++            );
++            let response = ResponseTemplate::new(200).set_body_json(json!({
++                "requirements_toml": {
++                    "enterprise_managed": response_requirements.clone(),
++                },
++            }));
++            record_phase(started, "cloud_bundle_response_returned_to_mock_server");
++            response
++        })
+         .expect(1)
+         .mount(&server)
+         .await;
+ 
++    record_phase(started, "mock_mount_complete; binary_resolve_begin");
+     let codex = codex_utils_cargo_bin::cargo_bin("codex")?;
++    record_phase(
++        started,
++        format!(
++            "binary_resolve_complete path={} cwd={}; child_spawn_begin",
++            codex.display(),
++            codex_home.path().display()
++        ),
++    );
+     let chatgpt_base_url_override = format!("chatgpt_base_url=\"{chatgpt_base_url}\"");
+-    let output = Command::new(&codex)
++    let mut child = Command::new(&codex)
+         .current_dir(codex_home.path())
+         .env("CODEX_HOME", codex_home.path())
+         .env("NO_PROXY", "127.0.0.1,localhost")
+@@ -118,7 +159,49 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         ])
+         .arg(&codex)
+         .arg("--version")
+-        .output()?;
++        .stdin(Stdio::null())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .spawn()
++        .context("failed to spawn sandbox cloud-config child")?;
++    let child_pid = child.id();
++    record_phase(
++        started,
++        format!("child_spawn_complete child_pid={child_pid}"),
++    );
++    let stdout = child.stdout.take().context("child stdout pipe missing")?;
++    let stderr = child.stderr.take().context("child stderr pipe missing")?;
++    let stdout_reader = std::thread::spawn(move || read_child_pipe(started, "stdout", stdout));
++    let stderr_reader = std::thread::spawn(move || read_child_pipe(started, "stderr", stderr));
++
++    record_phase(started, format!("child_wait_begin child_pid={child_pid}"));
++    let status = child
++        .wait()
++        .context("failed waiting for sandbox cloud-config child")?;
++    record_phase(
++        started,
++        format!("child_wait_complete child_pid={child_pid} status={status}"),
++    );
++    record_phase(started, "stdout_reader_join_begin");
++    let stdout = stdout_reader
++        .join()
++        .map_err(|_| anyhow::anyhow!("child stdout reader panicked"))??;
++    record_phase(
++        started,
++        "stdout_reader_join_complete; stderr_reader_join_begin",
++    );
++    let stderr = stderr_reader
++        .join()
++        .map_err(|_| anyhow::anyhow!("child stderr reader panicked"))??;
++    record_phase(
++        started,
++        "stderr_reader_join_complete; received_requests_begin",
++    );
++    let output = Output {
++        status,
++        stdout,
++        stderr,
++    };
+     let cloud_bundle_request_paths: Vec<_> = server
+         .received_requests()
+         .await
+@@ -126,6 +209,10 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         .into_iter()
+         .map(|request| request.url.path().to_string())
+         .collect();
++    record_phase(
++        started,
++        format!("received_requests_complete paths={cloud_bundle_request_paths:?}"),
++    );
+     let stderr = String::from_utf8_lossy(&output.stderr);
+     let nested_macos_sandbox_unavailable = cfg!(target_os = "macos")
+         && output.status.code() == Some(71)
+@@ -145,9 +232,11 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+         );
+     }
+ 
++    record_phase(started, "child_assertions_complete; cache_read_begin");
+     let cache: Value = serde_json::from_slice(&std::fs::read(
+         codex_home.path().join("cloud-config-bundle-cache.json"),
+     )?)?;
++    record_phase(started, "cache_read_complete; cache_assertion_begin");
+     assert_eq!(
+         json!({
+             "chatgpt_user_id": cache["signed_payload"]["chatgpt_user_id"],
+@@ -162,7 +251,57 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+             },
+         }),
+     );
++    record_phase(started, "cache_assertion_complete; mock_verify_begin");
+     server.verify().await;
++    record_phase(started, "mock_verify_complete; test_complete");
+ 
+     Ok(())
+ }
++
++fn record_phase(started: Instant, observation: impl std::fmt::Display) {
++    eprintln!(
++        "sandbox_cloud_config utc={} elapsed={:?} test_pid={} {observation}",
++        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
++        started.elapsed(),
++        std::process::id(),
++    );
++}
++
++fn read_child_pipe(
++    started: Instant,
++    stream: &str,
++    mut pipe: impl Read,
++) -> std::io::Result<Vec<u8>> {
++    record_phase(started, format!("child_pipe_read_begin stream={stream}"));
++    let mut output = Vec::new();
++    let mut chunk = [0_u8; 4096];
++    loop {
++        match pipe.read(&mut chunk) {
++            Ok(0) => {
++                record_phase(
++                    started,
++                    format!("child_pipe_eof stream={stream} bytes={}", output.len()),
++                );
++                return Ok(output);
++            }
++            Ok(count) => {
++                output.extend_from_slice(&chunk[..count]);
++                record_phase(
++                    started,
++                    format!(
++                        "child_pipe_chunk stream={stream} bytes={count} text={:?}",
++                        String::from_utf8_lossy(&chunk[..count])
++                    ),
++                );
++            }
++            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
++            Err(error) => {
++                record_phase(
++                    started,
++                    format!("child_pipe_read_failed stream={stream} error={error}"),
++                );
++                return Err(error);
++            }
++        }
++    }
++}
