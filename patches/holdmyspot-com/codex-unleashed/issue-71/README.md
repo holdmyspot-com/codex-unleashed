@@ -52,6 +52,16 @@ native-TLS fallback. Production certificate handling stays the same. This
 test-only patch requires the dependency patch and its prerequisites because
 it uses reqwest 0.13's `tls_backend_native` API.
 
+`windows-mouse-capture-initialization.patch` keeps Windows mouse-input cleanup
+from restoring a console mode before Crossterm saves it. Cleanup becomes active
+after native capture initialization succeeds; ANSI capture still arms cleanup
+before a partial write can enable reporting. The regression releases input
+while capture setup writes its preceding scroll command and retains the exact
+console-mode and mouse-encoding restoration assertions. The test requires
+`latest-stable-dependencies.patch` and its prerequisites because its parser
+uses vt100 0.18's nonzero dimensions; the production correction itself applies
+to the declared upstream base.
+
 Three independent test-fixture patches also apply directly to the declared
 upstream base:
 
@@ -230,6 +240,18 @@ Run the two native fixture regressions on a Linux host where the test-owned
 temporary directory is outside a project and the daemon socket directory
 is available. A failure before the snapshot or sandbox permission assertions
 does not verify either fixture correction.
+
+On native Windows, verify mouse initialization after applying the dependency
+upgrade and mouse-capture patch:
+
+```sh
+just fmt-check
+just test -p codex-tui --lib -E 'test(=tui::alternate_screen::windows_tests::mouse_capture_restores_console_mode_and_encoding)'
+```
+
+The named regression must execute and pass, including the release during setup
+and the final console-mode and mouse-encoding restoration assertions. An empty
+test selection or a check on another platform does not establish this result.
 
 Verify the independent secrets fixture from the declared upstream base with
 only `secrets-fallback-root-fixture.patch` applied:
