@@ -86,10 +86,6 @@ jobs:
             Write-Output '::endgroup::'
           }
 
-      - name: Test BFS eligibility on the freshly provisioned build volume
-        shell: pwsh
-        run: ./.github/scripts/diagnose-mxc-dev-drive.ps1
-
   compiler-scheduler-pause-recovery:
     if: inputs.focus == 'compiler-scheduler-pause-recovery'
     runs-on: windows-latest
@@ -1312,12 +1308,6 @@ jobs:
           upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
           expected-upstream-commit: 83086188ae0614bd882818ff1aa23f3194962012
       - uses: ./.github/actions/setup-ci
-      - name: Enable BFS on the owned Dev Drive before compiler and sandbox consumers start
-        shell: pwsh
-        run: |
-          $evidence = Join-Path $env:RUNNER_TEMP 'windows-arm-mxc'
-          New-Item -ItemType Directory -Force $evidence | Out-Null
-          & ./.github/scripts/diagnose-mxc-dev-drive.ps1 | Tee-Object -FilePath (Join-Path $evidence 'volume-eligibility.log')
       - uses: ./.github/actions/setup-msvc-env
         with:
           target: aarch64-pc-windows-msvc

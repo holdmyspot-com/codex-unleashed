@@ -71,6 +71,36 @@ if ((Test-Path "D:\") -and (Test-DevDrive "D:")) {
         if ($SupportsDevDrive) {
             Invoke-BestEffort { fsutil devdrv trust $Drive } "Trusting Dev Drive $Drive"
             Invoke-BestEffort { fsutil devdrv enable /disallowAv } "Disabling AV filter attachment for Dev Drives"
+
+            $BfsServiceStatus = @(& sc.exe query bfs 2>&1)
+            $BfsServiceExit = $LASTEXITCODE
+            $BfsServiceStatus | Write-Output
+            if ($BfsServiceExit -ne 0 -and $BfsServiceExit -ne 1060) {
+                throw "Cannot query the BFS filesystem driver; sc exited with $BfsServiceExit."
+            }
+            if ($BfsServiceExit -eq 0) {
+                & fsutil devdrv setFiltersAllowed /volume $Drive bfs
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to allow the BFS filesystem enforcement filter on the new Dev Drive $Drive."
+                }
+
+                Dismount-VHD -Path $VhdPath -ErrorAction Stop
+                Mount-VHD -Path $VhdPath -ErrorAction Stop
+                $RemountedVolume = Get-Volume -DriveLetter $Volume.DriveLetter -ErrorAction Stop
+                if ($RemountedVolume.UniqueId -ne $Volume.UniqueId) {
+                    throw "The remounted build drive $Drive does not identify the provisioned volume."
+                }
+
+                $BfsInstances = @(& fltmc.exe instances -v $Drive 2>&1)
+                $BfsQueryExit = $LASTEXITCODE
+                $BfsInstances | Write-Output
+                if ($BfsQueryExit -ne 0) {
+                    throw "Cannot enumerate filesystem filters on the new Dev Drive $Drive; fltmc exited with $BfsQueryExit."
+                }
+                if (-not ($BfsInstances -match '^\s*bfs\s+')) {
+                    throw "BFS is not attached to the new Dev Drive $Drive; MXC filesystem enforcement is unavailable."
+                }
+            }
         }
 
         Write-Output "Using Dev Drive at $Drive"
