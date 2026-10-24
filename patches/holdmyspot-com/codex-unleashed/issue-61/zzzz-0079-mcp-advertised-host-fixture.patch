@@ -1,0 +1,199 @@
+From 9571220b268432280ad3c9677116138317725b45 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Fri, 23 Oct 2026 22:28:43 -0400
+Subject: [PATCH] test: allow the advertised Docker MCP fixture authority
+
+The remote Streamable HTTP test fixture advertises its Docker IP, but the
+SDK defaults allow only loopback Hosts. Pass that IP to the helper and
+allow exactly its actual listening port without disabling Host validation.
+Leave SDK defaults intact when no advertised IP is supplied and reject
+malformed IP configuration before publishing the bound address.
+
+On upstream rust-v0.163.0 (83086188ae0614bd882818ff1aa23f3194962012),
+just test -p codex-rmcp-client --bin test_streamable_http_server
+-E 'test(host_validation_tests)' reproduced three failures before the
+configuration change; all five focused tests pass with it. just fmt-check
+passes. The full package run has 370 passes and three existing remote tests
+unable to start because a codex executable is absent from the scoped cache.
+---
+ codex-rs/core/tests/suite/rmcp_client.rs      |   6 +-
+ .../src/bin/test_streamable_http_server.rs    | 117 +++++++++++++++++-
+ 2 files changed, 121 insertions(+), 2 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/rmcp_client.rs b/codex-rs/core/tests/suite/rmcp_client.rs
+index fb0572a..cb53c57 100644
+--- a/codex-rs/core/tests/suite/rmcp_client.rs
++++ b/codex-rs/core/tests/suite/rmcp_client.rs
+@@ -4666,6 +4666,7 @@ async fn start_remote_streamable_http_test_server(
+     expected_env_value: &str,
+     expected_token: Option<&str>,
+ ) -> anyhow::Result<StreamableHttpTestServer> {
++    let container_ip = remote_container_ip(container_name)?;
+     let remote_path = copy_binary_to_remote_env(
+         container_name,
+         rmcp_http_server_bin,
+@@ -4674,6 +4675,10 @@ async fn start_remote_streamable_http_test_server(
+     let bound_addr_file = format!("{remote_path}.addr");
+     let log_file = format!("{remote_path}.log");
+     let mut env_assignments = vec![
++        format!(
++            "MCP_STREAMABLE_HTTP_ADVERTISED_IP={}",
++            sh_single_quote(&container_ip)
++        ),
+         format!(
+             "MCP_STREAMABLE_HTTP_BIND_ADDR={}",
+             sh_single_quote("0.0.0.0:0")
+@@ -4718,7 +4723,6 @@ async fn start_remote_streamable_http_test_server(
+     let remote_bind_addr =
+         wait_for_remote_bound_addr(container_name, &bound_addr_file, Duration::from_secs(5))
+             .await?;
+-    let container_ip = remote_container_ip(container_name)?;
+     let server_url = format!("http://{}:{}/mcp", container_ip, remote_bind_addr.port());
+     // The orchestrator can see the Docker container IP, but the behavior under
+     // test is whether the remote-side MCP client can reach it. Probe through
+diff --git a/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs b/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
+index 31af242..8a56337 100644
+--- a/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
++++ b/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
+@@ -2,6 +2,7 @@ use std::borrow::Cow;
+ use std::collections::HashMap;
+ use std::fs;
+ use std::io::ErrorKind;
++use std::net::IpAddr;
+ use std::net::SocketAddr;
+ use std::sync::Arc;
+ use std::time::Duration;
+@@ -160,6 +161,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+         }
+     };
+     let actual_bind_addr = listener.local_addr()?;
++    let advertised_ip = match std::env::var("MCP_STREAMABLE_HTTP_ADVERTISED_IP") {
++        Ok(advertised_ip) => Some(advertised_ip),
++        Err(std::env::VarError::NotPresent) => None,
++        Err(error) => return Err(error.into()),
++    };
++    let server_config = streamable_http_server_config(advertised_ip.as_deref(), actual_bind_addr)?;
+     if let Ok(bound_addr_file) = std::env::var("MCP_STREAMABLE_HTTP_BOUND_ADDR_FILE") {
+         fs::write(bound_addr_file, actual_bind_addr.to_string())?;
+     }
+@@ -220,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+             StreamableHttpService::new(
+                 || Ok(TestToolServer::new()),
+                 Arc::new(LocalSessionManager::default()),
+-                StreamableHttpServerConfig::default(),
++                server_config,
+             ),
+         )
+         .layer(middleware::from_fn_with_state(
+@@ -588,3 +595,111 @@ fn request_mcp_method(body: &[u8]) -> Option<String> {
+         .as_str()
+         .map(ToString::to_string)
+ }
++
++fn streamable_http_server_config(
++    advertised_ip: Option<&str>,
++    bind_addr: SocketAddr,
++) -> Result<StreamableHttpServerConfig, std::net::AddrParseError> {
++    let config = StreamableHttpServerConfig::default();
++    match advertised_ip {
++        Some(advertised_ip) => {
++            let ip = advertised_ip.parse::<IpAddr>()?;
++            let authority = SocketAddr::new(ip, bind_addr.port()).to_string();
++            Ok(config.with_allowed_hosts([authority]))
++        }
++        None => Ok(config),
++    }
++}
++
++#[cfg(test)]
++mod host_validation_tests {
++    use super::*;
++    use codex_http_client::HttpClientBuilder;
++    use tokio_util::task::AbortOnDropHandle;
++
++    async fn initialize_status(advertised_ip: Option<&str>, host: &str) -> StatusCode {
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let bind_addr = listener.local_addr().unwrap();
++        let host = host.replace("ACTUAL_PORT", &bind_addr.port().to_string());
++        let config = streamable_http_server_config(advertised_ip, bind_addr).unwrap();
++        let router = Router::new().nest_service(
++            "/mcp",
++            StreamableHttpService::new(
++                || Ok(TestToolServer::new()),
++                Arc::new(LocalSessionManager::default()),
++                config,
++            ),
++        );
++        let _server = AbortOnDropHandle::new(tokio::spawn(async move {
++            axum::serve(listener, router).await.unwrap();
++        }));
++        let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"host-validation-test","version":"1"}}}"#;
++        let client = HttpClientBuilder::new().build_direct().unwrap();
++        let request = client
++            .post(format!("http://{bind_addr}/mcp"))
++            .header(HOST, host)
++            .header(CONTENT_TYPE, "application/json")
++            .header("accept", "application/json, text/event-stream")
++            .body(body);
++        tokio::time::timeout(Duration::from_secs(5), request.send())
++            .await
++            .unwrap()
++            .unwrap()
++            .status()
++    }
++
++    #[tokio::test]
++    async fn advertised_ipv4_host_with_actual_port_is_accepted() {
++        assert_eq!(
++            initialize_status(Some("172.17.0.2"), "172.17.0.2:ACTUAL_PORT").await,
++            StatusCode::OK
++        );
++    }
++
++    #[tokio::test]
++    async fn advertised_ipv6_host_with_actual_port_is_accepted() {
++        assert_eq!(
++            initialize_status(Some("::1"), "[::1]:ACTUAL_PORT").await,
++            StatusCode::OK
++        );
++    }
++
++    #[tokio::test]
++    async fn advertised_host_rejects_foreign_host_and_wrong_port() {
++        for host in [
++            "172.17.0.3:ACTUAL_PORT",
++            "172.17.0.2:1",
++            "localhost:ACTUAL_PORT",
++        ] {
++            assert_eq!(
++                initialize_status(Some("172.17.0.2"), host).await,
++                StatusCode::FORBIDDEN
++            );
++        }
++    }
++
++    #[tokio::test]
++    async fn absent_advertised_ip_preserves_loopback_defaults() {
++        assert_eq!(
++            initialize_status(None, "localhost:ACTUAL_PORT").await,
++            StatusCode::OK
++        );
++        assert_eq!(
++            initialize_status(None, "foreign.invalid:ACTUAL_PORT").await,
++            StatusCode::FORBIDDEN
++        );
++    }
++
++    #[test]
++    fn malformed_advertised_ip_is_rejected() {
++        for advertised_ip in ["", "example.com", "172.17.0.2:8080"] {
++            assert!(
++                streamable_http_server_config(
++                    Some(advertised_ip),
++                    "0.0.0.0:43123".parse().unwrap()
++                )
++                .is_err()
++            );
++        }
++    }
++}

@@ -2686,3 +2686,28 @@ The downstream `windows-lifecycle-source` diagnostic also requires both capture
 cases and both TTY phases to execute and pass on Windows 2022 and Windows latest.
 Its timing overlay supplies execution evidence; the production patch supplies
 the normal-capture fixture and output assertions independently.
+
+## Remote MCP fixture Host validation
+
+`zzzz-0079-mcp-advertised-host-fixture.patch` lets the Docker Streamable HTTP
+fixture accept the container IP it advertises. The helper authorizes exactly
+that IP and its actual listening port through the pinned SDK's Host allowlist.
+An absent advertised IP retains the SDK's loopback defaults; a malformed IP
+fails before the helper publishes its address. Foreign Hosts and incorrect
+ports remain rejected.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+The patch changes test fixtures only and does not add a feature flag or alter
+production MCP security policy. Run its real HTTP regression and the complete
+upstream formatting gate from the patched checkout root:
+
+```sh
+just test -p codex-rmcp-client --bin test_streamable_http_server -E 'test(host_validation_tests)'
+just fmt-check
+```
+
+All five focused tests must pass, covering IPv4, IPv6, exact port, foreign Host,
+default policy and invalid configuration. The remote core integration gate
+also needs rebuilt helper and core test executables under the maintained
+Docker test environment; remapping an older archive cannot verify this change.
