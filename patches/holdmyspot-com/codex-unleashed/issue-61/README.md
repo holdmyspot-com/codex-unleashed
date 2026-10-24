@@ -2914,7 +2914,7 @@ local success does not establish either platform's behavior.
 `zzzz-0087-host-loopback-mcp-fixtures.patch` keeps fixture-owned HTTP servers
 reachable without changing production transport routing. The host cleanup-hook
 fixture registers its MCP server locally alongside the selected executor and
-asserts that the tool executor selection stays unchanged.
+asserts that the primary tool executor selection stays unchanged.
 
 Executor-hook fixtures in Docker mode use the existing owned `ExecServerProcess`
 and `TestEnv::local_with_exec_server_url` support. A separate host child executes

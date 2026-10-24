@@ -1,25 +1,29 @@
-From 9bd05c3bae61e074dd065b550263352c9c3c3ff9 Mon Sep 17 00:00:00 2001
-From: Codex <codex@example.invalid>
-Date: Sat, 24 Oct 2026 04:17:20 +0000
-Subject: [PATCH] test: Keep host-owned hook MCP fixtures reachable during
- remote tests
+From 1c6f4f1044c2efe3ac2b138c4627170034943872 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 01:37:08 -0400
+Subject: [PATCH] test: Keep host MCP fixtures reachable with the remote
+ executor primary
 
-Register the bundled host cleanup MCP server in the local environment while
-retaining the selected tool executor. For executor-hook fixtures in Docker
-mode, use the existing native child exec-server fixture so host WireMock
-endpoints remain reachable through remote HTTP and filesystem RPC.
+Register host loopback MCP cleanup fixtures locally and retain remote RPC
+for executor-hook fixtures. Host WireMock endpoints remain in the same
+network namespace as their native child exec-server.
 
-Keep automatic placement for local and Wine runs and retain all hook policy,
-attachment, environment identity, metadata, and routing assertions. These
-fixtures exercise hook behavior; they no longer exercise Docker filesystem
-or network placement. Separate remote environment tests retain that scope.
+The Docker runtime exposed an incorrect remote-only selection assertion:
+registering the local environment adds it after the default remote one.
+Assert the primary executor rather than forbidding local registration.
+Keep hook policy, attribution and behavior assertions unchanged.
+
+Declared base: rust-v0.163.0, 83086188ae0614bd882818ff1aa23f3194962012.
+Original runtime RED: 14 bundled cleanup cases in run40062103874.
+Maintained standalone just fmt-check passes. Corrected Docker behavior
+and emitted-queue runtime acceptance remain unrun.
 ---
  codex-rs/core/tests/suite/hooks.rs          | 15 ++++++++++--
  codex-rs/core/tests/suite/hooks_executor.rs | 26 ++++++++++++++++++++-
  2 files changed, 38 insertions(+), 3 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/hooks.rs b/codex-rs/core/tests/suite/hooks.rs
-index 274874c..ecaf569 100644
+index 274874c1..4cbfa5c8 100644
 --- a/codex-rs/core/tests/suite/hooks.rs
 +++ b/codex-rs/core/tests/suite/hooks.rs
 @@ -4546,7 +4546,8 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
@@ -43,16 +47,16 @@ index 274874c..ecaf569 100644
 +            .environment_selections()
 +            .await
 +            .into_iter()
-+            .map(|selection| selection.environment_id)
-+            .collect::<Vec<_>>(),
-+        vec![super::rmcp_client::remote_aware_environment_id()],
++            .next()
++            .map(|selection| selection.environment_id),
++        Some(super::rmcp_client::remote_aware_environment_id()),
 +        "host MCP availability must not replace the selected tool executor",
 +    );
      assert!(!test.config.bypass_hook_trust);
      assert_eq!(
          test.config.features.enabled(Feature::CodexHooks),
 diff --git a/codex-rs/core/tests/suite/hooks_executor.rs b/codex-rs/core/tests/suite/hooks_executor.rs
-index f033f7c..84a2092 100644
+index f033f7c6..84a2092b 100644
 --- a/codex-rs/core/tests/suite/hooks_executor.rs
 +++ b/codex-rs/core/tests/suite/hooks_executor.rs
 @@ -30,6 +30,8 @@ use codex_utils_path_uri::PathUri;
@@ -99,7 +103,7 @@ index f033f7c..84a2092 100644
 +        "remote fixture mode must retain a remote executor",
 +    );
      wait_for_mcp_server(&test.codex, "node_repl").await?;
-
+ 
      let mut plugin_roots = Vec::new();
 @@ -913,6 +935,7 @@ async fn executor_plugin_hook_fixture(
          responses,
@@ -108,12 +112,12 @@ index f033f7c..84a2092 100644
 +        _executor: executor,
      })
  }
-
+ 
 @@ -922,6 +945,7 @@ struct ExecutorHookFixture {
      responses: ResponseMock,
      hook_called: Arc<Notify>,
      plugin_roots: Vec<(&'static str, PathUri)>,
 +    _executor: Option<ExecServerProcess>,
  }
-
+ 
  impl ExecutorHookFixture {
