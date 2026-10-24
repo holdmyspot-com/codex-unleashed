@@ -1004,7 +1004,16 @@ jobs:
             if [[ "$binary" == codex-code-mode-host ]]; then
               symbols="$binary_path"
               if [[ "$TARGET" == *apple-darwin ]]; then
-                symbols="${release_dir}/${binary}.dSYM/Contents/Resources/DWARF/${binary}"
+                dwarf_dir="${release_dir}/${binary}.dSYM/Contents/Resources/DWARF"
+                shopt -s nullglob
+                dwarf_files=("$dwarf_dir"/*)
+                shopt -u nullglob
+                if [[ ${#dwarf_files[@]} != 1 || ! -f "${dwarf_files[0]}" || ! -s "${dwarf_files[0]}" ]]; then
+                  echo "Expected exactly one nonempty DWARF file in $dwarf_dir" >&2
+                  exit 1
+                fi
+                symbols="${dwarf_files[0]}"
+                printf 'Selected Cargo code-mode host DWARF member: %s\n' "$symbols"
               fi
               bash .github/scripts/code-mode-host-symbol-address.sh "$TARGET" "$symbols"
             fi
