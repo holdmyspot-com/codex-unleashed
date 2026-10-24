@@ -1,7 +1,8 @@
 diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
+index 23688ca..2032f45 100644
 --- a/codex-rs/utils/pty/Cargo.toml
 +++ b/codex-rs/utils/pty/Cargo.toml
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,7 @@ lazy_static = { workspace = true }
  log = { workspace = true }
  shared_library = "0.1.9"
  winapi = { version = "0.3.9", features = [
@@ -9,11 +10,125 @@ diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
      "handleapi",
      "jobapi",
      "jobapi2",
+diff --git a/codex-rs/utils/pty/src/pty.rs b/codex-rs/utils/pty/src/pty.rs
+index 39d9b65..71424de 100644
+--- a/codex-rs/utils/pty/src/pty.rs
++++ b/codex-rs/utils/pty/src/pty.rs
+@@ -235,12 +235,22 @@ async fn spawn_process_portable(
+     #[cfg(not(unix))]
+     let (reader_handle, writer_handle) = {
+         let mut reader = pair.master.try_clone_reader()?;
++        let diagnostic_started = std::time::Instant::now();
++        let prompt_diagnostic =
++            std::env::var("CODEX_CONPTY_CTRL_C_INHERITANCE").as_deref() == Ok("enabled-prompt");
+         let reader_handle: JoinHandle<()> = tokio::task::spawn_blocking(move || {
+             let mut buf = [0u8; 8_192];
+             loop {
+                 match reader.read(&mut buf) {
+                     Ok(0) => break,
+                     Ok(n) => {
++                        if prompt_diagnostic {
++                            eprintln!(
++                                "conpty_prompt io=read elapsed_ns={} bytes={:02x?}",
++                                diagnostic_started.elapsed().as_nanos(),
++                                &buf[..n]
++                            );
++                        }
+                         let _ = stdout_tx.blocking_send(buf[..n].to_vec());
+                     }
+                     Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+@@ -270,8 +280,15 @@ async fn spawn_process_portable(
+                     let bytes = windows_input.normalize(&bytes);
+                     let mut guard = writer.lock().await;
+                     use std::io::Write;
++                    let write_started_ns = diagnostic_started.elapsed().as_nanos();
+                     let write_result = guard.write_all(&bytes);
+                     let flush_result = guard.flush();
++                    if prompt_diagnostic {
++                        eprintln!(
++                            "conpty_prompt io=write started_ns={write_started_ns} completed_ns={} bytes={bytes:02x?} write={write_result:?} flush={flush_result:?}",
++                            diagnostic_started.elapsed().as_nanos()
++                        );
++                    }
+                     #[cfg(windows)]
+                     if std::env::var_os("CODEX_CONPTY_CTRL_C_DIAGNOSTIC").is_some() {
+                         eprintln!(
 diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/windows_tests.rs
+index ced4e37..51aec9c 100644
 --- a/codex-rs/utils/pty/src/windows_tests.rs
 +++ b/codex-rs/utils/pty/src/windows_tests.rs
-@@ -443,6 +443,29 @@
+@@ -441,8 +441,99 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
+     Ok(())
+ }
 
++// Capture the whole initial prompt, rather than treating its `PS ` prefix as readiness.
++fn conpty_diagnostic_complete_prompt(readiness: &[u8]) -> Option<Vec<u8>> {
++    let start = readiness.windows(3).position(|bytes| bytes == b"PS ")?;
++    let tail = &readiness[start..];
++    let end = tail.windows(2).position(|bytes| bytes == b"> ")? + 2;
++    let prompt = &tail[..end];
++    if prompt.contains(&b'\r') || prompt.contains(&b'\n') {
++        return None;
++    }
++    Some(prompt.to_vec())
++}
++
++// Only a complete prompt after this interrupt's output can release the fourth mode.
++fn conpty_diagnostic_returned_prompt(transcript: &[u8], prompt: &[u8]) -> bool {
++    let marker = b"Control-C";
++    let Some(interrupt) = transcript
++        .windows(marker.len())
++        .rposition(|bytes| bytes == marker)
++    else {
++        return false;
++    };
++    !prompt.is_empty()
++        && transcript[interrupt + marker.len()..]
++            .windows(prompt.len())
++            .any(|bytes| bytes == prompt)
++}
++
++async fn conpty_diagnostic_wait_output(
++    output_rx: &mut tokio::sync::broadcast::Receiver<Vec<u8>>,
++    transcript: &mut Vec<u8>,
++    prompt: Option<&[u8]>,
++    deadline: tokio::time::Instant,
++    started: std::time::Instant,
++) -> anyhow::Result<()> {
++    let phase = if prompt.is_some() { "prompt" } else { "ver" };
++    loop {
++        let observed = match prompt {
++            Some(prompt) => conpty_diagnostic_returned_prompt(transcript, prompt),
++            None => transcript
++                .windows(b"Microsoft Windows".len())
++                .any(|bytes| bytes == b"Microsoft Windows"),
++        };
++        if observed {
++            eprintln!(
++                "conpty_prompt phase={phase} observed elapsed_ns={}",
++                started.elapsed().as_nanos()
++            );
++            return Ok(());
++        }
++        let chunk = match tokio::time::timeout_at(deadline, output_rx.recv()).await {
++            Ok(Ok(chunk)) => chunk,
++            Ok(Err(error)) => anyhow::bail!(
++                "ConPTY {phase} receive failed: {error}; transcript={:?}",
++                String::from_utf8_lossy(transcript)
++            ),
++            Err(_) => anyhow::bail!(
++                "ConPTY {phase} exceeded the shared 10000ms resumption budget; transcript={:?}",
++                String::from_utf8_lossy(transcript)
++            ),
++        };
++        eprintln!(
++            "conpty_prompt phase={phase} read elapsed_ns={} bytes={chunk:02x?}",
++            started.elapsed().as_nanos()
++        );
++        transcript.extend_from_slice(&chunk);
++    }
++}
++
  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
  async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
 +    let requested = match std::env::var("CODEX_CONPTY_CTRL_C_INHERITANCE") {
@@ -23,7 +138,7 @@ diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/wi
 +    };
 +    let ignore = match requested.as_str() {
 +        "inherited" => None,
-+        "enabled" => Some(0),
++        "enabled" | "enabled-prompt" => Some(0),
 +        "ignored" => Some(1),
 +        _ => anyhow::bail!("unknown Ctrl-C inheritance diagnostic mode: {requested}"),
 +    };
@@ -42,3 +157,88 @@ diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/wi
      let Some(program) = find_powershell() else {
          anyhow::bail!("conpty_diagnostic PowerShell unavailable");
      };
+@@ -474,7 +565,22 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+     );
+     let processes = conpty_diagnostic_processes()?;
+     conpty_diagnostic_status("readiness", &processes, &session);
+-    readiness?;
++    let readiness_output = readiness?;
++    let returning_prompt = if requested == "enabled-prompt" {
++        let prompt = conpty_diagnostic_complete_prompt(&readiness_output).ok_or_else(|| {
++            anyhow::anyhow!(
++                "complete initial PowerShell prompt missing: {:?}",
++                String::from_utf8_lossy(&readiness_output)
++            )
++        })?;
++        eprintln!(
++            "conpty_prompt captured_initial_prompt={:?}",
++            String::from_utf8_lossy(&prompt)
++        );
++        Some(prompt)
++    } else {
++        None
++    };
+
+     eprintln!(
+         "conpty_diagnostic sending_ctrl_c bytes=[03] elapsed={:?}",
+@@ -483,13 +589,53 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+     writer.send(vec![0x03]).await?;
+     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+     conpty_diagnostic_status("after_interrupt_200ms", &processes, &session);
+-    writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
+-    let resumption = wait_for_output_contains(
+-        &mut output_rx,
+-        "Microsoft Windows",
+-        /*timeout_ms*/ 10_000,
+-    )
+-    .await;
++    let resumption = if let Some(prompt) = returning_prompt {
++        // Both waits share the original post-200ms budget; no command is retried.
++        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_millis(10_000);
++        let mut transcript = Vec::new();
++        let result = async {
++            conpty_diagnostic_wait_output(
++                &mut output_rx,
++                &mut transcript,
++                Some(&prompt),
++                deadline,
++                started,
++            )
++            .await?;
++            eprintln!(
++                "conpty_prompt sending_ver elapsed_ns={}",
++                started.elapsed().as_nanos()
++            );
++            anyhow::ensure!(
++                tokio::time::Instant::now() < deadline,
++                "ConPTY prompt consumed the shared 10000ms resumption budget"
++            );
++            tokio::time::timeout_at(deadline, writer.send(b"cmd.exe /D /C ver\n".to_vec()))
++                .await
++                .map_err(|_| {
++                    anyhow::anyhow!("ConPTY ver send exceeded the shared resumption budget")
++                })??;
++            conpty_diagnostic_wait_output(&mut output_rx, &mut transcript, None, deadline, started)
++                .await?;
++            Ok::<(), anyhow::Error>(())
++        }
++        .await;
++        match result {
++            Ok(()) => Ok(transcript),
++            Err(error) => Err(anyhow::anyhow!(
++                "{error}; full resumption transcript={:?}",
++                String::from_utf8_lossy(&transcript)
++            )),
++        }
++    } else {
++        writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
++        wait_for_output_contains(
++            &mut output_rx,
++            "Microsoft Windows",
++            /*timeout_ms*/ 10_000,
++        )
++        .await
++    };
+     conpty_diagnostic_status("after_ver_wait", &processes, &session);
+     eprintln!(
+         "conpty_diagnostic resumption elapsed={:?} result={resumption:?}",

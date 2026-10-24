@@ -829,7 +829,7 @@ jobs:
           git -C upstream apply ../.github/diagnostics/windows-conpty-ctrl-c.patch
           git -C upstream apply --check ../.github/diagnostics/windows-conpty-ctrl-c-inheritance.patch
           git -C upstream apply ../.github/diagnostics/windows-conpty-ctrl-c-inheritance.patch
-      - name: Compare inherited, enabled, and ignored Ctrl-C handling
+      - name: Compare inherited, enabled, ignored, and prompt-gated Ctrl-C handling
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -838,7 +838,7 @@ jobs:
           evidence="$RUNNER_TEMP/windows-conpty-ctrl-c"
           mkdir -p "$evidence"
           cd upstream
-          for mode in inherited enabled ignored; do
+          for mode in inherited enabled ignored enabled-prompt; do
             status=0
             "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
               --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
@@ -854,21 +854,35 @@ jobs:
               2>&1 | tee "$evidence/$mode.log" || status=$?
             printf '%s\n' "$status" > "$evidence/$mode.status"
           done
-          for mode in inherited enabled ignored; do
+          for mode in inherited enabled ignored enabled-prompt; do
             log="$evidence/$mode.log"
             grep -F "conpty_diagnostic inheritance_mode=$mode setup=ok" "$log"
             grep -F 'normalized_bytes=[03] write=Ok(()) flush=Ok(())' "$log"
+            grep -F 'normalized_bytes=[63, 6d, 64, 2e, 65, 78, 65, 20, 2f, 44, 20, 2f, 43, 20, 76, 65, 72, 0d] write=Ok(()) flush=Ok(())' "$log"
+            grep -F 'stage=after_ver_wait root_has_exited=false root_exit_code=None' "$log"
             grep -Ei 'stage=readiness .*image="(pwsh|powershell)\.exe" query_ok=true exit_code=259' "$log"
             grep -Ei 'stage=readiness .*image="ping\.exe" query_ok=true exit_code=259' "$log"
             grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=' "$log"
           done
-          test "$(cat "$evidence/enabled.status")" = 0
-          grep -F 'test result: ok. 1 passed; 0 failed;' "$evidence/enabled.log"
+          test "$(cat "$evidence/enabled-prompt.status")" = 0
+          grep -F 'test result: ok. 1 passed; 0 failed;' "$evidence/enabled-prompt.log"
+          grep -F 'conpty_prompt captured_initial_prompt="PS ' "$evidence/enabled-prompt.log"
+          grep -F 'conpty_prompt phase=prompt observed elapsed_ns=' "$evidence/enabled-prompt.log"
+          grep -F 'conpty_prompt phase=ver observed elapsed_ns=' "$evidence/enabled-prompt.log"
+          grep -F 'conpty_prompt io=read elapsed_ns=' "$evidence/enabled-prompt.log"
+          grep -F 'conpty_prompt io=write started_ns=' "$evidence/enabled-prompt.log"
+          for mode in enabled enabled-prompt; do
+            grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=3221225786' "$evidence/$mode.log"
+          done
           for mode in inherited ignored; do
+            grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=259' "$evidence/$mode.log"
+          done
+          for mode in inherited enabled ignored; do
             test "$(cat "$evidence/$mode.status")" != 0
             grep -F 'test result: FAILED. 0 passed; 1 failed;' "$evidence/$mode.log"
+            grep -E 'conpty_diagnostic resumption elapsed=.*result=Err\(timed out waiting for "Microsoft Windows"' "$evidence/$mode.log"
           done
-          printf '%s\n' 'Ctrl-C inheritance hypothesis reproduced; production repair remains unverified.'
+          printf '%s\n' 'Prompt-gated enabled control passed; original three resumption controls still fail. Production repair remains unverified.'
       - name: Retain ConPTY control and process evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
