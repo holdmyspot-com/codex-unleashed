@@ -66,7 +66,12 @@ jobs:
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir -p "$diagnostic_root"
           cp .github/scripts/diagnose-windows-arm-launch-inputs.ps1 "$diagnostic_root/controls.ps1"
-          shasum -a 256 "$diagnostic_root/controls.ps1" > "$diagnostic_root/controls.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256=(sha256sum)
+          else
+            sha256=(shasum -a 256)
+          fi
+          "${sha256[@]}" "$diagnostic_root/controls.ps1" > "$diagnostic_root/controls.sha256"
 
       - name: Authenticate retained ARM launch inputs
         if: inputs.arm-launch-controls
@@ -293,7 +298,12 @@ jobs:
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$diagnostic_root/$directory.zip"
               digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$")) | sub("^sha256:"; "")' \
                 "$diagnostic_root/artifact-$artifact.json")"
-              printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | shasum -a 256 --check
+              if command -v sha256sum >/dev/null 2>&1; then
+                sha256=(sha256sum)
+              else
+                sha256=(shasum -a 256)
+              fi
+              printf '%s  %s\n' "$digest" "$diagnostic_root/$directory.zip" | "${sha256[@]}" --check
               mkdir "$diagnostic_root/$directory"
               unzip -q "$diagnostic_root/$directory.zip" -d "$diagnostic_root/$directory"
             done
@@ -339,7 +349,12 @@ jobs:
           cd "$GITHUB_WORKSPACE/upstream/codex-rs"
           test -f .config/nextest.toml
           cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
-          shasum -a 256 "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256=(sha256sum)
+          else
+            sha256=(shasum -a 256)
+          fi
+          "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
           printf 'diagnostic-sha=%s\narchive-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=1\nretries=0\nfilter=%s\n' \
             "$GITHUB_SHA" "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" "$(git rev-parse HEAD)" \
             "$SOURCE_RUN" "$TEST_FILTER" > "$diagnostic_root/provenance.txt"
@@ -400,7 +415,12 @@ jobs:
             cd "$GITHUB_WORKSPACE/upstream/codex-rs"
             test -f .config/nextest.toml
             cp .config/nextest.toml "$diagnostic_root/original-nextest.toml"
-            shasum -a 256 "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256=(sha256sum)
+            else
+              sha256=(shasum -a 256)
+            fi
+            "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
             config_args=(--config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default)
             printf 'diagnostic-sha=%s\noriginal-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=1\nretries=0\nfilter=%s\n' \
               "$GITHUB_SHA" "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" "$(git rev-parse HEAD)" \
