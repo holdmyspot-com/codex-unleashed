@@ -1,0 +1,213 @@
+From 393b7cf44cdbe230ee9b8aa36a8f055f4b864857 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 06:42:06 +0000
+Subject: [PATCH] test: Isolate Ctrl+C state and await PowerShell resumption
+
+Re-execute the ConPTY interrupt fixture alone before enabling its inherited Ctrl+C disposition. Wait for the complete returning prompt before sending ver, sharing the original resumption deadline and retaining the exit assertion.
+---
+ codex-rs/utils/pty/Cargo.toml           |   1 +
+ codex-rs/utils/pty/src/windows_tests.rs | 164 ++++++++++++++++++++++--
+ 2 files changed, 157 insertions(+), 8 deletions(-)
+
+diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
+index f7cabb69..91ac6e19 100644
+--- a/codex-rs/utils/pty/Cargo.toml
++++ b/codex-rs/utils/pty/Cargo.toml
+@@ -24,6 +24,7 @@ lazy_static = { workspace = true }
+ log = { workspace = true }
+ shared_library = "0.1.9"
+ winapi = { version = "0.3.9", features = [
++    "consoleapi",
+     "handleapi",
+     "jobapi",
+     "jobapi2",
+diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/windows_tests.rs
+index 6d6c389b..add971cf 100644
+--- a/codex-rs/utils/pty/src/windows_tests.rs
++++ b/codex-rs/utils/pty/src/windows_tests.rs
+@@ -441,11 +441,137 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
+     Ok(())
+ }
+
++// Capture the whole initial prompt, rather than treating its `PS ` prefix as readiness.
++fn powershell_complete_prompt(readiness: &[u8]) -> Option<Vec<u8>> {
++    let start = readiness.windows(3).position(|bytes| bytes == b"PS ")?;
++    let tail = &readiness[start..];
++    let end = tail.windows(2).position(|bytes| bytes == b"> ")? + 2;
++    let prompt = &tail[..end];
++    if prompt.contains(&b'\r') || prompt.contains(&b'\n') {
++        return None;
++    }
++    Some(prompt.to_vec())
++}
++
++// The initial prompt cannot establish readiness after the interrupt.
++fn powershell_returned_prompt(transcript: &[u8], prompt: &[u8]) -> bool {
++    let marker = b"Control-C";
++    let Some(interrupt) = transcript
++        .windows(marker.len())
++        .rposition(|bytes| bytes == marker)
++    else {
++        return false;
++    };
++    !prompt.is_empty()
++        && transcript[interrupt + marker.len()..]
++            .windows(prompt.len())
++            .any(|bytes| bytes == prompt)
++}
++
++#[test]
++fn powershell_prompt_matches_only_after_interrupt() {
++    let prompt =
++        powershell_complete_prompt(b"\x1b[?25hPS D:\\source> ping.exe\r\n127.0.0.1").unwrap();
++    assert_eq!(prompt, b"PS D:\\source> ");
++    assert!(!powershell_returned_prompt(&prompt, &prompt));
++    assert!(powershell_returned_prompt(
++        b"Control-C\r\nPS D:\\source> ",
++        &prompt
++    ));
++}
++
++#[test]
++fn powershell_prompt_rejects_partial_wrong_path_and_stale_output() {
++    let prompt = b"PS D:\\source> ";
++    assert!(!powershell_returned_prompt(b"Control-C\r\nPS ", prompt));
++    assert!(!powershell_returned_prompt(
++        b"Control-C\r\nPS D:\\source>",
++        prompt
++    ));
++    assert!(!powershell_returned_prompt(
++        b"Control-C\r\nPS C:\\other> ",
++        prompt
++    ));
++    assert!(!powershell_returned_prompt(
++        b"PS D:\\source> \r\nControl-C",
++        prompt
++    ));
++    let mut split = b"Control-C\r\nPS D:\\sou".to_vec();
++    assert!(!powershell_returned_prompt(&split, prompt));
++    split.extend_from_slice(b"rce> ");
++    assert!(powershell_returned_prompt(&split, prompt));
++}
++
++#[test]
++fn powershell_prompt_capture_requires_complete_single_line() {
++    assert_eq!(powershell_complete_prompt(b"PS D:\\source>"), None);
++    assert_eq!(powershell_complete_prompt(b"PS D:\\source\r\n> "), None);
++    assert!(!powershell_returned_prompt(
++        b"Control-C\r\nPS D:\\source> ",
++        b""
++    ));
++}
++
++async fn wait_for_powershell_resumption_output(
++    output_rx: &mut tokio::sync::broadcast::Receiver<Vec<u8>>,
++    transcript: &mut Vec<u8>,
++    prompt: Option<&[u8]>,
++    deadline: tokio::time::Instant,
++) -> anyhow::Result<()> {
++    let phase = if prompt.is_some() { "prompt" } else { "ver" };
++    loop {
++        let observed = match prompt {
++            Some(prompt) => powershell_returned_prompt(transcript, prompt),
++            None => transcript
++                .windows(b"Microsoft Windows".len())
++                .any(|bytes| bytes == b"Microsoft Windows"),
++        };
++        if observed {
++            return Ok(());
++        }
++        let chunk = match tokio::time::timeout_at(deadline, output_rx.recv()).await {
++            Ok(Ok(chunk)) => chunk,
++            Ok(Err(error)) => anyhow::bail!(
++                "ConPTY {phase} receive failed: {error}; transcript={:?}",
++                String::from_utf8_lossy(transcript)
++            ),
++            Err(_) => anyhow::bail!(
++                "ConPTY {phase} exceeded the shared 10000ms resumption budget; transcript={:?}",
++                String::from_utf8_lossy(transcript)
++            ),
++        };
++        transcript.extend_from_slice(&chunk);
++    }
++}
++
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
++    // Ctrl+C ignore is process-wide and inherited. Keep this fixture's reset out
++    // of the shared test process, even when libtest runs other tests concurrently.
++    if std::env::var_os("CODEX_PTY_CTRL_C_ISOLATED_PROBE").is_none() {
++        let output = std::process::Command::new(std::env::current_exe()?)
++            .args([
++                "--exact",
++                "tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child",
++                "--nocapture",
++            ])
++            .env("CODEX_PTY_CTRL_C_ISOLATED_PROBE", "1")
++            .output()?;
++        anyhow::ensure!(
++            output.status.success(),
++            "isolated Ctrl+C probe failed:\n{}\n{}",
++            String::from_utf8_lossy(&output.stdout),
++            String::from_utf8_lossy(&output.stderr),
++        );
++        return Ok(());
++    }
+     let Some(program) = find_powershell() else {
+         return Ok(());
+     };
++    if unsafe { winapi::um::consoleapi::SetConsoleCtrlHandler(None, 0) } == 0 {
++        let error = std::io::Error::last_os_error();
++        anyhow::bail!("could not enable Ctrl+C in the isolated test process: {error}");
++    }
+     let args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
+     let env: HashMap<String, String> = std::env::vars().collect();
+     let spawned = spawn_pty_process(
+@@ -461,17 +587,39 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+     let (session, mut output_rx, exit_rx) = combine_spawned_output(spawned);
+     let writer = session.writer_sender();
+     writer.send(b"ping.exe -4 -t localhost\n".to_vec()).await?;
+-    wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
++    let readiness =
++        wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
++    let prompt = powershell_complete_prompt(&readiness).ok_or_else(|| {
++        anyhow::anyhow!(
++            "complete initial PowerShell prompt missing: {:?}",
++            String::from_utf8_lossy(&readiness)
++        )
++    })?;
+
+     writer.send(vec![0x03]).await?;
+     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+-    writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
+-    let mut output = wait_for_output_contains(
+-        &mut output_rx,
+-        "Microsoft Windows",
+-        /*timeout_ms*/ 10_000,
+-    )
+-    .await?;
++    // Prompt readiness and ver output share the original resumption budget.
++    let deadline = tokio::time::Instant::now() + Duration::from_millis(10_000);
++    let mut output = Vec::new();
++    let resumption = async {
++        wait_for_powershell_resumption_output(&mut output_rx, &mut output, Some(&prompt), deadline)
++            .await?;
++        anyhow::ensure!(
++            tokio::time::Instant::now() < deadline,
++            "PowerShell prompt consumed the shared 10000ms resumption budget"
++        );
++        tokio::time::timeout_at(deadline, writer.send(b"cmd.exe /D /C ver\n".to_vec()))
++            .await
++            .map_err(|_| anyhow::anyhow!("ver send exceeded the shared resumption budget"))??;
++        wait_for_powershell_resumption_output(&mut output_rx, &mut output, None, deadline).await
++    }
++    .await;
++    resumption.map_err(|error| {
++        anyhow::anyhow!(
++            "{error}; full resumption transcript={:?}",
++            String::from_utf8_lossy(&output)
++        )
++    })?;
+
+     writer.send(b"exit 0\n".to_vec()).await?;
+     let (remaining, exit_code) =

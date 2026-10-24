@@ -2991,3 +2991,44 @@ Verify the fixture's local and remote destination cases:
 just test -p codex-tui --lib --retries 0 -E 'test(=app::tests::background_task_defaults_tests::command_center_new_reads_server_defaults_for_actual_destination)'
 just fmt-check
 ```
+
+## ConPTY interrupt readiness fixture
+
+`zzzz-0091-conpty-interrupt-readiness-fixture.patch` gives the PowerShell
+interrupt fixture its own exact-test process before enabling inherited Ctrl+C
+handling. This keeps the process-wide handler setting isolated from concurrent
+tests. After sending the unchanged interrupt byte and retaining the 200 ms delay,
+the fixture waits for the complete returning PowerShell prompt before sending
+`cmd.exe /D /C ver` once. Prompt readiness and command output share the original
+10-second resumption budget. The shell exit assertion stays in place, and
+production PTY handling stays unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+The [canonical tracking issue is #61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+Run the maintained checks from the patched upstream checkout root. In the native
+CI environment, `GITHUB_WORKSPACE` names the project containing the wrapper:
+
+```sh
+just fmt-check
+run_pty() {
+  "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+    --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+    -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+    --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+    --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+    --nocache_test_results --test_output=all --test_arg=--nocapture \
+    "$@" -- //codex-rs/utils/pty:pty-unit-tests
+}
+run_pty --test_arg=--exact \
+  --test_arg=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+run_pty
+```
+
+The focused gate requires one passing selected ConPTY test. The full PTY target
+requires that test and all three `powershell_prompt_` parser tests to pass,
+including complete-prompt capture and partial, wrong-path, stale and split
+prompt cases. The `windows-conpty-fixture` diagnostic focus runs both gates on
+Windows latest and Windows 2022 without diagnostic overlays. Native acceptance
+remains pending; formatting and patch application do not establish runtime
+behavior.
