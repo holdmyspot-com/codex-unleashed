@@ -401,7 +401,7 @@ capture_effective_arguments() (
   jq -er --arg wrapper "$wrapper" '
     .inputs | map(.path) |
     if length == (unique | length) then .[] else error("Duplicate input paths") end |
-    select(. == $wrapper or test("[.](params|flags|env|txt|linksearchpaths)$"))
+    select(. == $wrapper or test("[.](params|flags|linkflags|env|txt|linksearchpaths)$"))
   ' "$spawn" > "$capture/preparation-inputs.txt"
   while IFS= read -r path; do
     check_input_digest "$spawn" "$root" "$path"
@@ -535,7 +535,8 @@ test_replay_policy() (
 test_wrapper_capture() (
   set -euo pipefail
   local fixture="$1/wrapper-capture" executable="$2" root params0 params1 wrapper flags path hash size mutation status
-  local empty_links=empty.linksearchpaths native_links=native.linksearchpaths false_command
+  local flags_path
+  local empty_links=empty.linksearchpaths native_links=native.linksearchpaths link_flags=build.linkflags empty_link_flags=empty.linkflags false_command
   local retain_failed_replay="${retain_failed_self_test:-false}"
   mkdir "$fixture"
   root="$fixture/sandboxes/one/execroot/_main"
@@ -548,8 +549,9 @@ test_wrapper_capture() (
   cp "$1/source/bazel/tools/dsymutil" "$root/bazel/tools/dsymutil"
   printf 'fixture dsymutil input\n' > "$root/external/llvm/bin/dsymutil"
   printf '%s\n' '--arg-file' "$empty_links" '--arg-file' "$native_links" '--arg-file' "$flags" \
-    '--env-file' 'build.env' '--subst' "pwd=\${pwd}" > "$root/$params0"
+    '--arg-file' "$empty_link_flags" '--arg-file' "$link_flags" '--env-file' 'build.env' '--subst' "pwd=\${pwd}" > "$root/$params0"
   : > "$root/$empty_links"
+  : > "$root/$empty_link_flags"
   printf '%s\n' '-Lnative=fixture literal path' '-Csplit-debuginfo=off' > "$root/$native_links"
   printf '%s\n' 'FIXTURE_ENV=literal value' > "$root/build.env"
   printf '%s\n' 'nested literal argument' > "$root/nested.params"
@@ -559,6 +561,7 @@ test_wrapper_capture() (
   printf '%s\n' "\\" 'empty-line-successor' >> "$root/$params1"
   printf '%s\r\n' 'literal CRLF argument' >> "$root/$params1"
   printf '%s\n' '-Csplit-debuginfo=packed' > "$root/$flags"
+  printf '%s\n' '-Clink-arg=fixture-linkflag' > "$root/$link_flags"
   # Resolve an external command: a spawn error also exits 1 and is not this control.
   false_command="$(type -P false)"
   [[ -x "$false_command" ]]
@@ -569,7 +572,7 @@ test_wrapper_capture() (
   [[ ! -s "$fixture/control.stderr" && -f "$root/$params1.expanded" ]]
   printf 'Intentional child status 1: %s\n' "$false_command" > "$fixture/control.txt"
   : > "$fixture/inputs.jsonl"
-  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
+  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$link_flags" "$empty_link_flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     hash="$(shasum -a 256 "$root/$path" | awk '{print $1}')"
     size="$(wc -c < "$root/$path" | tr -d ' ')"
     jq -nc --arg path "$path" --arg hash "$hash" --arg size "$size" \
@@ -587,8 +590,8 @@ test_wrapper_capture() (
   }' > "$fixture/baseline.json"
   capture_effective_arguments "$fixture/baseline.json" "$fixture/sandboxes" "$fixture/valid" "$(uname -s)"
   check_effective_arguments "$fixture/valid/effective-arguments.json" aarch64-apple-darwin
-  jq -e '.[-1] == "-Csplit-debuginfo=packed" and .[-2] == "-Csplit-debuginfo=off" and
-    .[-3] == "-Lnative=fixture literal path" and
+  jq -e '.[-1] == "-Clink-arg=fixture-linkflag" and .[-2] == "-Csplit-debuginfo=packed" and .[-3] == "-Csplit-debuginfo=off" and
+    .[-4] == "-Lnative=fixture literal path" and
     index("literal space \"quote\" \\backslash") != null and
     index("") != null and index("literal CRLF argument") != null and index("nested literal argument") != null' "$fixture/valid/effective-arguments.json" > /dev/null
   [[ -f "$fixture/valid/native.params.expanded" && -f "$fixture/valid/raw/$wrapper" &&
@@ -599,12 +602,12 @@ test_wrapper_capture() (
   capture_effective_arguments "$fixture/local.json" "$fixture/local-sandboxes" "$fixture/local-capture" "$(uname -s)" "$root"
   check_effective_arguments "$fixture/local-capture/effective-arguments.json" aarch64-apple-darwin
   [[ ! -e "$fixture/local-capture/work" ]]
-  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
+  for path in "$params0" "$params1" "$empty_links" "$native_links" "$flags" "$link_flags" "$empty_link_flags" "$wrapper" build.env nested.params bazel/tools/dsymutil external/llvm/bin/dsymutil; do
     check_input_digest "$fixture/baseline.json" "$root" "$path"
   done
   # Expected rejection cases keep their normal cleanup and do not launch a debugger.
   retain_failed_replay=false
-  for path in "$empty_links" "$native_links"; do
+  for path in "$empty_links" "$native_links" "$flags" "$link_flags" "$empty_link_flags"; do
     rm "$root/$path"
     expect_capture_rejection "$fixture/baseline.json" "$fixture/sandboxes" "$fixture/rejected" "$(uname -s)"
     grep -Fxq -- "Missing replay input: $path" "$fixture/rejected.rejection.log"
@@ -619,21 +622,24 @@ test_wrapper_capture() (
     [[ ! -e "$fixture/rejected/replay.stdout" && ! -e "$fixture/rejected/work" ]]
     rm -rf -- "$fixture/rejected"
   done
-  for mutation in '-Csplit-debuginfo=off' '-Cdebuginfo=0' '--target=x86_64-apple-darwin'; do
-    printf '%s\n' "$mutation" > "$root/$flags"
-    hash="$(shasum -a 256 "$root/$flags" | awk '{print $1}')"
-    size="$(wc -c < "$root/$flags" | tr -d ' ')"
-    jq --arg path "$flags" --arg hash "$hash" --arg size "$size" \
-      '(.inputs[] | select(.path == $path) | .digest) |= (.hash=$hash | .sizeBytes=$size)' \
-      "$fixture/baseline.json" > "$fixture/late.json"
-    capture_effective_arguments "$fixture/late.json" "$fixture/sandboxes" "$fixture/late-capture" "$(uname -s)"
-    if check_effective_arguments "$fixture/late-capture/effective-arguments.json" aarch64-apple-darwin \
-      > "$fixture/rejection.log" 2>&1; then
-      echo 'Self-test accepted a late build-script override' >&2; exit 1
-    fi
-    rm -rf -- "$fixture/late-capture"
+  for flags_path in "$flags" "$link_flags"; do
+    chmod u+w "$root/$flags_path"
+    for mutation in '-Csplit-debuginfo=off' '-Cdebuginfo=0' '--target=x86_64-apple-darwin'; do
+      printf '%s\n' "$mutation" > "$root/$flags_path"
+      hash="$(shasum -a 256 "$root/$flags_path" | awk '{print $1}')"
+      size="$(wc -c < "$root/$flags_path" | tr -d ' ')"
+      jq --arg path "$flags_path" --arg hash "$hash" --arg size "$size" \
+        '(.inputs[] | select(.path == $path) | .digest) |= (.hash=$hash | .sizeBytes=$size)' \
+        "$fixture/baseline.json" > "$fixture/late.json"
+      capture_effective_arguments "$fixture/late.json" "$fixture/sandboxes" "$fixture/late-capture" "$(uname -s)"
+      if check_effective_arguments "$fixture/late-capture/effective-arguments.json" aarch64-apple-darwin \
+        > "$fixture/rejection.log" 2>&1; then
+        echo 'Self-test accepted a late build-script override' >&2; exit 1
+      fi
+      rm -rf -- "$fixture/late-capture"
+    done
+    cp "$fixture/valid/raw/$flags_path" "$root/$flags_path"
   done
-  cp "$fixture/valid/raw/$flags" "$root/$flags"
   for mutation in '.cacheHit=true' '.runner="remote"' '.exitCode=1' \
     '.commandArgs[8]="@../escape.params"' \
     '.inputs[0].digest.hash="0000000000000000000000000000000000000000000000000000000000000000"'; do
