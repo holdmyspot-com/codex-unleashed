@@ -19,6 +19,7 @@ on:
           - arm-daemon-hashing
           - macos-x64-original-timeouts
           - macos-x64-current-timeouts
+          - macos-x64-current-shards
           - macos-tui-timeouts
           - macos-tui-integration-timeouts
           - macos-bazel-tui-timeouts
@@ -528,6 +529,24 @@ jobs:
       runner: ubuntu-24.04-arm
       artifact-id: linux-arm64
       test-filter: 'binary(app_server_daemon) & (test(=managed_daemon_restarts_from_deleted_working_directory) | test(=managed_starts_ensure_one_updater_and_recover_a_missing_one) | test(=restart_applies_saved_updater_preference))'
+
+  macos-x64-current-shards:
+    if: inputs.focus == 'macos-x64-current-shards'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1', '4']
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/diagnose-archived-tests.yml
+    with:
+      source-run: ${{ inputs.source-run }}
+      preserve-archive-policy: true
+      archive-shard: ${{ matrix.shard }}
+      runner: macos-15-intel
+      artifact-id: macos-x64
+      test-filter: 'all()'
 
   macos-x64-current-timeouts:
     if: inputs.focus == 'macos-x64-current-timeouts'

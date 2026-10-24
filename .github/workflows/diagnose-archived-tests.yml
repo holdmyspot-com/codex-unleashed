@@ -18,6 +18,10 @@ on:
         description: Restore the current archive's exact driver and default nextest policy without rebuilding.
         type: boolean
         default: false
+      archive-shard:
+        description: Restore original Intel hash shard 1 or 4 of 4 with default concurrency and resource evidence.
+        type: string
+        default: ''
       upstream-ref:
         type: string
         default: 83086188ae0614bd882818ff1aa23f3194962012
@@ -45,6 +49,7 @@ jobs:
       ORIGINAL_SOURCE_POLICY: ${{ inputs.original-source-policy }}
       ARM_LAUNCH_CONTROLS: ${{ inputs.arm-launch-controls }}
       PRESERVE_ARCHIVE_POLICY: ${{ inputs.preserve-archive-policy }}
+      ARCHIVE_SHARD: ${{ inputs.archive-shard }}
       ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
@@ -53,6 +58,15 @@ jobs:
       RUST_LIB_BACKTRACE: "0"
       RUST_MIN_STACK: "8388608"
     steps:
+      - name: Validate the original shard workload mode
+        if: inputs.archive-shard != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ORIGINAL_SOURCE_POLICY" == false && "$ARM_LAUNCH_CONTROLS" == false ]]
+          [[ "$ARCHIVE_SHARD" == 1 || "$ARCHIVE_SHARD" == 4 ]]
+          [[ "$TEST_FILTER" == 'all()' ]]
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: inputs.arm-launch-controls
         with:
@@ -347,7 +361,7 @@ jobs:
 
       - uses: ./.github/actions/configure-nextest-native-sdk
 
-      - name: Verify the current default policy and exactly two selected tests
+      - name: Verify the current default policy and archived test selection
         if: inputs.preserve-archive-policy
         shell: bash
         env:
@@ -365,16 +379,26 @@ jobs:
             sha256=(shasum -a 256)
           fi
           "${sha256[@]}" "$diagnostic_root/original-nextest.toml" > "$diagnostic_root/original-nextest.sha256"
-          printf 'diagnostic-sha=%s\narchive-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=1\nretries=0\nfilter=%s\n' \
+          selection_args=()
+          filter_args=(-E "$TEST_FILTER")
+          effective_filter="$TEST_FILTER"
+          test_threads=1
+          if [[ -n "$ARCHIVE_SHARD" ]]; then
+            selection_args=(--partition "hash:$ARCHIVE_SHARD/4")
+            filter_args=()
+            effective_filter='<none>'
+            test_threads=default
+          fi
+          printf 'diagnostic-sha=%s\narchive-driver-sha=%s\nupstream-sha=%s\nsource-run=%s\nprofile=default\ntest-threads=%s\nretries=0\nfilter=%s\npartition=%s\n' \
             "$GITHUB_SHA" "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" "$(git rev-parse HEAD)" \
-            "$SOURCE_RUN" "$TEST_FILTER" > "$diagnostic_root/provenance.txt"
+            "$SOURCE_RUN" "$test_threads" "$effective_filter" "${ARCHIVE_SHARD:+hash:$ARCHIVE_SHARD/4}" > "$diagnostic_root/provenance.txt"
           mkdir "$diagnostic_root/extracted"
           cargo nextest list \
             --archive-file "$diagnostic_root/archive/nextest-$ARTIFACT_ID.tar.zst" \
             --extract-to "$diagnostic_root/extracted" \
             --workspace-remap "$GITHUB_WORKSPACE/upstream/codex-rs" \
             --config-file "$GITHUB_WORKSPACE/upstream/codex-rs/.config/nextest.toml" --profile default \
-            --message-format json -E "$TEST_FILTER" > "$diagnostic_root/selected-tests.json"
+            "${selection_args[@]}" --message-format json "${filter_args[@]}" > "$diagnostic_root/selected-tests.json"
           if [[ "$ARM_LAUNCH_CONTROLS" == true ]]; then
             jq -e '
               [."rust-suites"[] | ."package-name" as $package |
@@ -384,6 +408,25 @@ jobs:
                   ["codex-exec-server", "remote_windows_sandbox_process_accepts_process_write::test_case_2_mxc_pipe"],
                   ["codex-core", "suite::unified_exec::exec_command_uses_installed_environment_shell_policy_with_explicit_overrides"]
                 ] | sort)' "$diagnostic_root/selected-tests.json"
+            printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
+          elif [[ -n "$ARCHIVE_SHARD" ]]; then
+            expected_count=5493
+            expected_package=codex-core
+            expected_test=client::tool_metadata::tests::message_budget_removes_residual_values_and_markers_when_ordinary_input_fits
+            if [[ "$ARCHIVE_SHARD" == 4 ]]; then
+              expected_count=5607
+              expected_package=codex-tui
+              expected_test=bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent
+            fi
+            jq -e --argjson count "$expected_count" --arg package "$expected_package" --arg test "$expected_test" '
+              [."rust-suites"[] | ."package-name" as $package |
+                .testcases | to_entries[] |
+                select(.value."filter-match".status == "matches" and .value.ignored == false) |
+                [$package, .key]] as $matches |
+              ($matches | length) == $count and ($matches | any(. == [$package, $test]))
+              ' "$diagnostic_root/selected-tests.json"
+            printf 'Verified original hash shard %s/4: %s selected tests, including its terminal timeout test.\n' \
+              "$ARCHIVE_SHARD" "$expected_count"
           else
             jq -e '
               [."rust-suites"[] | ."package-name" as $package |
@@ -394,8 +437,8 @@ jobs:
                   ["codex-tui", "bottom_pane::async_questions::tests::question_wrapped_options_and_other_share_the_text_indent"]
                 ] | sort)
               ' "$diagnostic_root/selected-tests.json"
+            printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
           fi
-          printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
 
       - name: Run the selected archived tests
         id: original_tests
@@ -461,12 +504,59 @@ jobs:
           if [[ "$RUNNER_OS" == Linux ]]; then
             trace_command=(strace -f -tt -T -e 'trace=execve,clone,clone3,wait4,waitid,kill,exit_group' -o "$diagnostic_root/processes.log")
           fi
+          concurrency_args=(--test-threads 1)
+          filter_args=(-E "$TEST_FILTER")
+          monitor_pid=
+          stop_monitor() {
+            if [[ -n "$monitor_pid" ]]; then
+              kill "$monitor_pid" 2>/dev/null || true
+              wait "$monitor_pid" 2>/dev/null || true
+              monitor_pid=
+            fi
+          }
+          trap stop_monitor EXIT
+          if [[ -n "$ARCHIVE_SHARD" ]]; then
+            archive_args+=(--partition "hash:$ARCHIVE_SHARD/4")
+            concurrency_args=()
+            # Match the original shard invocation: no additional filter expression.
+            filter_args=()
+            (
+              set +e
+              date -u
+              uname -a
+              sysctl hw.model hw.logicalcpu hw.physicalcpu hw.memsize vm.swapusage
+              top -l 1 -n 0
+              printf 'Host resource snapshot complete.\n'
+            ) > "$diagnostic_root/host-resources.log" 2>&1
+            (
+              set +e
+              trap 'exit 0' TERM
+              while :; do
+                date -u
+                top -l 1 -n 0
+                vm_stat
+                sysctl vm.swapusage
+                ps -axo pid,ppid,pgid,pcpu,pmem,rss,vsz,etime,state,command
+                sleep 10
+              done
+            ) > "$diagnostic_root/process-resources.log" 2>&1 &
+            monitor_pid=$!
+          fi
+          set +e
           "${trace_command[@]}" cargo nextest run \
             "${archive_args[@]}" "${config_args[@]}" \
-            --test-threads 1 --retries 0 --no-fail-fast \
+            "${concurrency_args[@]}" --retries 0 --no-fail-fast \
             --failure-output immediate-final \
             --no-tests fail \
-            -E "$TEST_FILTER" 2>&1 | tee "$diagnostic_root/tests.log"
+            "${filter_args[@]}" 2>&1 | tee "$diagnostic_root/tests.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+          stop_monitor
+          printf 'nextest=%s\ntee=%s\n' "${pipeline_status[0]}" "${pipeline_status[1]}" > "$diagnostic_root/nextest-status.txt"
+          if [[ "${pipeline_status[0]}" != 0 ]]; then
+            exit "${pipeline_status[0]}"
+          fi
+          exit "${pipeline_status[1]}"
 
       - name: Compare Windows tests with fixtures inside their writable workspace
         if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure' && !inputs.arm-launch-controls
@@ -495,13 +585,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: archived-tests-${{ inputs.artifact-id }}
+          name: archived-tests-${{ inputs.artifact-id }}${{ inputs.archive-shard != '' && format('-shard-{0}', inputs.archive-shard) || '' }}
           path: |
             ${{ runner.temp }}/archived-test-diagnostic/tests.log
             ${{ runner.temp }}/archived-test-diagnostic/arm-launch-controls.json
             ${{ runner.temp }}/archived-test-diagnostic/controls.sha256
             ${{ runner.temp }}/archived-test-diagnostic/writable-fixtures.log
             ${{ runner.temp }}/archived-test-diagnostic/processes.log
+            ${{ runner.temp }}/archived-test-diagnostic/host-resources.log
+            ${{ runner.temp }}/archived-test-diagnostic/process-resources.log
+            ${{ runner.temp }}/archived-test-diagnostic/nextest-status.txt
             ${{ runner.temp }}/archived-test-diagnostic/source-run.json
             ${{ runner.temp }}/archived-test-diagnostic/artifact-*.json
             ${{ runner.temp }}/archived-test-diagnostic/original-nextest.toml
