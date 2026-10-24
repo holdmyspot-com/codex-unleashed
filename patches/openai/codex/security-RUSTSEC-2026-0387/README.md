@@ -67,7 +67,12 @@ by applying patches needs it before the guard's locked metadata check.
 (cd codex-rs && cargo metadata --format-version 1 > /dev/null)
 just fmt-check
 just bazel-lock-check
-python3 scripts/test_check_crypto_bigint_backport.py
+(
+  metadata="$(mktemp "$TMPDIR/crypto-bigint-metadata-XXXXXXXX.json")"
+  trap 'rm -f -- "$metadata"' EXIT
+  cargo metadata --locked --format-version 1 --manifest-path codex-rs/Cargo.toml > "$metadata"
+  python3 scripts/test_check_crypto_bigint_backport.py --checkout "$PWD" --metadata "$metadata"
+)
 bash scripts/check-crypto-bigint-backport.sh "$PWD"
 cargo deny --manifest-path codex-rs/Cargo.toml check --deny unmatched-source \
   --deny license-not-encountered --deny unused-wrapper --deny advisory-not-detected

@@ -86,7 +86,13 @@ case "${BUILDBUDDY_CI_TASK:?BUILDBUDDY_CI_TASK is required}" in
           repo-checks)
             bash "$project_root/.github/scripts/test-buildbuddy-archive-cleanup.sh"
             TMPDIR="$RUNNER_TEMP" bash "$project_root/.github/scripts/test-buildbuddy-security-guard.sh"
-            TMPDIR="$RUNNER_TEMP" python3 upstream/scripts/test_check_crypto_bigint_backport.py
+            (
+              metadata="$(mktemp "$RUNNER_TEMP/crypto-bigint-metadata-XXXXXXXX.json")"
+              trap 'rm -f -- "$metadata"' EXIT
+              cargo metadata --locked --format-version 1 --manifest-path "$PWD/upstream/codex-rs/Cargo.toml" > "$metadata"
+              TMPDIR="$RUNNER_TEMP" python3 upstream/scripts/test_check_crypto_bigint_backport.py \
+                --checkout "$PWD/upstream" --metadata "$metadata"
+            )
             bash "$project_root/.github/scripts/test-ci-memory.sh" "$project_root"
             bash "$project_root/.github/scripts/test-memory-scheduled-build.sh" "$project_root"
             bash "$project_root/.github/scripts/test-v8-release-manifest.sh"
