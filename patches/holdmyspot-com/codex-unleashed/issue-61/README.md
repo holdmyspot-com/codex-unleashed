@@ -2874,3 +2874,34 @@ first and calling `codex_remote_env_cleanup` on every terminal path. The test
 process must reach the exported exec-server endpoint. Local passing tests do
 not establish remote runtime coverage; the intended Docker GREEN remains
 unverified where the host cannot reach the container bridge address.
+
+## Interrupt-hook host directory fixture
+
+`zzzz-0086-interrupt-host-cwd-fixtures.patch` gives interrupt-hook tests an
+owned host configuration directory while preserving the selected executor's
+workspace and filesystem. Workspace setup callbacks receive the executor's
+paths; configuration callbacks receive the host directory. Other fixtures
+keep their existing directory selection. The opt-in fixture rejects legacy
+resume and shell-override paths that cannot preserve explicit executor requests.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`). The fixture support and its
+regressions apply without other patches. Interrupt-hook execution additionally
+requires `zzzz-0080-host-hook-cwd.patch`, which repairs the
+production host-hook directory boundary; apply it before this patch when
+verifying those scenarios.
+
+Rebuild the core integration helper and test binary, then run the maintained
+checks from the patched checkout root:
+
+```sh
+just test -p core_test_support --lib -E 'test(separate_host_cwd) | test(default_fixture_keeps_executor_configuration_directory)'
+just test -p codex-core --test all -E 'test(suite::interrupt_hooks::)'
+just fmt-check
+```
+
+The fixture checks cover owned host directory selection, unchanged defaults,
+remote and Windows executor requests, directory lifetime and unsupported resume.
+The interrupt scenarios verify real hook execution with the host-hook repair.
+Run the focused checks locally and under the maintained Docker and Wine lanes;
+local success does not establish either platform's behavior.

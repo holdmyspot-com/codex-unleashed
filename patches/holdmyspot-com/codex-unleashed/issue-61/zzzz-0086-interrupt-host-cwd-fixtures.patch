@@ -1,0 +1,284 @@
+From 41b0c2dce36775225b0b8caeb389e13438afdc3b Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 24 Oct 2026 04:18:11 +0000
+Subject: [PATCH] test: Keep interrupt-hook host cwd independent of tool
+ execution
+
+Keep an owned host configuration directory while preserving explicit executor selection and workspace callbacks. Default fixture behavior remains unchanged. Reject unsupported legacy resume and shell overrides before startup.
+
+Fixture checks reproduce three boundary failures before the change and pass all six cases after it. Five local interrupt scenarios pass with the host-hook production repair (issue-61 0080); Docker and Wine execution remain unverified.
+---
+ codex-rs/core/tests/common/test_codex.rs     | 174 +++++++++++++++++--
+ codex-rs/core/tests/suite/interrupt_hooks.rs |   3 +
+ 2 files changed, 161 insertions(+), 16 deletions(-)
+
+diff --git a/codex-rs/core/tests/common/test_codex.rs b/codex-rs/core/tests/common/test_codex.rs
+index e42116a4..1844aaba 100644
+--- a/codex-rs/core/tests/common/test_codex.rs
++++ b/codex-rs/core/tests/common/test_codex.rs
+@@ -414,6 +414,7 @@ pub struct TestCodexBuilder {
+     cloud_config_bundle: Option<CloudConfigBundleLoader>,
+     user_shell_override: Option<Shell>,
+     exec_server_url: Option<String>,
++    separate_host_cwd: bool,
+     extensions: Arc<ExtensionRegistry<Config>>,
+     user_instructions_provider: Option<Arc<dyn UserInstructionsProvider>>,
+     supports_openai_form_elicitation: bool,
+@@ -426,6 +427,16 @@ pub struct TestCodexBuilder {
+ }
+
+ impl TestCodexBuilder {
++    /// Keeps an owned host directory in `Config.cwd`, independently of the selected executor.
++    ///
++    /// Configuration mutators affect the host directory; workspace setup callbacks retain the
++    /// executor directory and filesystem. This mode supports initial threads without a shell
++    /// override; resume and shell-override helpers cannot pass explicit executor selections.
++    pub fn with_separate_host_cwd(mut self) -> Self {
++        self.separate_host_cwd = true;
++        self
++    }
++
+     pub fn with_thread_store(mut self, thread_store: Arc<dyn ThreadStore>) -> Self {
+         self.thread_store = Some(thread_store);
+         self
+@@ -771,6 +782,12 @@ impl TestCodexBuilder {
+         test_env: TestEnv,
+         include_local_environment: bool,
+     ) -> anyhow::Result<TestCodex> {
++        if self.separate_host_cwd {
++            anyhow::ensure!(
++                resume_from.is_none() && self.user_shell_override.is_none(),
++                "separate host cwd requires an initial thread without a shell override"
++            );
++        }
+         let (config, fallback_cwd) = self
+             .prepare_config(base_url, &home, test_env.cwd().clone())
+             .await?;
+@@ -806,9 +823,18 @@ impl TestCodexBuilder {
+         let mut workspace_setups = vec![];
+         swap(&mut self.workspace_setups, &mut workspace_setups);
+         for setup in workspace_setups {
+-            setup(config.cwd.clone(), Arc::clone(&file_system)).await?;
++            let cwd = if self.separate_host_cwd {
++                test_env.cwd().clone()
++            } else {
++                config.cwd.clone()
++            };
++            setup(cwd, Arc::clone(&file_system)).await?;
+         }
+-        let cwd = test_env.local_cwd_temp_dir().unwrap_or(fallback_cwd);
++        let cwd = if self.separate_host_cwd {
++            fallback_cwd
++        } else {
++            test_env.local_cwd_temp_dir().unwrap_or(fallback_cwd)
++        };
+         Box::pin(self.build_from_config(
+             config,
+             cwd,
+@@ -937,19 +963,8 @@ impl TestCodexBuilder {
+                 .await?
+             }
+             (None, None) => {
+-                let environment_requests = if test_env.selection().cwd.infer_path_convention()
+-                    == Some(PathConvention::Windows)
+-                    && PathUri::from_abs_path(&config.cwd) != test_env.selection().cwd
+-                {
+-                    let cwd = executor_path_uri(&config.cwd)?;
+-                    let mut selection = test_env.selection().clone();
+-                    selection.cwd = cwd.clone();
+-                    selection.workspace_roots = vec![cwd];
+-                    test_env.selection = selection;
+-                    Some(vec![test_env.request()])
+-                } else {
+-                    None
+-                };
++                let environment_requests =
++                    self.initial_environment_requests(&config, &mut test_env)?;
+                 Box::pin(thread_manager.start_thread(StartThreadOptions {
+                     history_mode: self.history_mode,
+                     client_mcp_extensions: client_mcp_extensions(),
+@@ -972,6 +987,30 @@ impl TestCodexBuilder {
+         })
+     }
+
++    fn initial_environment_requests(
++        &self,
++        config: &Config,
++        test_env: &mut TestEnv,
++    ) -> anyhow::Result<Option<Vec<TurnEnvironmentRequest>>> {
++        if self.separate_host_cwd {
++            return Ok(Some(vec![test_env.request()]));
++        }
++        let requests = if test_env.selection().cwd.infer_path_convention()
++            == Some(PathConvention::Windows)
++            && PathUri::from_abs_path(&config.cwd) != test_env.selection().cwd
++        {
++            let cwd = executor_path_uri(&config.cwd)?;
++            let mut selection = test_env.selection().clone();
++            selection.cwd = cwd.clone();
++            selection.workspace_roots = vec![cwd];
++            test_env.selection = selection;
++            Some(vec![test_env.request()])
++        } else {
++            None
++        };
++        Ok(requests)
++    }
++
+     async fn prepare_config(
+         &mut self,
+         base_url: String,
+@@ -997,7 +1036,11 @@ impl TestCodexBuilder {
+         // Keep generic tests stable when the bundled catalog default changes. Tests that need a
+         // specific model can still override this with a config mutator.
+         config.model = Some("gpt-5.5".to_string());
+-        config.cwd = cwd_override;
++        config.cwd = if self.separate_host_cwd {
++            cwd.abs()
++        } else {
++            cwd_override
++        };
+         config.model_provider = model_provider;
+         if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex") {
+             config.codex_self_exe = Some(path);
+@@ -1541,6 +1584,7 @@ pub fn test_codex() -> TestCodexBuilder {
+         cloud_config_bundle: None,
+         user_shell_override: None,
+         exec_server_url: None,
++        separate_host_cwd: false,
+         extensions: empty_extension_registry(),
+         user_instructions_provider: None,
+         supports_openai_form_elicitation: false,
+@@ -1585,6 +1629,104 @@ mod tests {
+     use pretty_assertions::assert_eq;
+     use serde_json::json;
+
++    #[tokio::test]
++    async fn separate_host_cwd_retains_owned_host_directory() -> anyhow::Result<()> {
++        let home = TempDir::new()?;
++        let executor = TempDir::new()?;
++        let mut builder = test_codex().with_separate_host_cwd();
++        let (config, host) = builder
++            .prepare_config("http://localhost".to_string(), &home, executor.abs())
++            .await?;
++
++        assert_eq!(config.cwd, host.abs());
++        assert_ne!(config.cwd, executor.abs());
++        Ok(())
++    }
++
++    #[tokio::test]
++    async fn separate_host_cwd_preserves_selected_executor_request() -> anyhow::Result<()> {
++        let home = TempDir::new()?;
++        let mut test_env =
++            TestEnv::local_with_exec_server_url(Some("ws://127.0.0.1:1".to_string())).await?;
++        let builder = test_codex().with_separate_host_cwd();
++        let config = load_default_config_for_test(&home).await;
++        let expected = test_env.request();
++        let requests = builder.initial_environment_requests(&config, &mut test_env)?;
++
++        assert_eq!(requests, Some(vec![expected]));
++        Ok(())
++    }
++
++    #[tokio::test]
++    async fn separate_host_cwd_preserves_windows_executor_uri() -> anyhow::Result<()> {
++        let home = TempDir::new()?;
++        let mut test_env =
++            TestEnv::local_with_exec_server_url(Some("ws://127.0.0.1:1".to_string())).await?;
++        let cwd = PathUri::parse("file:///C:/executor/workspace")?;
++        test_env.selection.cwd = cwd.clone();
++        test_env.selection.workspace_roots = vec![cwd];
++        let builder = test_codex().with_separate_host_cwd();
++        let config = load_default_config_for_test(&home).await;
++        let expected = test_env.request();
++        let requests = builder.initial_environment_requests(&config, &mut test_env)?;
++
++        assert_eq!(requests, Some(vec![expected]));
++        assert_eq!(
++            test_env.selection().cwd,
++            PathUri::parse("file:///C:/executor/workspace")?
++        );
++        Ok(())
++    }
++
++    #[tokio::test]
++    async fn separate_host_cwd_lives_until_fixture_is_dropped() -> anyhow::Result<()> {
++        let server = MockServer::start().await;
++        let test = test_codex().with_separate_host_cwd().build(&server).await?;
++
++        assert_eq!(test.config.cwd, test.cwd.abs());
++        assert_ne!(test.config.cwd, *test._test_env.cwd());
++        assert!(test.config.cwd.is_dir());
++        assert!(test._test_env.cwd().is_dir());
++        test.codex.shutdown_and_wait().await?;
++        Ok(())
++    }
++
++    #[tokio::test]
++    async fn separate_host_cwd_rejects_legacy_resume_before_startup() -> anyhow::Result<()> {
++        let home = Arc::new(TempDir::new()?);
++        let mut builder = test_codex().with_separate_host_cwd();
++        let error = builder
++            .build_with_home_and_base_url(
++                "http://localhost".to_string(),
++                home,
++                Some(PathBuf::from("unused-rollout.jsonl")),
++                TestEnv::local().await?,
++                /*include_local_environment*/ false,
++            )
++            .await
++            .err()
++            .context("separate host cwd must reject legacy resume")?;
++
++        assert_eq!(
++            error.to_string(),
++            "separate host cwd requires an initial thread without a shell override"
++        );
++        Ok(())
++    }
++
++    #[tokio::test]
++    async fn default_fixture_keeps_executor_configuration_directory() -> anyhow::Result<()> {
++        let home = TempDir::new()?;
++        let executor = TempDir::new()?;
++        let mut builder = test_codex();
++        let (config, _) = builder
++            .prepare_config("http://localhost".to_string(), &home, executor.abs())
++            .await?;
++
++        assert_eq!(config.cwd, executor.abs());
++        Ok(())
++    }
++
+     #[test]
+     fn custom_tool_call_output_text_returns_output_text() {
+         let bodies = vec![json!({
+diff --git a/codex-rs/core/tests/suite/interrupt_hooks.rs b/codex-rs/core/tests/suite/interrupt_hooks.rs
+index 5f39f688..9befd10c 100644
+--- a/codex-rs/core/tests/suite/interrupt_hooks.rs
++++ b/codex-rs/core/tests/suite/interrupt_hooks.rs
+@@ -89,6 +89,7 @@ fn read_interrupt_hook_inputs(home: &Path) -> Result<Vec<Value>> {
+ async fn build_test(server: &MockServer, system_message: Option<&str>) -> Result<TestCodex> {
+     let system_message = system_message.map(str::to_string);
+     test_codex()
++        .with_separate_host_cwd()
+         .with_model("gpt-5.4")
+         .with_pre_build_hook(move |home| {
+             write_interrupt_hook(home, system_message.as_deref())
+@@ -288,6 +289,7 @@ async fn async_interrupt_hook_runs_without_delaying_turn_aborted() -> Result<()>
+
+     let server = start_mock_server().await;
+     let test = test_codex()
++        .with_separate_host_cwd()
+         .with_pre_build_hook(|home| {
+             write_interrupt_hook(home, Some("async interrupt completed"))
+                 .expect("write interrupt hook fixture");
+@@ -362,6 +364,7 @@ async fn self_aborted_turn_runs_interrupt_hook_before_turn_aborted() -> Result<(
+
+     let server = start_mock_server().await;
+     let test = test_codex()
++        .with_separate_host_cwd()
+         .with_model("gpt-5.4")
+         .with_pre_build_hook(|home| {
+             write_interrupt_hook(home, Some("compaction was interrupted"))
