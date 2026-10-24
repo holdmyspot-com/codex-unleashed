@@ -1,5 +1,5 @@
 diff --git a/codex-rs/windows-sandbox-rs/src/lib.rs b/codex-rs/windows-sandbox-rs/src/lib.rs
-index 895565b..43ff241 100644
+index 895565be4fb21755e2e895dd12b743a2483d5155..43ff241b7fa7fcf7e3a1cb0539b1ec8d5d4c5ddb 100644
 --- a/codex-rs/windows-sandbox-rs/src/lib.rs
 +++ b/codex-rs/windows-sandbox-rs/src/lib.rs
 @@ -876,12 +876,37 @@ mod windows_impl {
@@ -67,7 +67,7 @@ index 895565b..43ff241 100644
              128 + 64
          } else {
 diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
-index 3a50918..5ac6a7d 100644
+index 3a50918dd378e7e885d705f843e67772b38b634f..7feaa60c11ce6a509857e85bd01d47dca5fcc786 100644
 --- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 +++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
 @@ -687,6 +687,10 @@ fn legacy_capture_emits_output_and_preserves_descendant_after_normal_exit() {
@@ -167,29 +167,43 @@ index 3a50918..5ac6a7d 100644
      let child_tail = match lifecycle {
          LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
          LegacyTtyDescendantLifecycle::Preserve => format!(
-@@ -974,10 +989,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
-             powershell_literal(&survival_marker),
+@@ -975,8 +990,9 @@ async fn assert_legacy_tty_descendant_lifecycle(
          ),
      };
--    let child_command = format!(
+     let child_command = format!(
 -        "Set-Content -LiteralPath '{}' -Value $PID; {child_tail}",
 -        powershell_literal(&ready_marker),
--    );
-+    let child_command = format!("{}; {child_tail}", publish_pid_command(&ready_marker),);
++        "[System.IO.File]::WriteAllText('{}', [System.DateTime]::UtcNow.ToString('O') + ' pid=' + $PID); {}; {child_tail}",
++        powershell_literal(&cwd.join("child-entered")),
++        publish_pid_command(&ready_marker),
+     );
      let parent_tail = match lifecycle {
          LegacyTtyDescendantLifecycle::Terminate => "Start-Sleep -Seconds 30".to_string(),
-         LegacyTtyDescendantLifecycle::Preserve => format!(
-@@ -985,8 +997,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -985,8 +1001,21 @@ async fn assert_legacy_tty_descendant_lifecycle(
              powershell_literal(&ready_marker),
          ),
      };
 -    let parent_command =
 -        start_powershell_child(pwsh, codex_home.path(), &child_command, &parent_tail);
-+    let parent_command = start_powershell_child(pwsh, &cwd, &child_command, &parent_tail);
++    let instrumented_parent_tail = format!(
++        "[System.IO.File]::WriteAllText('{}', [System.DateTime]::UtcNow.ToString('O') + ' pid=' + $PID); {parent_tail}",
++        powershell_literal(&cwd.join("parent-after-spawn")),
++    );
++    let launch_and_tail =
++        start_powershell_child(pwsh, &cwd, &child_command, &instrumented_parent_tail);
++    let parent_command = format!(
++        "[System.IO.File]::WriteAllText('{}', [System.DateTime]::UtcNow.ToString('O') + ' pid=' + $PID); [System.IO.File]::WriteAllText('{}', [System.DateTime]::UtcNow.ToString('O') + ' pid=' + $PID); try {{ {launch_and_tail} }} catch {{ [System.IO.File]::WriteAllText('{}', [string]::Join([System.Environment]::NewLine, @('phase=parent-command', $_.ToString(), $_.Exception.ToString(), $_.FullyQualifiedErrorId, $_.CategoryInfo.ToString(), $_.InvocationInfo.PositionMessage, $_.ScriptStackTrace))); throw }}",
++        powershell_literal(&cwd.join("parent-entered")),
++        powershell_literal(&cwd.join("parent-before-spawn")),
++        powershell_literal(&cwd.join("parent-launch-error")),
++    );
++    eprintln!(
++        "windows lifecycle tty launch: lifecycle={lifecycle:?} parent_command={parent_command:?} child_command={child_command:?}"
++    );
      let permission_profile = PermissionProfile::workspace_write();
      let spawned = spawn_windows_sandbox_session_legacy(
          &permission_profile,
-@@ -999,7 +1010,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -999,7 +1028,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
              parent_command,
          ],
          cwd.as_path(),
@@ -198,7 +212,7 @@ index 3a50918..5ac6a7d 100644
          Some(30_000),
          &[],
          &[],
-@@ -1008,10 +1019,18 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -1008,10 +1037,26 @@ async fn assert_legacy_tty_descendant_lifecycle(
      )
      .await
      .expect("spawn legacy sandbox ConPTY lifecycle test");
@@ -210,8 +224,16 @@ index 3a50918..5ac6a7d 100644
 +        spawned.session.request_terminate();
 +        let (stdout, exit_code) =
 +            collect_stdout_and_exit(spawned, codex_home.path(), Duration::from_secs(15)).await;
++        let startup_diagnostics = [
++            "parent-entered",
++            "parent-before-spawn",
++            "parent-after-spawn",
++            "parent-launch-error",
++            "child-entered",
++        ]
++        .map(|name| (name, fs::read_to_string(cwd.join(name))));
 +        panic!(
-+            "{lifecycle:?} descendant did not start; exit_code={exit_code} stdout={:?} descendant_stdout={:?} descendant_stderr={:?}\n{}",
++            "{lifecycle:?} descendant did not start; startup_diagnostics={startup_diagnostics:?} exit_code={exit_code} stdout={:?} descendant_stdout={:?} descendant_stderr={:?}\n{}",
 +            String::from_utf8_lossy(&stdout),
 +            fs::read_to_string(cwd.join("descendant.stdout")),
 +            fs::read_to_string(cwd.join("descendant.stderr")),
@@ -221,7 +243,7 @@ index 3a50918..5ac6a7d 100644
      let descendant_pid = fs::read_to_string(&ready_marker)
          .expect("read descendant pid")
          .trim()
-@@ -1041,6 +1060,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
+@@ -1041,6 +1086,10 @@ async fn assert_legacy_tty_descendant_lifecycle(
      }
      wait_for_process_exit(&descendant_process, Duration::from_secs(10))
          .expect("sandbox ConPTY descendant did not exit");
@@ -232,7 +254,7 @@ index 3a50918..5ac6a7d 100644
  }
 
  #[test]
-@@ -1050,11 +1073,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
+@@ -1050,11 +1099,19 @@ fn legacy_tty_job_terminates_and_preserves_descendants() {
          return;
      };
      let _guard = legacy_process_test_guard();
