@@ -42,6 +42,7 @@ JAVA_LAUNCHER
     "--server_javabase=$evidence/bazel-jdk" \
     --host_jvm_args=--enable-native-access=ALL-UNNAMED \
     --host_jvm_args=-Xmx2560m \
+    --host_jvm_args=-XX:+ExitOnOutOfMemoryError \
     "--host_jvm_args=-Xlog:gc*=info:file=$evidence/bazel-gc.log:uptime,level,tags" \
     "--host_jvm_args=-XX:FlightRecorderOptions=repository=$evidence/bazel-jfr-repository,preserve-repository=true,maxchunksize=1m" \
     "--host_jvm_args=-XX:StartFlightRecording=name=bazel-allocation,settings=none,disk=true,maxsize=32m,maxage=10m,dumponexit=true,filename=$evidence/bazel-allocation.jfr,+jdk.ObjectAllocationSample#enabled=true,+jdk.ObjectAllocationSample#stackTrace=true,+jdk.ObjectAllocationSample#throttle=100/s" \
@@ -67,11 +68,12 @@ PROFILE_TOOL
       run_profiled_bazel "$root" "$root/jdk" build '--test_arg=two words' //fixture:target
   )
   while IFS= read -r -d '' argument; do actual+=("$argument"); done < "$root/arguments"
-  [[ "${#actual[@]}" == 10 && "${actual[0]}" == run-bazel-with-buildbuddy ]]
+  [[ "${#actual[@]}" == 11 && "${actual[0]}" == run-bazel-with-buildbuddy ]]
   [[ "${actual[1]}" == "--server_javabase=$root/bazel-jdk" ]]
-  [[ "${actual[5]}" == "--host_jvm_args=-XX:FlightRecorderOptions=repository=$root/bazel-jfr-repository,preserve-repository=true,maxchunksize=1m" ]]
-  [[ "${actual[6]}" == *settings=none* && "${actual[6]}" == *'jdk.ObjectAllocationSample#stackTrace=true'* ]]
-  [[ "${actual[7]}" == build && "${actual[8]}" == '--test_arg=two words' && "${actual[9]}" == //fixture:target ]]
+  [[ "${actual[6]}" == "--host_jvm_args=-XX:FlightRecorderOptions=repository=$root/bazel-jfr-repository,preserve-repository=true,maxchunksize=1m" ]]
+  [[ "${actual[7]}" == *settings=none* && "${actual[7]}" == *'jdk.ObjectAllocationSample#stackTrace=true'* ]]
+  [[ "${actual[4]}" == --host_jvm_args=-XX:+ExitOnOutOfMemoryError ]]
+  [[ "${actual[8]}" == build && "${actual[9]}" == '--test_arg=two words' && "${actual[10]}" == //fixture:target ]]
   cat > "$root/jdk/bin/java" <<'JAVA_TOOL'
 #!/usr/bin/env bash
 printf '%s\0' "$@" > "$PROFILE_ARGUMENTS"
@@ -963,7 +965,8 @@ else
     --@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@-Csplit-debuginfo=packed \
     --@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@-Cdebuginfo=2 \
     "--@rules_rust//rust/settings:per_crate_rustc_flag=//codex-rs/cli:codex@--cfg=codex_dsym_diagnostic_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" \
-    "--build_metadata=COMMIT_SHA=${GITHUB_SHA:?GITHUB_SHA is required}" -- //codex-rs/cli:codex || build_status=$?
+    "--build_metadata=COMMIT_SHA=${GITHUB_SHA:?GITHUB_SHA is required}" -- //codex-rs/cli:codex \
+    2>&1 | tee "$evidence/bazel-build.log" || build_status=$?
   # Decode outside Bazel's JVM, retaining build failure as the primary result if decoding also fails.
   conversion_status=0
   bash "$script_dir/bazel-compact-execution-log.sh" convert "$evidence/compact-log" "$profiling_jdk" \
