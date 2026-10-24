@@ -9,11 +9,14 @@
 # The diagnostic job owns evidence cleanup after its always-run artifact upload.
 set -euo pipefail
 
+# Resolve maintained helpers before the diagnostic changes to its patched upstream checkout.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 # Runs a Bazel command with the diagnostic's shared JVM startup options.
 # Arguments: 1: Owned evidence directory; 2: Compatible full JDK; remaining: Bazel command and arguments.
 # Identical startup options let shutdown flush the recording without replacing the profiled server.
 run_profiled_bazel() {
-  local evidence="$1" profiling_jdk="$2" script_dir
+  local evidence="$1" profiling_jdk="$2"
   shift 2
   if [[ "$profiling_jdk" != /* || ! -x "$profiling_jdk/bin/java" || ! -x "$profiling_jdk/bin/jfr" ]]; then
     echo 'Bazel allocation profiling requires an absolute full JDK path containing java and jfr' >&2
@@ -35,7 +38,6 @@ JAVA_LAUNCHER
   } > "$evidence/bazel-jdk/bin/java"
   chmod +x "$evidence/bazel-jdk/bin/java"
 
-  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
   bash "$script_dir/run-bazel-with-buildbuddy.sh" \
     "--server_javabase=$evidence/bazel-jdk" \
     --host_jvm_args=--enable-native-access=ALL-UNNAMED \
@@ -59,8 +61,11 @@ test_profiled_startup() {
 printf '%s\0' "$@" > "$PROFILE_ARGUMENTS"
 PROFILE_TOOL
   chmod +x "$root/jdk/bin/java" "$root/jdk/bin/jfr" "$root/tooling"
-  CODEX_UNLEASHED_TOOLING="$root/tooling" PROFILE_ARGUMENTS="$root/arguments" \
-    run_profiled_bazel "$root" "$root/jdk" build '--test_arg=two words' //fixture:target
+  (
+    cd "$root"
+    CODEX_UNLEASHED_TOOLING="$root/tooling" PROFILE_ARGUMENTS="$root/arguments" \
+      run_profiled_bazel "$root" "$root/jdk" build '--test_arg=two words' //fixture:target
+  )
   while IFS= read -r -d '' argument; do actual+=("$argument"); done < "$root/arguments"
   [[ "${#actual[@]}" == 10 && "${actual[0]}" == run-bazel-with-buildbuddy ]]
   [[ "${actual[1]}" == "--server_javabase=$root/bazel-jdk" ]]
