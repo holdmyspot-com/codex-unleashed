@@ -3187,3 +3187,28 @@ compiler. The native recipe tests cover explicit fortification definitions
 and the unchanged Opus default. Native Windows compilation and Unix native
 voice builds remain separate acceptance gates; action analysis and recipe
 checks alone do not establish those results.
+
+## Remote client connection ownership
+
+`zzzz-0098-close-remote-client-owner.patch` closes a remote app-server
+connection when its owning client is dropped, even when request handles
+remain alive. Explicit shutdown continues to drain the connection normally.
+This corrects a connection leak that can keep lifecycle fixtures waiting.
+
+The patch applies independently to `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream patches
+or installed plugins. Canonical tracking:
+[issue 61](https://github.com/holdmyspot-com/codex-unleashed/issues/61).
+
+Run the maintained checks from a freshly patched checkout root:
+
+```sh
+just fmt-check
+just test -p codex-app-server-client
+```
+
+The retained-request-handle regression requires the actual WebSocket peer
+to receive a close frame within the existing two-second deadline after
+the owning client is dropped. The component suite must also preserve its
+explicit-shutdown behavior. Native Windows TUI lifecycle tests remain
+required; component tests alone do not establish that platform outcome.

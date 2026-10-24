@@ -1,0 +1,92 @@
+From c45f420250b311f4c08a709d6e451226fa91e920 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sat, 24 Oct 2026 16:08:57 -0400
+Subject: [PATCH] bugfix: close remote connections when their owning client is
+ dropped
+
+A retained request handle keeps the command channel open after the event
+consumer disappears. Observe the event receiver closing so idle remote
+connections terminate even while non-owning request handles remain.
+Explicit shutdown retains the receiver while draining the worker.
+
+The regression requires the actual WebSocket peer to receive a close frame
+within the existing two-second deadline while a request handle stays alive.
+---
+ codex-rs/app-server-client/src/lib.rs    | 27 ++++++++++++++++++++++++
+ codex-rs/app-server-client/src/remote.rs |  8 +++++++
+ 2 files changed, 35 insertions(+)
+
+diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
+index 75544173..185d17c0 100644
+--- a/codex-rs/app-server-client/src/lib.rs
++++ b/codex-rs/app-server-client/src/lib.rs
+@@ -1744,6 +1744,33 @@ mod tests {
+         client.shutdown().await.expect("shutdown should complete");
+     }
+ 
++    #[tokio::test]
++    async fn dropping_remote_client_closes_peer_with_retained_request_handle() {
++        let (close_tx, close_rx) = tokio::sync::oneshot::channel();
++        let websocket_url = start_test_remote_server(|mut websocket| async move {
++            expect_remote_initialize(&mut websocket).await;
++            let _ = close_tx.send(websocket.next().await);
++        })
++        .await;
++        let client = RemoteAppServerClient::connect(test_remote_connect_args(websocket_url))
++            .await
++            .expect("remote client should connect");
++        let request_handle = client.request_handle();
++
++        drop(client);
++
++        assert_eq!(
++            timeout(Duration::from_secs(2), close_rx)
++                .await
++                .expect("peer should observe client closure with a retained request handle")
++                .expect("server should observe client closure")
++                .expect("server should receive a close frame")
++                .expect("websocket should close cleanly"),
++            Message::Close(None),
++        );
++        drop(request_handle);
++    }
++
+     #[tokio::test]
+     async fn remote_notifications_arrive_over_websocket() {
+         let (close_tx, close_rx) = tokio::sync::oneshot::channel();
+diff --git a/codex-rs/app-server-client/src/remote.rs b/codex-rs/app-server-client/src/remote.rs
+index c5d9b032..ef9149e5 100644
+--- a/codex-rs/app-server-client/src/remote.rs
++++ b/codex-rs/app-server-client/src/remote.rs
+@@ -158,6 +158,9 @@ struct RemoteServerMetadata {
+     platform_os: Option<String>,
+ }
+ 
++/// Owns the remote connection and its event stream.
++///
++/// Dropping the client closes the connection even when request handles remain.
+ pub struct RemoteAppServerClient {
+     command_tx: mpsc::Sender<RemoteClientCommand>,
+     event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
+@@ -166,6 +169,7 @@ pub struct RemoteAppServerClient {
+     worker_handle: tokio::task::JoinHandle<()>,
+ }
+ 
++/// Sends requests through a live remote client without keeping its connection alive.
+ #[derive(Clone)]
+ pub struct RemoteAppServerRequestHandle {
+     command_tx: mpsc::Sender<RemoteClientCommand>,
+@@ -262,6 +266,10 @@ impl RemoteAppServerClient {
+             let mut worker_exit_error: Option<(ErrorKind, String)> = None;
+             loop {
+                 tokio::select! {
++                    _ = event_tx.closed() => {
++                        let _ = stream.close(None).await;
++                        break;
++                    }
+                     command = command_rx.recv() => {
+                         let Some(command) = command else {
+                             let _ = stream.close(None).await;
+-- 
+2.43.0
+
