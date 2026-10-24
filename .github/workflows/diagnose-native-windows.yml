@@ -11,6 +11,7 @@ on:
           - credentials
           - windows-test-timeouts
           - windows-lifecycle-source
+          - windows-conpty-ctrl-c
           - windows-archive-extraction
           - windows-archived-failures
           - windows-arm-launch-inputs
@@ -670,7 +671,7 @@ jobs:
       crate-local-lto: ${{ inputs.focus == 'crate-local-profile' }}
 
   prepare-tooling:
-    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source'
+    if: inputs.focus == 'credentials' || inputs.focus == 'windows-test-timeouts' || inputs.focus == 'macos-bazel-tui-timeouts' || inputs.focus == 'windows-lifecycle-source' || inputs.focus == 'windows-conpty-ctrl-c'
     uses: ./.github/workflows/prepare-tooling.yml
     with:
       runner: ${{ inputs.focus == 'macos-bazel-tui-timeouts' && 'macos-15-intel' || 'windows-2022' }}
@@ -775,6 +776,68 @@ jobs:
           name: windows-lifecycle-source-${{ matrix.runner }}
           path: |
             ${{ runner.temp }}/windows-lifecycle-source
+            ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: ignore
+          retention-days: 1
+
+  windows-conpty-ctrl-c:
+    if: inputs.focus == 'windows-conpty-ctrl-c'
+    needs: prepare-tooling
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-msvc
+          cache-scope: bazel-test-windows-native-main
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Apply source-owned ConPTY input diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C upstream apply --check ../.github/diagnostics/windows-conpty-ctrl-c.patch
+          git -C upstream apply ../.github/diagnostics/windows-conpty-ctrl-c.patch
+      - name: Rebuild and diagnose the exact ConPTY Ctrl-C regression
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/windows-conpty-ctrl-c"
+          cd upstream
+          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+            --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+            --test_env=CODEX_CONPTY_CTRL_C_DIAGNOSTIC=1 \
+            --nocache_test_results --test_output=all --test_arg=--nocapture \
+            --test_arg=--exact \
+            --test_arg=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child \
+            -- //codex-rs/utils/pty:pty-unit-tests \
+            2>&1 | tee "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          grep -F "test result: ok. 1 passed; 0 failed;" "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          grep -F "normalized_bytes=[03] write=Ok(()) flush=Ok(())" "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          grep -Ei 'stage=readiness .*image="(pwsh|powershell)\.exe" query_ok=true exit_code=259' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          grep -Ei 'stage=readiness .*image="ping\.exe" query_ok=true exit_code=259' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+      - name: Retain ConPTY control and process evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-conpty-ctrl-c-windows-latest
+          path: |
+            ${{ runner.temp }}/windows-conpty-ctrl-c
             ${{ runner.temp }}/bazel-execution-logs
           if-no-files-found: ignore
           retention-days: 1

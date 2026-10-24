@@ -1,0 +1,222 @@
+diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
+index f7cabb6..23688ca 100644
+--- a/codex-rs/utils/pty/Cargo.toml
++++ b/codex-rs/utils/pty/Cargo.toml
+@@ -31,6 +31,7 @@ winapi = { version = "0.3.9", features = [
+     "minwinbase",
+     "processthreadsapi",
+     "synchapi",
++    "tlhelp32",
+     "winbase",
+     "wincon",
+     "winerror",
+diff --git a/codex-rs/utils/pty/src/pty.rs b/codex-rs/utils/pty/src/pty.rs
+index 035fad8..39d9b65 100644
+--- a/codex-rs/utils/pty/src/pty.rs
++++ b/codex-rs/utils/pty/src/pty.rs
+@@ -209,6 +209,13 @@ async fn spawn_process_portable(
+     }
+
+     let mut child = pair.slave.spawn_command(command_builder)?;
++    #[cfg(windows)]
++    if std::env::var_os("CODEX_CONPTY_CTRL_C_DIAGNOSTIC").is_some() {
++        eprintln!(
++            "conpty_diagnostic root_pid={:?} program={program:?} args={args:?}",
++            child.process_id()
++        );
++    }
+     #[cfg(unix)]
+     // portable-pty establishes the spawned PTY child as a new session leader on
+     // Unix, so PID == PGID and we can reuse the pipe backend's process-group
+@@ -255,12 +262,22 @@ async fn spawn_process_portable(
+                 #[cfg(windows)]
+                 let mut windows_input = crate::WindowsTtyInputNormalizer::default();
+                 while let Some(bytes) = writer_rx.recv().await {
++                    #[cfg(windows)]
++                    if std::env::var_os("CODEX_CONPTY_CTRL_C_DIAGNOSTIC").is_some() {
++                        eprintln!("conpty_diagnostic queued_bytes={bytes:02x?}");
++                    }
+                     #[cfg(windows)]
+                     let bytes = windows_input.normalize(&bytes);
+                     let mut guard = writer.lock().await;
+                     use std::io::Write;
+-                    let _ = guard.write_all(&bytes);
+-                    let _ = guard.flush();
++                    let write_result = guard.write_all(&bytes);
++                    let flush_result = guard.flush();
++                    #[cfg(windows)]
++                    if std::env::var_os("CODEX_CONPTY_CTRL_C_DIAGNOSTIC").is_some() {
++                        eprintln!(
++                            "conpty_diagnostic normalized_bytes={bytes:02x?} write={write_result:?} flush={flush_result:?}"
++                        );
++                    }
+                 }
+             }
+         });
+diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/windows_tests.rs
+index 6d6c389..dc42bf5 100644
+--- a/codex-rs/utils/pty/src/windows_tests.rs
++++ b/codex-rs/utils/pty/src/windows_tests.rs
+@@ -444,7 +444,7 @@ async fn conpty_delivers_input_to_foreground_children() -> anyhow::Result<()> {
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
+     let Some(program) = find_powershell() else {
+-        return Ok(());
++        anyhow::bail!("conpty_diagnostic PowerShell unavailable");
+     };
+     let args = vec!["-NoLogo".to_string(), "-NoProfile".to_string()];
+     let env: HashMap<String, String> = std::env::vars().collect();
+@@ -460,18 +460,42 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+     .await?;
+     let (session, mut output_rx, exit_rx) = combine_spawned_output(spawned);
+     let writer = session.writer_sender();
++    let started = std::time::Instant::now();
++    eprintln!(
++        "conpty_diagnostic selected_program={program:?} args={args:?} cwd=. test_pid={}",
++        std::process::id()
++    );
+     writer.send(b"ping.exe -4 -t localhost\n".to_vec()).await?;
+-    wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await?;
++    let readiness =
++        wait_for_output_contains(&mut output_rx, "127.0.0.1", /*timeout_ms*/ 10_000).await;
++    eprintln!(
++        "conpty_diagnostic readiness elapsed={:?} result={readiness:?}",
++        started.elapsed()
++    );
++    let processes = conpty_diagnostic_processes()?;
++    conpty_diagnostic_status("readiness", &processes, &session);
++    readiness?;
+
++    eprintln!(
++        "conpty_diagnostic sending_ctrl_c bytes=[03] elapsed={:?}",
++        started.elapsed()
++    );
+     writer.send(vec![0x03]).await?;
+     tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
++    conpty_diagnostic_status("after_interrupt_200ms", &processes, &session);
+     writer.send(b"cmd.exe /D /C ver\n".to_vec()).await?;
+-    let mut output = wait_for_output_contains(
++    let resumption = wait_for_output_contains(
+         &mut output_rx,
+         "Microsoft Windows",
+         /*timeout_ms*/ 10_000,
+     )
+-    .await?;
++    .await;
++    conpty_diagnostic_status("after_ver_wait", &processes, &session);
++    eprintln!(
++        "conpty_diagnostic resumption elapsed={:?} result={resumption:?}",
++        started.elapsed()
++    );
++    let mut output = resumption?;
+
+     writer.send(b"exit 0\n".to_vec()).await?;
+     let (remaining, exit_code) =
+@@ -485,3 +509,107 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+     );
+     Ok(())
+ }
++
++fn conpty_diagnostic_processes() -> anyhow::Result<Vec<(u32, u32, String, OwnedHandle)>> {
++    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
++    use winapi::um::tlhelp32::{
++        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
++        TH32CS_SNAPPROCESS,
++    };
++
++    // SAFETY: the snapshot API returns a new owned handle or INVALID_HANDLE_VALUE.
++    let raw = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
++    anyhow::ensure!(
++        raw != INVALID_HANDLE_VALUE,
++        "process snapshot: {}",
++        std::io::Error::last_os_error()
++    );
++    let snapshot = unsafe { OwnedHandle::from_raw_handle(raw.cast()) };
++    // SAFETY: PROCESSENTRY32W accepts zero initialization followed by dwSize.
++    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
++    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
++    let mut entries = Vec::new();
++    let mut more = unsafe { Process32FirstW(snapshot.as_raw_handle().cast(), &mut entry) };
++    while more != 0 {
++        anyhow::ensure!(
++            entries.len() < 4096,
++            "process snapshot exceeds diagnostic limit"
++        );
++        let length = entry
++            .szExeFile
++            .iter()
++            .position(|value| *value == 0)
++            .unwrap_or(entry.szExeFile.len());
++        entries.push((
++            entry.th32ProcessID,
++            entry.th32ParentProcessID,
++            String::from_utf16_lossy(&entry.szExeFile[..length]),
++        ));
++        more = unsafe { Process32NextW(snapshot.as_raw_handle().cast(), &mut entry) };
++    }
++    anyhow::ensure!(
++        std::io::Error::last_os_error().raw_os_error()
++            == Some(winapi::shared::winerror::ERROR_NO_MORE_FILES as i32),
++        "process enumeration: {}",
++        std::io::Error::last_os_error()
++    );
++
++    let mut parents = vec![std::process::id()];
++    let mut processes = Vec::new();
++    loop {
++        let mut next = Vec::new();
++        for (pid, parent, name) in &entries {
++            if parents.contains(parent) {
++                let raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, *pid) };
++                anyhow::ensure!(
++                    !raw.is_null(),
++                    "open diagnostic pid {pid}: {}",
++                    std::io::Error::last_os_error()
++                );
++                let handle = unsafe { OwnedHandle::from_raw_handle(raw.cast()) };
++                processes.push((*pid, *parent, name.clone(), handle));
++                next.push(*pid);
++            }
++        }
++        if next.is_empty() {
++            break;
++        }
++        parents = next;
++    }
++    eprintln!(
++        "conpty_diagnostic snapshot_process_count={} descendant_count={}",
++        entries.len(),
++        processes.len()
++    );
++    Ok(processes)
++}
++
++fn conpty_diagnostic_status(
++    stage: &str,
++    processes: &[(u32, u32, String, OwnedHandle)],
++    session: &crate::ProcessHandle,
++) {
++    eprintln!(
++        "conpty_diagnostic stage={stage} root_has_exited={} root_exit_code={:?}",
++        session.has_exited(),
++        session.exit_code()
++    );
++    for (pid, parent, name, handle) in processes {
++        let mut code = 0;
++        let result = unsafe {
++            winapi::um::processthreadsapi::GetExitCodeProcess(
++                handle.as_raw_handle().cast(),
++                &mut code,
++            )
++        };
++        eprintln!(
++            "conpty_diagnostic stage={stage} pid={pid} parent={parent} image={name:?} query_ok={} exit_code={code} last_error={:?}",
++            result != 0,
++            if result == 0 {
++                Some(std::io::Error::last_os_error())
++            } else {
++                None
++            }
++        );
++    }
++}
