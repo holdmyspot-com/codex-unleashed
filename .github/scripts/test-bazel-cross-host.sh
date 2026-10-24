@@ -45,3 +45,20 @@ for host_binding in AMD64:ARM64 ARM64:AMD64 AMD64:; do
     fi
   done
 done
+
+for client_host in Linux macOS Windows; do
+  RUNNER_OS="$client_host" BUILDBUDDY_API_KEY=command-construction-fixture \
+    CODEX_BAZEL_WINDOWS_PATH='C:/Windows/System32' \
+    CODEX_UNLEASHED_TOOLING="$work_root/capture-command" CAPTURE_ARGUMENTS="$work_root/arguments" \
+    bash "$project_root/.github/scripts/run-bazel-ci.sh" -- build -- //:native_target
+
+  if grep -Fxq -- --noexperimental_remote_cache_chunking "$work_root/arguments"; then
+    if [[ "$client_host" != macOS ]]; then
+      printf '%s unexpectedly disables remote cache chunking.\n' "$client_host" >&2
+      exit 1
+    fi
+  elif [[ "$client_host" == macOS ]]; then
+    printf 'macOS does not disable the heap-exhausting cache chunking path.\n' >&2
+    exit 1
+  fi
+done

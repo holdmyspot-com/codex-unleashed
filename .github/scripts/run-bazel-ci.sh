@@ -285,6 +285,9 @@ post_config_bazel_args=()
 local_jobs=2
 if [[ "${RUNNER_OS:-}" == "macOS" ]]; then
   local_jobs=1
+  # Whole-blob cache downloads fit the hosted macOS JVM heap; chunked downloads exhaust it.
+  # Keep ordinary remote cache reuse while bounding the native runner's memory requirements.
+  post_config_bazel_args+=(--noexperimental_remote_cache_chunking)
 fi
 post_config_bazel_args+=("--loading_phase_threads=${local_jobs}" "--local_test_jobs=${local_jobs}")
 # Each CI job builds once, so drop the reverse dependency edges that only incremental rebuilds use. Hermetic

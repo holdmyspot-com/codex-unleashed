@@ -970,7 +970,7 @@ else
     build --config=ci-bazel \
     --jobs=2 --loading_phase_threads=1 --local_resources=cpu=1 \
     --notrack_incremental_state --nokeep_state_after_build --remote_download_outputs=toplevel \
-    --experimental_remote_cache_chunking \
+    --noexperimental_remote_cache_chunking \
     --materialize_param_files --sandbox_debug "--sandbox_base=$sandbox_base" \
     --output_groups=+dsym_folder \
     "--execution_log_compact_file=$evidence/execution.compact" \
