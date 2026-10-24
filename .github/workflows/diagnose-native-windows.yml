@@ -17,6 +17,7 @@ on:
           - windows-archived-failures
           - windows-arm-launch-inputs
           - windows-arm-mxc-policy
+          - windows-arm-mxc-volumes
           - arm-daemon-lifecycle
           - arm-daemon-hashing
           - macos-x64-original-timeouts
@@ -52,6 +53,33 @@ permissions:
   contents: read
 
 jobs:
+  windows-arm-mxc-volumes:
+    if: inputs.focus == 'windows-arm-mxc-volumes'
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    steps:
+      - name: Inspect MXC filesystem enforcement prerequisites on both drives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $probes = @(
+            @{ Program = 'fsutil.exe'; Arguments = @('fsinfo', 'volumeinfo', 'C:') },
+            @{ Program = 'fsutil.exe'; Arguments = @('fsinfo', 'volumeinfo', 'D:') },
+            @{ Program = 'fsutil.exe'; Arguments = @('devdrv', 'query', 'C:') },
+            @{ Program = 'fsutil.exe'; Arguments = @('devdrv', 'query', 'D:') },
+            @{ Program = 'fltmc.exe'; Arguments = @('instances', '-v', 'C:') },
+            @{ Program = 'fltmc.exe'; Arguments = @('instances', '-v', 'D:') },
+            @{ Program = 'sc.exe'; Arguments = @('query', 'bfs') }
+          )
+          foreach ($probe in $probes) {
+            $arguments = $probe.Arguments
+            Write-Output "::group::$($probe.Program) $($arguments -join ' ')"
+            & $probe.Program @arguments
+            Write-Output "Native query exit status: $LASTEXITCODE"
+            Write-Output '::endgroup::'
+          }
+
   compiler-scheduler-pause-recovery:
     if: inputs.focus == 'compiler-scheduler-pause-recovery'
     runs-on: windows-latest
