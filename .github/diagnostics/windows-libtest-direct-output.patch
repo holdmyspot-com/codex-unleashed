@@ -1,0 +1,20 @@
+diff --git a/workspace_root_test_launcher.bat.tpl b/workspace_root_test_launcher.bat.tpl
+--- a/workspace_root_test_launcher.bat.tpl
++++ b/workspace_root_test_launcher.bat.tpl
+@@ -20,6 +20,16 @@
+ )
+ 
+ __WORKSPACE_ROOT_SETUP__
++
++if defined CODEX_WINDOWS_DIRECT_LIBTEST_LOG (
++  if not defined TEST_UNDECLARED_OUTPUTS_DIR exit /b 1
++  "%test_bin%" %* > "%TEST_UNDECLARED_OUTPUTS_DIR%\libtest-direct.log" 2>&1
++  set "direct_status=!ERRORLEVEL!"
++  > "%TEST_UNDECLARED_OUTPUTS_DIR%\libtest-direct.status" echo !direct_status!
++  type "%TEST_UNDECLARED_OUTPUTS_DIR%\libtest-direct.log"
++  echo WINDOWS_DIRECT_LIBTEST_COPY_RETURNED exit=!direct_status!
++  exit /b !direct_status!
++)
+ 
+ set "TOTAL_SHARDS=%RULES_RUST_TEST_TOTAL_SHARDS%"
+ if not defined TOTAL_SHARDS set "TOTAL_SHARDS=%TEST_TOTAL_SHARDS%"

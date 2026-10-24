@@ -54,6 +54,10 @@ on:
           - native-platform-tests-except-windows-x64
           - linux-x64-native-and-remote
           - linux-docker-scope
+      direct-test-output:
+        description: Diagnose native sandbox output through a retained direct libtest file.
+        type: boolean
+        default: false
       source-run:
         description: Workflow run supplying compiled binaries for an archived-test diagnostic.
         type: string
@@ -1301,6 +1305,8 @@ jobs:
             Set-Content (Join-Path $evidence 'runtime.txt')
       - name: Require fixture prerequisites and compiled architecture inside each test target
         shell: bash
+        env:
+          DIRECT_TEST_OUTPUT: ${{ inputs.direct-test-output }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/windows-sandbox-fixtures"
@@ -1313,6 +1319,13 @@ jobs:
           git -C upstream apply ../.github/diagnostics/windows-sandbox-workload-paths.patch
           git -C upstream apply --check ../.github/diagnostics/windows-tty-pid-publication.patch
           git -C upstream apply ../.github/diagnostics/windows-tty-pid-publication.patch
+          if [[ "$DIRECT_TEST_OUTPUT" == true ]]; then
+            printf '%s  %s\n' \
+              'b491b3762c6c03a2fd171bacd64d1a9a6e415aeccb1688863fc7c56722296a9f' '.github/diagnostics/windows-libtest-direct-output.patch' | sha256sum --check
+            git -C upstream apply --check ../.github/diagnostics/windows-libtest-direct-output.patch
+            git -C upstream apply ../.github/diagnostics/windows-libtest-direct-output.patch
+            sha256sum .github/diagnostics/windows-libtest-direct-output.patch > "$evidence/direct-output-overlay.sha256"
+          fi
           git -C upstream diff --binary > "$evidence/instrumented-source.diff"
           {
             printf 'dispatch_head=%s\nupstream_commit=%s\nrun_id=%s\nrun_attempt=%s\n' \
@@ -1327,12 +1340,17 @@ jobs:
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           EXPECTED_RUST_ARCH: ${{ matrix.rust-arch }}
+          DIRECT_TEST_OUTPUT: ${{ inputs.direct-test-output }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/windows-sandbox-fixtures"
           program_files_windows="$(cygpath -w "${PROGRAMFILES:?PROGRAMFILES is required}")"
           system_root_windows="$(cygpath -w "${SYSTEMROOT:?SYSTEMROOT is required}")"
           cd upstream
+          direct_output_args=()
+          if [[ "$DIRECT_TEST_OUTPUT" == true ]]; then
+            direct_output_args=(--test_sharding_strategy=disabled --test_env=CODEX_WINDOWS_DIRECT_LIBTEST_LOG=1)
+          fi
           for gate in helpers elevated legacy; do
             test_args=()
             target=//codex-rs/core:core-windows_sandbox-test
@@ -1362,7 +1380,7 @@ jobs:
               "--test_env=CODEX_WINDOWS_FIXTURE_EXPECTED_ARCH=${EXPECTED_RUST_ARCH}" \
               --nocache_test_results --flaky_test_attempts=1 --test_output=all --test_arg=--show-output \
               --test_arg=--test-threads=1 --test_arg=--format=pretty --test_arg=--color=never \
-              "${test_args[@]}" -- "$target" 2>&1 | tee "$evidence/$gate.log" || status=$?
+              "${direct_output_args[@]}" "${test_args[@]}" -- "$target" 2>&1 | tee "$evidence/$gate.log" || status=$?
             printf '%s\n' "$status" > "$evidence/$gate.status"
 
             raw_evidence="$evidence/$gate-raw"
@@ -1379,7 +1397,13 @@ jobs:
                   >> "$raw_evidence/missing.txt"
               fi
             done
+            if [[ "$DIRECT_TEST_OUTPUT" == true ]]; then
+              bash "${GITHUB_WORKSPACE}/.github/scripts/diagnose-windows-test-output.sh" capture "$gate" "$target_log_path" "$evidence"
+            fi
           done
+          if [[ "$DIRECT_TEST_OUTPUT" == true ]]; then
+            bash "${GITHUB_WORKSPACE}/.github/scripts/diagnose-windows-test-output.sh" identity "$evidence"
+          fi
           bash "${GITHUB_WORKSPACE}/.github/scripts/assert-windows-sandbox-fixture-evidence.sh" "$evidence" "$EXPECTED_RUST_ARCH"
       - name: Retain focused Windows sandbox fixture acceptance evidence
         if: always()
