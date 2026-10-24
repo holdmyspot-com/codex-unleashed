@@ -1,8 +1,8 @@
 diff --git a/codex-rs/exec/tests/suite/daybreak.rs b/codex-rs/exec/tests/suite/daybreak.rs
-index d134a77c..d82e605d 100644
+index d134a77c..fc40eb36 100644
 --- a/codex-rs/exec/tests/suite/daybreak.rs
 +++ b/codex-rs/exec/tests/suite/daybreak.rs
-@@ -156,8 +156,21 @@ async fn configured_daybreak_exec() -> anyhow::Result<(TestCodexExecBuilder, wir
+@@ -156,8 +156,34 @@ async fn configured_daybreak_exec() -> anyhow::Result<(TestCodexExecBuilder, wir
  
  #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
  async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()> {
@@ -18,13 +18,27 @@ index d134a77c..d82e605d 100644
 +    };
 +    diagnostic_event("fixture_enter")?;
      let (test, server) = configured_daybreak_exec().await?;
+-    let response = responses::mount_sse_once(&server, responses::sse_completed("started")).await;
 +    diagnostic_event("fixture_ready invocation=0 mock_enter")?;
-     let response = responses::mount_sse_once(&server, responses::sse_completed("started")).await;
++    let response = responses::mount_sse_once_match(
++        &server,
++        move |_: &wiremock::Request| {
++            writeln!(
++                std::io::stderr().lock(),
++                "DAYBREAK_DIAGNOSTIC elapsed={:?} invocation=0 response_requested",
++                diagnostic_started.elapsed()
++            )
++            .expect("write model-request timing marker");
++            true
++        },
++        responses::sse_completed("started"),
++    )
++    .await;
 +    diagnostic_event("invocation=0 child_enter")?;
      let output = test
          .cmd_with_server(&server)
          .env_remove("CODEX_ACCESS_TOKEN")
-@@ -165,11 +178,13 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
+@@ -165,11 +191,13 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
          .env_remove("OPENAI_API_KEY")
          .args(["--skip-git-repo-check", "--json", "hello"])
          .output()?;
@@ -38,7 +52,7 @@ index d134a77c..d82e605d 100644
  
      // The saved choice wins over a changed default; a CLI override affects only its invocation.
      std::fs::write(
-@@ -180,6 +195,7 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
+@@ -180,6 +208,7 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
              test.home_path().join("catalog.json").display()
          ),
      )?;
@@ -46,14 +60,28 @@ index d134a77c..d82e605d 100644
      for (args, expected) in [
          (
              vec![
-@@ -222,21 +238,30 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
+@@ -222,21 +251,42 @@ async fn exec_resumes_and_forks_the_saved_daybreak_choice() -> anyhow::Result<()
              Some("standard"),
          ),
      ] {
-+        diagnostic_event(&format!("invocation={diagnostic_invocation} mock_enter"))?;
-         let response =
-             responses::mount_sse_once(&server, responses::sse_completed("continued")).await;
+-        let response =
+-            responses::mount_sse_once(&server, responses::sse_completed("continued")).await;
 -        test.cmd_with_server(&server)
++        diagnostic_event(&format!("invocation={diagnostic_invocation} mock_enter"))?;
++        let response = responses::mount_sse_once_match(
++            &server,
++            move |_: &wiremock::Request| {
++                writeln!(
++                    std::io::stderr().lock(),
++                    "DAYBREAK_DIAGNOSTIC elapsed={:?} invocation={diagnostic_invocation} response_requested",
++                    diagnostic_started.elapsed()
++                )
++                .expect("write model-request timing marker");
++                true
++            },
++            responses::sse_completed("continued"),
++        )
++        .await;
 +        diagnostic_event(&format!("invocation={diagnostic_invocation} child_enter"))?;
 +        let assertion = test
 +            .cmd_with_server(&server)

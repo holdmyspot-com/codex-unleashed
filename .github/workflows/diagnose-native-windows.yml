@@ -97,7 +97,7 @@ jobs:
           git -C upstream diff --binary > "$evidence/prepared-source.diff"
           overlay="$GITHUB_WORKSPACE/.github/diagnostics/daybreak-invocation-timing.patch"
           printf '%s  %s\n' \
-            1035326469f99e324f640156a8386f5503138c4b10aec0060c7bc7f8726032bd "$overlay" \
+            29243fa0285db17daaff47f7ff158348a1052a059f27151389477cd4194e0e72 "$overlay" \
             9a2e9ae3a3aa2ac268e4e02751033aa66ac2f26cec4c411868002d7dcb830c73 upstream/codex-rs/exec/tests/suite/daybreak.rs \
             f411d7e8ea0a8b60a3cdd9a1e47223ad964e2d2fd5f80d0abe4d877b41851817 upstream/codex-rs/.config/nextest.toml \
             | shasum -a 256 --check | tee "$evidence/preimage-verification.txt"
@@ -106,7 +106,7 @@ jobs:
           git -C upstream apply --check "$overlay"
           git -C upstream apply "$overlay"
           printf '%s  %s\n' \
-            dd7e1e28c85eefff42f0b68076ef562ba4c692eed9d83efa77fa23de8e613b9e upstream/codex-rs/exec/tests/suite/daybreak.rs \
+            ec27c13845f41e3757f6207557b3e3e3265b80e341f6ac5d7d28d1e5ace2faad upstream/codex-rs/exec/tests/suite/daybreak.rs \
             | shasum -a 256 --check | tee "$evidence/postimage-verification.txt"
           git -C upstream diff --binary > "$evidence/instrumented-source.diff"
           cp upstream/codex-rs/exec/tests/suite/daybreak.rs "$evidence/instrumented-daybreak.rs"
