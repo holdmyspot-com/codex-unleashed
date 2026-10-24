@@ -1,0 +1,44 @@
+diff --git a/codex-rs/utils/pty/Cargo.toml b/codex-rs/utils/pty/Cargo.toml
+--- a/codex-rs/utils/pty/Cargo.toml
++++ b/codex-rs/utils/pty/Cargo.toml
+@@ -24,6 +24,7 @@
+ log = { workspace = true }
+ shared_library = "0.1.9"
+ winapi = { version = "0.3.9", features = [
++    "consoleapi",
+     "handleapi",
+     "jobapi",
+     "jobapi2",
+diff --git a/codex-rs/utils/pty/src/windows_tests.rs b/codex-rs/utils/pty/src/windows_tests.rs
+--- a/codex-rs/utils/pty/src/windows_tests.rs
++++ b/codex-rs/utils/pty/src/windows_tests.rs
+@@ -443,6 +443,29 @@
+
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Result<()> {
++    let requested = match std::env::var("CODEX_CONPTY_CTRL_C_INHERITANCE") {
++        Ok(mode) => mode,
++        Err(std::env::VarError::NotPresent) => "inherited".to_string(),
++        Err(error) => return Err(error.into()),
++    };
++    let ignore = match requested.as_str() {
++        "inherited" => None,
++        "enabled" => Some(0),
++        "ignored" => Some(1),
++        _ => anyhow::bail!("unknown Ctrl-C inheritance diagnostic mode: {requested}"),
++    };
++    if let Some(ignore) = ignore {
++        // This diagnostic runs only this exact test in a dedicated process.
++        // Change its inherited disposition before spawning the unchanged PTY command.
++        // SAFETY: no callback is installed; the API changes only this process's ignore flag.
++        let result = unsafe { winapi::um::consoleapi::SetConsoleCtrlHandler(None, ignore) };
++        anyhow::ensure!(
++            result != 0,
++            "conpty_diagnostic inheritance_setup_failed mode={requested} error={}",
++            std::io::Error::last_os_error()
++        );
++    }
++    eprintln!("conpty_diagnostic inheritance_mode={requested} setup=ok");
+     let Some(program) = find_powershell() else {
+         anyhow::bail!("conpty_diagnostic PowerShell unavailable");
+     };

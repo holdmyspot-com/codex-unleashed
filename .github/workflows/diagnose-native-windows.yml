@@ -827,30 +827,48 @@ jobs:
           set -euo pipefail
           git -C upstream apply --check ../.github/diagnostics/windows-conpty-ctrl-c.patch
           git -C upstream apply ../.github/diagnostics/windows-conpty-ctrl-c.patch
-      - name: Rebuild and diagnose the exact ConPTY Ctrl-C regression
+          git -C upstream apply --check ../.github/diagnostics/windows-conpty-ctrl-c-inheritance.patch
+          git -C upstream apply ../.github/diagnostics/windows-conpty-ctrl-c-inheritance.patch
+      - name: Compare inherited, enabled, and ignored Ctrl-C handling
         shell: bash
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/windows-conpty-ctrl-c"
+          evidence="$RUNNER_TEMP/windows-conpty-ctrl-c"
+          mkdir -p "$evidence"
           cd upstream
-          "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
-            --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
-            -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
-            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
-            --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
-            --test_env=CODEX_CONPTY_CTRL_C_DIAGNOSTIC=1 \
-            --nocache_test_results --test_output=all --test_arg=--nocapture \
-            --test_arg=--exact \
-            --test_arg=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child \
-            -- //codex-rs/utils/pty:pty-unit-tests \
-            2>&1 | tee "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
-          grep -F "test result: ok. 1 passed; 0 failed;" "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
-          grep -F "normalized_bytes=[03] write=Ok(()) flush=Ok(())" "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
-          grep -Ei 'stage=readiness .*image="(pwsh|powershell)\.exe" query_ok=true exit_code=259' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
-          grep -Ei 'stage=readiness .*image="ping\.exe" query_ok=true exit_code=259' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
-          grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=' "$RUNNER_TEMP/windows-conpty-ctrl-c/console.log"
+          for mode in inherited enabled ignored; do
+            status=0
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+              -- test --config=ci-windows-msvc --platforms=//:windows_x86_64_msvc \
+              --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+              --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+              --test_env=CODEX_CONPTY_CTRL_C_DIAGNOSTIC=1 \
+              "--test_env=CODEX_CONPTY_CTRL_C_INHERITANCE=$mode" \
+              --nocache_test_results --test_output=all --test_arg=--nocapture \
+              --test_arg=--exact \
+              --test_arg=tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child \
+              -- //codex-rs/utils/pty:pty-unit-tests \
+              2>&1 | tee "$evidence/$mode.log" || status=$?
+            printf '%s\n' "$status" > "$evidence/$mode.status"
+          done
+          for mode in inherited enabled ignored; do
+            log="$evidence/$mode.log"
+            grep -F "conpty_diagnostic inheritance_mode=$mode setup=ok" "$log"
+            grep -F 'normalized_bytes=[03] write=Ok(()) flush=Ok(())' "$log"
+            grep -Ei 'stage=readiness .*image="(pwsh|powershell)\.exe" query_ok=true exit_code=259' "$log"
+            grep -Ei 'stage=readiness .*image="ping\.exe" query_ok=true exit_code=259' "$log"
+            grep -Ei 'stage=after_ver_wait .*image="ping\.exe" query_ok=true exit_code=' "$log"
+          done
+          test "$(cat "$evidence/enabled.status")" = 0
+          grep -F 'test result: ok. 1 passed; 0 failed;' "$evidence/enabled.log"
+          for mode in inherited ignored; do
+            test "$(cat "$evidence/$mode.status")" != 0
+            grep -F 'test result: FAILED. 0 passed; 1 failed;' "$evidence/$mode.log"
+          done
+          printf '%s\n' 'Ctrl-C inheritance hypothesis reproduced; production repair remains unverified.'
       - name: Retain ConPTY control and process evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

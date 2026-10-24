@@ -112,17 +112,18 @@ index 6d6c389..dc42bf5 100644
 
      writer.send(b"exit 0\n".to_vec()).await?;
      let (remaining, exit_code) =
-@@ -485,3 +509,107 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
+@@ -485,3 +509,108 @@ async fn conpty_ctrl_c_interrupts_powershell_foreground_child() -> anyhow::Resul
      );
      Ok(())
  }
 +
 +fn conpty_diagnostic_processes() -> anyhow::Result<Vec<(u32, u32, String, OwnedHandle)>> {
 +    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-+    use winapi::um::tlhelp32::{
-+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
-+        TH32CS_SNAPPROCESS,
-+    };
++    use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
++    use winapi::um::tlhelp32::PROCESSENTRY32W;
++    use winapi::um::tlhelp32::Process32FirstW;
++    use winapi::um::tlhelp32::Process32NextW;
++    use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
 +
 +    // SAFETY: the snapshot API returns a new owned handle or INVALID_HANDLE_VALUE.
 +    let raw = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
