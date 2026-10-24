@@ -2933,3 +2933,23 @@ just fmt-check
 ```
 
 A passing local run does not establish the Docker-mode fixture branch executed.
+
+## Feedback thread directory fixture
+
+`zzzz-0088-feedback-thread-cwd-fixture.patch` compares the feedback directory
+with the configured thread workspace. A remote fixture also owns a host
+fallback directory, which is not the thread's selected workspace. The test
+keeps automatic environment selection and rejects the daemon workspace fallback.
+Production directory selection remains unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Run the rebuilt unit test locally and under the maintained Docker environment:
+
+```sh
+just test -p codex-app-server --lib -E 'test(doctor_uses_loaded_feedback_thread_cwd)'
+just fmt-check
+```
+
+This verifies directory selection, not the contents of a doctor subprocess's
+report for a remote workspace.
