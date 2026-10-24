@@ -1,17 +1,160 @@
-From 04b5168d5f8df20722d6950b130ce1cf7420a899 Mon Sep 17 00:00:00 2001
+From b9fc37636e44bcb99c8271582654425fe757aea7 Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Thu, 15 Oct 2026 23:47:13 +0000
-Subject: [PATCH] Preserve Cargo dependency aliases in Bazel Rust targets
+Date: Sat, 24 Oct 2026 22:31:35 +0000
+Subject: [PATCH] bugfix: preserve renamed Cargo dependencies in Bazel targets
 
+Generate dependency-kind and platform-aware aliases through the rules_rs public API so renamed keyring and YAML crates compile correctly. Keep the public skill-frontmatter regression and add configured checks for normal, development, build and unconditional aliases.
+
+The emitted six-file generator repair passed all 18 configured checks and all nine secrets library tests with test-result caching disabled. This replacement packages that implementation with the existing YAML regression at its actual queue position; fresh sorted-queue replay and maintained checks remain required.
 ---
- .../skills/tests/yaml_dependency_alias.rs     | 16 ++++++++++
- defs.bzl                                      | 29 +++++++++++++++++++
- 2 files changed, 45 insertions(+)
+ MODULE.bazel                                  |  1 +
+ bazel/rules/testing/cargo_aliases/BUILD.bazel | 13 +++
+ bazel/rules/testing/cargo_aliases/tests.bzl   | 95 +++++++++++++++++++
+ .../skills/tests/yaml_dependency_alias.rs     | 16 ++++
+ defs.bzl                                      | 10 +-
+ patches/BUILD.bazel                           |  1 +
+ .../rules_rs_dependency_kind_aliases.patch    | 95 +++++++++++++++++++
+ 7 files changed, 230 insertions(+), 1 deletion(-)
+ create mode 100644 bazel/rules/testing/cargo_aliases/BUILD.bazel
+ create mode 100644 bazel/rules/testing/cargo_aliases/tests.bzl
  create mode 100644 codex-rs/skills/tests/yaml_dependency_alias.rs
+ create mode 100644 patches/rules_rs_dependency_kind_aliases.patch
 
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 12aa4dee..bc75ecf0 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -243,6 +243,7 @@ single_version_override(
+         "//patches:rules_rs_rust_debug_modes.patch",
+         "//patches:rules_rs_windows_msvc_linker.patch",
+         "//patches:rules_rs_workspace_package_version.patch",
++        "//patches:rules_rs_dependency_kind_aliases.patch",
+     ],
+     version = "0.1.3",
+ )
+diff --git a/bazel/rules/testing/cargo_aliases/BUILD.bazel b/bazel/rules/testing/cargo_aliases/BUILD.bazel
+new file mode 100644
+index 00000000..9dcd3134
+--- /dev/null
++++ b/bazel/rules/testing/cargo_aliases/BUILD.bazel
+@@ -0,0 +1,13 @@
++load(":tests.bzl", "cargo_aliases_tests")
++
++config_setting(
++    name = "one",
++    define_values = {"cargo_alias_platform": "one"},
++)
++
++config_setting(
++    name = "two",
++    define_values = {"cargo_alias_platform": "two"},
++)
++
++cargo_aliases_tests()
+diff --git a/bazel/rules/testing/cargo_aliases/tests.bzl b/bazel/rules/testing/cargo_aliases/tests.bzl
+new file mode 100644
+index 00000000..402e9f90
+--- /dev/null
++++ b/bazel/rules/testing/cargo_aliases/tests.bzl
+@@ -0,0 +1,95 @@
++"""Analysis-only regressions for configured Cargo dependency aliases."""
++
++load("@crates//:defs.bzl", "aliases")
++load("@rules_rs//rs/private:all_crate_deps.bzl", "all_crate_aliases")
++
++def _alias_test_impl(ctx):
++    return [AnalysisTestResultInfo(
++        success = ctx.attr.actual == ctx.attr.expected,
++        message = "expected aliases %s, got %s" % (ctx.attr.expected, ctx.attr.actual),
++    )]
++
++_alias_test = rule(
++    implementation = _alias_test_impl,
++    analysis_test = True,
++    attrs = {
++        "actual": attr.string_dict(),
++        "expected": attr.string_dict(),
++    },
++)
++
++def cargo_aliases_tests():
++    """Exercise kind filtering, platform selection and common/default promotion."""
++    platforms = [":one", ":two"]
++    data = {
++        "aliases": {
++            "//:normal": "renamed_normal",
++            "//:dev": "test_support",
++            "//:build": "renamed_build",
++            "//:conditional": "platform_only",
++            "//:promoted": "on_every_platform",
++        },
++        "deps": ["//:normal"],
++        "dev_deps": ["//:dev"],
++        "build_deps": ["//:build"],
++        "deps_by_platform": {
++            ":one": ["//:conditional", "//:promoted"],
++            ":two": ["//:promoted"],
++        },
++    }
++    normal = {"//:normal": "renamed_normal", "//:promoted": "on_every_platform"}
++    configured_normal = select({
++        ":one": normal | {"//:conditional": "platform_only"},
++        "//conditions:default": normal,
++    })
++    _alias_test(
++        size = "small",
++        name = "normal_excludes_dev_cycle_test",
++        actual = all_crate_aliases(data, platforms),
++        expected = configured_normal,
++    )
++    _alias_test(
++        size = "small",
++        name = "dev_only_test",
++        actual = all_crate_aliases(data, platforms, normal_dev = True),
++        expected = {"//:dev": "test_support"},
++    )
++    _alias_test(
++        size = "small",
++        name = "build_only_test",
++        actual = all_crate_aliases(data, platforms, build = True),
++        expected = {"//:build": "renamed_build"},
++    )
++    _alias_test(
++        size = "small",
++        name = "normal_and_dev_test",
++        actual = all_crate_aliases(data, platforms, normal = True, normal_dev = True),
++        expected = select({
++            ":one": normal | {"//:conditional": "platform_only", "//:dev": "test_support"},
++            "//conditions:default": normal | {"//:dev": "test_support"},
++        }),
++    )
++    _alias_test(
++        size = "small",
++        name = "unconditional_keyring_test",
++        actual = aliases(package_name = "codex-rs/keyring-store", normal = True),
++        expected = {"@crates//:keyring-core-1.0.1": "keyring"},
++    )
++    _alias_test(
++        size = "small",
++        name = "legacy_aliases_test",
++        actual = aliases(package_name = "codex-rs/secrets"),
++        expected = {
++            "//codex-rs/git-utils": "codex_git_utils",
++            "//codex-rs/keyring-store": "codex_keyring_store",
++            "@crates//:keyring-core-1.0.1": "keyring",
++        },
++    )
++    native.test_suite(name = "tests", tests = [
++        ":normal_excludes_dev_cycle_test",
++        ":dev_only_test",
++        ":build_only_test",
++        ":normal_and_dev_test",
++        ":unconditional_keyring_test",
++        ":legacy_aliases_test",
++    ])
 diff --git a/codex-rs/skills/tests/yaml_dependency_alias.rs b/codex-rs/skills/tests/yaml_dependency_alias.rs
 new file mode 100644
-index 0000000..4c2e6b5
+index 00000000..4c2e6b5a
 --- /dev/null
 +++ b/codex-rs/skills/tests/yaml_dependency_alias.rs
 @@ -0,0 +1,16 @@
@@ -32,98 +175,190 @@ index 0000000..4c2e6b5
 +    );
 +}
 diff --git a/defs.bzl b/defs.bzl
-index 9f4654c..888ace3 100644
+index 4d69678b..54f6b00a 100644
 --- a/defs.bzl
 +++ b/defs.bzl
-@@ -235,6 +235,27 @@ workspace_root_test = rule(
-     },
- )
- 
-+def _crate_aliases(package_data, kinds):
-+    shared = {}
-+    branches = {}
-+    names = package_data["aliases"]
-+    for kind in kinds:
-+        for dependency in package_data.get(kind, []):
-+            if dependency in names:
-+                shared[dependency] = names[dependency]
-+        for platform, dependencies in package_data.get(kind + "_by_platform", {}).items():
-+            branch = branches.setdefault(platform, {})
-+            for dependency in dependencies:
-+                if dependency in names:
-+                    branch[dependency] = names[dependency]
-+
-+    if not branches:
-+        return shared
-+
-+    return select({platform: shared | branch for platform, branch in branches.items()} | {
-+        "//conditions:default": shared,
-+    })
-+
- def codex_rust_crate(
-         name,
-         crate_name,
-@@ -396,6 +417,7 @@ def codex_rust_crate(
+@@ -1,5 +1,5 @@
+ load("@crates//:data.bzl", "DEP_DATA")
+-load("@crates//:defs.bzl", "all_crate_deps")
++load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+ load("@rules_rust//cargo/private:cargo_build_script_wrapper.bzl", "cargo_build_script")
+ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_proc_macro", "rust_test")
+ load("//bazel/rules/testing:foreign_platform_binary.bzl", "foreign_platform_binary")
+@@ -402,6 +402,7 @@ def codex_rust_crate(
              name = name + "-build-script",
              pkg_name = package_data["package_name"],
              srcs = ["build.rs"],
-+            aliases = _crate_aliases(package_data, ["build_deps"]),
++            aliases = aliases(build = True),
              deps = all_crate_deps(build = True),
              data = build_script_data,
              version = crate_version,
-@@ -409,6 +431,7 @@ def codex_rust_crate(
+@@ -415,6 +416,7 @@ def codex_rust_crate(
              name = name,
              crate_name = crate_name,
              crate_features = crate_features,
-+            aliases = _crate_aliases(package_data, ["deps"]),
++            aliases = aliases(normal = True),
              deps = all_crate_deps() + maybe_deps + deps_extra,
              compile_data = compile_data,
              data = lib_data_extra,
-@@ -432,6 +455,7 @@ def codex_rust_crate(
+@@ -438,6 +440,7 @@ def codex_rust_crate(
              name = unit_test_binary,
              crate = name,
              crate_features = crate_features,
-+            aliases = _crate_aliases(package_data, ["deps", "dev_deps"]),
++            aliases = aliases(normal = True, normal_dev = True),
              deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
              # Unit tests also compile to standalone Windows executables, so
              # keep their stack reserve aligned with binaries and integration
-@@ -487,6 +511,7 @@ def codex_rust_crate(
+@@ -493,6 +496,7 @@ def codex_rust_crate(
              name = binary,
              crate_name = binary.replace("-", "_"),
              crate_root = main,
-+            aliases = _crate_aliases(package_data, ["deps"]),
++            aliases = aliases(normal = True),
              deps = all_crate_deps() + maybe_deps + deps_extra,
              edition = crate_edition,
              # Scope each binary's compile data and linker flags to its generated
-@@ -518,6 +543,7 @@ def codex_rust_crate(
+@@ -530,6 +534,7 @@ def codex_rust_crate(
              name = binary_unit_test_binary,
              crate = ":" + binary,
              crate_features = crate_features,
-+            aliases = _crate_aliases(package_data, ["dev_deps"]),
++            aliases = aliases(normal_dev = True),
              deps = all_crate_deps(normal_dev = True),
              rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
                  "--remap-path-prefix=../codex-rs=",
-@@ -648,6 +674,7 @@ def codex_rust_crate(
+@@ -664,6 +669,7 @@ def codex_rust_crate(
                  srcs = [test],
                  data = integration_test_files + integration_test_binaries + integration_test_data_extra,
                  compile_data = integration_test_files + integration_compile_data_extra,
-+                aliases = _crate_aliases(package_data, ["deps", "dev_deps"]),
++                aliases = aliases(normal = True, normal_dev = True),
                  deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
                  # Bazel has emitted both `codex-rs/<crate>/...` and
                  # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
-@@ -690,6 +717,7 @@ def codex_rust_crate(
+@@ -706,6 +712,7 @@ def codex_rust_crate(
                  srcs = [test],
                  data = integration_test_files + integration_test_binaries + integration_test_data_extra,
                  compile_data = integration_test_files + integration_compile_data_extra,
-+                aliases = _crate_aliases(package_data, ["deps", "dev_deps"]),
++                aliases = aliases(normal = True, normal_dev = True),
                  deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
                  # Bazel has emitted both `codex-rs/<crate>/...` and
                  # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
-@@ -767,6 +795,7 @@ def codex_rust_crate(
+@@ -783,6 +790,7 @@ def codex_rust_crate(
              srcs = [test],
              data = integration_test_files + integration_test_binaries + integration_test_data_extra,
              compile_data = integration_test_files + integration_compile_data_extra,
-+            aliases = _crate_aliases(package_data, ["deps", "dev_deps"]),
++            aliases = aliases(normal = True, normal_dev = True),
              deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
              rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
                  "--remap-path-prefix=../codex-rs=",
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index c8030d4f..50938d0f 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -28,6 +28,7 @@ exports_files([
+     "rules_rs_rust_debug_modes.patch",
+     "rules_rs_windows_msvc_linker.patch",
+     "rules_rs_workspace_package_version.patch",
++    "rules_rs_dependency_kind_aliases.patch",
+     "rusty_v8_prebuilt_out_dir.patch",
+     "rusty_v8_windows_registry.patch",
+     "ring_windows_msvc_include_dirs.patch",
+diff --git a/patches/rules_rs_dependency_kind_aliases.patch b/patches/rules_rs_dependency_kind_aliases.patch
+new file mode 100644
+index 00000000..6e6cc205
+--- /dev/null
++++ b/patches/rules_rs_dependency_kind_aliases.patch
+@@ -0,0 +1,95 @@
++diff --git a/rs/extensions.bzl b/rs/extensions.bzl
++index 75fd8a8..ed20d66 100644
++--- a/rs/extensions.bzl
+++++ b/rs/extensions.bzl
++@@ -611,18 +611,28 @@ filegroup(
++
++     defs_bzl_contents = \
++         """load(":data.bzl", "DEP_DATA")
++-load("@rules_rs//rs/private:all_crate_deps.bzl", _all_crate_deps = "all_crate_deps")
+++load("@rules_rs//rs/private:all_crate_deps.bzl", _all_crate_aliases = "all_crate_aliases", _all_crate_deps = "all_crate_deps")
++
++ _PLATFORMS = [
++     {platforms}
++ ]
++
++-def aliases(package_name = None):
+++def aliases(package_name = None, normal = None, normal_dev = None, build = None):
++     dep_data = DEP_DATA.get(package_name or native.package_name())
++     if not dep_data:
++         return {{}}
++
++-    return dep_data["aliases"]
+++    # Preserve the original unfiltered API unless dependency kinds are supplied.
+++    if normal == None and normal_dev == None and build == None:
+++        return dep_data["aliases"]
+++
+++    return _all_crate_aliases(
+++        dep_data,
+++        platforms = _PLATFORMS,
+++        normal = normal,
+++        normal_dev = normal_dev,
+++        build = build,
+++    )
++
++ def crate_name(package_name = None):
++     dep_data = DEP_DATA.get(package_name or native.package_name())
++diff --git a/rs/private/all_crate_deps.bzl b/rs/private/all_crate_deps.bzl
++index f6d9ceb..3aa96c9 100644
++--- a/rs/private/all_crate_deps.bzl
+++++ b/rs/private/all_crate_deps.bzl
++@@ -36,13 +36,7 @@ def merge_structured_dep_specs(specs, platforms, filter_prefix):
++     deps, per_platform = compute_select(merged_deps, merged_by_platform)
++     return sorted(deps), per_platform
++
++-def all_crate_deps(
++-        dep_data,
++-        platforms,
++-        normal = False,
++-        normal_dev = False,
++-        build = False,
++-        filter_prefix = None):
+++def _selected_dep_specs(dep_data, normal, normal_dev, build):
++     specs = []
++
++     if normal_dev:
++@@ -54,8 +48,38 @@ def all_crate_deps(
++     if normal or not specs:
++         specs.append(_kind_dep_spec(dep_data, "deps"))
++
+++    return specs
+++
+++def all_crate_aliases(dep_data, platforms, normal = False, normal_dev = False, build = False):
+++    """Restrict aliases to the exact configured dependency labels of selected kinds."""
+++    deps, per_platform = merge_structured_dep_specs(
+++        _selected_dep_specs(dep_data, normal, normal_dev, build),
+++        platforms,
+++        None,
+++    )
+++    aliases = dep_data["aliases"]
+++    common = {dep: aliases[dep] for dep in deps if dep in aliases}
+++    branches = {}
+++    for platform, platform_deps in sorted(per_platform.items()):
+++        configured = dict(common)
+++        configured.update({dep: aliases[dep] for dep in platform_deps if dep in aliases})
+++        branches[platform] = configured
+++
+++    if not branches:
+++        return common
+++
+++    branches["//conditions:default"] = common
+++    return select(branches)
+++
+++def all_crate_deps(
+++        dep_data,
+++        platforms,
+++        normal = False,
+++        normal_dev = False,
+++        build = False,
+++        filter_prefix = None):
++     deps, per_platform = merge_structured_dep_specs(
++-        specs,
+++        _selected_dep_specs(dep_data, normal, normal_dev, build),
++         platforms,
++         filter_prefix,
++     )

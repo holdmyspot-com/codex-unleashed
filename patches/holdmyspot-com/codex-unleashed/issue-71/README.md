@@ -52,7 +52,7 @@ native-TLS fallback. Production certificate handling stays the same. This
 test-only patch requires the dependency patch and its prerequisites because
 it uses reqwest 0.13's `tls_backend_native` API.
 
-Two independent test-fixture patches also apply directly to the declared
+Three independent test-fixture patches also apply directly to the declared
 upstream base:
 
 - `startup-directory-fixture.patch` normalizes the directory exactly as the
@@ -61,6 +61,11 @@ upstream base:
 - `sandbox-temp-fixture.patch` puts redirected temporary-directory fixtures
   inside the test's writable workspace. The sandbox permission assertions
   remain unchanged.
+- `secrets-fallback-root-fixture.patch` exercises the path-hash fallback at
+  the canonical filesystem root. Temporary directories may inherit a Git
+  checkout, whose repository name correctly takes precedence over that
+  fallback. The test retains its exact hash assertion and needs no other
+  patches.
 
 These direct dependencies stay behind their newest release because a
 dependency requires an exact or bounded version:
@@ -226,6 +231,27 @@ temporary directory is outside a project and the daemon socket directory
 is available. A failure before the snapshot or sandbox permission assertions
 does not verify either fixture correction.
 
+Verify the independent secrets fixture from the declared upstream base with
+only `secrets-fallback-root-fixture.patch` applied:
+
+```sh
+just fmt-check
+just test -p codex-secrets --lib
+```
+
+All nine library tests must pass, including the exact fallback hash assertion,
+when the runner places its temporary directory beneath a Git checkout.
+After applying the full queue, verify the same library through Bazel without
+reusing test results:
+
+```sh
+bazel test //codex-rs/secrets:secrets-unit-tests --nocache_test_results --test_output=errors
+```
+
+The Rust test output must report nine passed tests and no failures or ignored
+tests. Bazel's summary of one passing test target alone does not establish
+that count.
+
 ## Upstream status
 
 The selected upstream release pins the older dependency versions. Remove the CVE-2026-85046 backport once the selected rusty_v8 release ships a
@@ -257,3 +283,35 @@ TLS followed by the C-standard correction. Both nested patches must apply to
 the selected AWS-LC release and produce valid Starlark. The action tests must
 retain fatal MSVC warnings and select C11 once. Full native release builds
 remain required; module application and analysis do not prove runtime behavior.
+
+## Bazel dependency aliases
+
+The later RUSTSEC-2024-0449 `yaml-parser-bazel-aliases.patch` preserves renamed Cargo
+dependencies when Bazel generates Rust dependency aliases. Library and binary
+targets receive normal dependencies, tests also receive development
+dependencies, and build scripts receive build dependencies. Platform-specific
+selections remain conditional. The generated `aliases()` call without
+arguments retains its existing behavior.
+
+The patch updates the rules_rs 0.1.3 generator and uses its public API to
+select aliases for each target's dependency kinds. It follows
+`latest-stable-dependencies.patch`, which supplies rules_rs 0.1.3 and
+keyring-core 1 metadata, and the earlier issue 61 Bazel registration patches
+that it extends. Apply it in the documented release queue order; its Codex
+integration requires that context. The filesystem-root secrets fixture is
+independent and affects only the verification test.
+
+From the prepared patched checkout, run:
+
+```sh
+just fmt-check
+bazel test //bazel/rules/testing/cargo_aliases:tests
+bazel test //bazel/rules/testing/cargo_aliases:tests --define=cargo_alias_platform=one
+bazel test //bazel/rules/testing/cargo_aliases:tests --define=cargo_alias_platform=two
+bazel test //codex-rs/secrets:secrets-unit-tests --nocache_test_results --test_output=errors
+```
+
+Each alias configuration must pass six checks covering normal, development,
+build, unconditional and platform-selected aliases. The secrets target must
+compile keyring-store with its renamed dependency and report nine passing
+Rust tests. Full native and remote CI remains required.
