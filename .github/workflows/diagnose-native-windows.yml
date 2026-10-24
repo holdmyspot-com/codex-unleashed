@@ -12,6 +12,7 @@ on:
           - windows-test-timeouts
           - windows-tui-proxy-phases
           - windows-lifecycle-source
+          - windows-sandbox-fixtures
           - windows-conpty-ctrl-c
           - windows-conpty-fixture
           - windows-archive-extraction
@@ -876,6 +877,144 @@ jobs:
             test --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings \
             --nocache_test_results "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" -- \
             //codex-rs/tui:tui-all-test //codex-rs/tui:tui-unit-tests
+
+  prepare-windows-sandbox-fixture-tooling:
+    if: inputs.focus == 'windows-sandbox-fixtures'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-11-arm]
+    uses: ./.github/workflows/prepare-tooling.yml
+    with:
+      runner: ${{ matrix.runner }}
+
+  windows-sandbox-fixtures:
+    if: inputs.focus == 'windows-sandbox-fixtures'
+    needs: prepare-windows-sandbox-fixture-tooling
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            rust-arch: x86_64
+            os-arch: X64
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            rust-arch: aarch64
+            os-arch: Arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare-patched-upstream
+        with:
+          require-tooling-cache: 'true'
+          upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
+          expected-upstream-commit: 83086188ae0614bd882818ff1aa23f3194962012
+      - uses: ./.github/actions/setup-ci
+      - uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ matrix.target }}
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+          cache-scope: bazel-test-windows-native-main
+          common-setup-complete: 'true'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify the native host and required PowerShell installation
+        shell: pwsh
+        env:
+          EXPECTED_OS_ARCH: ${{ matrix.os-arch }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'windows-sandbox-fixtures'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($architecture -ne $env:EXPECTED_OS_ARCH) { throw "Unexpected native OS architecture: $architecture" }
+          if (-not $env:SystemRoot -or -not (Test-Path -LiteralPath $env:SystemRoot -PathType Container)) { throw 'SystemRoot is missing' }
+          $powershell = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+          if (-not (Test-Path -LiteralPath $powershell -PathType Leaf)) { throw 'PowerShell 7 is missing' }
+          @("os_architecture=$architecture", "process_architecture=$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)", "os_version=$([Environment]::OSVersion.Version)") |
+            Set-Content (Join-Path $evidence 'runtime.txt')
+      - name: Require fixture prerequisites and compiled architecture inside each test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-sandbox-fixtures"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = 83086188ae0614bd882818ff1aa23f3194962012
+          git -C upstream diff --binary > "$evidence/prepared-queue.diff"
+          git -C upstream apply --check ../.github/diagnostics/windows-sandbox-fixture-acceptance.patch
+          git -C upstream apply ../.github/diagnostics/windows-sandbox-fixture-acceptance.patch
+          git -C upstream diff --binary > "$evidence/instrumented-source.diff"
+          {
+            printf 'dispatch_head=%s\nupstream_commit=%s\nrun_id=%s\nrun_attempt=%s\n' \
+              "$GITHUB_SHA" "$(git -C upstream rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            sha256sum .github/diagnostics/windows-sandbox-fixture-acceptance.patch
+            sha256sum patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-009{2,3}-*.patch
+            sha256sum upstream/codex-rs/core/tests/windows_sandbox.rs upstream/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+          } > "$evidence/provenance.txt"
+      - name: Run helper identity, elevated regression and legacy PowerShell gates
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          EXPECTED_RUST_ARCH: ${{ matrix.rust-arch }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/windows-sandbox-fixtures"
+          program_files_windows="$(cygpath -w "${PROGRAMFILES:?PROGRAMFILES is required}")"
+          system_root_windows="$(cygpath -w "${SYSTEMROOT:?SYSTEMROOT is required}")"
+          cd upstream
+          for gate in helpers elevated legacy; do
+            test_args=()
+            target=//codex-rs/core:core-windows_sandbox-test
+            case "$gate" in
+              helpers) test_args=(--test_arg=helper_staging_tests::) ;;
+              elevated) test_args=(--test_arg=--exact --test_arg=windows_elevated_unified_exec_enforces_large_recursive_deny_reads) ;;
+              legacy)
+                target=//codex-rs/windows-sandbox-rs:windows-sandbox-rs-unit-tests
+                test_args=(--test_arg=--exact)
+                for name in \
+                  legacy_non_tty_powershell_interrupt_terminates_process \
+                  legacy_capture_emits_output_and_preserves_descendant_after_normal_exit \
+                  legacy_capture_cancellation_terminates_descendants_without_timeout \
+                  legacy_tty_job_terminates_and_preserves_descendants \
+                  legacy_tty_powershell_emits_output_and_accepts_input; do
+                  test_args+=("--test_arg=unified_exec::tests::$name")
+                done
+                ;;
+            esac
+            status=0
+            "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-ci.sh" \
+              --print-failed-action-summary --print-failed-test-logs --windows-msvc-host-platform \
+              -- test --config=ci-windows-msvc --platforms=//:local_windows_msvc \
+              --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+              --test_verbose_timeout_warnings "--build_metadata=COMMIT_SHA=${GITHUB_SHA}" \
+              "--test_env=ProgramFiles=${program_files_windows}" "--test_env=SystemRoot=${system_root_windows}" \
+              "--test_env=CODEX_WINDOWS_FIXTURE_EXPECTED_ARCH=${EXPECTED_RUST_ARCH}" \
+              --nocache_test_results --flaky_test_attempts=1 --test_output=all --test_arg=--show-output \
+              --test_arg=--test-threads=1 --test_arg=--format=pretty --test_arg=--color=never \
+              "${test_args[@]}" -- "$target" 2>&1 | tee "$evidence/$gate.log" || status=$?
+            printf '%s\n' "$status" > "$evidence/$gate.status"
+          done
+          bash "${GITHUB_WORKSPACE}/.github/scripts/assert-windows-sandbox-fixture-evidence.sh" "$evidence" "$EXPECTED_RUST_ARCH"
+      - name: Retain focused Windows sandbox fixture acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-sandbox-fixtures-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/windows-sandbox-fixtures
+            ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: error
+          retention-days: 1
 
   windows-lifecycle-source:
     if: inputs.focus == 'windows-lifecycle-source'

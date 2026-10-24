@@ -1,0 +1,52 @@
+diff --git a/codex-rs/core/tests/windows_sandbox.rs b/codex-rs/core/tests/windows_sandbox.rs
+--- a/codex-rs/core/tests/windows_sandbox.rs
++++ b/codex-rs/core/tests/windows_sandbox.rs
+@@ -159,6 +159,13 @@ fn stage_windows_sandbox_helper(
+     destination: &Path,
+     copy: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+ ) -> std::io::Result<()> {
++    let expected_arch = std::env::var("CODEX_WINDOWS_FIXTURE_EXPECTED_ARCH")
++        .expect("native fixture acceptance requires an explicit architecture");
++    assert_eq!(std::env::consts::ARCH, expected_arch);
++    eprintln!(
++        "windows fixture acceptance: helper_arch={}",
++        std::env::consts::ARCH
++    );
+     if windows_sandbox_helper_matches(source, destination)? {
+         return Ok(());
+     }
+diff --git a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+--- a/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
++++ b/codex-rs/windows-sandbox-rs/src/unified_exec/tests.rs
+@@ -67,9 +67,21 @@ fn current_thread_runtime() -> tokio::runtime::Runtime {
+ }
+
+ fn pwsh_path() -> Option<PathBuf> {
+-    let program_files = std::env::var_os("ProgramFiles")?;
++    let expected_arch = std::env::var("CODEX_WINDOWS_FIXTURE_EXPECTED_ARCH")
++        .expect("native fixture acceptance requires an explicit architecture");
++    assert_eq!(std::env::consts::ARCH, expected_arch);
++    let program_files =
++        std::env::var_os("ProgramFiles").expect("native fixture acceptance requires ProgramFiles");
+     let path = PathBuf::from(program_files).join("PowerShell\\7\\pwsh.exe");
+-    path.is_file().then_some(path)
++    assert!(
++        path.is_file(),
++        "native fixture acceptance requires PowerShell 7"
++    );
++    eprintln!(
++        "windows fixture acceptance: powershell_arch={}",
++        std::env::consts::ARCH
++    );
++    Some(path)
+ }
+
+ fn sandbox_cwd() -> PathBuf {
+@@ -1050,6 +1062,7 @@ async fn assert_legacy_tty_descendant_lifecycle(
+     }
+     wait_for_process_exit(&descendant_process, Duration::from_secs(10))
+         .expect("sandbox ConPTY descendant did not exit");
++    eprintln!("windows fixture acceptance: tty_phase={lifecycle:?}");
+ }
+
+ #[test]
