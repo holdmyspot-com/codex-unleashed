@@ -1,0 +1,29 @@
+From 6f3b6d343dfe2ffc71087727cfbeef997d71fa8a Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 24 Oct 2026 05:18:56 +0000
+Subject: [PATCH] test: Isolate command-center defaults from host-managed
+ requirements
+
+The destination-default test owns its server configuration but loaded system requirements. A host fast_mode=false requirement strips the bundled model's priority tier and correctly sends default, contradicting this unrelated fixture's priority assertion.
+
+Use the existing managed-config isolation helper while retaining the fixture's explicit user config. Production requirement enforcement and all request assertions remain unchanged.
+
+RED: the exact remote-null-fast assertion fails with host fast_mode=false, recording gpt-6.1-sol with no supported tiers and serviceTier=default.
+GREEN: the maintained focused TUI check passes without retries after isolation. The integrated TUI library suite passes 5809 tests with four existing skips, native TTY, short outside-Git TMPDIR, and NO_COLOR unset. Standalone emitted formatting is a separate required gate.
+---
+ codex-rs/tui/src/app/tests/background_task_defaults_tests.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 438ce760..fe02e14c 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -317,7 +317,7 @@ async fn command_center_new_reads_server_defaults_for_actual_destination() -> Re
+             thread_mode,
+             LoaderOverrides {
+                 user_config_path: Some(server_home.path().join("config.toml").abs()),
+-                ..LoaderOverrides::default()
++                ..LoaderOverrides::without_managed_config_for_tests()
+             },
+         )
+         .await?;

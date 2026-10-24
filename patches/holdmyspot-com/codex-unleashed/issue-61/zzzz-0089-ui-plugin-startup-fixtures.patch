@@ -1,0 +1,42 @@
+From 27b838169f7e56bb6a82652faaa969b667a96c3e Mon Sep 17 00:00:00 2001
+From: Codex Unleashed <codex-unleashed@users.noreply.github.com>
+Date: Sat, 24 Oct 2026 04:47:14 +0000
+Subject: [PATCH] test: Make marketplace startup opt-in for generic UI fixtures
+
+Generic UI tests use a fresh Codex home and must not start real plugin repository synchronization. Plugin-specific tests explicitly enable their existing feature and retain their assertions. Production defaults are unchanged.
+
+The new fixture regression fails twice before the fixture change and passes without retries afterward on the integrated queue. Full TUI and Intel native contention controls remain required.
+---
+ codex-rs/tui/src/chatwidget/tests/helpers.rs | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/codex-rs/tui/src/chatwidget/tests/helpers.rs b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+index 9ce2635d..ffc6e133 100644
+--- a/codex-rs/tui/src/chatwidget/tests/helpers.rs
++++ b/codex-rs/tui/src/chatwidget/tests/helpers.rs
+@@ -17,6 +17,11 @@ pub(super) async fn test_config() -> (tempfile::TempDir, Config) {
+     )
+     .await
+     .expect("config");
++    // Plugin-specific tests opt in; generic UI fixtures avoid background marketplace downloads.
++    config
++        .features
++        .disable(codex_features::Feature::Plugins)
++        .expect("generic UI fixture permits plugin opt-out");
+     // Keep generic UI snapshots stable when the bundled catalog default changes.
+     config.model = Some("gpt-5.6-sol".to_string());
+     config.codex_home = codex_home.path().abs();
+@@ -1846,3 +1851,13 @@ pub(crate) fn normalize_completion_timestamps(
+         })
+         .into_owned()
+ }
++
++#[tokio::test]
++async fn generic_fixture_keeps_plugin_startup_opt_in() {
++    let (_home, config) = test_config().await;
++
++    assert!(
++        !config.features.enabled(codex_features::Feature::Plugins),
++        "generic UI fixtures must opt into plugin startup explicitly"
++    );
++}

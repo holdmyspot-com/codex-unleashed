@@ -2953,3 +2953,41 @@ just fmt-check
 
 This verifies directory selection, not the contents of a doctor subprocess's
 report for a remote workspace.
+
+## Generic UI plugin startup fixtures
+
+`zzzz-0089-ui-plugin-startup-fixtures.patch` keeps marketplace synchronization
+opt-in for generic UI fixtures. Plugin-specific cases explicitly enable the
+plugin feature and retain their behavior checks. Production feature defaults
+remain unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Run the maintained checks from the patched checkout root:
+
+```sh
+just test -p codex-tui --lib --retries 0
+just fmt-check
+```
+
+The focused regression is
+`chatwidget::tests::helpers::generic_fixture_keeps_plugin_startup_opt_in`.
+Native Intel macOS shard execution determines whether removing incidental
+marketplace work resolves its observed contention and timeouts.
+
+## Command-center managed configuration fixture
+
+`zzzz-0090-command-center-managed-fixture.patch` isolates the destination-default
+fixture from host-managed configuration while retaining its explicit server
+user configuration. A host `fast_mode = false` requirement removes priority
+from the model catalog, which conflicts with this fixture's requested tier.
+Production managed-requirement enforcement and request assertions remain unchanged.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Verify the fixture's local and remote destination cases:
+
+```sh
+just test -p codex-tui --lib --retries 0 -E 'test(=app::tests::background_task_defaults_tests::command_center_new_reads_server_defaults_for_actual_destination)'
+just fmt-check
+```
