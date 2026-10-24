@@ -877,13 +877,21 @@ jobs:
           if [[ "$FOCUS" == compiler-scheduler-baseline ]]; then
             arguments+=(--test_arg=configured_scheduler_must_be_available_before_compiler_starts --test_arg=--exact)
           fi
+          output_base="${GITHUB_WORKSPACE}/.cat/work/temp/build-caches/native-scheduler/bazel-output"
           set +e
-          bazel test //test/process_wrapper:compiler_scheduler_test \
+          bazel --client_debug "--output_base=$(cygpath -m "$output_base")" \
+            test //test/process_wrapper:compiler_scheduler_test \
             "${arguments[@]}" \
             --nocache_test_results --test_output=all --lockfile_mode=update \
             2>&1 | tee "$diagnostic"
           status=${PIPESTATUS[0]}
           set -e
+          printf '%s\n' "$status" > "${diagnostic%.log}.status"
+          if [[ -f "$output_base/server/jvm.out" ]]; then
+            tail -c 65536 "$output_base/server/jvm.out" > "${diagnostic%.log}-jvm.log"
+          else
+            printf 'No JVM log at configured output base: %s\n' "$output_base" > "${diagnostic%.log}-jvm.log"
+          fi
           if [[ "$FOCUS" == compiler-scheduler-native ]]; then
             if [[ "$status" != 0 ]]; then exit "$status"; fi
             grep -F 'test result: ok. 5 passed;' "$diagnostic"
