@@ -1,0 +1,136 @@
+diff --git a/src/backends/appcontainer/common/src/base_container_runner.rs b/src/backends/appcontainer/common/src/base_container_runner.rs
+index bb292cf..fadde85 100644
+--- a/src/backends/appcontainer/common/src/base_container_runner.rs
++++ b/src/backends/appcontainer/common/src/base_container_runner.rs
+@@ -411,6 +411,123 @@ fn guarded_capture_started_too_late(
+     guarded_capture_active && previous_suspend_count == 0
+ }
+
++// Diagnostic only: these handles are closed without startup-info attachment or
++// child creation. The original create/spawn below still uses the original request.
++fn diagnose_policy_create(request: &ExecutionRequest, original_spec: &[u8]) {
++    diagnose_policy_create_controls(request, |control, indices, request| {
++        use std::hash::Hasher;
++
++        let specification = if control == "exact" {
++            original_spec.to_vec()
++        } else {
++            build_psec_spec(request)
++        };
++        let mut hasher = std::hash::DefaultHasher::new();
++        hasher.write(&specification);
++        let digest = hasher.finish();
++        let result = SecurityEnvironmentApi::load()
++            .and_then(|api| api.create(&specification, PROCESS_SECURITY_ENVIRONMENT_FLAG_NONE));
++        match result {
++            Ok(environment) => {
++                environment.close();
++                eprintln!(
++                    "MXC policy diagnostic: control={control} indices={indices:?} spec_size={} spec_hash64={digest:016x} result=created close=returned",
++                    specification.len()
++                );
++                true
++            }
++            Err(learning_mode_windows::LearningModeError::HResultCall { code, .. }) => {
++                eprintln!(
++                    "MXC policy diagnostic: control={control} indices={indices:?} spec_size={} spec_hash64={digest:016x} hresult={code:#010x} close=not_created",
++                    specification.len()
++                );
++                false
++            }
++            Err(_) => {
++                eprintln!(
++                    "MXC policy diagnostic: control={control} indices={indices:?} spec_size={} spec_hash64={digest:016x} result=api_unavailable close=not_created",
++                    specification.len()
++                );
++                false
++            }
++        }
++    });
++}
++
++fn diagnose_policy_create_controls(
++    request: &ExecutionRequest,
++    mut probe: impl FnMut(&str, &[usize], &ExecutionRequest) -> bool,
++) {
++    const READONLY_LIMIT: usize = 64;
++    let full_created = probe("exact", &[], request);
++    let mut empty = request.clone();
++    empty.policy.readwrite_paths.clear();
++    empty.policy.readonly_paths.clear();
++    empty.policy.denied_paths.clear();
++    if !probe("filesystem_empty", &[], &empty) {
++        return;
++    }
++    let indices_for_drive = |drive: u8| {
++        request
++            .policy
++            .readonly_paths
++            .iter()
++            .take(READONLY_LIMIT)
++            .enumerate()
++            .filter_map(|(index, path)| {
++                let bytes = path.as_bytes();
++                (bytes.get(1) == Some(&b':')
++                    && bytes
++                        .first()
++                        .is_some_and(|value| value.eq_ignore_ascii_case(&drive)))
++                .then_some(index)
++            })
++            .collect::<Vec<_>>()
++    };
++    let c_indices = indices_for_drive(b'C');
++    let d_indices = indices_for_drive(b'D');
++    for (control, indices) in [("first_c", &c_indices), ("first_d", &d_indices)] {
++        if let Some(&index) = indices.first() {
++            let mut singleton = empty.clone();
++            singleton.policy.readonly_paths = vec![request.policy.readonly_paths[index].clone()];
++            probe(control, &[index], &singleton);
++        }
++    }
++    let mut singleton_failed = false;
++    for (index, entry) in request
++        .policy
++        .readonly_paths
++        .iter()
++        .take(READONLY_LIMIT)
++        .enumerate()
++    {
++        let mut singleton = empty.clone();
++        singleton.policy.readonly_paths = vec![entry.clone()];
++        if !probe("readonly_entry", &[index], &singleton) {
++            singleton_failed = true;
++        }
++    }
++    let truncated = request.policy.readonly_paths.len() > READONLY_LIMIT;
++    eprintln!(
++        "MXC policy diagnostic: control=readonly_summary inspected={} truncated={truncated} singleton_failed={singleton_failed}",
++        request.policy.readonly_paths.len().min(READONLY_LIMIT)
++    );
++    if full_created || singleton_failed || truncated {
++        return;
++    }
++    for (control, indices) in [("c_only", c_indices), ("d_only", d_indices)] {
++        if indices.is_empty() {
++            continue;
++        }
++        let mut grouped = empty.clone();
++        grouped.policy.readonly_paths = indices
++            .iter()
++            .map(|&index| request.policy.readonly_paths[index].clone())
++            .collect();
++        probe(control, &indices, &grouped);
++    }
++}
++
+ impl BaseContainerRunner {
+     pub fn new() -> Self {
+         Self::default()
+@@ -1560,6 +1677,7 @@ impl BaseContainerRunner {
+                     }
+                 }
+             } else {
++                diagnose_policy_create(&request, psec_spec);
+                 let result = SecurityEnvironmentApi::load()
+                     .and_then(|api| api.create(psec_spec, PROCESS_SECURITY_ENVIRONMENT_FLAG_NONE));
+                 match result {

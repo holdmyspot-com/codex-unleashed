@@ -1227,14 +1227,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git -C upstream rev-parse HEAD)" = 83086188ae0614bd882818ff1aa23f3194962012
           git -C upstream diff --binary > "$evidence/prepared-queue.diff"
+          cp .github/diagnostics/windows-mxc-sdk-policy.patch upstream/patches/windows_mxc_sdk_policy.patch
           git -C upstream apply --check ../.github/diagnostics/windows-mxc-policy.patch
           git -C upstream apply ../.github/diagnostics/windows-mxc-policy.patch
           git -C upstream diff --binary > "$evidence/instrumented-source.diff"
           {
             printf 'dispatch_head=%s\nupstream_commit=%s\nrun_id=%s\nrun_attempt=%s\n' \
               "$GITHUB_SHA" "$(git -C upstream rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
-            sha256sum .github/diagnostics/windows-mxc-policy.patch
+            printf 'mxc_sdk_commit=6cd3d58f05d3447e67109cfb75e042803b843ca4\n'
+            sha256sum .github/diagnostics/windows-mxc-policy.patch .github/diagnostics/windows-mxc-sdk-policy.patch
             find patches -type f -name '*.patch' -print0 | sort -z | xargs -0 sha256sum
+            sha256sum upstream/MODULE.bazel upstream/patches/BUILD.bazel upstream/patches/windows_mxc_sdk_policy.patch
             sha256sum upstream/codex-rs/mxc-sandbox/src/native.rs upstream/codex-rs/exec-server/tests/exec_process.rs
           } > "$evidence/provenance.txt"
       - name: Rebuild and execute the exact MXC pipe regression
@@ -1263,7 +1266,7 @@ jobs:
           # The inventory is emitted inside the actual MXC child launch path;
           # neither libtest's success line nor a capability skip proves execution.
           proof_status=0
-          for marker in 'category=readwrite count=' 'category=readonly count=' 'category=deny count=' 'runner_spawn begin'; do
+          for marker in 'category=readwrite count=' 'category=readonly count=' 'category=deny count=' 'runner_spawn begin' 'control=exact indices=' 'control=filesystem_empty indices='; do
             if ! grep -F "MXC policy diagnostic: $marker" "$evidence/console.log" > /dev/null; then
               printf 'Missing MXC body evidence: %s\n' "$marker" >&2
               proof_status=1
@@ -1271,6 +1274,31 @@ jobs:
           done
           if ! grep -E 'MXC policy diagnostic: runner_spawn (failed|child_created)' "$evidence/console.log" > /dev/null; then
             printf 'Missing MXC launch outcome evidence\n' >&2
+            proof_status=1
+          fi
+          # Ask the maintained launcher for the owning output base; authenticate
+          # the patched source actually materialized by crate_universe.
+          startup_args=()
+          if [[ -n "${BAZEL_OUTPUT_USER_ROOT:-}" ]]; then
+            startup_args+=("--output_user_root=${BAZEL_OUTPUT_USER_ROOT}")
+          fi
+          if "${GITHUB_WORKSPACE}/.github/scripts/run-bazel-with-buildbuddy.sh" "${startup_args[@]}" info output_base \
+            > "$evidence/output-base.txt" 2> "$evidence/output-base.stderr"; then
+            output_base="$(tr -d '\r' < "$evidence/output-base.txt")"
+            sdk_matches=0
+            for sdk_source in "$output_base"/external/*/src/backends/appcontainer/common/src/base_container_runner.rs; do
+              if [[ -f "$sdk_source" && "$(sha256sum "$sdk_source" | cut -d' ' -f1)" == '6a6eb18ef01fbbbe51835194899342a517c6c57bac290df433ed8aec17739bae' ]]; then
+                sdk_matches=$((sdk_matches + 1))
+                sha256sum "$sdk_source" >> "$evidence/applied-sdk-source.sha256"
+                cp "$sdk_source" "$evidence/applied-sdk-source.rs"
+              fi
+            done
+            if [[ "$sdk_matches" -ne 1 ]]; then
+              printf 'Expected one authenticated patched SDK source, found %s\n' "$sdk_matches" >&2
+              proof_status=1
+            fi
+          else
+            printf 'Could not authenticate materialized SDK source\n' >&2
             proof_status=1
           fi
           printf '%s\n' "$proof_status" > "$evidence/body-proof.status"

@@ -169,3 +169,29 @@ index 2121711..f9abc42 100644
 +        }
 +    }
 +}
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -550,6 +550,13 @@ crate.annotation(
+     workspace_cargo_toml = "rust/runfiles/Cargo.toml",
+ )
+
++# Diagnostic only: create/close controls preserve the production SDK pin.
++crate.annotation(
++    crate = "appcontainer_common",
++    patch_args = ["-p1"],
++    patches = ["//patches:windows_mxc_sdk_policy.patch"],
++)
++
+ # MXC keeps its Rust workspace below the repository root.
+ [
+     crate.annotation(
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,4 +1,5 @@
+ exports_files([
++    "windows_mxc_sdk_policy.patch",
+     "rules_rust_cargo_runtime_flags.patch",
+     "rules_rust_wrapper_parameter_files.patch",
+     "opusic_sys_library_directories.patch",
