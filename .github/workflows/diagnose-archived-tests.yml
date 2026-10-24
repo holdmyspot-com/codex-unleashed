@@ -223,12 +223,22 @@ jobs:
           java-version: '27.0.1+11'
           architecture: aarch64
 
+      - name: Locate the archived ARM tooling cache path
+        if: inputs.arm-launch-controls
+        id: arm_tooling_path
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$GITHUB_WORKSPACE/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime"
+          runtime="$(cygpath --windows "$runtime")"
+          printf 'runtime=%s\n' "$runtime" >> "$GITHUB_OUTPUT"
+
       - name: Restore the exact archived ARM tooling runtime
         if: inputs.arm-launch-controls
         id: arm_tooling
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
-          path: ${{ github.workspace }}/.cat/work/temp/build-caches/maven/target/tooling-distribution/runtime
+          path: ${{ steps.arm_tooling_path.outputs.runtime }}
           key: tooling-runtime-v1-Windows-ARM64-jdk-aarch64-liberica-27.0.1+11-64ac20488e11c8d568f4e8d133da7daf288645003cfe90c4a12eb7f855bc0d9b
           fail-on-cache-miss: true
 
