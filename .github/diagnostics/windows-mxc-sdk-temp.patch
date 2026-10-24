@@ -1,0 +1,60 @@
+diff --git a/src/backends/appcontainer/common/src/appcontainer_runner.rs b/src/backends/appcontainer/common/src/appcontainer_runner.rs
+index 41bc32f..55aaf40 100644
+--- a/src/backends/appcontainer/common/src/appcontainer_runner.rs
++++ b/src/backends/appcontainer/common/src/appcontainer_runner.rs
+@@ -136,7 +136,7 @@ pub(crate) fn create_default_env_entries() -> Result<Vec<(String, String)>, WxcE
+ }
+
+ /// Parse a double-null-terminated UTF-16 environment block into `(key, value)` pairs.
+-fn parse_environment_block(block: *const u16) -> Vec<(String, String)> {
++pub(crate) fn parse_environment_block(block: *const u16) -> Vec<(String, String)> {
+     let mut entries = Vec::new();
+     let mut offset = 0usize;
+     loop {
+diff --git a/src/backends/appcontainer/common/src/base_container_runner.rs b/src/backends/appcontainer/common/src/base_container_runner.rs
+index bb292cf..837eab4 100644
+--- a/src/backends/appcontainer/common/src/base_container_runner.rs
++++ b/src/backends/appcontainer/common/src/base_container_runner.rs
+@@ -1653,6 +1653,42 @@ impl BaseContainerRunner {
+                     });
+                 }
+             };
++            {
++                let env_entries = if current_env_ptr.is_null() {
++                    Vec::new()
++                } else {
++                    crate::appcontainer_runner::parse_environment_block(current_env_ptr.cast())
++                };
++                let diagnostic_value = |key: &str| {
++                    use std::hash::{Hash, Hasher};
++
++                    let matches: Vec<_> = env_entries
++                        .iter()
++                        .filter(|(name, _)| name.eq_ignore_ascii_case(key))
++                        .collect();
++                    let digest = matches.first().map(|(_, value)| {
++                        let mut hasher = std::collections::hash_map::DefaultHasher::new();
++                        value.hash(&mut hasher);
++                        hasher.finish()
++                    });
++                    (matches.len(), digest)
++                };
++                eprintln!(
++                    "MXC TEMP diagnostic: stage=pre_create_process temp={:?} tmp={:?}",
++                    diagnostic_value("TEMP"),
++                    diagnostic_value("TMP")
++                );
++                for key in ["TEMP", "TMP"] {
++                    let value = env_entries
++                        .iter()
++                        .find(|(name, _)| name.eq_ignore_ascii_case(key))
++                        .map(|(_, value)| value);
++                    eprintln!(
++                        "MXC TEMP diagnostic: stage=policy key={key} readwrite_exact={}",
++                        value.is_some_and(|value| request.policy.readwrite_paths.contains(value))
++                    );
++                }
++            }
+             let environment = (!current_env_ptr.is_null()).then_some(current_env_ptr);
+             let result = unsafe {
+                 CreateProcessW(

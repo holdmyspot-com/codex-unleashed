@@ -1,0 +1,158 @@
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 6da8ff00..27a7d404 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -549,6 +549,12 @@ crate.annotation(
+     crate = "runfiles",
+     workspace_cargo_toml = "rust/runfiles/Cargo.toml",
+ )
++crate.annotation(
++    crate = "appcontainer_common",
++    patch_args = ["-p1"],
++    patches = ["//patches:windows_mxc_sdk_temp.patch"],
++    workspace_cargo_toml = "src/Cargo.toml",
++)
+
+ # MXC keeps its Rust workspace below the repository root.
+ [
+@@ -557,7 +563,6 @@ crate.annotation(
+         workspace_cargo_toml = "src/Cargo.toml",
+     )
+     for name in [
+-        "appcontainer_common",
+         "learning_mode_core",
+         "learning_mode_windows",
+         "mxc_config_contract",
+diff --git a/codex-rs/exec-server/src/local_process.rs b/codex-rs/exec-server/src/local_process.rs
+index c2da0816..12b78851 100644
+--- a/codex-rs/exec-server/src/local_process.rs
++++ b/codex-rs/exec-server/src/local_process.rs
+@@ -371,6 +371,33 @@ impl LocalProcess {
+             &telemetry,
+         )
+         .await?;
++        if prepared.sandbox == SandboxType::WindowsMxc {
++            let env_entries: Vec<_> = prepared
++                .env
++                .iter()
++                .map(|(key, value)| (key.clone(), value.clone()))
++                .collect();
++            let diagnostic_value = |key: &str| {
++                use std::hash::Hash;
++                use std::hash::Hasher;
++
++                let matches: Vec<_> = env_entries
++                    .iter()
++                    .filter(|(name, _)| name.eq_ignore_ascii_case(key))
++                    .collect();
++                let digest = matches.first().map(|(_, value)| {
++                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
++                    value.hash(&mut hasher);
++                    hasher.finish()
++                });
++                (matches.len(), digest)
++            };
++            eprintln!(
++                "MXC TEMP diagnostic: stage=prepared temp={:?} tmp={:?}",
++                diagnostic_value("TEMP"),
++                diagnostic_value("TMP")
++            );
++        }
+         #[cfg(unix)]
+         let mut prepared = prepared;
+         #[cfg(unix)]
+diff --git a/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs b/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
+index f34aa493..6502743f 100644
+--- a/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
++++ b/codex-rs/exec-server/tests/exec_process/windows_sandbox.rs
+@@ -214,6 +214,29 @@ async fn tmpdir_uses_command_environment_over_rpc(
+         Duration::from_secs(/*secs*/ 30),
+     )
+     .await?;
++    let allowed_file = std::fs::read_to_string(command_temp.join("allowed.txt"));
++    let outside_file = std::fs::read_to_string(&outside);
++    eprintln!(
++        "MXC TEMP diagnostic: stage=files allowed_expected={} allowed_error={:?} outside_original={} outside_error={:?}",
++        allowed_file
++            .as_ref()
++            .is_ok_and(|value| value.trim_end() == "allowed"),
++        allowed_file
++            .as_ref()
++            .err()
++            .and_then(std::io::Error::raw_os_error),
++        outside_file.as_ref().is_ok_and(|value| value == "original"),
++        outside_file
++            .as_ref()
++            .err()
++            .and_then(std::io::Error::raw_os_error),
++    );
++    for line in stderr
++        .lines()
++        .filter(|line| line.starts_with("MXC TEMP diagnostic: "))
++    {
++        eprintln!("{line}");
++    }
+     assert_eq!(
+         (stdout.trim(), code, exited),
+         (
+@@ -224,12 +247,7 @@ async fn tmpdir_uses_command_environment_over_rpc(
+         "unexpected launch result, stderr: {stderr}"
+     );
+     assert_eq!(
+-        (
+-            std::fs::read_to_string(command_temp.join("allowed.txt"))?
+-                .trim_end()
+-                .to_owned(),
+-            std::fs::read_to_string(outside)?
+-        ),
++        (allowed_file?.trim_end().to_owned(), outside_file?),
+         ("allowed".to_owned(), "original".to_owned())
+     );
+     Ok(())
+diff --git a/codex-rs/mxc-sandbox/src/windows.rs b/codex-rs/mxc-sandbox/src/windows.rs
+index 56af7bbb..fec18a2c 100644
+--- a/codex-rs/mxc-sandbox/src/windows.rs
++++ b/codex-rs/mxc-sandbox/src/windows.rs
+@@ -46,6 +46,32 @@ pub(super) fn run() -> Result<i32> {
+     // Serde errors can quote arbitrary payload values; do not print them to stderr.
+     let command = crate::transport::decode(&mut env)
+         .map_err(|_| anyhow::anyhow!("invalid MXC launcher request"))?;
++    {
++        let env_entries: Vec<_> = env
++            .iter()
++            .map(|(key, value)| (key.clone(), value.clone()))
++            .collect();
++        let diagnostic_value = |key: &str| {
++            use std::hash::Hash;
++            use std::hash::Hasher;
++
++            let matches: Vec<_> = env_entries
++                .iter()
++                .filter(|(name, _)| name.eq_ignore_ascii_case(key))
++                .collect();
++            let digest = matches.first().map(|(_, value)| {
++                let mut hasher = std::collections::hash_map::DefaultHasher::new();
++                value.hash(&mut hasher);
++                hasher.finish()
++            });
++            (matches.len(), digest)
++        };
++        eprintln!(
++            "MXC TEMP diagnostic: stage=decoded temp={:?} tmp={:?}",
++            diagnostic_value("TEMP"),
++            diagnostic_value("TMP")
++        );
++    }
+     // The transport itself proves this is an explicit child environment; it
+     // may intentionally contain no variables once launcher state is removed.
+     let command_cwd = std::env::current_dir()?;
+diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
+index 2d29df41..ecb78ce8 100644
+--- a/patches/BUILD.bazel
++++ b/patches/BUILD.bazel
+@@ -1,4 +1,5 @@
+ exports_files([
++    "windows_mxc_sdk_temp.patch",
+     "rules_rust_cargo_runtime_flags.patch",
+     "rules_rust_wrapper_parameter_files.patch",
+     "opusic_sys_library_directories.patch",
