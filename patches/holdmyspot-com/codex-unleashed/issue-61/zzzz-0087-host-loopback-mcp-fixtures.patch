@@ -1,0 +1,119 @@
+From 9bd05c3bae61e074dd065b550263352c9c3c3ff9 Mon Sep 17 00:00:00 2001
+From: Codex <codex@example.invalid>
+Date: Sat, 24 Oct 2026 04:17:20 +0000
+Subject: [PATCH] test: Keep host-owned hook MCP fixtures reachable during
+ remote tests
+
+Register the bundled host cleanup MCP server in the local environment while
+retaining the selected tool executor. For executor-hook fixtures in Docker
+mode, use the existing native child exec-server fixture so host WireMock
+endpoints remain reachable through remote HTTP and filesystem RPC.
+
+Keep automatic placement for local and Wine runs and retain all hook policy,
+attachment, environment identity, metadata, and routing assertions. These
+fixtures exercise hook behavior; they no longer exercise Docker filesystem
+or network placement. Separate remote environment tests retain that scope.
+---
+ codex-rs/core/tests/suite/hooks.rs          | 15 ++++++++++--
+ codex-rs/core/tests/suite/hooks_executor.rs | 26 ++++++++++++++++++++-
+ 2 files changed, 38 insertions(+), 3 deletions(-)
+
+diff --git a/codex-rs/core/tests/suite/hooks.rs b/codex-rs/core/tests/suite/hooks.rs
+index 274874c..ecaf569 100644
+--- a/codex-rs/core/tests/suite/hooks.rs
++++ b/codex-rs/core/tests/suite/hooks.rs
+@@ -4546,7 +4546,8 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
+             .expect("disable executor capability discovery");
+         let repl: McpServerConfig = serde_json::from_value(serde_json::json!({
+             "url": repl_url,
+-            "environment_id": super::rmcp_client::remote_aware_environment_id(),
++            // This fixture owns a host loopback server, even when tools run remotely.
++            "environment_id": codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID,
+         }))
+         .expect("valid MCP configuration");
+         config
+@@ -4558,7 +4559,17 @@ async fn local_bundled_cleanup_hook_runs_without_saved_trust(
+             )
+             .expect("configure MCP server");
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    let test = builder.build_with_remote_and_local_env(&server).await?;
++    assert_eq!(
++        test.codex
++            .environment_selections()
++            .await
++            .into_iter()
++            .map(|selection| selection.environment_id)
++            .collect::<Vec<_>>(),
++        vec![super::rmcp_client::remote_aware_environment_id()],
++        "host MCP availability must not replace the selected tool executor",
++    );
+     assert!(!test.config.bypass_hook_trust);
+     assert_eq!(
+         test.config.features.enabled(Feature::CodexHooks),
+diff --git a/codex-rs/core/tests/suite/hooks_executor.rs b/codex-rs/core/tests/suite/hooks_executor.rs
+index f033f7c..84a2092 100644
+--- a/codex-rs/core/tests/suite/hooks_executor.rs
++++ b/codex-rs/core/tests/suite/hooks_executor.rs
+@@ -30,6 +30,8 @@ use codex_utils_path_uri::PathUri;
+ use core_test_support::apps_test_server::AppsTestServer;
+ use core_test_support::apps_test_server::apps_enabled_builder;
+ use core_test_support::apps_test_server::recorded_apps_tool_calls;
++use core_test_support::exec_server::ExecServerProcess;
++use core_test_support::is_remote_test_environment;
+ use core_test_support::responses::ResponseMock;
+ use core_test_support::responses::ev_assistant_message;
+ use core_test_support::responses::ev_completed;
+@@ -44,7 +46,9 @@ use core_test_support::skip_if_remote;
+ use core_test_support::submit_thread_settings;
+ use core_test_support::test_codex::TestCodex;
+ use core_test_support::test_codex::TestCodexBuilder;
++use core_test_support::test_codex::TestEnv;
+ use core_test_support::test_codex::test_codex;
++use core_test_support::test_docker_container_name;
+ use core_test_support::wait_for_event;
+ use core_test_support::wait_for_event_match;
+ use core_test_support::wait_for_mcp_server;
+@@ -874,7 +878,25 @@ async fn executor_plugin_hook_fixture(
+             )
+             .expect("configure Node REPL MCP server");
+     });
+-    let test = builder.build_with_auto_env(&server).await?;
++    // The MCP mock is host-owned. Keep the remote exec-server protocol under test
++    // without assigning the host's loopback URL to a different network namespace.
++    let executor = if test_docker_container_name().is_some() {
++        Some(ExecServerProcess::start().await?)
++    } else {
++        None
++    };
++    let test = if let Some(executor) = &executor {
++        let test_env =
++            TestEnv::local_with_exec_server_url(Some(executor.websocket_url.clone())).await?;
++        builder.build_with_environment(&server, test_env).await?
++    } else {
++        builder.build_with_auto_env(&server).await?
++    };
++    assert_eq!(
++        test.executor_environment().environment().is_remote(),
++        is_remote_test_environment(),
++        "remote fixture mode must retain a remote executor",
++    );
+     wait_for_mcp_server(&test.codex, "node_repl").await?;
+
+     let mut plugin_roots = Vec::new();
+@@ -913,6 +935,7 @@ async fn executor_plugin_hook_fixture(
+         responses,
+         hook_called,
+         plugin_roots,
++        _executor: executor,
+     })
+ }
+
+@@ -922,6 +945,7 @@ struct ExecutorHookFixture {
+     responses: ResponseMock,
+     hook_called: Arc<Notify>,
+     plugin_roots: Vec<(&'static str, PathUri)>,
++    _executor: Option<ExecServerProcess>,
+ }
+
+ impl ExecutorHookFixture {

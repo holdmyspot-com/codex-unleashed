@@ -2905,3 +2905,31 @@ remote and Windows executor requests, directory lifetime and unsupported resume.
 The interrupt scenarios verify real hook execution with the host-hook repair.
 Run the focused checks locally and under the maintained Docker and Wine lanes;
 local success does not establish either platform's behavior.
+
+## Host loopback MCP hook fixtures
+
+`zzzz-0087-host-loopback-mcp-fixtures.patch` keeps fixture-owned HTTP servers
+reachable without changing production transport routing. The host cleanup-hook
+fixture registers its MCP server locally alongside the selected executor and
+asserts that the tool executor selection stays unchanged.
+
+Executor-hook fixtures in Docker mode use the existing owned `ExecServerProcess`
+and `TestEnv::local_with_exec_server_url` support. A separate host child executes
+remote RPC with the remote environment identity, in the mock server's network
+namespace. Plugin discovery uses that child's filesystem. These fixtures verify
+plugin policy, hook attachment, mismatched identities and separate MCP routing;
+they do not verify Docker filesystem or network isolation. The separate Docker
+remote-environment suites retain that responsibility. Local and Wine placement
+keep their existing automatic environment selection.
+
+The standalone base is `rust-v0.163.0`
+(`83086188ae0614bd882818ff1aa23f3194962012`), without downstream prerequisites.
+Rebuild the native helper and core integration tests. Run the focused suites
+locally and under the maintained Docker test environment, then formatting:
+
+```sh
+just test -p codex-core --test all -E 'test(suite::hooks::local_bundled_cleanup_hook_runs_without_saved_trust) | test(suite::hooks_executor::)'
+just fmt-check
+```
+
+A passing local run does not establish the Docker-mode fixture branch executed.
