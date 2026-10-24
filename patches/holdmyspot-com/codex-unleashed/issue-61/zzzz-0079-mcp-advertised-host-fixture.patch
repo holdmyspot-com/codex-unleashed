@@ -1,6 +1,6 @@
-From 9571220b268432280ad3c9677116138317725b45 Mon Sep 17 00:00:00 2001
+From 2b6ad3034c5b42050f39461451c9178aa7e2239d Mon Sep 17 00:00:00 2001
 From: Gili Tzabari <cowwoc2020@gmail.com>
-Date: Fri, 23 Oct 2026 22:28:43 -0400
+Date: Sat, 24 Oct 2026 11:13:03 -0400
 Subject: [PATCH] test: allow the advertised Docker MCP fixture authority
 
 The remote Streamable HTTP test fixture advertises its Docker IP, but the
@@ -15,13 +15,19 @@ just test -p codex-rmcp-client --bin test_streamable_http_server
 configuration change; all five focused tests pass with it. just fmt-check
 passes. The full package run has 370 passes and three existing remote tests
 unable to start because a codex executable is absent from the scoped cache.
+
+Name anonymous optional arguments in the regression fixtures to satisfy the
+maintained argument-comment lint. CI run 40093103558 reproduces the two
+missing advertised_ip comments. Standalone emitted and integrated
+just fmt-check pass after this comment-only correction; hosted lint
+acceptance remains required.
 ---
  codex-rs/core/tests/suite/rmcp_client.rs      |   6 +-
  .../src/bin/test_streamable_http_server.rs    | 117 +++++++++++++++++-
  2 files changed, 121 insertions(+), 2 deletions(-)
 
 diff --git a/codex-rs/core/tests/suite/rmcp_client.rs b/codex-rs/core/tests/suite/rmcp_client.rs
-index fb0572a..cb53c57 100644
+index fb0572ae..cb53c573 100644
 --- a/codex-rs/core/tests/suite/rmcp_client.rs
 +++ b/codex-rs/core/tests/suite/rmcp_client.rs
 @@ -4666,6 +4666,7 @@ async fn start_remote_streamable_http_test_server(
@@ -52,7 +58,7 @@ index fb0572a..cb53c57 100644
      // The orchestrator can see the Docker container IP, but the behavior under
      // test is whether the remote-side MCP client can reach it. Probe through
 diff --git a/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs b/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
-index 31af242..8a56337 100644
+index 31af242e..cbf66724 100644
 --- a/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
 +++ b/codex-rs/rmcp-client/src/bin/test_streamable_http_server.rs
 @@ -2,6 +2,7 @@ use std::borrow::Cow;
@@ -175,11 +181,11 @@ index 31af242..8a56337 100644
 +    #[tokio::test]
 +    async fn absent_advertised_ip_preserves_loopback_defaults() {
 +        assert_eq!(
-+            initialize_status(None, "localhost:ACTUAL_PORT").await,
++            initialize_status(/*advertised_ip*/ None, "localhost:ACTUAL_PORT").await,
 +            StatusCode::OK
 +        );
 +        assert_eq!(
-+            initialize_status(None, "foreign.invalid:ACTUAL_PORT").await,
++            initialize_status(/*advertised_ip*/ None, "foreign.invalid:ACTUAL_PORT").await,
 +            StatusCode::FORBIDDEN
 +        );
 +    }

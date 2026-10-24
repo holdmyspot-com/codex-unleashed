@@ -2705,6 +2705,7 @@ upstream formatting gate from the patched checkout root:
 ```sh
 just test -p codex-rmcp-client --bin test_streamable_http_server -E 'test(host_validation_tests)'
 just fmt-check
+just bazel-argument-comment-lint
 ```
 
 All five focused tests must pass, covering IPv4, IPv6, exact port, foreign Host,
