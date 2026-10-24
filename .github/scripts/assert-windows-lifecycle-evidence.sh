@@ -17,7 +17,7 @@ capture_normal=unified_exec::tests::legacy_capture_emits_output_and_preserves_de
 capture_cancel=unified_exec::tests::legacy_capture_cancellation_terminates_descendants_without_timeout
 tty=unified_exec::tests::legacy_tty_job_terminates_and_preserves_descendants
 tests=("$capture_normal" "$capture_cancel" "$tty")
-declare -A known started completed passed capture phases
+declare -A known started completed passed capture phases launches
 for name in "${tests[@]}"; do
   known["$name"]=1
 done
@@ -26,6 +26,8 @@ summary_count=0
 duration='[0-9]+([.][0-9]+)?(ns|µs|us|ms|s)'
 completed_pattern="^windows lifecycle completed: ([a-zA-Z0-9_:]+) elapsed=(${duration})$"
 phase_pattern="^windows lifecycle tty phase completed: (Terminate|Preserve) elapsed=(${duration})$"
+# Each command is one Rust Debug string: embedded quotes/backslashes are escaped.
+launch_pattern='^windows lifecycle tty launch: lifecycle=(Terminate|Preserve) parent_command="([^"\\]|\\.)+" child_command="([^"\\]|\\.)+"$'
 passed_pattern='^test ([a-zA-Z0-9_:]+) \.\.\. ok$'
 summary_pattern='^test result: ok[.] 3 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in [0-9]+([.][0-9]+)?s$'
 
@@ -55,6 +57,15 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "${phases[Terminate]:-0}" == 1 ]] || fail "TTY preservation preceded termination coverage"
       fi
       phases["$phase"]=1
+      ;;
+    'windows lifecycle tty launch: '*)
+      [[ "$current" == "$tty" && "$line" =~ $launch_pattern ]] || fail "malformed or misplaced TTY launch: $line"
+      phase="${BASH_REMATCH[1]}"
+      [[ "${launches[$phase]:-0}" == 0 && "${phases[$phase]:-0}" == 0 ]] || fail "duplicate or completed TTY launch: $phase"
+      if [[ "$phase" == Preserve ]]; then
+        [[ "${phases[Terminate]:-0}" == 1 ]] || fail "TTY preservation launch preceded termination coverage"
+      fi
+      launches["$phase"]=1
       ;;
     'windows lifecycle '*) fail "unknown lifecycle marker: $line" ;;
     'capture root wait ended: '*|'capture stdout reader ended: '*|'capture stderr reader ended: '*|'capture joining stdout: '*|'capture joining stderr: '*|'capture readers joined: '*)
