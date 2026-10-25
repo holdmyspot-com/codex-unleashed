@@ -72,6 +72,14 @@ Both Linux architectures and Windows ARM64 emit the same six distinct Rust warni
 
 These are baseline Cargo-reported build durations before caching or scheduling changes. The five-minute target belongs to step 3. The two macOS jobs and Windows x86-64 job remain pending at this observation.
 
+## Pristine runtime trace and initial cache rollout
+
+The standalone Bash socket-stdin experiment does not establish the failing runtime's input descriptors. The unchanged spawning code selects null stdin for the relevant noninteractive path; observing the actual child is still required. [Run `40212321024`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40212321024), restart `e88f7d1a6523931b6ad1eea25cab1dced20b12bd`, runs only the failing remote sandbox profile case normally and under `strace`, from the same archive. The diagnostic records process arguments, path opens and descriptor operations, without source/test edits or file-content tracing. Archive identity and final source guards remain required. Tracing can affect sandbox execution, so its outcome must be compared with the untraced failure before drawing a conclusion. Hosted evidence remains pending.
+
+The initial cached release run `40211546824` starts the two verified Linux builds but fails Windows ARM before compilation: the ORAS setup action has no Windows ARM64 release asset. Commit `db820a915bd687aeeddb6a407fe7f0ed2b4e0e5b` explicitly selects the official ORAS 1.3.1 Windows amd64 asset and its published SHA-256. Focused [Windows ARM run `40212093326`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40212093326) verifies its installation, native OCI archive round trip, hard-link handling, changed-key miss, injected transport-failure propagation and GHCR login. The pristine source guards pass. These transport checks do not establish a compiled-output cache hit.
+
+That run then fails our cache-tag validation before contacting the registry: GNU `sha256sum` escapes a filename containing backslashes and prefixes its displayed digest with a backslash. The resulting identity is 65 characters. An isolated backslash-filename reproduction confirms the same behavior locally; hashing the same bytes through stdin produces the required 64-character digest. Commit `c6b7572c8ed8ad9ead5a0ef438c6ab574813eb43` applies that narrow command fix. [Windows ARM run `40212476702`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40212476702) owns the retry; build, smoke and GHCR save evidence remain pending. Existing Linux builds were not restarted.
+
 ## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex
