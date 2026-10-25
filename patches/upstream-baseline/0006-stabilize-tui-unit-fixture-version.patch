@@ -1,0 +1,38 @@
+From c39e643efd5477aca5c0b6c2a6677e8d42f1068d Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 08:11:12 +0000
+Subject: [PATCH] test: keep TUI unit-fixture versions stable across release
+ manifests
+
+---
+ codex-rs/tui/src/update_prompt.rs | 2 +-
+ codex-rs/tui/src/version.rs       | 7 +++++++
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
+index 30e948d..2e232b7 100644
+--- a/codex-rs/tui/src/update_prompt.rs
++++ b/codex-rs/tui/src/update_prompt.rs
+@@ -126,7 +126,7 @@ impl UpdatePromptScreen {
+         Self {
+             request_frame,
+             latest_version,
+-            current_version: env!("CARGO_PKG_VERSION").to_string(),
++            current_version: crate::version::CODEX_CLI_VERSION.to_string(),
+             update_action,
+             highlighted: UpdateSelection::UpdateNow,
+             selection: None,
+diff --git a/codex-rs/tui/src/version.rs b/codex-rs/tui/src/version.rs
+index 8c8d108..0dfda27 100644
+--- a/codex-rs/tui/src/version.rs
++++ b/codex-rs/tui/src/version.rs
+@@ -1,2 +1,9 @@
+ /// The current Codex CLI version as embedded at compile time.
++#[cfg(not(test))]
+ pub const CODEX_CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
++
++// Release tags change the manifest version while snapshots retain the development
++// version and its wrapping geometry. Unit fixtures use that fixed version;
++// executable smoke checks separately verify the actual embedded release version.
++#[cfg(test)]
++pub const CODEX_CLI_VERSION: &str = "0.0.0";
