@@ -11,7 +11,10 @@ evidence = Path(sys.argv[2]).resolve()
 evidence.mkdir(parents=True, exist_ok=True)
 exec_source = source / "codex-rs/exec-server/src/shell_snapshot.rs"
 fixture_source = source / "codex-rs/exec-server/tests/exec_process/shell_snapshot.rs"
-originals = {path: path.read_bytes() for path in (exec_source, fixture_source)}
+unit_source = source / "codex-rs/exec-server/src/shell_snapshot_tests.rs"
+originals = {
+    path: path.read_bytes() for path in (exec_source, fixture_source, unit_source)
+}
 exec_filter = (
     "test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)"
     " | test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_pipe_recovery)"
@@ -111,17 +114,30 @@ try:
             + needle,
         )
     )
-    if run_phase("bash-no-rc-counterfactual", exec_filter) != 0:
-        raise RuntimeError("Bash replay candidate still fails the four original cases")
-    if (
-        run_phase(
-            "bash-no-rc-integration-regressions",
-            "binary_id(codex-exec-server::exec_process) & test(shell_snapshot)",
+    unit = originals[unit_source].decode()
+    needle = """                prepared.command[2] =
+                    prepared.command[2].replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");"""
+    assert unit.count(needle) == 1
+    unit_source.write_text(
+        unit.replace(
+            needle,
+            """                let script = prepared.command.last_mut().expect("shell command script");
+                *script = script.replace(&format!("/dev/fd/{fd}"), "/dev/fd/SNAPSHOT");""",
         )
-        != 0
-    ):
+    )
+    candidate_status = run_phase("bash-no-rc-counterfactual", exec_filter)
+    integration_status = run_phase(
+        "bash-no-rc-integration-regressions",
+        "binary_id(codex-exec-server::exec_process) & test(shell_snapshot)",
+    )
+    unit_status = run_phase(
+        "bash-no-rc-unit-regressions",
+        "binary_id(codex-exec-server) & test(shell_snapshot::tests::)",
+    )
+    if (candidate_status, integration_status, unit_status) != (0, 0, 0):
         raise RuntimeError(
-            "Bash replay candidate fails related integration regressions"
+            "Bash replay candidate has failed gates; inspect all three phase logs "
+            "to distinguish startup failures from independent sandbox mount failures"
         )
 finally:
     for path, original in originals.items():
