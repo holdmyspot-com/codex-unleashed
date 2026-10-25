@@ -34,3 +34,11 @@ Public npm publication and issue mutation are excluded. PR closure remains defer
 | `.github/workflows/zstd` | DotSlash manifest pinning the Windows zstd executable for x86-64 and ARM64 emulation. | D3, if required as a package/helper resource | Downloads a pinned upstream artifact; no publication or issue mutation. |
 
 This is source review only. It does not demonstrate hosted execution, establish that D7 artifact producers are required, or authorize copying any workflow unchanged. The complete file-level ledger remains [old-main-file-inventory.tsv](old-main-file-inventory.tsv).
+
+## Auxiliary artifact consumers (D7)
+
+The pinned upstream lockfile resolves V8 152.2.0. Both old-main and pinned-upstream `.github/actions/setup-rusty-v8/action.yml` resolve its release tag and download matching libraries, bindings and checksums from `openai/codex`. The old-main package builder also uses that repository. The standalone `rusty-v8-release.yml` producer publishes to its current repository. Copying that producer does not establish a handoff to these consumers. Retain the verified upstream artifact setup for the baseline; an independent producer remains deferred unless an approved consumer needs its outputs.
+
+Pinned upstream's package layout has no zsh resource or `codex-zsh` manifest. Old main adds that Unix resource and passes its checked-in `scripts/codex_package/codex-zsh` manifest to package assembly. That manifest pins `codex-zsh-v0.1.0` assets under `openai/codex`. Its standalone zsh producer publishes archives to the current repository; the inspected workflow does not generate the alternate manifest needed to connect those outputs to the default package consumer. Live zsh asset availability has not been verified. Revisit the resource, manifest and producer together when approved product patches and packaging require them.
+
+These findings narrow the source-level producer/consumer assumptions; they do not enable auxiliary releases or establish canary-service acceptance. All D7 migration checkboxes remain open.
