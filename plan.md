@@ -11,6 +11,7 @@ Selected scope:
 - Root contents: only `plan.md`.
 - Product publication: patched Codex CLI and app-server packages; no standalone SDK releases. npm package delivery remains local-registry only.
 - Build coverage: the existing release matrix, beginning with a local Linux check: Linux ARM64 and x86_64 musl, macOS Apple Silicon and Intel, and Windows ARM64 and x86_64 MSVC.
+- Build scope: build only Codex CLI, app-server and the dependencies, helpers, resources and tools required to produce their selected release artifacts. Do not build unrelated workspace packages, standalone SDKs, examples or auxiliary projects. Before adding a build target, identify the Codex artifact or required verification that consumes it; use the smallest target set that satisfies that need.
 - GitHub runner cost: use only free standard GitHub-hosted runners. Do not provision or select paid larger runners; investigate storage consumption and adapt the build workflow within the free runners' limits.
 - Branch publication: pushing ongoing work to `main.new` is authorized without repeated approval. Publishing releases remains a separate decision.
 
@@ -35,6 +36,10 @@ At the owner's request, 19 obsolete linked worktrees were removed. Eighteen unco
 The implementing agent reads this file from the branch before resuming. Follow the sequence except for the owner-authorized overlap below. Mark a checkbox complete only after its acceptance checks pass; record its implementation commit, exact commands, toolchain, configuration, results, diagnostic locations, and relevant timings beneath the step. Keep unrun and failed checks explicit. Reuse verified results only while their determining inputs remain valid.
 
 Each checkbox below represents one change to apply. Split a step into smaller independently verifiable changes when evidence requires it, preserving the sequence. Prefer one working commit per coherent change. Pull individual patches or relevant hunks from the recorded old-main commit when suitable; write a smaller or better implementation when justified. Inspect prerequisites and separate mixed product, build, warning-policy, and dependency changes before importing them.
+
+Apply the build scope above throughout all checkpoints, caching and scheduling. Do not run a whole-workspace build or test suite merely because upstream provides one. Compile test targets only for required Codex verification, and keep those checks separate from release-build dependencies. An unrelated repository check must not introduce extra build targets or become a baseline gate.
+
+Baseline gates must serve the Codex release build or relevant runtime behavior. The manifest-convention checker and Python SDK formatter-command assertion are supplemental repository checks, not release compilation or packaging dependencies. Their confirmed upstream failures remain recorded, but they do not block steps 1–3 and no repair is scheduled for them in step 4. Keep those findings in the final concerns list for later review. This corrects the earlier inclusion of unrelated repository checks in the build baseline; it does not waive Codex compilation, executable smokes or relevant runtime checks.
 
 For every failure in our environment, establish whether the corresponding operation also fails upstream before attributing it to the environment or the test. Record the exact source, command, target, toolchain, prerequisites, execution/guard evidence and upstream result in the [upstream failure comparison](docs/upstream-failure-comparison.md). A cached target pass, different revision, skipped fixture or workflow that failed before the test is insufficient to prove that the failing path passes upstream. If the operation is downstream-only, establish that it has no upstream counterpart and diagnose its owning wrapper separately. Unknown upstream behavior remains an unmet comparison gate; do not label it a test defect or close the baseline on that evidence. The three approved repair deferrals remain in force, but do not waive this comparison requirement.
 
@@ -302,3 +307,12 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/openai/codex/security-RUSTSEC-2024-0449/yaml-parser-bazel-aliases.patch` | Pending review; not migrated. |
 | `patches/openai/codex/security-RUSTSEC-2026-0346/update-rustls.patch` | Pending review; not migrated. |
 | `patches/openai/codex/security-RUSTSEC-2026-0367/zip-security-update.patch` | Pending review; not migrated. |
+
+## Supplemental upstream findings for later review
+
+These are retained findings, not baseline gates or selected migrations. The pinned release's build does not depend on either check; avoid source/test changes for them during this restart unless later scope explicitly requires them.
+
+| Finding | Upstream comparison | Disposition |
+| --- | --- | --- |
+| Stale `MANIFEST_FEATURE_EXCEPTIONS` entry for `code-mode/Cargo.toml` | Parent repo-check job `119599956729` fails the same check; relevant files are identical to the pinned release. | Supplemental repository-convention failure; retain for later discussion. Earlier repair remains discarded. |
+| Python SDK `test_root_format_driver_covers_all_formatter_groups` | Parent SDK job `119599956750` fails the same command-selection assertion; relevant files are identical to the pinned release. | Supplemental SDK/formatter consistency failure; retain for later discussion. Earlier repair remains discarded. |
