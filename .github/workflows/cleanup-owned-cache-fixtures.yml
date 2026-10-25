@@ -2,6 +2,7 @@ name: Remove completed private-cache fixtures
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

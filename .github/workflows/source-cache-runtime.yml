@@ -3,6 +3,10 @@ name: Cargo cache helper runtime
 on:
   workflow_dispatch:
     inputs:
+      cleanup-fixtures:
+        description: Remove only the two completed private-cache fixtures recorded in the cleanup request
+        type: boolean
+        default: false
       target:
         description: Release target to verify, or all for the complete native matrix
         type: string
@@ -20,7 +24,15 @@ permissions:
   contents: read
 
 jobs:
+  cleanup:
+    if: inputs.cleanup-fixtures
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cleanup-owned-cache-fixtures.yml
+
   select:
+    if: inputs.cleanup-fixtures == false
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.matrix.outputs.value }}
