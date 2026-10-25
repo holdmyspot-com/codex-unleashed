@@ -2,43 +2,42 @@ name: Stable upstream release builds
 
 on:
   workflow_dispatch:
+    inputs:
+      cache:
+        description: Use GHCR compiled outputs and Actions downloads for verified release targets
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - id: matrix
+        env:
+          CACHE_ENABLED: ${{ inputs.cache }}
+        run: |
+          value="$(jq -c --argjson cache "$CACHE_ENABLED" 'if $cache then map(select(."baseline-verified" == true)) else . end | {include: .}' .github/release-matrix.json)"
+          printf 'value=%s\n' "$value" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: select
+    permissions:
+      contents: read
+      packages: write
     name: Baseline - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-            split-debug-info: "off"
-            binary-suffix: ""
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-            split-debug-info: "off"
-            binary-suffix: ""
-          - runner: macos-15
-            target: aarch64-apple-darwin
-            split-debug-info: packed
-            binary-suffix: ""
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-            split-debug-info: packed
-            binary-suffix: ""
-          - runner: windows-2025
-            target: x86_64-pc-windows-msvc
-            split-debug-info: "off"
-            binary-suffix: .exe
-          - runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            split-debug-info: "off"
-            binary-suffix: .exe
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
     env:
       CODEX_REPO_ROOT: ${{ github.workspace }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -67,6 +66,9 @@ jobs:
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
+          cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
+          sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh > "$evidence/cache-wrapper-inputs.sha256"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve the exact stable upstream source
@@ -97,12 +99,23 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache Cargo dependency downloads
+        if: inputs.cache
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a
+        with:
+          prefix-key: upstream-${{ steps.inputs.outputs.commit }}-downloads-v1
+          workspaces: codex-rs -> ${{ env.CARGO_TARGET_DIR }}
+          cache-targets: false
+          cache-bin: false
+          add-rust-environment-hash-key: false
+          shared-key: ${{ matrix.target }}
+
       - name: Install upstream's Zig prerequisite
         if: runner.os == 'Linux'
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
           version: 0.14.0
-          use-cache: false
+          use-cache: ${{ inputs.cache }}
 
       - name: Install upstream's musl build inputs
         if: runner.os == 'Linux'
@@ -131,6 +144,55 @@ jobs:
       - name: Select upstream's Windows SQLite configuration
         if: matrix.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Set up the GHCR cache transport
+        if: inputs.cache
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      - name: Verify native cache archive transport
+        if: inputs.cache
+        run: |
+          set -euo pipefail
+          CODEX_TEST_ORAS="$(command -v oras)" TMPDIR="$RUNNER_TEMP" bash "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cache-transport-test.log"
+
+      - name: Log in to the GHCR cache
+        if: inputs.cache
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Identify exact compiled-cache inputs
+        id: cache_inputs
+        if: inputs.cache
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          {
+            cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256"
+            rustc -vV
+            printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+            env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC|CXX|AR|CFLAGS|CXXFLAGS|CMAKE_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Z_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Z_]+)='
+            sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
+          } > "$evidence/compiled-cache-inputs.txt"
+          identity="$(sha256sum "$evidence/compiled-cache-inputs.txt" | cut -d ' ' -f 1)"
+          printf 'tag=cargo-v3-%s-%s\n' "$TARGET" "$identity" >> "$GITHUB_OUTPUT"
+
+      - name: Restore compiled Cargo outputs from GHCR
+        if: inputs.cache
+        env:
+          CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+        run: |
+          set -euo pipefail
+          set +e
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-restore.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          case "$result" in
+            0|3) ;;
+            *) exit "$result" ;;
+          esac
 
       - name: Build and hash the Linux sandbox helper
         if: runner.os == 'Linux'
@@ -185,6 +247,14 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+
+      - name: Save verified compiled Cargo outputs to GHCR
+        if: success() && inputs.cache
+        env:
+          CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Retain baseline evidence for one day
         if: always()
