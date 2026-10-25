@@ -48,6 +48,17 @@ The image command ultimately exits 110 because nextest cannot write JUnit result
 
 The native Bazel workflow offers `exec_server_shells=true` to select only the maintained exec-server unit and exec-process targets on one free Linux runner. Its normal dispatch still runs the complete two-shard selection. The focused invocation retains successful test output and filters for `shell_snapshot`; upstream's `BUILD.bazel` supplies `--test-threads=1` to both targets. System bubblewrap remains installed so the comparison can expose the sandbox assertions exercised natively. Source identity and final source/test guards remain mandatory. This distinguishes a Bazel/native result from Cargo/nextest and the pinned-image guard returns; it does not reproduce BuildBuddy's executor. Hosted acceptance remains unrun.
 
+## Pristine Linux release build acceptance
+
+[Six-platform run `40203396093`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40203396093), restart commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1`, has successful Linux x86-64 and ARM64 musl jobs. Downloaded evidence confirms pinned source `6aaac694803004a63c6f393d153c96d22521a6b9`, an empty initial source diff, Rust 1.99.1, both release bundles built with default features, both native version smokes at 0.164.0 and a passing final source/test guard. Warnings remain nonfatal. These are unmodified-source build and version-smoke results; they do not establish a passing test suite or complete six-platform acceptance.
+
+| Target | Bundled bwrap build | Primary bundle | App-server bundle |
+| --- | --- | --- | --- |
+| x86_64-unknown-linux-musl | 20.93 s | 31 min 24 s | 10 min 27 s |
+| aarch64-unknown-linux-musl | 22.16 s | 34 min 56 s | 10 min 28 s |
+
+These are baseline Cargo-reported build durations before caching or scheduling changes. The five-minute target belongs to step 3. The four macOS/Windows jobs remain pending at this observation.
+
 ## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex
