@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1444749307,
+    "name": "sha256:7858acaf0b640ac4a1722fd35246165feb017ab3fad38fb63fc1cb5d84c19b94",
+    "tags": [
+      "cargo-v3-x86_64-unknown-linux-gnu-cff878e9aea23865d0a65681bf79f21292f53facd5908e8379cb4178462bacaa-partial",
+      "cargo-release-6fb420acb99a82809ae861963d057a972d4fbd684997fd613ecae2d01ab3b1f5-rust-v0.164.0"
+    ]
+  },
+  {
+    "id": 1444788341,
+    "name": "sha256:ba8c5e4a2d8010fe56197383e137ed0f5b6f9c1f1ec7a94574a5b25ea8e0ba38",
+    "tags": [
+      "cargo-v3-x86_64-unknown-linux-gnu-866982986a0bb41ffb90109888b9c980266deace96903462b0d0c0858ac30274-partial",
+      "cargo-release-3a4e54d367dc37bc837a72be3cb8b828fe8c76c4e0f760c34126a7046938b85b-rust-v0.164.0"
+    ]
+  }
+]
