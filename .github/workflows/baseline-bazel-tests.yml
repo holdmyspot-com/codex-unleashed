@@ -1,0 +1,137 @@
+name: Stable upstream native Bazel tests
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-bazel-tests.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - .github/upstream-compat-releases.json
+      - patches/upstream-baseline/**
+      - patches/upstream-check-policy/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-bazel-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-bazel-policy"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-bazel-patches/*.patch "$RUNNER_TEMP"/baseline-bazel-policy/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/source-before.diff"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
+
+      - name: Install Linux development prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+
+      - name: Install the pinned upstream Bazel version
+        run: |
+          set -euo pipefail
+          test "$(cat .bazelversion)" = 9.2.0
+          tools="$RUNNER_TEMP/baseline-bazel-tools"
+          mkdir -p "$tools"
+          curl --fail --location --retry 3 --output "$tools/bazel" https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-linux-x86_64
+          printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$tools/bazel" | sha256sum -c -
+          chmod +x "$tools/bazel"
+          "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-bazel-evidence/bazel-version.txt"
+          printf '%s\n' "$tools" >> "$GITHUB_PATH"
+
+      - name: Run the full maintained Bazel suite without a second disk-cache copy
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          export CODEX_COMPAT_RELEASES
+          CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+              du -k --max-depth=3 -- "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p'
+              sleep 60
+            done
+          ) >> "$evidence/disk-usage.log" &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
+            test --disk_cache= --test_tag_filters=-argument-comment-lint \
+            --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            //... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
+            2>&1 | tee "$evidence/bazel-tests.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
+          git diff --binary > "$evidence/source-after.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          exit "$result"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-native-bazel-tests
+          path: ${{ runner.temp }}/baseline-bazel-evidence
+          retention-days: 1
+          if-no-files-found: warn
