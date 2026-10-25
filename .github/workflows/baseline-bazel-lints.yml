@@ -186,7 +186,7 @@ jobs:
           clippy_args=(--config=clippy --@rules_rust//rust/settings:clippy_flag=-Wwarnings --disk_cache=)
           if [[ "$RUNNER_OS" == Windows ]]; then
             wrapper_args+=(--windows-cross-compile)
-            clippy_args+=(--skip_incompatible_explicit_targets --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
+            clippy_args+=(--workspace_status_command=./scripts/workspace-status.cmd --skip_incompatible_explicit_targets --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             clippy_args+=(

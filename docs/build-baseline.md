@@ -16,6 +16,16 @@ The parent's [Linux GNU Bazel job](https://github.com/openai/codex/actions/runs/
 
 The separate upstream nextest workflow uses an archive, workspace remapping and four hash partitions. Our earlier Linux nextest workflow compiled and ran the full suite in one job on a standard free hosted runner. Resource pressure and test ordering are hypotheses to isolate, not established causes of all remaining failures. Upstream's maintained fixture can return early when bubblewrap is unavailable; a passing target alone does not prove the same sandbox path ran. Preserve the original tests and obtain relevant execution evidence before drawing that conclusion.
 
+## Unmodified-source environment investigation
+
+The Windows comparison in cancelled run `40198569205` completed its `clean-opus` phase before cancellation. The retained artifact verifies the exact stable commit, unchanged source before/after, and only the separately recorded Cargo-generated workspace-version lock synchronization. The unchanged Opus build step fails Bazel's output validation: all five installed Opus header links are dangling, pointing into `D:/o/execroot/_main/external/rules_rs++crate+crates__opusic-sys-0.7.5/opus/include`. Later phases did not finish and establish no acceptance. This isolates the failure from our candidate source/test patches. It does not establish why those links become invalid.
+
+Upstream's Windows GNU job uses Linux remote build execution and native Windows tests; our credential-free fallback builds locally on Windows. Upstream's native MSVC job on the same parent also fails, initially fetching voice/MSVC prerequisites and later in separate tests. Consequently neither that failed native job nor the GNU remote-build successes prove our local Windows build path should already pass. Compare the build-script inputs and toolchain execution before changing any dependency source.
+
+Both minimal Windows status comparisons establish a separate configuration fix: passing `--workspace_status_command=./scripts/workspace-status.cmd` produces the pinned commit without changing upstream source or tests. The Windows Bazel test, Clippy and release-check invocations now select that maintained script explicitly. This narrow setting avoids changing target or host-platform selection. Full native acceptance remains unrun for the corrected invocations.
+
+The upstream Linux execution-log artifact independently confirms the two exec-server test actions use the pinned Docker image `docker.io/mbolin491/codex-bazel@sha256:0a8e56bfaa3b2e5279db0d3bb2d62b44ba5e5d63a37d97eb8790f49da570af70`, `--test-threads=1` and remote cached results. It contains action metadata, not the passing tests' stdout; sandbox execution versus fixture early-return remains unknown. The separate focused unmodified-source Cargo run is `40202995599`; pristine six-target Cargo release builds run as `40203396093`. Both use restart commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1`; no outcome is inferred before their terminal evidence.
+
 ## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex
