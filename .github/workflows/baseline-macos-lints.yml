@@ -108,12 +108,29 @@ jobs:
             curl --fail --location --retry 3 --output "$native/archives/$archive" "$url"
             printf '%s  %s\n' "$digest" "$native/archives/$archive" | shasum -a 256 -c -
           done < "$native/sources.tsv"
+          compiler="$(xcrun --find clang)"
+          sdk="$(xcrun --sdk macosx --show-sdk-path)"
+          printf 'int main(void) { return 0; }\n' > "$native/compiler-probe.c"
+          if env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin MACOSX_DEPLOYMENT_TARGET=14.0 \
+            "$compiler" -fuse-ld=/usr/bin/ld "$native/compiler-probe.c" -o "$native/compiler-probe" \
+            > "$RUNNER_TEMP/baseline-evidence/compiler-without-sdk.log" 2>&1; then
+            echo 'The SDK-free probe succeeds on this host; explicit SDK verification follows.'
+          else
+            grep -F "library 'System' not found" "$RUNNER_TEMP/baseline-evidence/compiler-without-sdk.log"
+          fi
+          env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin MACOSX_DEPLOYMENT_TARGET=14.0 \
+            "$compiler" -fuse-ld=/usr/bin/ld -isysroot "$sdk" "$native/compiler-probe.c" -o "$native/compiler-probe" \
+            > "$RUNNER_TEMP/baseline-evidence/compiler-with-sdk.log" 2>&1
+          "$native/compiler-probe"
           python third_party/voice/build_native.py \
             --archives "$native/archives" --output "$native/build" \
             --cc "$(xcrun --find clang)" --cxx "$(xcrun --find clang++)" \
             --cmake "$native/tools/CMake.app/Contents/bin/cmake" \
             --make /usr/bin/make --pkg-config "$(command -v pkg-config)" \
             --shell /bin/bash --target "$TARGET" --deployment-target 14.0 \
+            --c-flag=-isysroot --c-flag="$sdk" \
+            --cxx-flag=-isysroot --cxx-flag="$sdk" \
+            --link-flag=-isysroot --link-flag="$sdk" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/native-build.log"
           cp "$native/build/built.json" "$RUNNER_TEMP/baseline-evidence/native-built.json"
           printf '#!/bin/sh\nexec "%s" --define-prefix "$@"\n' "$(command -v pkg-config)" > "$native/pkg-config"
