@@ -11,6 +11,10 @@ on:
         description: Test private GHCR partial-state round trip (select x86_64-unknown-linux-musl)
         type: boolean
         default: false
+      resume-partial-run:
+        description: Successful producer run whose partial fixture should resume on this new runner
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -28,9 +32,18 @@ jobs:
         env:
           SELECTED_TARGET: ${{ inputs.target || 'all' }}
           PARTIAL_CACHE_ENABLED: ${{ inputs.partial-cache }}
+          RESUME_PARTIAL_RUN: ${{ inputs.resume-partial-run }}
         run: |
           if [[ "$PARTIAL_CACHE_ENABLED" == true && "$SELECTED_TARGET" != x86_64-unknown-linux-musl ]]; then
             printf 'The private partial-cache diagnostic requires target=x86_64-unknown-linux-musl.\n' >&2
+            exit 2
+          fi
+          if [[ -n "$RESUME_PARTIAL_RUN" && "$PARTIAL_CACHE_ENABLED" != true ]]; then
+            printf 'Resuming a producer requires partial-cache=true.\n' >&2
+            exit 2
+          fi
+          if [[ -n "$RESUME_PARTIAL_RUN" && ! "$RESUME_PARTIAL_RUN" =~ ^[0-9]+$ ]]; then
+            printf 'The producer run ID must contain decimal digits only.\n' >&2
             exit 2
           fi
           value="$(jq -ce --arg target "$SELECTED_TARGET" '
@@ -45,6 +58,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
       packages: write
     strategy:
@@ -101,9 +115,32 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
+      - name: Retrieve the successful producer's fixture identity
+        if: inputs.resume-partial-run != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESUME_PARTIAL_RUN: ${{ inputs.resume-partial-run }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/source-cache-evidence"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RESUME_PARTIAL_RUN" \
+            --jq '{id, head_sha, status, conclusion, path}' > "$evidence/producer-run.json"
+          jq -e '.status == "completed" and .conclusion == "success" and .path == ".github/workflows/source-cache-runtime.yml"' \
+            "$evidence/producer-run.json"
+          producer_commit="$(jq -r .head_sha "$evidence/producer-run.json")"
+          gh api "repos/$GITHUB_REPOSITORY/git/trees/$producer_commit?recursive=1" \
+            --jq '[.tree[] | select(.path == "tooling/cli" or .path == ".github/scripts/test-source-cache-runtime.py") | {key: .path, value: .sha}] | from_entries' \
+            > "$evidence/producer-inputs.json"
+          test "$(jq -r '.["tooling/cli"]' "$evidence/producer-inputs.json")" = "$(git rev-parse HEAD:tooling/cli)"
+          test "$(jq -r '.[".github/scripts/test-source-cache-runtime.py"]' "$evidence/producer-inputs.json")" = "$(git rev-parse HEAD:.github/scripts/test-source-cache-runtime.py)"
+          gh run download "$RESUME_PARTIAL_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name source-cache-runtime-x86_64-unknown-linux-musl \
+            --dir "$RUNNER_TEMP/source-cache-producer"
+
       - name: Exercise the packaged launcher and Cargo freshness behavior
         env:
           PARTIAL_CACHE_ENABLED: ${{ inputs.partial-cache }}
+          RESUME_PARTIAL_RUN: ${{ inputs.resume-partial-run }}
         run: |
           set -euo pipefail
           bash_path="$(command -v bash)"
@@ -113,6 +150,9 @@ jobs:
           fixture_args=("$RUNNER_TEMP/source-cache-build/runtime" "$RUNNER_TEMP/source-cache-evidence/fixture" "$bash_path")
           if [[ "$PARTIAL_CACHE_ENABLED" == true ]]; then
             fixture_args+=(--cache-transport "$GITHUB_WORKSPACE/.github/scripts/ghcr-cargo-target-cache.sh" --cache-repository "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache")
+          fi
+          if [[ -n "$RESUME_PARTIAL_RUN" ]]; then
+            fixture_args+=(--resume-receipt "$RUNNER_TEMP/source-cache-producer/fixture/runtime-verification.json")
           fi
           python3 .github/scripts/test-source-cache-runtime.py "${fixture_args[@]}"
 
