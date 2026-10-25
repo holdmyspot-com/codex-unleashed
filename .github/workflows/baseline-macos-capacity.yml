@@ -5,6 +5,8 @@ on:
     branches: [main.new]
     paths:
       - .github/workflows/baseline-macos-capacity.yml
+      - .github/scripts/reclaim-baseline-macos-xcodes.py
+      - .github/scripts/test_reclaim_baseline_macos_xcodes.py
   workflow_dispatch:
 
 permissions:
@@ -47,6 +49,8 @@ jobs:
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
+          cp restart-metadata/.github/scripts/test_reclaim_baseline_macos_xcodes.py "$RUNNER_TEMP/test_reclaim_baseline_macos_xcodes.py"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve the exact stable upstream source
@@ -91,6 +95,16 @@ jobs:
             fi
           done
           df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP" > "$evidence/disk-after-inventory.txt"
+
+      - name: Verify inactive Xcode selection
+        run: python3 "$RUNNER_TEMP/test_reclaim_baseline_macos_xcodes.py"
+
+      - name: Reclaim inactive Xcode versions and verify selected native tools
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-capacity"
+          python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" --evidence-directory "$evidence"
+          df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP" > "$evidence/disk-after-cleanup.txt"
 
       - name: Retain capacity evidence for one day
         if: always()
