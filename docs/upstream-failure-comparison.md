@@ -1,0 +1,34 @@
+# Upstream failure comparison
+
+The restart must establish whether each failure in our environment also occurs upstream before classifying it as an environment or test problem. The source baseline is `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`. Its parent `342ed69a174c206c1de52a59491b131e0753cfa5` differs in workspace package version; parent results are comparison evidence with that limitation, not exact-release test outcomes.
+
+A direct comparison must identify the source, command, target, toolchain, prerequisites, execution environment and whether the relevant fixture actually executed. Keep the observed local mechanism separate from the upstream outcome. A cached target success without relevant execution logs, a fixture capability return, or an earlier setup failure leaves that outcome unknown. Unknown is an unmet comparison gate. The owner-approved three-test repair deferral preserves failed status through steps 1–3; it does not resolve this gate.
+
+This is the working index of current baseline comparisons, not a completed audit of every historical diagnostic attempt. Add each newly observed failure before pursuing its repair. Historical runs with discarded patches retain their original source inputs in [build-baseline.md](build-baseline.md); they cannot establish defects in the pristine baseline. Downstream-only wrapper failures need an explicit no-counterpart determination and their own counterfactual evidence.
+
+## Pristine source and runtime failures
+
+| Failure in our environment | Observed local evidence | Upstream evidence and limitation | Comparison status / next required evidence |
+| --- | --- | --- | --- |
+| Remote pipe capture recovery | Run `40217047017`: ordinary and observational execution fail; the unchanged case executes and passes under the focused null-stdin peer-lookup errno diagnostic. | Parent Linux Bazel job `119599956802` reports cached exec-server target passes. Available execution metadata lacks test stdout and cannot establish whether the sandbox case ran or returned early. | **Unknown.** Seek actual upstream test/BuildBuddy logs for the case and its guards. Repair deferred to step 4. |
+| Remote TTY capture recovery | Run `40220070685`: ordinary/null-only phases fail; stdin-only diagnostic passes with exactly two injected TTY peer lookups. | Same cached-target limitation; no direct upstream execution evidence for this case is established. | **Unknown.** Seek actual upstream execution/guard evidence. Repair deferred to step 4. |
+| Remote sandbox profile replay | Run `40215033696`: ordinary/traced phases fail; focused null-stdin errno diagnostic passes. | Same cached-target limitation. Parent postmerge archive job `119599958268` fails dependency setup before tests and its shards are skipped. | **Unknown.** Seek actual upstream execution/guard evidence. Repair deferred to step 4. |
+| Blocked-descriptor replay | Ordinary run loses exec-server transport. Earlier trace observes bwrap setup failure and server SIGPIPE but does not establish the initiating I/O operation. Focused trace run `40220417153` remains owned and pending. | Cached exec-server target success does not expose this fixture's actual path. | **Unknown.** Complete the owned trace and obtain corresponding upstream case evidence; no repair authorized from the incomplete mechanism. |
+| Empty-workspace-roots remote process timeout | Pristine serial Bazel run `40207065002` reports the separate integration timeout in addition to the four shell failures. | Cached target outcome does not establish the timeout case's upstream execution, ordering or duration. | **Unknown.** Identify the exact failed invocation and compare upstream per-case execution before repair. |
+| Windows native GNU Opus header-output validation | Run `40198569205` retains unchanged source and five dangling installed-header links under `opusic-sys-0.7.5`; link invalidation cause remains unestablished. | Parent upstream Windows GNU jobs build with Linux remote execution and run tests on Windows. This differs from our native Windows build fallback. A successful remote build does not prove native Windows output validity. | **Unknown for the native build path.** Establish the relevant upstream execution and build-script inputs; do not patch dependency source. |
+| Dependency audit findings `RUSTSEC-2026-0387` and `RUSTSEC-2026-0385` | Unchanged locked versions fail the retained audit at RustSec database revision `21d909e4c8bd4e14c7aea58bf980c881a0053ab1`. | An earlier audit with a different advisory database cannot establish the same outcome. The exact matching upstream check/database result has not been established. | **Unknown upstream check outcome.** Retain lock/database identities and compare the same audit boundary. Stable dependency repairs remain deferred to step 7. |
+
+The three peer-lookup diagnostics establish an observed Bash/seccomp mechanism in our environment. They do not establish that upstream encounters the same denied syscall or that upstream's tests exercise the same sandbox path.
+
+## Interrupted builds
+
+| Failure | Verified outcome | Upstream comparison still required |
+| --- | --- | --- |
+| Initial macOS and Windows x86-64 release jobs reach our 120-minute limit | GitHub annotations identify our configured job timeout; partial compilation is not platform acceptance. The limit was removed and the three owned retries remain pending. | Exact-release upstream `rust-release` run `39894017941` succeeds. Retain the target/job/command match rather than inferring test success from release success. |
+| Linux ARM cache jobs lose their runner or receive shutdown | Attempt 1 of `40213329117` loses communication without build logs. Attempt 2 retains `UserCancelled` shutdown classification and exit 143; its initiating actor remains unknown after available audit checks. Guards, smokes and cache save do not execute. | Compare with the exact-release upstream ARM build and its environment. Runner interruption does not establish a compiler or test defect, and upstream release success does not identify the shutdown requester. |
+
+## Downstream setup and wrapper failures
+
+Resolved wrapper incidents, including ORAS Windows asset selection, escaped-filename cache-key hashing, pnpm store selection and tool PATH setup, retain counterfactual evidence in [build-baseline.md](build-baseline.md) and [cache-migration-preflight.md](cache-migration-preflight.md). Complete the upstream counterpart determination for each before closing this comparison inventory. A successful local correction alone does not answer whether an equivalent upstream operation failed.
+
+No source/test repair, retry-policy relaxation, skip or diagnostic suppression is authorized by this ledger. A comparison is complete only when its outcome and relevant execution boundary are supported directly; preserve unknowns until the required evidence is available.
