@@ -60,7 +60,7 @@ jobs:
             git apply "$patch"
           done
           git diff --check
-          git diff --binary > "$evidence/source-before.diff"
+          git diff --binary > "$evidence/applied-check-repairs.diff"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -84,6 +84,40 @@ jobs:
           set -euo pipefail
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-gnu \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python3 - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/source-before.diff"
 
       - name: Install the pinned upstream Bazel version
         run: |
