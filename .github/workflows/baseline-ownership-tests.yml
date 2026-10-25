@@ -1,0 +1,182 @@
+name: Stable upstream native ownership test
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-ownership-tests.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - .github/upstream-compat-releases.json
+      - patches/upstream-baseline/**
+      - patches/upstream-check-policy/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-ownership-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-ownership-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-ownership-policy"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-ownership-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-ownership-patches/*.patch "$RUNNER_TEMP"/baseline-ownership-policy/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-ownership-evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
+
+      - name: Install Linux development prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          toolchain: 1.99.1
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-ownership-evidence"
+          cargo metadata --format-version 1 --filter-platform x86_64-unknown-linux-gnu \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python3 - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/source-before.diff"
+
+      - name: Install the pinned upstream Bazel version
+        run: |
+          set -euo pipefail
+          test "$(cat .bazelversion)" = 9.2.0
+          tools="$RUNNER_TEMP/baseline-ownership-tools"
+          mkdir -p "$tools"
+          curl --fail --location --retry 3 --output "$tools/bazel" https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-linux-x86_64
+          printf '%s  %s\n' 7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694 "$tools/bazel" | sha256sum -c -
+          chmod +x "$tools/bazel"
+          "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-ownership-evidence/bazel-version.txt"
+          printf '%s\n' "$tools" >> "$GITHUB_PATH"
+
+      - name: Verify alternate-group preservation on the native host
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-ownership-evidence"
+          export CODEX_COMPAT_RELEASES
+          CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          {
+            id
+            cat /proc/self/uid_map /proc/self/gid_map
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+          } > "$evidence/ownership-native-host.txt"
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
+            test --disk_cache= --strategy=TestRunner=local --nocache_test_results \
+            --test_arg=worker_preserves_alternate_group_through_materialization --test_arg=--nocapture --test_output=all -- \
+            //codex-rs/rollout:rollout-unit-tests 2>&1 | tee "$evidence/ownership-native.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'bazel_exit_code=%s\n' "$result" > "$evidence/ownership-native.receipt"
+          git diff --binary > "$evidence/source-after-ownership.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after-ownership.diff"
+          if [[ "$result" != 0 ]]; then
+            exit "$result"
+          fi
+          if grep -Eq 'ownership regression preserved alternate group [[:digit:]]+ through materialization' "$evidence/ownership-native.log"; then
+            printf 'ownership_body=pass\n' >> "$evidence/ownership-native.receipt"
+          else
+            printf 'ownership_body=not_exercised\n' >> "$evidence/ownership-native.receipt"
+            printf 'Native ownership verification did not exercise an assignable alternate group; inspect ownership-native.log.\n' >&2
+            exit 1
+          fi
+          df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP" > "$evidence/disk-after-ownership.txt"
+          if du -k --max-depth=3 -- "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p' > "$evidence/directories-after-ownership.txt"; then
+            :
+          else
+            printf 'directory_sample_exit=%s\n' "$?" >> "$evidence/directories-after-ownership.txt"
+          fi
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-native-ownership-test
+          path: ${{ runner.temp }}/baseline-ownership-evidence
+          retention-days: 1
+          if-no-files-found: warn
