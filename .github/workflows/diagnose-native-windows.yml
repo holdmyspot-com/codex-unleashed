@@ -28,6 +28,7 @@ on:
           - arm-daemon-hashing
           - macos-x64-original-timeouts
           - macos-x64-release-timeouts
+          - macos-x64-startup-controls
           - macos-x64-release-shard-controls
           - macos-x64-daybreak-invocations
           - macos-x64-current-timeouts
@@ -1095,7 +1096,7 @@ jobs:
       test-filter: 'all()'
 
   macos-x64-release-timeouts:
-    if: inputs.focus == 'macos-x64-release-timeouts'
+    if: inputs.focus == 'macos-x64-release-timeouts' || inputs.focus == 'macos-x64-startup-controls'
     permissions:
       actions: read
       contents: read
@@ -1103,6 +1104,7 @@ jobs:
     with:
       source-run: '40093103558'
       preserve-archive-policy: true
+      macos-startup-controls: ${{ inputs.focus == 'macos-x64-startup-controls' }}
       upstream-ref: 83086188ae0614bd882818ff1aa23f3194962012
       runner: macos-15-intel
       artifact-id: macos-x64

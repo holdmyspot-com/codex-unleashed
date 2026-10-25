@@ -18,6 +18,10 @@ on:
         description: Restore the current archive's exact driver and default nextest policy without rebuilding.
         type: boolean
         default: false
+      macos-startup-controls:
+        description: Time archived codex-exec help startup before the original three release timeout tests.
+        type: boolean
+        default: false
       contention-controls:
         description: Sandwich current release shard 1 or 2 between same-host serial controls.
         type: boolean
@@ -64,6 +68,32 @@ jobs:
       RUST_LIB_BACKTRACE: "0"
       RUST_MIN_STACK: "8388608"
     steps:
+      - name: Validate archived macOS startup controls
+        if: inputs.macos-startup-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN" == 40093103558 && "$ARTIFACT_ID" == macos-x64 ]]
+          [[ "$RUNNER_OS" == macOS && "$RUNNER_ARCH" == X64 ]]
+          [[ "$PRESERVE_ARCHIVE_POLICY" == true && "$ORIGINAL_SOURCE_POLICY" == false ]]
+          [[ "$ARM_LAUNCH_CONTROLS" == false && "$CONTENTION_CONTROLS" == false ]]
+          [[ -z "$ARCHIVE_SHARD" ]]
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: inputs.macos-startup-controls
+        with:
+          persist-credentials: false
+
+      - name: Stage startup controls before restoring the archive driver
+        if: inputs.macos-startup-controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          mkdir -p "$diagnostic_root"
+          cp .github/scripts/diagnose-macos-exec-startup.sh "$diagnostic_root/startup-controls.sh"
+          shasum -a 256 "$diagnostic_root/startup-controls.sh" > "$diagnostic_root/startup-controls.sha256"
+
       - name: Validate the original shard workload mode
         if: inputs.archive-shard != '' && !inputs.contention-controls
         shell: bash
@@ -563,6 +593,21 @@ jobs:
             printf 'Verified exactly two selected archived tests with the unchanged default policy.\n'
           fi
 
+      - name: Time archived macOS executable startup without recompiling
+        if: inputs.macos-startup-controls
+        id: startup_controls
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
+          shasum -a 256 -c "$diagnostic_root/startup-controls.sha256"
+          find "$diagnostic_root/extracted" -type f -name codex-exec > "$diagnostic_root/startup-executable-paths.txt"
+          [[ "$(wc -l < "$diagnostic_root/startup-executable-paths.txt" | tr -d ' ')" == 1 ]]
+          IFS= read -r executable < "$diagnostic_root/startup-executable-paths.txt"
+          shasum -a 256 "$executable" > "$diagnostic_root/startup-executable.sha256"
+          bash "$diagnostic_root/startup-controls.sh" "$executable" "$diagnostic_root/startup-controls" true
+
       - name: Run same-host current release contention controls
         if: inputs.contention-controls
         timeout-minutes: 50
@@ -692,6 +737,13 @@ jobs:
           fi
           exit "${pipeline_status[1]}"
 
+      - name: Require successful startup controls after retaining the original test outcome
+        if: always() && inputs.macos-startup-controls && steps.startup_controls.outcome == 'failure'
+        shell: bash
+        run: |
+          printf 'Archived executable startup controls failed; inspect the retained startup evidence.\n' >&2
+          exit 1
+
       - name: Compare Windows tests with fixtures inside their writable workspace
         if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure' && !inputs.arm-launch-controls
         shell: bash
@@ -744,6 +796,10 @@ jobs:
             ${{ runner.temp }}/archived-test-diagnostic/provenance.txt
             ${{ runner.temp }}/archived-test-diagnostic/selected-tests.json
             ${{ runner.temp }}/archived-test-diagnostic/original-tooling-cache-key.txt
+            ${{ runner.temp }}/archived-test-diagnostic/startup-controls
+            ${{ runner.temp }}/archived-test-diagnostic/startup-controls.sha256
+            ${{ runner.temp }}/archived-test-diagnostic/startup-executable-paths.txt
+            ${{ runner.temp }}/archived-test-diagnostic/startup-executable.sha256
           if-no-files-found: warn
           retention-days: 1
 
