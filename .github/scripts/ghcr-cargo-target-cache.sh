@@ -70,7 +70,7 @@ case "$operation" in
     ;;
   push)
     du -sk "$target_directory"
-    "$archive_tar" --zstd -cf - -C "$target_directory" . > "$archive"
+    "$archive_tar" --format=pax --zstd -cf - -C "$target_directory" . > "$archive"
     du -sk "$archive"
     (
       cd "$archive_directory"

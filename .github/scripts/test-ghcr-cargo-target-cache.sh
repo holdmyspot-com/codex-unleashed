@@ -38,12 +38,25 @@ test "$result" = 3
 release="$fixture/source target/$target/release"
 mkdir -p "$release/deps"
 printf dependency > "$release/deps/libfixture.rlib"
+node - "$release/deps/libfixture.rlib" <<'JS'
+const fs = require('node:fs');
+const timestamp = new Date(1700000000123);
+fs.utimesSync(process.argv[2], timestamp, timestamp);
+JS
 printf executable > "$release/deps/codex-fixture"
 ln "$release/deps/codex-fixture" "$release/codex"
 bash "$cache" push "$repository" "$tag" "$fixture/source target" rust-v0.164.0
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 restored="$fixture/restored target/$target/release"
 cmp "$release/deps/libfixture.rlib" "$restored/deps/libfixture.rlib"
+node - "$release/deps/libfixture.rlib" "$restored/deps/libfixture.rlib" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const original = fs.statSync(process.argv[2], { bigint: true }).mtimeNs;
+const restored = fs.statSync(process.argv[3], { bigint: true }).mtimeNs;
+assert.notEqual(original % 1000000000n, 0n, 'fixture must exercise a fractional timestamp');
+assert.equal(restored, original, 'cache round trip must preserve the exact modification timestamp');
+JS
 cmp "$release/deps/codex-fixture" "$restored/deps/codex-fixture"
 test ! -e "$restored/codex"
 
@@ -59,4 +72,4 @@ CODEX_TEST_ORAS_FAIL_RESOLVE=1 bash "$cache" pull "$repository" "$tag" "$fixture
 result=$?
 set -e
 test "$result" = 42
-printf 'PASS: missing cache, real OCI archive round trip, hard-link preservation, executable invalidation, changed-input miss, transport failure propagation\n'
+printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable invalidation, changed-input miss, transport failure propagation\n'
