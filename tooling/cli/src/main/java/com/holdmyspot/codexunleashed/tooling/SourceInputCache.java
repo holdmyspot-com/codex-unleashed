@@ -116,6 +116,11 @@ public final class SourceInputCache
 		Inputs inputs = load(request, context, err);
 		Path pending = SourceInputSnapshots.pending(inputs.snapshot());
 		Optional<JsonNode> interrupted = read(pending);
+		Path resumable = SourceInputSnapshots.resumable(inputs.snapshot());
+		Optional<JsonNode> previous = read(resumable);
+		Files.deleteIfExists(resumable);
+		if (previous.isEmpty())
+			previous = read(inputs.snapshot());
 		SourceInputSnapshots.write(pending, inputs.current());
 		Map<String, String> owners = inputs.metadata().binaryOwners(request.binaries());
 		Set<String> missing = new TreeSet<>(request.binaries());
@@ -124,13 +129,13 @@ public final class SourceInputCache
 			throw new IOException("Release binaries absent from Cargo metadata: " + String.join(", ", missing));
 		if (V8BindingCache.prepare(request, context, inputs.targetDirectory(), out))
 			clean(request, context, inputs.manifest(), List.of("v8"), out, err);
-		Optional<JsonNode> previous = read(inputs.snapshot());
 		if (previous.isEmpty())
 		{
 			List<String> packages = inputs.metadata().workspacePackageNames();
 			clean(request, context, inputs.manifest(), packages, out, err);
 			out.println("Source snapshot absent; rebuilding " + packages.size() + " workspace packages; " +
 				"external dependencies retained.");
+			checkpoint(request, context, inputs);
 			return;
 		}
 
@@ -155,6 +160,22 @@ public final class SourceInputCache
 					"; library outputs retained.");
 			}
 		}
+		checkpoint(request, context, inputs);
+	}
+
+	/**
+	 * Persists effective timestamps only after every preparation operation succeeds.
+	 *
+	 * @param request the prepared workspace and target
+	 * @param context process and storage authorities
+	 * @param inputs locations and metadata retained from the preparation being completed
+	 * @throws IOException if content drifts, inventory fails or checkpoint writing fails
+	 */
+	private static void checkpoint(Request request, Context context, Inputs inputs) throws IOException
+	{
+		SourceInputInventory.Snapshot current = inventory(inputs.current().root(), inputs.targetDirectory(), context);
+		V8BindingCache.checkpoint(request, context, inputs.targetDirectory());
+		SourceInputSnapshots.checkpoint(inputs.snapshot(), current);
 	}
 
 	/**
@@ -201,11 +222,26 @@ public final class SourceInputCache
 		Path target = context.workingDirectory().resolve(metadata.targetDirectory(workspace, context.environment()));
 		Path snapshot = target.resolve(".codex-source-inputs").
 			resolve(SourceCacheTargets.directoryName(request.target()) + ".json");
+		SourceInputInventory.Snapshot current = inventory(workspace, target, context);
+		return new Inputs(manifest, metadata, target, snapshot, current);
+	}
+
+	/**
+	 * Collects current contents and effective timestamps within the declared storage boundaries.
+	 *
+	 * @param workspace the canonical source workspace
+	 * @param target compiled output storage to exclude
+	 * @param context temporary storage and effective environment
+	 * @return the source inventory
+	 * @throws IOException if Git, paths, hashing or timestamps cannot be read
+	 */
+	private static SourceInputInventory.Snapshot inventory(Path workspace, Path target, Context context)
+		throws IOException
+	{
 		Optional<Path> cargoHome = Optional.ofNullable(context.environment().get("CARGO_HOME")).
 			filter(value -> !value.isEmpty()).map(value -> context.workingDirectory().resolve(value));
-		SourceInputInventory.Snapshot current = SourceInputInventory.read(workspace, target, cargoHome,
+		return SourceInputInventory.read(workspace, target, cargoHome,
 			context.temporaryDirectory(), context.environment());
-		return new Inputs(manifest, metadata, target, snapshot, current);
 	}
 
 	/**

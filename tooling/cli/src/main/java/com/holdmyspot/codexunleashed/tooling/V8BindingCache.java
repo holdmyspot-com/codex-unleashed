@@ -32,7 +32,7 @@ final class V8BindingCache
 
 	/**
 	 * Records pending inputs and restores unchanged binding timestamps. The caller must clean V8
-	 * when no successful snapshot exists; preparation alone does not make that cache reusable.
+	 * when neither successful nor completed-preparation state exists. Resumable state does not certify build success.
 	 *
 	 * @param request the target whose compiled outputs will be reused
 	 * @param context the explicit binding configuration, timestamp clock and working directory
@@ -49,7 +49,11 @@ final class V8BindingCache
 			return false;
 		Path pending = SourceInputSnapshots.pending(state.snapshot());
 		Optional<JsonNode> interrupted = read(pending);
-		Optional<JsonNode> previous = read(state.snapshot());
+		Path resumable = SourceInputSnapshots.resumable(state.snapshot());
+		Optional<JsonNode> previous = read(resumable);
+		Files.deleteIfExists(resumable);
+		if (previous.isEmpty())
+			previous = read(state.snapshot());
 		SourceInputSnapshots.write(pending, state.current());
 		if (previous.isEmpty())
 		{
@@ -60,6 +64,22 @@ final class V8BindingCache
 			context.clock()).size();
 		out.println("V8 binding content changes: " + changed + "; unchanged input timestamps restored.");
 		return false;
+	}
+
+	/**
+	 * Retains binding timestamps after complete preparation without recording build success.
+	 *
+	 * @param request the prepared target
+	 * @param context the explicit binding configuration and process authority
+	 * @param targetDirectory compiled output storage containing the pending binding inventory
+	 * @throws IOException if content drifts, loading fails or checkpoint writing fails
+	 */
+	static void checkpoint(SourceInputCache.Request request, SourceInputCache.Context context,
+		Path targetDirectory) throws IOException
+	{
+		State state = load(request, context, targetDirectory);
+		if (state != null)
+			SourceInputSnapshots.checkpoint(state.snapshot(), state.current());
 	}
 
 	/**

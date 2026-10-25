@@ -109,6 +109,42 @@ public final class SourceInputCacheTest
 	}
 
 	/**
+	 * Resumes completed library work after a cold executable failure without claiming successful compilation.
+	 *
+	 * @throws IOException if Cargo, fixture operations, or cleanup fail
+	 */
+	@Test
+	public void resumesColdPartialLibraries() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.initialize();
+			Path executableSource = fixture.workspace.resolve("src/main.rs");
+			String validExecutable = Files.readString(executableSource);
+			Files.writeString(executableSource, "compile_error!(\"controlled executable failure\");\nfn main() {}\n");
+			fixture.prepare();
+			expectThrows(IOException.class, fixture::build);
+			Path dependencies = fixture.base.resolve("target").resolve(fixture.target).resolve("release/deps");
+			try (var outputs = Files.list(dependencies))
+			{
+				assertTrue(outputs.anyMatch(path -> path.getFileName().toString().startsWith("libcache_demo-") &&
+					path.toString().endsWith(".rlib")), "library compilation must finish before the controlled failure");
+			}
+			assertFalse(Files.exists(fixture.snapshot()));
+
+			Files.writeString(executableSource, validExecutable);
+			Path librarySource = fixture.workspace.resolve("src/lib.rs");
+			FileTime before = Files.getLastModifiedTime(librarySource);
+			Files.setLastModifiedTime(librarySource, FileTime.from(before.toInstant().plusSeconds(100)));
+			fixture.prepare();
+			assertTrue(fixture.libraryFresh(fixture.build()), "retry must retain unaffected partial library work");
+			assertFalse(Files.exists(fixture.snapshot()), "resumption must not claim successful recording");
+			fixture.record();
+			assertTrue(Files.isRegularFile(fixture.snapshot()));
+		}
+	}
+
+	/**
 	 * Retains an external path dependency when a missing snapshot forces workspace compilation.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail
@@ -381,6 +417,7 @@ public final class SourceInputCacheTest
 			workspace = base.resolve("workspace");
 			temporary = base.resolve("captures");
 			environment = new HashMap<>(System.getenv());
+			environment.remove("RUSTY_V8_SRC_BINDING_PATH");
 			environment.put("CARGO_HOME", base.resolve("cargo-home").toString());
 			environment.put("CARGO_TARGET_DIR", base.resolve("target").toString());
 			environment.put("CARGO_NET_OFFLINE", "true");

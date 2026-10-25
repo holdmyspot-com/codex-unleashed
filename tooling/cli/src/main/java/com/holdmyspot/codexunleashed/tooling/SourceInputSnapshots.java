@@ -97,6 +97,48 @@ public final class SourceInputSnapshots
 	 */
 	public static int record(Path path, SourceInputInventory.Snapshot current) throws IOException
 	{
+		verifyPrepared(path, current);
+		write(path, current);
+		Files.delete(pending(path));
+		Files.deleteIfExists(resumable(path));
+		return current.files().size();
+	}
+
+	/**
+	 * Retains effective input timestamps after preparation without recording build success.
+	 *
+	 * @param path the successful snapshot path that identifies these inputs
+	 * @param current inputs collected after all preparation operations complete
+	 * @throws IOException if prepared contents drift or checkpoint writing fails
+	 */
+	public static void checkpoint(Path path, SourceInputInventory.Snapshot current) throws IOException
+	{
+		verifyPrepared(path, current);
+		write(resumable(path), current);
+	}
+
+	/**
+	 * Supplies the distinct completed-preparation checkpoint path.
+	 *
+	 * @param snapshot the successful snapshot path
+	 * @return the sibling filename with a resumable suffix
+	 * @throws NullPointerException if the snapshot is null
+	 */
+	public static Path resumable(Path snapshot)
+	{
+		Objects.requireNonNull(snapshot, "snapshot");
+		return snapshot.resolveSibling(snapshot.getFileName() + ".resumable");
+	}
+
+	/**
+	 * Compares prepared content while retaining the existing generated-lockfile exception.
+	 *
+	 * @param path the successful snapshot path
+	 * @param current content whose effective timestamps will be persisted
+	 * @throws IOException if prepared inputs are missing, malformed or changed
+	 */
+	private static void verifyPrepared(Path path, SourceInputInventory.Snapshot current) throws IOException
+	{
 		Objects.requireNonNull(path, "path");
 		Objects.requireNonNull(current, "current");
 		Path pending = pending(path);
@@ -120,9 +162,6 @@ public final class SourceInputSnapshots
 		}
 		if (!preparedFiles.equals(currentFiles))
 			throw new IOException(REFUSED_RECORDING);
-		write(path, current);
-		Files.delete(pending);
-		return current.files().size();
 	}
 
 	/**
