@@ -1,0 +1,59 @@
+name: Remove completed private-cache fixtures
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Verify fixture identity guards
+        run: python3 .github/scripts/test-cleanup-owned-cache-fixtures.py
+
+      - name: Record exact requests and verify every present fixture
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-fixture-cleanup"
+          mkdir -p "$evidence"
+          cp .github/cache-fixture-cleanup.json "$evidence/request.json"
+          git rev-parse HEAD > "$evidence/restart-commit"
+          gh api --paginate --slurp 'orgs/holdmyspot-com/packages/container/cargo-cache/versions?per_page=100' > "$evidence/before.json"
+          python3 .github/scripts/cleanup-owned-cache-fixtures.py "$evidence/request.json" "$evidence/before.json" > "$evidence/approved-ids.txt"
+
+      - name: Delete only the verified fixture versions
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-fixture-cleanup"
+          while IFS= read -r version; do
+            gh api --method DELETE "orgs/holdmyspot-com/packages/container/cargo-cache/versions/$version" > "$evidence/delete-$version.txt"
+            printf '%s\n' "$version" >> "$evidence/deleted-ids.txt"
+          done < "$evidence/approved-ids.txt"
+
+      - name: Verify the owned versions are absent
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-fixture-cleanup"
+          gh api --paginate --slurp 'orgs/holdmyspot-com/packages/container/cargo-cache/versions?per_page=100' > "$evidence/after.json"
+          python3 .github/scripts/cleanup-owned-cache-fixtures.py "$evidence/request.json" "$evidence/after.json" > "$evidence/remaining-ids.txt"
+          test ! -s "$evidence/remaining-ids.txt"
+
+      - name: Preserve metadata and deletion receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cache-fixture-cleanup
+          path: ${{ runner.temp }}/cache-fixture-cleanup
+          retention-days: 1
+          if-no-files-found: error
