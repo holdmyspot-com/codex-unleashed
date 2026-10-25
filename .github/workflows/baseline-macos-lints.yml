@@ -1,0 +1,145 @@
+name: Stable upstream macOS lints
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-macos-lints.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: Clippy - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    env:
+      CODEX_REPO_ROOT: ${{ github.workspace }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          cargo_home="$RUNNER_TEMP/baseline-cargo-home"
+          cargo_target_dir="$RUNNER_TEMP/baseline-target"
+          mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
+          printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-patches"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-patches/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Set up the upstream Rust toolchain
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Supply upstream's native voice development libraries
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: Build the pinned native voice prerequisites
+        run: |
+          set -euo pipefail
+          native="$RUNNER_TEMP/baseline-native"
+          mkdir -p "$native/archives" "$native/tools"
+          if ! command -v pkg-config; then
+            brew install pkgconf
+          fi
+          curl --fail --location --retry 3 --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-macos-universal.tar.gz
+          printf '%s  %s\n' d1449f969c54d5c00886d5b643340d493dfb3c81cb39ee29b35453395c11ebf7 "$native/cmake.tar.gz" | shasum -a 256 -c -
+          tar -xzf "$native/cmake.tar.gz" -C "$native/tools" --strip-components=1
+          jq -r '.sources[] | [.url, .archive, .sha256] | @tsv' third_party/voice/sources.json > "$native/sources.tsv"
+          while IFS=$'\t' read -r url archive digest; do
+            curl --fail --location --retry 3 --output "$native/archives/$archive" "$url"
+            printf '%s  %s\n' "$digest" "$native/archives/$archive" | shasum -a 256 -c -
+          done < "$native/sources.tsv"
+          python third_party/voice/build_native.py \
+            --archives "$native/archives" --output "$native/build" \
+            --cc "$(xcrun --find clang)" --cxx "$(xcrun --find clang++)" \
+            --cmake "$native/tools/CMake.app/Contents/bin/cmake" \
+            --make /usr/bin/make --pkg-config "$(command -v pkg-config)" \
+            --shell /bin/bash --target "$TARGET" --deployment-target 14.0 \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/native-build.log"
+          cp "$native/build/built.json" "$RUNNER_TEMP/baseline-evidence/native-built.json"
+          printf '#!/bin/sh\nexec "%s" --define-prefix "$@"\n' "$(command -v pkg-config)" > "$native/pkg-config"
+          chmod +x "$native/pkg-config"
+          export PKG_CONFIG="$native/pkg-config"
+          export PKG_CONFIG_LIBDIR="$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig"
+          unset PKG_CONFIG_PATH
+          "$PKG_CONFIG" --modversion gstreamer-1.0 glib-2.0
+          printf 'PKG_CONFIG=%s\nPKG_CONFIG_LIBDIR=%s\nPKG_CONFIG_PATH=\n' "$PKG_CONFIG" "$PKG_CONFIG_LIBDIR" >> "$GITHUB_ENV"
+
+      - name: Check all default workspace test targets with nonfatal warnings
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          cargo clippy --target "$TARGET" --tests --profile dev --timings \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
+
+      - name: Retain lint evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-clippy-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/baseline-evidence
+            ${{ runner.temp }}/baseline-target/**/cargo-timings
+          retention-days: 1
+          if-no-files-found: warn
