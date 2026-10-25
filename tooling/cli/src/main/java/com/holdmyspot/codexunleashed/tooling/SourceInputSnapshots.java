@@ -7,6 +7,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -161,7 +163,12 @@ public final class SourceInputSnapshots
 				currentFiles.put(entry.getKey(), entry.getValue());
 		}
 		if (!preparedFiles.equals(currentFiles))
-			throw new IOException(REFUSED_RECORDING);
+		{
+			Set<String> changedPaths = new TreeSet<>(preparedFiles.keySet());
+			changedPaths.addAll(currentFiles.keySet());
+			changedPaths.removeIf(name -> Objects.equals(preparedFiles.get(name), currentFiles.get(name)));
+			throw new IOException(REFUSED_RECORDING + " Differing paths: " + changedPaths);
+		}
 	}
 
 	/**
