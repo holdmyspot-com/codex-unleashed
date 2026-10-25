@@ -1,14 +1,16 @@
 name: Stable upstream Linux tests
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-linux-tests.yml
-      - .github/upstream-commit
-      - .github/upstream-ref
-      - patches/upstream-baseline/**
   workflow_dispatch:
+    inputs:
+      package:
+        description: Optional Cargo package for an unmodified-source comparison
+        type: string
+        default: ""
+      filter:
+        description: Optional nextest expression for an unmodified-source comparison
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -39,7 +41,6 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           mkdir -p "$evidence"
-          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-test-patches"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -52,17 +53,13 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
-      - name: Verify source identity and apply verified check repairs
+      - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-test-evidence/upstream-commit")"
           test -z "$(git status --porcelain)"
-          for patch in "$RUNNER_TEMP"/baseline-test-patches/*.patch; do
-            git apply --check "$patch"
-            git apply "$patch"
-          done
           git diff --check
-          git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/applied-check-repairs.diff"
+          git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/pristine-source.diff"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -140,7 +137,10 @@ jobs:
             -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
 
-      - name: Run the full maintained nextest suite
+      - name: Run the maintained nextest suite or focused comparison
+        env:
+          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
+          BASELINE_TEST_FILTER: ${{ inputs.filter }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -165,9 +165,24 @@ jobs:
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings)
+          if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
+            nextest_args+=(-p "$BASELINE_TEST_PACKAGE")
+          fi
+          if [[ -n "$BASELINE_TEST_FILTER" ]]; then
+            nextest_args+=(-E "$BASELINE_TEST_FILTER")
+          fi
+          printf '%s\n' "${nextest_args[@]}" > "$RUNNER_TEMP/baseline-test-evidence/nextest-arguments.txt"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings \
+            cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
+
+      - name: Verify upstream source and tests remain unmodified
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day
         if: always()

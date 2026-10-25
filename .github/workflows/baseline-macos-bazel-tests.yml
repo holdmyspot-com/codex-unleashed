@@ -1,15 +1,6 @@
 name: Stable upstream macOS Bazel tests
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-macos-bazel-tests.yml
-      - .github/scripts/reclaim-baseline-macos-xcodes.py
-      - .github/upstream-commit
-      - .github/upstream-ref
-      - patches/upstream-baseline/**
-      - patches/upstream-check-policy/**
   workflow_dispatch:
 
 permissions:
@@ -53,8 +44,6 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           mkdir -p "$evidence"
-          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-macos-bazel-patches"
-          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-macos-bazel-policy"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -68,18 +57,14 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
-      - name: Verify source identity and apply verified check repairs
+      - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
           test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
           test -z "$(git status --porcelain)"
-          for patch in "$RUNNER_TEMP"/baseline-macos-bazel-patches/*.patch "$RUNNER_TEMP"/baseline-macos-bazel-policy/*.patch; do
-            git apply --check "$patch"
-            git apply "$patch"
-          done
           git diff --check
-          git diff --binary > "$evidence/applied-check-repairs.diff"
+          git diff --binary > "$evidence/pristine-source.diff"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -226,6 +211,13 @@ jobs:
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           exit "$result"
+
+      - name: Verify upstream source and tests remain unmodified
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day
         if: always()

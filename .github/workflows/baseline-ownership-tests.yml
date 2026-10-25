@@ -1,15 +1,6 @@
 name: Stable upstream native ownership test
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-ownership-tests.yml
-      - .github/upstream-commit
-      - .github/upstream-ref
-      - .github/upstream-compat-releases.json
-      - patches/upstream-baseline/**
-      - patches/upstream-check-policy/**
   workflow_dispatch:
 
 permissions:
@@ -34,8 +25,6 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-ownership-evidence"
           mkdir -p "$evidence"
-          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-ownership-patches"
-          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-ownership-policy"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           cp restart-metadata/.github/upstream-compat-releases.json "$evidence/compat-releases.json"
@@ -49,18 +38,14 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
-      - name: Verify source identity and apply verified check repairs
+      - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-ownership-evidence"
           test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
           test -z "$(git status --porcelain)"
-          for patch in "$RUNNER_TEMP"/baseline-ownership-patches/*.patch "$RUNNER_TEMP"/baseline-ownership-policy/*.patch; do
-            git apply --check "$patch"
-            git apply "$patch"
-          done
           git diff --check
-          git diff --binary > "$evidence/applied-check-repairs.diff"
+          git diff --binary > "$evidence/pristine-source.diff"
 
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
@@ -170,6 +155,13 @@ jobs:
           else
             printf 'directory_sample_exit=%s\n' "$?" >> "$evidence/directories-after-ownership.txt"
           fi
+
+      - name: Verify upstream source and tests remain unmodified
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain test evidence for one day
         if: always()
