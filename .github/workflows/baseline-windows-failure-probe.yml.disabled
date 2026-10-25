@@ -1,14 +1,6 @@
 name: Stable upstream Windows focused failure probe
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-windows-failure-probe.yml
-      - .github/scripts/probe-baseline-windows-failures.py
-      - .github/scripts/setup-baseline-windows-voice.ps1
-      - .github/upstream-commit
-      - .github/upstream-ref
   workflow_dispatch:
 
 permissions:
@@ -16,6 +8,8 @@ permissions:
 
 jobs:
   probe:
+    # Suspended: this historical probe modifies upstream source/tests.
+    if: ${{ false }}
     runs-on: windows-2025
     env:
       TARGET: x86_64-pc-windows-gnullvm
@@ -35,8 +29,6 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
           mkdir -p "$evidence"
-          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-windows-bazel-patches"
-          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-windows-bazel-policy"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/scripts/probe-baseline-windows-failures.py "$RUNNER_TEMP/probe-baseline-windows-failures.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"

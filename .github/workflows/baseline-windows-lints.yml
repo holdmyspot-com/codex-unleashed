@@ -1,13 +1,6 @@
 name: Stable upstream Windows lints
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/baseline-windows-lints.yml
-      - .github/upstream-commit
-      - .github/upstream-ref
-      - patches/upstream-baseline/**
   workflow_dispatch:
 
 permissions:
@@ -50,7 +43,6 @@ jobs:
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
-          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-patches"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -63,18 +55,14 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
-      - name: Verify source identity and apply verified check repairs
+      - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
           test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
           test -z "$(git status --porcelain)"
-          for patch in "$RUNNER_TEMP"/baseline-patches/*.patch; do
-            git apply --check "$patch"
-            git apply "$patch"
-          done
           git diff --check
-          git diff --binary > "$evidence/applied-check-repairs.diff"
+          git diff --binary > "$evidence/pristine-source.diff"
 
       - name: Set up the upstream Rust toolchain
         uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
@@ -171,6 +159,13 @@ jobs:
           cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
           cargo clippy --target "$TARGET" --tests --profile dev --timings \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
+
+      - name: Verify upstream source and tests remain unmodified
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.inputs.outputs.commit }}"
+          git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Retain lint evidence for one day
         if: always()

@@ -1,5 +1,7 @@
 # Nonfatal baseline check policy
 
+These historical policy patch drafts are deferred. Baseline workflows do not apply them while establishing passing unmodified upstream tests. Use verified invocation-level warning settings without changing upstream source or tests.
+
 Base: upstream `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`.
 
 `0001-nonfatal-argument-lints.patch` implements the plan's nonfatal warning policy for the Bazel argument-comment-lint aspect. Upstream explicitly promotes `argument-comment-mismatch` and `uncommented-anonymous-literal-argument` to errors. The patch selects their warning levels and renames the internal flag list to match. Both diagnostics remain enabled and visible. It changes no Rust product source, dependency, feature or build profile.

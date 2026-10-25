@@ -1,6 +1,22 @@
 # Stable upstream build baseline
 
-## Source and scope
+## Current baseline constraint
+
+The owner requires unmodified upstream tests to pass in our environment before any upstream source or test patches are applied. The owned checkout is restored to pinned commit `6aaac694803004a63c6f393d153c96d22521a6b9`. All twelve candidate repairs and both check-policy patches are deferred drafts. The baseline workflows no longer apply them; the two source-mutating failure probes are suspended. Workflows are dispatched individually while environment differences are reconciled. Earlier gate results below remain historical evidence for their stated patch inputs, and do not establish a passing unmodified test baseline.
+
+Remaining work is to match upstream's actual check boundaries: exact source/version, build system, targets, feature selection, prerequisites, runner resources, test partitioning, platform configuration and executable discovery. Release-build success alone does not establish test-suite success. Generated Cargo lockfile workspace-version synchronization remains explicitly recorded and validated separately from source/test modifications. No caching or scheduler step may start until the required baseline gates pass.
+
+Windows probe `40201240525` verifies direct CMD and explicit `--config=windows` both produce the pinned Git commit in Bazel's status input; default, default-after-CMD and explicit Unix-script selections omit it. All commands exit zero and tracked source is preserved. This narrows the configuration discrepancy; it does not establish that native compilation or tests pass.
+
+## Comparison with upstream's own run
+
+The GitHub API reports only `rust-release` run `39894017941` for the exact stable commit, and it succeeds. This is release-build evidence, not proof that the full test matrix passed on the release tag. Its parent is `342ed69a174c206c1de52a59491b131e0753cfa5`; the parent's [blocking-ci run](https://github.com/openai/codex/actions/runs/39710355092) concludes failure, with separate successful and failed platform jobs.
+
+The parent's [Linux GNU Bazel job](https://github.com/openai/codex/actions/runs/39710355092/job/119599956802) succeeds with authenticated remote execution. Its exec-server integration and unit targets are reported as cached passes, so this log does not expose whether the sandbox-specific fixture paths executed or skipped. Its core target is reported flaky, with two failed attempts before the final successful outcome. These observations require comparing execution and retry policies before attributing our failures to source defects. They do not justify suppressing a failure or adding retries to hide it.
+
+The separate upstream nextest workflow uses an archive, workspace remapping and four hash partitions. Our earlier Linux nextest workflow compiled and ran the full suite in one job on a standard free hosted runner. Resource pressure and test ordering are hypotheses to isolate, not established causes of all remaining failures. Upstream's maintained fixture can return early when bubblewrap is unavailable; a passing target alone does not prove the same sandbox path ran. Preserve the original tests and obtain relevant execution evidence before drawing that conclusion.
+
+## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex
 - **upstream_tag**: `rust-v0.164.0`, pinned in [upstream-ref](../.github/upstream-ref)
@@ -8,8 +24,8 @@
 - **rust_toolchain**: `1.99.1`, as declared by upstream `codex-rs/rust-toolchain.toml`
 - **local_platform**: Linux x86_64 GNU
 - **release_targets**: Linux x86_64/ARM64 musl, macOS Intel/Apple Silicon, Windows x86_64/ARM64 MSVC
-- **source_changes**: the unmodified-source default Cargo build passed first; the active checkout now contains baseline patches 0001–0010, two nonfatal check-policy patches and Cargo workspace-version synchronization. Each gate records the patch subset it actually verifies
-- **warning_policy**: warnings remain visible and nonfatal; the documented policy patches remove blanket upstream warnings-as-errors flags while retaining individual lint rules
+- **source_changes**: the unmodified-source default Cargo build passed first. Later experiments applied the patch subsets recorded per gate; all are now removed from the active checkout and deferred.
+- **warning_policy**: warnings must remain visible and nonfatal. Policy patch application is suspended; invocation-level overrides must preserve individual lint diagnostics and be verified before the relevant linter gate runs.
 - **features_and_profile**: default features and default development profile for the local baseline
 
 The local default build establishes the unmodified upstream development baseline. It does not establish release-target compilation, packaging, tests, or a clean warning inventory. Each gate below needs its own evidence before step 1 completes.

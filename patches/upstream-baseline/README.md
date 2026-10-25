@@ -1,6 +1,6 @@
-# Stable upstream baseline repairs
+# Deferred upstream patch drafts
 
-These patches repair confirmed baseline failures before downstream caching, scheduling, product changes, strict warnings, or dependency upgrades. Apply them in filename order to upstream `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`.
+These are historical candidate patches, retained for later review. Do not apply them during the unmodified upstream baseline. The owner requires the upstream tests to pass in our environment before changing upstream source or tests. Baseline workflows no longer apply this directory. The evidence below describes prior experiments on `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`; it does not establish acceptance or permission to resume those patches.
 
 Generated patches retain Git's space-prefixed context lines, including empty source lines. The scoped `.gitattributes` entry keeps their LF bytes stable and excludes end-of-line spaces from the wrapper-file whitespace check. Check the applied source diff with Git's normal whitespace checks rather than editing the generated patch's context encoding. This attribute does not change compiler or linter warning policy.
 
@@ -94,7 +94,7 @@ The separate [native ownership workflow](../../.github/workflows/baseline-owners
 
 Native Windows runs `40188084092` and `40190837633` reproduce the zero-count assertion in the original test. A standalone probe matches all three pinned tracing versions and deterministically observes zero captures without the guard and one with it across three separate-process comparisons. The actual focused local MCP integration test then passes with the guard: one test, zero ignored, all original startup/cache/binding assertions retained. The temporary edit is restored byte-for-byte afterward. This focused local result does not establish concurrent native Windows acceptance.
 
-The patch has no source prerequisites beyond the pinned stable commit. Its emitted `git format-patch` applies through `git am` to another fresh stable checkout, where the resulting file exactly matches the tested candidate. Rustfmt and applied-source whitespace checks pass, and both temporary worktrees are removed. The patch is applied to the cumulative baseline; broader native suites remain required. Evidence: `mcp-interest-probe-verified.json`, `mcp-counter-local-candidate-verified.json` and `mcp-counter-patch-verified.json`.
+The patch has no source prerequisites beyond the pinned stable commit. Its emitted `git format-patch` applies through `git am` to another fresh stable checkout, where the resulting file exactly matches the tested candidate. Rustfmt and applied-source whitespace checks pass, and both temporary worktrees are removed. The patch was applied in the historical cumulative experiment; it is now deferred, and broader native suites remain required. Evidence: `mcp-interest-probe-verified.json`, `mcp-counter-local-candidate-verified.json` and `mcp-counter-patch-verified.json`.
 
 All eleven repairs and both policy patches also apply together through `git am` on a fresh stable checkout, matching every changed active source file apart from the separately verified workspace-version lock synchronization. The maintained cumulative `just fmt-check` passes in 19.588 seconds and preserves source/status bytes. The owned verification worktree is removed. Evidence: `eleven-patch-series-verified.json` and `eleven-patch-format.receipt.json`.
 
