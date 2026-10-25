@@ -47,6 +47,7 @@ jobs:
           $temporary = Join-Path $env:RUNNER_TEMP 'helper-inventory-temp'
           New-Item -ItemType Directory -Path $recordings, $temporary | Out-Null
           $env:JAVA_TOOL_OPTIONS = "$env:JAVA_TOOL_OPTIONS -XX:StartFlightRecording=filename=$recordings,settings=profile,dumponexit=true"
+          $env:GIT_TRACE2_PERF = Join-Path $evidence 'git-trace.perf'
           mvn -B -ntp -f tooling/cli/pom.xml `
             '-Dtest=SourceInputInventoryTest#inventoriesWithoutGitRepository' `
             "-Dtooling.build.directory=$env:RUNNER_TEMP/helper-inventory-build" `
