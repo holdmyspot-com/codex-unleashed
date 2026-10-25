@@ -90,6 +90,12 @@ A local invocation against the actual pinned Codex workspace confirms all select
 
 Actionlint and whitespace checks pass for the integration. Hosted cold/warm behavior, transfer costs, invalidation and full Codex acceptance remain unrun for this new cache identity.
 
+## Failed-build resumption gap
+
+A controlled local Cargo fixture prepares a cold target, compiles its library, then fails its executable at an intentional fixture-only compiler error. After fixing only the executable and touching unchanged library source, retry preparation removes the compiled library. No successful snapshot exists, so the current helper takes its whole-workspace cleanup branch. The public-operation regression is red for the intended missing behavior: `partial-source-cache-red/result.json`. This fixture and helper are downstream-only; upstream Codex has no equivalent preparation operation. No upstream source or test is changed.
+
+Existing `.pending` state alone cannot safely replace a successful snapshot. It is written before preparation finishes and contains timestamps captured before freshness restoration. A retry needs a separate durable checkpoint emitted only after preparation and invalidation complete, with content-checked effective timestamps. Keep that checkpoint distinct from successful-build evidence. Invalidate it before changing preparation state, retain the last successful snapshot, and publish a new checkpoint only after preparation succeeds. On retry, compare current inputs against the valid checkpoint, preserve unaffected work and let Cargo rebuild changed inputs. V8 binding inputs need the same treatment. Missing or incomplete preparation state still requires the narrowly justified cleanup; it must not be promoted to a successful build. This is the next helper change to implement and verify, followed by private hosted partial-state transport and the final clean-build gate in [plan.md](../plan.md).
+
 ## Remaining integration gates
 
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
