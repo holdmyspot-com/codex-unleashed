@@ -665,7 +665,9 @@ jobs:
           test -x "$helper"
           export CARGO_BIN_EXE_codex_linux_sandbox="$helper"
           # Cargo's native helper binding also retains the historical hyphenated name.
-          archive=(--archive-file "$evidence/tests.tar.zst" --workspace-remap "$PWD" --extract-overwrite)
+          extraction="$RUNNER_TEMP/linux-remote-fixture-extracted/$mode"
+          archive=(--archive-file "$evidence/tests.tar.zst" --workspace-remap "$PWD"
+            --extract-to "$extraction" --extract-overwrite)
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" cargo nextest list "${archive[@]}" \
             --profile default -E "$FIXTURE_FILTER" --message-format json > "$evidence/$mode/selected-tests.json"
           jq -e --slurpfile expected "$evidence/expected-tests.json" '
@@ -673,7 +675,7 @@ jobs:
               select(.value."filter-match".status == "matches" and .value.ignored == false) |
               [$package, .key]] | sort == ($expected[0] | map([.[0], .[2]]) | sort)
             ' "$evidence/$mode/selected-tests.json"
-          rm -f -- target/nextest/default/junit.xml "$CARGO_TARGET_DIR/nextest/default/junit.xml"
+          rm -f -- "$extraction/target/nextest/default/junit.xml"
           set +e
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" cargo nextest run "${archive[@]}" \
             --profile default -E "$FIXTURE_FILTER" --retries 0 --no-fail-fast \
@@ -683,10 +685,8 @@ jobs:
           status=${statuses[0]}
           if (( status == 0 && statuses[1] != 0 )); then status=${statuses[1]}; fi
           printf '%s\n' "$status" > "$evidence/$mode/exit-status.txt"
-          if [[ -f target/nextest/default/junit.xml ]]; then
-            cp target/nextest/default/junit.xml "$evidence/$mode/junit.xml"
-          elif [[ -f "$CARGO_TARGET_DIR/nextest/default/junit.xml" ]]; then
-            cp "$CARGO_TARGET_DIR/nextest/default/junit.xml" "$evidence/$mode/junit.xml"
+          if [[ -f "$extraction/target/nextest/default/junit.xml" ]]; then
+            cp "$extraction/target/nextest/default/junit.xml" "$evidence/$mode/junit.xml"
           else
             printf 'Missing nextest JUnit evidence for %s\n' "$mode" >&2
             exit 1
@@ -752,6 +752,7 @@ jobs:
         run: |
           rm -rf -- "$RUNNER_TEMP/nextest-native" "$RUNNER_TEMP/nextest-native.tar.gz"
           rm -f -- "$RUNNER_TEMP/linux-remote-fixtures/tests.tar.zst"
+          rm -rf -- "$RUNNER_TEMP/linux-remote-fixture-extracted"
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
