@@ -1,0 +1,138 @@
+name: Stable upstream Windows focused failure probe
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-windows-failure-probe.yml
+      - .github/scripts/probe-baseline-windows-failures.py
+      - .github/scripts/setup-baseline-windows-voice.ps1
+      - .github/upstream-commit
+      - .github/upstream-ref
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    env:
+      TARGET: x86_64-pc-windows-gnullvm
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-windows-bazel-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-windows-bazel-policy"
+          cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
+          cp restart-metadata/.github/scripts/probe-baseline-windows-failures.py "$RUNNER_TEMP/probe-baseline-windows-failures.py"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify clean stable source identity
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          git diff --binary > "$evidence/clean-checkout.diff"
+
+      - name: Set up Python for the maintained Windows checks and metadata
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Prepare upstream's Bazel host and toolchain
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+
+      - name: Prepare upstream's native Windows voice tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/setup-baseline-windows-voice.ps1" -EvidenceDirectory "$env:RUNNER_TEMP/baseline-windows-bazel-evidence/voice-tools"
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          {
+            uname -a
+            printf 'runner_os=%s\ntarget=%s\n' "$RUNNER_OS" "$TARGET"
+            df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
+            bazel --version
+          } | tee "$evidence/host.txt"
+          test "$(cat .bazelversion)" = 9.2.0
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: x86_64-pc-windows-gnullvm
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          cargo metadata --format-version 1 --filter-platform "$TARGET" \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/workspace-version-source.diff"
+
+      - name: Compare clean Opus output and the original doctor regression
+        run: |
+          python "$RUNNER_TEMP/probe-baseline-windows-failures.py" \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-windows-bazel-evidence" \
+            "$RUNNER_TEMP/baseline-windows-bazel-patches" "$RUNNER_TEMP/baseline-windows-bazel-policy"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-windows-focused-failures
+          path: ${{ runner.temp }}/baseline-windows-bazel-evidence
+          retention-days: 1
+          if-no-files-found: warn
