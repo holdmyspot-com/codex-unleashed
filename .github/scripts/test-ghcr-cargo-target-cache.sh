@@ -45,6 +45,17 @@ fs.utimesSync(process.argv[2], timestamp, timestamp);
 JS
 printf executable > "$release/deps/codex-fixture"
 ln "$release/deps/codex-fixture" "$release/codex"
+
+bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0
+set +e
+bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
+result=$?
+set -e
+test "$result" = 3
+bash "$cache" pull-partial "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
+cmp "$release/deps/libfixture.rlib" "$fixture/restored target/$target/release/deps/libfixture.rlib"
+test ! -e "$fixture/restored target/$target/release/codex"
+
 bash "$cache" push "$repository" "$tag" "$fixture/source target" rust-v0.164.0
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 restored="$fixture/restored target/$target/release"
@@ -60,6 +71,13 @@ JS
 cmp "$release/deps/codex-fixture" "$restored/deps/codex-fixture"
 test ! -e "$restored/codex"
 
+printf partial-update > "$release/deps/libfixture.rlib"
+bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0
+bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
+test "$(cat "$restored/deps/libfixture.rlib")" = dependency
+bash "$cache" pull-partial "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
+test "$(cat "$restored/deps/libfixture.rlib")" = partial-update
+
 changed_identity="$(printf changed-fixture-inputs | sha256sum | cut -d ' ' -f 1)"
 set +e
 bash "$cache" pull "$repository" "cargo-v3-$target-$changed_identity" "$fixture/restored target" rust-v0.164.0
@@ -72,4 +90,4 @@ CODEX_TEST_ORAS_FAIL_RESOLVE=1 bash "$cache" pull "$repository" "$tag" "$fixture
 result=$?
 set -e
 test "$result" = 42
-printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable invalidation, changed-input miss, transport failure propagation\n'
+printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable invalidation, partial-state isolation, changed-input miss, transport failure propagation\n'

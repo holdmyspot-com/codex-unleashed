@@ -243,12 +243,20 @@ jobs:
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-restore.log"
           result=${PIPESTATUS[0]}
           set -e
+          if [[ "$result" == 3 ]]; then
+            printf 'Verified cache absent; trying unverified partial build state.\n'
+            set +e
+            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-restore.log"
+            result=${PIPESTATUS[0]}
+            set -e
+          fi
           case "$result" in
             0|3) ;;
             *) exit "$result" ;;
           esac
 
       - name: Prepare content-checked cached source freshness
+        id: cache_prepare
         if: inputs.cache
         working-directory: codex-rs
         run: |
@@ -265,6 +273,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-prepare.log"
 
       - name: Build and hash the Linux sandbox helper
+        id: sandbox_build
         if: runner.os == 'Linux'
         working-directory: codex-rs
         run: |
@@ -276,6 +285,7 @@ jobs:
           printf 'CODEX_BWRAP_SHA256=%s\n' "$digest" >> "$GITHUB_ENV"
 
       - name: Build the upstream release binaries with default features
+        id: release_build
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -312,6 +322,7 @@ jobs:
           "$output/codex-app-server$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/app-server-version.log"
 
       - name: Verify upstream source and tests remain unmodified
+        id: source_guard
         if: always()
         run: |
           set -euo pipefail
@@ -319,6 +330,8 @@ jobs:
           git diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
 
       - name: Verify dependency identity before accepting build outputs
+        id: dependency_guard
+        if: success() || (failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success')
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -347,6 +360,15 @@ jobs:
         run: |
           set -euo pipefail
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
+
+      - name: Save unverified partial compilation state for retry
+        if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success' && (steps.sandbox_build.outcome == 'failure' || steps.release_build.outcome == 'failure')
+        env:
+          CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+        run: |
+          set -euo pipefail
+          printf 'Saving partial compilation state; this run remains failed and has no new verified source snapshot.\n'
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Retain baseline evidence for one day
         if: always()

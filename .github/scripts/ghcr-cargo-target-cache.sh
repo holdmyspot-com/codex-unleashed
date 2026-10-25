@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Transfer compiled Cargo outputs for an exact build-input tag. Partial operations
+# use a separate reference and never publish a verified-cache reference. Pulls
+# return 3 for a missing reference; invalid arguments return 2, and other failures
+# retain the failing tool's status. RUNNER_TEMP owns transient archive storage.
 if [[ $# != 5 ]]; then
-  printf 'usage: %s <pull|push> <repository> <tag> <target-directory> <upstream-tag>\n' "$0" >&2
+  printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag>\n' "$0" >&2
   exit 2
 fi
 operation="$1"
@@ -15,8 +19,14 @@ if [[ ! "$tag" =~ ^cargo-v3-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
   exit 2
 fi
 cache_target="${BASH_REMATCH[1]}"
+cache_state=verified
 case "$operation" in
   pull|push) ;;
+  pull-partial|push-partial)
+    operation="${operation%-partial}"
+    cache_state=partial
+    tag="$tag-partial"
+    ;;
   *) printf 'Unsupported Cargo cache operation: %s\n' "$operation" >&2; exit 2 ;;
 esac
 case "$OSTYPE" in
@@ -33,7 +43,7 @@ trap 'rm -rf -- "$archive_directory"' EXIT
 reference="$repository:$tag"
 archive="$archive_directory/cargo-target.tar.zst"
 transfer_started=$SECONDS
-printf 'Cache operation=%s reference=%s\n' "$operation" "$reference"
+printf 'Cache operation=%s state=%s reference=%s\n' "$operation" "$cache_state" "$reference"
 df -Pk "$target_directory" "$archive_directory"
 
 case "$operation" in
