@@ -170,6 +170,9 @@ jobs:
             --build_metadata=TAG_job=verify-release-build
             --build_metadata=TAG_rust_debug_assertions=off
           )
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            build_args+=(--repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
+          fi
           bash scripts/list-bazel-release-targets.sh > "$evidence/release-targets.txt"
           targets=()
           while IFS= read -r target; do

@@ -162,7 +162,7 @@ jobs:
           clippy_args=(--config=clippy --disk_cache=)
           if [[ "$RUNNER_OS" == Windows ]]; then
             wrapper_args+=(--windows-cross-compile)
-            clippy_args+=(--skip_incompatible_explicit_targets)
+            clippy_args+=(--skip_incompatible_explicit_targets --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             scripts/list-bazel-clippy-targets.sh --windows-cross-compile > "$evidence/clippy-targets.txt"
