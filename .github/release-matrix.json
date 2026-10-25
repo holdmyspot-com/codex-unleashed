@@ -18,7 +18,7 @@
     "target": "aarch64-apple-darwin",
     "split-debug-info": "packed",
     "binary-suffix": "",
-    "baseline-verified": false
+    "baseline-verified": true
   },
   {
     "runner": "macos-15-intel",
@@ -32,7 +32,7 @@
     "target": "x86_64-pc-windows-msvc",
     "split-debug-info": "off",
     "binary-suffix": ".exe",
-    "baseline-verified": false
+    "baseline-verified": true
   },
   {
     "runner": "windows-11-arm",
