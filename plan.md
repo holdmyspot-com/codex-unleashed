@@ -11,6 +11,7 @@ Selected scope:
 - Root contents: only `plan.md`.
 - Product publication: patched Codex CLI and app-server packages; no standalone SDK releases. npm package delivery remains local-registry only.
 - Build coverage: the existing release matrix, beginning with a local Linux check: Linux ARM64 and x86_64 musl, macOS Apple Silicon and Intel, and Windows ARM64 and x86_64 MSVC.
+- Branch publication: pushing ongoing work to `main.new` is authorized without repeated approval. Publishing releases remains a separate decision.
 
 The selected stable tag and exact commit are resolved from upstream when step 1 starts and remain fixed through step 6. Do not silently move the baseline as new releases appear.
 
@@ -120,6 +121,11 @@ Existing old-main candidates for review:
 - `patches/openai/codex/security-RUSTSEC-2026-0367/`: ZIP update; related advisory identifiers 0368–0369.
 - Dependency source changes inside the mixed issue-61 group, including ICU mutex handling and the AWS-LC Windows TLS callback backport. Classify each against the selected release before considering migration.
 - Additional unreleased fixes or desired dependency features: populate from the patch-by-patch review and new diagnostics. These concerns remain discussion items rather than implicit authorization to fix them.
+
+New baseline audit findings, with unchanged locked dependency versions and RustSec database revision `21d909e4c8bd4e14c7aea58bf980c881a0053ab1`:
+
+- `crypto-bigint 0.5.5`: [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387), timing variability in operations intended to be constant-time. The advisory lists `>=0.7.6` as patched. The dependency graph includes `elliptic-curve` through `p256`/`age`; exploitability in Codex remains unverified. Investigate a supported stable dependency upgrade in step 7, without backporting dependency source.
+- `ctutils 0.4.2`: [RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385), mask-generation and comparison timing issues. The advisory lists `>=0.4.4` as patched. The graph includes `digest`/`hmac`/`pbkdf2`/`zip`; exploitability in Codex remains unverified. Investigate a supported stable dependency upgrade in step 7. The current audit fails; do not report it as passing or silently suppress the findings.
 
 ## Old-main changes not yet migrated
 
