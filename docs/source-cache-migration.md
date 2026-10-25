@@ -76,12 +76,22 @@ The [lockfile verifier](../.github/scripts/verify-cargo-lock.py) requires Python
 
 The baseline release workflow now retains the trusted lockfile before compilation, produces actual Cargo metadata after the build and verifies dependency identity before cache upload. The original source guard still checks every other tracked file. A real Git fixture first demonstrated that the former whole-file exclusion accepts a changed dependency version. The maintained CLI regression covers eleven permitted/rejected cases, including checksums, registry sources, explicit empty sources, numeric types and malformed input; it also verifies that input files remain unchanged. A separate actual Cargo 1.99.1 build fixture verifies workspace-version synchronization using Cargo-generated lockfiles and metadata. Both fixture workspaces are removed after execution. Retained evidence: `lock-guard-red.json`, `lock-guard-target-proof/lock-verification.json` and `lock-guard-cargo-proof/commands.json`. Actionlint and whitespace checks pass. This verifies the downstream guard locally; a complete hosted Codex build with this guard remains unrun.
 
+## Release workflow integration
+
+The [release baseline workflow](../.github/workflows/baseline-release-builds.yml) preserves this standalone helper outside the upstream checkout and hashes its Maven declaration, production sources and build-only assembler into compiled-cache identity. Cached mode selects the same native Zulu JDK and Maven runtime profile used by the focused helper workflow; uncached mode does not build the helper. Maven outputs, repository and temporary files have separate owned runner paths.
+
+Preparation runs after upstream V8 checksum verification and GHCR restoration, before the Linux sandbox helper or any release compilation. It includes every selected CLI, app-server and platform-helper executable. After native smokes, unchanged-source verification and the dependency identity guard pass, recording checks that inputs have not drifted, then GHCR receives the successful snapshot and compiled outputs. This integrates existing successful-build caching; it does not yet retain failed-run partial state across hosted jobs. The separate incremental-resumption checkpoint in [plan.md](../plan.md) remains unverified.
+
+A local invocation against the actual pinned Codex workspace confirms all selected Linux binary owners are found and preparation succeeds with populated dependency downloads. Cargo synchronizes 166 workspace versions, which the new dependency guard accepts against actual Cargo metadata; tracked source is restored and verified clean afterward. The first probe used an empty Cargo home with forced offline mode and failed because `cargo clean` resolves patched Git dependencies; changing only to the existing populated home passes. This is probe setup, not an upstream source defect. The owned empty target is removed after verification; logs, lockfiles, metadata and hashes remain in `codex-helper-prepare-proof/verified.json`. This probe does not compile Codex or verify warm reuse.
+
+Actionlint and whitespace checks pass for the integration. Hosted cold/warm behavior, transfer costs, invalidation and full Codex acceptance remain unrun for this new cache identity.
+
 ## Remaining integration gates
 
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
-- Preserve the helper before upstream checkout and include its source and Maven declaration in compiled-cache identity.
-- Run preparation after verified V8 setup and compiled-target restoration, before any Cargo compilation; include all selected release executables.
-- Verify source, dependency identity and native smokes before successful recording and cache upload.
+- Verify the hosted preserved-helper build and its contribution to compiled-cache identity.
+- Verify hosted preparation after V8 setup and restoration, before all release compilation, covering all selected executables.
+- Verify hosted source/dependency guards and native smokes precede successful recording and cache upload.
 - Verify the PAX archive and helper on the supported native platforms.
 - Run hosted cold/warm Codex builds and representative changed-input invalidation. Fixture reuse does not satisfy those gates.
 
