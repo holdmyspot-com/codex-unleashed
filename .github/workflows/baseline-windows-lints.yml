@@ -1,0 +1,188 @@
+name: Stable upstream Windows lints
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-windows-lints.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: Clippy - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    env:
+      CODEX_REPO_ROOT: ${{ github.workspace }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_INCREMENTAL: "0"
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          cargo_home="$RUNNER_TEMP/baseline-cargo-home"
+          cargo_target_dir="$RUNNER_TEMP/baseline-target"
+          mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
+          printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-patches"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-patches/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Set up the upstream Rust toolchain
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Expose the matching MSVC environment
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Set up Python for upstream's native builder
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.12"
+
+      - name: Verify upstream's Windows bootstrap inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $native = Join-Path $env:RUNNER_TEMP "baseline-native"
+          New-Item -ItemType Directory -Path $native | Out-Null
+          $manifest = Get-Content -Raw .github/scripts/voice-cygwin-snapshot.json | ConvertFrom-Json
+          $archive = Join-Path $native $manifest.archive.name
+          $url = "https://github.com/openai/codex/releases/download/$($manifest.archive.tag)/$($manifest.archive.name)"
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $digest = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne $manifest.archive.sha256) { throw "Cygwin snapshot digest mismatch" }
+          ./.github/scripts/setup-voice-windows.ps1 -Target $env:TARGET -SnapshotArchive $archive
+
+      - name: Build the pinned native voice prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $native = Join-Path $env:RUNNER_TEMP "baseline-native"
+          $archives = Join-Path $native "archives"
+          New-Item -ItemType Directory -Path $archives | Out-Null
+          $cmakeInputs = @{
+            "x86_64-pc-windows-msvc" = @("x86_64", "81aa9964dbabd71fe02e7ec50472fd3ad56138c49944515ece9001efbff8d719")
+            "aarch64-pc-windows-msvc" = @("arm64", "d37ca89ec60aece080664ee936f7aaffdfdbde0a201b165c45ecfaf68a4c1fa9")
+          }
+          $cmakeInput = $cmakeInputs[$env:TARGET]
+          $cmakeName = "cmake-3.31.8-windows-$($cmakeInput[0])"
+          $cmakeArchive = Join-Path $native "$cmakeName.zip"
+          Invoke-WebRequest -Uri "https://github.com/Kitware/CMake/releases/download/v3.31.8/$cmakeName.zip" -OutFile $cmakeArchive
+          $digest = (Get-FileHash $cmakeArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -ne $cmakeInput[1]) { throw "CMake archive digest mismatch" }
+          Expand-Archive -Path $cmakeArchive -DestinationPath $native
+          $manifest = Get-Content -Raw third_party/voice/sources.json | ConvertFrom-Json
+          foreach ($source in $manifest.sources) {
+            $destination = Join-Path $archives $source.archive
+            Invoke-WebRequest -Uri $source.url -OutFile $destination
+            $digest = (Get-FileHash $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($digest -ne $source.sha256) { throw "Native source digest mismatch: $($source.archive)" }
+          }
+          $build = Join-Path $native "build"
+          $compiler = (Get-Command cl.exe).Source
+          $arguments = @(
+            "third_party/voice/build_native.py",
+            "--archives", $archives, "--output", $build,
+            "--cc", $compiler, "--cxx", $compiler,
+            "--cmake", (Join-Path $native "$cmakeName/bin/cmake.exe"),
+            "--make", (Join-Path $env:VOICE_CYGWIN_ROOT "bin/make.exe"),
+            "--bootstrap-make", (Get-Command nmake.exe).Source,
+            "--pkg-config", $env:VOICE_PKG_CONFIG,
+            "--shell", (Join-Path $env:VOICE_CYGWIN_ROOT "bin/bash.exe"),
+            "--target", $env:TARGET
+          )
+          & python @arguments 2>&1 | Tee-Object (Join-Path $env:RUNNER_TEMP "baseline-evidence/native-build.log")
+          if ($LASTEXITCODE -ne 0) { throw "Native voice prerequisite build failed: $LASTEXITCODE" }
+          Copy-Item (Join-Path $build "built.json") (Join-Path $env:RUNNER_TEMP "baseline-evidence/native-built.json")
+          $prefix = Join-Path $build "prefix"
+          $env:PKG_CONFIG = $env:VOICE_PKG_CONFIG
+          $env:PKG_CONFIG_LIBDIR = "$prefix/lib/pkgconfig;$prefix/share/pkgconfig"
+          Remove-Item Env:PKG_CONFIG_PATH -ErrorAction SilentlyContinue
+          & $env:PKG_CONFIG --modversion gstreamer-1.0 glib-2.0
+          if ($LASTEXITCODE -ne 0) { throw "Native voice metadata probe failed" }
+          "PKG_CONFIG=$env:PKG_CONFIG" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_CONFIG_LIBDIR=$env:PKG_CONFIG_LIBDIR" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PKG_CONFIG_PATH=" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Check all default workspace test targets with nonfatal warnings
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          cargo clippy --target "$TARGET" --tests --profile dev --timings \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/clippy.log"
+
+      - name: Retain lint evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-clippy-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/baseline-evidence
+            ${{ runner.temp }}/baseline-target/**/cargo-timings
+            ${{ runner.temp }}/baseline-native/build/*.log
+            ${{ runner.temp }}/baseline-native/build/build-state.json
+            ${{ runner.temp }}/baseline-native/build/**/config.log
+            ${{ runner.temp }}/voice-windows-build-tools/evidence
+          retention-days: 1
+          if-no-files-found: warn
