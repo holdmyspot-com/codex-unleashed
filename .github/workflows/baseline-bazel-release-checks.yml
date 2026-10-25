@@ -5,6 +5,7 @@ on:
     branches: [main.new]
     paths:
       - .github/workflows/baseline-bazel-release-checks.yml
+      - .github/scripts/setup-baseline-windows-voice.ps1
       - .github/upstream-commit
       - .github/upstream-ref
       - patches/upstream-baseline/**
@@ -47,6 +48,7 @@ jobs:
           mkdir -p "$evidence"
           cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-bazel-release-patches"
           cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-bazel-release-policy"
+          cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -76,6 +78,18 @@ jobs:
         uses: ./.github/actions/setup-bazel-ci
         with:
           target: ${{ matrix.target }}
+
+      - name: Set up Python for upstream's Windows voice prerequisites
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Prepare upstream's native Windows voice tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/setup-baseline-windows-voice.ps1" -EvidenceDirectory "$env:RUNNER_TEMP/baseline-bazel-release-evidence/voice-tools"
 
       - name: Record the native host and capacity
         run: |
@@ -172,6 +186,18 @@ jobs:
           )
           if [[ "$RUNNER_OS" == Windows ]]; then
             build_args+=(--repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
+          fi
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            build_args+=(
+              "--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
+              --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+              --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
+              --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
+              --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+              --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+              --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+              --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+            )
           fi
           bash scripts/list-bazel-release-targets.sh > "$evidence/release-targets.txt"
           targets=()

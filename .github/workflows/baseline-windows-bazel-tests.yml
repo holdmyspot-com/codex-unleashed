@@ -5,6 +5,7 @@ on:
     branches: [main.new]
     paths:
       - .github/workflows/baseline-windows-bazel-tests.yml
+      - .github/scripts/setup-baseline-windows-voice.ps1
       - .github/upstream-commit
       - .github/upstream-ref
       - patches/upstream-baseline/**
@@ -58,6 +59,7 @@ jobs:
           mkdir -p "$evidence"
           cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-windows-bazel-patches"
           cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-windows-bazel-policy"
+          cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -101,6 +103,12 @@ jobs:
         uses: ./.github/actions/setup-bazel-ci
         with:
           target: ${{ matrix.target }}
+
+      - name: Prepare upstream's native Windows voice tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/setup-baseline-windows-voice.ps1" -EvidenceDirectory "$env:RUNNER_TEMP/baseline-windows-bazel-evidence/voice-tools"
 
       - name: Record the native host and capacity
         run: |
@@ -157,6 +165,18 @@ jobs:
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
           wrapper_args=()
           test_args=(test --disk_cache= --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings)
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            test_args+=(
+              "--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain"
+              --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
+              --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY"
+              --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools
+              --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+              --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT"
+              --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+              --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH"
+            )
+          fi
           targets=()
           if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
             wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
