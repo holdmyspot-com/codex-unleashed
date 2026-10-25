@@ -1,0 +1,230 @@
+name: Stable upstream Bazel release checks
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-bazel-release-checks.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+      - patches/upstream-check-policy/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: windows-2025
+            target: x86_64-pc-windows-gnullvm
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-bazel-release-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-bazel-release-policy"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-bazel-release-patches/*.patch "$RUNNER_TEMP"/baseline-bazel-release-policy/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Prepare upstream's Bazel host and toolchain
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          {
+            uname -a
+            printf 'runner_os=%s\ntarget=%s\n' "$RUNNER_OS" "$TARGET"
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            bazel --version
+          } | tee "$evidence/host.txt"
+          test "$(cat .bazelversion)" = 9.2.0
+
+      - name: Reclaim unused hosted-image toolchains on Linux
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          df -k / "$RUNNER_TEMP" > "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sk "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -k / "$RUNNER_TEMP" > "$evidence/disk-after.txt"
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+
+      - name: Resolve upstream's compatibility releases on Linux
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/resolve_exec_server_releases.py > "$RUNNER_TEMP/baseline-bazel-release-evidence/compat-releases.json"
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.target }}
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          cargo metadata --format-version 1 --filter-platform "$TARGET" \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python3 - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/source-before.diff"
+
+      - name: Compile the maintained release selection with debug assertions disabled
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            export CODEX_COMPAT_RELEASES
+            CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
+          fi
+          wrapper_args=()
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            wrapper_args+=(--windows-cross-compile)
+          fi
+          build_args=(
+            --disk_cache=
+            --compilation_mode=fastbuild
+            --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no
+            --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no
+            --build_metadata=TAG_job=verify-release-build
+            --build_metadata=TAG_rust_debug_assertions=off
+          )
+          bash scripts/list-bazel-release-targets.sh > "$evidence/release-targets.txt"
+          targets=()
+          while IFS= read -r target; do
+            targets+=("$target")
+          done < "$evidence/release-targets.txt"
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+              if du -k -d 3 "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p'; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              sleep 60
+            done
+          ) >> "$evidence/disk-usage.log" 2>&1 &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary "${wrapper_args[@]}" -- \
+            build "${build_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            "${targets[@]}" 2>&1 | tee "$evidence/bazel-release.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-release.receipt"
+          git diff --binary > "$evidence/source-after.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          exit "$result"
+
+      - name: Verify the maintained Linux bundled executable target
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-release-evidence"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          export CODEX_COMPAT_RELEASES
+          CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
+          set +e
+          .github/scripts/run-bazel-ci.sh --remote-download-toplevel --print-failed-action-summary -- \
+            build --disk_cache= --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            //codex-rs/bwrap:bwrap 2>&1 | tee "$evidence/bazel-bwrap.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-bwrap.receipt"
+          git diff --binary > "$evidence/source-after-bwrap.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after-bwrap.diff"
+          exit "$result"
+
+      - name: Retain build evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-bazel-release-checks-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-bazel-release-evidence
+          retention-days: 1
+          if-no-files-found: warn
