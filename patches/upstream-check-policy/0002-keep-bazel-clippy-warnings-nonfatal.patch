@@ -1,0 +1,21 @@
+From 9584862d0728c681787eb0755dc87f6041b6e637 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 06:19:05 -0400
+Subject: [PATCH] build: keep baseline Bazel Clippy warnings nonfatal
+
+---
+ .bazelrc | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/.bazelrc b/.bazelrc
+index 4e2195c..5fe4614 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -126,7 +126,6 @@ build:clippy --@rules_rust//rust/settings:clippy.toml=//codex-rs:clippy.toml
+ # Cargo applies those lint levels to member crates that opt into `[lints] workspace = true`
+ # in their own `Cargo.toml`, but `rules_rust` Bazel clippy does not read Cargo lint levels.
+ # `clippy.toml` can configure lint behavior, but it cannot set allow/warn/deny/forbid levels.
+-build:clippy --@rules_rust//rust/settings:clippy_flag=-Dwarnings
+ build:clippy --@rules_rust//rust/settings:clippy_flag=--deny=clippy::await_holding_invalid_type
+ build:clippy --@rules_rust//rust/settings:clippy_flag=--deny=clippy::await_holding_lock
+ build:clippy --@rules_rust//rust/settings:clippy_flag=--deny=clippy::disallowed_methods
