@@ -138,6 +138,8 @@ Hosted producer `40241654118` and consumer `40241805865` now both pass at revisi
 
 ## Remaining integration gates
 
+Source-input recording now includes the sorted differing paths in its refusal diagnostic, covering added, removed and modified files while omitting unchanged files. Its acceptance predicate and generated-lockfile exception are unchanged. The focused regression first fails because the diagnostic omits those paths, then all six snapshot tests and all 34 helper tests pass after the diagnostic change (`mvn -B -ntp -o -f tooling/cli/pom.xml` with the local Maven repository and owned temporary directory, first `-Dtest=SourceInputSnapshotsTest test`, then `verify`). The full Codex recording failure remains undiagnosed; this change supplies evidence for that investigation rather than a source repair.
+
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
 - Verify the hosted preserved-helper build and its contribution to compiled-cache identity.
 - Verify hosted preparation after V8 setup and restoration, before all release compilation, covering all selected executables.

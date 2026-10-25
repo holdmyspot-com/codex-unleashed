@@ -115,10 +115,14 @@ public final class SourceInputSnapshotsTest
 			IOException missing = expectThrows(IOException.class,
 				() -> SourceInputSnapshots.record(fixture.snapshot, fixture.inputs(Map.of("source.rs", "first"))));
 			assertTrue(missing.getMessage().contains("were not prepared"));
-			SourceInputSnapshots.write(fixture.pending(), fixture.inputs(Map.of("source.rs", "first")));
+			SourceInputSnapshots.write(fixture.pending(),
+				fixture.inputs(Map.of("source.rs", "first", "removed.rs", "old", "unchanged.rs", "same")));
 			IOException changed = expectThrows(IOException.class,
-				() -> SourceInputSnapshots.record(fixture.snapshot, fixture.inputs(Map.of("source.rs", "second"))));
+				() -> SourceInputSnapshots.record(fixture.snapshot,
+					fixture.inputs(Map.of("source.rs", "second", "added.rs", "new", "unchanged.rs", "same"))));
 			assertTrue(changed.getMessage().contains("Source inputs changed during the build"));
+			assertTrue(changed.getMessage().contains("Differing paths: [added.rs, removed.rs, source.rs]"),
+				changed.getMessage());
 			assertEquals(Files.readString(fixture.snapshot), "existing successful inputs");
 			assertTrue(Files.isRegularFile(fixture.pending()));
 		}
