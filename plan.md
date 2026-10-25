@@ -24,6 +24,8 @@ Linux Bazel release-profile compilation now also passes with all ten baseline re
 
 The focused native replay comparison now separates the remaining four failures: Bash `--norc` passes three startup/recovery cases, while the fourth reports a descriptor-path deny-mount failure. A local bundled-bubblewrap comparison reproduces that mount error independently. Related native integration/unit verification is expanded before selecting a production replay repair; sandbox assertions and dependency source remain unchanged. The full baseline gate is still incomplete.
 
+Linux Bazel run `40190837597` now completes both package shards without the prior disk-exhaustion failure. Shard 1 passes 171 executed targets; shard 2 passes 171 and fails three targets covering replay, core model history and Wine support. Its failures remain unresolved. A separate MCP fixture repair, baseline patch 0011, follows a deterministic shared-callsite reproduction and a passing focused local integration test. Native concurrent Windows acceptance remains pending. The focused Windows Opus/discovery comparison is retried after correcting our Python subprocess launcher from WSL's bare `bash` to explicit Git Bash; its first attempt reached no Bazel action. No original step is complete.
+
 The `pnpm --version` availability probe succeeds with `12.15.0` after the owner grants write access to Corepack's original cache location. This proves tool availability only, not a Codex build or SDK check.
 
 In the selected upstream checkout, Corepack honors its pnpm 10.34.5 pin. `pnpm install --frozen-lockfile`, `pnpm run format` and the complete `just fmt-check` pass. An upstream manifest checker has a stale code-mode exception; the root cause was established before repair. The one-line repair and its emitted patch pass the maintained checker in independent clean checkouts. The patch was then applied after the default build passed, and the cumulative checker passes.
@@ -258,7 +260,7 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0051-rust-linker-warning-policy.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0052-windows-markdown-fixture.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0054-windows-voice-negative-fixture.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0057-mcp-binding-counter-isolation.patch` | Pending review; not migrated. |
+| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0057-mcp-binding-counter-isolation.patch` | Adapted as baseline patch `0011-isolate-mcp-binding-capture-fixture.patch` after deterministic mechanism reproduction and a passing focused local integration test. All original assertions remain; fresh emitted-patch verification passes. Native concurrent Windows acceptance remains pending. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0059-selected-plugin-pid-deadline.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0061-gov-cloud-quit-pty.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0062-sqlite-startup-close.patch` | Pending review; not migrated. |
