@@ -11,6 +11,10 @@ on:
         description: Compare one unchanged archive across the host and upstream image capabilities
         type: boolean
         default: false
+      trace_shell_startup:
+        description: Trace the failing remote sandbox shell case after its untraced archive run
+        type: boolean
+        default: false
       filter:
         description: Optional nextest expression for an unmodified-source comparison
         type: string
@@ -50,6 +54,16 @@ jobs:
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
+      - name: Validate the focused process-trace request
+        if: inputs.trace_shell_startup
+        env:
+          TRACE_PACKAGE: ${{ inputs.package }}
+          TRACE_FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+          test "$TRACE_PACKAGE" = codex-exec-server
+          test "$TRACE_FILTER" = 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)'
+
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -86,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex strace
           mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
           printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
 
@@ -143,7 +157,7 @@ jobs:
 
       - name: Build one unchanged archive for the environment comparison
         id: archive
-        if: inputs.compare_upstream_image
+        if: inputs.compare_upstream_image || inputs.trace_shell_startup
         working-directory: codex-rs
         env:
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
@@ -161,7 +175,7 @@ jobs:
         env:
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
-          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image }}
+          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image || inputs.trace_shell_startup }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -201,6 +215,29 @@ jobs:
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
+
+      - name: Trace the same unmodified remote sandbox shell case
+        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          strace --version > "$evidence/strace-version.txt"
+          set +e
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            strace -f -yy -s 256 \
+              -e trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,socketpair,newfstatat \
+              -o "$evidence/shell-startup.trace" \
+              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
+                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
+                -E 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' \
+            2>&1 | tee "$evidence/traced-nextest.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/traced-nextest.receipt"
+          sha256sum --check "$evidence/archive.sha256"
+          exit "$result"
 
       - name: Run the same archive in upstream's pinned Linux image
         if: ${{ !cancelled() && inputs.compare_upstream_image && steps.archive.outcome == 'success' }}
