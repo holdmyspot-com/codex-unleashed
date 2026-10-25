@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     runs-on: ubuntu-24.04
+    env:
+      BAZEL_TEST_SHARD: ${{ matrix.shard }}
+      BAZEL_TEST_SHARD_COUNT: '2'
     defaults:
       run:
         shell: bash
@@ -131,7 +138,40 @@ jobs:
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-bazel-evidence/bazel-version.txt"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"
 
-      - name: Run the full maintained Bazel suite without a second disk-cache copy
+      - name: Partition the complete package selection across free runners
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          .github/scripts/run-bazel-query-ci.sh --output=label -- '//...' > "$evidence/candidate-targets.txt"
+          python3 - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "baseline-bazel-evidence"
+          labels = (evidence / "candidate-targets.txt").read_text().splitlines()
+          packages = sorted({label.rsplit(":", 1)[0] for label in labels})
+          shard_count = int(os.environ["BAZEL_TEST_SHARD_COUNT"])
+          shard = int(os.environ["BAZEL_TEST_SHARD"])
+          assignments = {
+              package: int.from_bytes(hashlib.sha256(package.encode()).digest(), "big") % shard_count + 1
+              for package in packages
+          }
+          selected = [f"{package}:all" for package in packages if assignments[package] == shard]
+          assert selected, f"No packages selected for shard {shard}"
+          (evidence / "selected-targets.txt").write_text("\n".join(selected) + "\n")
+          (evidence / "package-shards.json").write_text(json.dumps(assignments, indent=2) + "\n")
+          expression = "set(" + " ".join(f"{package}:all" for package in packages) + ")"
+          (evidence / "all-package-patterns.query").write_text(expression + "\n")
+          print(f"Selected {len(selected)} of {len(packages)} packages for shard {shard}/{shard_count}")
+          PYTHON
+          .github/scripts/run-bazel-query-ci.sh --output=label -- "$(cat "$evidence/all-package-patterns.query")" \
+            | LC_ALL=C sort > "$evidence/expanded-package-targets.txt"
+          LC_ALL=C sort "$evidence/candidate-targets.txt" > "$evidence/expected-targets.txt"
+          cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
+
+      - name: Run the maintained Bazel package shard without a second disk-cache copy
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -139,6 +179,10 @@ jobs:
           CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
           export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          targets=()
+          while IFS= read -r target; do
+            targets+=("$target")
+          done < "$evidence/selected-targets.txt"
           (
             while true; do
               date -u +'%Y-%m-%dT%H:%M:%SZ'
@@ -157,7 +201,7 @@ jobs:
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
             test --disk_cache= --test_tag_filters=-argument-comment-lint \
             --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
-            //... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
+            "${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
             2>&1 | tee "$evidence/bazel-tests.log"
           result=${PIPESTATUS[0]}
           set -e
@@ -170,7 +214,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: baseline-native-bazel-tests
+          name: baseline-native-bazel-tests-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/baseline-bazel-evidence
           retention-days: 1
           if-no-files-found: warn
