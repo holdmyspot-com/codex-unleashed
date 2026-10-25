@@ -1,1 +1,2 @@
 patches/upstream-baseline/*.patch text eol=lf whitespace=-blank-at-eol
+patches/upstream-check-policy/*.patch text eol=lf whitespace=-blank-at-eol
