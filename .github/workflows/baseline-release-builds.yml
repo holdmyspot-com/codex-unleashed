@@ -370,6 +370,23 @@ jobs:
           printf 'Saving partial compilation state; this run remains failed and has no new verified source snapshot.\n'
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
+      - name: Preserve cache input comparison evidence
+        if: always() && inputs.cache
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          snapshots="$CARGO_TARGET_DIR/.codex-source-inputs"
+          if [[ -d "$snapshots" ]]; then
+            cp -R "$snapshots" "$evidence/source-input-state"
+          fi
+          git status --porcelain=v1 --untracked-files=all > "$evidence/final-source-status.txt"
+          git ls-files --others --exclude-standard -z |
+            while IFS= read -r -d '' source_path; do
+              if [[ -f "$source_path" ]]; then
+                sha256sum -- "$source_path"
+              fi
+            done > "$evidence/final-untracked-source-digests.txt"
+
       - name: Retain baseline evidence for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
