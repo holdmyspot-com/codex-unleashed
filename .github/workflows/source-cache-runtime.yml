@@ -7,6 +7,10 @@ on:
         description: Release target to verify, or all for the complete native matrix
         type: string
         default: all
+      partial-cache:
+        description: Test private GHCR partial-state round trip (select x86_64-unknown-linux-musl)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -23,7 +27,12 @@ jobs:
       - id: matrix
         env:
           SELECTED_TARGET: ${{ inputs.target || 'all' }}
+          PARTIAL_CACHE_ENABLED: ${{ inputs.partial-cache }}
         run: |
+          if [[ "$PARTIAL_CACHE_ENABLED" == true && "$SELECTED_TARGET" != x86_64-unknown-linux-musl ]]; then
+            printf 'The private partial-cache diagnostic requires target=x86_64-unknown-linux-musl.\n' >&2
+            exit 2
+          fi
           value="$(jq -ce --arg target "$SELECTED_TARGET" '
             (if $target == "all" then . else map(select(.target == $target)) end)
             | if length == 0 then error("Unknown release target") else {include: .} end
@@ -35,6 +44,9 @@ jobs:
     name: Helper - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
@@ -77,15 +89,32 @@ jobs:
             "-Dmaven.repo.local=$RUNNER_TEMP/source-cache-maven" \
             "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/verify.log"
 
+      - name: Set up private partial-cache transport
+        if: inputs.partial-cache
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+
+      - name: Authenticate private partial-cache transport
+        if: inputs.partial-cache
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       - name: Exercise the packaged launcher and Cargo freshness behavior
+        env:
+          PARTIAL_CACHE_ENABLED: ${{ inputs.partial-cache }}
         run: |
           set -euo pipefail
           bash_path="$(command -v bash)"
           if command -v cygpath >/dev/null 2>&1; then
             bash_path="$(cygpath -m "$bash_path")"
           fi
-          python3 .github/scripts/test-source-cache-runtime.py \
-            "$RUNNER_TEMP/source-cache-build/runtime" "$RUNNER_TEMP/source-cache-evidence/fixture" "$bash_path"
+          fixture_args=("$RUNNER_TEMP/source-cache-build/runtime" "$RUNNER_TEMP/source-cache-evidence/fixture" "$bash_path")
+          if [[ "$PARTIAL_CACHE_ENABLED" == true ]]; then
+            fixture_args+=(--cache-transport "$GITHUB_WORKSPACE/.github/scripts/ghcr-cargo-target-cache.sh" --cache-repository "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache")
+          fi
+          python3 .github/scripts/test-source-cache-runtime.py "${fixture_args[@]}"
 
       - name: Verify repository source remains unchanged
         if: always()
