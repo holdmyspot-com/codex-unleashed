@@ -8,20 +8,33 @@ receipt remain in the evidence directory for the caller to collect.
 Optional cache transport and repository arguments also round-trip partial outputs
 before retrying. The caller owns removal of the resulting registry artifact;
 partial-cache-reference.txt records its reference before upload.
+With --resume-receipt, recreate the producer's exact fixture path under the same
+absolute evidence directory and restore its partial reference without compiling
+new cold outputs. The receipt must come from this script with the same native
+Rust identity and selected cache repository. Producer logs must be retained
+separately before a local consumer writes logs at that evidence location.
 """
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 
 
-def verify(runtime, evidence, bash, cache_transport, cache_repository):
-    """Verify reuse, content invalidation and recording refusal through the CLI."""
+def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_receipt):
+    """Verify CLI reuse and invalidation, optionally continuing a prior partial fixture.
+
+    A resume receipt supplies the original fixture directory, binding timestamp,
+    Rust identity and private-cache reference. Invalid receipt locations or cache
+    namespaces raise ValueError before creating the fixture. Each invocation owns
+    and removes its fixture; the caller retains logs and owns registry cleanup.
+    """
     runtime = runtime.resolve()
     bash = bash.resolve(strict=True)
     assert bash.is_file(), bash
@@ -29,23 +42,42 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository):
         cache_transport = cache_transport.resolve(strict=True)
         assert cache_transport.is_file(), cache_transport
     evidence = evidence.resolve()
+    producer = None
+    if resume_receipt:
+        if cache_transport is None:
+            raise ValueError("A resume receipt requires the cache transport and repository.")
+        producer = json.loads(resume_receipt.read_text(encoding="utf-8"))
+        fixture_path = Path(producer["fixture_directory"])
+        if fixture_path.parent != evidence:
+            raise ValueError("The producer fixture must be an immediate child of the current evidence directory.")
+        if not fixture_path.name.startswith("runtime-fixture-"):
+            raise ValueError("The producer fixture directory must have the runtime-fixture- prefix.")
+        reference_pattern = re.escape(cache_repository) + r":cargo-v3-[a-z0-9_-]+-[0-9a-f]{64}-partial"
+        if re.fullmatch(reference_pattern, producer["partial_cache_reference"]) is None:
+            raise ValueError("The producer receipt must name a partial reference in the selected cache repository.")
     evidence.mkdir(parents=True, exist_ok=True)
     launcher = runtime / "bin" / "codex-tooling"
     assert launcher.is_file(), launcher
     assert (runtime / ".complete").is_file(), runtime
 
-    with tempfile.TemporaryDirectory(prefix="runtime-fixture-", dir=evidence) as temporary:
-        fixture = Path(temporary)
+    with ExitStack() as resources:
+        if producer:
+            fixture = fixture_path
+            fixture.mkdir()
+            resources.callback(shutil.rmtree, fixture)
+        else:
+            fixture = Path(resources.enter_context(
+                tempfile.TemporaryDirectory(prefix="runtime-fixture-", dir=evidence)))
         workspace = fixture / "workspace"
         (workspace / "src").mkdir(parents=True)
         (workspace / "Cargo.toml").write_text(
             '[package]\nname="cache-demo"\nversion="0.1.0"\nedition="2021"\n'
-            '[workspace]\n[dependencies]\nv8={path="../v8"}\n', encoding="utf-8")
+            '[workspace]\n[dependencies]\nv8={path="v8"}\n', encoding="utf-8")
         (workspace / "src/lib.rs").write_text(
             "pub fn value()->u8 {v8::value()}\n", encoding="utf-8")
         (workspace / "src/main.rs").write_text(
             'fn main(){println!("{}",cache_demo::value());}\n', encoding="utf-8")
-        v8 = fixture / "v8"
+        v8 = workspace / "v8"
         (v8 / "src").mkdir(parents=True)
         (v8 / "Cargo.toml").write_text(
             '[package]\nname="v8"\nversion="0.0.1"\nedition="2021"\n', encoding="utf-8")
@@ -78,9 +110,12 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository):
             return result
 
         command(["git", "init", "--quiet"], "git-init")
-        command(["git", "add", "Cargo.toml", "src"], "git-add")
+        command(["git", "add", "Cargo.toml", "src", "v8"], "git-add")
         rust = command(["rustc", "-vV"], "rust-identity").stdout
         target = rust.split("host: ", 1)[1].splitlines()[0]
+        if producer:
+            assert producer["rust"] == rust, (producer["rust"], rust)
+            assert producer["target"] == target, (producer["target"], target)
         cli = [str(bash), launcher.as_posix(), "clean-cached-release-binaries"]
         command([str(bash), "--version"], "bash-identity")
         command(cli + ["missing-workspace", "../outside", "codex"], "invalid-target", 2)
@@ -102,26 +137,35 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository):
         valid_main = main_source.read_text(encoding="utf-8")
         main_source.write_text('compile_error!("controlled executable failure");\nfn main() {}\n',
                                encoding="utf-8")
-        prepare("cold-prepare")
-        cold = build("cold-failed-build", 101)
-        assert cold == {"v8": False, "cache_demo": False}, cold
+        cold = None
+        if producer is None:
+            prepare("cold-prepare")
+            cold = build("cold-failed-build", 101)
+            assert cold == {"v8": False, "cache_demo": False}, cold
         partial_reference = None
         if cache_transport:
-            identity = hashlib.sha256(("runtime-partial-fixture:" + str(fixture)).encode()).hexdigest()
-            tag = "cargo-v3-" + target + "-" + identity
-            partial_reference = cache_repository + ":" + tag + "-partial"
+            if producer:
+                partial_reference = producer["partial_cache_reference"]
+                tag = partial_reference.removeprefix(cache_repository + ":").removesuffix("-partial")
+            else:
+                identity = hashlib.sha256(("runtime-partial-fixture:" + str(fixture)).encode()).hexdigest()
+                tag = "cargo-v3-" + target + "-" + identity
+                partial_reference = cache_repository + ":" + tag + "-partial"
             (evidence / "partial-cache-reference.txt").write_text(
                 partial_reference + "\n", encoding="utf-8")
             transfer = [str(bash), cache_transport.as_posix()]
             transfer_inputs = [cache_repository, tag, str(fixture / "target"), "rust-v0.164.0"]
-            command(transfer + ["push-partial"] + transfer_inputs, "partial-cache-upload")
-            shutil.rmtree(fixture / "target")
-            (fixture / "target").mkdir()
+            if producer is None:
+                command(transfer + ["push-partial"] + transfer_inputs, "partial-cache-upload")
+                shutil.rmtree(fixture / "target")
+                (fixture / "target").mkdir()
             command(transfer + ["pull"] + transfer_inputs, "verified-cache-absent", 3)
             command(transfer + ["pull-partial"] + transfer_inputs, "partial-cache-download")
 
         main_source.write_text(valid_main, encoding="utf-8")
         before_retry = binding.stat().st_mtime_ns
+        if producer:
+            before_retry = producer["prepared_binding_mtime_ns"]
         os.utime(binding, ns=(before_retry + 100_000_000_000, before_retry + 100_000_000_000))
         prepare("partial-retry-prepare")
         partial = build("partial-retry-build")
@@ -160,6 +204,8 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository):
                    "warm_library_fresh": warm,
                    "changed_library_fresh": changed, "changed_executable_output": output,
                    "partial_cache_reference": partial_reference,
+                   "fixture_directory": str(fixture), "prepared_binding_mtime_ns": original,
+                   "resumed_from_partial_reference": producer["partial_cache_reference"] if producer else None,
                    "invalid_target_exit": 2, "content_drift_record_exit": 1}
     receipt["fixture_removed"] = not fixture.exists()
     assert receipt["fixture_removed"]
@@ -176,11 +222,12 @@ def main():
     parser.add_argument("bash", type=Path)
     parser.add_argument("--cache-transport", type=Path)
     parser.add_argument("--cache-repository")
+    parser.add_argument("--resume-receipt", type=Path)
     arguments = parser.parse_args()
     if (arguments.cache_transport is None) != (arguments.cache_repository is None):
         parser.error("--cache-transport and --cache-repository must be supplied together")
     verify(arguments.runtime, arguments.evidence, arguments.bash,
-           arguments.cache_transport, arguments.cache_repository)
+           arguments.cache_transport, arguments.cache_repository, arguments.resume_receipt)
 
 
 if __name__ == "__main__":
