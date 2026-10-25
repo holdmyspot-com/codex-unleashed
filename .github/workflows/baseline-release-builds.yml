@@ -177,6 +177,10 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
 
+      - name: Select noninteractive Git input on Windows
+        if: runner.os == 'Windows'
+        run: echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
+
       - name: Set up the cache helper's native JDK
         if: inputs.cache
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
