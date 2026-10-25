@@ -1,0 +1,58 @@
+name: Diagnose Windows cache-helper process lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/diagnose-helper-processes.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+      - name: Measure fixed command lifecycle stages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'helper-process-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          git rev-parse HEAD | Set-Content (Join-Path $evidence 'restart-commit')
+          $java = Join-Path $env:JAVA_HOME 'bin/java.exe'
+          $jcmd = Join-Path $env:JAVA_HOME 'bin/jcmd.exe'
+          $cmd = Join-Path $env:SystemRoot 'System32/cmd.exe'
+          $git = (Get-Command git.exe -CommandType Application).Source
+          $source = Join-Path $env:GITHUB_WORKSPACE '.github/scripts/diagnostics/windows-process/ProcessLifecycleProbe.java'
+          python .github/scripts/diagnostics/windows-process/launch_process_probe.py `
+            --java $java --jcmd $jcmd --cmd $cmd --git $git `
+            --source $source --owned-parent $evidence
+          exit $LASTEXITCODE
+      - name: Retain diagnostic evidence for one day
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: helper-process-${{ matrix.runner }}
+          path: ${{ runner.temp }}/helper-process-evidence
+          retention-days: 1
+      - name: Remove owned diagnostic storage
+        if: always()
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP 'helper-process-evidence'
+          if (Test-Path -LiteralPath $evidence) {
+            Remove-Item -LiteralPath $evidence -Recurse -Force
+          }
