@@ -44,12 +44,6 @@ def main():
         shutil.copy2(args.helper, fixture / "sandbox")
         (fixture / "private").mkdir()
         command = [
-            str(args.outer_bwrap),
-            "--unshare-user",
-            "--uid",
-            "0",
-            "--gid",
-            "0",
             "--die-with-parent",
             "--tmpfs",
             "/",
@@ -97,10 +91,25 @@ def main():
             )
         )
 
-        for variant in ("helper-only", "with-bundled-bwrap"):
+        for variant in (
+            "helper-only",
+            "with-bundled-bwrap",
+            "with-bundled-bwrap-default-ids",
+        ):
             if variant == "with-bundled-bwrap":
                 shutil.copy2(args.bundled_bwrap, fixture / "bwrap")
-            result = subprocess.run(command, capture_output=True, text=True)
+            identity_arguments = (
+                []
+                if variant == "with-bundled-bwrap-default-ids"
+                else ["--uid", "0", "--gid", "0"]
+            )
+            selected_command = [
+                str(args.outer_bwrap),
+                "--unshare-user",
+                *identity_arguments,
+                *command,
+            ]
+            result = subprocess.run(selected_command, capture_output=True, text=True)
             (args.evidence / f"{variant}.stdout").write_text(result.stdout)
             (args.evidence / f"{variant}.stderr").write_text(result.stderr)
             results.append({"variant": variant, "exit_code": result.returncode})
@@ -109,14 +118,20 @@ def main():
     (args.evidence / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     original_stderr = (args.evidence / "helper-only.stderr").read_text()
     missing_bwrap_reproduced = "bubblewrap is unavailable" in original_stderr
-    bundled_fixture_succeeded = results[1]["exit_code"] == 0
+    root_identity_stderr = (args.evidence / "with-bundled-bwrap.stderr").read_text()
+    root_identity_failure_reproduced = "setting up uid map" in root_identity_stderr
+    default_identity_fixture_succeeded = results[2]["exit_code"] == 0
     if not missing_bwrap_reproduced:
         raise SystemExit(
             "The original missing-bubblewrap failure did not reproduce; inspect evidence."
         )
-    if not bundled_fixture_succeeded:
+    if not root_identity_failure_reproduced:
         raise SystemExit(
-            "Adding bundled bubblewrap did not resolve the probe; inspect evidence."
+            "The root-identity UID-map failure did not reproduce; inspect evidence."
+        )
+    if not default_identity_fixture_succeeded:
+        raise SystemExit(
+            "The bundled fixture with default user IDs still fails; inspect evidence."
         )
 
 
