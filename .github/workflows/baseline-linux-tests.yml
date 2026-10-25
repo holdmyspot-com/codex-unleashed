@@ -227,6 +227,7 @@ jobs:
             --mount "type=bind,source=$RUNNER_TEMP,target=$RUNNER_TEMP,readonly" \
             --mount "type=bind,source=$CARGO_TARGET_DIR,target=$CARGO_TARGET_DIR,readonly" \
             --mount "type=bind,source=$nextest_binary,target=/usr/local/bin/cargo-nextest,readonly" \
+            --tmpfs "$GITHUB_WORKSPACE/codex-rs/target/nextest:rw,uid=1000,gid=1000,mode=0700" \
             --workdir "$GITHUB_WORKSPACE/codex-rs" \
             --env RUST_MIN_STACK --env RUST_BACKTRACE --env RUST_LIB_BACKTRACE \
             --env LD_LIBRARY_PATH --env CODEX_TEST_VOICE_RUNTIME \
