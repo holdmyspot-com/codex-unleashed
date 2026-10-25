@@ -224,10 +224,12 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-test-evidence"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           strace --version > "$evidence/strace-version.txt"
+          /bin/bash --version > "$evidence/bash-version.txt"
+          sha256sum /bin/bash > "$evidence/bash.sha256"
           set +e
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             strace -f -yy -s 256 \
-              -e trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,socketpair,newfstatat \
+              -e trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,getpeername,socketpair,newfstatat \
               -o "$evidence/shell-startup.trace" \
               cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
                 --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
