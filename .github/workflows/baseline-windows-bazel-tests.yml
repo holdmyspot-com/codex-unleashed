@@ -223,6 +223,43 @@ jobs:
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
           exit "$result"
 
+      - name: Record native Opus install links and CMake inputs
+        if: always() && env.BAZEL_OUTPUT_BASE != ''
+        run: |
+          python - <<'PYTHON'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          base = Path(os.environ["BAZEL_OUTPUT_BASE"])
+          evidence = Path(os.environ["RUNNER_TEMP"]) / "baseline-windows-bazel-evidence" / "opus-install"
+          evidence.mkdir(parents=True, exist_ok=True)
+          records = []
+          pattern = "execroot/_main/bazel-out/*/bin/external/*opusic-sys*/_bs.out_dir"
+          for output in sorted(base.glob(pattern)):
+              for header in sorted((output / "include" / "opus").glob("*.h")):
+                  metadata = header.lstat()
+                  records.append({
+                      "path": header.relative_to(base).as_posix(),
+                      "exists": header.exists(),
+                      "symlink": header.is_symlink(),
+                      "link_target": os.readlink(header) if header.is_symlink() else None,
+                      "file_attributes": getattr(metadata, "st_file_attributes", None),
+                      "reparse_tag": getattr(metadata, "st_reparse_tag", None),
+                  })
+              for name in ("CMakeCache.txt", "cmake_install.cmake", "install_manifest.txt"):
+                  for source in sorted(output.glob(f"**/{name}")):
+                      destination = evidence / source.relative_to(base)
+                      destination.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copyfile(source, destination)
+          (evidence / "headers.json").write_text(json.dumps({
+              "path_base": "BAZEL_OUTPUT_BASE",
+              "headers": records,
+          }, indent=2) + "\n")
+          print(f"Recorded {len(records)} installed Opus headers")
+          PYTHON
+
       - name: Retain test evidence for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
