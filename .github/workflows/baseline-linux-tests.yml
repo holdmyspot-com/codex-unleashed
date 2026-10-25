@@ -234,10 +234,24 @@ jobs:
           strace --version > "$evidence/strace-version.txt"
           /bin/bash --version > "$evidence/bash-version.txt"
           sha256sum /bin/bash > "$evidence/bash.sha256"
+          trace_options=(-f -yy -s 256 -e 'trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,getpeername,socketpair,newfstatat')
+          if test "$TRACE_FILTER" = 'test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)'; then
+            printf 'Recording the blocked-descriptor mount and signal diagnostic.\n'
+            cargo-nextest nextest list --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
+              --workspace-remap "$GITHUB_WORKSPACE/codex-rs" -E "$TRACE_FILTER" --message-format json \
+              > "$evidence/blocked-test-inventory.json"
+            jq -e --arg selected 'shell_snapshot::shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path' '
+              [.["rust-suites"][] | .testcases | to_entries[] |
+               select(.value["filter-match"].status == "matches") |
+               {name: .key, ignored: .value.ignored}] == [{name: $selected, ignored: false}]
+            ' "$evidence/blocked-test-inventory.json"
+            trace_options=(-f -ttt -T -yy -s 256
+              -e 'trace=%process,%signal,%file,write,writev,sendto,sendmsg,sendmmsg,pipe,pipe2,socketpair,dup,dup2,dup3,fcntl,close,close_range,mount,umount2,pivot_root,chroot,unshare,setns,prctl'
+              -e 'raw=write,writev,sendto,sendmsg,sendmmsg' -e write=2)
+          fi
           set +e
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            strace -f -yy -s 256 \
-              -e trace=execve,openat,close,dup,dup2,dup3,fcntl,readlink,readlinkat,connect,getpeername,socketpair,newfstatat \
+            strace "${trace_options[@]}" \
               -o "$evidence/shell-startup.trace" \
               cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
                 --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
