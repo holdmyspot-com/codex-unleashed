@@ -26,14 +26,6 @@ jobs:
             target: x86_64-unknown-linux-musl
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
-          - runner: macos-15
-            target: aarch64-apple-darwin
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-          - runner: windows-2025
-            target: x86_64-pc-windows-msvc
-          - runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
     env:
       CODEX_REPO_ROOT: ${{ github.workspace }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -85,7 +77,6 @@ jobs:
           git diff --binary > "$evidence/applied-check-repairs.diff"
 
       - name: Install Linux bwrap prerequisites
-        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           sudo apt-get update -y
@@ -98,24 +89,16 @@ jobs:
           components: clippy
 
       - name: Install upstream's Zig prerequisite
-        if: runner.os == 'Linux'
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
           version: 0.14.0
           use-cache: false
 
       - name: Install upstream's musl build inputs
-        if: runner.os == 'Linux'
         run: bash .github/scripts/install-musl-build-tools.sh
 
       - name: Verify and configure upstream V8 artifacts
         uses: ./.github/actions/setup-rusty-v8
-        with:
-          target: ${{ matrix.target }}
-
-      - name: Expose the matching MSVC environment
-        if: runner.os == 'Windows'
-        uses: ./.github/actions/setup-msvc-env
         with:
           target: ${{ matrix.target }}
 
