@@ -1,0 +1,102 @@
+name: Stable upstream macOS capacity probe
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-macos-capacity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Record initial free-runner capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-macos-capacity"
+          mkdir -p "$evidence"
+          df -k "$RUNNER_TEMP" | tee "$evidence/disk-before-checkout.txt"
+
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve exact source identities
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-capacity"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify clean upstream source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-macos-capacity/upstream-commit")"
+          test -z "$(git status --porcelain)"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Inventory capacity and selected native tools
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-capacity"
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.memsize hw.logicalcpu
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            xcode-select -p
+            xcodebuild -version
+            xcrun --show-sdk-path
+            xcrun clang --version
+            bash --version
+          } | tee "$evidence/host-and-tools.txt"
+          diskutil apfs list > "$evidence/apfs-volumes.txt"
+          for directory in /Applications /Library/Developer /opt/homebrew /usr/local; do
+            if [[ -d "$directory" ]]; then
+              if du -k -d 1 "$directory" >> "$evidence/installed-tool-sizes.txt" 2>&1; then
+                :
+              else
+                printf 'directory=%s inventory_exit=%s\n' "$directory" "$?" >> "$evidence/installed-tool-sizes.txt"
+              fi
+            fi
+          done
+          df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP" > "$evidence/disk-after-inventory.txt"
+
+      - name: Retain capacity evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-macos-capacity-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-macos-capacity
+          retention-days: 1
+          if-no-files-found: warn
