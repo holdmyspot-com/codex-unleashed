@@ -22,6 +22,7 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       RUST_MIN_STACK: "8388608"
       RUST_BACKTRACE: "1"
+      RUST_LIB_BACKTRACE: "0"
     defaults:
       run:
         shell: bash
@@ -126,8 +127,11 @@ jobs:
             --target x86_64-unknown-linux-gnu \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/native-build.log"
           cp "$native/build/built.json" "$RUNNER_TEMP/baseline-test-evidence/native-built.json"
-          printf 'PKG_CONFIG_PATH=%s\n' "$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig" >> "$GITHUB_ENV"
-          printf 'LD_LIBRARY_PATH=%s\n' "$native/build/prefix/lib" >> "$GITHUB_ENV"
+          {
+            printf 'PKG_CONFIG_PATH=%s\n' "$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig"
+            printf 'LD_LIBRARY_PATH=%s\n' "$native/build/prefix/lib"
+            printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
+          } >> "$GITHUB_ENV"
 
       - name: Build the maintained Linux test helper
         working-directory: codex-rs
@@ -144,6 +148,8 @@ jobs:
             while true; do
               date -u +'%Y-%m-%dT%H:%M:%SZ'
               df -k "$CARGO_TARGET_DIR" "$RUNNER_TEMP"
+              du -sk -- "$CARGO_HOME" "$RUNNER_TEMP/baseline-test-native"
+              du -k --max-depth=3 -- "$CARGO_TARGET_DIR" | sort -nr | sed -n '1,30p'
               sleep 60
             done
           ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" &
@@ -151,7 +157,7 @@ jobs:
           trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            cargo nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings \
+            cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
 
       - name: Retain test evidence for one day
