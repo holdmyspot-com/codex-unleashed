@@ -60,6 +60,7 @@ jobs:
       PRESERVE_ARCHIVE_POLICY: ${{ inputs.preserve-archive-policy }}
       ARCHIVE_SHARD: ${{ inputs.archive-shard }}
       CONTENTION_CONTROLS: ${{ inputs.contention-controls }}
+      MACOS_STARTUP_CONTROLS: ${{ inputs.macos-startup-controls }}
       ORIGINAL_TOOLING_CACHE_KEY: tooling-runtime-v1-macOS-X64-zulu-27.0.0+35-3f38d98a4ac1b2d5e8f00b207e26c2be764a2b7f2667de7a67ebdc8c69eb5e6b
       SOURCE_RUN: ${{ inputs.source-run }}
       ARTIFACT_ID: ${{ inputs.artifact-id }}
@@ -92,7 +93,8 @@ jobs:
           diagnostic_root="$RUNNER_TEMP/archived-test-diagnostic"
           mkdir -p "$diagnostic_root"
           cp .github/scripts/diagnose-macos-exec-startup.sh "$diagnostic_root/startup-controls.sh"
-          shasum -a 256 "$diagnostic_root/startup-controls.sh" > "$diagnostic_root/startup-controls.sha256"
+          cp .github/scripts/diagnose-macos-exec-sample.sh "$diagnostic_root/startup-sampler.sh"
+          shasum -a 256 "$diagnostic_root/startup-controls.sh" "$diagnostic_root/startup-sampler.sh" > "$diagnostic_root/startup-controls.sha256"
 
       - name: Validate the original shard workload mode
         if: inputs.archive-shard != '' && !inputs.contention-controls
@@ -695,7 +697,13 @@ jobs:
               monitor_pid=
             fi
           }
-          trap stop_monitor EXIT
+          stop_diagnostics() {
+            stop_monitor
+            if declare -F finish_archived_exec_sampler >/dev/null; then
+              finish_archived_exec_sampler
+            fi
+          }
+          trap stop_diagnostics EXIT
           if [[ -n "$ARCHIVE_SHARD" ]]; then
             # Match the original shard invocation: default concurrency and no filter expression.
             execution_args=(--partition "hash:$ARCHIVE_SHARD/4")
@@ -721,6 +729,17 @@ jobs:
             ) > "$diagnostic_root/process-resources.log" 2>&1 &
             monitor_pid=$!
           fi
+          if [[ "$MACOS_STARTUP_CONTROLS" == true ]]; then
+            if shasum -a 256 -c "$diagnostic_root/startup-controls.sha256"; then
+              source "$diagnostic_root/startup-sampler.sh"
+              trap 'exit 130' INT
+              trap 'exit 143' TERM
+              start_archived_exec_sampler "$diagnostic_root/startup-sampling" \
+                "$diagnostic_root/startup-executable-paths.txt" "$diagnostic_root/startup-executable.sha256"
+            else
+              printf 'Startup sampler integrity check failed; original tests will still run.\n' >&2
+            fi
+          fi
           set +e
           "${trace_command[@]}" cargo nextest run \
             "${archive_args[@]}" "${config_args[@]}" \
@@ -730,19 +749,24 @@ jobs:
             2>&1 | tee "$diagnostic_root/tests.log"
           pipeline_status=("${PIPESTATUS[@]}")
           set -e
-          stop_monitor
           printf 'nextest=%s\ntee=%s\n' "${pipeline_status[0]}" "${pipeline_status[1]}" > "$diagnostic_root/nextest-status.txt"
+          stop_diagnostics
           if [[ "${pipeline_status[0]}" != 0 ]]; then
             exit "${pipeline_status[0]}"
           fi
           exit "${pipeline_status[1]}"
 
       - name: Require successful startup controls after retaining the original test outcome
-        if: always() && inputs.macos-startup-controls && steps.startup_controls.outcome == 'failure'
+        if: always() && inputs.macos-startup-controls
         shell: bash
+        env:
+          STARTUP_CONTROLS_OUTCOME: ${{ steps.startup_controls.outcome }}
         run: |
-          printf 'Archived executable startup controls failed; inspect the retained startup evidence.\n' >&2
-          exit 1
+          set -euo pipefail
+          if [[ "$STARTUP_CONTROLS_OUTCOME" != success || ! -f "$RUNNER_TEMP/archived-test-diagnostic/startup-sampling/accepted" ]]; then
+            printf 'Startup controls or sampler identity acceptance failed; inspect the retained startup evidence.\n' >&2
+            exit 1
+          fi
 
       - name: Compare Windows tests with fixtures inside their writable workspace
         if: failure() && runner.os == 'Windows' && steps.original_tests.outcome == 'failure' && !inputs.arm-launch-controls
@@ -797,6 +821,7 @@ jobs:
             ${{ runner.temp }}/archived-test-diagnostic/selected-tests.json
             ${{ runner.temp }}/archived-test-diagnostic/original-tooling-cache-key.txt
             ${{ runner.temp }}/archived-test-diagnostic/startup-controls
+            ${{ runner.temp }}/archived-test-diagnostic/startup-sampling
             ${{ runner.temp }}/archived-test-diagnostic/startup-controls.sha256
             ${{ runner.temp }}/archived-test-diagnostic/startup-executable-paths.txt
             ${{ runner.temp }}/archived-test-diagnostic/startup-executable.sha256
