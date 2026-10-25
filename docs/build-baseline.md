@@ -24,9 +24,9 @@ Upstream `docs/install.md` specifies `cargo build` from `codex-rs`. The root `ju
 | Local default build | `cd codex-rs` then `cargo build` | Passed on the fifth attempt; exit 0, 6 minutes 11.03 seconds wall time |
 | Local executable | Built `codex --version` reports the selected upstream version | Passed: `codex-cli 0.164.0` |
 | Formatting | `just fmt-check` from the upstream checkout root | Passed: all five maintained formatter groups |
-| Rust tests | `just test` with the maintained local nextest profile | Both local runs interrupted after diagnosing environment differences; all 3 temporary-fixture regressions pass; native daemon checks still required |
-| Additional upstream checks | Inventory maintained repository, lint, dependency, and platform check entry points; record individual commands and results | Unrun |
-| Six release targets | Build the selected Cargo release targets with upstream prerequisites and default features; verify binaries on appropriate native hosts | Unrun |
+| Rust tests | Maintained nextest checks, with local/CI profile identified explicitly | Both sandboxed full runs interrupted after environment diagnosis; all 3 focused regressions pass; native Linux run 40160045323 is active |
+| Additional upstream checks | Inventory maintained repository, lint, dependency, and platform check entry points; record individual commands and results | Partial: local formatting, SDKs, Clippy, benchmark smoke and listed helper suites pass; audit findings deferred by owner; other platform, Bazel and native linter checks remain |
+| Six release targets | Build the selected Cargo release targets with upstream prerequisites and default features; verify binaries on appropriate native hosts | Active: Linux ARM64 job failed after the hosted runner received a shutdown signal; other jobs continue; successful compilation and smoke results remain required for all six |
 
 ### Repository checks executed
 
@@ -67,6 +67,7 @@ Commands run from the upstream root with Python bytecode writes disabled. Named 
 | `cargo-deny --log-level warn --manifest-path ./codex-rs/Cargo.toml --all-features check`, upstream action's 0.19.0 | Failed: two dependency advisories; bans, licenses and sources pass | `cargo-deny` |
 | `just clippy` (`cargo clippy --tests`) | Passed: default features and dev profile, warnings nonfatal; Cargo reports 9 minutes 36 seconds | `clippy` |
 | `env -u TMPDIR just bench-smoke` | Passed: maintained workspace benchmark smoke command; all 4 prompt-image cases ran; Cargo compilation 27.37 seconds | `bench-smoke` |
+| Native voice unit suite, `python3 -m unittest discover -s third_party/voice -p 'test_*.py'` | Initial invocation lacked CMake on PATH; focused retry passes; corrected full run passes 71 tests with 20 platform/tool skips | `native-voice-tests`, `native-voice-cmake-focused`, `native-voice-tests-with-tools` |
 
 The owner explicitly defers fixes for the two recorded dependency-audit findings to step 7 and permits earlier stages to proceed once their other required gates pass. The audit remains failed; its findings are not suppressed or represented as a passing baseline check.
 
@@ -82,6 +83,7 @@ These findings remain visible and nonfatal. Recheck each against the cumulative 
 | --- | --- | --- |
 | Rust compiler | Unused `wiremock::matchers::body_json` import, `codex-rs/core/tests/suite/openai_file_mcp.rs:47` | `clippy.log` |
 | Clippy | `let_and_return`, `codex-rs/app-server/src/message_processor.rs:385` | `clippy.log` |
+| Rust compiler, Linux ARM64 musl release | Unneeded `mut` parameter at `codex-rs/app-server/src/lib.rs:1543` | `release-arm-linux.log` |
 | C compiler through `codex-bwrap` | Missing `sockaddr_nl.nl_pid` initializer at `codex-rs/vendor/bubblewrap/network.c:53` and `:142` | `clippy.log` and default-build logs |
 | Cargo shear | Unlinked `codex-rs/core/tests/suite/scenarios_read_only_mcp.rs` | `cargo-shear.log` |
 | rustfmt | `imports_granularity=Item` requires nightly, although upstream pins stable Rust | Maintained formatting logs |
@@ -180,6 +182,8 @@ The workflow reuses upstream's pinned Rust, Zig, V8 and MSVC setup, musl/OpenSSL
 The runner labels select the matching architectures from [GitHub's standard native runner matrix](https://docs.github.com/en/actions/reference/runners/github-hosted-runners): Ubuntu 24.04 x86_64/ARM64, macOS 15 Apple Silicon/Intel, and Windows 2025 x86_64/Windows 11 ARM64. These differ in capacity from upstream's private runner labels; successful upstream jobs do not prove these hosts have sufficient resources. The organization's larger-hosted-runner API reports that hosted runner management is unsupported for this organization; this does not establish standard-runner unavailability.
 
 The workflow runs on pushes to `main.new` affecting its definition, source pins or baseline patches. The owner authorized ongoing pushes to this branch. Commit `2bce2c263068fbf085ffc76a3b50a4b5da3ee6d5` was pushed and started [baseline run 40159613742](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40159613742); its terminal results remain required. A path-filtered push permits the first build while preserving old main: [GitHub requires manual-dispatch workflows on the default branch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow). Manual dispatch is also declared for later use when that requirement is met. Local actionlint 1.7.12 checks the workflow and its shell scripts; a passing static check does not establish any native build result.
+
+Linux ARM64 job `121068230328` ended with exit 143 during primary release compilation. Its log explicitly reports that the runner received a shutdown signal; it does not establish why the runner stopped or identify a compiler failure. The complete job log and API record are retained as `release-arm-linux.log` and `release-arm-linux-job.json`. A focused rerun request through `gh run rerun --job 121068230328` was rejected while the parent run was still active; no retry has started. Preserve other platforms' ongoing work and retry this exact job when the owning service permits it. Do not change source or dependency versions to repair a hosted runner shutdown.
 
 [baseline-linux-tests.yml](../.github/workflows/baseline-linux-tests.yml) supplies a separate Ubuntu 24.04 x86_64 GNU execution boundary for the full Rust suite. It reuses upstream's `setup-ci` host preparation, Rust pin, nextest 0.9.103, V8 action, `ci-test` Cargo profile, default nextest profile and Linux sandbox helper handoff. It runs the whole suite in one job rather than transporting archives into four shards. It adds no build cache or fatal warning flags. Normal test fixture locations remain in effect, and the host's daemon directory is not hidden by this agent's sandbox.
 
