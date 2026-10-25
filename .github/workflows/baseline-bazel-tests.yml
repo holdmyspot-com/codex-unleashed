@@ -2,6 +2,11 @@ name: Stable upstream native Bazel tests
 
 on:
   workflow_dispatch:
+    inputs:
+      exec_server_shells:
+        description: Compare unchanged exec-server shell tests using upstream's serial Bazel invocation
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -11,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: ${{ fromJSON((inputs.exec_server_shells && '[1]') || '[1,2]') }}
     runs-on: ubuntu-24.04
     env:
       BAZEL_TEST_SHARD: ${{ matrix.shard }}
@@ -123,7 +128,17 @@ jobs:
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-bazel-evidence/bazel-version.txt"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"
 
+      - name: Select the maintained exec-server targets for the shell comparison
+        if: inputs.exec_server_shells
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            //codex-rs/exec-server:exec-server-unit-tests \
+            //codex-rs/exec-server:exec-server-exec_process-test \
+            > "$RUNNER_TEMP/baseline-bazel-evidence/selected-targets.txt"
+
       - name: Partition the complete package selection across free runners
+        if: ${{ !inputs.exec_server_shells }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -157,6 +172,8 @@ jobs:
           cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
 
       - name: Run the maintained Bazel package shard without a second disk-cache copy
+        env:
+          BASELINE_EXEC_SERVER_SHELLS: ${{ inputs.exec_server_shells }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -182,10 +199,15 @@ jobs:
           ) >> "$evidence/disk-usage.log" 2>&1 &
           disk_monitor=$!
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          comparison_args=()
+          if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
+            comparison_args+=(--test_filter=shell_snapshot --test_output=all)
+          fi
+          printf '%s\n' "${comparison_args[@]}" > "$evidence/comparison-arguments.txt"
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
             test --disk_cache= --test_tag_filters=-argument-comment-lint \
-            --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            "${comparison_args[@]}" --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             "${targets[@]}" -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
             2>&1 | tee "$evidence/bazel-tests.log"
           result=${PIPESTATUS[0]}

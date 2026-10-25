@@ -44,6 +44,10 @@ The archive/package/filter/remap/output interface was checked with the declared 
 
 The image command ultimately exits 110 because nextest cannot write JUnit results beneath the read-only workspace mount. This is a harness reporting failure, separate from the fixture guard returns. A small fixture with pinned nextest 0.9.103 confirms archive execution stores JUnit output under `workspace-root/target/nextest/default/junit.xml`; `CARGO_TARGET_DIR` does not relocate this output, and `--target-dir` conflicts with `--archive-file`. The harness now supplies an ephemeral writable mount only for `target/nextest`, owned by the pinned image's UID/GID 1000. Source and archive remain read-only. Hosted acceptance of this mount remains unrun. Neither the image's reported passes nor this harness repair establishes successful sandbox behavior; no source/test patch is authorized by this result.
 
+## Native Bazel shell comparison
+
+The native Bazel workflow offers `exec_server_shells=true` to select only the maintained exec-server unit and exec-process targets on one free Linux runner. Its normal dispatch still runs the complete two-shard selection. The focused invocation retains successful test output and filters for `shell_snapshot`; upstream's `BUILD.bazel` supplies `--test-threads=1` to both targets. System bubblewrap remains installed so the comparison can expose the sandbox assertions exercised natively. Source identity and final source/test guards remain mandatory. This distinguishes a Bazel/native result from Cargo/nextest and the pinned-image guard returns; it does not reproduce BuildBuddy's executor. Hosted acceptance remains unrun.
+
 ## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex
