@@ -1,0 +1,183 @@
+name: Stable upstream macOS Bazel tests
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-macos-bazel-tests.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+      - patches/upstream-check-policy/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            bazel_arch: arm64
+            bazel_sha256: dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bazel_arch: x86_64
+            bazel_sha256: 14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+      BAZEL_ARCH: ${{ matrix.bazel_arch }}
+      BAZEL_SHA256: ${{ matrix.bazel_sha256 }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-macos-bazel-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-macos-bazel-policy"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-macos-bazel-patches/*.patch "$RUNNER_TEMP"/baseline-macos-bazel-policy/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = "$BAZEL_ARCH"
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.memsize hw.logicalcpu
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+          } | tee "$evidence/host.txt"
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.target }}
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          cargo metadata --format-version 1 --filter-platform "$TARGET" \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python3 - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/source-before.diff"
+
+      - name: Install the pinned upstream Bazel version
+        run: |
+          set -euo pipefail
+          test "$(cat .bazelversion)" = 9.2.0
+          tools="$RUNNER_TEMP/baseline-bazel-tools"
+          mkdir -p "$tools"
+          curl --fail --location --retry 3 --output "$tools/bazel" "https://github.com/bazelbuild/bazel/releases/download/9.2.0/bazel-9.2.0-darwin-$BAZEL_ARCH"
+          printf '%s  %s\n' "$BAZEL_SHA256" "$tools/bazel" | shasum -a 256 -c -
+          chmod +x "$tools/bazel"
+          "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-macos-bazel-evidence/bazel-version.txt"
+          printf '%s\n' "$tools" >> "$GITHUB_PATH"
+
+      - name: Run the full maintained Bazel suite without a second disk-cache copy
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-macos-bazel-evidence"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+              vm_stat
+              if du -k -d 3 "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p'; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              sleep 60
+            done
+          ) >> "$evidence/disk-usage.log" 2>&1 &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
+            test --disk_cache= --test_tag_filters=-argument-comment-lint \
+            --test_verbose_timeout_warnings --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            //... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests \
+            2>&1 | tee "$evidence/bazel-tests.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
+          git diff --binary > "$evidence/source-after.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          exit "$result"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-macos-bazel-tests-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-macos-bazel-evidence
+          retention-days: 1
+          if-no-files-found: warn
