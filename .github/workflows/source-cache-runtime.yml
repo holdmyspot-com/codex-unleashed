@@ -116,6 +116,17 @@ jobs:
           fi
           python3 .github/scripts/test-source-cache-runtime.py "${fixture_args[@]}"
 
+      - name: Retain private cache version metadata for isolation and retention review
+        if: inputs.partial-cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/source-cache-evidence"
+          gh api --paginate "orgs/${GITHUB_REPOSITORY_OWNER,,}/packages/container/cargo-cache/versions" \
+            --jq '.[] | {id, name, tags: .metadata.container.tags}' \
+            > "$evidence/private-cache-versions.jsonl"
+
       - name: Verify repository source remains unchanged
         if: always()
         run: |
