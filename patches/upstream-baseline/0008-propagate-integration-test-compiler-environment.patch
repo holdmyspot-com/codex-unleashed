@@ -1,0 +1,71 @@
+From 8675cd0fcc5242b4cf541eba9f64944ce9564d99 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 05:58:32 -0400
+Subject: [PATCH] build: propagate compiler environment files to integration
+ tests
+
+Integration tests need the same generated environment as their library. Without it, the sandbox fixture treats a digest-enforcing helper as a development binary and supplies an unrelated system executable. The focused missing-digest regression fails before propagation and passes afterward. Preserve production digest verification and the existing release-fixture guard.
+---
+ codex-rs/linux-sandbox/tests/suite/managed_proxy.rs | 10 ++++++++++
+ defs.bzl                                            |  6 +++++-
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+index 49f47f3..cfdb694 100644
+--- a/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
++++ b/codex-rs/linux-sandbox/tests/suite/managed_proxy.rs
+@@ -450,6 +450,16 @@ printf 'legacy proc fallback\n'
+     }
+ }
+ 
++#[test]
++fn bazel_tests_receive_bundled_bwrap_digest() {
++    if option_env!("BAZEL_PACKAGE").is_some() {
++        assert!(
++            option_env!("CODEX_BWRAP_SHA256").is_some(),
++            "Bazel integration tests require the library's bundled bubblewrap digest"
++        );
++    }
++}
++
+ #[tokio::test]
+ async fn unsupported_system_bwrap_falls_back_to_bundled_bwrap() {
+     if option_env!("CODEX_BWRAP_SHA256")
+diff --git a/defs.bzl b/defs.bzl
+index 7fe51d4..aa14cc3 100644
+--- a/defs.bzl
++++ b/defs.bzl
+@@ -245,7 +245,8 @@ def codex_rust_crate(
+             generated build-commit environment file. Other workspace status is
+             excluded from their compilation inputs.
+         rustc_env: Extra rustc_env entries to merge with defaults.
+-        rustc_env_files: Generated compiler environment files for the library target.
++        rustc_env_files: Generated compiler environment files for the library and
++            integration test targets.
+         deps_extra: Extra normal deps beyond @crates resolution.
+             Typically only needed when features add additional deps.
+         integration_compile_data_extra: Extra compile_data for integration tests.
+@@ -586,6 +587,7 @@ def codex_rust_crate(
+                     "--remap-path-prefix=codex-rs=",
+                 ],
+                 rustc_env = rustc_env,
++                rustc_env_files = rustc_env_files,
+                 target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
+                 tags = test_tags + ["manual"],
+                 version = crate_version,
+@@ -627,6 +629,7 @@ def codex_rust_crate(
+                     "--remap-path-prefix=codex-rs=",
+                 ],
+                 rustc_env = rustc_env,
++                rustc_env_files = rustc_env_files,
+                 env = integration_test_cargo_env,
+                 target_compatible_with = WINDOWS_GNULLVM_INCOMPATIBLE,
+                 tags = test_tags,
+@@ -700,6 +703,7 @@ def codex_rust_crate(
+                 "--remap-path-prefix=codex-rs=",
+             ],
+             rustc_env = rustc_env,
++            rustc_env_files = rustc_env_files,
+             env = integration_test_cargo_env,
+             target_compatible_with = WINDOWS_GNULLVM_ONLY,
+             tags = test_tags + ["manual"],
