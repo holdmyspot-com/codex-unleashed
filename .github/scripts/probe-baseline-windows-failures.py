@@ -22,7 +22,7 @@ voice_arguments = [
     f"--host_action_env=PROCESSOR_ARCHITECTURE={os.environ['VOICE_WINDOWS_HOST_ARCH']}",
 ]
 wrapper = [
-    "bash",
+    os.environ["BASELINE_BASH"],
     ".github/scripts/run-bazel-ci.sh",
     "--print-failed-action-summary",
     "--print-failed-test-logs",
