@@ -196,10 +196,11 @@ jobs:
       - name: Observe bwrap fingerprint decisions
         working-directory: codex-rs
         env:
-          CARGO_LOG: cargo::core::compiler::fingerprint=info
+          CARGO_LOG: cargo::compiler::fingerprint=info
         run: |
           set -euo pipefail
           cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/bwrap-fingerprints.log"
+          grep -F 'cargo::compiler::fingerprint:' "$RUNNER_TEMP/baseline-evidence/bwrap-fingerprints.log"
           helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
           strip --strip-debug --strip-unneeded "$helper"
           digest="$(sha256sum "$helper" | cut -d ' ' -f 1)"
@@ -208,7 +209,7 @@ jobs:
       - name: Observe primary fingerprint decisions for up to two minutes
         working-directory: codex-rs
         env:
-          CARGO_LOG: cargo::core::compiler::fingerprint=info
+          CARGO_LOG: cargo::compiler::fingerprint=info
         run: |
           set -euo pipefail
           STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
@@ -222,6 +223,7 @@ jobs:
             0|124) ;;
             *) exit "$result" ;;
           esac
+          grep -F 'cargo::compiler::fingerprint:' "$RUNNER_TEMP/baseline-evidence/primary-fingerprints.log"
 
       - name: Verify source and tests remain unmodified
         if: always()
