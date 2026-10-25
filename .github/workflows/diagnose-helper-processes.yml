@@ -38,6 +38,21 @@ jobs:
             --java $java --jcmd $jcmd --cmd $cmd --git $git `
             --source $source --owned-parent $evidence
           exit $LASTEXITCODE
+      - name: Profile one maintained inventory test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'helper-process-evidence'
+          $recordings = Join-Path $evidence 'recordings'
+          $temporary = Join-Path $env:RUNNER_TEMP 'helper-inventory-temp'
+          New-Item -ItemType Directory -Path $recordings, $temporary | Out-Null
+          $env:JAVA_TOOL_OPTIONS = "$env:JAVA_TOOL_OPTIONS -XX:StartFlightRecording=filename=$recordings,settings=profile,dumponexit=true"
+          mvn -B -ntp -f tooling/cli/pom.xml `
+            '-Dtest=SourceInputInventoryTest#inventoriesWithoutGitRepository' `
+            "-Dtooling.build.directory=$env:RUNNER_TEMP/helper-inventory-build" `
+            "-Dmaven.repo.local=$env:RUNNER_TEMP/helper-inventory-maven" `
+            "-Djava.io.tmpdir=$temporary" test 2>&1 | Tee-Object (Join-Path $evidence 'inventory-test.log')
+          exit $LASTEXITCODE
       - name: Retain diagnostic evidence for one day
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -52,4 +67,8 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP 'helper-process-evidence'
           if (Test-Path -LiteralPath $evidence) {
             Remove-Item -LiteralPath $evidence -Recurse -Force
+          }
+          $temporary = Join-Path $env:RUNNER_TEMP 'helper-inventory-temp'
+          if (Test-Path -LiteralPath $temporary) {
+            Remove-Item -LiteralPath $temporary -Recurse -Force
           }
