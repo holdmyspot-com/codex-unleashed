@@ -22,7 +22,7 @@ Step 1 is active. The selected upstream release is `rust-v0.164.0`, commit `6aaa
 
 Linux Bazel release-profile compilation now also passes with all ten baseline repairs and both nonfatal policy patches: all 868 selected targets and the separate bundled-bwrap build, with unchanged source verified from the retained artifact. The other native Bazel gates remain incomplete.
 
-The focused native replay comparison now separates the remaining four failures: Bash `--norc` passes three startup/recovery cases, while the fourth reports a descriptor-path deny-mount failure. A local bundled-bubblewrap comparison reproduces that mount error independently. Related native integration/unit verification is expanded before selecting a production replay repair; sandbox assertions and dependency source remain unchanged. The full baseline gate is still incomplete.
+The focused native replay comparison separates the remaining four failures: Bash `--norc` passes three startup/recovery cases, while the fourth reports a descriptor-path deny-mount failure. The expanded comparison passes 30 of 31 related integration cases and all 15 shell-cache unit tests; only the same descriptor case fails. Baseline patch 0012 adapts the replay option and command normalizer without the probe's diagnostic edits. Its final cumulative native acceptance remains required. A local bundled-bubblewrap comparison reproduces the descriptor mount error independently; sandbox assertions and dependency source remain unchanged. The full baseline gate is still incomplete.
 
 Linux Bazel run `40190837597` now completes both package shards without the prior disk-exhaustion failure. Shard 1 passes 171 executed targets; shard 2 passes 171 and fails three targets covering replay, core model history and Wine support. Its failures remain unresolved. A separate MCP fixture repair, baseline patch 0011, follows a deterministic shared-callsite reproduction and a passing focused local integration test. Native concurrent Windows acceptance remains pending. The focused Windows Opus/discovery comparison is retried after correcting our Python subprocess launcher from WSL's bare `bash` to explicit Git Bash; its first attempt reached no Bazel action. No original step is complete.
 
@@ -162,7 +162,7 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0001-preserve-interrupted-mailbox-work.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0002-resume-parent-on-subagent-completion.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0003-defer-goal-continuation-to-live-children.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch` | Pending review; not migrated. |
+| `patches/holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch` | Runtime replay option and unit normalizer adapted in baseline 0012; additional fixture environment edits remain unmigrated. Final cumulative native acceptance pending. |
 | `patches/holdmyspot-com/codex-unleashed/issue-47390/expanded-diff-previews.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-48/wsl-explicit-pid-procfs.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-49/descriptor-fallback-fixture.patch` | Pending review; not migrated. |
