@@ -32,7 +32,7 @@ jobs:
           $java = Join-Path $env:JAVA_HOME 'bin/java.exe'
           $jcmd = Join-Path $env:JAVA_HOME 'bin/jcmd.exe'
           $cmd = Join-Path $env:SystemRoot 'System32/cmd.exe'
-          $git = (Get-Command git.exe -CommandType Application).Source
+          $git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
           $source = Join-Path $env:GITHUB_WORKSPACE '.github/scripts/diagnostics/windows-process/ProcessLifecycleProbe.java'
           python .github/scripts/diagnostics/windows-process/launch_process_probe.py `
             --java $java --jcmd $jcmd --cmd $cmd --git $git `
