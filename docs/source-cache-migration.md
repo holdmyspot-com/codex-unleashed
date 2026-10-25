@@ -15,7 +15,7 @@ Preparation reads actual Cargo metadata, snapshots source digests, restores time
 
 When `RUSTY_V8_SRC_BINDING_PATH` is configured, the helper also inventories that regular file and its parent in a separate target-specific snapshot. The upstream setup action must verify and materialize it before preparation. The helper hashes the declared bytes; it does not replace upstream's checksum verification. An unchanged binding regains its recorded timestamps. Changed content receives current timestamps so Cargo invalidates affected work. Missing binding metadata causes explicit cleanup of the cached `v8` package. Recording refuses binding content drift during compilation. Checkout confinement remains unchanged; this separate inventory is confined to the configured binding's actual parent, without persisting an absolute runner path.
 
-Only the cache command is exposed by the reduced dispatcher. Its statuses remain zero for success, one for operational failure and two for invalid command arguments. Java 27, Cargo and Git are current runtime prerequisites. A bundled runtime and maintained launcher are still required before hosted integration; this source migration does not complete supporting checkpoint D1.
+Only the cache command is exposed by the reduced dispatcher. Its statuses remain zero for success, one for operational failure and two for invalid command arguments. Cargo and Git remain runtime prerequisites. The `runtime` Maven profile bundles Java 27 and the helper behind `runtime/bin/codex-tooling`; consumers do not need a system Java installation. Native platform verification and hosted integration remain required before supporting checkpoint D1 is complete.
 
 ## Dependency and source selection
 
@@ -50,9 +50,25 @@ The CLI also rejects an escaping target name with status 2 before workspace acce
 
 The focused tests retain Maven's duplicate-temp-property warning, TestNG's missing SLF4J provider messages and the native-access warning from extreme timestamp tests. They are not suppressed or treated as errors. Local success establishes this Linux helper boundary, not cross-platform or hosted Codex cache acceptance.
 
+## Bundled runtime
+
+Build and verify the runtime with the same owned temporary directory and Maven repository:
+
+```sh
+RUSTUP_TOOLCHAIN=1.99.1 mvn -B -ntp -f tooling/cli/pom.xml -Pruntime \
+  -Dmaven.repo.local="$PWD/.cat/work/temp/build-caches/maven/repository" \
+  -Djava.io.tmpdir="$CODEX_TOOLING_TEMP" verify
+```
+
+The profile stages only production dependencies and the helper JAR, then runs the unchanged old-main `DistributionMain` assembler from its build-only source path. Maven resets its own `modules` and `runtime` staging directories before each profile build. The helper's module descriptor requires Jackson databind and Commons IO and exports no Java packages; the supported interface is the CLI. The assembler uses the current JDK's `jlink`, writes the maintained launcher and marks a successfully assembled image with `.complete`. It grants the helper native access for its exact timestamp adapters.
+
+The actual repository command passes all 32 focused tests and produces a 72,054,030-byte Linux runtime. Its launcher passes the same cold, unchanged-input, changed-content and recording-drift Cargo fixture with Java absent from `PATH` and `JAVA_HOME` unset. Only the helper and four production dependency JARs are staged; TestNG and its dependencies are excluded. Retained evidence: `source-cache-target-runtime-verify.log` and `source-cache-target-bundled-cli-proof.json`. A preliminary source-launch attempt used a path that did not match the assembler's declared package; placing the unchanged source under its package hierarchy fixes that invocation. This was downstream probe setup, with no Codex counterpart.
+
+Linux success does not establish native Windows or macOS behavior, cross-runner cache reuse, or Codex release acceptance.
+
 ## Remaining integration gates
 
-- Build and verify the maintained launcher with its bundled runtime on the selected native hosts.
+- Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
 - Preserve the helper before upstream checkout and include its source and Maven declaration in compiled-cache identity.
 - Run preparation after verified V8 setup and compiled-target restoration, before any Cargo compilation; include all selected release executables.
 - Verify source, dependency identity and native smokes before successful recording and cache upload.

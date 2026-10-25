@@ -24,4 +24,52 @@
       <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><version>3.11.0</version></plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>runtime</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-clean-plugin</artifactId>
+            <version>3.5.0</version>
+            <executions><execution><id>reset-runtime-staging</id><phase>initialize</phase><goals><goal>clean</goal></goals>
+              <configuration><excludeDefaultDirectories>true</excludeDefaultDirectories><filesets>
+                <fileset><directory>${project.build.directory}/modules</directory><followSymlinks>false</followSymlinks></fileset>
+                <fileset><directory>${project.build.directory}/runtime</directory><followSymlinks>false</followSymlinks></fileset>
+              </filesets></configuration>
+            </execution></executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <executions><execution><id>stage-runtime-dependencies</id><phase>prepare-package</phase><goals><goal>copy-dependencies</goal></goals>
+              <configuration><includeScope>runtime</includeScope><outputDirectory>${project.build.directory}/modules</outputDirectory></configuration>
+            </execution></executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <configuration><outputDirectory>${project.build.directory}/modules</outputDirectory></configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>3.6.4</version>
+            <executions><execution><id>build-bundled-runtime</id><phase>package</phase><goals><goal>exec</goal></goals>
+              <configuration>
+                <executable>${java.home}/bin/java</executable>
+                <arguments>
+                  <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
+                  <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
+                  <argument>${project.build.directory}/modules</argument>
+                  <argument>${project.build.directory}/runtime</argument>
+                </arguments>
+              </configuration>
+            </execution></executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
