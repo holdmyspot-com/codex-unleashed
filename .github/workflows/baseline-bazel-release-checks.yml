@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/baseline-bazel-release-checks.yml
       - .github/scripts/setup-baseline-windows-voice.ps1
+      - .github/scripts/reclaim-baseline-macos-xcodes.py
       - .github/upstream-commit
       - .github/upstream-ref
       - patches/upstream-baseline/**
@@ -49,6 +50,7 @@ jobs:
           cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-bazel-release-patches"
           cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-bazel-release-policy"
           cp restart-metadata/.github/scripts/setup-baseline-windows-voice.ps1 "$RUNNER_TEMP/setup-baseline-windows-voice.ps1"
+          cp restart-metadata/.github/scripts/reclaim-baseline-macos-xcodes.py "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -78,6 +80,12 @@ jobs:
         uses: ./.github/actions/setup-bazel-ci
         with:
           target: ${{ matrix.target }}
+
+      - name: Reclaim inactive Xcode versions and verify selected native tools
+        if: runner.os == 'macOS'
+        run: |
+          python3 "$RUNNER_TEMP/reclaim-baseline-macos-xcodes.py" \
+            --evidence-directory "$RUNNER_TEMP/baseline-bazel-release-evidence"
 
       - name: Set up Python for upstream's Windows voice prerequisites
         if: runner.os == 'Windows'
@@ -161,6 +169,15 @@ jobs:
           git diff --check
           git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
           git diff --binary > "$evidence/source-before.diff"
+
+      - name: Retain prepared macOS host evidence before compilation
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-bazel-release-host-${{ matrix.target }}
+          path: ${{ runner.temp }}/baseline-bazel-release-evidence
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Compile the maintained release selection with debug assertions disabled
         run: |
