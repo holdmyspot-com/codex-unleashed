@@ -89,6 +89,19 @@ jobs:
           sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/verify-cargo-lock.py > "$evidence/cache-wrapper-inputs.sha256"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
+      - name: Preserve the cache helper before upstream checkout
+        if: inputs.cache
+        run: |
+          set -euo pipefail
+          cp -R restart-metadata/tooling/cli "$RUNNER_TEMP/source-cache-helper"
+          mkdir -p "$RUNNER_TEMP/source-cache-temp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/source-cache-temp" >> "$GITHUB_ENV"
+          (
+            cd restart-metadata
+            git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build \
+              | sort -z | xargs -0 sha256sum
+          ) > "$RUNNER_TEMP/baseline-evidence/cache-helper-inputs.sha256"
+
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -164,6 +177,25 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
 
+      - name: Set up the cache helper's native JDK
+        if: inputs.cache
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: zulu
+          java-version: 27.0.1
+
+      - name: Build and verify the bundled cache helper
+        if: inputs.cache
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          java -version 2> "$evidence/cache-helper-java-version.txt"
+          mvn -version > "$evidence/cache-helper-maven-version.txt"
+          mvn -B -ntp -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
+            "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
+            "-Dmaven.repo.local=$RUNNER_TEMP/source-cache-maven" \
+            "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/cache-helper-build.log"
+
       - name: Set up the GHCR cache transport
         if: inputs.cache
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
@@ -192,7 +224,7 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
           {
-            cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256"
+            cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256"
             rustc -vV
             printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
             env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC|CXX|AR|CFLAGS|CXXFLAGS|CMAKE_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Z_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Z_]+)='
@@ -215,6 +247,22 @@ jobs:
             0|3) ;;
             *) exit "$result" ;;
           esac
+
+      - name: Prepare content-checked cached source freshness
+        if: inputs.cache
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          binaries=(codex codex-code-mode-host codex-responses-api-proxy codex-app-server)
+          case "$TARGET" in
+            *-linux-musl) binaries+=(bwrap) ;;
+            *-windows-msvc)
+              binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
+              ;;
+          esac
+          bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" \
+            clean-cached-release-binaries "$GITHUB_WORKSPACE/codex-rs" "$TARGET" "${binaries[@]}" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-prepare.log"
 
       - name: Build and hash the Linux sandbox helper
         if: runner.os == 'Linux'
@@ -282,6 +330,15 @@ jobs:
           python3 "$RUNNER_TEMP/verify-cargo-lock.py" \
             "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata.json" \
             | tee "$evidence/lock-verification.json"
+
+      - name: Record verified source inputs for cached build outputs
+        if: success() && inputs.cache
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" \
+            clean-cached-release-binaries --record-source-inputs "$GITHUB_WORKSPACE/codex-rs" "$TARGET" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-record.log"
 
       - name: Save verified compiled Cargo outputs to GHCR
         if: success() && inputs.cache
