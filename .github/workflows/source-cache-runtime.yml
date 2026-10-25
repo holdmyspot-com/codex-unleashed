@@ -104,6 +104,10 @@ jobs:
         with:
           toolchain: 1.99.1
 
+      - name: Select noninteractive Git input on Windows
+        if: runner.os == 'Windows'
+        run: echo 'GIT_REDIRECT_STDIN=NUL' >> "$GITHUB_ENV"
+
       - name: Build and verify the bundled cache helper
         run: |
           set -euo pipefail
