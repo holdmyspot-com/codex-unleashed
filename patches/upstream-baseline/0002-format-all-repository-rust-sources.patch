@@ -1,0 +1,156 @@
+From 6bfb670f0b63ddea2315de478299495c36f348f7 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 03:24:40 +0000
+Subject: [PATCH] build: format repository Rust sources within native command
+ limits
+
+---
+ scripts/format.py                             | 69 ++++++++++++++++++-
+ .../test_artifact_workflow_and_binaries.py    | 52 ++++++++++++++
+ 2 files changed, 118 insertions(+), 3 deletions(-)
+
+diff --git a/scripts/format.py b/scripts/format.py
+index 9b408e1..557676e 100644
+--- a/scripts/format.py
++++ b/scripts/format.py
+@@ -41,11 +41,74 @@ def just_formatter_group(*, check: bool) -> FormatterGroup:
+ 
+ 
+ def rust_formatter_group(*, check: bool) -> FormatterGroup:
+-    args = ["cargo", "fmt", "--", "--config", "imports_granularity=Item"]
++    """Format existing repository Rust sources, or check them when requested.
++
++    Commands retain the repository configuration and fit Windows' 32,767 UTF-16
++    unit limit, including the terminating null. Empty discovery produces no
++    commands. A command that cannot fit one source raises ValueError before any
++    formatter runs; Git discovery errors propagate to the caller.
++    """
++    repository_files = subprocess.check_output(
++        [
++            "git",
++            "ls-files",
++            "-z",
++            "--cached",
++            "--others",
++            "--exclude-standard",
++            "--",
++            "*.rs",
++        ],
++        cwd=REPO_ROOT,
++    ).split(b"\0")
++    rust_files: list[str] = []
++    for encoded_path in repository_files:
++        if encoded_path:
++            path = REPO_ROOT / os.fsdecode(encoded_path)
++            if path.is_file():
++                rust_files.append(os.path.relpath(path, REPO_ROOT / "codex-rs"))
++    rust_files = sorted(set(rust_files))
++
++    args = [
++        "rustfmt",
++        "--edition",
++        "2024",
++        "--config-path",
++        str(REPO_ROOT / "codex-rs/rustfmt.toml"),
++        "--config",
++        "imports_granularity=Item,skip_children=true",
++    ]
+     if check:
+         args.append("--check")
+-    command = Command(tuple(args), REPO_ROOT / "codex-rs")
+-    return FormatterGroup("Rust", (command,))
++
++    max_command_units = 32767
++    prefix_units = (len(subprocess.list2cmdline(args).encode("utf-16-le")) // 2) + 1
++    command_args = list(args)
++    command_units = prefix_units
++    commands: list[Command] = []
++    for rust_file in rust_files:
++        file_units = len(subprocess.list2cmdline([rust_file]).encode("utf-16-le")) // 2
++        path_exceeds_command_limit = (prefix_units + 1 + file_units) > max_command_units
++        if path_exceeds_command_limit:
++            raise ValueError(
++                f"Rustfmt command for source {rust_file!r} exceeds {max_command_units} UTF-16 units. "
++                "Shorten the checkout or source path."
++            )
++
++        batch_exceeds_command_limit = (
++            command_units + 1 + file_units
++        ) > max_command_units
++        if batch_exceeds_command_limit:
++            commands.append(Command(tuple(command_args), REPO_ROOT / "codex-rs"))
++            command_args = list(args)
++            command_units = prefix_units
++
++        command_args.append(rust_file)
++        command_units += 1 + file_units
++
++    if rust_files:
++        commands.append(Command(tuple(command_args), REPO_ROOT / "codex-rs"))
++    return FormatterGroup("Rust", tuple(commands))
+ 
+ 
+ def buildifier_formatter_group(*, check: bool) -> FormatterGroup:
+diff --git a/sdk/python/tests/test_artifact_workflow_and_binaries.py b/sdk/python/tests/test_artifact_workflow_and_binaries.py
+index aa55324..ce656a0 100644
+--- a/sdk/python/tests/test_artifact_workflow_and_binaries.py
++++ b/sdk/python/tests/test_artifact_workflow_and_binaries.py
+@@ -279,6 +279,58 @@ def test_root_format_driver_covers_all_formatter_groups(
+     ]
+ 
+ 
++def test_root_rust_formatter_keeps_large_file_sets_within_windows_process_limit(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++) -> None:
++    """Retain all discovered files while counting astral paths as UTF-16 units."""
++    script = _load_root_format_script_module()
++    rust_root = tmp_path / "codex-rs"
++    rust_root.mkdir()
++    rust_files = [f"source {index:04d} {'😀' * 30}.rs" for index in range(600)]
++    for name in rust_files:
++        (rust_root / name).write_text("")
++    discovery_output = b"\0".join(os.fsencode(f"codex-rs/{name}") for name in rust_files)
++    monkeypatch.setattr(script, "REPO_ROOT", tmp_path)
++    monkeypatch.setattr(script.subprocess, "check_output", lambda *args, **kwargs: discovery_output)
++
++    for check in (False, True):
++        group = script.rust_formatter_group(check=check)
++        first_command = group.commands[0].args
++        file_offset = first_command.index("imports_granularity=Item,skip_children=true") + 1
++        if check:
++            file_offset += 1
++        unsplit_command = subprocess.list2cmdline((*first_command[:file_offset], *rust_files))
++        assert len(unsplit_command) < 32767
++        assert ((len(unsplit_command.encode("utf-16-le")) // 2) + 1) > 32767
++        assert len(group.commands) > 1
++        actual_files = []
++        for command in group.commands:
++            assert command.cwd == rust_root
++            serialized = subprocess.list2cmdline(command.args)
++            utf16_units_with_terminator = (len(serialized.encode("utf-16-le")) // 2) + 1
++            assert utf16_units_with_terminator <= 32767
++            assert ("--check" in command.args) == check
++            file_offset = command.args.index("imports_granularity=Item,skip_children=true") + 1
++            if check:
++                file_offset += 1
++            actual_files.extend(command.args[file_offset:])
++        assert actual_files == sorted(rust_files)
++
++
++def test_root_rust_formatter_with_no_sources_has_no_commands(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++) -> None:
++    """Skip rustfmt on empty discovery so it cannot wait for standard input."""
++    script = _load_root_format_script_module()
++    monkeypatch.setattr(script, "REPO_ROOT", tmp_path)
++    monkeypatch.setattr(script.subprocess, "check_output", lambda *args, **kwargs: b"")
++
++    assert script.rust_formatter_group(check=False).commands == ()
++    assert script.rust_formatter_group(check=True).commands == ()
++
++
+ def test_root_format_driver_discards_successful_command_output(
+     monkeypatch: pytest.MonkeyPatch,
+ ) -> None:

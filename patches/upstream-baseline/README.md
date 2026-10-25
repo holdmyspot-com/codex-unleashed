@@ -2,6 +2,8 @@
 
 These patches repair confirmed baseline failures before downstream caching, scheduling, product changes, strict warnings, or dependency upgrades. Apply them in filename order to upstream `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`.
 
+Generated patches retain Git's space-prefixed context lines, including empty source lines. The scoped `.gitattributes` entry keeps their LF bytes stable and excludes end-of-line spaces from the wrapper-file whitespace check. Check the applied source diff with Git's normal whitespace checks rather than editing the generated patch's context encoding. This attribute does not change compiler or linter warning policy.
+
 ## Remove the stale code-mode feature exception
 
 `0001-remove-stale-code-mode-feature-exception.patch` has no patch prerequisites. The release's `codex-rs/code-mode/Cargo.toml` no longer declares `[features]`, but `.github/scripts/verify_cargo_workspace_manifests.py` still lists it in `MANIFEST_FEATURE_EXCEPTIONS`. The checker correctly rejects unused exceptions and exits 1 on the unmodified tag.
@@ -15,3 +17,15 @@ PYTHONDONTWRITEBYTECODE=1 python3 .github/scripts/verify_cargo_workspace_manifes
 ```
 
 The command failed on the exact clean base and passed after the repair. The emitted `git format-patch` was separately applied with `git am` to a second fresh checkout of that base, where the checker also passed. [Build baseline](../../docs/build-baseline.md) records the retained execution evidence and remaining gates. A passing metadata check does not establish build or release-target success.
+
+The same stale-exception diagnostic appears in [upstream's repository-check job](https://github.com/openai/codex/actions/runs/39710355092/job/119599956729) on the stable release's parent. The release commit changes only the workspace Cargo version; this check failure is distinct from its successful release builds.
+
+## Format every discovered Rust source
+
+`0002-format-all-repository-rust-sources.patch` has no patch prerequisites. The root formatter still invokes `cargo fmt`, while its existing regression requires repository-wide Rust discovery, including Bazel-only files, names containing spaces, and removal of stale deleted entries. [Upstream's SDK job](https://github.com/openai/codex/actions/runs/39710355092/job/119599956750) fails at the same assertion as the clean local tag.
+
+The patch discovers existing Git-tracked and unignored Rust paths, deduplicates and sorts them, and invokes rustfmt with the existing repository configuration. It divides the argument list according to [Windows' 32,767 UTF-16-unit process limit](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw), including quoting and the terminating null. Python's standard subprocess serializer supplies the quoting. Empty discovery produces no command. A command that cannot fit a single source fails with the source path and corrective guidance.
+
+The original regression fails on a clean tag and passes after repair. Additional regressions establish that astral Unicode paths are counted correctly, all discovered files occur exactly once across batches, and empty discovery does not invoke rustfmt. The first size-test fixture was too small; it was corrected to prove that its unbatched command crosses the UTF-16 limit before verifying the repair. The corrected regressions fail without batching and pass with it.
+
+Validation passed all seven formatter regressions, Ruff lint/format checks, and the complete Python SDK suite (271 passed, 38 skipped) in isolation. The real repository Rust format check passed across seven commands; their maximum serialized length was 32,765 UTF-16 units including the terminator. Existing nonfatal rustfmt configuration warnings remain visible in that direct check. The emitted `git format-patch` was applied with `git am` to another clean tag checkout, where the seven regressions passed. Both verification worktrees were removed after the patch was applied to the active baseline. Cumulative SDK and formatting checks are recorded separately in [build-baseline.md](../../docs/build-baseline.md); these portable command-construction checks do not establish a native Windows build.
