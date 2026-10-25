@@ -64,6 +64,8 @@ jobs:
           test "$TRACE_PACKAGE" = codex-exec-server
           case "$TRACE_FILTER" in
             'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' | \
+            'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)' | \
+            'test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)' | \
             'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_) | test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)') ;;
             *) printf 'Unsupported focused process-trace filter: %s\n' "$TRACE_FILTER" >&2; exit 1 ;;
           esac
@@ -269,6 +271,40 @@ jobs:
           set -e
           printf 'exit_code=%s\n' "$result" > "$evidence/null-peer-errno-counterfactual.receipt"
           sha256sum --check "$evidence/archive.sha256"
+          exit "$result"
+
+      - name: Diagnose the TTY stdin peer-lookup errno
+        env:
+          TRACE_FILTER: ${{ inputs.filter }}
+        if: ${{ (!cancelled() && inputs.trace_shell_startup) && (steps.archive.outcome == 'success' && inputs.filter == 'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_tty_recovery)') }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          set +e
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            strace -f -yy -e trace-fds=0 -e trace=getpeername \
+              -e inject=getpeername:error=ENOTSOCK \
+              -o "$evidence/stdin-peer-errno-counterfactual.trace" \
+              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
+                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
+                -E "$TRACE_FILTER" \
+            2>&1 | tee "$evidence/stdin-peer-errno-counterfactual.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/stdin-peer-errno-counterfactual.receipt"
+          sha256sum --check "$evidence/archive.sha256"
+
+          grep -F '(INJECTED)' "$evidence/stdin-peer-errno-counterfactual.trace" > "$evidence/stdin-peer-errno-injected.trace"
+          selected_calls=$(wc -l < "$evidence/stdin-peer-errno-injected.trace")
+          device_calls=$(grep -Ec 'getpeername\(0</dev/(null|pts/[0-9]+)(<char [0-9]+:[0-9]+>)?>' "$evidence/stdin-peer-errno-injected.trace" || true)
+          if test "$selected_calls" = "$device_calls"; then
+            printf 'injected_device_stdin_calls=%s\n' "$selected_calls" > "$evidence/stdin-peer-errno-scope.receipt"
+          else
+            printf 'Peer-lookup injection affected stdin outside /dev/null and /dev/pts; reject the causal comparison. Inspect stdin-peer-errno-injected.trace.\n' >&2
+            exit 1
+          fi
           exit "$result"
 
       - name: Run the same archive in upstream's pinned Linux image
