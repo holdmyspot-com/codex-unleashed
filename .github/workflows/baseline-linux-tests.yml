@@ -236,7 +236,7 @@ jobs:
           bundled_bwrap="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/bwrap"
           test -x "$bundled_bwrap"
           comparison_result=0
-          for variant in upstream-image upstream-image-bwrap upstream-image-bwrap-namespaces; do
+          for variant in upstream-image upstream-image-bwrap upstream-image-bwrap-namespaces upstream-image-bwrap-mounts; do
             variant_args=()
             case "$variant" in
               upstream-image-bwrap)
@@ -245,11 +245,14 @@ jobs:
               upstream-image-bwrap-namespaces)
                 variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly" --security-opt seccomp=unconfined)
                 ;;
+              upstream-image-bwrap-mounts)
+                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly" --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+                ;;
             esac
             printf '%s\n' "${variant_args[@]}" > "$evidence/$variant-docker-arguments.txt"
             set +e
             docker run --rm "${docker_common[@]}" "${variant_args[@]}" "$image" \
-              /bin/sh -c 'id; command -v bwrap; bwrap --unshare-user --unshare-net --ro-bind / / /bin/true' \
+              /bin/sh -c 'id; cat /proc/self/attr/current; grep -E "^(Seccomp|NoNewPrivs):" /proc/self/status; command -v bwrap; bwrap --unshare-user --unshare-net --ro-bind / / /bin/true' \
               2>&1 | tee "$evidence/$variant-capability.log"
             capability_result=${PIPESTATUS[0]}
             printf 'exit_code=%s\n' "$capability_result" > "$evidence/$variant-capability.receipt"
