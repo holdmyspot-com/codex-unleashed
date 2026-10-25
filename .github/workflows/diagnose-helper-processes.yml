@@ -2,9 +2,6 @@ name: Diagnose Windows cache-helper process lifecycle
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main.new]
-    paths: [.github/workflows/diagnose-helper-processes.yml]
 
 permissions:
   contents: read
