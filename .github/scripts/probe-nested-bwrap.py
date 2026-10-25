@@ -12,6 +12,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--helper", type=Path, required=True)
+    parser.add_argument("--outer-bwrap", type=Path, required=True)
     parser.add_argument("--bundled-bwrap", type=Path, required=True)
     parser.add_argument("--temporary-parent", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
@@ -25,8 +26,12 @@ def main():
             "entries": [
                 {
                     "path": {"type": "special", "value": {"kind": "root"}},
-                    "access": "read",
-                }
+                    "access": "write",
+                },
+                {
+                    "path": {"type": "path", "path": "/private"},
+                    "access": "deny",
+                },
             ],
         },
         "network": "enabled",
@@ -37,8 +42,9 @@ def main():
     ) as directory:
         fixture = Path(directory)
         shutil.copy2(args.helper, fixture / "sandbox")
+        (fixture / "private").mkdir()
         command = [
-            "/usr/bin/bwrap",
+            str(args.outer_bwrap),
             "--unshare-user",
             "--uid",
             "0",
@@ -69,6 +75,9 @@ def main():
                 "--bind",
                 directory,
                 "/tmp",
+                "--bind",
+                str(fixture / "private"),
+                "/private",
                 "--chdir",
                 "/tmp",
                 "--setenv",
