@@ -196,7 +196,7 @@ jobs:
             env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC|CXX|AR|CFLAGS|CXXFLAGS|CMAKE_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Z_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Z_]+)='
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
           } > "$evidence/compiled-cache-inputs.txt"
-          identity="$(sha256sum "$evidence/compiled-cache-inputs.txt" | cut -d ' ' -f 1)"
+          identity="$(sha256sum < "$evidence/compiled-cache-inputs.txt" | cut -d ' ' -f 1)"
           printf 'tag=cargo-v3-%s-%s\n' "$TARGET" "$identity" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiled Cargo outputs from GHCR
