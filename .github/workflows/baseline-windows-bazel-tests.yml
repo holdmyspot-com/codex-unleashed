@@ -1,0 +1,214 @@
+name: Stable upstream Windows Bazel tests
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-windows-bazel-tests.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+      - patches/upstream-check-policy/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-gnullvm
+            shard: 1
+            shard_count: 4
+          - target: x86_64-pc-windows-gnullvm
+            shard: 2
+            shard_count: 4
+          - target: x86_64-pc-windows-gnullvm
+            shard: 3
+            shard_count: 4
+          - target: x86_64-pc-windows-gnullvm
+            shard: 4
+            shard_count: 4
+          - target: x86_64-pc-windows-msvc
+            shard: 1
+            shard_count: 1
+    runs-on: windows-2025
+    env:
+      TARGET: ${{ matrix.target }}
+      BAZEL_TEST_SHARD: ${{ matrix.shard }}
+      BAZEL_TEST_SHARD_COUNT: ${{ matrix.shard_count }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-windows-bazel-patches"
+          cp -R restart-metadata/patches/upstream-check-policy "$RUNNER_TEMP/baseline-windows-bazel-policy"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-windows-bazel-patches/*.patch "$RUNNER_TEMP"/baseline-windows-bazel-policy/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Set up Python for the maintained Windows checks and metadata
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Check upstream's Windows wrapper and target selector
+        if: matrix.target == 'x86_64-pc-windows-gnullvm' && matrix.shard == 1
+        shell: pwsh
+        run: |
+          python .github/scripts/test_run_bazel_with_buildbuddy.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s .github/scripts -p test_select_windows_bazel_targets.py
+          exit $LASTEXITCODE
+
+      - name: Prepare upstream's Bazel host and toolchain
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Record the native host and capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          {
+            uname -a
+            printf 'runner_os=%s\ntarget=%s\n' "$RUNNER_OS" "$TARGET"
+            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            bazel --version
+          } | tee "$evidence/host.txt"
+          test "$(cat .bazelversion)" = 9.2.0
+
+      - name: Set up upstream's Rust toolchain for workspace metadata
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          toolchain: 1.99.1
+          targets: ${{ matrix.target }}
+
+      - name: Synchronize release workspace versions without dependency upgrades
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          cargo metadata --format-version 1 --filter-platform "$TARGET" \
+            --manifest-path codex-rs/Cargo.toml > "$RUNNER_TEMP/baseline-cargo-metadata.json"
+          python - <<'PYTHON'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(subprocess.check_output(["git", "show", "HEAD:codex-rs/Cargo.lock"], text=True))
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())
+          before_header = {key: value for key, value in before.items() if key != "package"}
+          after_header = {key: value for key, value in after.items() if key != "package"}
+          assert before_header == after_header, "Cargo changed lockfile metadata beyond workspace versions"
+          before_external = [package for package in before["package"] if "source" in package]
+          after_external = [package for package in after["package"] if "source" in package]
+          assert before_external == after_external, "Cargo changed external dependency records"
+          version = tomllib.loads(Path("codex-rs/Cargo.toml").read_text())["workspace"]["package"]["version"]
+          expected_workspace = [dict(package, version=version) for package in before["package"] if "source" not in package]
+          actual_workspace = [package for package in after["package"] if "source" not in package]
+          assert expected_workspace == actual_workspace, "Cargo changed workspace records beyond their release version"
+          print(f"Verified {len(actual_workspace)} workspace versions; external dependencies unchanged")
+          PYTHON
+          git diff --check
+          git diff -- codex-rs/Cargo.lock > "$evidence/workspace-version-lock.diff"
+          git diff --binary > "$evidence/source-before.diff"
+
+      - name: Run the maintained Windows Bazel test selection
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-windows-bazel-evidence"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
+          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          wrapper_args=()
+          test_args=(test --disk_cache= --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings)
+          targets=()
+          if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
+            wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
+            test_args+=(--skip_incompatible_explicit_targets --build_metadata="TAG_windows_test_shard=$BAZEL_TEST_SHARD")
+            query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
+            .github/scripts/run-bazel-query-ci.sh --output=label -- "$query" \
+              | LC_ALL=C sort > "$evidence/candidate-targets.txt"
+            python .github/scripts/select_windows_bazel_targets.py \
+              --shard "$BAZEL_TEST_SHARD" --shard-count "$BAZEL_TEST_SHARD_COUNT" \
+              < "$evidence/candidate-targets.txt" > "$evidence/selected-targets.txt"
+            test -s "$evidence/selected-targets.txt"
+            while IFS= read -r target; do
+              targets+=("$target")
+            done < "$evidence/selected-targets.txt"
+          else
+            wrapper_args+=(--windows-msvc-host-platform)
+            test_args+=(--config=ci-windows-msvc --platforms=//:windows_x86_64_msvc --build_metadata=TAG_windows_native_main=true)
+            targets=(//... -//third_party/v8:all -//codex-rs/v8-poc:v8-poc-unit-tests)
+            printf '%s\n' "${targets[@]}" > "$evidence/selected-targets.txt"
+          fi
+          printf 'shard=%s\nshard_count=%s\n' "$BAZEL_TEST_SHARD" "$BAZEL_TEST_SHARD_COUNT" > "$evidence/shard.txt"
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+              if du -k -d 3 "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p'; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              sleep 60
+            done
+          ) >> "$evidence/disk-usage.log" 2>&1 &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs "${wrapper_args[@]}" -- \
+            "${test_args[@]}" --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            "${targets[@]}" 2>&1 | tee "$evidence/bazel-tests.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
+          git diff --binary > "$evidence/source-after.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          exit "$result"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-windows-bazel-tests-${{ matrix.target }}-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/baseline-windows-bazel-evidence
+          retention-days: 1
+          if-no-files-found: warn
