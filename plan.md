@@ -14,6 +14,16 @@ Selected scope:
 
 The selected stable tag and exact commit are resolved from upstream when step 1 starts and remain fixed through step 6. Do not silently move the baseline as new releases appear.
 
+## Current execution
+
+Step 1 is active. The selected upstream release is `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`; Rust 1.99.1 matches its toolchain pin. [Build baseline](docs/build-baseline.md) records commands, individual gate states, execution ownership, and cleanup. GStreamer, ALSA, libcap and V8 artifact prerequisites have been supplied using upstream's recipe and local development inputs. The default local Cargo build passes and its executable reports `codex-cli 0.164.0`. The maintained Rust suite is running. Release targets and remaining required upstream checks are unrun; no original step is complete yet.
+
+The `pnpm --version` availability probe succeeds with `12.15.0` after the owner grants write access to Corepack's original cache location. This proves tool availability only, not a Codex build or SDK check.
+
+In the selected upstream checkout, Corepack honors its pnpm 10.34.5 pin. `pnpm install --frozen-lockfile`, `pnpm run format` and the complete `just fmt-check` pass. An upstream manifest checker has a stale code-mode exception; the root cause was established before repair. The one-line repair and its emitted patch pass the maintained checker in independent clean checkouts. The patch was then applied after the default build passed, and the cumulative checker passes.
+
+At the owner's request, 19 obsolete linked worktrees were removed. Eighteen uncommitted change sets and all original worktree commits remain reachable through permanent local archive references. [Worktree recovery](docs/worktree-recovery.md) records those references and recovery commands. Include these additional saved changes in final reconciliation; cleanup does not select them for migration.
+
 ## Execution rules
 
 The implementing agent owns each step in sequence and reads this file from the branch before resuming. Mark a checkbox complete only after its acceptance checks pass; record its implementation commit, exact commands, toolchain, configuration, results, diagnostic locations, and relevant timings beneath the step. Keep unrun and failed checks explicit. Reuse verified results only while their determining inputs remain valid.
