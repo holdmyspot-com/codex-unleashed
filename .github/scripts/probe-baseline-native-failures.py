@@ -10,7 +10,8 @@ source = Path(sys.argv[1]).resolve()
 evidence = Path(sys.argv[2]).resolve()
 evidence.mkdir(parents=True, exist_ok=True)
 exec_source = source / "codex-rs/exec-server/src/shell_snapshot.rs"
-originals = {exec_source: exec_source.read_bytes()}
+fixture_source = source / "codex-rs/exec-server/tests/exec_process/shell_snapshot.rs"
+originals = {path: path.read_bytes() for path in (exec_source, fixture_source)}
 exec_filter = (
     "test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)"
     " | test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_pipe_recovery)"
@@ -53,14 +54,23 @@ def run_phase(name, expression):
 try:
     run_phase("original-snapshot-failures", exec_filter)
 
+    fixture = originals[fixture_source].decode()
+    needle = '                "{output:?}"\n'
+    assert fixture.count(needle) == 2
+    fixture_source.write_text(
+        fixture.replace(
+            needle,
+            '                "output={output:?} stderr={errors:?} status={status:?} closed={closed}"\n',
+        )
+    )
     text = originals[exec_source].decode()
     needle = "            telemetry.shell_snapshot_captured("
     assert text.count(needle) == 1
     text = text.replace(
         needle,
         """            eprintln!(
-                "BASELINE_SNAPSHOT_CAPTURE reason={:?} file_source={:?}",
-                result.as_ref().err().map(|(reason, _)| reason),
+                "BASELINE_SNAPSHOT_CAPTURE failure={:?} file_source={:?}",
+                result.as_ref().err(),
                 result.as_ref().ok().map(|snapshot| snapshot.file_source),
             );
 """
@@ -80,11 +90,12 @@ try:
 """
         + needle,
     )
+    needle = ".stderr(Stdio::null());"
+    assert text.count(needle) == 1
+    text = text.replace(needle, ".stderr(Stdio::inherit());")
     exec_source.write_text(text)
     run_phase("snapshot-diagnostics", exec_filter)
-    exec_source.write_bytes(originals[exec_source])
 
-    text = originals[exec_source].decode()
     needle = '        telemetry.shell_snapshot_command(wait, availability, "used");'
     assert text.count(needle) == 1
     exec_source.write_text(
