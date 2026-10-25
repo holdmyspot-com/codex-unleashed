@@ -66,6 +66,10 @@ The actual repository command passes all 32 focused tests and produces a 72,054,
 
 Linux success does not establish native Windows or macOS behavior, cross-runner cache reuse, or Codex release acceptance.
 
+The focused [native runtime workflow](../.github/workflows/source-cache-runtime.yml) selects the existing six release hosts. It builds only this standalone module, runs the 32 focused tests and invokes the packaged launcher through Bash against the maintained [Cargo fixture](../.github/scripts/test-source-cache-runtime.py). That fixture checks actual library freshness, changed executable output and refused recording, and removes its temporary workspace while retaining command logs and a JSON receipt. It does not compile Codex or a standalone SDK. Artifacts retain evidence for one day and create no release.
+
+The workflow selects Azul Zulu 27.0.1 on each native host. Azul's [package metadata API](https://api.azul.com/metadata/v1/zulu/packages/) lists GA JDK archives for all six OS/architecture pairs, including Windows ARM64; the retained selection response is `native-zulu-27-availability.json`. This establishes download availability rather than successful native execution. Maven identity is recorded from the host, and its build outputs, repository and temporary paths are explicitly owned runner directories.
+
 ## Remaining integration gates
 
 - Verify the bundled runtime and maintained launcher on every selected native host; local Linux verification passes.
