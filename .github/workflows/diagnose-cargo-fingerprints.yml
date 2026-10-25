@@ -2,6 +2,9 @@ name: Diagnose Linux Cargo cache fingerprints
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/diagnose-cargo-fingerprints.yml]
 
 permissions:
   contents: read
