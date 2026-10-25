@@ -45,9 +45,11 @@ def source_diff():
 
 def run_phase(name, arguments, target):
     command = [*wrapper, *arguments, "--", target]
+    execution_logs = evidence / "execution-logs" / name
+    execution_logs.mkdir(parents=True, exist_ok=True)
     environment = dict(
         os.environ,
-        CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR=str(evidence / "execution-logs" / name),
+        CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR=str(execution_logs),
     )
     with (evidence / f"{name}.log").open("wb") as log:
         result = subprocess.run(
