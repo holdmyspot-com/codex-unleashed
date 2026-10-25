@@ -1,0 +1,203 @@
+name: Stable upstream release builds
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-release-builds.yml
+      - .github/upstream-commit
+      - .github/upstream-ref
+      - patches/upstream-baseline/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Baseline - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            split-debug-info: "off"
+            binary-suffix: ""
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            split-debug-info: "off"
+            binary-suffix: ""
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            split-debug-info: packed
+            binary-suffix: ""
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            split-debug-info: packed
+            binary-suffix: ""
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            split-debug-info: "off"
+            binary-suffix: .exe
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            split-debug-info: "off"
+            binary-suffix: .exe
+    env:
+      CODEX_REPO_ROOT: ${{ github.workspace }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ matrix.split-debug-info }}
+      TARGET: ${{ matrix.target }}
+      BINARY_SUFFIX: ${{ matrix.binary-suffix }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          cargo_home="$RUNNER_TEMP/baseline-cargo-home"
+          cargo_target_dir="$RUNNER_TEMP/baseline-target"
+          mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
+          printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-patches"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-evidence"
+          test "$(git rev-parse HEAD)" = "$(cat "$evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-patches/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$evidence/applied-check-repairs.diff"
+
+      - name: Install Linux bwrap prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
+
+      - name: Set up the upstream Rust toolchain
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install upstream's Zig prerequisite
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Install upstream's musl build inputs
+        if: runner.os == 'Linux'
+        run: bash .github/scripts/install-musl-build-tools.sh
+
+      - name: Select upstream's musl entropy configuration
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          echo 'AWS_LC_SYS_NO_JITTER_ENTROPY=1' >> "$GITHUB_ENV"
+          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_$TARGET"
+          target_no_jitter="${target_no_jitter//-/_}"
+          printf '%s=1\n' "$target_no_jitter" >> "$GITHUB_ENV"
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Expose the matching MSVC environment
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc-env
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Select upstream's Windows SQLite configuration
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Build and hash the Linux sandbox helper
+        if: runner.os == 'Linux'
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/bwrap-build.log"
+          helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
+          strip --strip-debug --strip-unneeded "$helper"
+          digest="$(sha256sum "$helper" | cut -d ' ' -f 1)"
+          printf 'CODEX_BWRAP_SHA256=%s\n' "$digest" >> "$GITHUB_ENV"
+
+      - name: Build the upstream release binaries with default features
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+          export STABLE_GIT_COMMIT
+          rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
+          bundles=(primary app-server)
+          case "$TARGET" in
+            *-windows-msvc)
+              bundles+=(helpers)
+              ;;
+          esac
+          for bundle in "${bundles[@]}"; do
+            case "$bundle" in
+              primary)
+                build_args=(--bin codex --bin codex-code-mode-host --bin codex-responses-api-proxy)
+                ;;
+              app-server)
+                build_args=(--bin codex-app-server --bin codex-code-mode-host)
+                ;;
+              helpers)
+                build_args=(--bin codex-windows-sandbox-setup --bin codex-windows-sandbox-service --bin codex-command-runner)
+                ;;
+            esac
+            cargo build --target "$TARGET" --release --timings "${build_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cargo-build-$bundle.log"
+          done
+
+      - name: Smoke-test both native executable variants
+        run: |
+          set -euo pipefail
+          output="$CARGO_TARGET_DIR/$TARGET/release"
+          "$output/codex$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/codex-version.log"
+          "$output/codex-app-server$BINARY_SUFFIX" --version | tee "$RUNNER_TEMP/baseline-evidence/app-server-version.log"
+
+      - name: Retain baseline evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/baseline-evidence
+            ${{ runner.temp }}/baseline-target/**/cargo-timings
+          retention-days: 1
+          if-no-files-found: warn
