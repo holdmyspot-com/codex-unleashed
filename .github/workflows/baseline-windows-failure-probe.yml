@@ -124,6 +124,9 @@ jobs:
 
       - name: Compare clean Opus output and the original doctor regression
         run: |
+          set -euo pipefail
+          BASELINE_BASH="$(cygpath -w "$(command -v bash.exe)")"
+          export BASELINE_BASH
           python "$RUNNER_TEMP/probe-baseline-windows-failures.py" \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-windows-bazel-evidence" \
             "$RUNNER_TEMP/baseline-windows-bazel-patches" "$RUNNER_TEMP/baseline-windows-bazel-policy"
