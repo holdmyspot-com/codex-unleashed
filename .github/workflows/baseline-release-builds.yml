@@ -149,6 +149,10 @@ jobs:
           version: 0.14.0
           use-cache: ${{ inputs.cache }}
 
+      - name: Exclude generated Zig cache from checkout source inventory
+        if: runner.os == 'Linux'
+        run: printf '\n/.zig-cache/\n' >> "$(git rev-parse --git-path info/exclude)"
+
       - name: Install upstream's musl build inputs
         if: runner.os == 'Linux'
         run: bash .github/scripts/install-musl-build-tools.sh
