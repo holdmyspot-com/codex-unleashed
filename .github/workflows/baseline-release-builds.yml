@@ -51,7 +51,6 @@ jobs:
       packages: write
     name: Baseline - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
