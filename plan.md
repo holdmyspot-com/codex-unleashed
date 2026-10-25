@@ -41,6 +41,8 @@ For behavior changes, first run a focused regression that fails for the intended
 
 Keep warnings visible and nonfatal in steps 1–5. Do not import warning-as-error configuration early. Step 6 introduces fatal warnings; retain that policy in step 7. Do not silence warnings to satisfy either step.
 
+The owner explicitly defers the two confirmed baseline dependency-audit findings (`RUSTSEC-2026-0387` and `RUSTSEC-2026-0385`) to step 7. Preserve their failed audit status and diagnostics; they do not block completing the earlier steps. Compilation, tests, smoke checks and other required gates still need to pass before caching. This exception does not suppress findings or authorize early dependency changes.
+
 ## Ordered changes
 
 - [ ] **1. Establish a build of the latest stable upstream Codex with its default configuration.** Resolve the latest non-prerelease upstream release to a tag and commit; record both here. Inspect its maintained build and check entry points and document the exact default build command and required environment for the selected platforms. Use its default features and dependency resolution. Add only the source retrieval and minimum build setup needed for this baseline; do not import downstream caching, scheduling, product patches, dependency upgrades, or strict-warning policy. If the upstream default makes warnings fatal, document and narrowly disable that policy to honor this step. Acceptance: the baseline build and required upstream checks pass on each selected platform, with warning output retained and the resulting executable passing its maintained smoke check. Investigate any baseline failure before proceeding.
