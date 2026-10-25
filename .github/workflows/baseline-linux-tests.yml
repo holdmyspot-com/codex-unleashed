@@ -148,13 +148,21 @@ jobs:
             while true; do
               date -u +'%Y-%m-%dT%H:%M:%SZ'
               df -k "$CARGO_TARGET_DIR" "$RUNNER_TEMP"
-              du -sk -- "$CARGO_HOME" "$RUNNER_TEMP/baseline-test-native"
-              du -k --max-depth=3 -- "$CARGO_TARGET_DIR" | sort -nr | sed -n '1,30p'
+              if du -sk -- "$CARGO_HOME" "$RUNNER_TEMP/baseline-test-native"; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
+              if du -k --max-depth=3 -- "$CARGO_TARGET_DIR" | sort -nr | sed -n '1,30p'; then
+                :
+              else
+                printf 'directory_sample_exit=%s\n' "$?"
+              fi
               sleep 60
             done
-          ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" &
+          ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" 2>&1 &
           disk_monitor=$!
-          trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
+          trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
