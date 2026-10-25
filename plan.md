@@ -134,7 +134,7 @@ New baseline audit findings, with unchanged locked dependency versions and RustS
 
 ## Old-main changes not yet migrated
 
-At initialization all 143 old-main patch files are pending. This inventory names migration candidates, not verified requirements or approved deletions. The implementing agent updates each disposition as work proceeds. For a mixed patch, record migrated and retained hunks separately. Recover any item and its README from the fixed old-main commit with `git show <old-main-source-commit>:<path>`.
+The initialization inventory contains 143 old-main patch files. Dispositions below distinguish adapted changes from items still pending. This inventory names migration candidates, not verified requirements or approved deletions. The implementing agent updates each disposition as work proceeds. For a mixed patch, record migrated and retained hunks separately. Recover any item and its README from the fixed old-main commit with `git show <old-main-source-commit>:<path>`.
 
 Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.github` CI, release, repository and cache workflows; `tooling`; `scripts`; `MODULE.bazel` and other build configuration; `vendor`; package metadata; project/product documentation; licenses and policies; and repository hygiene files. Inventory their individual differences before final reconciliation; a directory summary does not establish that every change is migrated or discarded.
 
@@ -227,7 +227,7 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0004-rust-wrapper-parameter-files.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0005-make-c-standard.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0006-cargo-runtime-features.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0007-ci-msvc-runtime-license.patch` | Pending review; not migrated. |
+| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0007-ci-msvc-runtime-license.patch` | Accepted MSVC runtime setting adapted narrowly to Windows baseline commands in `243601d3a4` and `479753dbb4`. Native job 121149735023 gets past that guard and reaches a separate voice-environment prerequisite. Old global CI propagation is not copied; classify any remaining consumers when their workflows migrate. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0008-darwin-large-unwind.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0010-explicit-python-zipapps.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0011-windows-execution-platform-owner.patch` | Pending review; not migrated. |
@@ -269,12 +269,12 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0074-macos-pty-fixture-concurrency.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-62/classify-wrapped-tls-errors.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-63/protect-root-metadata-fixture-launcher.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-64/isolate-no-marker-skills-fixture.patch` | Pending review; not migrated. |
+| `patches/holdmyspot-com/codex-unleashed/issue-64/isolate-no-marker-skills-fixture.patch` | Adapted in `96845424fc` as baseline patch 0004. The configured absent-marker fixture passes 214 focused skills/root-metadata tests. Production marker discovery remains unchanged; cumulative acceptance is tracked in step 1. |
 | `patches/holdmyspot-com/codex-unleashed/issue-65/isolate-mitm-path-policy-from-dns.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-66/provide-empty-roots-launcher-dependencies.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-67/offline-marketplace-migration-fixture.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-68/canonical-sandbox-helper-fixture.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-69/integration-compiler-environment.patch` | Pending review; not migrated. |
+| `patches/holdmyspot-com/codex-unleashed/issue-68/canonical-sandbox-helper-fixture.patch` | Adapted in `e33a52f748` as baseline patch 0009. The existing bridge-routing regression fails before canonicalization and passes afterward, including the proxied response and denied direct egress. Full native Bazel acceptance remains pending. |
+| `patches/holdmyspot-com/codex-unleashed/issue-69/integration-compiler-environment.patch` | Adapted in `84799c590b` as baseline patch 0008: all three integration-target forms receive generated compiler metadata, with the focused digest regression verified red/green. Full native Bazel acceptance remains pending. |
 | `patches/holdmyspot-com/codex-unleashed/issue-70/readable-commands.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/schema/refresh-config-schema.patch` | Pending review; not migrated. |
 | `patches/openai/codex/issue-29872/release-build-warnings.patch` | Pending review; not migrated. |
