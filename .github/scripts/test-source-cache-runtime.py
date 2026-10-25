@@ -82,16 +82,28 @@ def verify(runtime, evidence, bash):
         def record(label, expected=0):
             return command(cli + ["--record-source-inputs", str(workspace), target], label, expected)
 
-        def build(label):
+        def build(label, expected=0):
             result = command(["cargo", "build", "--release", "--target", target,
-                              "--message-format=json"], label)
+                              "--message-format=json"], label, expected)
             rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
             return {row["target"]["name"]: row["fresh"] for row in rows
                     if row.get("reason") == "compiler-artifact" and row["target"]["kind"] == ["lib"]}
 
+        main_source = workspace / "src/main.rs"
+        valid_main = main_source.read_text(encoding="utf-8")
+        main_source.write_text('compile_error!("controlled executable failure");\nfn main() {}\n',
+                               encoding="utf-8")
         prepare("cold-prepare")
-        cold = build("cold-build")
+        cold = build("cold-failed-build", 101)
         assert cold == {"v8": False, "cache_demo": False}, cold
+        main_source.write_text(valid_main, encoding="utf-8")
+        before_retry = binding.stat().st_mtime_ns
+        os.utime(binding, ns=(before_retry + 100_000_000_000, before_retry + 100_000_000_000))
+        prepare("partial-retry-prepare")
+        partial = build("partial-retry-build")
+        assert partial == {"v8": True, "cache_demo": True}, partial
+        assert binding.stat().st_mtime_ns == before_retry
+        assert not (fixture / "target/.codex-source-inputs" / (target + ".json")).exists()
         record("cold-record")
         original = binding.stat().st_mtime_ns
         for file in [binding, workspace / "src/lib.rs"]:
@@ -120,7 +132,8 @@ def verify(runtime, evidence, bash):
         assert "refusing cache snapshot" in failure.stderr
 
         receipt = {"target": target, "runtime": str(runtime), "rust": rust,
-                   "cold_library_fresh": cold, "warm_library_fresh": warm,
+                   "cold_library_fresh": cold, "partial_retry_library_fresh": partial,
+                   "warm_library_fresh": warm,
                    "changed_library_fresh": changed, "changed_executable_output": output,
                    "invalid_target_exit": 2, "content_drift_record_exit": 1}
     receipt["fixture_removed"] = not fixture.exists()

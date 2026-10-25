@@ -28,10 +28,10 @@ public final class SourceInputChanges
 	}
 
 	/**
-	 * Compares successful and interrupted inputs before applying confined timestamp updates.
+	 * Compares reusable and interrupted inputs before applying confined timestamp updates.
 	 *
 	 * @param current current raw-file inventory
-	 * @param previous successful snapshot
+	 * @param previous successful or completed-preparation input snapshot
 	 * @param interrupted optional inputs used by a build that did not record success
 	 * @param clock timestamp authority for actual content changes
 	 * @return all changed, added, removed, or interrupted-build source names
@@ -115,7 +115,7 @@ public final class SourceInputChanges
 	}
 
 	/**
-	 * Restores unchanged source and directory timestamps from the successful build.
+	 * Restores unchanged source and directory timestamps from the reusable input snapshot.
 	 *
 	 * @param root the canonical checkout
 	 * @param times optional stored timestamps

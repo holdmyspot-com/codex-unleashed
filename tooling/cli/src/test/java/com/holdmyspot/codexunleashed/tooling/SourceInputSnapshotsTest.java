@@ -72,6 +72,35 @@ public final class SourceInputSnapshotsTest
 	}
 
 	/**
+	 * Keeps completed preparation distinct from successful state and refuses content drift.
+	 *
+	 * @throws IOException if checkpoint, recording, or fixture operations fail
+	 */
+	@Test
+	public void checkpointsWithoutRecordingSuccess() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			SourceInputInventory.Snapshot inputs = fixture.inputs(Map.of("source.rs", "prepared"));
+			Path resumable = SourceInputSnapshots.resumable(fixture.snapshot);
+			expectThrows(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.snapshot, inputs));
+			assertFalse(Files.exists(resumable));
+			SourceInputSnapshots.write(fixture.pending(), inputs);
+			SourceInputSnapshots.checkpoint(fixture.snapshot, inputs);
+			assertFalse(Files.exists(fixture.snapshot));
+			assertTrue(Files.isRegularFile(fixture.pending()));
+			String checkpoint = Files.readString(resumable);
+			expectThrows(IOException.class, () -> SourceInputSnapshots.checkpoint(fixture.snapshot,
+				fixture.inputs(Map.of("source.rs", "drifted"))));
+			assertEquals(Files.readString(resumable), checkpoint);
+			SourceInputSnapshots.record(fixture.snapshot, inputs);
+			assertTrue(Files.isRegularFile(fixture.snapshot));
+			assertFalse(Files.exists(resumable));
+			assertFalse(Files.exists(fixture.pending()));
+		}
+	}
+
+	/**
 	 * Refuses altered sources and missing preparation without replacing existing successful state.
 	 *
 	 * @throws IOException if snapshot access or cleanup fails
