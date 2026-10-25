@@ -66,6 +66,20 @@ jobs:
       - name: Prepare upstream's native test host
         uses: ./.github/actions/setup-ci
 
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
+
       - name: Install Linux development prerequisites
         run: |
           set -euo pipefail
@@ -126,6 +140,15 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CARGO_TARGET_DIR" "$RUNNER_TEMP"
+              sleep 60
+            done
+          ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings \
