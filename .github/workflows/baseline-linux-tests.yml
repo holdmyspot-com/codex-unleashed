@@ -8,7 +8,7 @@ on:
         type: string
         default: ""
       compare_upstream_image:
-        description: Compare one unchanged archive on the host and upstream's pinned Linux image
+        description: Compare one unchanged archive across the host and upstream image capabilities
         type: boolean
         default: false
       filter:
@@ -221,25 +221,50 @@ jobs:
             nextest_args+=(-E "$BASELINE_TEST_FILTER")
           fi
           printf '%s\n' "${nextest_args[@]}" > "$evidence/image-nextest-arguments.txt"
-          set +e
-          docker run --rm \
-            --mount "type=bind,source=$GITHUB_WORKSPACE,target=$GITHUB_WORKSPACE,readonly" \
-            --mount "type=bind,source=$RUNNER_TEMP,target=$RUNNER_TEMP,readonly" \
-            --mount "type=bind,source=$CARGO_TARGET_DIR,target=$CARGO_TARGET_DIR,readonly" \
-            --mount "type=bind,source=$nextest_binary,target=/usr/local/bin/cargo-nextest,readonly" \
-            --tmpfs "$GITHUB_WORKSPACE/codex-rs/target/nextest:rw,uid=1000,gid=1000,mode=0700" \
-            --workdir "$GITHUB_WORKSPACE/codex-rs" \
-            --env RUST_MIN_STACK --env RUST_BACKTRACE --env RUST_LIB_BACKTRACE \
-            --env LD_LIBRARY_PATH --env CODEX_TEST_VOICE_RUNTIME \
-            --env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" \
-            --env "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
-            "$image" /usr/local/bin/cargo-nextest "${nextest_args[@]}" \
-            2>&1 | tee "$evidence/upstream-image-nextest.log"
-          result=${PIPESTATUS[0]}
-          set -e
-          printf 'exit_code=%s\n' "$result" > "$evidence/upstream-image-nextest.receipt"
-          sha256sum --check "$evidence/archive.sha256"
-          exit "$result"
+          docker_common=(
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=$GITHUB_WORKSPACE,readonly"
+            --mount "type=bind,source=$RUNNER_TEMP,target=$RUNNER_TEMP,readonly"
+            --mount "type=bind,source=$CARGO_TARGET_DIR,target=$CARGO_TARGET_DIR,readonly"
+            --mount "type=bind,source=$nextest_binary,target=/usr/local/bin/cargo-nextest,readonly"
+            --tmpfs "$GITHUB_WORKSPACE/codex-rs/target/nextest:rw,uid=1000,gid=1000,mode=0700"
+            --workdir "$GITHUB_WORKSPACE/codex-rs"
+            --env RUST_MIN_STACK --env RUST_BACKTRACE --env RUST_LIB_BACKTRACE
+            --env LD_LIBRARY_PATH --env CODEX_TEST_VOICE_RUNTIME
+            --env "CARGO_BIN_EXE_codex-linux-sandbox=$helper"
+            --env "CARGO_BIN_EXE_codex_linux_sandbox=$helper"
+          )
+          bundled_bwrap="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/bwrap"
+          test -x "$bundled_bwrap"
+          comparison_result=0
+          for variant in upstream-image upstream-image-bwrap upstream-image-bwrap-namespaces; do
+            variant_args=()
+            case "$variant" in
+              upstream-image-bwrap)
+                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly")
+                ;;
+              upstream-image-bwrap-namespaces)
+                variant_args+=(--mount "type=bind,source=$bundled_bwrap,target=/usr/local/bin/bwrap,readonly" --security-opt seccomp=unconfined)
+                ;;
+            esac
+            printf '%s\n' "${variant_args[@]}" > "$evidence/$variant-docker-arguments.txt"
+            set +e
+            docker run --rm "${docker_common[@]}" "${variant_args[@]}" "$image" \
+              /bin/sh -c 'id; command -v bwrap; bwrap --unshare-user --unshare-net --ro-bind / / /bin/true' \
+              2>&1 | tee "$evidence/$variant-capability.log"
+            capability_result=${PIPESTATUS[0]}
+            printf 'exit_code=%s\n' "$capability_result" > "$evidence/$variant-capability.receipt"
+            docker run --rm "${docker_common[@]}" "${variant_args[@]}" \
+              "$image" /usr/local/bin/cargo-nextest "${nextest_args[@]}" \
+              2>&1 | tee "$evidence/$variant-nextest.log"
+            result=${PIPESTATUS[0]}
+            set -e
+            printf 'exit_code=%s\n' "$result" > "$evidence/$variant-nextest.receipt"
+            sha256sum --check "$evidence/archive.sha256"
+            if [[ "$result" != 0 ]]; then
+              comparison_result="$result"
+            fi
+          done
+          exit "$comparison_result"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
