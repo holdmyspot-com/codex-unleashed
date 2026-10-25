@@ -186,7 +186,7 @@ jobs:
             --build_metadata=TAG_rust_debug_assertions=off
           )
           if [[ "$RUNNER_OS" == Windows ]]; then
-            build_args+=(--repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
+            build_args+=(--workspace_status_command=./scripts/workspace-status.cmd --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1)
           fi
           if [[ "$RUNNER_OS" == Windows ]]; then
             build_args+=(

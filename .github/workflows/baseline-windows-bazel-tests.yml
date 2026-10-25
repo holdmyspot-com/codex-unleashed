@@ -149,7 +149,7 @@ jobs:
           export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/execution-logs"
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
           wrapper_args=()
-          test_args=(test --config=ci-windows --disk_cache= --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings)
+          test_args=(test --config=ci-windows --workspace_status_command=./scripts/workspace-status.cmd --disk_cache= --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 --test_tag_filters=-argument-comment-lint --test_verbose_timeout_warnings)
           targets=()
           if [[ "$TARGET" == x86_64-pc-windows-gnullvm ]]; then
             wrapper_args+=(--windows-cross-compile --remote-download-toplevel)
