@@ -56,18 +56,19 @@ The native Bazel workflow offers `exec_server_shells=true` to select only the ma
 
 The requested `--test_filter=shell_snapshot` was not honored by these Rust binaries: Bazel set `TESTBRIDGE_TEST_ONLY`, but the actual libtest command had no positional filter and the result shows zero filtered tests. The retained evidence therefore covers the complete two targets, not just the shell selection. The harness now uses `--test_arg=shell_snapshot` to supply the positional filter. Hosted acceptance of that narrowed selection remains unrun; the existing full-target result remains valid. No upstream source or test changes are applied.
 
-## Pristine Linux release build acceptance
+## Pristine release build acceptance
 
-[Six-platform run `40203396093`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40203396093), restart commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1`, has successful Linux x86-64 and ARM64 musl jobs. Downloaded evidence confirms pinned source `6aaac694803004a63c6f393d153c96d22521a6b9`, an empty initial source diff, Rust 1.99.1, both release bundles built with default features, both native version smokes at 0.164.0 and a passing final source/test guard. Warnings remain nonfatal. These are unmodified-source build and version-smoke results; they do not establish a passing test suite or complete six-platform acceptance.
+[Six-platform run `40203396093`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40203396093), restart commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1`, has successful Linux x86-64/ARM64 musl and Windows ARM64 MSVC jobs. Downloaded evidence confirms pinned source `6aaac694803004a63c6f393d153c96d22521a6b9`, an empty initial source diff, Rust 1.99.1, both release bundles built with default features, both native version smokes at 0.164.0 and a passing final source/test guard. Warnings remain nonfatal. These are unmodified-source build and version-smoke results; they do not establish a passing test suite or complete six-platform acceptance.
 
-| Target | Bundled bwrap build | Primary bundle | App-server bundle |
+| Target | Platform helper build | Primary bundle | App-server bundle |
 | --- | --- | --- | --- |
 | x86_64-unknown-linux-musl | 20.93 s | 31 min 24 s | 10 min 27 s |
 | aarch64-unknown-linux-musl | 22.16 s | 34 min 56 s | 10 min 28 s |
+| aarch64-pc-windows-msvc | 5 min 56 s | 55 min 39 s | 16 min 58 s |
 
-Both Linux architectures emit the same six distinct Rust warnings: an unnecessary mutable parameter in `app-server/src/lib.rs`; two unused HTTP-client imports in `cloud-tasks/src/lib.rs`; and an unused plugin-task import plus two unused managed-config constants in `app-server/src/main.rs`. Source inspection confirms their shared cause: the declarations or mutability are unconditional, but their uses or mutation are compiled only with `debug_assertions`, which the release build omits. The baseline warning inventory retains the exact diagnostics and source locations. Repairs remain deferred to step 5 and the unmodified test prerequisite; no source changes or diagnostic suppression are applied here.
+Both Linux architectures and Windows ARM64 emit the same six distinct Rust warnings: an unnecessary mutable parameter in `app-server/src/lib.rs`; two unused HTTP-client imports in `cloud-tasks/src/lib.rs`; and an unused plugin-task import plus two unused managed-config constants in `app-server/src/main.rs`. Source inspection confirms their shared cause: the declarations or mutability are unconditional, but their uses or mutation are compiled only with `debug_assertions`, which the release build omits. The baseline warning inventory retains the exact diagnostics and source locations. Repairs remain deferred to step 5 and the unmodified test prerequisite; no source changes or diagnostic suppression are applied here.
 
-These are baseline Cargo-reported build durations before caching or scheduling changes. The five-minute target belongs to step 3. The four macOS/Windows jobs remain pending at this observation.
+These are baseline Cargo-reported build durations before caching or scheduling changes. The five-minute target belongs to step 3. The two macOS jobs and Windows x86-64 job remain pending at this observation.
 
 ## Historical source and scope
 
