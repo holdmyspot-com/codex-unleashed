@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
       trace_shell_startup:
-        description: Trace the failing remote sandbox shell case after its untraced archive run
+        description: Trace the selected failing remote shell cases after their untraced archive run
         type: boolean
         default: false
       filter:
@@ -62,7 +62,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$TRACE_PACKAGE" = codex-exec-server
-          test "$TRACE_FILTER" = 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)'
+          case "$TRACE_FILTER" in
+            'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' | \
+            'test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_) | test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)') ;;
+            *) printf 'Unsupported focused process-trace filter: %s\n' "$TRACE_FILTER" >&2; exit 1 ;;
+          esac
 
       - name: Retrieve the exact stable upstream source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -216,7 +220,9 @@ jobs:
             cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
 
-      - name: Trace the same unmodified remote sandbox shell case
+      - name: Trace the same unmodified remote shell selection
+        env:
+          TRACE_FILTER: ${{ inputs.filter }}
         if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
         working-directory: codex-rs
         run: |
@@ -233,7 +239,7 @@ jobs:
               -o "$evidence/shell-startup.trace" \
               cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
                 --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
-                -E 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' \
+                -E "$TRACE_FILTER" \
             2>&1 | tee "$evidence/traced-nextest.log"
           result=${PIPESTATUS[0]}
           set -e
@@ -242,6 +248,8 @@ jobs:
           exit "$result"
 
       - name: Diagnose the null-device peer-lookup errno
+        env:
+          TRACE_FILTER: ${{ inputs.filter }}
         if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
         working-directory: codex-rs
         run: |
@@ -255,7 +263,7 @@ jobs:
               -o "$evidence/null-peer-errno-counterfactual.trace" \
               cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
                 --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
-                -E 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' \
+                -E "$TRACE_FILTER" \
             2>&1 | tee "$evidence/null-peer-errno-counterfactual.log"
           result=${PIPESTATUS[0]}
           set -e
