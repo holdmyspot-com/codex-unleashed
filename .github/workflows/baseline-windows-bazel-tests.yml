@@ -110,7 +110,7 @@ jobs:
           {
             uname -a
             printf 'runner_os=%s\ntarget=%s\n' "$RUNNER_OS" "$TARGET"
-            df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
+            df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
             bazel --version
           } | tee "$evidence/host.txt"
           test "$(cat .bazelversion)" = 9.2.0
@@ -118,7 +118,6 @@ jobs:
       - name: Set up upstream's Rust toolchain for workspace metadata
         uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
         with:
-          toolchain: 1.99.1
           targets: ${{ matrix.target }}
 
       - name: Synchronize release workspace versions without dependency upgrades
@@ -182,8 +181,8 @@ jobs:
           (
             while true; do
               date -u +'%Y-%m-%dT%H:%M:%SZ'
-              df -k "$CI_BUILD_ROOT" "$RUNNER_TEMP"
-              if du -k -d 3 "$CI_BUILD_ROOT" | sort -nr | sed -n '1,30p'; then
+              df -k "$CI_BUILD_ROOT/" "$RUNNER_TEMP"
+              if du -k -d 3 "$CI_BUILD_ROOT/" | sort -nr | sed -n '1,30p'; then
                 :
               else
                 printf 'directory_sample_exit=%s\n' "$?"
