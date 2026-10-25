@@ -201,7 +201,7 @@ jobs:
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           comparison_args=()
           if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
-            comparison_args+=(--test_filter=shell_snapshot --test_output=all)
+            comparison_args+=(--test_arg=shell_snapshot --test_output=all)
           fi
           printf '%s\n' "${comparison_args[@]}" > "$evidence/comparison-arguments.txt"
           set +e
