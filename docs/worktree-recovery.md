@@ -45,3 +45,20 @@ git -C ../worktrees/recovered-work stash apply --index "refs/archive/restart-wor
 For `macos-sampler-candidate-qBjJVJ`, the original index contained an intent-to-add entry that Git stash refused. The original index is retained as the blob reference `refs/archive/restart-worktrees/macos-sampler-candidate-qBjJVJ/original-index`. Cleanup removed only the intent-to-add index entry before saving all file contents. After applying its changes, restore that intent-to-add state with `git add --intent-to-add .github/scripts/diagnose-macos-exec-sample.sh` in the recovered worktree.
 
 These archived changes are additional reconciliation inputs, separate from the fixed old-main inventory in `plan.md`. Their retention does not authorize migrating their behavior. Keep the references until the user decides whether to migrate or discard that work.
+
+## Additional legacy checkouts
+
+A later disk cleanup removed another 33 obsolete source checkouts from the sibling `worktrees` directory. These belonged to older independent upstream repositories, rather than this repository's linked-worktree list. Several contained uncommitted changes or incomplete Git history, so a complete filesystem archive was retained instead of relying on Git transfers.
+
+The local archive is `.cat/archives/restart-legacy-worktrees/checkouts.tar.gz`. Its adjacent `directories.json` lists the 33 directory names; `removal-results.json` confirms all were removed. `checkouts.tar.gz.sha256` records its checksum. Before removal, `tar --compare` verified the archived file contents and metadata against every original checkout. The archive includes their existing Git object stores and linked-worktree metadata, even where historical objects were already missing. It does not repair that preexisting incomplete history.
+
+The archive is local and ignored by Git; publishing `main.new` does not back it up externally. Keep it until final reconciliation decides whether its contents should be migrated or discarded. To recover the original layout, verify its checksum from the project root and extract all archived checkouts together into an empty sibling `worktrees` directory. Linked-worktree metadata names those original absolute paths.
+
+```sh
+sha256sum -c .cat/archives/restart-legacy-worktrees/checkouts.tar.gz.sha256
+tar -xzf .cat/archives/restart-legacy-worktrees/checkouts.tar.gz -C ../worktrees
+```
+
+Before archiving, the cleanup saved the dirty state of `codex-rust-v0.157.1` and `codex-rust-v0.158.0-license-probe` in each checkout's newest stash. Recover their working changes with `git stash apply --index stash@{0}` inside the corresponding restored checkout. Other checkouts retain their working files directly in the archive.
+
+The same cleanup deleted obsolete build caches from `.cat/work/temp/build-caches`, preserving only `restart-baseline-6aaac69` for the active baseline checks. These caches were rebuildable outputs, separate from saved source changes. Local free space increased from 440 MB to approximately 197 GB after cleanup; this does not change the capacity of GitHub-hosted runners.
