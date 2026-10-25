@@ -1,0 +1,42 @@
+From fb6d65239c96f5cac36f84f1cb75174fb0f18da5 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 03:45:08 -0400
+Subject: [PATCH] test: isolate absent project-marker fixture from ancestor
+ repositories
+
+---
+ codex-rs/ext/skills/src/host_roots_tests.rs | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/ext/skills/src/host_roots_tests.rs b/codex-rs/ext/skills/src/host_roots_tests.rs
+index fa8cb7d..df4292c 100644
+--- a/codex-rs/ext/skills/src/host_roots_tests.rs
++++ b/codex-rs/ext/skills/src/host_roots_tests.rs
+@@ -406,7 +406,24 @@ async fn repo_ancestry_without_project_marker_does_not_walk_parents() {
+     fs::create_dir_all(outer.join(".agents/skills")).expect("create outer skills");
+     fs::create_dir_all(cwd.join(".agents/skills")).expect("create cwd skills");
+ 
+-    let roots = repo_agents_skill_roots(Some(Arc::clone(&LOCAL_FS)), &stack(Vec::new()), &cwd)
++    let absent_project_marker = format!(
++        ".missing-project-marker-{}",
++        temp_dir.path().file_name().unwrap().to_string_lossy()
++    );
++    let mut config = empty_config();
++    config.as_table_mut().unwrap().insert(
++        "project_root_markers".to_string(),
++        toml::Value::Array(vec![toml::Value::String(absent_project_marker)]),
++    );
++    let config_stack = stack(vec![ConfigLayerEntry::new(
++        ConfigLayerSource::User {
++            file: absolute(temp_dir.path().join("config.toml")),
++            profile: None,
++        },
++        config,
++    )]);
++
++    let roots = repo_agents_skill_roots(Some(Arc::clone(&LOCAL_FS)), &config_stack, &cwd)
+         .await
+         .into_iter()
+         .map(|root| root.path)
+-- 
+2.43.0
