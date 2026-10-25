@@ -1,0 +1,44 @@
+From 752905787c1527dc2def4f41b8ae0d8558c04b68 Mon Sep 17 00:00:00 2001
+From: Gili Tzabari <cowwoc2020@gmail.com>
+Date: Sun, 25 Oct 2026 03:44:54 -0400
+Subject: [PATCH] test: preserve nested sandbox executable resources and
+ identity
+
+---
+ .../tests/suite/root_metadata_tests.rs             | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs b/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
+index fe7d4dc..af72bcc 100644
+--- a/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
++++ b/codex-rs/linux-sandbox/tests/suite/root_metadata_tests.rs
+@@ -33,8 +33,15 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
+     fs::write(work.join("public/secret"), "outside").unwrap();
+     fs::write(private.join("reopened/secret"), "private").unwrap();
+     fs::write(private.join("sibling"), "sibling").unwrap();
+-    codex_utils_cargo_bin::copy_executable(&codex_linux_sandbox_exe(), &work.join("sandbox"))
+-        .unwrap();
++    let sandbox_exe = codex_linux_sandbox_exe();
++    let bundled_bwrap = codex_linux_sandbox::find_bundled_bwrap_for_exe(
++        &sandbox_exe,
++        &std::env::current_dir().expect("current directory"),
++        |key| std::env::var_os(key),
++    )
++    .expect("bundled bubblewrap fixture");
++    codex_utils_cargo_bin::copy_executable(&sandbox_exe, &work.join("sandbox")).unwrap();
++    codex_utils_cargo_bin::copy_executable(bundled_bwrap.as_path(), &work.join("bwrap")).unwrap();
+ 
+     let path_entry = |path: &str, access| {
+         FileSystemSandboxEntry::new(
+@@ -63,8 +70,7 @@ async fn root_metadata_symlinks_cannot_reopen_approved_denials() {
+         let profile =
+             PermissionProfile::from_runtime_permissions(policy, NetworkSandboxPolicy::Enabled);
+         let mut command = Command::new(&bwrap);
+-        command
+-            .args("--unshare-user --uid 0 --gid 0 --die-with-parent --tmpfs /".split_whitespace());
++        command.args("--unshare-user --die-with-parent --tmpfs /".split_whitespace());
+         command.args(
+             "--ro-bind /usr /usr --ro-bind /etc /etc --proc /proc --dev /dev".split_whitespace(),
+         );
+-- 
+2.43.0

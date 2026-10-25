@@ -133,11 +133,12 @@ jobs:
             printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
           } >> "$GITHUB_ENV"
 
-      - name: Build the maintained Linux test helper
+      - name: Build the maintained Linux test helper and bundled executable
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo build --target x86_64-unknown-linux-gnu --profile ci-test -p codex-linux-sandbox --bin codex-linux-sandbox \
+          cargo build --target x86_64-unknown-linux-gnu --profile ci-test \
+            -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
 
       - name: Run the full maintained nextest suite
