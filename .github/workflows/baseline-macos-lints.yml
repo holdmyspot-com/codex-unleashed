@@ -141,5 +141,8 @@ jobs:
           path: |
             ${{ runner.temp }}/baseline-evidence
             ${{ runner.temp }}/baseline-target/**/cargo-timings
+            ${{ runner.temp }}/baseline-native/build/*.log
+            ${{ runner.temp }}/baseline-native/build/build-state.json
+            ${{ runner.temp }}/baseline-native/build/**/config.log
           retention-days: 1
           if-no-files-found: warn
