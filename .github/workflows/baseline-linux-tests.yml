@@ -241,6 +241,28 @@ jobs:
           sha256sum --check "$evidence/archive.sha256"
           exit "$result"
 
+      - name: Diagnose the null-device peer-lookup errno
+        if: ${{ !cancelled() && inputs.trace_shell_startup && steps.archive.outcome == 'success' }}
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          set +e
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            strace -f -yy -P /dev/null -e trace=getpeername \
+              -e inject=getpeername:error=ENOTSOCK \
+              -o "$evidence/null-peer-errno-counterfactual.trace" \
+              cargo-nextest nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" \
+                --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate \
+                -E 'test(shell_snapshot_v2_filters_profile_exports_and_stays_in_memory::remote_sandbox)' \
+            2>&1 | tee "$evidence/null-peer-errno-counterfactual.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/null-peer-errno-counterfactual.receipt"
+          sha256sum --check "$evidence/archive.sha256"
+          exit "$result"
+
       - name: Run the same archive in upstream's pinned Linux image
         if: ${{ !cancelled() && inputs.compare_upstream_image && steps.archive.outcome == 'success' }}
         env:
