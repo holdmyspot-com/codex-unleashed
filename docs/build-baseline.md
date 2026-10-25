@@ -57,6 +57,8 @@ The native Bazel workflow offers `exec_server_shells=true` to select only the ma
 | x86_64-unknown-linux-musl | 20.93 s | 31 min 24 s | 10 min 27 s |
 | aarch64-unknown-linux-musl | 22.16 s | 34 min 56 s | 10 min 28 s |
 
+Both Linux architectures emit the same six distinct Rust warnings: an unnecessary mutable parameter in `app-server/src/lib.rs`; two unused HTTP-client imports in `cloud-tasks/src/lib.rs`; and an unused plugin-task import plus two unused managed-config constants in `app-server/src/main.rs`. Source inspection confirms their shared cause: the declarations or mutability are unconditional, but their uses or mutation are compiled only with `debug_assertions`, which the release build omits. The baseline warning inventory retains the exact diagnostics and source locations. Repairs remain deferred to step 5 and the unmodified test prerequisite; no source changes or diagnostic suppression are applied here.
+
 These are baseline Cargo-reported build durations before caching or scheduling changes. The five-minute target belongs to step 3. The four macOS/Windows jobs remain pending at this observation.
 
 ## Historical source and scope
