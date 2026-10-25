@@ -97,8 +97,7 @@ jobs:
       - name: Install upstream's nextest version
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
         with:
-          tool: nextest
-          version: 0.9.103
+          tool: nextest@0.9.103
 
       - name: Verify and configure upstream V8 artifacts
         uses: ./.github/actions/setup-rusty-v8
@@ -156,6 +155,7 @@ jobs:
           ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" &
           disk_monitor=$!
           trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
+          cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings \
