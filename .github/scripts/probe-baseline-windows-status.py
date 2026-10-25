@@ -71,6 +71,12 @@ def main():
                 "explicit-cmd",
                 ["--workspace_status_command=./scripts/workspace-status.cmd"],
             ),
+            ("default-again", []),
+            ("explicit-windows-config", ["--config=windows"]),
+            (
+                "explicit-unix-command",
+                ["--workspace_status_command=./scripts/workspace-status.sh"],
+            ),
         ]:
             result = run(
                 name,
