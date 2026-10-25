@@ -1,6 +1,6 @@
 # Cache migration preflight
 
-Step 2 remains gated on the passing step-1 baseline. This document records a read-only review of old main for later migration; it does not enable caching or establish that any old implementation is correct for the new build.
+The owner now authorizes step 2 to overlap with step 1 for build paths already verified to work, using old main’s GHCR compiled-output and Actions dependency-download approach. This document retains the preflight review; it does not establish hosted cache acceptance or authorize upstream source/test patches. Initially the eligible release builds are Linux x86-64/ARM64 musl and Windows ARM64 MSVC.
 
 The current baseline is upstream `rust-v0.164.0`, commit `6aaac694803004a63c6f393d153c96d22521a6b9`, with Rust 1.99.1. The reviewed old-main commit is `545479059ac86394049b6efd3bf4297b1ca18d17`. Its `docs/BUILD_CACHE.md` describes Actions caches for downloads, public GHCR Cargo target trees, successful source snapshots, and two-stable-release retention. The new branch's approved scope remains in [plan.md](../plan.md); current baseline evidence remains in [build-baseline.md](build-baseline.md).
 
@@ -41,7 +41,7 @@ The maintained `.github/workflows/cache-cleanup.yml` passes the repository's pin
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
 
-Use the maintained Java command boundary when migration begins, with only the tooling needed by the consuming capability. Verify its relevant tests and bundled runtime on supported hosts; no tooling source is imported by this review.
+Use the maintained Java command boundary when migrating source-input inventory, invalidation or retention helpers, with only the tooling needed by the consuming capability. The first transport migration retains old main’s Bash/ORAS archive boundary and lets Cargo decide which restored units rebuild. Java source-input helpers and automatic pruning are not yet migrated. Verify the relevant Java tests and bundled runtime on supported hosts before enabling those helpers.
 
 Demonstrate cold and warm behavior, actual cache hits, a representative changed source rebuilding its consumers, and unchanged resulting source retaining reusable work. Verify that executable identity remains correct after reuse. Exercise interrupted-build recovery, missing snapshots, changed build inputs and cache-size reporting at the actual build boundary.
 
