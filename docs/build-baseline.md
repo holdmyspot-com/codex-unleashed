@@ -65,10 +65,24 @@ Commands run from the upstream root with Python bytecode writes disabled. Named 
 | Complete root GitHub helper-script unit suite, with packaging 26.2 | Passed: 82 tests | `github-script-tests` |
 | `cargo shear`, upstream-pinned 1.11.2, without `--deny-warnings` | Exited 0 with 1 unlinked-file warning in `codex-core`; diagnostic retained for step 5 | `cargo-shear` |
 | `cargo-deny --log-level warn --manifest-path ./codex-rs/Cargo.toml --all-features check`, upstream action's 0.19.0 | Failed: two dependency advisories; bans, licenses and sources pass | `cargo-deny` |
+| `just clippy` (`cargo clippy --tests`) | Passed: default features and dev profile, warnings nonfatal; Cargo reports 9 minutes 36 seconds | `clippy` |
 
 The package-test failure is an invocation prerequisite: `scripts/codex_package/targets.py` explicitly requires `CODEX_REPO_ROOT`. Supplying the actual upstream checkout root repairs the invocation without a source change. The manifest-check failure is separate: `codex-rs/code-mode/Cargo.toml` has no `[features]` table, but the checker retains a feature exception for it and rejects unused exceptions. [The baseline repair](../patches/upstream-baseline/README.md) removes only that obsolete exception. The existing checker failed on an isolated clean base, then passed after repair; the emitted `git format-patch` also applied with `git am` and passed on a second fresh base. Both temporary verification worktrees were removed. After the active Cargo build passed, the same patch was applied to that checkout and its cumulative checker passed. The final patch omits Git's optional mail signature; a fresh-base index application verified that its resulting checker blob exactly matches the tested commit.
 
 The dependency audit uses the exact cargo-deny version and arguments selected by upstream's pinned action. Its official binary archive was verified against the release API SHA-256 digest `0e8c2aa59128612c90d9e09c02204e912f29a5b8d9a64671b94608cbe09e064f`. RustSec database revision `21d909e4c8bd4e14c7aea58bf980c881a0053ab1` reports `RUSTSEC-2026-0387` for locked `crypto-bigint 0.5.5` and `RUSTSEC-2026-0385` for locked `ctutils 0.4.2`. These are audit findings on unchanged dependency versions, not compilation failures. The authoritative advisory files list fixed versions `>=0.7.6` and `>=0.4.4`, respectively; application exploitability has not been established. Keep the failed audit explicit, retain the advisory database and diagnostics, and record the stable-update candidates in the plan without changing the baseline dependencies early. This result does not satisfy the required audit gate.
+
+### Observed warnings for later root-cause review
+
+These findings remain visible and nonfatal. Recheck each against the cumulative source when step 5 starts; this inventory does not authorize early repairs or establish completeness across the release matrix.
+
+| Emitter | Finding and upstream location | Evidence |
+| --- | --- | --- |
+| Rust compiler | Unused `wiremock::matchers::body_json` import, `codex-rs/core/tests/suite/openai_file_mcp.rs:47` | `clippy.log` |
+| Clippy | `let_and_return`, `codex-rs/app-server/src/message_processor.rs:385` | `clippy.log` |
+| C compiler through `codex-bwrap` | Missing `sockaddr_nl.nl_pid` initializer at `codex-rs/vendor/bubblewrap/network.c:53` and `:142` | `clippy.log` and default-build logs |
+| Cargo shear | Unlinked `codex-rs/core/tests/suite/scenarios_read_only_mcp.rs` | `cargo-shear.log` |
+| rustfmt | `imports_granularity=Item` requires nightly, although upstream pins stable Rust | Maintained formatting logs |
+| pnpm/npm configuration | Configuration warnings retained during the frozen install | `pnpm-install.log` |
 
 ## Reproduce the local source and build
 
@@ -118,7 +132,7 @@ On this Ubuntu 24.04 host, GStreamer development files are absent and the config
 
 CMake is also absent. An attempted Python package installation of `cmake==3.31.8` failed resolution without installing packages; the Python package repository does not supply that exact version. The alternative setup uses Kitware's official Linux binary archive and adjacent SHA-256 manifest for CMake 3.31.8, matching upstream's existing CMake version. Both setup attempts remain separate from source changes and build acceptance.
 
-The CMake archive passed its adjacent SHA-256 check. All eleven native source archives were downloaded from upstream's manifest URLs, then verified and built by unmodified `third_party/voice/build_native.py`. The native recipe passed in 1 minute 53.87 seconds, producing `native-build-1/prefix` and `built.json` below the owned cache root. Its invocation used `--target x86_64-unknown-linux-gnu`, host GCC/G++, Make, pkg-config and Bash, and the verified CMake executable. The command and complete step logs are retained in `native-build-1.log` and the native output directory. `pkg-config` subsequently reported 1.28.6 for GStreamer core, app and audio.
+The CMake archive passed its adjacent SHA-256 check. All eleven native source archives were downloaded from upstream's manifest URLs, then verified and built by unmodified `third_party/voice/build_native.py`. The native recipe passed in 1 minute 53.87 seconds, producing `native-build-1/prefix` and `built.json` below the owned cache root. Its invocation used `--target x86_64-unknown-linux-gnu`, host GCC/G++, Make, pkg-config and Bash, and the verified CMake executable. Complete build output is retained in `native-build-1.log`; the builder's `built.json` records the individual executed commands and tool paths. A separate original top-level command receipt was not captured. `pkg-config` subsequently reported 1.28.6 for GStreamer core, app and audio.
 
 The second `cargo build` exited 101 after 18.11 seconds on `alsa-sys` 0.4.0: the host has the ALSA runtime but no `alsa.pc` or development headers. CPAL, another voice-host dependency, requires ALSA on Linux. The exact installed runtime version is Ubuntu `libasound2t64=1.2.11-1ubuntu0.3`. Matching runtime and `libasound2-dev` packages were downloaded with `apt-get download` and extracted with `dpkg-deb --extract` into the owned `distro-root`; no system package installation was performed.
 
