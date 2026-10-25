@@ -10,8 +10,7 @@ source = Path(sys.argv[1]).resolve()
 evidence = Path(sys.argv[2]).resolve()
 evidence.mkdir(parents=True, exist_ok=True)
 exec_source = source / "codex-rs/exec-server/src/shell_snapshot.rs"
-package_source = source / "codex-rs/cli/tests/app_server_daemon/package.rs"
-originals = {path: path.read_bytes() for path in (exec_source, package_source)}
+originals = {exec_source: exec_source.read_bytes()}
 exec_filter = (
     "test(shell_snapshot_concurrent_replays_keep_independent_readers::blocked_descriptor_path)"
     " | test(shell_snapshot_v2_capture_failure_falls_back_and_retries::remote_pipe_recovery)"
@@ -52,10 +51,7 @@ def run_phase(name, expression):
 
 
 try:
-    run_phase(
-        "original-five",
-        exec_filter + " | test(packaged_daemon_bootstrap_seeds_local_package)",
-    )
+    run_phase("original-snapshot-failures", exec_filter)
 
     text = originals[exec_source].decode()
     needle = "            telemetry.shell_snapshot_captured("
@@ -88,18 +84,34 @@ try:
     run_phase("snapshot-diagnostics", exec_filter)
     exec_source.write_bytes(originals[exec_source])
 
-    text = originals[package_source].decode()
-    needle = '"version": env!("CARGO_PKG_VERSION"), "target": target, "entrypoint": "bin/codex"'
+    text = originals[exec_source].decode()
+    needle = '        telemetry.shell_snapshot_command(wait, availability, "used");'
     assert text.count(needle) == 1
-    package_source.write_text(
+    exec_source.write_text(
         text.replace(
-            needle, '"version": "0.0.0", "target": target, "entrypoint": "bin/codex"'
+            needle,
+            """        if shell_type == ShellType::Bash {
+            prepared
+                .command
+                .insert(shell_start + 1, "--norc".to_string());
+        }
+
+"""
+            + needle,
         )
     )
-    run_phase(
-        "development-package-counterfactual",
-        "binary_id(codex-cli::app_server_daemon_package)",
-    )
+    if run_phase("bash-no-rc-counterfactual", exec_filter) != 0:
+        raise RuntimeError("Bash replay candidate still fails the four original cases")
+    if (
+        run_phase(
+            "bash-no-rc-integration-regressions",
+            "binary_id(codex-exec-server::exec_process) & test(shell_snapshot)",
+        )
+        != 0
+    ):
+        raise RuntimeError(
+            "Bash replay candidate fails related integration regressions"
+        )
 finally:
     for path, original in originals.items():
         path.write_bytes(original)
