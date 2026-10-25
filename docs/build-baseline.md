@@ -26,6 +26,14 @@ Both minimal Windows status comparisons establish a separate configuration fix: 
 
 The upstream Linux execution-log artifact independently confirms the two exec-server test actions use the pinned Docker image `docker.io/mbolin491/codex-bazel@sha256:0a8e56bfaa3b2e5279db0d3bb2d62b44ba5e5d63a37d97eb8790f49da570af70`, `--test-threads=1` and remote cached results. It contains action metadata, not the passing tests' stdout; sandbox execution versus fixture early-return remains unknown. The separate focused unmodified-source Cargo run is `40202995599`; pristine six-target Cargo release builds run as `40203396093`. Both use restart commit `1e74872eb42d3870ccf985c80bcc4f94e49710e1`; no outcome is inferred before their terminal evidence.
 
+## Pristine shell-test result and next comparison
+
+[Focused unmodified-source run `40202995599`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40202995599) completes unsuccessfully: nextest reports 47 selected tests, 43 passed, four failed and 670 filtered/skipped. The artifact verifies the pinned upstream and restart commits, an empty initial source diff and a passing final source/test guard. The same four cases fail without candidate repairs: remote pipe recovery, remote TTY recovery, remote sandbox profile replay and blocked-descriptor replay. Recovery observes four startup writes instead of two; sandbox replay reports a startup write on a read-only filesystem; descriptor replay loses its exec-server transport. Their environment discrepancy with upstream remains unresolved.
+
+The Linux workflow can now build one nextest archive and run those identical binaries natively and in upstream's exact pinned image. Both invocations retain successful-test output to expose fixture early-returns. The image uses its default user and container isolation; this reproduces the image, not BuildBuddy's full executor/kernel configuration. Read-only mounts supply the unchanged workspace, archive, compiled helpers and native voice libraries. Archive hash verification and the final source/test guard remain required. The native failure still fails the workflow even if the image run passes. An early-return message establishes missing sandbox capability, not verified sandbox behavior.
+
+The archive/package/filter/remap/output interface was checked with the declared nextest 0.9.103 against an owned minimal fixture. This proves command compatibility only; hosted execution of the actual Codex comparison remains required. The archive itself stays on the ephemeral runner and is excluded from uploaded evidence; retained artifacts contain logs, identities, hashes and timings.
+
 ## Historical source and scope
 
 - **upstream_repository**: https://github.com/openai/codex

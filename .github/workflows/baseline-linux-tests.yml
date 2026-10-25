@@ -7,6 +7,10 @@ on:
         description: Optional Cargo package for an unmodified-source comparison
         type: string
         default: ""
+      compare_upstream_image:
+        description: Compare one unchanged archive on the host and upstream's pinned Linux image
+        type: boolean
+        default: false
       filter:
         description: Optional nextest expression for an unmodified-source comparison
         type: string
@@ -137,10 +141,27 @@ jobs:
             -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
 
+      - name: Build one unchanged archive for the environment comparison
+        id: archive
+        if: inputs.compare_upstream_image
+        working-directory: codex-rs
+        env:
+          BASELINE_TEST_PACKAGE: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          archive_args=(archive --target x86_64-unknown-linux-gnu --cargo-profile ci-test --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst")
+          if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
+            archive_args+=(-p "$BASELINE_TEST_PACKAGE")
+          fi
+          cargo-nextest nextest "${archive_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/archive.log"
+          sha256sum "$RUNNER_TEMP/baseline-test-archive.tar.zst" > "$RUNNER_TEMP/baseline-test-evidence/archive.sha256"
+
       - name: Run the maintained nextest suite or focused comparison
+        id: native_tests
         env:
           BASELINE_TEST_PACKAGE: ${{ inputs.package }}
           BASELINE_TEST_FILTER: ${{ inputs.filter }}
+          BASELINE_ARCHIVE_COMPARE: ${{ inputs.compare_upstream_image }}
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -165,9 +186,13 @@ jobs:
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
           helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
-          nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings)
-          if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
-            nextest_args+=(-p "$BASELINE_TEST_PACKAGE")
+          if [[ "$BASELINE_ARCHIVE_COMPARE" == true ]]; then
+            nextest_args=(run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
+          else
+            nextest_args=(run --target x86_64-unknown-linux-gnu --cargo-profile ci-test --no-fail-fast --timings)
+            if [[ -n "$BASELINE_TEST_PACKAGE" ]]; then
+              nextest_args+=(-p "$BASELINE_TEST_PACKAGE")
+            fi
           fi
           if [[ -n "$BASELINE_TEST_FILTER" ]]; then
             nextest_args+=(-E "$BASELINE_TEST_FILTER")
@@ -176,6 +201,44 @@ jobs:
           env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
             cargo-nextest nextest "${nextest_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/nextest.log"
+
+      - name: Run the same archive in upstream's pinned Linux image
+        if: ${{ !cancelled() && inputs.compare_upstream_image && steps.archive.outcome == 'success' }}
+        env:
+          BASELINE_TEST_FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          image_digest=0a8e56bfaa3b2e5279db0d3bb2d62b44ba5e5d63a37d97eb8790f49da570af70
+          grep -F "image_sha = \"$image_digest\"" rbe.bzl > /dev/null
+          image="docker.io/mbolin491/codex-bazel@sha256:$image_digest"
+          docker pull "$image" 2>&1 | tee "$evidence/upstream-image-pull.log"
+          docker image inspect "$image" > "$evidence/upstream-image.json"
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          nextest_binary="$(command -v cargo-nextest)"
+          nextest_args=(nextest run --archive-file "$RUNNER_TEMP/baseline-test-archive.tar.zst" --workspace-remap "$GITHUB_WORKSPACE/codex-rs" --no-fail-fast --success-output immediate)
+          if [[ -n "$BASELINE_TEST_FILTER" ]]; then
+            nextest_args+=(-E "$BASELINE_TEST_FILTER")
+          fi
+          printf '%s\n' "${nextest_args[@]}" > "$evidence/image-nextest-arguments.txt"
+          set +e
+          docker run --rm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=$GITHUB_WORKSPACE,readonly" \
+            --mount "type=bind,source=$RUNNER_TEMP,target=$RUNNER_TEMP,readonly" \
+            --mount "type=bind,source=$CARGO_TARGET_DIR,target=$CARGO_TARGET_DIR,readonly" \
+            --mount "type=bind,source=$nextest_binary,target=/usr/local/bin/cargo-nextest,readonly" \
+            --workdir "$GITHUB_WORKSPACE/codex-rs" \
+            --env RUST_MIN_STACK --env RUST_BACKTRACE --env RUST_LIB_BACKTRACE \
+            --env LD_LIBRARY_PATH --env CODEX_TEST_VOICE_RUNTIME \
+            --env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" \
+            --env "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            "$image" /usr/local/bin/cargo-nextest "${nextest_args[@]}" \
+            2>&1 | tee "$evidence/upstream-image-nextest.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/upstream-image-nextest.receipt"
+          sha256sum --check "$evidence/archive.sha256"
+          exit "$result"
 
       - name: Verify upstream source and tests remain unmodified
         if: always()
