@@ -154,7 +154,7 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0001-preserve-interrupted-mailbox-work.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0002-resume-parent-on-subagent-completion.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-35/0003-defer-goal-continuation-to-live-children.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch` | Runtime replay option and unit normalizer adapted in baseline 0012; additional fixture environment edits remain unmigrated. Final cumulative native acceptance pending. |
+| `patches/holdmyspot-com/codex-unleashed/issue-47/bash-snapshot-replay-startup.patch` | Deferred draft only; not applied to the current upstream baseline. Draft 0012 preserves the historical runtime replay option and unit normalizer adaptation; additional fixture environment edits remain unmigrated. Historical patched results do not establish pristine baseline acceptance. |
 | `patches/holdmyspot-com/codex-unleashed/issue-47390/expanded-diff-previews.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-48/wsl-explicit-pid-procfs.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-49/descriptor-fallback-fixture.patch` | Pending review; not migrated. |
@@ -254,7 +254,7 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0051-rust-linker-warning-policy.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0052-windows-markdown-fixture.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0054-windows-voice-negative-fixture.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0057-mcp-binding-counter-isolation.patch` | Adapted as baseline patch `0011-isolate-mcp-binding-capture-fixture.patch` after deterministic mechanism reproduction and a passing focused local integration test. All original assertions remain; fresh emitted-patch verification passes. Native concurrent Windows acceptance remains pending. |
+| `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0057-mcp-binding-counter-isolation.patch` | Deferred draft only; not applied to the current upstream baseline. Draft `0011-isolate-mcp-binding-capture-fixture.patch` retains the deterministic mechanism reproduction and historical focused local integration/emitted-patch checks. Native concurrent Windows acceptance remains unverified; historical patched checks do not establish pristine acceptance. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0059-selected-plugin-pid-deadline.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0061-gov-cloud-quit-pty.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0062-sqlite-startup-close.patch` | Pending review; not migrated. |
@@ -269,12 +269,12 @@ Non-patch areas also remain pending: `.cat` rules and tooling configuration; `.g
 | `patches/holdmyspot-com/codex-unleashed/issue-61/zzzz-0074-macos-pty-fixture-concurrency.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-62/classify-wrapped-tls-errors.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-63/protect-root-metadata-fixture-launcher.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-64/isolate-no-marker-skills-fixture.patch` | Adapted in `96845424fc` as baseline patch 0004. The configured absent-marker fixture passes 214 focused skills/root-metadata tests. Production marker discovery remains unchanged; cumulative acceptance is tracked in step 1. |
+| `patches/holdmyspot-com/codex-unleashed/issue-64/isolate-no-marker-skills-fixture.patch` | Deferred draft only; not applied to the current upstream baseline. Commit `96845424fc` created draft 0004 and recorded 214 historical patched skills/root-metadata test passes. This does not establish pristine acceptance or a completed migration. |
 | `patches/holdmyspot-com/codex-unleashed/issue-65/isolate-mitm-path-policy-from-dns.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-66/provide-empty-roots-launcher-dependencies.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/issue-67/offline-marketplace-migration-fixture.patch` | Pending review; not migrated. |
-| `patches/holdmyspot-com/codex-unleashed/issue-68/canonical-sandbox-helper-fixture.patch` | Adapted in `e33a52f748` as baseline patch 0009. The existing bridge-routing regression fails before canonicalization and passes afterward, including the proxied response and denied direct egress. Full native Bazel acceptance remains pending. |
-| `patches/holdmyspot-com/codex-unleashed/issue-69/integration-compiler-environment.patch` | Adapted in `84799c590b` as baseline patch 0008: all three integration-target forms receive generated compiler metadata, with the focused digest regression verified red/green. Full native Bazel acceptance remains pending. |
+| `patches/holdmyspot-com/codex-unleashed/issue-68/canonical-sandbox-helper-fixture.patch` | Deferred draft only; not applied to the current upstream baseline. Commit `e33a52f748` created draft 0009 and recorded the historical bridge-routing red/green check, proxied response and denied direct egress. Full native acceptance remains unverified; this is not a completed migration. |
+| `patches/holdmyspot-com/codex-unleashed/issue-69/integration-compiler-environment.patch` | Deferred draft only; not applied to the current upstream baseline. Commit `84799c590b` created draft 0008 for generated compiler metadata in all three integration-target forms and recorded a historical focused digest red/green check. Full native acceptance remains unverified; this is not a completed migration. |
 | `patches/holdmyspot-com/codex-unleashed/issue-70/readable-commands.patch` | Pending review; not migrated. |
 | `patches/holdmyspot-com/codex-unleashed/schema/refresh-config-schema.patch` | Pending review; not migrated. |
 | `patches/openai/codex/issue-29872/release-build-warnings.patch` | Pending review; not migrated. |
