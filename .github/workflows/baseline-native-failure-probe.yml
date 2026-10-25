@@ -1,0 +1,176 @@
+name: Stable upstream focused failure probe
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/baseline-native-failure-probe.yml
+      - .github/scripts/probe-baseline-native-failures.py
+      - .github/upstream-commit
+      - .github/upstream-ref
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      RUST_MIN_STACK: "8388608"
+      RUST_BACKTRACE: "1"
+      RUST_LIB_BACKTRACE: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          path: restart-metadata
+          persist-credentials: false
+
+      - name: Preserve restart inputs outside the source checkout
+        id: inputs
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          mkdir -p "$evidence"
+          cp -R restart-metadata/patches/upstream-baseline "$RUNNER_TEMP/baseline-test-patches"
+          cp restart-metadata/.github/scripts/probe-baseline-native-failures.py "$RUNNER_TEMP/probe-baseline-native-failures.py"
+          cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
+          cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
+          git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
+          printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Retrieve the exact stable upstream source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.inputs.outputs.commit }}
+          persist-credentials: false
+
+      - name: Verify source identity and apply verified check repairs
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/baseline-test-evidence/upstream-commit")"
+          test -z "$(git status --porcelain)"
+          for patch in "$RUNNER_TEMP"/baseline-test-patches/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          git diff --binary > "$RUNNER_TEMP/baseline-test-evidence/applied-check-repairs.diff"
+
+      - name: Prepare upstream's native test host
+        uses: ./.github/actions/setup-ci
+
+      - name: Reclaim unused hosted-image toolchains and record capacity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/baseline-test-evidence"
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-before.txt"
+          for unused in /usr/local/lib/android /usr/share/dotnet /usr/local/.ghcup; do
+            if [[ -d "$unused" ]]; then
+              sudo du -sh "$unused" | tee -a "$evidence/reclaimed-toolchains.txt"
+              sudo rm -rf -- "$unused"
+            fi
+          done
+          df -h / "$RUNNER_TEMP" | tee "$evidence/disk-after.txt"
+
+      - name: Install Linux development prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap bison flex
+          mkdir -p "$RUNNER_TEMP/baseline-test-cargo-home"
+          printf 'CARGO_HOME=%s\n' "$RUNNER_TEMP/baseline-test-cargo-home" >> "$GITHUB_ENV"
+
+      - name: Set up upstream's Rust toolchain
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      - name: Verify and configure upstream V8 artifacts
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Supply the native voice prerequisites using upstream's recipe
+        run: |
+          set -euo pipefail
+          native="$RUNNER_TEMP/baseline-test-native"
+          mkdir -p "$native/archives" "$native/tools"
+          curl --fail --location --retry 3 --output "$native/cmake.tar.gz" https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz
+          printf '%s  %s\n' 630615d8e98ac33eba7fbe472626dff5c899c85af3c024585ae109166a6909d0 "$native/cmake.tar.gz" | sha256sum -c -
+          tar -xzf "$native/cmake.tar.gz" -C "$native/tools" --strip-components=1
+          jq -r '.sources[] | [.url, .archive, .sha256] | @tsv' third_party/voice/sources.json > "$native/sources.tsv"
+          while IFS=$'\t' read -r url archive digest; do
+            curl --fail --location --retry 3 --output "$native/archives/$archive" "$url"
+            printf '%s  %s\n' "$digest" "$native/archives/$archive" | sha256sum -c -
+          done < "$native/sources.tsv"
+          python3 third_party/voice/build_native.py \
+            --archives "$native/archives" \
+            --output "$native/build" \
+            --cc /usr/bin/gcc --cxx /usr/bin/g++ \
+            --cmake "$native/tools/bin/cmake" --make /usr/bin/make \
+            --pkg-config /usr/bin/pkg-config --shell /bin/bash \
+            --target x86_64-unknown-linux-gnu \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/native-build.log"
+          cp "$native/build/built.json" "$RUNNER_TEMP/baseline-test-evidence/native-built.json"
+          {
+            printf 'PKG_CONFIG_PATH=%s\n' "$native/build/prefix/lib/pkgconfig:$native/build/prefix/share/pkgconfig"
+            printf 'LD_LIBRARY_PATH=%s\n' "$native/build/prefix/lib"
+            printf 'CODEX_TEST_VOICE_RUNTIME=%s\n' "$native/build/prefix"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the maintained Linux test helper and bundled executable
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo build --target x86_64-unknown-linux-gnu --profile ci-test \
+            -p codex-linux-sandbox -p codex-bwrap --bin codex-linux-sandbox --bin bwrap \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/test-helper-build.log"
+
+      - name: Record focused native counterfactuals
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          (
+            while true; do
+              date -u +'%Y-%m-%dT%H:%M:%SZ'
+              df -k "$CARGO_TARGET_DIR" "$RUNNER_TEMP"
+              du -sk -- "$CARGO_HOME" "$RUNNER_TEMP/baseline-test-native"
+              du -k --max-depth=3 -- "$CARGO_TARGET_DIR" | sort -nr | sed -n '1,30p'
+              sleep 60
+            done
+          ) >> "$RUNNER_TEMP/baseline-test-evidence/test-disk-usage.log" &
+          disk_monitor=$!
+          trap 'kill "$disk_monitor"; wait "$disk_monitor" || true' EXIT
+          helper="$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/ci-test/codex-linux-sandbox"
+          cargo-nextest --version | tee "$RUNNER_TEMP/baseline-test-evidence/nextest-version.txt"
+          env "CARGO_BIN_EXE_codex-linux-sandbox=$helper" "CARGO_BIN_EXE_codex_linux_sandbox=$helper" \
+            python3 "$RUNNER_TEMP/probe-baseline-native-failures.py" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-test-evidence" \
+            2>&1 | tee "$RUNNER_TEMP/baseline-test-evidence/probe.log"
+
+      - name: Retain test evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: baseline-native-failure-probe
+          path: |
+            ${{ runner.temp }}/baseline-test-evidence
+            ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings
+            ${{ env.CARGO_TARGET_DIR }}/nextest/**/junit.xml
+            codex-rs/target/nextest/**/junit.xml
+          retention-days: 1
+          if-no-files-found: warn
