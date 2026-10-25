@@ -7,9 +7,6 @@ on:
         description: Release target to verify, or all for the complete native matrix
         type: string
         default: all
-  push:
-    branches: [main.new]
-    paths: [.github/workflows/source-cache-runtime.yml]
 
 permissions:
   contents: read
@@ -83,8 +80,12 @@ jobs:
       - name: Exercise the packaged launcher and Cargo freshness behavior
         run: |
           set -euo pipefail
+          bash_path="$(command -v bash)"
+          if command -v cygpath >/dev/null 2>&1; then
+            bash_path="$(cygpath -m "$bash_path")"
+          fi
           python3 .github/scripts/test-source-cache-runtime.py \
-            "$RUNNER_TEMP/source-cache-build/runtime" "$RUNNER_TEMP/source-cache-evidence/fixture"
+            "$RUNNER_TEMP/source-cache-build/runtime" "$RUNNER_TEMP/source-cache-evidence/fixture" "$bash_path"
 
       - name: Verify repository source remains unchanged
         if: always()

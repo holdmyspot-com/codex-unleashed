@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exercise a bundled freshness helper against real, offline Cargo builds.
 
-Arguments are an assembled runtime directory and a retained evidence directory.
+Arguments are an assembled runtime directory, a retained evidence directory and
+the explicit Bash executable used to launch the packaged script.
 Each invocation owns and removes its Cargo fixture; command logs and the JSON
 receipt remain in the evidence directory for the caller to collect.
 """
@@ -14,9 +15,11 @@ import subprocess
 import tempfile
 
 
-def verify(runtime, evidence):
+def verify(runtime, evidence, bash):
     """Verify reuse, content invalidation and recording refusal through the CLI."""
     runtime = runtime.resolve()
+    bash = bash.resolve(strict=True)
+    assert bash.is_file(), bash
     evidence = evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
     launcher = runtime / "bin" / "codex-tooling"
@@ -69,7 +72,8 @@ def verify(runtime, evidence):
         command(["git", "add", "Cargo.toml", "src"], "git-add")
         rust = command(["rustc", "-vV"], "rust-identity").stdout
         target = rust.split("host: ", 1)[1].splitlines()[0]
-        cli = ["bash", launcher.as_posix(), "clean-cached-release-binaries"]
+        cli = [str(bash), launcher.as_posix(), "clean-cached-release-binaries"]
+        command([str(bash), "--version"], "bash-identity")
         command(cli + ["missing-workspace", "../outside", "codex"], "invalid-target", 2)
 
         def prepare(label):
@@ -131,8 +135,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runtime", type=Path)
     parser.add_argument("evidence", type=Path)
+    parser.add_argument("bash", type=Path)
     arguments = parser.parse_args()
-    verify(arguments.runtime, arguments.evidence)
+    verify(arguments.runtime, arguments.evidence, arguments.bash)
 
 
 if __name__ == "__main__":
