@@ -30,6 +30,29 @@ The hosted trace above identifies a missing helper after the sandbox child clear
 
 A pass alone does not establish the intended sandbox behavior: using the different Cargo helper also reports a pass after digest verification rejects it. With the matching helper, the trace instead reaches bundled sandbox construction, then the GNU inner helper returns `ENOENT` under the intentionally empty filesystem view. This does not establish that `/bin/cat` ran or directly attempted the excluded-file read. Preserve these distinct outcomes and the open upstream guarded-execution comparison. Local evidence is retained in `empty-root-bundle-UL94lJ/verified.json`; copied executable and companion links were removed after the checks.
 
+An exact-source review of `exec-server/tests/exec_process.rs` at the pinned
+commit confirms the maintained case requires stdout without `excluded`, a
+nonzero exit and a closed process. It supplies an empty environment and clears
+workspace roots; it does not assert that `/bin/cat` executes or require a
+particular stderr diagnostic. The helper-staged pass therefore satisfies the
+case's actual assertions. Requiring a successful inner-helper exec would be
+an additional guarantee, not a prerequisite stated by this test. Keep the
+ordinary missing-helper failure and unknown upstream guard execution separate;
+neither is resolved by this source review.
+
+The separate untraced local comparison in
+`empty-root-ordinary-UrPEcu/verified.json` uses the same hash-verified Bazel test
+and matching helper: the missing-sibling case times out in 2.12 seconds, while
+adding only the sibling helper passes in 0.22 seconds. Neither takes the bwrap
+capability guard. Temporary executable copies and fixtures are removed; the
+goal executor retains the logs until baseline acceptance and owns cleanup.
+The focused workflow now accepts `bundle_empty_workspace_bwrap=true` without
+tracing: it builds the declared test/helper outputs, stages the matching helper
+and runs the ordinary test incrementally against those outputs. With tracing
+selected, the earlier original-versus-diagnostic comparison remains available.
+Actionlint and whitespace checks pass; ordinary hosted acceptance of this setup
+remains pending. Upstream source and tests are unchanged.
+
 ### Retrieved upstream case log
 
 Upstream parent Linux job `119599956802`, run `39710355092`, references [BuildBuddy invocation `81a0b14c-a642-4af8-b877-1a3d56db58c7`](https://openai.buildbuddy.io/invocation/81a0b14c-a642-4af8-b877-1a3d56db58c7). Its remotely cached `//codex-rs/exec-server:exec-server-exec_process-test` result retains a 6,663-byte `test.log`, SHA-256 `6d22b56ce262b55f61ace18b2c71427d22fab3189192e9bc8f9cf12864c858cc`. It reports 61 passed, zero failed and 11 ignored in 25.01 seconds. All five cases above are individually reported `ok`; this is stronger evidence than the previously available target summary.
@@ -64,7 +87,7 @@ Resolved wrapper incidents retain counterfactual evidence in [build-baseline.md]
 | Failure | Upstream counterpart and evidence | Status |
 | --- | --- | --- |
 | Private retention inventory times out before helper execution | Both attempts of downstream-only run `40401691282` at `4120107dab` fail in the first `gh api --paginate repos/openai/codex/releases?per_page=100` call with HTTP 504; package collection and helper compilation are unrun. A local request for the same page also fails. This private-cache inventory has no upstream Codex build counterpart. | Smaller 20-release REST pages return all 1,245 unique tags locally, matching every captured metadata record. Hosted run `40404430412` then passes collection, 37 helper tests, runtime assembly and private-inventory preview in 2m 13s. The server's internal timeout cause remains unknown. Old main's GraphQL query returns only 1,000 releases and is rejected as an incomplete replacement. |
-| Retention workflow passes an unsupported Rust setup input | Hosted run `40404430412` warns that `toolchain` is unexpected. The exact pinned action declares only targets/target/components and fixes its own toolchain to 1.99.1; the executed log confirms rustc 1.99.1. This is downstream workflow configuration, with no upstream Codex test counterpart. | Remove the redundant input while preserving the action commit and actual toolchain. Hosted warning removal remains unverified. |
+| Retention workflow passes an unsupported Rust setup input | Hosted run `40404430412` warns that `toolchain` is unexpected. The exact pinned action declares only targets/target/components and fixes its own toolchain to 1.99.1; the executed log confirms rustc 1.99.1. This is downstream workflow configuration, with no upstream Codex test counterpart. | Commit `1f4dc30343` removes the redundant input while preserving the action and actual toolchain. Run `40404968404`, job `121860246662`, passes in 2m 15s with zero annotations, rustc 1.99.1, all 37 tests, runtime assembly and the same preview classification. |
 | Run-list monitor misses an existing pushed workflow | The ad hoc downstream monitor filters by abbreviated commit `4120107dab` and receives `[]` until its observation deadline. A paired local query with full commit `4120107dabe19dd3864f145dd57b0b39cda50879` returns run `40401691282`. Upstream Codex has no counterpart to this goal executor's monitor. | Monitoring now uses the authoritative run ID and obtains the actual failed job result. The monitor timeout did not establish that the hosted workflow was absent or still running. Use full SHAs when a commit filter is needed. |
 | Cache invalidation verifier rejects the actual doctor JSON | Linux x86-64 run `40387733411` rebuilds only the pristine CLI after changing `CODEX_BUILD_COMMIT`, and its retained doctor report contains that commit. Our verifier then raises `TypeError` because it expects arrays. Upstream's `cli/src/doctor.rs` defines check/detail maps; upstream has no counterpart to this downstream invalidation verifier. | Correcting the real-Cargo fixture to match the actual report reproduces the exact error before repair. Commit `854e96c41e` reads the maps; acceptance and stale-provenance rejection pass in 1.28 seconds. Hosted rerun `40393398689`, job `121820038862`, passes: changed CLI provenance is observed, no non-CLI compilation rebuilds, and the next unchanged invocation rebuilds nothing. This establishes the Linux x86-64 invalidation gate only. |
 | Partial checkpoints re-upload unchanged restored archives | Run `40387733411` restores six groups from the verified compatible reference, but its first partial save reuses none and uploads 2,916,929,198 archive bytes. The downstream transport searches only the partial exact reference. Pristine upstream has no corresponding GHCR checkpoint operation. | Two real-ORAS regressions reproduce missing verified-reference and compatible-reference lookups. Commit `c5ddca773a` searches both states for both references, retaining signature checks and publication isolation. Both regressions upload zero archive bytes; native fixture run `40394114661` passes on all six platforms. Hosted Codex run `40394539659` passes in 8m 34s with zero Rust compilation records. Each partial checkpoint reuses all five output archives and uploads only metadata; the final save does the same. Other platform acceptance remains separate. |

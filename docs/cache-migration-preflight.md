@@ -88,7 +88,10 @@ The run also reports an unexpected `toolchain` input to the pinned Rust action.
 That action's own definition fixes the toolchain to 1.99.1 and declares only
 target/component inputs; its log confirms rustc 1.99.1 actually ran. The redundant
 unsupported input is removed, preserving that immutable action and version.
-Hosted confirmation that the setup warning is gone remains pending.
+Run `40404968404`, job `121860246662`, at
+`1f4dc30343160fe88c2442029085b1c0d1643fa7` confirms the correction in 2m 15s:
+zero check annotations, actual rustc 1.99.1, all 37 tests passing, runtime
+assembly passing and the same 52/85/0 preview classification. No deletion runs.
 
 The goal executor retains the verified archive and analysis in session directory
 `retention-verified-nIxInb` through retention checkpoint verification and owns their
