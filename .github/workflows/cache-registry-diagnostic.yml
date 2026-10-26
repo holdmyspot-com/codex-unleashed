@@ -2,6 +2,9 @@ name: Inspect failed cache publication
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/cache-registry-diagnostic.yml]
 
 permissions:
   contents: read
