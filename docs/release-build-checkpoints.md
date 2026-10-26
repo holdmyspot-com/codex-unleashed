@@ -244,6 +244,15 @@ but does not identify its requester or establish a compiler, memory or disk
 failure. Keep ARM acceptance open; another identical retry would not distinguish
 those causes.
 
+The focused second attempt of `40395599813` enables GitHub runner and worker
+diagnostic logging via `gh run rerun --job 121827730955 --debug`. The original
+attempt is terminal before retrying; this preserves its source, selected ARM64
+job and resumable checkpoints. The added observation is the runner diagnostic
+archive, which was not enabled in the original attempt. Retrieve that archive
+after completion and inspect shutdown/cancellation events before selecting a
+build mitigation. The command was accepted; execution and its outcome remain
+pending. See [GitHub's diagnostic logging contract](https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging).
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
