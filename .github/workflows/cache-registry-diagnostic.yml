@@ -43,3 +43,18 @@ jobs:
 
           gh api --paginate 'orgs/holdmyspot-com/packages/container/cargo-cache/versions?per_page=100' \
             --jq '.[] | select(.name == "sha256:29d8f96e8048c534145aae540d3c3f1d9b23daf1db44e097813bf7fdfd36d6ea") | {id, name, created_at, updated_at, tags: .metadata.container.tags}'
+
+      - name: Compare grouped Linux checkpoint fingerprints
+        run: |
+          set -euo pipefail
+          for digest in \
+            9dfd8c35e86490a01f941a69107d0bb76687d363acc01f2fbb5ed8a0cb3ab32d \
+            590ab2035cb100a92d4b5cbb94335d00dd5e49072f1dda9b3b74fefcdc75cfb0 \
+            ab008dd3d7fa4e96214e6312c8df05cc4956632d21c487df72cf317456bd233f \
+            348b644e60f87582ed80cb6d1bcaf628700e209cba086147d99abeb8037f2b3e \
+            52bd092bca531893b34cf1a0b35dbdf0bdbb0bd3999643fc89a7b4c2f804c779 \
+            7e41c97400e303c08e9be0462802b25054f442232e37b63c82de84a18cb794c8; do
+            printf 'checkpoint_manifest=sha256:%s\n' "$digest"
+            oras manifest fetch "ghcr.io/holdmyspot-com/cargo-cache@sha256:$digest" \
+              | jq '.layers[] | {digest, size, annotations}'
+          done
