@@ -74,8 +74,8 @@ def main():
         if result.returncode not in (0, 1):
             raise RuntimeError(f"{label}: doctor exited {result.returncode}; inspect its retained log")
         report = json.loads((evidence / f"{label}-doctor.json").read_text())
-        provenance = next(check for check in report["checks"] if check["id"] == "runtime.provenance")
-        return next(detail for detail in provenance["details"] if detail.startswith("commit: "))
+        provenance = report["checks"]["runtime.provenance"]
+        return "commit: " + provenance["details"]["commit"]
 
     if build("original-warm", original_commit):
         raise RuntimeError("Original inputs are not warm; inspect original-warm artifacts before testing invalidation")

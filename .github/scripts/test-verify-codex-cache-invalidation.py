@@ -35,14 +35,15 @@ class CacheInvalidationCheckTest(unittest.TestCase):
             (dependency / "Cargo.toml").write_text(
                 '[package]\nname = "cache-dependency"\nversion = "0.1.0"\nedition = "2021"\n'
             )
-            (dependency / "src" / "lib.rs").write_text('pub fn prefix() -> &\'static str { "commit: " }\n')
+            (dependency / "src" / "lib.rs").write_text('pub fn commit(value: &str) -> &str { value }\n')
             value = 'option_env!("CODEX_BUILD_COMMIT").unwrap_or("unknown")'
             if reports_compile_time_commit is False:
                 value = '"unknown"'
             (source / "main.rs").write_text(
                 'const _: Option<&str> = option_env!("CODEX_BUILD_COMMIT");\n'
-                'fn main() { println!("{{\\"checks\\":[{{\\"id\\":\\"runtime.provenance\\",'
-                '\\"details\\":[\\"{}{}\\"]}}]}}", cache_dependency::prefix(), ' + value + '); }\n'
+                'fn main() { println!("{{\\"checks\\":{{\\"runtime.provenance\\":'
+                '{{\\"id\\":\\"runtime.provenance\\",\\"details\\":{{\\"commit\\":\\"{}\\"}}}}}}}}", '
+                'cache_dependency::commit(' + value + ')); }\n'
             )
             for command in (["git", "init", "--quiet"],
                             ["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
