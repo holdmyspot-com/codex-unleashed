@@ -10,7 +10,7 @@ def probe_signal_sender():
     program = r'''
 tracepoint:signal:signal_generate {
     printf("sender_pid=%d receiver_pid=%d signal=%d sender=%s receiver=%s code=%d\n",
-        pid, args->pid, args->sig, comm, str(args->comm), args->code);
+        pid, args->pid, args->sig, comm, args->comm, args->code);
 }
 '''
     log = Path("signal-observer.log")
