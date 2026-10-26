@@ -15,18 +15,31 @@ A completed intermediate checkpoint does not mark the build successful.
 
 ## Independently transferable output groups
 
-`CARGO_CACHE_PARTS=1` makes the cache transport compress Cargo output groups
-separately with Zstandard. Dependency files, fingerprints and build-script
-outputs are grouped by their Cargo output path and unit hash. Executables and
-other metadata have separate groups; hardlinked files stay in the same archive.
-This preserves Cargo's outputs without interpreting a package name as sufficient
-proof of compiler, feature, target or profile compatibility.
+`CARGO_CACHE_PARTS=1` makes the cache transport compress each build step's outputs
+together with Zstandard. A checkpoint passes its executable name through
+`CARGO_CACHE_STAGE`. Newly encountered executable, dependency, fingerprint and
+build-script files join that step's group. Existing files retain their first
+owner; changing one updates that owner's archive. Hardlinked files stay together.
+This groups the outputs without treating a package name as proof of compiler,
+feature, target or profile compatibility.
+
+Directories, Cargo timings, input-freshness snapshots and the ownership record
+share a metadata group. Adding a file changes directory timestamps, so keeping
+directories separate avoids repacking an earlier large output group solely for
+that change. The cache carries `.codex-cache-groups.json`, whose paths are
+relative to the Cargo target directory and use `/` separators. A restored cache
+retains that ownership on another runner. Imported caches without ownership use
+one `bootstrap` output group; new outputs discovered during the final or failed
+save use `final`. Ordinary cold runs therefore have one group per populated build
+step plus metadata, rather than one group per Cargo unit.
 
 A manifest references the current groups. Each group records a hash of its
 relative paths, file contents, modes, sizes, modification timestamps and symlink
 targets. A subsequent checkpoint references unchanged groups directly, without
-compressing or uploading them again. Only new or changed groups require archive
-uploads. Removing a group removes it from the next manifest. Every snapshot is
+compressing or uploading them again. Final publication also considers the latest
+partial checkpoint so it can reuse outputs uploaded between steps. Only new or
+changed groups require archive uploads. Removing a group removes it from the next
+manifest. Every snapshot is
 self-contained: restoring it does not require replaying earlier manifests.
 Archives are uploaded before publishing the new manifest, so an interrupted save
 leaves the preceding published checkpoint available. Restoration overlays the
@@ -38,10 +51,12 @@ and extracting one group at a time. Checkpoints record complete output snapshots
 not the groups required by each executable. Restoration remains up front; the
 owner has chosen to retain this behavior rather than add on-demand restoration.
 
-The transport uses distinct `-parts-v1` reference suffixes, including separate
-partial references and compatible aliases. Old clients continue using their
-existing single-archive references. New clients can read those legacy references
-when a multipart reference is absent. Both formats retain the existing
+The transport writes distinct `-parts-v2` reference suffixes, including separate
+partial references and compatible aliases. It reads the earlier `-parts-v1`
+Cargo-unit format and then the legacy single archive when the corresponding new
+reference is absent. Existing outputs can therefore be regrouped without a cold
+build when an exact or compatible old reference exists. Old clients retain their
+own namespaces. All formats retain the existing
 `cargo-release-<identity>-<upstream-release>` association for retention. Cache
 visibility and authentication requirements stay private.
 
@@ -50,7 +65,8 @@ visibility and authentication requirements stay private.
 Run `.github/workflows/release-checkpoint-tests.yml` for native archive and build
 orchestration checks without compiling Codex. The real-ORAS local layout tests
 exercise archive restoration, timestamp and hardlink retention, independent
-groups, zero archive uploads for an unchanged checkpoint, partial/verified
+step-sized groups, reuse of earlier steps, zero archive uploads for unchanged
+checkpoints and final publication, relocation, older-format reads, partial/verified
 isolation, compatible aliases and transport errors. The release-stage tests
 exercise ordering, failure propagation and a real offline Cargo workspace with
 shared dependency features. That fixture verifies that changing the original
@@ -62,12 +78,20 @@ includes each executable's Cargo log, Cargo timing reports, build/checkpoint
 durations, group counts, uploaded archive bytes and reused group counts. Complete
 the required clean matrix separately before accepting the plan's cache gate.
 
-Native fixture [run `40332295510`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332295510)
+The earlier Cargo-unit grouping's native fixture [run `40332295510`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332295510)
 passes on all six release hosts at `f9745689f29b7e3f81c3fa643824d8ac5ac45337`.
 Windows verification resolves Git Bash and GNU tar explicitly at the native
 Python launch boundary. The [failure comparison](upstream-failure-comparison.md)
 retains the failed launcher results and passing counterfactuals. Full Codex
 multipart build, restoration and transfer measurements remain pending.
+
+The build-step grouping regression first observes 37 archives for one fixture
+step with 32 dependencies, then passes with two archives: outputs and metadata.
+A second step adds one archive and retains the earlier output blob. Local
+real-ORAS checks pass final-save reuse with both older verified and older partial
+state, cache relocation, imported bootstrap ownership, legacy and earlier-parts
+reads, removed files, hardlinks and exact timestamps. Native verification of this
+grouping revision and actual Codex transfer measurements remain separate gates.
 
 Actual Linux x86-64 [run `40332032199`, attempt 1](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332032199/attempts/1)
 ends with exit 143 and the runner's explicit shutdown-signal diagnostic during

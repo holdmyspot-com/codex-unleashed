@@ -26,7 +26,7 @@ cargo metadata --no-deps --format-version 1 > "$evidence/workspace-metadata-$bin
 python3 "$RUNNER_TEMP/verify-cargo-lock.py" \
   "$evidence/upstream-Cargo.lock" Cargo.lock "$evidence/workspace-metadata-$binary.json" \
   > "$evidence/lock-verification-$binary.json"
-bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial \
+CARGO_CACHE_STAGE="$binary" bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial \
   "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" \
   "$(cat "$evidence/upstream-ref")" "$CACHE_SEED_TAG" \
   2>&1 | tee "$evidence/checkpoint-$binary.log"

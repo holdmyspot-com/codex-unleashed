@@ -377,6 +377,7 @@ jobs:
       - name: Save verified compiled Cargo outputs to GHCR
         if: success() && inputs.cache
         env:
+          CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
@@ -386,6 +387,7 @@ jobs:
       - name: Save unverified partial compilation state for retry
         if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
         env:
+          CARGO_CACHE_STAGE: final
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |

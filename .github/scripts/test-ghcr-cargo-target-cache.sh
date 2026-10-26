@@ -50,7 +50,7 @@ identity="$(printf fixture-inputs | sha256sum | cut -d ' ' -f 1)"
 tag="cargo-v3-$target-$identity"
 storage_suffix=""
 if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-  storage_suffix=-parts-v1
+  storage_suffix=-parts-v2
 fi
 cache="$script_root/ghcr-cargo-target-cache.sh"
 
@@ -70,6 +70,14 @@ fs.utimesSync(process.argv[2], timestamp, timestamp);
 JS
 printf executable > "$release/deps/codex-fixture"
 ln "$release/deps/codex-fixture" "$release/codex"
+if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
+  python3 - "$release/deps" <<'PY'
+from pathlib import Path
+import sys
+for index in range(32):
+    (Path(sys.argv[1]) / f"libdependency_{index}-{index:016x}.rlib").write_text("dependency")
+PY
+fi
 
 bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0
 if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
@@ -79,7 +87,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 assert.equal(manifest.artifactType, 'application/vnd.codex-unleashed.cargo-target.v2');
-assert.ok(manifest.layers.length >= 2, 'dependencies and executable must be separate compressed parts');
+assert.ok(manifest.layers.length <= 2, 'one build step must share an archive across its executable and dependencies, plus metadata');
 JS
   bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0 > "$fixture/unchanged.log"
   grep -q 'uploaded_archive_bytes=0' "$fixture/unchanged.log"
@@ -191,7 +199,7 @@ const previous = new Map(layers(process.argv[2]).map(layer => [layer.annotations
 let changed = 0;
 for (const layer of layers(process.argv[3])) {
   const group = layer.annotations['io.holdmyspot.cargo.group'];
-  if (group.endsWith('/libfixture.rlib')) {
+  if (group === 'bootstrap') {
     assert.notEqual(layer.digest, previous.get(group), 'same-size, same-mtime content changes require a new archive');
     changed++;
   } else {
@@ -204,5 +212,64 @@ JS
   bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0
   bash "$cache" pull-partial "$repository" "$next_tag" "$fixture/restored after deletion" rust-v0.164.0
   test ! -e "$fixture/restored after deletion/$target/release/deps/libfixture.rlib"
+
+  oras manifest fetch "$repository:$next_tag$storage_suffix-partial" > "$fixture/before-step.json"
+  printf next-step > "$release/deps/libnext_step.rlib"
+  CARGO_CACHE_STAGE=codex-app-server bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0
+  oras manifest fetch "$repository:$next_tag$storage_suffix-partial" > "$fixture/after-step.json"
+  node - "$fixture/before-step.json" "$fixture/after-step.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const layers = path => JSON.parse(fs.readFileSync(path, 'utf8')).layers;
+const before = new Map(layers(process.argv[2]).map(layer => [layer.annotations['io.holdmyspot.cargo.group'], layer.digest]));
+const after = new Map(layers(process.argv[3]).map(layer => [layer.annotations['io.holdmyspot.cargo.group'], layer.digest]));
+assert.equal(after.size, 3, 'two build steps need two output archives and metadata');
+assert.equal(after.get('bootstrap'), before.get('bootstrap'), 'new step must reuse earlier output archive');
+assert.ok(after.has('codex-app-server'));
+JS
+  bash "$cache" pull-partial "$repository" "$next_tag" "$fixture/restored next step" rust-v0.164.0
+  cmp "$release/deps/libnext_step.rlib" "$fixture/restored next step/$target/release/deps/libnext_step.rlib"
+  CARGO_CACHE_STAGE=final bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 > "$fixture/final-save.log"
+  grep 'cache_parts=' "$fixture/final-save.log"
+  grep -q 'uploaded_archive_bytes=0' "$fixture/final-save.log"
+
+  mv "$fixture/restored next step" "$fixture/moved target"
+  CARGO_CACHE_STAGE=final bash "$cache" push-partial "$repository" "$next_tag" "$fixture/moved target" rust-v0.164.0 > "$fixture/moved-save.log"
+  grep -q 'uploaded_archive_bytes=0' "$fixture/moved-save.log"
+
+  printf updated-next-step > "$release/deps/libnext_step.rlib"
+  CARGO_CACHE_STAGE=final bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 > "$fixture/updated-final.log"
+  CARGO_CACHE_STAGE=final bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 > "$fixture/repeated-final.log"
+  grep 'cache_parts=' "$fixture/repeated-final.log"
+  grep -q 'uploaded_archive_bytes=0' "$fixture/repeated-final.log"
+
+  fallback_identity="$(printf old-parts-fixture | sha256sum | cut -d ' ' -f 1)"
+  fallback_tag="cargo-v3-$target-$fallback_identity"
+  oras tag "$repository:$next_tag$storage_suffix" "$fallback_tag-parts-v1"
+  bash "$cache" pull "$repository" "$fallback_tag" "$fixture/old parts restored" rust-v0.164.0
+  cmp "$release/deps/libnext_step.rlib" "$fixture/old parts restored/$target/release/deps/libnext_step.rlib"
+
+  legacy_identity="$(printf legacy-fixture | sha256sum | cut -d ' ' -f 1)"
+  legacy_tag="cargo-v3-$target-$legacy_identity"
+  mkdir -p "$fixture/legacy source"
+  printf existing-compiled-output > "$fixture/legacy source/output"
+  CARGO_CACHE_PARTS=0 bash "$cache" push "$repository" "$legacy_tag" "$fixture/legacy source" rust-v0.164.0
+  bash "$cache" pull "$repository" "$legacy_tag" "$fixture/imported target" rust-v0.164.0
+  CARGO_CACHE_STAGE=bwrap bash "$cache" push "$repository" "$legacy_tag" "$fixture/imported target" rust-v0.164.0
+  oras manifest fetch "$repository:$legacy_tag$storage_suffix" > "$fixture/imported-manifest.json"
+  node - "$fixture/imported-manifest.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const groups = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).layers.map(layer => layer.annotations['io.holdmyspot.cargo.group']);
+assert.ok(groups.includes('bootstrap'), 'previously cached outputs must belong to imported state, not the next build step');
+JS
+  bash "$cache" pull "$repository" "$legacy_tag" "$fixture/imported restored" rust-v0.164.0
+  cmp "$fixture/legacy source/output" "$fixture/imported restored/output"
+
+  set +e
+  CARGO_CACHE_STAGE=unknown-step bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0
+  result=$?
+  set -e
+  test "$result" = 2
 fi
 printf 'PASS: archive bytes/timestamps/links, executable retention, compatible aliases, release association, successful/partial isolation, invalid alias rejection, changed-input miss, transport failure propagation\n'
