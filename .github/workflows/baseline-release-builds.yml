@@ -79,6 +79,8 @@ jobs:
           cargo_target_dir="$RUNNER_TEMP/baseline-target"
           mkdir -p "$evidence" "$cargo_home" "$cargo_target_dir"
           printf 'CARGO_HOME=%s\nCARGO_TARGET_DIR=%s\n' "$cargo_home" "$cargo_target_dir" >> "$GITHUB_ENV"
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/cargo-cache\n' "$owner" >> "$GITHUB_ENV"
           cp restart-metadata/.github/upstream-commit "$evidence/upstream-commit"
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
@@ -248,13 +250,13 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-restore.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-restore.log"
           result=${PIPESTATUS[0]}
           set -e
           if [[ "$result" == 3 ]]; then
             printf 'Verified cache absent; trying unverified partial build state.\n'
             set +e
-            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-restore.log"
+            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-restore.log"
             result=${PIPESTATUS[0]}
             set -e
           fi
@@ -367,7 +369,7 @@ jobs:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Save unverified partial compilation state for retry
         if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
@@ -376,7 +378,7 @@ jobs:
         run: |
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Preserve cache input comparison evidence
         if: always() && inputs.cache
