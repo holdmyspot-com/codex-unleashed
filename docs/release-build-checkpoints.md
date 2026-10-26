@@ -149,10 +149,17 @@ take 109/91/88/88/88 seconds. The final save reuses that group and uploads only
 947,001 metadata bytes in 21 seconds. Hosted read-only comparison
 `40370295206` confirms distinct bootstrap fingerprints and archive digests
 between executable checkpoints, eliminating an unchanged-group lookup miss as
-the explanation. A header comparison of the first two immutable archives is
-running without recompilation or registry mutation. Preserve these successful
-build results while diagnosing the repeated transfer; grouped warm comparison,
-remaining platforms and the clean matrix remain unmet gates.
+the explanation. Read-only header comparison `40370722901` finds only the
+`codex-responses-api-proxy.d` timestamp changing between the first two output
+archives. That refresh alone invalidates the entire imported group while Cargo
+reuses compiled outputs. Header comparison does not establish equality of all file
+contents. The transport now assigns `.d` dependency reports to metadata and
+continues saving their contents and timestamps. A real-ORAS regression first
+fails because a report update changes the compiled archive's digest, then passes
+with that archive reused and the updated report restored. Preserve these
+successful build results while verifying this correction on native hosts and
+the actual grouped build; grouped warm comparison, remaining platforms and the
+clean matrix remain unmet gates.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have

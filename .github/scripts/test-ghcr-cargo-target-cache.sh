@@ -73,6 +73,7 @@ test "$result" = 3
 release="$fixture/source target/$target/release"
 mkdir -p "$release/deps"
 printf dependency > "$release/deps/libfixture.rlib"
+printf 'initial dependency report' > "$release/codex.d"
 node - "$release/deps/libfixture.rlib" <<'JS'
 const fs = require('node:fs');
 const timestamp = new Date(1700000000123);
@@ -101,6 +102,23 @@ assert.ok(manifest.layers.length <= 2, 'one build step must share an archive acr
 JS
   bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0 > "$fixture/unchanged.log"
   grep -q 'uploaded_archive_bytes=0' "$fixture/unchanged.log"
+  printf 'updated dependency report' > "$release/codex.d"
+  node - "$release/codex.d" <<'JS'
+const fs = require('node:fs');
+const timestamp = new Date(1700000001123);
+fs.utimesSync(process.argv[2], timestamp, timestamp);
+JS
+  bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0 > "$fixture/dependency-report.log"
+  oras manifest fetch "$repository:$tag$storage_suffix-partial" > "$fixture/dependency-report-manifest.json"
+  node - "$fixture/parts-manifest.json" "$fixture/dependency-report-manifest.json" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const before = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const after = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const groupDigest = (manifest, name) => manifest.layers.find(layer => layer.annotations['io.holdmyspot.cargo.group'] === name).digest;
+assert.equal(groupDigest(after, 'bootstrap'), groupDigest(before, 'bootstrap'), 'dependency-report changes must reuse the compiled output archive');
+assert.notEqual(groupDigest(after, 'metadata'), groupDigest(before, 'metadata'), 'updated dependency reports must still be saved');
+JS
 fi
 set +e
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
@@ -115,6 +133,7 @@ bash "$cache" push "$repository" "$tag" "$fixture/source target" rust-v0.164.0
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 restored="$fixture/restored target/$target/release"
 cmp "$release/deps/libfixture.rlib" "$restored/deps/libfixture.rlib"
+cmp "$release/codex.d" "$restored/codex.d"
 node - "$release/deps/libfixture.rlib" "$restored/deps/libfixture.rlib" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
