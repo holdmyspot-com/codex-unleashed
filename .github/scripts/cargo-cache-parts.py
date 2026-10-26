@@ -92,7 +92,7 @@ def collect_groups(target):
     return groups
 
 
-def push(command, repository, reference, previous_reference, target, temporary):
+def push(command, archive_tar, repository, reference, previous_reference, target, temporary):
     """Publish all current groups atomically, uploading only groups with changed inputs."""
     if target.is_dir() is False:
         raise ValueError(f"Cargo output directory does not exist: {target}")
@@ -103,7 +103,6 @@ def push(command, repository, reference, previous_reference, target, temporary):
     if previous and previous.get("artifactType") == ARTIFACT_TYPE:
         reusable = {layer["annotations"][GROUP_ANNOTATION]: layer for layer in previous["layers"]}
     groups = collect_groups(target)
-    archive_tar = shutil.which("gtar") or "tar"
 
     def upload_group(item):
         """Return the reused or uploaded layer and newly uploaded archive byte count."""
@@ -147,14 +146,13 @@ def push(command, repository, reference, previous_reference, target, temporary):
           f"reused_parts={sum(size == 0 for layer, size in uploaded)}")
 
 
-def pull(command, repository, reference, target, temporary):
+def pull(command, archive_tar, repository, reference, target, temporary):
     """Restore each independent archive; return 3 for a miss or 4 for another format."""
     manifest, digest = fetch_manifest(command, reference)
     if manifest is None:
         return 3
     if manifest.get("artifactType") != ARTIFACT_TYPE:
         return 4
-    archive_tar = shutil.which("gtar") or "tar"
     target.mkdir(parents=True, exist_ok=True)
     for layer in manifest["layers"]:
         with tempfile.TemporaryDirectory(prefix="cargo-part-", dir=temporary) as directory:
@@ -183,11 +181,16 @@ def main():
     valid_command = isinstance(command, list) and len(command) > 0 and all(isinstance(part, str) for part in command)
     if valid_command is False:
         parser.error("CARGO_CACHE_ORAS_COMMAND must be a nonempty JSON array of strings.")
+
+    # A bare tar name launches Windows bsdtar before the GNU tar on PATH.
+    # Resolve the executable so archive creation and extraction use that GNU tar.
+    archive_tar = shutil.which("gtar") or shutil.which("tar") or "tar"
     if arguments.operation == "push":
-        push(command, arguments.repository, arguments.reference, arguments.previous_reference,
+        push(command, archive_tar, arguments.repository, arguments.reference, arguments.previous_reference,
              arguments.target.resolve(), arguments.temporary.resolve())
         return 0
-    return pull(command, arguments.repository, arguments.reference, arguments.target.resolve(), arguments.temporary.resolve())
+    return pull(command, archive_tar, arguments.repository, arguments.reference,
+                arguments.target.resolve(), arguments.temporary.resolve())
 
 
 if __name__ == "__main__":
