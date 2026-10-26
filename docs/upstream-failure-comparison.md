@@ -50,8 +50,19 @@ The focused workflow now accepts `bundle_empty_workspace_bwrap=true` without
 tracing: it builds the declared test/helper outputs, stages the matching helper
 and runs the ordinary test incrementally against those outputs. With tracing
 selected, the earlier original-versus-diagnostic comparison remains available.
-Actionlint and whitespace checks pass; ordinary hosted acceptance of this setup
-remains pending. Upstream source and tests are unchanged.
+Actionlint and whitespace checks pass. Ordinary hosted run
+[`40405970958`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40405970958),
+job `121863693353`, passes at restart commit
+`5e2dc28b7372c6170861042f40215c248f87f26d`: one test passes in 0.21 seconds,
+zero fail and 71 are filtered out. The prepared test invocation takes 5.571
+seconds and reuses four actions without compilation. Before/after source diffs
+are identical; upstream source and tests are unchanged. Artifact `12691269190`
+has SHA-256
+`9a8d65e05db9325c0223163dd1d64d0f666f203945fa00d6467a777d855786bc`;
+its receipt records `exit_code=0` and the matching helper digest above.
+The goal executor retains the downloaded artifact beside the local comparison
+receipt until baseline acceptance and owns its cleanup. This accepts the
+focused environment repair; upstream guard execution remains unknown.
 
 The complete already-built local exec-server integration target then runs with
 that same matching helper, serially and without tracing or recompilation. It
