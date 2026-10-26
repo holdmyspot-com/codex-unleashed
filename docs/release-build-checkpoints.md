@@ -187,6 +187,17 @@ must identify what changed before any repair. Cross-run archive reuse, remaining
 platforms, representative full Codex invalidation and the clean matrix remain
 unmet gates.
 
+Read-only run
+[`40376256811`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40376256811)
+compares those two compiled archives and finds only the `bwrap` executable and
+its hardlink with changed header timestamps. The build wrapper strips that file
+on every invocation. The native release-stage fixture now supplies a fixed
+nanosecond executable timestamp and asserts that the real strip operation
+preserves it through the checkpoint. It fails with the previous command, then
+passes with `strip --preserve-dates`; all four local release-stage tests and
+ShellCheck pass. This changes the downstream build wrapper only. Hosted
+verification must still prove compiled-group reuse across runners.
+
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
 separate build-script, host and target outputs, and metadata also needs transfer.
