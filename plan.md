@@ -45,6 +45,10 @@ acceptance or establish who initiated earlier runner shutdowns. The
 [checkpoint evidence](docs/release-build-checkpoints.md) records the failed
 control, successful probe, terminal build log and next diagnostic boundary.
 Existing Intel Mac population and its monitoring continue without cancellation.
+The extended observer passes native preflight `40416773654`, including a real
+self-kill kernel stack and correct signal exit status. ARM build `40416897715`
+at `bce36d792e6752b60a355b8068d8f24fe970e272` now observes SIGKILL stacks
+and OOM victim selection; its terminal outcome and cache restoration are pending.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root

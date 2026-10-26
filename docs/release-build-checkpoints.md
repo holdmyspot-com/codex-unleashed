@@ -353,6 +353,19 @@ Resume these checkpoints with unchanged helper/compiler inputs in the next
 diagnostic; verify the hit rather than assuming it. CLI compilation after that
 checkpoint is not preserved by this failed run.
 
+The SIGKILL-stack fixture first fails in `40416615813` at
+`f249c304e1b6946c47df92137353056cabc7c11b`: self-kill capture and exit 137
+propagation work, but no kernel stack is present. Correction
+`bce36d792e6752b60a355b8068d8f24fe970e272` adds SIGKILL stacks and the OOM
+victim tracepoint to the existing observer. Focused native run `40416773654`
+passes in 18 seconds: both probes attach and the real self-kill fixture captures
+the ARM kill-syscall stack. Ordinary command exits zero/17 and signal exit 137
+all pass. This proves stack collection and tracepoint availability; no OOM event
+is induced or accepted by the fixture. Workflow lint and Python syntax pass.
+ARM-only cached build `40416897715` uses that correction and remains pending.
+It changes observation only, preserving helper/compiler inputs and the existing
+partial-checkpoint namespace; actual restoration still requires a hit receipt.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
