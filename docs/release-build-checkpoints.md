@@ -340,6 +340,24 @@ reuses those five archives, uploads 1,338,648 metadata bytes and takes 20 second
 This closes the real Linux verified-to-partial/compatible archive-reuse gate;
 other platforms and the required clean matrix retain their separate gates.
 
+macOS ARM64 population run `40373552154`, attempt 1 at
+`0ed6d57794765591f46dee5825484e88e8236495`, now passes all four default-feature
+executable builds, both native smokes, source/dependency guards, recording and
+private publication in 3h 12m 20s. Every restore candidate misses. Build stages
+take 156/458/8,586/1,923 seconds; checkpoints take 17/41/102/50 seconds and each
+new stage retains the preceding output archives. The final verified manifest,
+`sha256:fb3c9dad00eb827f446cc0294c44d7f2df5eeaaa3fab1688fe57bb5ca0bcf292`,
+has five groups and reuses all four output archives while uploading 1,589,666
+metadata bytes. Attempt 2, job `121851931397`, passes the same-revision warm
+comparison in 7m 11s with zero Rust compilation records. It restores that exact
+cold manifest in 76 seconds. Build invocations take 21/6/6/6 seconds and partial
+checkpoints take 39/38/36/37 seconds, reusing all four output archives and
+uploading only about 2.76 MB of metadata each. Final publication reuses those
+archives, uploads 1,597,730 metadata bytes and takes 36 seconds. Native smokes,
+source/dependency guards and recording pass. This verifies macOS ARM64 grouped
+reuse without restarting Intel macOS; other platform and clean-matrix gates
+remain separate.
+
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
 separate build-script, host and target outputs, and metadata also needs transfer.
