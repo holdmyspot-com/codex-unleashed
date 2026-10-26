@@ -9,6 +9,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -59,8 +61,10 @@ public final class SourceInputCacheTest
 			FileTime before = Files.getLastModifiedTime(source);
 			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
 			fixture.prepare();
-			assertFalse(Files.exists(fixture.binary()));
-			assertTrue(fixture.libraryFresh(fixture.build()));
+			String unchanged = fixture.build();
+			assertTrue(fixture.libraryFresh(unchanged));
+			assertTrue(fixture.artifactFresh(unchanged, "cache-demo", "bin"),
+				"unchanged source must retain completed executable compilation");
 			fixture.record();
 
 			Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
@@ -145,6 +149,47 @@ public final class SourceInputCacheTest
 	}
 
 	/**
+	 * Rebuilds changed host build scripts and their executable when the preparation clock moves backward.
+	 *
+	 * @throws IOException if Cargo, fixture access or cleanup fails
+	 */
+	@Test
+	public void rebuildsChangedExecutableAfterClockRollback() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.initialize();
+			Path source = fixture.workspace.resolve("build.rs");
+			Files.writeString(source, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=7\"); }\n");
+			Files.writeString(fixture.workspace.resolve("src/main.rs"),
+				"fn main() { println!(\"{}\", env!(\"CACHE_VALUE\")); }\n");
+			fixture.command(List.of("git", "add", "build.rs"));
+			fixture.prepare();
+			fixture.build();
+			fixture.record();
+			FileTime before = Files.getLastModifiedTime(source);
+			Files.writeString(source, "fn main() { println!(\"cargo:rustc-env=CACHE_VALUE=9\"); }\n");
+			Files.setLastModifiedTime(source, before);
+
+			SourceInputCache.Context context = new SourceInputCache.Context(fixture.workspace, fixture.temporary,
+				fixture.environment, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+			ByteArrayOutputStream preparation = new ByteArrayOutputStream();
+			try (PrintStream output = new PrintStream(preparation, true, StandardCharsets.UTF_8);
+				PrintStream errors = new PrintStream(preparation, true, StandardCharsets.UTF_8))
+			{
+				SourceInputCache.prepare(fixture.request(), context, output, errors);
+			}
+			assertFalse(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"),
+				"content changes must rebuild even when the preparation clock moves backward: " +
+					preparation.toString(StandardCharsets.UTF_8));
+			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
+			fixture.record();
+			fixture.prepare();
+			assertTrue(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
+		}
+	}
+
+	/**
 	 * Retains an external path dependency when a missing snapshot forces workspace compilation.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail
@@ -204,7 +249,7 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Preserves libraries and sibling binaries when invalidating a binary owned by a library package.
+	 * Preserves libraries and every unchanged binary when preparing a selected executable.
 	 *
 	 * @throws IOException if actual Cargo or fixture operations fail
 	 */
@@ -222,7 +267,7 @@ public final class SourceInputCacheTest
 			String output = fixture.build();
 			assertTrue(fixture.libraryFresh(output, "side_demo"));
 			assertTrue(fixture.artifactFresh(output, fixture.siblingBinary, "bin"));
-			assertFalse(fixture.artifactFresh(output, "side-demo", "bin"));
+			assertTrue(fixture.artifactFresh(output, "side-demo", "bin"));
 			assertTrue(fixture.artifactFresh(output, "cache-demo", "bin"));
 		}
 	}
@@ -291,34 +336,34 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Cleans binary-only owners in sorted order without consuming fields unnecessary for warm preparation.
+	 * Reuses binary-only packages and rebuilds changed executable source even with its original timestamp.
 	 *
 	 * @throws IOException if fixture operations fail
 	 */
 	@Test
-	public void cleansSortedBinaryOnlyOwners() throws IOException
+	public void reusesAndRebuildsBinaryOnlyPackage() throws IOException
 	{
 		try (Fixture fixture = Fixture.create())
 		{
 			fixture.initialize();
+			Files.delete(fixture.workspace.resolve("src/lib.rs"));
+			Path source = fixture.workspace.resolve("src/main.rs");
+			Files.writeString(source, "fn main() { println!(\"7\"); }\n");
 			fixture.prepare();
 			fixture.build();
 			fixture.record();
-			String metadata = """
-				{"packages":[
-				  {"name":"proxy-owner","targets":[{"name":"proxy","kind":["bin"]}]},
-				  {"name":"cli-owner","targets":[{"name":"codex","kind":["bin"]}]},
-				  {"name":"shared-owner","targets":[
-				    {"name":"helper","kind":["bin"]},{"name":"library","kind":["lib"]}]}]}
-				""";
-			fixture.useCargoFixture(metadata, 0);
-			fixture.prepare(Set.of("codex", "helper", "proxy"));
-			List<String> calls = Files.readAllLines(fixture.base.resolve("cargo-calls.jsonl"));
-			assertEquals(calls.size(), 2);
-			JsonNode clean = JsonMapper.builder().build().readTree(calls.get(1));
-			assertEquals(clean, JsonMapper.builder().build().valueToTree(List.of("clean", "--release", "--target",
-				fixture.target, "--manifest-path", fixture.workspace.resolve("Cargo.toml").toString(),
-				"-p", "cli-owner", "-p", "proxy-owner")));
+
+			FileTime before = Files.getLastModifiedTime(source);
+			Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
+			fixture.prepare();
+			assertTrue(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
+			fixture.record();
+
+			Files.writeString(source, "fn main() { println!(\"9\"); }\n");
+			Files.setLastModifiedTime(source, before);
+			fixture.prepare();
+			assertFalse(fixture.artifactFresh(fixture.build(), "cache-demo", "bin"));
+			assertEquals(fixture.command(List.of(fixture.binary().toString())).stdout().strip(), "9");
 		}
 	}
 

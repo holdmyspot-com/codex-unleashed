@@ -18,7 +18,6 @@ if [[ ! "$tag" =~ ^cargo-v3-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
   printf 'Cargo cache tag must include its target and exact build-input digest: %s\n' "$tag" >&2
   exit 2
 fi
-cache_target="${BASH_REMATCH[1]}"
 cache_state=verified
 case "$operation" in
   pull|push) ;;
@@ -63,19 +62,6 @@ case "$operation" in
     oras pull "$repository@$digest" --output "$archive_directory"
     du -sk "$archive"
     "$archive_tar" --zstd -xf - -C "$target_directory" < "$archive"
-    # Preserve dependency hard links by extracting before removing executable aliases.
-    release_dir="$target_directory/$cache_target/release"
-    if [[ -d "$release_dir" ]]; then
-      for artifact in "$release_dir"/codex* "$release_dir"/bwrap*; do
-        [[ -e "$artifact" || -L "$artifact" ]] || continue
-        if [[ -d "$artifact" ]]; then
-          [[ "$artifact" == *.dSYM ]] || continue
-          rm -r -- "$artifact"
-        else
-          rm -- "$artifact"
-        fi
-      done
-    fi
     printf 'cache_result=hit digest=%s\n' "$digest"
     ;;
   push)

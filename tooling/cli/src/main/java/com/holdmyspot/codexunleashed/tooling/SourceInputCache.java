@@ -2,9 +2,12 @@ package com.holdmyspot.codexunleashed.tooling;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +15,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import org.apache.commons.io.file.PathUtils;
+import org.apache.commons.io.file.StandardDeleteOption;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -95,7 +100,7 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Writes pending inputs, restores unchanged sources and invalidates only requested executable units.
+	 * Writes pending inputs and restores unchanged sources so Cargo can reuse all unaffected units.
 	 *
 	 * @param request the workspace, target and binaries
 	 * @param context process and timestamp authorities
@@ -129,6 +134,19 @@ public final class SourceInputCache
 			throw new IOException("Release binaries absent from Cargo metadata: " + String.join(", ", missing));
 		if (V8BindingCache.prepare(request, context, inputs.targetDirectory(), out))
 			clean(request, context, inputs.manifest(), List.of("v8"), out, err);
+		if (hasFutureOutputs(request, context, inputs))
+		{
+			out.println("Cached release output timestamps exceed the preparation clock; rebuilding release outputs " +
+				"without restoring source timestamps. Dependency downloads retained.");
+			for (Path release : releaseDirectories(request, inputs))
+			{
+				if (Files.exists(release))
+					PathUtils.deleteDirectory(release, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
+						StandardDeleteOption.OVERRIDE_READ_ONLY);
+			}
+			checkpoint(request, context, inputs);
+			return;
+		}
 		if (previous.isEmpty())
 		{
 			List<String> packages = inputs.metadata().workspacePackageNames();
@@ -144,23 +162,52 @@ public final class SourceInputCache
 		long unchanged = inputs.current().files().keySet().stream().filter(name -> !changed.contains(name)).count();
 		out.println("Source contents changed in " + changed.size() + " files; Cargo determines affected units; " +
 			unchanged + " unchanged files retained.");
-		Set<String> libraries = inputs.metadata().libraryOwners();
-		Set<String> binaryOnly = new TreeSet<>(owners.values());
-		binaryOnly.removeAll(libraries);
-		if (!binaryOnly.isEmpty())
-			clean(request, context, inputs.manifest(), List.copyOf(binaryOnly), out, err);
-		Path release = inputs.targetDirectory().resolve(SourceCacheTargets.directoryName(request.target())).
-			resolve("release");
-		for (String binary : new TreeSet<>(request.binaries()))
+		checkpoint(request, context, inputs);
+	}
+
+	/**
+	 * Indicates whether cached target or host release outputs are newer than the preparation clock.
+	 * Changed source timestamps cannot invalidate those outputs reliably after a clock rollback.
+	 *
+	 * @param request the selected target
+	 * @param context the timestamp authority
+	 * @param inputs the compiled output location
+	 * @return true when a regular cached release output has a future modification time
+	 * @throws IOException if cached output timestamps cannot be read
+	 */
+	private static boolean hasFutureOutputs(Request request, Context context, Inputs inputs) throws IOException
+	{
+		Instant now = context.clock().instant();
+		for (Path release : releaseDirectories(request, inputs))
 		{
-			if (libraries.contains(owners.get(binary)))
+			if (Files.isDirectory(release))
 			{
-				int count = CachedBinaryOutputs.invalidate(release, binary);
-				out.println("Invalidated " + count + " cached binary fingerprints for " + binary +
-					"; library outputs retained.");
+				try (var outputs = Files.find(release, Integer.MAX_VALUE,
+					(path, attributes) -> attributes.isRegularFile() && attributes.lastModifiedTime().toInstant().isAfter(now)))
+				{
+					if (outputs.findAny().isPresent())
+						return true;
+				}
+				catch (UncheckedIOException failure)
+				{
+					throw failure.getCause();
+				}
 			}
 		}
-		checkpoint(request, context, inputs);
+		return false;
+	}
+
+	/**
+	 * Supplies the host and selected-target release output directories used by Cargo.
+	 *
+	 * @param request the selected target
+	 * @param inputs the compiled output root
+	 * @return the two owned release output paths
+	 */
+	private static List<Path> releaseDirectories(Request request, Inputs inputs)
+	{
+		return List.of(inputs.targetDirectory().resolve("release"), inputs.targetDirectory().
+			resolve(SourceCacheTargets.directoryName(request.target())).resolve("release"));
 	}
 
 	/**
