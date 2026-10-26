@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Transfer compiled Cargo outputs for an exact build-input tag. Partial operations
-# use a separate reference and never publish a verified-cache reference. Pulls
-# return 3 for a missing reference; invalid arguments return 2, and other failures
-# retain the failing tool's status. RUNNER_TEMP owns transient archive storage.
-if [[ $# != 5 ]]; then
-  printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag>\n' "$0" >&2
+# Transfer compiled Cargo outputs under an exact cargo-v3 tag. Push accepts an
+# optional cargo-seed-v1 tag for the same target, attaching it to the same manifest;
+# pull accepts either tag family. Callers must run Cargo and verification after
+# every restore. Partial operations append -partial to both references and never
+# update their successful counterparts. A protected-release alias accompanies
+# every upload. Pull returns 3 for a miss and invalid arguments return 2; other
+# failures retain the tool status. RUNNER_TEMP owns transient archive storage.
+if [[ $# != 5 && $# != 6 ]]; then
+  printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag> [compatible-seed-tag]\n' "$0" >&2
   exit 2
 fi
 operation="$1"
@@ -14,10 +17,30 @@ repository="$2"
 tag="$3"
 target_directory="$4"
 upstream_tag="$5"
-if [[ ! "$tag" =~ ^cargo-v3-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
-  printf 'Cargo cache tag must include its target and exact build-input digest: %s\n' "$tag" >&2
+seed_tag="${6:-}"
+if [[ "$tag" =~ ^cargo-v3-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
+  cache_target="${BASH_REMATCH[1]}"
+elif [[ "$tag" =~ ^cargo-seed-v1-([A-Za-z0-9_-]+)-([0-9a-f]{64})$ ]]; then
+  cache_target="${BASH_REMATCH[1]}"
+  case "$operation" in
+    pull|pull-partial) ;;
+    *) printf 'Compatible seed tags are pull references; push requires an exact cargo-v3 tag.\n' >&2; exit 2 ;;
+  esac
+else
+  printf 'Cargo cache tag must contain a supported family, target and 64-character digest: %s\n' "$tag" >&2
   exit 2
 fi
+if [[ $# == 6 ]]; then
+  case "$operation" in
+    push|push-partial) ;;
+    *) printf 'A compatible seed alias is accepted only when pushing outputs.\n' >&2; exit 2 ;;
+  esac
+  if [[ ! "$seed_tag" =~ ^cargo-seed-v1-$cache_target-([0-9a-f]{64})$ ]]; then
+    printf 'Compatible seed alias must name target %s and a 64-character digest: %s\n' "$cache_target" "$seed_tag" >&2
+    exit 2
+  fi
+fi
+
 cache_state=verified
 case "$operation" in
   pull|push) ;;
@@ -25,6 +48,9 @@ case "$operation" in
     operation="${operation%-partial}"
     cache_state=partial
     tag="$tag-partial"
+    if [[ -n "$seed_tag" ]]; then
+      seed_tag="$seed_tag-partial"
+    fi
     ;;
   *) printf 'Unsupported Cargo cache operation: %s\n' "$operation" >&2; exit 2 ;;
 esac
@@ -76,7 +102,11 @@ case "$operation" in
       oras push "$release_reference" \
         --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
         'cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd'
-      oras tag "$release_reference" "$tag"
+      aliases=("$tag")
+      if [[ -n "$seed_tag" ]]; then
+        aliases+=("$seed_tag")
+      fi
+      oras tag "$release_reference" "${aliases[@]}"
     )
     printf 'cache_result=saved\n'
     ;;
