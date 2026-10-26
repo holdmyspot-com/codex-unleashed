@@ -58,3 +58,18 @@ jobs:
             oras manifest fetch "ghcr.io/holdmyspot-com/cargo-cache@sha256:$digest" \
               | jq '.layers[] | {digest, size, annotations}'
           done
+
+      - name: Compare imported output archive metadata
+        env:
+          TZ: UTC
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d "$RUNNER_TEMP/cache-archive-comparison.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          before=sha256:3b4bae5f6d0268e625e24c40286ab91da77538f692d53e3a5bc2b4660717b357
+          after=sha256:a163eafc448c99fe99f8f38916464484582faba2307261c67fc0fbe6bb407fcb
+          oras blob fetch --output - "ghcr.io/holdmyspot-com/cargo-cache@$before" \
+            | tar --zstd --full-time --numeric-owner -tvf - > "$scratch/before.txt"
+          oras blob fetch --output - "ghcr.io/holdmyspot-com/cargo-cache@$after" \
+            | tar --zstd --full-time --numeric-owner -tvf - > "$scratch/after.txt"
+          diff --unified=0 "$scratch/before.txt" "$scratch/after.txt" || test "$?" = 1
