@@ -34,13 +34,17 @@ if binary == 'bwrap':
     destination = pathlib.Path(os.environ['CARGO_TARGET_DIR']) / os.environ['TARGET'] / 'release' / binary
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile('/bin/true', destination)
+    os.utime(destination, ns=(1700000000123456789, 1700000000123456789))
 """)
             cargo.chmod(0o755)
             checkpoint = root / "checkpoint"
             checkpoint.write_text("""#!/usr/bin/env python3
-import json, os, sys
+import json, os, pathlib, sys
 with open(os.environ['EVENTS'], 'a') as log:
     log.write(json.dumps(['checkpoint', sys.argv[1]]) + '\\n')
+if sys.argv[1] == 'bwrap':
+    executable = pathlib.Path(os.environ['CARGO_TARGET_DIR']) / os.environ['TARGET'] / 'release' / 'bwrap'
+    assert executable.stat().st_mtime_ns == 1700000000123456789, 'stripping refreshed the cached executable timestamp'
 if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
     sys.exit(43)
 """)

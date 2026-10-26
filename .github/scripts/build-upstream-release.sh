@@ -21,7 +21,7 @@ case "$TARGET" in
     started=$SECONDS
     cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$evidence/bwrap-build.log"
     helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
-    strip --strip-debug --strip-unneeded "$helper"
+    strip --preserve-dates --strip-debug --strip-unneeded "$helper"
     CODEX_BWRAP_SHA256="$(sha256sum "$helper" | cut -d ' ' -f 1)"
     export CODEX_BWRAP_SHA256
     printf 'binary=bwrap build_seconds=%s\n' "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
