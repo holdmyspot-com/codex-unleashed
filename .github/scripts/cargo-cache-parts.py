@@ -9,6 +9,9 @@ overlays the complete referenced snapshot. All subprocess failures propagate;
 pull returns 3 for a missing reference and 4 for another artifact format.
 Only temporary children created here are removed. Publication/retention aliases
 and source/dependency acceptance belong to the calling shell workflow.
+CARGO_CACHE_ORAS_COMMAND can supply an explicit ORAS launcher as a nonempty JSON
+argument array, such as a Bash executable and a local-layout fixture wrapper.
+The default is ["oras"]. Arguments are passed directly without shell evaluation.
 """
 
 import argparse
@@ -31,14 +34,14 @@ GROUP_ANNOTATION = "io.holdmyspot.cargo.group"
 INPUT_ANNOTATION = "io.holdmyspot.cargo.inputs"
 
 
-def oras(*arguments):
+def oras(command, *arguments):
     """Run the installed authenticated ORAS CLI and return stdout, or raise on failure."""
-    return subprocess.check_output(["oras", *arguments], text=True)
+    return subprocess.check_output([*command, *arguments], text=True)
 
 
-def fetch_manifest(reference):
+def fetch_manifest(command, reference):
     """Return the resolved manifest and digest, or (None, None) for a registry miss."""
-    result = subprocess.run(["oras", "manifest", "fetch", "--format", "json", reference], capture_output=True, text=True)
+    result = subprocess.run([*command, "manifest", "fetch", "--format", "json", reference], capture_output=True, text=True)
     if result.returncode == 0:
         resolved = json.loads(result.stdout)
         return resolved["content"], resolved["digest"]
@@ -89,13 +92,13 @@ def collect_groups(target):
     return groups
 
 
-def push(repository, reference, previous_reference, target, temporary):
+def push(command, repository, reference, previous_reference, target, temporary):
     """Publish all current groups atomically, uploading only groups with changed inputs."""
     if target.is_dir() is False:
         raise ValueError(f"Cargo output directory does not exist: {target}")
-    previous, _ = fetch_manifest(previous_reference)
+    previous, _ = fetch_manifest(command, previous_reference)
     if previous is None:
-        previous, _ = fetch_manifest(previous_reference + "-partial")
+        previous, _ = fetch_manifest(command, previous_reference + "-partial")
     reusable = {}
     if previous and previous.get("artifactType") == ARTIFACT_TYPE:
         reusable = {layer["annotations"][GROUP_ANNOTATION]: layer for layer in previous["layers"]}
@@ -117,7 +120,7 @@ def push(repository, reference, previous_reference, target, temporary):
             with archive.open("wb") as output:
                 subprocess.run([archive_tar, "--format=pax", "--zstd", "--no-recursion", "--null",
                                 "-T", str(paths), "-cf", "-"], cwd=target, stdout=output, check=True)
-            layer = json.loads(oras("blob", "push", "--descriptor", "--media-type", LAYER_TYPE,
+            layer = json.loads(oras(command, "blob", "push", "--descriptor", "--media-type", LAYER_TYPE,
                                     repository, str(archive)))
             layer["annotations"] = {
                 GROUP_ANNOTATION: group,
@@ -132,21 +135,21 @@ def push(repository, reference, previous_reference, target, temporary):
         scratch = Path(directory)
         config = scratch / "config.json"
         config.write_text("{}")
-        descriptor = json.loads(oras("blob", "push", "--descriptor", "--media-type",
+        descriptor = json.loads(oras(command, "blob", "push", "--descriptor", "--media-type",
                                      "application/vnd.oci.empty.v1+json", repository, str(config)))
         manifest = {"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
                     "artifactType": ARTIFACT_TYPE, "config": descriptor,
                     "layers": [layer for layer, size in uploaded]}
         manifest_file = scratch / "manifest.json"
         manifest_file.write_text(json.dumps(manifest))
-        print(oras("manifest", "push", reference, str(manifest_file)), end="")
+        print(oras(command, "manifest", "push", reference, str(manifest_file)), end="")
     print(f"cache_parts={len(uploaded)} uploaded_archive_bytes={sum(size for layer, size in uploaded)} "
           f"reused_parts={sum(size == 0 for layer, size in uploaded)}")
 
 
-def pull(repository, reference, target, temporary):
+def pull(command, repository, reference, target, temporary):
     """Restore each independent archive; return 3 for a miss or 4 for another format."""
-    manifest, digest = fetch_manifest(reference)
+    manifest, digest = fetch_manifest(command, reference)
     if manifest is None:
         return 3
     if manifest.get("artifactType") != ARTIFACT_TYPE:
@@ -156,7 +159,7 @@ def pull(repository, reference, target, temporary):
     for layer in manifest["layers"]:
         with tempfile.TemporaryDirectory(prefix="cargo-part-", dir=temporary) as directory:
             archive = Path(directory) / "part.tar.zst"
-            oras("blob", "fetch", "--output", str(archive), repository + "@" + layer["digest"])
+            oras(command, "blob", "fetch", "--output", str(archive), repository + "@" + layer["digest"])
             with archive.open("rb") as source:
                 subprocess.run([archive_tar, "--zstd", "-xf", "-"], cwd=target, stdin=source, check=True)
     print(f"cache_result=hit digest={digest} cache_parts={len(manifest['layers'])}")
@@ -173,11 +176,18 @@ def main():
     parser.add_argument("target", type=Path)
     parser.add_argument("temporary", type=Path)
     arguments = parser.parse_args()
+    try:
+        command = json.loads(os.environ.get("CARGO_CACHE_ORAS_COMMAND", '["oras"]'))
+    except json.JSONDecodeError as error:
+        parser.error(f"CARGO_CACHE_ORAS_COMMAND must be a JSON argument array: {error}")
+    valid_command = isinstance(command, list) and len(command) > 0 and all(isinstance(part, str) for part in command)
+    if valid_command is False:
+        parser.error("CARGO_CACHE_ORAS_COMMAND must be a nonempty JSON array of strings.")
     if arguments.operation == "push":
-        push(arguments.repository, arguments.reference, arguments.previous_reference,
+        push(command, arguments.repository, arguments.reference, arguments.previous_reference,
              arguments.target.resolve(), arguments.temporary.resolve())
         return 0
-    return pull(arguments.repository, arguments.reference, arguments.target.resolve(), arguments.temporary.resolve())
+    return pull(command, arguments.repository, arguments.reference, arguments.target.resolve(), arguments.temporary.resolve())
 
 
 if __name__ == "__main__":
