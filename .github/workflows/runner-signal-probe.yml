@@ -1,6 +1,11 @@
 name: ARM64 runner signal observation probe
 
 on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/runner-signal-probe.yml
+      - .github/scripts/probe-runner-signals.py
   workflow_dispatch:
 
 permissions:
