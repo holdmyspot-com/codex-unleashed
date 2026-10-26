@@ -66,8 +66,10 @@ jobs:
           set -euo pipefail
           scratch="$(mktemp -d "$RUNNER_TEMP/cache-archive-comparison.XXXXXX")"
           trap 'rm -rf -- "$scratch"' EXIT
-          before=sha256:3b4bae5f6d0268e625e24c40286ab91da77538f692d53e3a5bc2b4660717b357
-          after=sha256:a163eafc448c99fe99f8f38916464484582faba2307261c67fc0fbe6bb407fcb
+          before="$(oras manifest fetch ghcr.io/holdmyspot-com/cargo-cache@sha256:f8846f63942738a59d0c079b7e3ddfb68ff91bcabce724a9b6af3b061fda69b0 \
+            | jq -r '.layers[] | select(.annotations["io.holdmyspot.cargo.group"] == "bootstrap") | .digest')"
+          after="$(oras manifest fetch ghcr.io/holdmyspot-com/cargo-cache@sha256:7de628448a240ade093b0e6c3853d81f0c325940ef7002e6e1be2992ff7582ba \
+            | jq -r '.layers[] | select(.annotations["io.holdmyspot.cargo.group"] == "bootstrap") | .digest')"
           oras blob fetch --output - "ghcr.io/holdmyspot-com/cargo-cache@$before" \
             | tar --zstd --full-time --numeric-owner -tvf - > "$scratch/before.txt"
           oras blob fetch --output - "ghcr.io/holdmyspot-com/cargo-cache@$after" \
