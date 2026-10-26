@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       bundle_empty_workspace_bwrap:
-        description: Stage the matching built bwrap beside the test executable before the trace comparison
+        description: Stage matching bwrap for the focused empty-root case; with tracing, stage only for the diagnostic comparison
         type: boolean
         default: false
 
@@ -75,8 +75,12 @@ jobs:
       - name: Validate the bundled-helper comparison
         if: inputs.bundle_empty_workspace_bwrap
         env:
-          TRACE_SELECTED: ${{ inputs.trace_empty_workspace_roots }}
-        run: test "$TRACE_SELECTED" = true
+          FOCUSED_COMPARISON: ${{ inputs.exec_server_shells }}
+          TEST_NAME_FILTER: ${{ inputs.exec_server_filter }}
+        run: |
+          set -euo pipefail
+          test "$FOCUSED_COMPARISON" = true
+          test "$TEST_NAME_FILTER" = remote_process_preserves_empty_workspace_roots
 
       - name: Verify pristine upstream source identity
         run: |
@@ -207,6 +211,8 @@ jobs:
         env:
           BASELINE_EXEC_SERVER_SHELLS: ${{ inputs.exec_server_shells }}
           BASELINE_EXEC_SERVER_FILTER: ${{ inputs.exec_server_filter }}
+          BUNDLE_BWRAP: ${{ inputs.bundle_empty_workspace_bwrap }}
+          TRACE_SELECTED: ${{ inputs.trace_empty_workspace_roots }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -236,6 +242,19 @@ jobs:
           if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
             comparison_args+=(--test_arg="$BASELINE_EXEC_SERVER_FILTER" --test_arg=--nocapture --test_output=all)
           fi
+
+          if [[ "$BUNDLE_BWRAP" == true ]]; then
+            if [[ "$TRACE_SELECTED" == false ]]; then
+              .github/scripts/run-bazel-ci.sh --print-failed-action-summary -- \
+                build --disk_cache= --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+                //codex-rs/exec-server:exec-server-exec_process-test //codex-rs/bwrap:bwrap
+              ln -s "$(realpath bazel-bin/codex-rs/bwrap/bwrap)" bazel-bin/codex-rs/exec-server/bwrap
+              sha256sum bazel-bin/codex-rs/bwrap/bwrap \
+                bazel-bin/codex-rs/exec-server/exec-server-exec_process-test \
+                > "$evidence/bundled-helper-comparison.sha256"
+            fi
+          fi
+
           printf '%s\n' "${comparison_args[@]}" > "$evidence/comparison-arguments.txt"
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
