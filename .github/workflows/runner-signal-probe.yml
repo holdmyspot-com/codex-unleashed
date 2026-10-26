@@ -1,0 +1,41 @@
+name: ARM64 runner signal observation probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve the diagnostic
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Prepare the signal observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/runner-signal-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/runner-signal-evidence/restart-commit"
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bpftrace
+          sudo -n bpftrace --info 2>&1 | tee "$RUNNER_TEMP/runner-signal-evidence/bpftrace-info.txt"
+
+      - name: Verify known signal sender and recipient
+        working-directory: ${{ runner.temp }}/runner-signal-evidence
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/probe-runner-signals.py"
+
+      - name: Retain probe evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: arm64-runner-signal-probe
+          path: ${{ runner.temp }}/runner-signal-evidence
+          retention-days: 1
+          if-no-files-found: error
