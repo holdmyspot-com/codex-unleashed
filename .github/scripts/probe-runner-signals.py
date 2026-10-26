@@ -12,6 +12,14 @@ def observe_command_signals(command):
 tracepoint:signal:signal_generate /args->sig != 17/ {
     printf("sender_pid=%d receiver_pid=%d signal=%d sender=%s receiver=%s code=%d\n",
         pid, args->pid, args->sig, comm, args->comm, args->code);
+    if (args->sig == 9) {
+        printf("sigkill_kernel_stack receiver_pid=%d\n", args->pid);
+        print(kstack());
+    }
+}
+tracepoint:oom:mark_victim {
+    printf("oom_victim_pid=%d current_pid=%d current_comm=%s\n", args->pid, pid, comm);
+    print(kstack());
 }
 '''
     log = Path("signal-observer.log")
