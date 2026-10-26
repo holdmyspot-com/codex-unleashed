@@ -130,8 +130,11 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
             result = command(["cargo", "build", "--release", "--target", target,
                               "--message-format=json"], label, expected)
             rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
-            return {row["target"]["name"]: row["fresh"] for row in rows
-                    if row.get("reason") == "compiler-artifact" and row["target"]["kind"] == ["lib"]}
+            libraries = {row["target"]["name"]: row["fresh"] for row in rows
+                         if row.get("reason") == "compiler-artifact" and row["target"]["kind"] == ["lib"]}
+            binaries = {row["target"]["name"]: row["fresh"] for row in rows
+                        if row.get("reason") == "compiler-artifact" and row["target"]["kind"] == ["bin"]}
+            return libraries, binaries
 
         main_source = workspace / "src/main.rs"
         valid_main = main_source.read_text(encoding="utf-8")
@@ -140,7 +143,7 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         cold = None
         if producer is None:
             prepare("cold-prepare")
-            cold = build("cold-failed-build", 101)
+            cold, _ = build("cold-failed-build", 101)
             assert cold == {"v8": False, "cache_demo": False}, cold
         partial_reference = None
         if cache_transport:
@@ -168,8 +171,9 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
             before_retry = producer["prepared_binding_mtime_ns"]
         os.utime(binding, ns=(before_retry + 100_000_000_000, before_retry + 100_000_000_000))
         prepare("partial-retry-prepare")
-        partial = build("partial-retry-build")
+        partial, partial_binaries = build("partial-retry-build")
         assert partial == {"v8": True, "cache_demo": True}, partial
+        assert partial_binaries == {"cache-demo": False}, partial_binaries
         assert binding.stat().st_mtime_ns == before_retry
         assert not (fixture / "target/.codex-source-inputs" / (target + ".json")).exists()
         record("cold-record")
@@ -178,16 +182,18 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
             timestamp = file.stat().st_mtime_ns + 100_000_000_000
             os.utime(file, ns=(timestamp, timestamp))
         prepare("warm-prepare")
-        warm = build("warm-build")
+        warm, warm_binaries = build("warm-build")
         assert warm == {"v8": True, "cache_demo": True}, warm
+        assert warm_binaries == {"cache-demo": True}, warm_binaries
         assert binding.stat().st_mtime_ns == original
         record("warm-record")
 
         binding.write_text("pub fn value()->u8 {9}\n", encoding="utf-8")
         os.utime(binding, ns=(original, original))
         prepare("changed-prepare")
-        changed = build("changed-build")
+        changed, changed_binaries = build("changed-build")
         assert changed == {"v8": False, "cache_demo": False}, changed
+        assert changed_binaries == {"cache-demo": False}, changed_binaries
         executable = "cache-demo.exe" if os.name == "nt" else "cache-demo"
         output = command([str(fixture / "target" / target / "release" / executable)],
                          "changed-output").stdout.strip()
@@ -202,6 +208,8 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         receipt = {"target": target, "runtime": str(runtime), "rust": rust,
                    "cold_library_fresh": cold, "partial_retry_library_fresh": partial,
                    "warm_library_fresh": warm,
+                   "partial_retry_binary_fresh": partial_binaries,
+                   "warm_binary_fresh": warm_binaries, "changed_binary_fresh": changed_binaries,
                    "changed_library_fresh": changed, "changed_executable_output": output,
                    "partial_cache_reference": partial_reference,
                    "fixture_directory": str(fixture), "prepared_binding_mtime_ns": original,

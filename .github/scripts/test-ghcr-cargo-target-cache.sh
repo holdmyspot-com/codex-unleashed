@@ -54,7 +54,7 @@ set -e
 test "$result" = 3
 bash "$cache" pull-partial "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 cmp "$release/deps/libfixture.rlib" "$fixture/restored target/$target/release/deps/libfixture.rlib"
-test ! -e "$fixture/restored target/$target/release/codex"
+cmp "$release/codex" "$fixture/restored target/$target/release/codex"
 
 bash "$cache" push "$repository" "$tag" "$fixture/source target" rust-v0.164.0
 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
@@ -69,7 +69,7 @@ assert.notEqual(original % 1000000000n, 0n, 'fixture must exercise a fractional 
 assert.equal(restored, original, 'cache round trip must preserve the exact modification timestamp');
 JS
 cmp "$release/deps/codex-fixture" "$restored/deps/codex-fixture"
-test ! -e "$restored/codex"
+cmp "$release/codex" "$restored/codex"
 
 printf partial-update > "$release/deps/libfixture.rlib"
 bash "$cache" push-partial "$repository" "$tag" "$fixture/source target" rust-v0.164.0
@@ -90,4 +90,4 @@ CODEX_TEST_ORAS_FAIL_RESOLVE=1 bash "$cache" pull "$repository" "$tag" "$fixture
 result=$?
 set -e
 test "$result" = 42
-printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable invalidation, partial-state isolation, changed-input miss, transport failure propagation\n'
+printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable preservation, partial-state isolation, changed-input miss, transport failure propagation\n'
