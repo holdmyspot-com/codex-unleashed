@@ -33,6 +33,11 @@ leaves the preceding published checkpoint available. Restoration overlays the
 snapshot onto the selected output directory; Cargo and the freshness helper
 remain responsible for validating and invalidating outputs.
 
+The workflow restores every group before the first executable build, downloading
+and extracting one group at a time. Checkpoints record complete output snapshots,
+not the groups required by each executable. Restoration remains up front; the
+owner has chosen to retain this behavior rather than add on-demand restoration.
+
 The transport uses distinct `-parts-v1` reference suffixes, including separate
 partial references and compatible aliases. Old clients continue using their
 existing single-archive references. New clients can read those legacy references
@@ -63,6 +68,23 @@ Windows verification resolves Git Bash and GNU tar explicitly at the native
 Python launch boundary. The [failure comparison](upstream-failure-comparison.md)
 retains the failed launcher results and passing counterfactuals. Full Codex
 multipart build, restoration and transfer measurements remain pending.
+
+Actual Linux x86-64 [run `40332032199`, attempt 1](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332032199/attempts/1)
+ends with exit 143 and the runner's explicit shutdown-signal diagnostic during
+the CLI build. Final smokes, guards and artifact collection do not run. The
+surviving job log records these completed partial checkpoints:
+
+| Executable | Build seconds | Checkpoint seconds | Snapshot groups | Reused groups | Uploaded archive bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| bwrap | 10 | 12 | 35 | 0 | 13,316,512 |
+| codex-responses-api-proxy | 84 | 79 | 293 | 27 | 248,743,957 |
+| codex-code-mode-host | 263 | 159 | 795 | 285 | 619,250,083 |
+
+This establishes intermediate publication and group reuse, not a successful
+Codex build or restored checkpoint acceptance. The host reports shutdown but
+does not identify its initiating cause. A focused same-revision retry checks
+restoration of the published partial state; it does not recover work compiled
+after the last completed checkpoint.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
