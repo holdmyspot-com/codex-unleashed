@@ -235,7 +235,9 @@ the kernel supplies it, into the job log. Syscall filtering reduces tracing
 overhead. A local SIGTERM probe retains the sender and exit 143, and all four
 release-stage fixtures pass under tracing. A host shutdown may still remove the
 runner before a signal record survives; absence of a record cannot establish
-the initiating cause. Ordinary runs keep tracing disabled.
+the initiating cause. Ordinary runs keep tracing disabled. Run `40395599813`
+uses this diagnostic at `ee711a9716fb4dfda3ab18f41256134b459dd5f4`;
+its result remains unverified.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
