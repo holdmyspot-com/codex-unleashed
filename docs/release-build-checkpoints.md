@@ -259,10 +259,24 @@ while retaining every non-CLI compilation, checks the running `codex doctor
 artifacts. Diagnostic outputs are never saved to shared cache references. The
 doctor process may report unrelated environment failures; acceptance checks its
 runtime provenance rather than claiming the full doctor report passes.
-Two local real-Cargo fixtures pass in 1.85 seconds, including rejection of a
-rebuilt CLI with stale runtime provenance. These fixtures model only that narrow
-contract; full Codex invalidation remains unrun. The extra original-input rebuild
-is omitted to keep verification to the least work needed for this gate.
+Hosted run `40387733411` rebuilds only the CLI after changing that input and its
+retained doctor report contains the changed commit. The verifier then fails
+because it expects arrays, whereas upstream's `cli/src/doctor.rs` defines maps
+for both checks and details. The unchanged changed-input invocation is not
+reached, so full invalidation acceptance remains unmet. The corrected real-Cargo
+fixture reproduces that exact parser failure before the repair; both acceptance
+and stale-provenance rejection then pass in 1.28 seconds. Commit `854e96c41e`
+corrects the verifier without changing upstream. Run `40393398689` exercises the
+remaining hosted gate. The extra original-input rebuild is omitted to keep
+verification to the least work needed for this gate.
+
+Windows ARM64 grouped population run `40373566212`, attempt 1 at
+`0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
+native smokes, source/dependency guards and verified private publication. All
+restore candidates miss. Build invocations take 274/325/2,828/987/71/240/43 seconds
+in executable order. The final save uses eight groups, reuses seven output
+archives and uploads 1,344,011 metadata bytes in 64 seconds. Attempt 2 is the
+same-revision warm comparison; its result remains unverified.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
