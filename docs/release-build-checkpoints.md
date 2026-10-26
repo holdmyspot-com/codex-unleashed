@@ -270,6 +270,33 @@ No further identical retry is justified. The goal executor retains the archive
 in session temp `arm-runner-debug-7v1SYj/logs.zip` until ARM cache acceptance
 and owns its cleanup; the source, smoke and cache-save gates remain unrun.
 
+Run [`40412484686`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40412484686)
+at `2701312d8cb1ea6d345b7e542da678305a209212` is a compilation-free ARM64
+preflight for kernel signal observation. It installs bpftrace, starts an owned
+observer and marker, waits for a recorded SIGCONT from the known Python sender,
+then verifies a matching SIGTERM record and the marker's signal exit. Both
+processes are reaped, and probe receipts/logs have one-day artifact retention.
+The first hosted probe fails before attachment: bpftrace rejects `str(args->comm)`
+because the tracepoint field is already a string array. Commit
+`1d7046a34d4516c12c8ae0ea51ef025acf0f1586` passes the field directly; workflow
+lint and Python syntax checks pass. The local negative check records sudo's
+no-new-privileges rejection without hanging. This diagnostic is
+downstream-only, with no upstream Codex counterpart. Its first manual dispatch
+returned 404 because the workflow was not registered; the scoped main.new push
+trigger starts it without modifying default main.
+
+Focused retry
+[`40412914539`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40412914539)
+at that correction passes in 15 seconds. Its log records Python sender PID 2643
+delivering SIGCONT and SIGTERM to marker PID 2645, followed by the marker's
+SIGCHLD and observer cleanup signals. Artifact `12693079656`,
+`arm64-runner-signal-probe`, has API-reported SHA-256
+`cb014ba6bfded9cc47c45ddfdbd673283d2ee0cf5114cfe81e36fdbd3b1d4acf`.
+This verifies kernel signal-observation availability on the hosted ARM runner;
+it does not identify the earlier shutdown sender or pass ARM cache acceptance.
+The next diagnostic must keep this observer active across the actual ARM build
+and stream records to the job log, including signals outside the build child.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
