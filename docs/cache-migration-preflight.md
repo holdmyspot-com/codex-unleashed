@@ -62,6 +62,51 @@ The goal executor retains the verified archive and analysis in session directory
 `retention-verified-nIxInb` for the retention preview implementation and owns their
 cleanup after that work consumes them. Hosted artifacts retain the one-day policy.
 
+## Read-only retention preview command
+
+The bundled tooling CLI now provides `preview-ghcr-retention`. It accepts one
+JSON object on standard input with `releases`, `package_versions` and
+`protected_upstream_refs` arrays. Release and package records use the fields
+collected by the inventory workflow above. Join those captured inputs with:
+
+```sh
+jq -n \
+  --slurpfile releases upstream-releases.jsonl \
+  --slurpfile versions package-versions.jsonl \
+  --rawfile pinned protected-upstream-ref \
+  '{releases: $releases, package_versions: $versions,
+    protected_upstream_refs: [$pinned | rtrimstr("\n")]}' \
+  | codex-tooling preview-ghcr-retention
+```
+
+The command reuses old main's numeric stable-version ordering and manifest-level
+Cargo alias policy, using the existing Jackson dependency for JSON. It excludes
+drafts and prereleases, selects the newest two distinct stable tags and adds
+explicit protected stable references. Any matching Cargo alias protects the
+whole package version. Untagged versions and other Cargo versions are reported
+as obsolete candidates; unrelated tagged versions are unmanaged. All fields and
+unique positive integer version IDs are validated before any preview is emitted.
+No stable release, missing tag arrays, duplicate IDs and malformed JSON fail
+without printing a candidate list. IDs retain inventory order.
+
+The maintained dispatcher regression first returns status 2 for the absent
+command, then passes shared-alias, partial-alias, pinned-baseline and numeric
+ordering cases after implementation. Its invalid-inventory cases verify refusal
+without partial output. All 37 tooling tests and bundled runtime assembly pass
+with JDK 27 and Rust 1.99.1 using the documented `-Pruntime verify` command in
+[source-cache-migration.md](source-cache-migration.md). The packaged launcher also
+runs with an empty `PATH` and no `JAVA_HOME` against the hash-verified private
+inventory above: it retains all 49 tagged versions and reports exactly the same
+75 untagged candidates, with zero unmanaged versions and no diagnostics.
+
+This command has no registry client or deletion operation. Its `dry_run: true`
+result is a point-in-time policy preview, not permission to delete candidates
+while writers can publish new aliases. Automatic pruning and the concurrent
+writer/deletion gate remain unimplemented. The goal executor retains the preview
+inputs, recreation proof and receipt in session directory
+`retention-preview-Oe7oyA` through retention checkpoint acceptance and owns their
+cleanup then; the previously captured inventory remains available alongside it.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
