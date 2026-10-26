@@ -250,8 +250,25 @@ attempt is terminal before retrying; this preserves its source, selected ARM64
 job and resumable checkpoints. The added observation is the runner diagnostic
 archive, which was not enabled in the original attempt. Retrieve that archive
 after completion and inspect shutdown/cancellation events before selecting a
-build mitigation. The command was accepted; execution and its outcome remain
-pending. See [GitHub's diagnostic logging contract](https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging).
+build mitigation. See [GitHub's diagnostic logging contract](https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging).
+
+That attempt is now terminal: job `121874632053` fails in 14m 32s, with the
+release command returning 143 after 10m 41s. The attempt-2 log archive is
+1,669,412 bytes, SHA-256
+`286040acae7965e9e09c0255a523ffd649f4fc36c43005a61d31fec039b79cf8`.
+It includes both runner and worker diagnostics for runner 2.338.0, source commit
+`197ca027b90de199464dee3bb9ff198a1db60967`. The worker records process exit
+143 followed by `Runner will be shutdown for UserCancelled`; no cancellation
+channel message or signal-sender record survives. The listener's last recorded
+lease renewal precedes shutdown by 16 seconds and remains valid beyond it.
+This does not establish a job timeout, lease expiry, compiler error or human
+cancellation. The [matching worker source](https://github.com/actions/runner/blob/197ca027b90de199464dee3bb9ff198a1db60967/src/Runner.Worker/Worker.cs)
+uses the same shutdown label for its unloading handler, so the label alone
+cannot identify the initiating actor. The next discriminating observation must
+cover signal delivery to the runner processes, outside the traced build child.
+No further identical retry is justified. The goal executor retains the archive
+in session temp `arm-runner-debug-7v1SYj/logs.zip` until ARM cache acceptance
+and owns its cleanup; the source, smoke and cache-save gates remain unrun.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
