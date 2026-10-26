@@ -15,6 +15,10 @@ on:
         description: Trace the isolated empty-workspace-roots failure using the same compiled Bazel outputs
         type: boolean
         default: false
+      bundle_empty_workspace_bwrap:
+        description: Stage the matching built bwrap beside the test executable before the trace comparison
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,6 +71,12 @@ jobs:
           set -euo pipefail
           test "$FOCUSED_COMPARISON" = true
           test "$TEST_NAME_FILTER" = remote_process_preserves_empty_workspace_roots
+
+      - name: Validate the bundled-helper comparison
+        if: inputs.bundle_empty_workspace_bwrap
+        env:
+          TRACE_SELECTED: ${{ inputs.trace_empty_workspace_roots }}
+        run: test "$TRACE_SELECTED" = true
 
       - name: Verify pristine upstream source identity
         run: |
@@ -242,6 +252,8 @@ jobs:
 
       - name: Trace the failed case incrementally on the same runner
         if: ${{ !cancelled() && inputs.trace_empty_workspace_roots && steps.bazel_tests.outcome == 'failure' }}
+        env:
+          BUNDLE_BWRAP: ${{ inputs.bundle_empty_workspace_bwrap }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -251,6 +263,13 @@ jobs:
           CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
           export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/traced-execution-logs"
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+
+          if [[ "$BUNDLE_BWRAP" == true ]]; then
+            ln -s "$(realpath bazel-bin/codex-rs/bwrap/bwrap)" bazel-bin/codex-rs/exec-server/bwrap
+            sha256sum bazel-bin/codex-rs/bwrap/bwrap \
+              bazel-bin/codex-rs/exec-server/exec-server-exec_process-test \
+              > "$evidence/bundled-helper-comparison.sha256"
+          fi
 
           printf '#!/usr/bin/env bash\nshift\nexec strace -f -yy -s 256 -o %q %q "$@"\n' \
             "$evidence/empty-workspace-roots.strace" \
