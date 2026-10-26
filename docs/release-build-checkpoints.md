@@ -57,6 +57,13 @@ includes each executable's Cargo log, Cargo timing reports, build/checkpoint
 durations, group counts, uploaded archive bytes and reused group counts. Complete
 the required clean matrix separately before accepting the plan's cache gate.
 
+Native fixture [run `40332295510`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332295510)
+passes on all six release hosts at `f9745689f29b7e3f81c3fa643824d8ac5ac45337`.
+Windows verification resolves Git Bash and GNU tar explicitly at the native
+Python launch boundary. The [failure comparison](upstream-failure-comparison.md)
+retains the failed launcher results and passing counterfactuals. Full Codex
+multipart build, restoration and transfer measurements remain pending.
+
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
 separate build-script, host and target outputs, and metadata also needs transfer.
