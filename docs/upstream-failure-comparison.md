@@ -82,10 +82,17 @@ Focused hosted run
 [`40409819108`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40409819108)
 at `8828e21ed1cba0c95e4ab133f63c2c9826189e81` supplies `/bin/zsh` through the
 Linux host's package installation and selects the unchanged `zsh` cases.
-Workflow static checks pass; runtime acceptance remains pending. Verify the
-individual case results and absence of prerequisite guard returns before
-counting these test bodies as exercised. This changes the test environment,
-not upstream source or assertions; it does not establish upstream execution.
+Job `121877279177` passes all four selected cases in 11.14 seconds, with zero
+failures/ignored cases and 68 filtered out. Its host reports zsh 5.9. No zsh or
+bubblewrap prerequisite guard returns appear in the captured test output.
+Artifact `12693646354` has SHA-256
+`115316d2de2d44d88749b4c5990597dcba66666e82143f8289f30c3c99411330`;
+downloaded verification confirms exact source/restart identities, equal
+before/after source diffs and `exit_code=0`. This accepts the focused Linux
+environment setup and four test bodies; it does not establish upstream
+execution or the complete cross-platform runtime gate. The goal executor
+retains session temp `zsh-baseline-JKR5CN/artifact.zip` through baseline
+acceptance and owns cleanup. Workflow static checks also pass.
 
 ### Retrieved upstream case log
 
