@@ -157,9 +157,26 @@ contents. The transport now assigns `.d` dependency reports to metadata and
 continues saving their contents and timestamps. A real-ORAS regression first
 fails because a report update changes the compiled archive's digest, then passes
 with that archive reused and the updated report restored. Preserve these
-successful build results while verifying this correction on native hosts and
-the actual grouped build; grouped warm comparison, remaining platforms and the
-clean matrix remain unmet gates.
+successful build results. Native fixture run
+[`40371907954`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40371907954)
+passes on all six release hosts at `f550feafad644576c1d03bece323785a8850b30f`,
+including compiled-archive reuse after a dependency-report update and restoration
+of the updated report. Actual grouped Linux
+[run `40371906652`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40371906652)
+then passes at the same revision in 8m 28s, including both native smokes,
+source/dependency guards, source recording and verified private publication.
+Restoration reads the preceding two-group manifest in 77 seconds. All five
+executable invocations reuse Rust compilation outputs (9/1/1/1/1 seconds).
+The first checkpoint converts the imported ownership to the new classification,
+uploading 2,914,922,787 archive bytes in 115 seconds including guards. Subsequent
+checkpoints reuse the compiled group, upload 2,393,167 / 2,393,161 / 2,393,982 /
+2,393,625 metadata bytes, and take 20/18/18/19 seconds. The final verified save
+reuses the compiled group and uploads 1,337,192 metadata bytes in 19 seconds,
+publishing manifest
+`sha256:f8846f63942738a59d0c079b7e3ddfb68ff91bcabce724a9b6af3b061fda69b0`.
+A subsequent run must still verify restoration of this newly classified cache
+without the conversion upload. Remaining platforms, representative full Codex
+invalidation and the clean matrix remain unmet gates.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
