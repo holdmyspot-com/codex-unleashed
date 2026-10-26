@@ -70,6 +70,26 @@ Old main's smaller GraphQL field query was also evaluated: it returns only
 1,000 releases, omitting 245 captured tags, so it is not substituted for the
 complete inventory.
 
+Hosted run `40404430412`, job `121858399002`, at
+`ea688c75dceab7d725de25d5027686582a66a9d1` passes the integrated read-only
+workflow in 2m 13s. It captures 1,245 distinct releases and 137 private package
+versions, passes all 37 helper tests and runtime assembly, and previews 52
+retained versions, 85 obsolete candidates and zero unmanaged versions. The
+selected stable releases are `rust-v0.164.0` and `rust-v0.163.0`. Artifact
+`12690685477` has verified SHA-256
+`036f29eb2014e06e8d49ed1613aa16467fc87f7c2a5150e7fc9ec3cd82e6f5d3`;
+its three disjoint classification lists cover every captured package ID.
+Nothing is deleted. This closes hosted preview integration, not automatic
+retention or concurrent-writer safety. The executor retains the verified archive
+in session directory `retention-hosted-LqCLCD` through retention checkpoint
+verification and owns cleanup after its last consumer.
+
+The run also reports an unexpected `toolchain` input to the pinned Rust action.
+That action's own definition fixes the toolchain to 1.99.1 and declares only
+target/component inputs; its log confirms rustc 1.99.1 actually ran. The redundant
+unsupported input is removed, preserving that immutable action and version.
+Hosted confirmation that the setup warning is gone remains pending.
+
 The goal executor retains the verified archive and analysis in session directory
 `retention-verified-nIxInb` through retention checkpoint verification and owns their
 cleanup after the last verification consumer. Hosted artifacts retain the one-day policy.
