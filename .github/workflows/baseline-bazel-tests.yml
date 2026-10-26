@@ -11,6 +11,10 @@ on:
         description: Libtest name filter for the focused exec-server integration target; used only when exec_server_shells is true
         type: string
         default: shell_snapshot
+      trace_empty_workspace_roots:
+        description: Trace the isolated empty-workspace-roots failure using the same compiled Bazel outputs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -54,6 +58,16 @@ jobs:
           ref: ${{ steps.inputs.outputs.commit }}
           persist-credentials: false
 
+      - name: Validate the focused trace selection
+        if: inputs.trace_empty_workspace_roots
+        env:
+          FOCUSED_COMPARISON: ${{ inputs.exec_server_shells }}
+          TEST_NAME_FILTER: ${{ inputs.exec_server_filter }}
+        run: |
+          set -euo pipefail
+          test "$FOCUSED_COMPARISON" = true
+          test "$TEST_NAME_FILTER" = remote_process_preserves_empty_workspace_roots
+
       - name: Verify pristine upstream source identity
         run: |
           set -euo pipefail
@@ -90,6 +104,10 @@ jobs:
         uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
         with:
           targets: x86_64-unknown-linux-gnu
+
+      - name: Install the requested syscall tracer
+        if: inputs.trace_empty_workspace_roots
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
 
       - name: Synchronize release workspace versions without dependency upgrades
         run: |
@@ -175,6 +193,7 @@ jobs:
           cmp "$evidence/expected-targets.txt" "$evidence/expanded-package-targets.txt"
 
       - name: Run the maintained Bazel package shard without a second disk-cache copy
+        id: bazel_tests
         env:
           BASELINE_EXEC_SERVER_SHELLS: ${{ inputs.exec_server_shells }}
           BASELINE_EXEC_SERVER_FILTER: ${{ inputs.exec_server_filter }}
@@ -219,6 +238,33 @@ jobs:
           printf 'exit_code=%s\n' "$result" > "$evidence/bazel-tests.receipt"
           git diff --binary > "$evidence/source-after.diff"
           cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          exit "$result"
+
+      - name: Trace the failed case incrementally on the same runner
+        if: ${{ !cancelled() && inputs.trace_empty_workspace_roots && steps.bazel_tests.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/baseline-bazel-evidence"
+          cmp "$evidence/source-before.diff" "$evidence/source-after.diff"
+          grep -Fq 'test result: FAILED. 0 passed; 1 failed;' "$evidence/bazel-tests.log"
+          export CODEX_COMPAT_RELEASES
+          CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
+          export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/traced-execution-logs"
+          mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+          set +e
+          .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
+            test --disk_cache= --test_tag_filters=-argument-comment-lint \
+            --test_arg=remote_process_preserves_empty_workspace_roots --test_arg=--nocapture \
+            --test_env=RUST_BACKTRACE=1 --test_output=all --nocache_test_results \
+            --run_under="strace -f -yy -s 256 -o $evidence/empty-workspace-roots.strace" \
+            --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
+            //codex-rs/exec-server:exec-server-exec_process-test \
+            2>&1 | tee "$evidence/empty-workspace-roots-traced.log"
+          result=${PIPESTATUS[0]}
+          set -e
+          printf 'exit_code=%s\n' "$result" > "$evidence/empty-workspace-roots-traced.receipt"
+          git diff --binary > "$evidence/source-after-trace.diff"
+          cmp "$evidence/source-before.diff" "$evidence/source-after-trace.diff"
           exit "$result"
 
       - name: Verify upstream source and tests remain unmodified
