@@ -174,9 +174,18 @@ checkpoints reuse the compiled group, upload 2,393,167 / 2,393,161 / 2,393,982 /
 reuses the compiled group and uploads 1,337,192 metadata bytes in 19 seconds,
 publishing manifest
 `sha256:f8846f63942738a59d0c079b7e3ddfb68ff91bcabce724a9b6af3b061fda69b0`.
-A subsequent run must still verify restoration of this newly classified cache
-without the conversion upload. Remaining platforms, representative full Codex
-invalidation and the clean matrix remain unmet gates.
+Attempt 2 fails before cache access because the ORAS release download returns
+HTTP 504 on all three setup attempts. Attempt 3 restores the exact newly saved
+manifest and passes all build, smoke, guard and publication checks in 11m 36s.
+It restores in 131 seconds and reuses all five compilations (14/2/1/1/1 seconds),
+but still uploads 2,914,909,995 archive bytes at its first checkpoint. The earlier
+conversion explanation therefore does not account for the cross-run change.
+Later checkpoints reuse the compiled group and upload about 2.4 MB each in
+25/17/18/17 seconds; the final save uploads 1,333,657 metadata bytes in 18 seconds.
+Read-only comparison of the preceding verified archive and this first checkpoint
+must identify what changed before any repair. Cross-run archive reuse, remaining
+platforms, representative full Codex invalidation and the clean matrix remain
+unmet gates.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
