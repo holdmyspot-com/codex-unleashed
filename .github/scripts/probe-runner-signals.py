@@ -43,7 +43,7 @@ tracepoint:oom:mark_victim {
         observers.append(observer)
         journal = subprocess.Popen(
             ["sudo", "-n", "journalctl", "--follow", "--lines=0",
-             "--output=short-monotonic", "--priority=warning"],
+             "--output=short-monotonic", "--priority=info"],
             stdout=output.stdin,
             stderr=subprocess.STDOUT,
             start_new_session=True
@@ -51,7 +51,7 @@ tracepoint:oom:mark_victim {
         observers.append(journal)
         resources = subprocess.Popen(
             ["top", "--batch-mode", "--delay=5", "--scale-summary-mem=m",
-             f"--pid={os.getpid()},{observer.pid},{output.pid}"],
+             "--sort-override=%MEM", "--width=160"],
             stdout=output.stdin,
             stderr=subprocess.STDOUT,
             start_new_session=True
