@@ -23,6 +23,16 @@ fi
 operation="$1"
 shift
 case "$operation" in
+  tag)
+    # Linux run 40332032199 attempt 2 returned not found when resolving the
+    # just-pushed release tag. Publication must use its local manifest instead.
+    case "$1" in
+      *:cargo-release-*)
+        printf 'Error response from registry: %s: not found\n' "$1" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   blob|manifest)
     subcommand="$1"
     shift

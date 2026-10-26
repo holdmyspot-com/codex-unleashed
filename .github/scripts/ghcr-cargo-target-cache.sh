@@ -129,19 +129,19 @@ case "$operation" in
       cd "$archive_directory"
       # Keep the release association used by the existing retention policy.
       cache_identity="$(printf '%s' "$tag" | sha256sum | cut -d ' ' -f 1)"
-      release_reference="$repository:cargo-release-$cache_identity-$upstream_tag"
+      publication_reference="$repository:cargo-release-$cache_identity-$upstream_tag,$tag"
+      if [[ -n "$seed_tag" ]]; then
+        publication_reference="$publication_reference,$seed_tag"
+      fi
+      # GHCR accepted a push but immediately returned not found for its tag.
+      # Publish every alias from the local manifest without resolving that tag.
       if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$release_reference" "$reference" "$target_directory" "$archive_directory"
+        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory"
       else
-        oras push "$release_reference" \
+        oras push "$publication_reference" \
           --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
           'cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd'
       fi
-      aliases=("$tag")
-      if [[ -n "$seed_tag" ]]; then
-        aliases+=("$seed_tag")
-      fi
-      oras tag "$release_reference" "${aliases[@]}"
     )
     printf 'cache_result=saved\n'
     ;;

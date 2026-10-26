@@ -90,8 +90,10 @@ step with 32 dependencies, then passes with two archives: outputs and metadata.
 A second step adds one archive and retains the earlier output blob. Local
 real-ORAS checks pass final-save reuse with both older verified and older partial
 state, cache relocation, imported bootstrap ownership, legacy and earlier-parts
-reads, removed files, hardlinks and exact timestamps. Native verification of this
-grouping revision and actual Codex transfer measurements remain separate gates.
+reads, removed files, hardlinks and exact timestamps. Native fixture
+[run `40360535128`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40360535128)
+passes on all six release hosts at `32cb038e1e4ee6835cddc9247bea2f265a24a31e`.
+Actual Codex transfer measurements remain a separate gate.
 
 Actual Linux x86-64 [run `40332032199`, attempt 1](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40332032199/attempts/1)
 ends with exit 143 and the runner's explicit shutdown-signal diagnostic during
@@ -109,6 +111,26 @@ Codex build or restored checkpoint acceptance. The host reports shutdown but
 does not identify its initiating cause. A focused same-revision retry checks
 restoration of the published partial state; it does not recover work compiled
 after the last completed checkpoint.
+
+Attempt 2 restores the 795-group partial snapshot, completes every required
+executable and reaches the final verified-cache save. CLI and app-server builds
+take 2,362 and 952 seconds; their partial checkpoints take 334 and 40 seconds.
+The final save uploads a 1,511-layer manifest at
+`sha256:29d8f96e8048c534145aae540d3c3f1d9b23daf1db44e097813bf7fdfd36d6ea`,
+then fails when `oras tag` immediately tries to resolve its release tag and GHCR
+returns `not found`. The failure handler saves partial state successfully.
+This run fails; it does not establish a verified successful cache.
+
+Read-only hosted [inspection `40365166154`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365166154)
+subsequently fetches that exact manifest by both release tag and digest. Package
+metadata confirms the original publication and partial aliases. The registry's
+reason for the earlier lookup failure remains unknown. Publication now passes
+the release, exact and compatible tags to ORAS together, using its local
+manifest rather than looking up a newly written tag. A local regression supplies
+the observed tag-lookup failure and verifies successful publication, alias
+resolution and restoration for both grouped and legacy archives. Hosted
+verification of this publication change and a full grouped Codex run remain
+required.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
