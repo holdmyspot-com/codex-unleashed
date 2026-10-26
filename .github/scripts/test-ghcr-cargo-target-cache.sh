@@ -33,6 +33,16 @@ exec "$CODEX_TEST_ORAS" "$operation" --oci-layout "$@"
 WRAPPER
 chmod +x "$fixture/bin/oras"
 export PATH="$fixture/bin:$PATH"
+bash_path="$(command -v bash)"
+wrapper_path="$fixture/bin/oras"
+if command -v cygpath >/dev/null 2>&1; then
+  bash_path="$(cygpath -m "$bash_path")"
+  wrapper_path="$(cygpath -m "$wrapper_path")"
+fi
+# Native Windows Python resolves oras.exe before an extensionless Bash wrapper.
+# Pass that wrapper through the caller's Git Bash explicitly on every platform.
+export CARGO_CACHE_ORAS_COMMAND
+CARGO_CACHE_ORAS_COMMAND="$(node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' "$bash_path" "$wrapper_path")"
 repository="$fixture/registry"
 "$CODEX_TEST_ORAS" push --oci-layout "$repository:seed" --artifact-type application/vnd.codex.cache-test.v1
 target=x86_64-unknown-linux-musl
