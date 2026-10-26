@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/runner-signal-probe.yml
       - .github/scripts/probe-runner-signals.py
+      - .github/scripts/test-probe-runner-signals.py
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,10 @@ jobs:
       - name: Verify known signal sender and recipient
         working-directory: ${{ runner.temp }}/runner-signal-evidence
         run: python3 "$GITHUB_WORKSPACE/.github/scripts/probe-runner-signals.py"
+
+      - name: Verify observation during commands and exit-status propagation
+        working-directory: ${{ runner.temp }}/runner-signal-evidence
+        run: python3 "$GITHUB_WORKSPACE/.github/scripts/test-probe-runner-signals.py"
 
       - name: Retain probe evidence for one day
         if: always()
