@@ -128,9 +128,12 @@ reason for the earlier lookup failure remains unknown. Publication now passes
 the release, exact and compatible tags to ORAS together, using its local
 manifest rather than looking up a newly written tag. A local regression supplies
 the observed tag-lookup failure and verifies successful publication, alias
-resolution and restoration for both grouped and legacy archives. Hosted
-verification of this publication change and a full grouped Codex run remain
-required.
+resolution and restoration for both grouped and legacy archives. Native fixture
+[run `40365691558`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365691558)
+passes all six release hosts at `d50b36a7a185e8b7a04554229797a1c8fa8afb9b`.
+These fixtures use local OCI layouts; actual GHCR publication and a full grouped
+Codex run remain required. Focused Linux run `40365751436` tests that integration
+with cache restoration enabled at the same revision.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
