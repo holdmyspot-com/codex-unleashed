@@ -237,7 +237,12 @@ release-stage fixtures pass under tracing. A host shutdown may still remove the
 runner before a signal record survives; absence of a record cannot establish
 the initiating cause. Ordinary runs keep tracing disabled. Run `40395599813`
 uses this diagnostic at `ee711a9716fb4dfda3ab18f41256134b459dd5f4`;
-its result remains unverified.
+job `121827730955` fails after the runner reports a shutdown signal and the build
+exits 143. No SIGTERM sender record survives. Even the `always()` evidence and
+guard steps are skipped. This narrows the observed boundary to runner shutdown,
+but does not identify its requester or establish a compiler, memory or disk
+failure. Keep ARM acceptance open; another identical retry would not distinguish
+those causes.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
@@ -282,9 +287,17 @@ for both checks and details. The unchanged changed-input invocation is not
 reached, so full invalidation acceptance remains unmet. The corrected real-Cargo
 fixture reproduces that exact parser failure before the repair; both acceptance
 and stale-provenance rejection then pass in 1.28 seconds. Commit `854e96c41e`
-corrects the verifier without changing upstream. Run `40393398689` exercises the
-remaining hosted gate. The extra original-input rebuild is omitted to keep
-verification to the least work needed for this gate.
+corrects the verifier without changing upstream. Run `40393398689`, job
+`121820038862`, now passes the hosted gate at that revision: the original warm
+invocation completes, the changed commit input rebuilds the CLI and appears in
+the running doctor's provenance, and the next unchanged invocation rebuilds
+nothing. The result records `non_cli_rebuilds: 0`, `changed_warm_rebuilds: 0`
+and `status: passed`. The changed-input invocation takes about 21m 36s; this
+verifies invalidation correctness, not the five-minute scheduling goal. Native
+smokes, source/dependency guards and verified cache publication also pass. The
+extra original-input rebuild is omitted to keep verification to the least work
+needed for this gate. This is Linux x86-64 evidence; the other required platform
+and clean-matrix gates remain open.
 
 Windows ARM64 grouped population run `40373566212`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
