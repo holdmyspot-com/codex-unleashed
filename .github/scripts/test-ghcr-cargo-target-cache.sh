@@ -85,9 +85,45 @@ result=$?
 set -e
 test "$result" = 3
 
+seed_tag="cargo-seed-v1-$target-$identity"
+next_tag="cargo-v3-$target-$changed_identity"
+bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag"
+set +e
+bash "$cache" pull "$repository" "$seed_tag" "$fixture/restored target" rust-v0.164.0
+result=$?
+set -e
+test "$result" = 3
+bash "$cache" pull-partial "$repository" "$seed_tag" "$fixture/restored target" rust-v0.164.0
+test "$(cat "$restored/deps/libfixture.rlib")" = partial-update
+test "$(oras resolve "$repository:$next_tag-partial")" = "$(oras resolve "$repository:$seed_tag-partial")"
+
+printf verified-seed > "$release/deps/libfixture.rlib"
+bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag"
+seed_digest="$(oras resolve "$repository:$seed_tag")"
+test "$(oras resolve "$repository:$next_tag")" = "$seed_digest"
+seed_release_identity="$(printf '%s' "$next_tag" | sha256sum | cut -d ' ' -f 1)"
+test "$(oras resolve "$repository:cargo-release-$seed_release_identity-rust-v0.164.0")" = "$seed_digest"
+
+printf newer-partial > "$release/deps/libfixture.rlib"
+bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag"
+test "$(oras resolve "$repository:$seed_tag")" = "$seed_digest"
+bash "$cache" pull "$repository" "$seed_tag" "$fixture/restored target" rust-v0.164.0
+test "$(cat "$restored/deps/libfixture.rlib")" = verified-seed
+bash "$cache" pull-partial "$repository" "$seed_tag" "$fixture/restored target" rust-v0.164.0
+test "$(cat "$restored/deps/libfixture.rlib")" = newer-partial
+
+for invalid_seed_tag in '' "cargo-seed-v1-aarch64-unknown-linux-musl-$identity" "$tag"; do
+  set +e
+  bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$invalid_seed_tag"
+  result=$?
+  set -e
+  test "$result" = 2
+done
+test "$(oras resolve "$repository:$seed_tag")" = "$seed_digest"
+
 set +e
 CODEX_TEST_ORAS_FAIL_RESOLVE=1 bash "$cache" pull "$repository" "$tag" "$fixture/restored target" rust-v0.164.0
 result=$?
 set -e
 test "$result" = 42
-printf 'PASS: missing cache, real OCI archive round trip, exact timestamp and hard-link preservation, executable preservation, partial-state isolation, changed-input miss, transport failure propagation\n'
+printf 'PASS: archive bytes/timestamps/links, executable retention, compatible aliases, release association, successful/partial isolation, invalid alias rejection, changed-input miss, transport failure propagation\n'
