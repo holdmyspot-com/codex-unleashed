@@ -26,6 +26,7 @@ results from the remaining acceptance gates; detailed historical receipts follow
 | --- | --- | --- |
 | Step 1 release compilation and native smokes | All six release targets pass pristine uncached builds and native smokes. | Relevant runtime-test acceptance and upstream failure comparisons remain open. |
 | Step 2 original cache format | All six targets pass cold/warm comparisons with unchanged compilations reused. | This does not accept the newer grouped transport. |
+| Step 2 packaged cache helper | Run [`40407974539`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40407974539) at `6e67d90609d78e1cbcdf99eb0c54d41dff1284fa` passes helper build/verification, the packaged launcher/Cargo freshness fixture and source guards on all six native targets. | This fixture does not replace actual Codex grouped-cache acceptance or final clean verification. |
 | Step 2 cache grouped by build step | Linux x86-64, both Windows targets and macOS ARM64 pass actual Codex reuse checks. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Intel Mac population run `40373556470` is active; Linux ARM64 has unresolved runner shutdowns. Final clean verification of the cumulative setup remains unrun. |
 | D8 private retention preview | Runs `40404430412` and `40404968404` pass collection, all 37 helper tests, runtime assembly and read-only preview. The latter has zero annotations. | Automatic retention and concurrent-writer/deletion safety remain open; nothing is deleted. |
 
