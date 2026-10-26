@@ -1,0 +1,42 @@
+name: Inspect failed cache publication
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+
+      - name: Authenticate private registry reads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Compare publication tag and immutable manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repository=ghcr.io/holdmyspot-com/cargo-cache
+          release_tag=cargo-release-3a018cf3398441c3c9d3a113f6e6978ae46a7a3ca1bcd8f92c53a8b0eedf4efa-rust-v0.164.0
+          digest=sha256:29d8f96e8048c534145aae540d3c3f1d9b23daf1db44e097813bf7fdfd36d6ea
+
+          for reference in "$repository:$release_tag" "$repository@$digest"; do
+            printf 'Inspecting %s\n' "$reference"
+            if oras manifest fetch "$reference" --output "$RUNNER_TEMP/manifest.json"; then
+              jq '{mediaType, artifactType, layers: (.layers | length)}' "$RUNNER_TEMP/manifest.json"
+            else
+              result=$?
+              printf 'manifest_fetch_exit=%s reference=%s\n' "$result" "$reference"
+            fi
+          done
+
+          gh api --paginate 'orgs/holdmyspot-com/packages/container/cargo-cache/versions?per_page=100' \
+            --jq '.[] | select(.name == "sha256:29d8f96e8048c534145aae540d3c3f1d9b23daf1db44e097813bf7fdfd36d6ea") | {id, name, created_at, updated_at, tags: .metadata.container.tags}'
