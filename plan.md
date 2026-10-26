@@ -35,11 +35,16 @@ observation during a real command and propagation of that command's failure
 status. Focused cached ARM build `40413740004` at
 `2fd2eee04e49d0c3cdfb868ea64d1d3ed8646447` now keeps that kernel observer
 active across the existing build checkpoints and streams records to its job log.
-Its terminal result remains pending; the probe does not close ARM cache acceptance
-or establish who initiated earlier runner shutdowns. The
+The build ends with exit 143 after 17m 10s. Its live log captures a kernel-generated
+SIGKILL for rustc followed by systemd terminating the hosted-compute parent of
+the runner. OOM victim selection and the initiating shutdown cause remain
+unestablished; the next observation must distinguish those before a mitigation.
+Initial cache lookups miss under the changed helper-input identity, but three
+completed checkpoints are saved for resumption. This does not close ARM cache
+acceptance or establish who initiated earlier runner shutdowns. The
 [checkpoint evidence](docs/release-build-checkpoints.md) records the failed
-control and successful probe. Existing Intel Mac population and ARM monitoring
-continue without cancelling either build.
+control, successful probe, terminal build log and next diagnostic boundary.
+Existing Intel Mac population and its monitoring continue without cancellation.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
