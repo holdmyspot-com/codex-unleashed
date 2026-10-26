@@ -37,6 +37,31 @@ The complete `.github/scripts/ghcr-cargo-target-cache.sh` review finds these add
 
 The maintained `.github/workflows/cache-cleanup.yml` passes the repository's pinned `.github/upstream-ref` as a protected reference. The GHCR script also preserves that reference and, during push, the release being built. It retains a package version if any release-qualified Cargo alias belongs to the protected set, because deleting a version deletes all its aliases; it also selects untagged versions for deletion. Verify these manifest-level decisions with shared aliases and the frozen baseline outside the newest two releases before enabling retention. This review does not authorize deleting any current cache or establish how concurrent writers behave.
 
+## Current private-registry retention inventory
+
+The read-only [cache-retention-inventory.yml](../.github/workflows/cache-retention-inventory.yml) workflow collects paginated upstream
+release metadata and private package-version metadata with `packages: read`.
+It has no deletion permission or command. Run `40396840902` at
+`b11b37a2e8326938b950178efd3935584366670c` first receives HTTP 504 while listing
+upstream releases, before package enumeration. Its unchanged read-only retry
+passes in 1m 22s. The local token separately lacks `read:packages`; that local
+permission failure is not evidence that the workflow token cannot read packages.
+
+Successful artifact `12685459536` has SHA-256
+`ce023de1ca19814aafac75e08003cfb674922ce22fe05c4f4fe9fca83ef600fa`, verified
+before analysis. It contains 1,245 release records and 124 package versions.
+Applying the fixed old-main selection rules retains `rust-v0.164.0` and
+`rust-v0.163.0`, with the pinned baseline included explicitly. All 49 tagged
+versions have a retained release association, including all ten tagged
+`-parts-v2-partial` versions. The 75 obsolete candidates are all untagged.
+No package version is deleted. This verifies the current tag association against
+old main's policy; it does not establish safe concurrent deletion or complete
+the retention-tool migration.
+
+The goal executor retains the verified archive and analysis in session directory
+`retention-verified-nIxInb` for the retention preview implementation and owns their
+cleanup after that work consumes them. Hosted artifacts retain the one-day policy.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.

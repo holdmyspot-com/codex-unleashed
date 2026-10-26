@@ -291,8 +291,16 @@ Windows ARM64 grouped population run `40373566212`, attempt 1 at
 native smokes, source/dependency guards and verified private publication. All
 restore candidates miss. Build invocations take 274/325/2,828/987/71/240/43 seconds
 in executable order. The final save uses eight groups, reuses seven output
-archives and uploads 1,344,011 metadata bytes in 64 seconds. Attempt 2 is the
-same-revision warm comparison; its result remains unverified.
+archives and uploads 1,344,011 metadata bytes in 64 seconds. Attempt 2, job
+`121820069496`, passes the same-revision warm comparison in 24m 21s. It restores
+that cold manifest, `sha256:6ac592bbee6fa80facec6133ab448b2c4e47cd91cb662ba43b46d1aef4800d82`,
+in 177 seconds and emits zero Rust compilation records. The seven build
+invocations take 82/4/7/4/3/6/5 seconds. Every checkpoint reuses seven output
+archives and uploads about 2.4 MB of metadata in 90–96 seconds including guards.
+Both native smokes, source/dependency guards, recording and verified private
+publication pass. The final save reuses seven archives and uploads 1,333,319
+metadata bytes in 90 seconds. These results verify compilation reuse; checkpoint
+processing remains a substantial part of the job duration.
 
 The first partial save previously searched only its partial reference, omitting
 the verified manifest it had restored. A compatible restore also supplied no
