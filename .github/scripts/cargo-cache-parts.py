@@ -14,8 +14,9 @@ argument array, such as a Bash executable and a local-layout fixture wrapper.
 The default is ["oras"]. Arguments are passed directly without shell evaluation.
 CARGO_CACHE_STAGE (or --step) identifies the step owning new outputs; existing
 ownership travels in target-relative .codex-cache-groups.json. Imported caches
-without that record start in bootstrap. Directories and cache bookkeeping share
-a metadata group. Push requires a listed build step; invalid CLI inputs exit 2.
+without that record start in bootstrap. Directories, dependency reports and cache
+bookkeeping share a metadata group. Push requires a listed build step; invalid
+CLI inputs exit 2.
 """
 
 import argparse
@@ -97,9 +98,10 @@ def collect_groups(target, step):
     """Group idle outputs by their first saving step, retaining hardlinks and ownership.
 
     New files belong to step; existing files retain their recorded owner even
-    when changed. Directories, timings and freshness snapshots belong to the
-    metadata group. The ownership record stores slash-separated paths relative
-    to target, travels with the cache and is replaced atomically only if changed.
+    when changed. Directories, .d dependency reports, timings and freshness
+    snapshots belong to the metadata group. The ownership record stores
+    slash-separated paths relative to target, travels with the cache and is
+    replaced atomically only if changed.
     Missing ownership imports existing outputs into step. Invalid stored owners
     raise ValueError rather than silently discarding the record.
     """
@@ -120,7 +122,7 @@ def collect_groups(target, step):
                 continue
             entry, status = describe_output(target, path)
             relative = path.relative_to(target)
-            is_metadata = stat.S_ISDIR(status.st_mode) or any(
+            is_metadata = stat.S_ISDIR(status.st_mode) or relative.suffix == ".d" or any(
                 component in (".codex-source-inputs", "cargo-timings", ".rustc_info.json")
                 for component in relative.parts)
             owner = BuildStep.METADATA if is_metadata else previous.get(entry[0], step)
