@@ -78,6 +78,15 @@ acceptance, with cleanup owned by the goal executor; executable copies and test
 fixtures are already removed. This is local target evidence, not a complete
 cross-platform runtime gate or an upstream execution comparison.
 
+Focused hosted run
+[`40409819108`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40409819108)
+at `8828e21ed1cba0c95e4ab133f63c2c9826189e81` supplies `/bin/zsh` through the
+Linux host's package installation and selects the unchanged `zsh` cases.
+Workflow static checks pass; runtime acceptance remains pending. Verify the
+individual case results and absence of prerequisite guard returns before
+counting these test bodies as exercised. This changes the test environment,
+not upstream source or assertions; it does not establish upstream execution.
+
 ### Retrieved upstream case log
 
 Upstream parent Linux job `119599956802`, run `39710355092`, references [BuildBuddy invocation `81a0b14c-a642-4af8-b877-1a3d56db58c7`](https://openai.buildbuddy.io/invocation/81a0b14c-a642-4af8-b877-1a3d56db58c7). Its remotely cached `//codex-rs/exec-server:exec-server-exec_process-test` result retains a 6,663-byte `test.log`, SHA-256 `6d22b56ce262b55f61ace18b2c71427d22fab3189192e9bc8f9cf12864c858cc`. It reports 61 passed, zero failed and 11 ignored in 25.01 seconds. All five cases above are individually reported `ok`; this is stronger evidence than the previously available target summary.
