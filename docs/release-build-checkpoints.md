@@ -414,6 +414,27 @@ are unrun. The retained terminal log is
 The next diagnostic must observe resource pressure and kernel diagnostics
 during compilation, rather than infer a cause from the missing final records.
 
+The compilation-free telemetry regression in run `40421161808` fails all
+three exit-status cases because no memory sample is present. Revision
+`5d0203acfc506e4fd58314da750a15ade6709de2` adds five-second `top` samples
+covering memory, swap and the wrapper/observer/output processes, alongside
+warning-level system journal streaming. Both sources share the retained
+`signal-observer.log` and the live job log. Readiness requires a memory
+sample and a journal marker sent by `logger` before compilation starts.
+The first integration delivers both, but run `40421290639` fails an assertion
+that omitted the native journal tag's PID. Corrected regression
+`0a7c8e66db46eee5d4dd84f40e174b46ff91d5c2` passes run `40421425406` in
+22 seconds: it verifies repeated memory samples during a real command,
+journal-marker delivery, signal capture and exits 0/17/self-SIGKILL.
+This verifies telemetry delivery during ordinary execution; it cannot
+guarantee delivery of the last event during a runner shutdown.
+
+Focused ARM cached build `40421547755` uses that tested revision and remains
+active. Independent Linux x86-64 run `40421492069` exercises the existing
+actual-CLI input-invalidation check at the same revision. Both remain
+acceptance attempts, with no completed result recorded yet. The Intel Mac
+population run is preserved without cancellation.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
