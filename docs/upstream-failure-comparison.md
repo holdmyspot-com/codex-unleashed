@@ -53,6 +53,20 @@ selected, the earlier original-versus-diagnostic comparison remains available.
 Actionlint and whitespace checks pass; ordinary hosted acceptance of this setup
 remains pending. Upstream source and tests are unchanged.
 
+The complete already-built local exec-server integration target then runs with
+that same matching helper, serially and without tracing or recompilation. It
+finishes in 64.88 seconds: 57 reported passes, the four owner-deferred failures,
+11 ignored and zero filtered out. The empty-root case passes. The four failures
+are exactly blocked-descriptor replay, remote pipe recovery, remote TTY recovery
+and remote sandbox-profile replay. Four zsh cases among the reported passes
+return early because `/bin/zsh` is unavailable; do not count those bodies as
+executed. There are no bwrap guard returns. Source diffs before/after match.
+Receipt and complete log are retained in
+`exec-server-pristine-Z6MR7A/{verified.json,tests.log}` through baseline
+acceptance, with cleanup owned by the goal executor; executable copies and test
+fixtures are already removed. This is local target evidence, not a complete
+cross-platform runtime gate or an upstream execution comparison.
+
 ### Retrieved upstream case log
 
 Upstream parent Linux job `119599956802`, run `39710355092`, references [BuildBuddy invocation `81a0b14c-a642-4af8-b877-1a3d56db58c7`](https://openai.buildbuddy.io/invocation/81a0b14c-a642-4af8-b877-1a3d56db58c7). Its remotely cached `//codex-rs/exec-server:exec-server-exec_process-test` result retains a 6,663-byte `test.log`, SHA-256 `6d22b56ce262b55f61ace18b2c71427d22fab3189192e9bc8f9cf12864c858cc`. It reports 61 passed, zero failed and 11 ignored in 25.01 seconds. All five cases above are individually reported `ok`; this is stronger evidence than the previously available target summary.
