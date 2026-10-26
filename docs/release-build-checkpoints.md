@@ -318,6 +318,41 @@ Workflow lint reports only the previously documented unsupported `queue` key;
 the new shell commands have no ShellCheck findings. Actual ARM build observation
 and cache acceptance remain pending.
 
+Run [`40413740004`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40413740004)
+at `2fd2eee04e49d0c3cdfb868ea64d1d3ed8646447` is now terminal: ARM job
+`121890734990` fails after 17m 10s with exit 143. The streamed observer records
+SIGKILL generation for rustc PID 55525 with `code=128`, in the current process
+context of PID 1996 (`provjobd9019055`). Forty-four milliseconds later it records
+systemd PID 1 generating SIGTERM for PID 1952 (`hosted-compute-`); the initial
+process inventory makes Runner.Listener PID 2055 its child and Runner.Worker
+PID 2070 the listener's child. Final smokes, guards and artifact collection are
+skipped. The retained job log has SHA-256
+`e96cbab4cfbb267e70dc8dc6f6c80058361a29c9f75a3367103e6c28c2ec231a`.
+The goal executor retains it at session temp `arm-kernel-signal-EFWxgu/job.log`
+until ARM acceptance and owns cleanup.
+
+Linux defines [signal code 128 as SI_KERNEL](https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/siginfo.h).
+The current-process label in the observer is execution context, not proof of a
+userspace kill request. This is evidence of a kernel-generated SIGKILL followed
+by runner-service termination, not proof that the provisioner intentionally
+killed the compiler. An OOM cause remains a hypothesis: the next focused observer
+must capture kernel victim-selection evidence, such as the
+[OOM mark_victim tracepoint](https://github.com/torvalds/linux/blob/master/include/trace/events/oom.h),
+and the SIGKILL kernel stack before selecting a mitigation. No identical retry
+or source/dependency repair is justified by this result.
+
+All four initial exact/compatible verified/partial lookups miss. Compared with
+the earlier ARM diagnostic revision, the helper's Main and retention-preview
+sources have changed; the helper-input digest participates in the compatible
+seed. This run therefore does not demonstrate restoration of earlier ARM state.
+It successfully saves new bwrap/proxy/code-mode-host partial checkpoints in
+5/13/75 seconds after 7/63/181-second builds. The final checkpoint reports four
+groups, two reused output groups and 610,207,768 uploaded archive bytes, under
+seed `cargo-seed-v1-aarch64-unknown-linux-musl-b44a11594cfa3ea99bf3832284f0a3842228ad8298beb5b625104cd6cb366e3a`.
+Resume these checkpoints with unchanged helper/compiler inputs in the next
+diagnostic; verify the hit rather than assuming it. CLI compilation after that
+checkpoint is not preserved by this failed run.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
