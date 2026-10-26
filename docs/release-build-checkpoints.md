@@ -401,8 +401,18 @@ passes only normal observer completion, not survival of abrupt runner shutdown.
 No build settings, source, dependencies or cache identities change.
 That probe now passes in 18 seconds with three probes attached and all existing
 real-process command/stack/exit cases passing. Focused ARM build `40418815615`
-uses the same correction and existing partial-cache inputs; its terminal result
-is pending.
+uses the same correction and existing partial-cache inputs, then fails after
+13m 36s with exit 143 during CLI compilation. It restores four groups in
+33 seconds; bwrap, proxy and code-mode-host Cargo invocations finish in
+5.18/0.52/0.55 seconds, with checkpoint saves taking 12/11/10 seconds.
+The log contains no terminating signal, OOM entry or victim record. This
+establishes completed-stage reuse, but neither identifies the shutdown cause
+nor excludes memory pressure. Smokes, final guards and verified publication
+are unrun. The retained terminal log is
+`arm-kernel-signal-EFWxgu/oom-entry-job.log`, SHA-256
+`132126d03eeaa91d2986e35ffb234ac0fc3e57ce4be942c9450e9719cc14c35c`.
+The next diagnostic must observe resource pressure and kernel diagnostics
+during compilation, rather than infer a cause from the missing final records.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,

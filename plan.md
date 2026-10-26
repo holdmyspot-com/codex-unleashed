@@ -54,8 +54,13 @@ Only the kernel-kill header survives; the initiating cause remains unknown.
 Revised observer preflight `40418699391` passes three-probe attachment and the
 real-process fixtures. Build `40418815615` at
 `935004033ddc9ac5d36b3f2367cbe4b0639aa72b` observes OOM entry before victim
-signalling and emits each kill stack with its header. Its terminal result is
-pending; no build/source/dependency setting or cache input changes.
+signalling and emits each kill stack with its header. It fails after 13m 36s
+with exit 143 during CLI compilation, after restoring four groups and reusing
+bwrap, proxy and code-mode-host in 5.18/0.52/0.55 seconds. No terminating
+signal or OOM record survives, so the cause remains unknown. Native smokes,
+final guards and verified publication are unrun. The next diagnostic must
+capture resource pressure and kernel diagnostics during compilation; no
+build/source/dependency setting or cache input changes.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
