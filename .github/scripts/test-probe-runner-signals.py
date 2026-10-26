@@ -13,9 +13,10 @@ class SignalObservationTest(unittest.TestCase):
             with self.subTest(exit_code=exit_code):
                 with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
                     command = (
-                        "import os, signal; "
+                        "import os, signal, time; "
                         "print('observed-command-pid=' + str(os.getpid()), flush=True); "
                         "os.kill(os.getpid(), signal.SIGCONT); "
+                        f"time.sleep({6 if exit_code == 0 else 0}); "
                         f"raise SystemExit({exit_code})"
                     )
                     if exit_code == 137:
@@ -31,7 +32,11 @@ class SignalObservationTest(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
                     self.assertRegex(result.stdout, r"(?:KiB|MiB|GiB) Mem")
-                    self.assertIn("codex-runner-signal-probe: journal-ready-", result.stdout)
+                    self.assertRegex(
+                        result.stdout, r"codex-runner-signal-probe(?:\[\d+\])?: journal-ready-\d+"
+                    )
+                    if exit_code == 0:
+                        self.assertGreaterEqual(result.stdout.count("MiB Mem"), 2)
                     command_pid = next(
                         line.removeprefix("observed-command-pid=")
                         for line in result.stdout.splitlines()
