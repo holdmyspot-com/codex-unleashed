@@ -58,9 +58,21 @@ No package version is deleted. This verifies the current tag association against
 old main's policy; it does not establish safe concurrent deletion or complete
 the retention-tool migration.
 
+Integrated preview run `40401691282` at `4120107dabe19dd3864f145dd57b0b39cda50879`
+fails in both attempts while listing upstream releases, before package collection
+or helper compilation. Each reports GitHub HTTP 504 and retains only the three
+pre-package files. A local request for the same 100-release REST page reproduces
+the timeout. The supported 20-release page succeeds, and its complete pagination
+returns all 1,245 unique tags with every retained metadata field identical to
+the verified earlier inventory. The workflow now uses that smaller page size;
+hosted integration remains unverified. GitHub's internal timeout cause is unknown.
+Old main's smaller GraphQL field query was also evaluated: it returns only
+1,000 releases, omitting 245 captured tags, so it is not substituted for the
+complete inventory.
+
 The goal executor retains the verified archive and analysis in session directory
-`retention-verified-nIxInb` for the retention preview implementation and owns their
-cleanup after that work consumes them. Hosted artifacts retain the one-day policy.
+`retention-verified-nIxInb` through retention checkpoint verification and owns their
+cleanup after the last verification consumer. Hosted artifacts retain the one-day policy.
 
 ## Read-only retention preview command
 
@@ -111,7 +123,7 @@ cleanup then; the previously captured inventory remains available alongside it.
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
 
-Use the maintained Java command boundary when migrating source-input inventory, invalidation or retention helpers, with only the tooling needed by the consuming capability. The first transport migration retains old main’s Bash/ORAS archive boundary and lets Cargo decide which restored units rebuild. Java source-input helpers and automatic pruning are not yet migrated. Verify the relevant Java tests and bundled runtime on supported hosts before enabling those helpers.
+Use the maintained Java command boundary when migrating source-input inventory, invalidation or retention helpers, with only the tooling needed by the consuming capability. The first transport migration retains old main’s Bash/ORAS archive boundary and lets Cargo decide which restored units rebuild. Java source-input helpers are now migrated as recorded in [source-cache-migration.md](source-cache-migration.md); automatic pruning remains disabled. Verify the relevant Java tests and bundled runtime on supported hosts before enabling those helpers.
 
 Demonstrate cold and warm behavior, actual cache hits, a representative changed source rebuilding its consumers, and unchanged resulting source retaining reusable work. Verify that executable identity remains correct after reuse. Exercise interrupted-build recovery, missing snapshots, changed build inputs and cache-size reporting at the actual build boundary.
 
