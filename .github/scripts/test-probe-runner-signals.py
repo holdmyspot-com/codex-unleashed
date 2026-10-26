@@ -30,6 +30,8 @@ class SignalObservationTest(unittest.TestCase):
                         timeout=60
                     )
                     self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
+                    self.assertRegex(result.stdout, r"(?:KiB|MiB|GiB) Mem")
+                    self.assertIn("codex-runner-signal-probe: journal-ready-", result.stdout)
                     command_pid = next(
                         line.removeprefix("observed-command-pid=")
                         for line in result.stdout.splitlines()
