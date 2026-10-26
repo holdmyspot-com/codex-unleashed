@@ -88,7 +88,11 @@ jobs:
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/verify-cargo-lock.py "$RUNNER_TEMP/verify-cargo-lock.py"
           cp restart-metadata/.github/scripts/test-verify-cargo-lock.py "$RUNNER_TEMP/test-verify-cargo-lock.py"
-          sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/verify-cargo-lock.py > "$evidence/cache-wrapper-inputs.sha256"
+          cp restart-metadata/.github/scripts/cargo-cache-keys.py "$RUNNER_TEMP/cargo-cache-keys.py"
+          cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
+          sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
+          cp restart-metadata/.github/scripts/test-cargo-cache-keys.py "$RUNNER_TEMP/test-cargo-cache-keys.py"
+          sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/verify-cargo-lock.py restart-metadata/.github/scripts/cargo-cache-keys.py > "$evidence/cache-wrapper-inputs.sha256"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the cache helper before upstream checkout
@@ -227,26 +231,32 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      - name: Identify exact compiled-cache inputs
+      - name: Identify exact and compatible compiled-cache inputs
         id: cache_inputs
         if: inputs.cache
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-evidence"
+          PYTHONDONTWRITEBYTECODE=1 python3 "$RUNNER_TEMP/test-cargo-cache-keys.py" 2>&1 | tee "$evidence/cache-key-test.log"
           {
-            cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256"
             rustc -vV
+            cargo --version
+            cat "$evidence/build-command-inputs.sha256"
             printf '%s\n' "$TARGET" "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
-            env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC|CXX|AR|CFLAGS|CXXFLAGS|CMAKE_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Z_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Z_]+)='
+            env | LC_ALL=C sort | grep -E '^(RUSTC|RUSTC_WRAPPER|RUSTFLAGS|RUSTDOCFLAGS|RUSTY_V8_[A-Z_]+|CARGO_INCREMENTAL|CARGO_BUILD_TARGET|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_PROFILE_RELEASE_[A-Z_]+|CARGO_TARGET_[A-Z0-9_]+_LINKER|CC(_[A-Za-z0-9_]+)?|CXX(_[A-Za-z0-9_]+)?|AR(_[A-Za-z0-9_]+)?|TARGET_CC|TARGET_CXX|CFLAGS(_[A-Za-z0-9_]+)?|CXXFLAGS(_[A-Za-z0-9_]+)?|CMAKE_[A-Z_]+|([A-Z0-9_]+_)?OPENSSL_[A-Z_]+|AWS_LC_SYS_NO_JITTER_ENTROPY[A-Za-z0-9_]*|LIBSQLITE3_FLAGS|PKG_CONFIG_[A-Za-z0-9_]+)='
             sha256sum codex-rs/Cargo.lock codex-rs/rust-toolchain.toml
-          } > "$evidence/compiled-cache-inputs.txt"
-          identity="$(sha256sum < "$evidence/compiled-cache-inputs.txt" | cut -d ' ' -f 1)"
-          printf 'tag=cargo-v3-%s-%s\n' "$TARGET" "$identity" >> "$GITHUB_OUTPUT"
+          } > "$evidence/compiler-cache-inputs.txt"
+          cat "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" > "$evidence/compiled-cache-inputs.txt"
+          python3 "$RUNNER_TEMP/cargo-cache-keys.py" "$TARGET" \
+            "$evidence/upstream-commit" "$evidence/cache-wrapper-inputs.sha256" \
+            "$evidence/cache-helper-inputs.sha256" "$evidence/compiler-cache-inputs.txt" \
+            | tee "$evidence/cache-keys.txt" >> "$GITHUB_OUTPUT"
 
       - name: Restore compiled Cargo outputs from GHCR
         if: inputs.cache
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
           set -euo pipefail
           set +e
@@ -257,6 +267,19 @@ jobs:
             printf 'Verified cache absent; trying unverified partial build state.\n'
             set +e
             bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-restore.log"
+            result=${PIPESTATUS[0]}
+            set -e
+          fi
+          if [[ "$result" == 3 ]]; then
+            printf 'Exact state absent; trying compatible state. Cargo and all acceptance checks still run.\n'
+            set +e
+            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull "${CARGO_CACHE_REPOSITORY}" "$CACHE_SEED_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compatible-cache-restore.log"
+            result=${PIPESTATUS[0]}
+            set -e
+          fi
+          if [[ "$result" == 3 ]]; then
+            set +e
+            bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" pull-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_SEED_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compatible-partial-cache-restore.log"
             result=${PIPESTATUS[0]}
             set -e
           fi
@@ -282,47 +305,10 @@ jobs:
             clean-cached-release-binaries "$GITHUB_WORKSPACE/codex-rs" "$TARGET" "${binaries[@]}" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/source-cache-prepare.log"
 
-      - name: Build and hash the Linux sandbox helper
-        id: sandbox_build
-        if: runner.os == 'Linux'
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/bwrap-build.log"
-          helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
-          strip --strip-debug --strip-unneeded "$helper"
-          digest="$(sha256sum "$helper" | cut -d ' ' -f 1)"
-          printf 'CODEX_BWRAP_SHA256=%s\n' "$digest" >> "$GITHUB_ENV"
-
       - name: Build the upstream release binaries with default features
         id: release_build
         working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
-          export STABLE_GIT_COMMIT
-          rustc -vV > "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
-          cargo --version >> "$RUNNER_TEMP/baseline-evidence/rust-toolchain.txt"
-          bundles=(primary app-server)
-          case "$TARGET" in
-            *-windows-msvc)
-              bundles+=(helpers)
-              ;;
-          esac
-          for bundle in "${bundles[@]}"; do
-            case "$bundle" in
-              primary)
-                build_args=(--bin codex --bin codex-code-mode-host --bin codex-responses-api-proxy)
-                ;;
-              app-server)
-                build_args=(--bin codex-app-server --bin codex-code-mode-host)
-                ;;
-              helpers)
-                build_args=(--bin codex-windows-sandbox-setup --bin codex-windows-sandbox-service --bin codex-command-runner)
-                ;;
-            esac
-            cargo build --target "$TARGET" --release --timings "${build_args[@]}" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cargo-build-$bundle.log"
-          done
+        run: bash "$RUNNER_TEMP/build-upstream-release.sh"
 
       - name: Smoke-test both native executable variants
         run: |
@@ -367,18 +353,20 @@ jobs:
         if: success() && inputs.cache
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
           set -euo pipefail
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Save unverified partial compilation state for retry
         if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
         run: |
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
-          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+          bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Preserve cache input comparison evidence
         if: always() && inputs.cache
