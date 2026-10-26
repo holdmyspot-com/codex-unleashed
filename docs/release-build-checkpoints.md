@@ -199,8 +199,13 @@ ShellCheck pass. Native fixture run
 [`40376947788`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40376947788)
 passes on all six hosts at `5e5f3407160dc337c04aa7e78b8a6d79c83390c3`.
 This changes the downstream build wrapper only. Full Codex verification run
-`40376998616` still has no observed terminal result; it must prove compiled-group
-reuse across runners.
+`40376998616` passes all five default-feature builds, both native smokes,
+source/dependency guards and private publication. It saves six groups; the final
+save reuses all five output archives and uploads 1,357,973 metadata bytes. The
+CLI/app-server invocations take 38m 11s / 15m 41s; this population run does not
+prove unchanged-input reuse across runners. Focused follow-up `40387733411`
+combines that warm comparison with the changed-input check below; its terminal
+result remains unobserved.
 
 Several concurrent `gh run watch` processes using their default three-second
 interval exhaust the caller's 5,000-request GitHub API allowance. Their HTTP 403
@@ -221,6 +226,21 @@ reuses all three output archives while uploading about 1.4 MB of metadata in
 annotations identify no signal sender, timeout or compiler error. The initiating
 cause remains unknown. Do not count these attempts as successful builds or
 repeat the same run without a new discriminating check.
+
+Windows x64 run `40373560817`, attempt 1 at
+`0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
+both native smokes, source/dependency guards, recording and private publication
+in 1h 48m 32s. Its eight-group verified manifest is
+`sha256:10365c192c13f042c650925551d61125aeb3b69266beb974928c697794366c90`.
+Attempt 2, job `121808123754`, restores that exact manifest in 123 seconds and
+passes the same checks in 11m 33s, with no Rust compilation entries. The seven
+executable invocations take 28/3/4/2/3/3/18 seconds. Every checkpoint reuses all
+seven output archives, uploads about 2.43 MB of metadata and takes 23–45 seconds.
+The final save reuses all seven output archives and uploads 1,372,401 metadata
+bytes in 42 seconds, publishing
+`sha256:259fa4a06d9123f0d800a2d57be11c1a594cfa1802608c17c0c358e09c1a938f`.
+This verifies Windows x64 grouped-cache reuse across runners. Other platform,
+changed-input, clean-matrix and baseline-runtime gates remain incomplete.
 
 Future baseline jobs use a concurrency group for their workflow and target, with
 `cancel-in-progress: false` and `queue: max`. Different targets remain independent;
