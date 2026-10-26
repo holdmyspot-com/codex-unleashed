@@ -370,12 +370,12 @@ jobs:
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/compiled-cache-save.log"
 
       - name: Save unverified partial compilation state for retry
-        if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success' && (steps.sandbox_build.outcome == 'failure' || steps.release_build.outcome == 'failure')
+        if: failure() && inputs.cache && steps.cache_prepare.outcome == 'success' && steps.source_guard.outcome == 'success' && steps.dependency_guard.outcome == 'success'
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
         run: |
           set -euo pipefail
-          printf 'Saving partial compilation state; this run remains failed and has no new verified source snapshot.\n'
+          printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cargo-cache" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
 
       - name: Preserve cache input comparison evidence
