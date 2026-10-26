@@ -211,6 +211,17 @@ The separate rate-limit endpoint returned a positive allowance while the failing
 Actions endpoint reported zero; use the affected endpoint's response headers when
 establishing whether that operation can resume.
 
+Linux ARM64 run `40378411257` at
+`d4676c21cd03aafab25af89efd355b41bf680a14` reaches CLI compilation but ends
+with exit 143 in both attempts. Its retry restores completed checkpoints:
+bwrap/proxy/code-mode-host invocations take 6/1/1 seconds, and each checkpoint
+reuses all three output archives while uploading about 1.4 MB of metadata in
+8/7/7 seconds. CLI compilation remains incomplete. Both attempts skip even the
+`always()` evidence and source-guard steps; the surviving logs and check
+annotations identify no signal sender, timeout or compiler error. The initiating
+cause remains unknown. Do not count these attempts as successful builds or
+repeat the same run without a new discriminating check.
+
 Future baseline jobs use a concurrency group for their workflow and target, with
 `cancel-in-progress: false` and `queue: max`. Different targets remain independent;
 duplicate targets wait, with up to 100 pending jobs retained per group. Existing
