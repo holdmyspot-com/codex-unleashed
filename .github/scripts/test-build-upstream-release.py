@@ -4,6 +4,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,9 +49,10 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                                TARGET=target, CARGO_TARGET_DIR=str(root / "target"),
                                RUNNER_TEMP=str(root), EVENTS=str(events),
                                FAIL_BINARY=fail_binary, FAIL_CHECKPOINT=fail_checkpoint,
-                               RELEASE_CHECKPOINT_COMMAND=str(checkpoint))
+                               RELEASE_CHECKPOINT_COMMAND=checkpoint.as_posix())
             script = Path(__file__).with_name("build-upstream-release.sh")
-            result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True)
+            result = subprocess.run([shutil.which("bash"), script.as_posix()], env=environment, capture_output=True, text=True)
+            self.assertTrue(events.exists(), result.stdout + result.stderr)
             recorded = [json.loads(line) for line in events.read_text().splitlines()]
             return result, recorded
 
@@ -131,7 +133,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                 command(build + ["--bin", "codex-windows-sandbox-setup", "--bin", "codex-windows-sandbox-service",
                                  "--bin", "codex-command-runner"])
             script = Path(__file__).with_name("build-upstream-release.sh").resolve()
-            staged = command(["bash", script.as_posix()])
+            staged = command([shutil.which("bash"), script.as_posix()])
             self.assertNotIn("Compiling ", staged.stdout + staged.stderr)
             suffix = ".exe" if sys.platform == "win32" else ""
             for binary in binaries.values():
