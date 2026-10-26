@@ -328,7 +328,17 @@ Both regressions then upload zero archive bytes; existing publication-isolation
 checks still pass. This repairs lookup without changing cache keys or promoting
 partial results to verified status. Native fixture run `40394114661` passes on
 all six release platforms at `c5ddca773af533ab234479a2530cc8ea56975e91`.
-Hosted Codex transfer savings remain unverified.
+Hosted run `40394539659`, job `121824060994`, now verifies those savings for
+Linux x86-64 at that revision. It restores the compatible six-group manifest
+`sha256:16f77f7047b287e68211403c660841e93df62075a4de97b06c6a906de529e6da`
+in 114 seconds, emits zero Rust compilation records, and passes all default-feature
+builds, native smokes, source/dependency guards and private publication in
+8m 34s. The five executable invocations take 9/1/1/1/1 seconds. Every partial
+checkpoint reuses all five output archives and uploads only about 2.4 MB of
+metadata, taking 31/22/23/21/21 seconds including guards. Final publication
+reuses those five archives, uploads 1,338,648 metadata bytes and takes 20 seconds.
+This closes the real Linux verified-to-partial/compatible archive-reuse gate;
+other platforms and the required clean matrix retain their separate gates.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
