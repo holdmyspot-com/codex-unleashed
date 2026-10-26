@@ -195,8 +195,21 @@ on every invocation. The native release-stage fixture now supplies a fixed
 nanosecond executable timestamp and asserts that the real strip operation
 preserves it through the checkpoint. It fails with the previous command, then
 passes with `strip --preserve-dates`; all four local release-stage tests and
-ShellCheck pass. This changes the downstream build wrapper only. Hosted
-verification must still prove compiled-group reuse across runners.
+ShellCheck pass. Native fixture run
+[`40376947788`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40376947788)
+passes on all six hosts at `5e5f3407160dc337c04aa7e78b8a6d79c83390c3`.
+This changes the downstream build wrapper only. Full Codex verification run
+`40376998616` still has no observed terminal result; it must prove compiled-group
+reuse across runners.
+
+Several concurrent `gh run watch` processes using their default three-second
+interval exhaust the caller's 5,000-request GitHub API allowance. Their HTTP 403
+terminal results describe failed monitoring, not failed builds. Resume the same
+run identities after the reset reported by the failed API response; leave hosted
+jobs running. Use `gh run watch --interval 60 --exit-status` for ongoing checks.
+The separate rate-limit endpoint returned a positive allowance while the failing
+Actions endpoint reported zero; use the affected endpoint's response headers when
+establishing whether that operation can resume.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
