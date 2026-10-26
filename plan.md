@@ -32,7 +32,9 @@ results from the remaining acceptance gates; detailed historical receipts follow
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
 test with its matching built helper staged beside the executable, without
-tracing or source changes. It is in progress, not accepted. The preceding local
+tracing or source changes. It passes: one test, zero failures and 71 filtered
+out, in 0.21 seconds. The source guard passes and the test invocation reuses
+the prepared outputs without recompilation. The preceding local
 same-binary comparison fails without that helper and passes with it; the
 [failure comparison](docs/upstream-failure-comparison.md#empty-environment-bundled-helper-counterfactual)
 retains the exact evidence and open upstream comparison.
