@@ -11,6 +11,10 @@ on:
         description: Deliberately fail after compilation to verify partial-cache recovery; retry with false
         type: boolean
         default: false
+      verify_invalidation:
+        description: Linux x86-64 cached run only; verify a changed CLI commit input and unchanged-input reuse
+        type: boolean
+        default: false
       target:
         description: Release target to run (all preserves the complete selected matrix)
         type: choice
@@ -40,7 +44,14 @@ jobs:
         env:
           CACHE_ENABLED: ${{ inputs.cache }}
           SELECTED_TARGET: ${{ inputs.target }}
+          VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
         run: |
+          if [[ "$VERIFY_INVALIDATION" == true ]]; then
+            if [[ "$CACHE_ENABLED" != true || "$SELECTED_TARGET" != x86_64-unknown-linux-musl ]]; then
+              printf 'Invalidation verification requires cache=true and target=x86_64-unknown-linux-musl.\n' >&2
+              exit 1
+            fi
+          fi
           value="$(jq -ce --argjson cache "$CACHE_ENABLED" --arg target "$SELECTED_TARGET" '
             (if $cache then map(select(."baseline-verified" == true)) else . end)
             | (if $target == "all" then . else map(select(.target == $target)) end)
@@ -98,6 +109,7 @@ jobs:
           cp restart-metadata/.github/scripts/checkpoint-upstream-release.sh "$RUNNER_TEMP/checkpoint-upstream-release.sh"
           chmod +x "$RUNNER_TEMP/checkpoint-upstream-release.sh"
           cp restart-metadata/.github/scripts/test-build-upstream-release.py "$RUNNER_TEMP/test-build-upstream-release.py"
+          cp restart-metadata/.github/scripts/verify-codex-cache-invalidation.py "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/verify-cargo-lock.py "$RUNNER_TEMP/verify-cargo-lock.py"
           cp restart-metadata/.github/scripts/test-verify-cargo-lock.py "$RUNNER_TEMP/test-verify-cargo-lock.py"
@@ -398,6 +410,11 @@ jobs:
           set -euo pipefail
           printf 'Saving unverified compilation state after completed preparation and source/dependency verification; this run remains failed.\n'
           bash "$RUNNER_TEMP/ghcr-cargo-target-cache.sh" push-partial "${CARGO_CACHE_REPOSITORY}" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat "$RUNNER_TEMP/baseline-evidence/upstream-ref")" "$CACHE_SEED_TAG" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/partial-cache-save.log"
+
+      - name: Verify changed CLI input without publishing diagnostic outputs
+        if: success() && inputs.verify_invalidation
+        working-directory: codex-rs
+        run: python3 "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
 
       - name: Preserve cache input comparison evidence
         if: always() && inputs.cache

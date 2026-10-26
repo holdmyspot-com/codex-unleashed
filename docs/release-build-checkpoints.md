@@ -211,6 +211,28 @@ The separate rate-limit endpoint returned a positive allowance while the failing
 Actions endpoint reported zero; use the affected endpoint's response headers when
 establishing whether that operation can resume.
 
+Future baseline jobs use a concurrency group for their workflow and target, with
+`cancel-in-progress: false` and `queue: max`. Different targets remain independent;
+duplicate targets wait, with up to 100 pending jobs retained per group. Existing
+runs use their original workflow definitions and do not acquire this guard.
+[GitHub's concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+supports these settings. The latest released actionlint, 1.7.12, rejects only the
+new `queue` key. A disposable copy omitting that key passes the remaining
+actionlint checks; this is partial lint evidence, not a hosted scheduling test.
+
+The optional `verify_invalidation=true` input selects a focused cached Linux
+x86-64 check after the normal verified cache save. It changes only the CLI's
+`CODEX_BUILD_COMMIT` environment input, requires Cargo to rebuild CLI artifacts
+while retaining every non-CLI compilation, checks the running `codex doctor
+--json` provenance, and requires the next unchanged invocation to reuse all
+artifacts. Diagnostic outputs are never saved to shared cache references. The
+doctor process may report unrelated environment failures; acceptance checks its
+runtime provenance rather than claiming the full doctor report passes.
+Two local real-Cargo fixtures pass in 1.85 seconds, including rejection of a
+rebuilt CLI with stale runtime provenance. These fixtures model only that narrow
+contract; full Codex invalidation remains unrun. The extra original-input rebuild
+is omitted to keep verification to the least work needed for this gate.
+
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
 separate build-script, host and target outputs, and metadata also needs transfer.
