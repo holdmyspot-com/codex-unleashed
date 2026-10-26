@@ -8,9 +8,10 @@ set -euo pipefail
 # update their successful counterparts. A protected-release alias accompanies
 # every upload. Pull returns 3 for a miss and invalid arguments return 2; other
 # failures retain the tool status. RUNNER_TEMP owns transient archive storage.
-# CARGO_CACHE_PARTS=1 selects independent output groups under -parts-v1 tags,
-# with legacy archive fallback on reads. It requires cargo-cache-parts.py beside
-# this script and Python 3.11+. Unchanged groups are referenced without uploads.
+# CARGO_CACHE_PARTS=1 selects build-step groups under -parts-v2 tags, reading
+# earlier -parts-v1 groups or legacy archives on a miss. CARGO_CACHE_STAGE names
+# the step owning new outputs; an unset stage defaults to bootstrap. It requires
+# cargo-cache-parts.py and Python 3.11+. Unchanged groups require no archive uploads.
 if [[ $# != 5 && $# != 6 ]]; then
   printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag> [compatible-seed-tag]\n' "$0" >&2
   exit 2
@@ -45,9 +46,9 @@ if [[ $# == 6 ]]; then
 fi
 
 if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-  tag="$tag-parts-v1"
+  tag="$tag-parts-v2"
   if [[ -n "$seed_tag" ]]; then
-    seed_tag="$seed_tag-parts-v1"
+    seed_tag="$seed_tag-parts-v2"
   fi
 fi
 
@@ -86,15 +87,19 @@ case "$operation" in
   pull)
     if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
       script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-      set +e
-      python3 "$script_root/cargo-cache-parts.py" pull "$repository" "$reference" "$reference" "$target_directory" "$archive_directory"
-      result=$?
-      set -e
-      case "$result" in
-        0) printf 'cache_transfer_seconds=%s\n' "$((SECONDS-transfer_started))"; exit 0 ;;
-        3) reference="$repository:${tag/-parts-v1/}" ;;
-        *) exit "$result" ;;
-      esac
+      for candidate in "$reference" "$repository:${tag/-parts-v2/-parts-v1}" "$repository:${tag/-parts-v2/}"; do
+        set +e
+        python3 "$script_root/cargo-cache-parts.py" pull "$repository" "$candidate" "$candidate" "$target_directory" "$archive_directory"
+        result=$?
+        set -e
+        case "$result" in
+          0) printf 'cache_transfer_seconds=%s\n' "$((SECONDS-transfer_started))"; exit 0 ;;
+          3) ;;
+          *) exit "$result" ;;
+        esac
+      done
+      printf 'cache_result=miss\n'
+      exit 3
     fi
     set +e
     digest="$(oras resolve "$reference" 2> "$archive_directory/resolve.stderr")"
