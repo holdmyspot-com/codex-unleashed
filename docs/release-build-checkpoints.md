@@ -250,6 +250,10 @@ runs use their original workflow definitions and do not acquire this guard.
 supports these settings. The latest released actionlint, 1.7.12, rejects only the
 new `queue` key. A disposable copy omitting that key passes the remaining
 actionlint checks; this is partial lint evidence, not a hosted scheduling test.
+Hosted run `40394539659` subsequently reports its Linux x86-64 job as `pending`
+with no assigned runner while the same target in `40393398689` continues building.
+This verifies duplicate-target waiting; queue-capacity limits are documented by
+GitHub rather than exercised with redundant builds.
 
 The optional `verify_invalidation=true` input selects a focused cached Linux
 x86-64 check after the normal verified cache save. It changes only the CLI's
@@ -289,7 +293,9 @@ The transport now searches both partial and verified manifests for the exact
 reference and the compatible alias, reusing only matching group/input signatures.
 Both regressions then upload zero archive bytes; existing publication-isolation
 checks still pass. This repairs lookup without changing cache keys or promoting
-partial results to verified status. Hosted savings remain unverified.
+partial results to verified status. Native fixture run `40394114661` passes on
+all six release platforms at `c5ddca773af533ab234479a2530cc8ea56975e91`.
+Hosted Codex transfer savings remain unverified.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
