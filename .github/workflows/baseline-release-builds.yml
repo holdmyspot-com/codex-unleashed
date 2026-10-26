@@ -15,6 +15,10 @@ on:
         description: Linux x86-64 cached run only; verify a changed CLI commit input and unchanged-input reuse
         type: boolean
         default: false
+      trace_signals:
+        description: Linux ARM64 cached diagnostic only; stream SIGTERM sender details during compilation
+        type: boolean
+        default: false
       target:
         description: Release target to run (all preserves the complete selected matrix)
         type: choice
@@ -45,7 +49,14 @@ jobs:
           CACHE_ENABLED: ${{ inputs.cache }}
           SELECTED_TARGET: ${{ inputs.target }}
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
+          TRACE_SIGNALS: ${{ inputs.trace_signals }}
         run: |
+          if [[ "$TRACE_SIGNALS" == true ]]; then
+            case "$CACHE_ENABLED:$SELECTED_TARGET" in
+              true:aarch64-unknown-linux-musl) ;;
+              *) printf 'Signal tracing requires cache=true and target=aarch64-unknown-linux-musl.\n' >&2; exit 1 ;;
+            esac
+          fi
           if [[ "$VERIFY_INVALIDATION" == true ]]; then
             if [[ "$CACHE_ENABLED" != true || "$SELECTED_TARGET" != x86_64-unknown-linux-musl ]]; then
               printf 'Invalidation verification requires cache=true and target=x86_64-unknown-linux-musl.\n' >&2
@@ -338,11 +349,17 @@ jobs:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
           CACHE_ENABLED: ${{ inputs.cache }}
+          TRACE_SIGNALS: ${{ inputs.trace_signals }}
         run: |
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
-          bash "$RUNNER_TEMP/build-upstream-release.sh"
+          if [[ "$TRACE_SIGNALS" == true ]]; then
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
+            strace -f -qq --seccomp-bpf -e trace=none -e signal=SIGTERM bash "$RUNNER_TEMP/build-upstream-release.sh"
+          else
+            bash "$RUNNER_TEMP/build-upstream-release.sh"
+          fi
 
       - name: Controlled failure for partial-cache verification
         if: inputs.fail_after_build

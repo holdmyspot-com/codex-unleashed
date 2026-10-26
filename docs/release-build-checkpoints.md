@@ -204,8 +204,8 @@ source/dependency guards and private publication. It saves six groups; the final
 save reuses all five output archives and uploads 1,357,973 metadata bytes. The
 CLI/app-server invocations take 38m 11s / 15m 41s; this population run does not
 prove unchanged-input reuse across runners. Focused follow-up `40387733411`
-combines that warm comparison with the changed-input check below; its terminal
-result remains unobserved.
+combines that warm comparison with the changed-input check; its failure and
+focused verifier repair are recorded below.
 
 Several concurrent `gh run watch` processes using their default three-second
 interval exhaust the caller's 5,000-request GitHub API allowance. Their HTTP 403
@@ -226,6 +226,16 @@ reuses all three output archives while uploading about 1.4 MB of metadata in
 annotations identify no signal sender, timeout or compiler error. The initiating
 cause remains unknown. Do not count these attempts as successful builds or
 repeat the same run without a new discriminating check.
+
+The optional `trace_signals=true` diagnostic accepts only `cache=true` with
+`target=aarch64-unknown-linux-musl`; selection rejects other combinations before
+starting a build job. It runs the ordinary build wrapper under a signal-only
+trace and streams SIGTERM delivery records, including sender information when
+the kernel supplies it, into the job log. Syscall filtering reduces tracing
+overhead. A local SIGTERM probe retains the sender and exit 143, and all four
+release-stage fixtures pass under tracing. A host shutdown may still remove the
+runner before a signal record survives; absence of a record cannot establish
+the initiating cause. Ordinary runs keep tracing disabled.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
