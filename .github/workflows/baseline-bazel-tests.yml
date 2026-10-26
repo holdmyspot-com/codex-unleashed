@@ -7,6 +7,10 @@ on:
         description: Compare unchanged exec-server shell tests using upstream's serial Bazel invocation
         type: boolean
         default: false
+      exec_server_filter:
+        description: Libtest name filter for the focused exec-server integration target; used only when exec_server_shells is true
+        type: string
+        default: shell_snapshot
 
 permissions:
   contents: read
@@ -128,12 +132,11 @@ jobs:
           "$tools/bazel" --version | tee "$RUNNER_TEMP/baseline-bazel-evidence/bazel-version.txt"
           printf '%s\n' "$tools" >> "$GITHUB_PATH"
 
-      - name: Select the maintained exec-server targets for the shell comparison
+      - name: Select the maintained exec-server integration target for the focused comparison
         if: inputs.exec_server_shells
         run: |
           set -euo pipefail
           printf '%s\n' \
-            //codex-rs/exec-server:exec-server-unit-tests \
             //codex-rs/exec-server:exec-server-exec_process-test \
             > "$RUNNER_TEMP/baseline-bazel-evidence/selected-targets.txt"
 
@@ -174,6 +177,7 @@ jobs:
       - name: Run the maintained Bazel package shard without a second disk-cache copy
         env:
           BASELINE_EXEC_SERVER_SHELLS: ${{ inputs.exec_server_shells }}
+          BASELINE_EXEC_SERVER_FILTER: ${{ inputs.exec_server_filter }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/baseline-bazel-evidence"
@@ -201,7 +205,7 @@ jobs:
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           comparison_args=()
           if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
-            comparison_args+=(--test_arg=shell_snapshot --test_output=all)
+            comparison_args+=(--test_arg="$BASELINE_EXEC_SERVER_FILTER" --test_arg=--nocapture --test_output=all)
           fi
           printf '%s\n' "${comparison_args[@]}" > "$evidence/comparison-arguments.txt"
           set +e
