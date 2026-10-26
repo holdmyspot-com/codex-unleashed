@@ -79,7 +79,7 @@ jobs:
               (root / 'input').write_text('archive probe')
               paths = root / 'paths'
               paths.write_bytes(b'input\0')
-              for executable in [shutil.which('tar'), os.environ['SHELL_TAR']]:
+              for executable in [shutil.which('gtar') or 'tar', shutil.which('tar'), os.environ['SHELL_TAR']]:
                   print('archive_executable=' + executable, flush=True)
                   subprocess.run([executable, '--version'], check=True)
                   result = subprocess.run([executable, '--format=pax', '--zstd', '--no-recursion', '--null',
