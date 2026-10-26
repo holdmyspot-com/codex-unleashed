@@ -131,9 +131,28 @@ the observed tag-lookup failure and verifies successful publication, alias
 resolution and restoration for both grouped and legacy archives. Native fixture
 [run `40365691558`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365691558)
 passes all six release hosts at `d50b36a7a185e8b7a04554229797a1c8fa8afb9b`.
-These fixtures use local OCI layouts; actual GHCR publication and a full grouped
-Codex run remain required. Focused Linux run `40365751436` tests that integration
-with cache restoration enabled at the same revision.
+These fixtures use local OCI layouts. Actual Linux
+[run `40365751436`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40365751436)
+passes at the same revision, including compilation, both native smokes,
+source/dependency guards, source recording and private GHCR publication. It
+restores the preceding 1,511-part snapshot in 710 seconds and reports zero
+compilation entries for all five executable invocations (9/1/1/1/2 seconds).
+The job takes 25m 06s and saves a verified two-group manifest at
+`sha256:7e41c97400e303c08e9be0462802b25054f442232e37b63c82de84a18cb794c8`.
+Artifact `12672905434`, SHA-256
+`62a021ad9e5aca2bff3cd189449caa12c657716da5c415bfc472d6283a3512b4`,
+retains the checked logs and inputs.
+
+Transfer reuse is incomplete: every executable checkpoint changes the imported
+bootstrap group's fingerprint and uploads roughly 2.9 GB again. Checkpoints
+take 109/91/88/88/88 seconds. The final save reuses that group and uploads only
+947,001 metadata bytes in 21 seconds. Hosted read-only comparison
+`40370295206` confirms distinct bootstrap fingerprints and archive digests
+between executable checkpoints, eliminating an unchanged-group lookup miss as
+the explanation. A header comparison of the first two immutable archives is
+running without recompilation or registry mutation. Preserve these successful
+build results while diagnosing the repeated transfer; grouped warm comparison,
+remaining platforms and the clean matrix remain unmet gates.
 
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
