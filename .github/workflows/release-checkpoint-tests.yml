@@ -1,6 +1,16 @@
 name: Release build checkpoint tests
 
 on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/release-checkpoint-tests.yml
+      - .github/scripts/build-upstream-release.sh
+      - .github/scripts/checkpoint-upstream-release.sh
+      - .github/scripts/cargo-cache-parts.py
+      - .github/scripts/ghcr-cargo-target-cache.sh
+      - .github/scripts/test-build-upstream-release.py
+      - .github/scripts/test-ghcr-cargo-target-cache.sh
   workflow_dispatch:
     inputs:
       target:
@@ -22,7 +32,7 @@ jobs:
           persist-credentials: false
       - id: matrix
         env:
-          SELECTED_TARGET: ${{ inputs.target }}
+          SELECTED_TARGET: ${{ inputs.target || 'all' }}
         run: |
           value="$(jq -ce --arg target "$SELECTED_TARGET" '
             (if $target == "all" then . else map(select(.target == $target)) end)
