@@ -1,0 +1,47 @@
+name: Inventory private cache retention inputs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/cache-retention-inventory.yml]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Collect release and private package metadata without deleting versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/cache-retention-inventory"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/restart-commit"
+          cp .github/upstream-ref "$evidence/protected-upstream-ref"
+          gh api --paginate 'repos/openai/codex/releases?per_page=100' \
+            --jq '.[] | {tag_name, draft, prerelease}' > "$evidence/upstream-releases.jsonl"
+          gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/cargo-cache/versions?per_page=100" \
+            --jq '.[] | {id, name, created_at, updated_at, metadata}' > "$evidence/package-versions.jsonl"
+          jq -s '{release_records: length}' "$evidence/upstream-releases.jsonl"
+          jq -s '{package_versions: length, untagged_versions: ([.[] | select(.metadata.container.tags == [])] | length)}' \
+            "$evidence/package-versions.jsonl"
+
+      - name: Retain read-only inventory for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: cache-retention-inventory
+          path: ${{ runner.temp }}/cache-retention-inventory
+          retention-days: 1
+          if-no-files-found: warn
