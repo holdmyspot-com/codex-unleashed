@@ -9,17 +9,21 @@ import time
 
 def observe_command_signals(command):
     program = r'''
-tracepoint:signal:signal_generate /args->sig != 17/ {
-    printf("sender_pid=%d receiver_pid=%d signal=%d sender=%s receiver=%s code=%d\n",
-        pid, args->pid, args->sig, comm, args->comm, args->code);
+tracepoint:signal:signal_generate /args->sig != 17 && args->sig != 23/ {
     if (args->sig == 9) {
-        printf("sigkill_kernel_stack receiver_pid=%d\n", args->pid);
-        print(kstack());
+        printf("sender_pid=%d receiver_pid=%d signal=%d sender=%s receiver=%s code=%d kernel_stack=%s\n",
+            pid, args->pid, args->sig, comm, args->comm, args->code, kstack());
+    } else {
+        printf("sender_pid=%d receiver_pid=%d signal=%d sender=%s receiver=%s code=%d\n",
+            pid, args->pid, args->sig, comm, args->comm, args->code);
     }
 }
+kprobe:oom_kill_process {
+    printf("oom_kill_process current_pid=%d current_comm=%s kernel_stack=%s\n", pid, comm, kstack());
+}
 tracepoint:oom:mark_victim {
-    printf("oom_victim_pid=%d current_pid=%d current_comm=%s\n", args->pid, pid, comm);
-    print(kstack());
+    printf("oom_victim_pid=%d current_pid=%d current_comm=%s kernel_stack=%s\n",
+        args->pid, pid, comm, kstack());
 }
 '''
     log = Path("signal-observer.log")
