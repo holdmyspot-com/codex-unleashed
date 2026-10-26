@@ -8,6 +8,9 @@ set -euo pipefail
 # update their successful counterparts. A protected-release alias accompanies
 # every upload. Pull returns 3 for a miss and invalid arguments return 2; other
 # failures retain the tool status. RUNNER_TEMP owns transient archive storage.
+# CARGO_CACHE_PARTS=1 selects independent output groups under -parts-v1 tags,
+# with legacy archive fallback on reads. It requires cargo-cache-parts.py beside
+# this script and Python 3.11+. Unchanged groups are referenced without uploads.
 if [[ $# != 5 && $# != 6 ]]; then
   printf 'usage: %s <pull|push|pull-partial|push-partial> <repository> <tag> <target-directory> <upstream-tag> [compatible-seed-tag]\n' "$0" >&2
   exit 2
@@ -41,6 +44,13 @@ if [[ $# == 6 ]]; then
   fi
 fi
 
+if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
+  tag="$tag-parts-v1"
+  if [[ -n "$seed_tag" ]]; then
+    seed_tag="$seed_tag-parts-v1"
+  fi
+fi
+
 cache_state=verified
 case "$operation" in
   pull|push) ;;
@@ -63,6 +73,7 @@ if command -v gtar >/dev/null 2>&1; then
 fi
 : "${RUNNER_TEMP:?RUNNER_TEMP must name owned cache-transfer storage}"
 mkdir -p "$target_directory"
+target_directory="$(cd -- "$target_directory" && pwd)"
 archive_directory="$(mktemp -d "$RUNNER_TEMP/codex-ghcr-cache.XXXXXX")"
 trap 'rm -rf -- "$archive_directory"' EXIT
 reference="$repository:$tag"
@@ -73,6 +84,18 @@ df -Pk "$target_directory" "$archive_directory"
 
 case "$operation" in
   pull)
+    if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
+      script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+      set +e
+      python3 "$script_root/cargo-cache-parts.py" pull "$repository" "$reference" "$reference" "$target_directory" "$archive_directory"
+      result=$?
+      set -e
+      case "$result" in
+        0) printf 'cache_transfer_seconds=%s\n' "$((SECONDS-transfer_started))"; exit 0 ;;
+        3) reference="$repository:${tag/-parts-v1/}" ;;
+        *) exit "$result" ;;
+      esac
+    fi
     set +e
     digest="$(oras resolve "$reference" 2> "$archive_directory/resolve.stderr")"
     result=$?
@@ -92,16 +115,23 @@ case "$operation" in
     ;;
   push)
     du -sk "$target_directory"
-    "$archive_tar" --format=pax --zstd -cf - -C "$target_directory" . > "$archive"
-    du -sk "$archive"
+    if [[ "${CARGO_CACHE_PARTS:-}" != 1 ]]; then
+      "$archive_tar" --format=pax --zstd -cf - -C "$target_directory" . > "$archive"
+      du -sk "$archive"
+    fi
+    script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     (
       cd "$archive_directory"
       # Keep the release association used by the existing retention policy.
       cache_identity="$(printf '%s' "$tag" | sha256sum | cut -d ' ' -f 1)"
       release_reference="$repository:cargo-release-$cache_identity-$upstream_tag"
-      oras push "$release_reference" \
-        --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
-        'cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd'
+      if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
+        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$release_reference" "$reference" "$target_directory" "$archive_directory"
+      else
+        oras push "$release_reference" \
+          --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
+          'cargo-target.tar.zst:application/vnd.codex-unleashed.cargo-target.tar+zstd'
+      fi
       aliases=("$tag")
       if [[ -n "$seed_tag" ]]; then
         aliases+=("$seed_tag")

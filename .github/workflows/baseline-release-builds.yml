@@ -64,6 +64,7 @@ jobs:
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ matrix.split-debug-info }}
       TARGET: ${{ matrix.target }}
       BINARY_SUFFIX: ${{ matrix.binary-suffix }}
+      CARGO_CACHE_PARTS: "1"
     defaults:
       run:
         shell: bash
@@ -89,6 +90,10 @@ jobs:
           cp restart-metadata/.github/upstream-ref "$evidence/upstream-ref"
           git -C restart-metadata rev-parse HEAD > "$evidence/restart-commit"
           cp restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh "$RUNNER_TEMP/ghcr-cargo-target-cache.sh"
+          cp restart-metadata/.github/scripts/cargo-cache-parts.py "$RUNNER_TEMP/cargo-cache-parts.py"
+          cp restart-metadata/.github/scripts/checkpoint-upstream-release.sh "$RUNNER_TEMP/checkpoint-upstream-release.sh"
+          chmod +x "$RUNNER_TEMP/checkpoint-upstream-release.sh"
+          cp restart-metadata/.github/scripts/test-build-upstream-release.py "$RUNNER_TEMP/test-build-upstream-release.py"
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/verify-cargo-lock.py "$RUNNER_TEMP/verify-cargo-lock.py"
           cp restart-metadata/.github/scripts/test-verify-cargo-lock.py "$RUNNER_TEMP/test-verify-cargo-lock.py"
@@ -96,7 +101,7 @@ jobs:
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
           sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
           cp restart-metadata/.github/scripts/test-cargo-cache-keys.py "$RUNNER_TEMP/test-cargo-cache-keys.py"
-          sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/verify-cargo-lock.py restart-metadata/.github/scripts/cargo-cache-keys.py > "$evidence/cache-wrapper-inputs.sha256"
+          sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/cargo-cache-parts.py restart-metadata/.github/scripts/checkpoint-upstream-release.sh restart-metadata/.github/scripts/verify-cargo-lock.py restart-metadata/.github/scripts/cargo-cache-keys.py > "$evidence/cache-wrapper-inputs.sha256"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the cache helper before upstream checkout
@@ -228,6 +233,7 @@ jobs:
         run: |
           set -euo pipefail
           CODEX_TEST_ORAS="$(command -v oras)" TMPDIR="$RUNNER_TEMP" bash "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cache-transport-test.log"
+          python3 "$RUNNER_TEMP/test-build-upstream-release.py" 2>&1 | tee "$RUNNER_TEMP/baseline-evidence/build-stage-test.log"
 
       - name: Log in to the GHCR cache
         if: inputs.cache
@@ -312,7 +318,15 @@ jobs:
       - name: Build the upstream release binaries with default features
         id: release_build
         working-directory: codex-rs
-        run: bash "$RUNNER_TEMP/build-upstream-release.sh"
+        env:
+          CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          CACHE_ENABLED: ${{ inputs.cache }}
+        run: |
+          if [[ "$CACHE_ENABLED" == true ]]; then
+            export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
+          fi
+          bash "$RUNNER_TEMP/build-upstream-release.sh"
 
       - name: Controlled failure for partial-cache verification
         if: inputs.fail_after_build

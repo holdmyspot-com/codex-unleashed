@@ -10,13 +10,22 @@ set -euo pipefail
 evidence="$RUNNER_TEMP/baseline-evidence"
 mkdir -p "$evidence"
 
+checkpoint() {
+  if [[ -n "${RELEASE_CHECKPOINT_COMMAND:-}" ]]; then
+    "$RELEASE_CHECKPOINT_COMMAND" "$1"
+  fi
+}
+
 case "$TARGET" in
   *-linux-musl)
+    started=$SECONDS
     cargo build --target "$TARGET" --release --timings --bin bwrap 2>&1 | tee "$evidence/bwrap-build.log"
     helper="$CARGO_TARGET_DIR/$TARGET/release/bwrap"
     strip --strip-debug --strip-unneeded "$helper"
     CODEX_BWRAP_SHA256="$(sha256sum "$helper" | cut -d ' ' -f 1)"
     export CODEX_BWRAP_SHA256
+    printf 'binary=bwrap build_seconds=%s\n' "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
+    checkpoint bwrap
     ;;
 esac
 
@@ -24,24 +33,16 @@ STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
 export STABLE_GIT_COMMIT
 rustc -vV > "$evidence/rust-toolchain.txt"
 cargo --version >> "$evidence/rust-toolchain.txt"
-bundles=(primary app-server)
+binaries=(codex-responses-api-proxy codex-code-mode-host codex codex-app-server)
 case "$TARGET" in
   *-windows-msvc)
-    bundles+=(helpers)
+    binaries+=(codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner)
     ;;
 esac
 
-for bundle in "${bundles[@]}"; do
-  case "$bundle" in
-    primary)
-      build_args=(--bin codex --bin codex-code-mode-host --bin codex-responses-api-proxy)
-      ;;
-    app-server)
-      build_args=(--bin codex-app-server --bin codex-code-mode-host)
-      ;;
-    helpers)
-      build_args=(--bin codex-windows-sandbox-setup --bin codex-windows-sandbox-service --bin codex-command-runner)
-      ;;
-  esac
-  cargo build --target "$TARGET" --release --timings "${build_args[@]}" 2>&1 | tee "$evidence/cargo-build-$bundle.log"
+for binary in "${binaries[@]}"; do
+  started=$SECONDS
+  cargo build --target "$TARGET" --release --timings --bin "$binary" 2>&1 | tee "$evidence/cargo-build-$binary.log"
+  printf 'binary=%s build_seconds=%s\n' "$binary" "$((SECONDS-started))" | tee -a "$evidence/build-stage-timings.log"
+  checkpoint "$binary"
 done
