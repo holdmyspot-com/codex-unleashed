@@ -251,12 +251,18 @@ jobs:
           CODEX_COMPAT_RELEASES="$(cat "$evidence/compat-releases.json")"
           export CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR="$evidence/traced-execution-logs"
           mkdir -p "$CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR"
+
+          printf '#!/usr/bin/env bash\nshift\nexec strace -f -yy -s 256 -o %q %q "$@"\n' \
+            "$evidence/empty-workspace-roots.strace" \
+            "$(realpath bazel-bin/codex-rs/exec-server/exec-server-exec_process-test)" \
+            > "$evidence/trace-test.sh"
+
           set +e
           .github/scripts/run-bazel-ci.sh --print-failed-action-summary --print-failed-test-logs -- \
             test --disk_cache= --test_tag_filters=-argument-comment-lint \
             --test_arg=remote_process_preserves_empty_workspace_roots --test_arg=--nocapture \
             --test_env=RUST_BACKTRACE=1 --test_output=all --nocache_test_results \
-            --run_under="strace -f -yy -s 256 -o $evidence/empty-workspace-roots.strace" \
+            --run_under="/bin/bash $evidence/trace-test.sh" \
             --build_metadata="COMMIT_SHA=$(cat "$evidence/upstream-commit")" -- \
             //codex-rs/exec-server:exec-server-exec_process-test \
             2>&1 | tee "$evidence/empty-workspace-roots-traced.log"
