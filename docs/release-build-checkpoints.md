@@ -379,6 +379,31 @@ ARM-only cached build `40416897715` uses that correction and remains pending.
 It changes observation only, preserving helper/compiler inputs and the existing
 partial-checkpoint namespace; actual restoration still requires a hit receipt.
 
+That build is now terminal: job `121901428856` fails in 13m 53s. It restores
+the four-group partial digest
+`sha256:e80de53b3c4a80203d9f2adf790b482d20b3b6452c49920a4ab87a956ae9f4a7`.
+Bwrap/proxy/code-mode-host invocations take 5/1/1 seconds and checkpoints take
+9/8/8 seconds, establishing resumption of completed stages. During CLI compilation
+the final signal record is kernel-generated SIGKILL for rustc PID 42072, in the
+current context of PID 9361 (`php-fpm8.3`). The following stack record and OOM
+victim event do not survive; absence does not rule out OOM. The runner reports
+operation cancellation and skips final evidence/smokes/guards. The job log is
+retained as `arm-kernel-signal-EFWxgu/oom-job.log`, SHA-256
+`72653d40e7cd71980d371b227b15d08591d3f7610c7a68169a3015e59931ebdc`,
+with cleanup owned by the goal executor after ARM acceptance.
+
+Observer correction `935004033ddc9ac5d36b3f2367cbe4b0639aa72b` emits a kill's
+stack in the same output record as its header, observes `oom_kill_process` entry
+before victim signalling and omits routine SIGURG traffic. Focused probe
+`40418699391` must pass attachment and the existing real-process stack/exit
+fixture before another expensive build. The earlier separate-record probe
+passes only normal observer completion, not survival of abrupt runner shutdown.
+No build settings, source, dependencies or cache identities change.
+That probe now passes in 18 seconds with three probes attached and all existing
+real-process command/stack/exit cases passing. Focused ARM build `40418815615`
+uses the same correction and existing partial-cache inputs; its terminal result
+is pending.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication

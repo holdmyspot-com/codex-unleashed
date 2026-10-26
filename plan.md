@@ -48,7 +48,14 @@ Existing Intel Mac population and its monitoring continue without cancellation.
 The extended observer passes native preflight `40416773654`, including a real
 self-kill kernel stack and correct signal exit status. ARM build `40416897715`
 at `bce36d792e6752b60a355b8068d8f24fe970e272` now observes SIGKILL stacks
-and OOM victim selection; its terminal outcome and cache restoration are pending.
+and OOM victim selection. It restores the four-group partial cache and reuses
+proxy/code-mode-host in one second each, then fails during CLI compilation.
+Only the kernel-kill header survives; the initiating cause remains unknown.
+Revised observer preflight `40418699391` passes three-probe attachment and the
+real-process fixtures. Build `40418815615` at
+`935004033ddc9ac5d36b3f2367cbe4b0639aa72b` observes OOM entry before victim
+signalling and emits each kill stack with its header. Its terminal result is
+pending; no build/source/dependency setting or cache input changes.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
