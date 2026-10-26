@@ -28,6 +28,7 @@ tracepoint:oom:mark_victim {
 '''
     log = Path("signal-observer.log")
     observer = None
+    observers = []
     marker = None
     output = None
     try:
@@ -39,17 +40,36 @@ tracepoint:oom:mark_victim {
             stderr=subprocess.STDOUT,
             start_new_session=True
         )
+        observers.append(observer)
+        journal = subprocess.Popen(
+            ["sudo", "-n", "journalctl", "--follow", "--lines=0",
+             "--output=short-monotonic", "--priority=warning"],
+            stdout=output.stdin,
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+        observers.append(journal)
+        resources = subprocess.Popen(
+            ["top", "--batch-mode", "--delay=5", "--scale-summary-mem=m",
+             f"--pid={os.getpid()},{observer.pid},{output.pid}"],
+            stdout=output.stdin,
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+        observers.append(resources)
         output.stdin.close()
         marker = subprocess.Popen(["sleep", "30"], start_new_session=True)
         identity = f"sender_pid={os.getpid()} receiver_pid={marker.pid}"
         continued = f"{identity} signal={int(signal.SIGCONT)} "
         terminated = f"{identity} signal={int(signal.SIGTERM)} "
+        journal_marker = f"journal-ready-{os.getpid()}"
         deadline_ns = time.monotonic_ns() + 20_000_000_000
         sent_termination = False
 
         while time.monotonic_ns() < deadline_ns:
             captured = log.read_text(errors="replace")
-            if terminated in captured:
+            telemetry_ready = ("MiB Mem" in captured) and (journal_marker in captured)
+            if (terminated in captured) and telemetry_ready:
                 marker.wait(timeout=5)
                 if marker.returncode != -int(signal.SIGTERM):
                     raise RuntimeError(
@@ -64,15 +84,23 @@ tracepoint:oom:mark_victim {
                 if command:
                     subprocess.run(["ps", "-eo", "pid,ppid,comm"], check=True)
                     receipt["command_exit"] = subprocess.run(command).returncode
-                if observer.poll() is not None:
-                    raise RuntimeError(
-                        f"Signal observer exited {observer.returncode} during the command; inspect {log}"
-                    )
+                for diagnostic in observers:
+                    if diagnostic.poll() is not None:
+                        raise RuntimeError(
+                            f"Diagnostic {diagnostic.args[0]} exited {diagnostic.returncode} "
+                            f"during the command; inspect {log}"
+                        )
                 return receipt
-            if observer.poll() is not None:
-                raise RuntimeError(
-                    f"Signal observer exited {observer.returncode} before capturing "
-                    f"the marker's SIGTERM; inspect {log}"
+            for diagnostic in observers:
+                if diagnostic.poll() is not None:
+                    raise RuntimeError(
+                        f"Diagnostic {diagnostic.args[0]} exited {diagnostic.returncode} "
+                        f"before readiness; inspect {log}"
+                    )
+            if journal_marker not in captured:
+                subprocess.run(
+                    ["logger", "--priority=user.warning", "--tag=codex-runner-signal-probe",
+                     journal_marker], check=True
                 )
             if sent_termination:
                 time.sleep(0.1)
@@ -85,27 +113,27 @@ tracepoint:oom:mark_victim {
             time.sleep(0.1)
 
         raise RuntimeError(
-            f"Signal observer did not capture the known sender within 20 seconds; inspect {log}"
+            f"Signal or resource diagnostics did not become ready within 20 seconds; inspect {log}"
         )
     finally:
         if marker is not None:
             if marker.poll() is None:
                 marker.kill()
             marker.wait()
-        if observer is not None:
-            if observer.poll() is None:
+        for diagnostic in reversed(observers):
+            if diagnostic.poll() is None:
                 subprocess.run(
-                    ["sudo", "-n", "kill", "-INT", "--", f"-{observer.pid}"],
+                    ["sudo", "-n", "kill", "-INT", "--", f"-{diagnostic.pid}"],
                     check=True,
                 )
                 try:
-                    observer.wait(timeout=5)
+                    diagnostic.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     subprocess.run(
-                        ["sudo", "-n", "kill", "-KILL", "--", f"-{observer.pid}"],
+                        ["sudo", "-n", "kill", "-KILL", "--", f"-{diagnostic.pid}"],
                         check=True,
                     )
-                    observer.wait()
+                    diagnostic.wait()
         if output is not None:
             output.stdin.close()
             try:
