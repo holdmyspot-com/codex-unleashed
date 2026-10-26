@@ -214,7 +214,7 @@ jobs:
           evidence="$RUNNER_TEMP/baseline-evidence"
           java -version 2> "$evidence/cache-helper-java-version.txt"
           mvn -version > "$evidence/cache-helper-maven-version.txt"
-          mvn -B -ntp -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
+          mvn -B -ntp -e -f "$RUNNER_TEMP/source-cache-helper/pom.xml" -Pruntime \
             "-Dtooling.build.directory=$RUNNER_TEMP/source-cache-build" \
             "-Dmaven.repo.local=$RUNNER_TEMP/source-cache-maven" \
             "-Djava.io.tmpdir=$TMPDIR" verify 2>&1 | tee "$evidence/cache-helper-build.log"
