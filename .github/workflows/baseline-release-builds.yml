@@ -126,6 +126,7 @@ jobs:
           cp restart-metadata/.github/scripts/test-verify-cargo-lock.py "$RUNNER_TEMP/test-verify-cargo-lock.py"
           cp restart-metadata/.github/scripts/cargo-cache-keys.py "$RUNNER_TEMP/cargo-cache-keys.py"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
+          cp restart-metadata/.github/scripts/probe-runner-signals.py "$RUNNER_TEMP/probe-runner-signals.py"
           sha256sum restart-metadata/.github/scripts/build-upstream-release.sh > "$evidence/build-command-inputs.sha256"
           cp restart-metadata/.github/scripts/test-cargo-cache-keys.py "$RUNNER_TEMP/test-cargo-cache-keys.py"
           sha256sum restart-metadata/.github/workflows/baseline-release-builds.yml restart-metadata/.github/scripts/ghcr-cargo-target-cache.sh restart-metadata/.github/scripts/cargo-cache-parts.py restart-metadata/.github/scripts/checkpoint-upstream-release.sh restart-metadata/.github/scripts/verify-cargo-lock.py restart-metadata/.github/scripts/cargo-cache-keys.py > "$evidence/cache-wrapper-inputs.sha256"
@@ -355,8 +356,11 @@ jobs:
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
           if [[ "$TRACE_SIGNALS" == true ]]; then
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends strace
-            strace -f -qq --seccomp-bpf -e trace=none -e signal=SIGTERM bash "$RUNNER_TEMP/build-upstream-release.sh"
+            sudo apt-get update -y
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bpftrace
+            cd "$RUNNER_TEMP/baseline-evidence"
+            python3 "$RUNNER_TEMP/probe-runner-signals.py" \
+              env --chdir="$GITHUB_WORKSPACE/codex-rs" bash "$RUNNER_TEMP/build-upstream-release.sh"
           else
             bash "$RUNNER_TEMP/build-upstream-release.sh"
           fi

@@ -297,6 +297,27 @@ it does not identify the earlier shutdown sender or pass ARM cache acceptance.
 The next diagnostic must keep this observer active across the actual ARM build
 and stream records to the job log, including signals outside the build child.
 
+The command-observation regression initially fails in run `40413278649` at
+`bcc1342a3ea2c330484ce80fc432052839f9eeca`: the supplied command never runs,
+and the wrapper returns zero instead of its requested exit 17. The corrected
+wrapper at `a85255a594c8bc6912f4acefefbde23350943777` passes focused hosted run
+[`40413519826`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40413519826)
+in 21 seconds. Its real-process fixture verifies command execution, SIGCONT
+capture during each command, successful exit and propagation of exit 17.
+Signal output is streamed through an owned tee process; routine SIGCHLD records
+are excluded to avoid per-child-exit log growth during compilation. The observer,
+marker and tee are reaped on ordinary completion. An abrupt host shutdown can
+still prevent cleanup and terminal receipts.
+
+The optional ARM build diagnostic now uses this verified wrapper instead of the
+build-child-only strace invocation. It records process IDs, parent IDs and command
+names before compilation, keeps the observer active across all build checkpoints,
+and stores logs/receipts outside pristine source in the existing evidence
+directory. Cache identity, source and default build commands are preserved.
+Workflow lint reports only the previously documented unsupported `queue` key;
+the new shell commands have no ShellCheck findings. Actual ARM build observation
+and cache acceptance remain pending.
+
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 both native smokes, source/dependency guards, recording and private publication
