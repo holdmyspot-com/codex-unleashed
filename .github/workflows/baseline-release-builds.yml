@@ -7,6 +7,10 @@ on:
         description: Use GHCR compiled outputs and Actions downloads for verified release targets
         type: boolean
         default: false
+      fail_after_build:
+        description: Deliberately fail after compilation to verify partial-cache recovery; retry with false
+        type: boolean
+        default: false
       target:
         description: Release target to run (all preserves the complete selected matrix)
         type: choice
@@ -309,6 +313,13 @@ jobs:
         id: release_build
         working-directory: codex-rs
         run: bash "$RUNNER_TEMP/build-upstream-release.sh"
+
+      - name: Controlled failure for partial-cache verification
+        if: inputs.fail_after_build
+        run: |
+          printf 'Deliberate post-compilation failure: fail_after_build=true. Retry this revision with fail_after_build=false.\n' \
+            | tee "$RUNNER_TEMP/baseline-evidence/controlled-failure.log"
+          exit 1
 
       - name: Smoke-test both native executable variants
         run: |
