@@ -154,7 +154,7 @@ def collect_groups(target, step):
     return groups
 
 
-def push(command, archive_tar, repository, reference, previous_reference, target, temporary, step):
+def push(command, archive_tar, repository, reference, previous_reference, target, temporary, step, reuse_references):
     """Publish the idle target's step groups, reusing matching verified/partial blobs.
 
     The step owns new files; retained ownership keeps unchanged earlier output
@@ -163,11 +163,12 @@ def push(command, archive_tar, repository, reference, previous_reference, target
     """
     if target.is_dir() is False:
         raise ValueError(f"Cargo output directory does not exist: {target}")
-    checkpoint_reference = previous_reference
-    if previous_reference.endswith("-partial") is False:
-        checkpoint_reference = previous_reference + "-partial"
+    candidates = []
+    for prior_reference in (previous_reference, *reuse_references):
+        verified_reference = prior_reference.removesuffix("-partial")
+        candidates.extend((verified_reference + "-partial", verified_reference))
     reusable = {}
-    for candidate in dict.fromkeys((checkpoint_reference, previous_reference)):
+    for candidate in dict.fromkeys(candidates):
         previous, _ = fetch_manifest(command, candidate)
         if previous and previous.get("artifactType") == ARTIFACT_TYPE:
             for layer in previous["layers"]:
@@ -252,6 +253,8 @@ def main():
     parser.add_argument("previous_reference")
     parser.add_argument("target", type=Path)
     parser.add_argument("temporary", type=Path)
+    parser.add_argument("--reuse-reference", action="append", default=[],
+                        help="Additional manifest reference for reusing unchanged archives")
     parser.add_argument("--step", type=BuildStep, choices=list(BuildStep),
                         default=os.environ.get("CARGO_CACHE_STAGE", BuildStep.BOOTSTRAP.value),
                         help="Build step owning newly cached files; defaults to bootstrap for imported state")
@@ -269,7 +272,7 @@ def main():
     archive_tar = shutil.which("gtar") or shutil.which("tar") or "tar"
     if arguments.operation == "push":
         push(command, archive_tar, arguments.repository, arguments.reference, arguments.previous_reference,
-             arguments.target.resolve(), arguments.temporary.resolve(), arguments.step)
+             arguments.target.resolve(), arguments.temporary.resolve(), arguments.step, arguments.reuse_reference)
         return 0
     return pull(command, archive_tar, arguments.repository, arguments.reference,
                 arguments.target.resolve(), arguments.temporary.resolve())

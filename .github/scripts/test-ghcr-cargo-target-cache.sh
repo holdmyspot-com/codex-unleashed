@@ -272,6 +272,17 @@ JS
   grep 'cache_parts=' "$fixture/repeated-final.log"
   grep -q 'uploaded_archive_bytes=0' "$fixture/repeated-final.log"
 
+  CARGO_CACHE_STAGE=final bash "$cache" push-partial "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 > "$fixture/verified-to-partial.log"
+  grep 'cache_parts=' "$fixture/verified-to-partial.log"
+  grep -q 'uploaded_archive_bytes=0' "$fixture/verified-to-partial.log"
+
+  CARGO_CACHE_STAGE=final bash "$cache" push "$repository" "$next_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag" > "$fixture/seed-publication.log"
+  migrated_identity="$(printf migrated-wrapper | sha256sum | cut -d ' ' -f 1)"
+  migrated_tag="cargo-v3-$target-$migrated_identity"
+  CARGO_CACHE_STAGE=final bash "$cache" push-partial "$repository" "$migrated_tag" "$fixture/source target" rust-v0.164.0 "$seed_tag" > "$fixture/seed-reuse.log"
+  grep 'cache_parts=' "$fixture/seed-reuse.log"
+  grep -q 'uploaded_archive_bytes=0' "$fixture/seed-reuse.log"
+
   fallback_identity="$(printf old-parts-fixture | sha256sum | cut -d ' ' -f 1)"
   fallback_tag="cargo-v3-$target-$fallback_identity"
   oras tag "$repository:$next_tag$storage_suffix" "$fallback_tag-parts-v1"
