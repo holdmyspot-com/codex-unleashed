@@ -278,6 +278,19 @@ in executable order. The final save uses eight groups, reuses seven output
 archives and uploads 1,344,011 metadata bytes in 64 seconds. Attempt 2 is the
 same-revision warm comparison; its result remains unverified.
 
+The first partial save previously searched only its partial reference, omitting
+the verified manifest it had restored. A compatible restore also supplied no
+manifest for archive reuse after an exact-key change. In run `40387733411`, the
+verified compatible restore hits six groups, but the first partial save reuses
+none and uploads 2,916,929,198 archive bytes. These are downstream transport
+lookup gaps, with no upstream Codex counterpart. Two tiny real-ORAS regressions
+reproduce archive uploads after a verified save and after an exact-key change.
+The transport now searches both partial and verified manifests for the exact
+reference and the compatible alias, reusing only matching group/input signatures.
+Both regressions then upload zero archive bytes; existing publication-isolation
+checks still pass. This repairs lookup without changing cache keys or promoting
+partial results to verified status. Hosted savings remain unverified.
+
 The macOS ARM64 cold primary report contained 1,059 packages and 1,420 compilation
 units. These counts do not predict an exact archive count: a package can have
 separate build-script, host and target outputs, and metadata also needs transfer.

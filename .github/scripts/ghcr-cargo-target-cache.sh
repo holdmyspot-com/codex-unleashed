@@ -136,7 +136,7 @@ case "$operation" in
       # GHCR accepted a push but immediately returned not found for its tag.
       # Publish every alias from the local manifest without resolving that tag.
       if [[ "${CARGO_CACHE_PARTS:-}" == 1 ]]; then
-        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory"
+        python3 "$script_root/cargo-cache-parts.py" push "$repository" "$publication_reference" "$reference" "$target_directory" "$archive_directory" --reuse-reference "$repository:${seed_tag:-$tag}"
       else
         oras push "$publication_reference" \
           --artifact-type application/vnd.codex-unleashed.cargo-target.v1 \
