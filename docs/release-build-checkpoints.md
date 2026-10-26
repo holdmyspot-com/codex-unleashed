@@ -341,6 +341,19 @@ must capture kernel victim-selection evidence, such as the
 and the SIGKILL kernel stack before selecting a mitigation. No identical retry
 or source/dependency repair is justified by this result.
 
+The matching successful upstream
+[ARM primary Cargo job `120252106552`](https://github.com/openai/codex/actions/runs/39894017941/job/120252106552)
+prints the exact pinned source commit, 16 logical CPUs and 62.7 GiB RAM on its
+`codex-linux-arm64` runner. Its retained log SHA-256 is
+`05e8dce2fc8d9f93f989a9a6e6eee64ce7340509c436fc1e506c2b37a76de450`;
+the goal executor retains `arm-kernel-signal-EFWxgu/upstream-arm-primary.log`
+through ARM acceptance and owns cleanup. GitHub documents our selected public
+[`ubuntu-24.04-arm` runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+as four CPUs and 16 GB RAM. The resource classes differ; the failed local job
+does not retain a memory-pressure sample, so this comparison is not an OOM
+diagnosis. Keep the free-runner constraint and collect the kernel evidence
+before choosing a resource mitigation.
+
 All four initial exact/compatible verified/partial lookups miss. Compared with
 the earlier ARM diagnostic revision, the helper's Main and retention-preview
 sources have changed; the helper-input digest participates in the compatible
