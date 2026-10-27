@@ -102,6 +102,44 @@ experimental suspension is Linux-only, uses writable cgroup v2 delegation and
 reacts to pressure. That contract does not satisfy the owner's requested exact
 allocation blocking on all three operating systems.
 
+### Comparison with other maintained schedulers
+
+The following candidates are compared against the complete required behavior,
+including native Windows and preserving the oldest job during recovery. These
+are selection findings, not accepted Cargo/Bazel integrations.
+
+| Candidate | Useful existing behavior | Conflict with the required behavior |
+| --- | --- | --- |
+| [mr boxington](https://mr-boxington.jdx.dev/scheduling) | Learned memory admission and Linux compiler-tree suspension, with oldest-first continuation. | Pressure-based suspension is Linux-only; Windows lacks live pressure admission control. It does not block failed allocations. |
+| [qex](https://github.com/stephenc/qex) | Shared admission control for commands. | Native Windows is unsupported; WSL2 cannot replace our native Windows builds. |
+| [GNU Parallel](https://www.gnu.org/software/parallel/man.html#memfree) | Memory thresholds can delay starts, suspend work, or terminate and retry the youngest job. | Threshold-based suspension does not establish waiting inside an unsatisfied allocation. |
+| [BuildXL](https://github.com/microsoft/BuildXL/blob/main/Documentation/Wiki/Advanced-Features/Performance-Tuning.md) | Historical memory estimates and pressure-driven cancellation/retry. | Its documented suspension mode is Windows-only; working-set eviction deliberately writes pages to the pagefile. Neither is our allocation-blocking policy. |
+| [rush v0.11.0](https://github.com/shenwei356/rush/releases/tag/v0.11.0) | Cross-platform command admission and youngest-job termination/retry. | Its memory monitor can select the only remaining job for termination. Fixed free-memory thresholds also omit per-job estimates, swap-growth detection and allocation blocking. |
+
+The rush Linux x86-64 release archive is acquired and its SHA-256 matches the
+GitHub release asset digest:
+`7a22bbc7122acd5bd23e2dfde49f84bb856944a1860057bc89921b3dce45d056`.
+Invoking its public command with `-j 2 --memfree 1M` on two tiny commands exits
+zero and emits both results (`job-2`, `job-1`). This establishes acquisition and
+ordinary admission only; it does not exercise memory pressure or native Windows.
+The evaluation directory and executable are removed afterward.
+
+Inspection of its pinned
+[`monitorMemory`](https://github.com/shenwei356/rush/blob/v0.11.0/process/start_gate.go#L162)
+shows that, below half the free-memory threshold, it traverses the active list
+from newest to oldest and calls `stopForMemory` without exempting a sole remaining
+job. It waits while an earlier termination is underway, but can select another
+job on a subsequent measurement after cleanup. Thus the source permits repeated
+termination down to the last job when low available memory persists; this is a
+source finding, not an observed machine-pressure failure. The pinned source file
+has SHA-256 `684022d1fe8bc01b0ef8eb98e8940f9c4d00ef2c535a647f1d4c794e3da73736`.
+
+None of these candidates is selected as the complete scheduler. Their partial
+capabilities do not close the allocation-blocking or cross-platform recovery
+gates. The existing Frida/compiler experiment below remains evidence for one
+Linux allocation path; native macOS/Windows blocking and recovery are still
+required before selecting that integration.
+
 The investigation must next establish a native blocking boundary for each OS and
 whether swap/pagefiles can actually be disabled on the selected free hosted
 runners. A candidate must demonstrate an unsatisfied allocation waiting while
