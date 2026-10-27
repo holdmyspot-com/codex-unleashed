@@ -1,0 +1,157 @@
+name: Verify private cache package transfer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/cache-package-transfer.yml]
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  SOURCE_PACKAGE: cargo-cache
+  DESTINATION_PACKAGE: cargo-cache-main-new
+  FIXTURE_TAG: cache-transfer-fixture-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  transfer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.copy.outputs.digest }}
+    steps:
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+
+      - name: Copy only this run's tiny fixture between private packages
+        id: copy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d "$RUNNER_TEMP/cache-transfer.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          evidence="$RUNNER_TEMP/cache-transfer-evidence"
+          mkdir -p "$evidence"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          source="ghcr.io/$owner/$SOURCE_PACKAGE"
+          destination="ghcr.io/$owner/$DESTINATION_PACKAGE"
+          printf '%s\n' "$FIXTURE_TAG" > "$evidence/fixture-tag"
+          printf '%s\n' "$GITHUB_SHA" > "$evidence/restart-commit"
+          export REGISTRY_AUTH_FILE="$scratch/auth.json"
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$REGISTRY_AUTH_FILE"
+
+          gh api "orgs/$owner/packages/container/$SOURCE_PACKAGE" > "$evidence/source-package.json"
+          jq -e '.visibility == "private"' "$evidence/source-package.json"
+          printf '%s\n' "$FIXTURE_TAG" > "$scratch/payload.txt"
+          (
+            cd "$scratch"
+            oras push --registry-config "$REGISTRY_AUTH_FILE" \
+              --artifact-type application/vnd.codex-unleashed.cargo-target.v2 \
+              --annotation "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              --annotation "io.holdmyspot.cache.transfer-fixture=$FIXTURE_TAG" \
+              "$source:$FIXTURE_TAG" payload.txt
+          )
+          digest="$(oras resolve --registry-config "$REGISTRY_AUTH_FILE" "$source:$FIXTURE_TAG")"
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$digest" > "$evidence/source-digest"
+          oras cp --from-registry-config "$REGISTRY_AUTH_FILE" --to-registry-config "$REGISTRY_AUTH_FILE" \
+            "$source@$digest" "$destination:$FIXTURE_TAG,$FIXTURE_TAG-alias" | tee "$evidence/copy.log"
+
+          gh api "orgs/$owner/packages/container/$DESTINATION_PACKAGE" > "$evidence/destination-package.json"
+          jq -e '.visibility == "private"' "$evidence/destination-package.json"
+          for alias in "$FIXTURE_TAG" "$FIXTURE_TAG-alias"; do
+            actual="$(oras resolve --registry-config "$REGISTRY_AUTH_FILE" "$destination:$alias")"
+            test "$actual" = "$digest"
+            printf 'alias=%s digest=%s\n' "$alias" "$actual" | tee -a "$evidence/aliases.txt"
+          done
+
+          printf '{}\n' > "$scratch/anonymous.json"
+          if oras resolve --registry-config "$scratch/anonymous.json" "$destination:$FIXTURE_TAG" > "$evidence/anonymous.txt" 2>&1; then
+            printf 'Anonymous access succeeded for %s; private-cache acceptance failed.\n' "$destination" >&2
+            exit 1
+          else
+            cat "$evidence/anonymous.txt"
+            rg '403 Forbidden|401 Unauthorized|denied' "$evidence/anonymous.txt"
+          fi
+
+      - name: Preserve transfer receipts for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: cache-package-transfer
+          path: ${{ runner.temp }}/cache-transfer-evidence
+          retention-days: 1
+          if-no-files-found: warn
+
+  consume:
+    needs: transfer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+
+      - name: Pull the copied fixture with a fresh job token
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGEST: ${{ needs.transfer.outputs.digest }}
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d "$RUNNER_TEMP/cache-consumer.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          destination="ghcr.io/$owner/$DESTINATION_PACKAGE"
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$scratch/auth.json"
+          actual="$(oras resolve --registry-config "$scratch/auth.json" "$destination:$FIXTURE_TAG")"
+          test "$actual" = "$EXPECTED_DIGEST"
+          oras pull --registry-config "$scratch/auth.json" "$destination@$EXPECTED_DIGEST" --output "$scratch/restored"
+          printf '%s\n' "$FIXTURE_TAG" > "$scratch/expected.txt"
+          cmp "$scratch/expected.txt" "$scratch/restored/payload.txt"
+          printf 'fresh_job_digest=%s payload=byte-identical\n' "$actual"
+
+  cleanup:
+    if: always()
+    needs: [transfer, consume]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+
+      - name: Delete only versions owned by this fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d "$RUNNER_TEMP/cache-cleanup.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$scratch/auth.json"
+          for package in "$SOURCE_PACKAGE" "$DESTINATION_PACKAGE"; do
+            repository="ghcr.io/$owner/$package"
+            gh api --paginate "orgs/$owner/packages/container/$package/versions?per_page=100" \
+              | jq -c --arg tag "$FIXTURE_TAG" \
+                '.[] | select(.metadata.container.tags | index($tag)) | {id, name, metadata}' > "$scratch/versions.jsonl"
+            jq -se 'length <= 1' "$scratch/versions.jsonl"
+            while IFS= read -r version; do
+              printf '%s\n' "$version" > "$scratch/version.json"
+              jq -e --arg tag "$FIXTURE_TAG" \
+                '(.metadata.container.tags - [$tag, ($tag + "-alias")]) == []' "$scratch/version.json"
+              digest="$(jq -r .name "$scratch/version.json")"
+              oras manifest fetch --registry-config "$scratch/auth.json" "$repository@$digest" --output "$scratch/manifest.json"
+              jq -e --arg tag "$FIXTURE_TAG" \
+                '.annotations["io.holdmyspot.cache.transfer-fixture"] == $tag' "$scratch/manifest.json"
+              id="$(jq -r .id "$scratch/version.json")"
+              gh api --method DELETE "orgs/$owner/packages/container/$package/versions/$id"
+              printf 'deleted_owned_fixture package=%s id=%s digest=%s\n' "$package" "$id" "$digest"
+            done < "$scratch/versions.jsonl"
+            remaining="$(gh api --paginate "orgs/$owner/packages/container/$package/versions?per_page=100" \
+              | jq -r --arg tag "$FIXTURE_TAG" '.[] | select(.metadata.container.tags | index($tag)) | .id')"
+            test -z "$remaining"
+          done
