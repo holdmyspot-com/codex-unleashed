@@ -1,0 +1,115 @@
+name: Scheduler native prerequisites
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-prerequisites.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        run: |
+          set -euo pipefail
+          printf 'value=%s\n' "$(jq -c '{include: .}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  inspect:
+    needs: select
+    name: Inspect - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Create owned diagnostic storage
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp -d "$RUNNER_TEMP/scheduler-prerequisites-XXXXXX")"
+          printf 'SCHEDULER_EVIDENCE=%s\n' "$evidence" >> "$GITHUB_ENV"
+          {
+            printf 'workflow_commit=%s\nrunner_os=%s\nrunner_arch=%s\nrunner_environment=%s\n' \
+              "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH" "$RUNNER_ENVIRONMENT"
+            printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          } | tee "$evidence/identity.txt"
+
+      - name: Inspect Linux memory controls without changing them
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          {
+            uname -a
+            id
+            sudo -n true
+            swapon --show --bytes
+            sysctl vm.overcommit_memory vm.overcommit_ratio vm.overcommit_kbytes
+            cat /proc/self/cgroup
+            findmnt -n -o TARGET,FSTYPE,OPTIONS -T /sys/fs/cgroup
+            for control in /sys/fs/cgroup/memory.oom_control /sys/fs/cgroup/memory.high /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.swap.max /sys/fs/cgroup/cgroup.controllers; do
+              printf 'control=%s\n' "$control"
+              if [[ -r "$control" ]]; then cat "$control"; else printf 'readable=false\n'; fi
+              if [[ -w "$control" ]]; then printf 'writable=true\n'; else printf 'writable=false\n'; fi
+            done
+          } | tee "$SCHEDULER_EVIDENCE/linux.txt"
+
+      - name: Inspect macOS memory controls without changing them
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          {
+            uname -a
+            sw_vers
+            id
+            sudo -n true
+            for setting in hw.memsize vm.swapusage vm.swap_enabled vm.compressor_mode kern.bootargs; do
+              if sysctl "$setting"; then :; else printf 'unavailable_sysctl=%s\n' "$setting"; fi
+            done
+            vm_stat
+          } | tee "$SCHEDULER_EVIDENCE/macos.txt"
+
+      - name: Inspect Windows memory controls without changing them
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & {
+            Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber
+            Get-CimInstance Win32_ComputerSystem | Select-Object AutomaticManagedPagefile, TotalPhysicalMemory | Format-List
+            Write-Output 'Active pagefiles (Win32_PageFileUsage):'
+            Get-CimInstance Win32_PageFileUsage | Select-Object Name, AllocatedBaseSize, CurrentUsage, PeakUsage | Format-List
+            Write-Output 'Startup pagefile settings (Win32_PageFileSetting):'
+            Get-CimInstance Win32_PageFileSetting | Select-Object Name, InitialSize, MaximumSize | Format-List
+            whoami /priv
+          } | Out-String | Tee-Object -FilePath "$env:SCHEDULER_EVIDENCE/windows.txt"
+
+      - name: Retain diagnostic evidence for one day
+        if: always() && env.SCHEDULER_EVIDENCE != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-prerequisites-${{ matrix.target }}
+          path: ${{ env.SCHEDULER_EVIDENCE }}
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned diagnostic storage
+        if: always() && env.SCHEDULER_EVIDENCE != ''
+        run: rm -rf -- "$SCHEDULER_EVIDENCE"
