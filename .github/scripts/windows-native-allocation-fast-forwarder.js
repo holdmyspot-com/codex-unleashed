@@ -7,15 +7,29 @@ const allocationAddress = Process.getModuleByName('kernel32.dll').getExportByNam
  * so a rejected ARM64 entry can be compared with Frida's relocation rules. */
 const allocationModule = Process.findModuleByAddress(allocationAddress);
 const entryInstructions = [];
+const entryBytes = Array.from(new Uint8Array(allocationAddress.readByteArray(32)))
+  .map(value => value.toString(16).padStart(2, '0')).join('');
 let instructionAddress = allocationAddress;
+let entryDecodeError = null;
 for (let index = 0; index < 8; index++) {
-  const instruction = Instruction.parse(instructionAddress);
+  let instruction;
+  try {
+    instruction = Instruction.parse(instructionAddress);
+  } catch (error) {
+    entryDecodeError = { address: instructionAddress.toString(), message: String(error) };
+    break;
+  }
   entryInstructions.push({ address: instructionAddress.toString(), mnemonic: instruction.mnemonic,
     operands: instruction.opStr });
   instructionAddress = instruction.next;
+  const isFunctionEnd = ['ret', 'br', 'b', 'jmp'].includes(instruction.mnemonic);
+  if (isFunctionEnd) {
+    break;
+  }
 }
 send({ event: 'hook_target', pid: Process.id, module: allocationModule.name,
-  offset: allocationAddress.sub(allocationModule.base).toString(), instructions: entryInstructions });
+  offset: allocationAddress.sub(allocationModule.base).toString(), bytes: entryBytes,
+  instructions: entryInstructions, decode_error: entryDecodeError });
 
 /* The original function pointer is supplied before pending hook installation
  * is flushed by send(), while the owned worker awaits allocation permission. */

@@ -465,6 +465,20 @@ instructions before hook installation. It runs ARM64 only, preserving the
 accepted x86-64 result. Manual dispatch can select either Windows target or
 both and retains the prior controls and retry experiment.
 
+Instruction-capture run
+[`40567830325`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40567830325)
+at `2853fa969c45bf0a074a628b6fa43d836d9163f9` stops inside the logger with
+`invalid instruction`, before it emits its buffered instruction records or
+attempts hook installation. Artifact `12763542685` has raw log SHA-256
+`7037d8f6743012db98db3cb75ea94298d93191cf61057b37152f6ad53a657831`.
+This is a diagnostic defect: the logger assumed eight consecutive decodable
+instructions. It does not establish whether decoding failed at the entry or
+after a valid instruction prefix. The corrected capture retains 32 raw entry
+bytes, the decoded prefix and the exact failing address/message; it stops at
+an unconditional branch or return rather than decoding past that boundary.
+An undecodable instruction is recorded without bypassing the unchanged
+hook-installation check. Native capture of these values remains unrun.
+
 ### Native macOS address-space-limit diagnostic
 
 Apple's current
