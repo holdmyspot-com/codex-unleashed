@@ -1,0 +1,220 @@
+{
+  "scope": "Native Windows ProcessTree lifecycle only; production controller, Cargo/Bazel integration and other operating systems remain unverified.",
+  "sources": {
+    ".github/scripts/build_scheduler/windows_api.py": "a13374c7a6129d57595c01e7bbbc3f39fa6092ad4688107b96b617a27a312e2f",
+    ".github/scripts/build_scheduler/windows_process.py": "87cc1e79006b6577cd861adeedb353788726258c2254029892c14e5145d8951b",
+    ".github/scripts/test-windows-process-tree.py": "9ca5fd562939a780ed2858152be914b718862c1a3442b7469766a0721b30627c",
+    ".github/scripts/test-windows-process-cleanup.py": "7023970eb6aa2179cb1a2c5b13915a0907eb40ad01db0446f1bbf7e9566c200e",
+    ".github/scripts/test-windows-process-errors.py": "2c0c6eddedc36f725239026a78932e02d5cdd5d211808d780d1918b02389bb41"
+  },
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "run": 40601516674,
+      "final_public_operation_exit": 0,
+      "final_constructor_cleanup_exit": 0,
+      "final_primary_error_exit": 0,
+      "logs": {
+        "atomic.log": {
+          "sha256": "914b9bd67b57672f10c8736fda951406e90b1ad4e0bce4785d184af071e2ef87",
+          "base64": "eyJldmVudCI6ICJhdG9taWNfam9iX293bmVyc2hpcF9wYXNzZWQiLCAibWFjaGluZSI6ICJBTUQ2NCIsICJweXRob24iOiAiMy4xMi4xMCIsICJwaWQiOiAyMDIwLCAiYWN0aXZlX2JlZm9yZSI6IDEsICJhY3RpdmVfYWZ0ZXIiOiAwLCAiZXhpdCI6IDEyNSwgIm91dHB1dF9yZXRhaW5lZCI6IHRydWV9DQo=",
+          "text": "{\"event\": \"atomic_job_ownership_passed\", \"machine\": \"AMD64\", \"python\": \"3.12.10\", \"pid\": 2020, \"active_before\": 1, \"active_after\": 0, \"exit\": 125, \"output_retained\": true}\r\n"
+        },
+        "public-red.log": {
+          "sha256": "9ef80f4440685b9520784dd20004866669c514e4174f47a6a69aee4d005a5175",
+          "base64": "VHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3Rlc3QtcHJvY2Vzcy10cmVlLnB5IiwgbGluZSAxMjQsIGluIDxtb2R1bGU+DQogICAgY2hlY2tfdHJlZShkaXJlY3RvcnksIHJvb3Rfb25seSkNCiAgRmlsZSAiRDpcYVxfdGVtcFxydW5uZXItZGVidWctc21va2Utb0tiNWRNL3dpbmRvd3MtcHJvY2Vzcy1vd25lci90ZXN0LXByb2Nlc3MtdHJlZS5weSIsIGxpbmUgNTcsIGluIGNoZWNrX3RyZWUNCiAgICBhc3NlcnQgdHJlZS53YWl0KDE1MDApID09IDEyNSwgImFib3J0IGxvc3QgaXRzIHJvb3QgZXhpdCBzdGF0dXMiDQogICAgICAgICAgIF5eXl5eXl5eXl5eXl5eXg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3B1YmxpYy1zb3VyY2VcYnVpbGRfc2NoZWR1bGVyXHdpbmRvd3NfcHJvY2Vzcy5weSIsIGxpbmUgMTQ4LCBpbiB3YWl0DQogICAgcmFpc2UgVGltZW91dEVycm9yKGYiUHJvY2VzcyB0cmVlIHtzZWxmLnBpZH0gaXMgc3RpbGwgYWN0aXZlIGFmdGVyIHt0aW1lb3V0X21zfSBtcyIpDQpUaW1lb3V0RXJyb3I6IFByb2Nlc3MgdHJlZSAzNDA0IGlzIHN0aWxsIGFjdGl2ZSBhZnRlciAxNTAwIG1zDQo=",
+          "text": "Traceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-process-tree.py\", line 124, in <module>\r\n    check_tree(directory, root_only)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-process-tree.py\", line 57, in check_tree\r\n    assert tree.wait(1500) == 125, \"abort lost its root exit status\"\r\n           ^^^^^^^^^^^^^^^\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-source\\build_scheduler\\windows_process.py\", line 148, in wait\r\n    raise TimeoutError(f\"Process tree {self.pid} is still active after {timeout_ms} ms\")\r\nTimeoutError: Process tree 3404 is still active after 1500 ms\r\n"
+        },
+        "public-green.log": {
+          "sha256": "f706a98bca45aa69806e4c1726a683a63bdf0a245946b032aa9a4d1e480c650b",
+          "base64": "eyJjYXNlIjogIndob2xlX3RyZWVfYWJvcnQiLCAicm9vdF9vbmx5IjogZmFsc2UsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJhcmd2X2Vudmlyb25tZW50X2RpcmVjdG9yeV9vdXRwdXRfZmFpbHVyZSIsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJyb290X2V4aXRfd2FpdHNfZm9yX2Rlc2NlbmRhbnQiLCAicmVzdWx0IjogInBhc3NlZCJ9DQpUcmFjZWJhY2sgKG1vc3QgcmVjZW50IGNhbGwgbGFzdCk6DQogIEZpbGUgIkQ6XGFcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLW9LYjVkTS93aW5kb3dzLXByb2Nlc3Mtb3duZXIvdGVzdC1wcm9jZXNzLXRyZWUucHkiLCBsaW5lIDExMywgaW4gY2hlY2tfY3JlYXRpb25fZmFpbHVyZQ0KICAgIFByb2Nlc3NUcmVlKFtzdHIoZXhlY3V0YWJsZSldLCBkaXJlY3RvcnksIG9zLmVudmlyb24sIG91dHB1dCkNCiAgRmlsZSAiRDpcYVxfdGVtcFxydW5uZXItZGVidWctc21va2Utb0tiNWRNL3dpbmRvd3MtcHJvY2Vzcy1vd25lci9wdWJsaWMtc291cmNlXGJ1aWxkX3NjaGVkdWxlclx3aW5kb3dzX3Byb2Nlc3MucHkiLCBsaW5lIDY4LCBpbiBfX2luaXRfXw0KICAgIGluZm8gPSBzZWxmLl9sYXVuY2goY29tbWFuZCwgZGlyZWN0b3J5LCBlbnZpcm9ubWVudCwgb3V0cHV0KQ0KICAgICAgICAgICBeXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3B1YmxpYy1zb3VyY2VcYnVpbGRfc2NoZWR1bGVyXHdpbmRvd3NfcHJvY2Vzcy5weSIsIGxpbmUgMTEwLCBpbiBfbGF1bmNoDQogICAgYXBpLnJlcXVpcmVfYXBpX3N1Y2Nlc3Moc2VsZi5fa2VybmVsLkNyZWF0ZVByb2Nlc3NXKGNvbW1hbmRbMF0sIGNvbW1hbmRfbGluZSwgTm9uZSwgTm9uZSwgVHJ1ZSwNCiAgRmlsZSAiRDpcYVxfdGVtcFxydW5uZXItZGVidWctc21va2Utb0tiNWRNL3dpbmRvd3MtcHJvY2Vzcy1vd25lci9wdWJsaWMtc291cmNlXGJ1aWxkX3NjaGVkdWxlclx3aW5kb3dzX2FwaS5weSIsIGxpbmUgODUsIGluIHJlcXVpcmVfYXBpX3N1Y2Nlc3MNCiAgICByYWlzZSBjdHlwZXMuV2luRXJyb3IoY3R5cGVzLmdldF9sYXN0X2Vycm9yKCkpDQpPU0Vycm9yOiBbV2luRXJyb3IgMjE2XSBUaGlzIHZlcnNpb24gb2YgJTEgaXMgbm90IGNvbXBhdGlibGUgd2l0aCB0aGUgdmVyc2lvbiBvZiBXaW5kb3dzIHlvdSdyZSBydW5uaW5nLiBDaGVjayB5b3VyIGNvbXB1dGVyJ3Mgc3lzdGVtIGluZm9ybWF0aW9uIGFuZCB0aGVuIGNvbnRhY3QgdGhlIHNvZnR3YXJlIHB1Ymxpc2hlci4NCg0KRHVyaW5nIGhhbmRsaW5nIG9mIHRoZSBhYm92ZSBleGNlcHRpb24sIGFub3RoZXIgZXhjZXB0aW9uIG9jY3VycmVkOg0KDQpUcmFjZWJhY2sgKG1vc3QgcmVjZW50IGNhbGwgbGFzdCk6DQogIEZpbGUgIkQ6XGFcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLW9LYjVkTS93aW5kb3dzLXByb2Nlc3Mtb3duZXIvdGVzdC1wcm9jZXNzLXRyZWUucHkiLCBsaW5lIDEyOCwgaW4gPG1vZHVsZT4NCiAgICBjaGVja19jcmVhdGlvbl9mYWlsdXJlKGRpcmVjdG9yeSkNCiAgRmlsZSAiRDpcYVxfdGVtcFxydW5uZXItZGVidWctc21va2Utb0tiNWRNL3dpbmRvd3MtcHJvY2Vzcy1vd25lci90ZXN0LXByb2Nlc3MtdHJlZS5weSIsIGxpbmUgMTE2LCBpbiBjaGVja19jcmVhdGlvbl9mYWlsdXJlDQogICAgYXNzZXJ0IGVycm9yLndpbmVycm9yID09IDE5MywgZXJyb3INCiAgICAgICAgICAgXl5eXl5eXl5eXl5eXl5eXl5eXl5eDQpBc3NlcnRpb25FcnJvcjogW1dpbkVycm9yIDIxNl0gVGhpcyB2ZXJzaW9uIG9mICUxIGlzIG5vdCBjb21wYXRpYmxlIHdpdGggdGhlIHZlcnNpb24gb2YgV2luZG93cyB5b3UncmUgcnVubmluZy4gQ2hlY2sgeW91ciBjb21wdXRlcidzIHN5c3RlbSBpbmZvcm1hdGlvbiBhbmQgdGhlbiBjb250YWN0IHRoZSBzb2Z0d2FyZSBwdWJsaXNoZXIuDQo=",
+          "text": "{\"case\": \"whole_tree_abort\", \"root_only\": false, \"result\": \"passed\"}\r\n{\"case\": \"argv_environment_directory_output_failure\", \"result\": \"passed\"}\r\n{\"case\": \"root_exit_waits_for_descendant\", \"result\": \"passed\"}\r\nTraceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-process-tree.py\", line 113, in check_creation_failure\r\n    ProcessTree([str(executable)], directory, os.environ, output)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-source\\build_scheduler\\windows_process.py\", line 68, in __init__\r\n    info = self._launch(command, directory, environment, output)\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-source\\build_scheduler\\windows_process.py\", line 110, in _launch\r\n    api.require_api_success(self._kernel.CreateProcessW(command[0], command_line, None, None, True,\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-source\\build_scheduler\\windows_api.py\", line 85, in require_api_success\r\n    raise ctypes.WinError(ctypes.get_last_error())\r\nOSError: [WinError 216] This version of %1 is not compatible with the version of Windows you're running. Check your computer's system information and then contact the software publisher.\r\n\r\nDuring handling of the above exception, another exception occurred:\r\n\r\nTraceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-process-tree.py\", line 128, in <module>\r\n    check_creation_failure(directory)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-process-tree.py\", line 116, in check_creation_failure\r\n    assert error.winerror == 193, error\r\n           ^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: [WinError 216] This version of %1 is not compatible with the version of Windows you're running. Check your computer's system information and then contact the software publisher.\r\n"
+        },
+        "direct-invalid.log": {
+          "sha256": "9327d3e365661b227a799acf74c926c2e6b3f5f2609ca55ff8241e0b75633176",
+          "base64": "VHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOg0KICBGaWxlICI8c3RyaW5nPiIsIGxpbmUgMSwgaW4gPG1vZHVsZT4NCiAgRmlsZSAiQzpcaG9zdGVkdG9vbGNhY2hlXHdpbmRvd3NcUHl0aG9uXDMuMTIuMTBceDY0XExpYlxzdWJwcm9jZXNzLnB5IiwgbGluZSA1NDgsIGluIHJ1bg0KICAgIHdpdGggUG9wZW4oKnBvcGVuYXJncywgKiprd2FyZ3MpIGFzIHByb2Nlc3M6DQogICAgICAgICBeXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl4NCiAgRmlsZSAiQzpcaG9zdGVkdG9vbGNhY2hlXHdpbmRvd3NcUHl0aG9uXDMuMTIuMTBceDY0XExpYlxzdWJwcm9jZXNzLnB5IiwgbGluZSAxMDI2LCBpbiBfX2luaXRfXw0KICAgIHNlbGYuX2V4ZWN1dGVfY2hpbGQoYXJncywgZXhlY3V0YWJsZSwgcHJlZXhlY19mbiwgY2xvc2VfZmRzLA0KICBGaWxlICJDOlxob3N0ZWR0b29sY2FjaGVcd2luZG93c1xQeXRob25cMy4xMi4xMFx4NjRcTGliXHN1YnByb2Nlc3MucHkiLCBsaW5lIDE1MzgsIGluIF9leGVjdXRlX2NoaWxkDQogICAgaHAsIGh0LCBwaWQsIHRpZCA9IF93aW5hcGkuQ3JlYXRlUHJvY2VzcyhleGVjdXRhYmxlLCBhcmdzLA0KICAgICAgICAgICAgICAgICAgICAgICBeXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl4NCk9TRXJyb3I6IFtXaW5FcnJvciAyMTZdIFRoaXMgdmVyc2lvbiBvZiAlMSBpcyBub3QgY29tcGF0aWJsZSB3aXRoIHRoZSB2ZXJzaW9uIG9mIFdpbmRvd3MgeW91J3JlIHJ1bm5pbmcuIENoZWNrIHlvdXIgY29tcHV0ZXIncyBzeXN0ZW0gaW5mb3JtYXRpb24gYW5kIHRoZW4gY29udGFjdCB0aGUgc29mdHdhcmUgcHVibGlzaGVyDQo=",
+          "text": "Traceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\subprocess.py\", line 548, in run\r\n    with Popen(*popenargs, **kwargs) as process:\r\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\subprocess.py\", line 1026, in __init__\r\n    self._execute_child(args, executable, preexec_fn, close_fds,\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\subprocess.py\", line 1538, in _execute_child\r\n    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,\r\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nOSError: [WinError 216] This version of %1 is not compatible with the version of Windows you're running. Check your computer's system information and then contact the software publisher\r\n"
+        },
+        "cleanup-original-collected.log": {
+          "sha256": "f3df07d23eee894e363bbf241a5c3702de0d7d53ea5535f25ac0edc685f20751",
+          "base64": "eyJjYXNlIjogImNvbnN0cnVjdGlvbl9jbGVhbnVwIiwgImJlZm9yZSI6IDE0MywgImFmdGVyIjogMTQ5fQ0KVHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL2NsZWFudXAtZmluYWwucHkiLCBsaW5lIDU1LCBpbiA8bW9kdWxlPg0KICAgIGFzc2VydCBhZnRlciA9PSBiZWZvcmUsICJuYXRpdmUgaGFuZGxlcyBsZWFrZWQgYWZ0ZXIgZmFpbGVkIGNvbnN0cnVjdGlvbiINCiAgICAgICAgICAgXl5eXl5eXl5eXl5eXl5eDQpBc3NlcnRpb25FcnJvcjogbmF0aXZlIGhhbmRsZXMgbGVha2VkIGFmdGVyIGZhaWxlZCBjb25zdHJ1Y3Rpb24NCg==",
+          "text": "{\"case\": \"construction_cleanup\", \"before\": 143, \"after\": 149}\r\nTraceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/cleanup-final.py\", line 55, in <module>\r\n    assert after == before, \"native handles leaked after failed construction\"\r\n           ^^^^^^^^^^^^^^^\r\nAssertionError: native handles leaked after failed construction\r\n"
+        },
+        "cleanup-fixed-collected.log": {
+          "sha256": "3ef8729d7f0d8efd6a8e0438fa1db29702df99b2fb6c09f3bdd6b3bde7d44d11",
+          "base64": "eyJjYXNlIjogImNvbnN0cnVjdGlvbl9jbGVhbnVwIiwgImJlZm9yZSI6IDE0MywgImFmdGVyIjogMTQzfQ0K",
+          "text": "{\"case\": \"construction_cleanup\", \"before\": 143, \"after\": 143}\r\n"
+        },
+        "primary-red.log": {
+          "sha256": "e203beea6369203ad8be71fa36464db2da71a76661163ef734a5a3da1f848d8f",
+          "base64": "VHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3B1YmxpYy1maXhlZFxidWlsZF9zY2hlZHVsZXJcd2luZG93c19wcm9jZXNzLnB5IiwgbGluZSAxMDUsIGluIF9sYXVuY2gNCiAgICBhcGkucmVxdWlyZV9hcGlfc3VjY2VzcyhzZWxmLl9rZXJuZWwuQ3JlYXRlUHJvY2Vzc1coY29tbWFuZFswXSwgY29tbWFuZF9saW5lLCBOb25lLCBOb25lLCBUcnVlLA0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3B1YmxpYy1maXhlZFxidWlsZF9zY2hlZHVsZXJcd2luZG93c19hcGkucHkiLCBsaW5lIDg1LCBpbiByZXF1aXJlX2FwaV9zdWNjZXNzDQogICAgcmFpc2UgY3R5cGVzLldpbkVycm9yKGN0eXBlcy5nZXRfbGFzdF9lcnJvcigpKQ0KT1NFcnJvcjogW1dpbkVycm9yIDIxNl0gVGhpcyB2ZXJzaW9uIG9mICUxIGlzIG5vdCBjb21wYXRpYmxlIHdpdGggdGhlIHZlcnNpb24gb2YgV2luZG93cyB5b3UncmUgcnVubmluZy4gQ2hlY2sgeW91ciBjb21wdXRlcidzIHN5c3RlbSBpbmZvcm1hdGlvbiBhbmQgdGhlbiBjb250YWN0IHRoZSBzb2Z0d2FyZSBwdWJsaXNoZXIuDQoNCkR1cmluZyBoYW5kbGluZyBvZiB0aGUgYWJvdmUgZXhjZXB0aW9uLCBhbm90aGVyIGV4Y2VwdGlvbiBvY2N1cnJlZDoNCg0KVHJhY2ViYWNrIChtb3N0IHJlY2VudCBjYWxsIGxhc3QpOg0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3Rlc3QtcHJpbWFyeS1lcnJvci5weSIsIGxpbmUgMzQsIGluIDxtb2R1bGU+DQogICAgTGF1bmNoQ2xlYW51cEZhaWx1cmUoW3N0cihpbnZhbGlkKV0sIGRpcmVjdG9yeSwgb3MuZW52aXJvbiwgb3V0cHV0KQ0KICBGaWxlICJEOlxhXF90ZW1wXHJ1bm5lci1kZWJ1Zy1zbW9rZS1vS2I1ZE0vd2luZG93cy1wcm9jZXNzLW93bmVyL3B1YmxpYy1maXhlZFxidWlsZF9zY2hlZHVsZXJcd2luZG93c19wcm9jZXNzLnB5IiwgbGluZSA2OCwgaW4gX19pbml0X18NCiAgICBzZWxmLl9sYXVuY2goY29tbWFuZCwgZGlyZWN0b3J5LCBlbnZpcm9ubWVudCwgb3V0cHV0LCBvd25lZCkNCiAgRmlsZSAiRDpcYVxfdGVtcFxydW5uZXItZGVidWctc21va2Utb0tiNWRNL3dpbmRvd3MtcHJvY2Vzcy1vd25lci9wdWJsaWMtZml4ZWRcYnVpbGRfc2NoZWR1bGVyXHdpbmRvd3NfcHJvY2Vzcy5weSIsIGxpbmUgNzQsIGluIF9sYXVuY2gNCiAgICB3aXRoIGNvbnRleHRsaWIuRXhpdFN0YWNrKCkgYXMgbGF1bmNoLCBvcGVuKG9zLmRldm51bGwsICJyYiIpIGFzIG51bGxfaW5wdXQ6DQogICAgICAgICBeXl5eXl5eXl5eXl5eXl5eXl5eXl5eDQogIEZpbGUgIkM6XGhvc3RlZHRvb2xjYWNoZVx3aW5kb3dzXFB5dGhvblwzLjEyLjEwXHg2NFxMaWJcY29udGV4dGxpYi5weSIsIGxpbmUgNjEwLCBpbiBfX2V4aXRfXw0KICAgIHJhaXNlIGV4Y19kZXRhaWxzWzFdDQogIEZpbGUgIkM6XGhvc3RlZHRvb2xjYWNoZVx3aW5kb3dzXFB5dGhvblwzLjEyLjEwXHg2NFxMaWJcY29udGV4dGxpYi5weSIsIGxpbmUgNTk1LCBpbiBfX2V4aXRfXw0KICAgIGlmIGNiKCpleGNfZGV0YWlscyk6DQogICAgICAgXl5eXl5eXl5eXl5eXl5eXg0KICBGaWxlICJDOlxob3N0ZWR0b29sY2FjaGVcd2luZG93c1xQeXRob25cMy4xMi4xMFx4NjRcTGliXGNvbnRleHRsaWIucHkiLCBsaW5lIDQ3OCwgaW4gX2V4aXRfd3JhcHBlcg0KICAgIGNhbGxiYWNrKCphcmdzLCAqKmt3ZHMpDQogIEZpbGUgIkQ6XGFcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLW9LYjVkTS93aW5kb3dzLXByb2Nlc3Mtb3duZXIvdGVzdC1wcmltYXJ5LWVycm9yLnB5IiwgbGluZSAxOSwgaW4gX2Nsb3NlX2hhbmRsZQ0KICAgIHJhaXNlIENsZWFudXBGYWlsdXJlKCJpbmplY3RlZCBsYXVuY2ggY2xlYW51cCBmYWlsdXJlIikNCkNsZWFudXBGYWlsdXJlOiBpbmplY3RlZCBsYXVuY2ggY2xlYW51cCBmYWlsdXJlDQo=",
+          "text": "Traceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-fixed\\build_scheduler\\windows_process.py\", line 105, in _launch\r\n    api.require_api_success(self._kernel.CreateProcessW(command[0], command_line, None, None, True,\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-fixed\\build_scheduler\\windows_api.py\", line 85, in require_api_success\r\n    raise ctypes.WinError(ctypes.get_last_error())\r\nOSError: [WinError 216] This version of %1 is not compatible with the version of Windows you're running. Check your computer's system information and then contact the software publisher.\r\n\r\nDuring handling of the above exception, another exception occurred:\r\n\r\nTraceback (most recent call last):\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-primary-error.py\", line 34, in <module>\r\n    LaunchCleanupFailure([str(invalid)], directory, os.environ, output)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-fixed\\build_scheduler\\windows_process.py\", line 68, in __init__\r\n    self._launch(command, directory, environment, output, owned)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/public-fixed\\build_scheduler\\windows_process.py\", line 74, in _launch\r\n    with contextlib.ExitStack() as launch, open(os.devnull, \"rb\") as null_input:\r\n         ^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\contextlib.py\", line 610, in __exit__\r\n    raise exc_details[1]\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\contextlib.py\", line 595, in __exit__\r\n    if cb(*exc_details):\r\n       ^^^^^^^^^^^^^^^^\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\contextlib.py\", line 478, in _exit_wrapper\r\n    callback(*args, **kwds)\r\n  File \"D:\\a\\_temp\\runner-debug-smoke-oKb5dM/windows-process-owner/test-primary-error.py\", line 19, in _close_handle\r\n    raise CleanupFailure(\"injected launch cleanup failure\")\r\nCleanupFailure: injected launch cleanup failure\r\n"
+        },
+        "primary-green.log": {
+          "sha256": "3fea95ecaa012da6013f2de68464c1ce624906a7e65d5f8371d067ed1640341d",
+          "base64": "TkFUSVZFX0NSRUFUSU9OX0VSUk9SX1BSRVNFUlZFRCAyMTYNCkJPRFlfRVJST1JfUFJFU0VSVkVEDQo=",
+          "text": "NATIVE_CREATION_ERROR_PRESERVED 216\r\nBODY_ERROR_PRESERVED\r\n"
+        },
+        "cleanup-final-green.log": {
+          "sha256": "3ef8729d7f0d8efd6a8e0438fa1db29702df99b2fb6c09f3bdd6b3bde7d44d11",
+          "base64": "eyJjYXNlIjogImNvbnN0cnVjdGlvbl9jbGVhbnVwIiwgImJlZm9yZSI6IDE0MywgImFmdGVyIjogMTQzfQ0K",
+          "text": "{\"case\": \"construction_cleanup\", \"before\": 143, \"after\": 143}\r\n"
+        },
+        "public-final.log": {
+          "sha256": "e350d444f53ba785eea93c47d7e5491007b33a97897a287d23ed9e145ca2d892",
+          "base64": "eyJjYXNlIjogIndob2xlX3RyZWVfYWJvcnQiLCAicm9vdF9vbmx5IjogZmFsc2UsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJhcmd2X2Vudmlyb25tZW50X2RpcmVjdG9yeV9vdXRwdXRfZmFpbHVyZSIsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJyb290X2V4aXRfd2FpdHNfZm9yX2Rlc2NlbmRhbnQiLCAicmVzdWx0IjogInBhc3NlZCJ9DQp7ImNhc2UiOiAibmF0aXZlX2NyZWF0aW9uX2ZhaWx1cmUiLCAicmVzdWx0IjogInBhc3NlZCJ9DQp7ImV2ZW50IjogInB1YmxpY19wcm9jZXNzX3RyZWVfcGFzc2VkIiwgIm1hY2hpbmUiOiAiQU1ENjQifQ0K",
+          "text": "{\"case\": \"whole_tree_abort\", \"root_only\": false, \"result\": \"passed\"}\r\n{\"case\": \"argv_environment_directory_output_failure\", \"result\": \"passed\"}\r\n{\"case\": \"root_exit_waits_for_descendant\", \"result\": \"passed\"}\r\n{\"case\": \"native_creation_failure\", \"result\": \"passed\"}\r\n{\"event\": \"public_process_tree_passed\", \"machine\": \"AMD64\"}\r\n"
+        }
+      },
+      "ssh_exit": 0,
+      "post_cleanup": "passed",
+      "workflow_conclusion": "failure",
+      "expected_failure": "Record the deliberate build failure (exit 17)",
+      "job_id": 122530619633,
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Create owned partial build state",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "conclusion": "failure",
+          "name": "Record the deliberate build failure",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Debug the original failed workspace",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Debug the original failed workspace",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Create owned partial build state",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "status": "completed"
+        }
+      ],
+      "hosted_log_sha256": "8e81186f9919b34a4b3b81e850e1a141d8a5479bebdf65e1da340732ba37b071",
+      "lifecycle_log": "Debug - x86_64-pc-windows-msvc\tPost Debug the original failed workspace\t2026-10-27T23:46:10.4647039Z Reason: exited\nDebug - x86_64-pc-windows-msvc\tPost Debug the original failed workspace\t2026-10-27T23:46:10.4647443Z Exit code: 0\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T23:46:10.8831040Z Same-runner incremental retry preserved the completed part"
+    },
+    "aarch64-pc-windows-msvc": {
+      "run": 40603890604,
+      "final_public_operation_exit": 0,
+      "final_constructor_cleanup_exit": 0,
+      "final_primary_error_exit": 0,
+      "logs": {
+        "primary-green.log": {
+          "sha256": "3fea95ecaa012da6013f2de68464c1ce624906a7e65d5f8371d067ed1640341d",
+          "base64": "TkFUSVZFX0NSRUFUSU9OX0VSUk9SX1BSRVNFUlZFRCAyMTYNCkJPRFlfRVJST1JfUFJFU0VSVkVEDQo=",
+          "text": "NATIVE_CREATION_ERROR_PRESERVED 216\r\nBODY_ERROR_PRESERVED\r\n"
+        },
+        "cleanup-green.log": {
+          "sha256": "579043706e65cc1f9c93bc28a6f52f7d963814acfd380c952b53bba42fe91eca",
+          "base64": "eyJjYXNlIjogImNvbnN0cnVjdGlvbl9jbGVhbnVwIiwgImJlZm9yZSI6IDEyNSwgImFmdGVyIjogMTI1fQ0K",
+          "text": "{\"case\": \"construction_cleanup\", \"before\": 125, \"after\": 125}\r\n"
+        },
+        "public-green.log": {
+          "sha256": "b8cb7ab4b4cc6a2c7afeef69613dd5379b72096bba675f33cdae63a81102cdae",
+          "base64": "eyJjYXNlIjogIndob2xlX3RyZWVfYWJvcnQiLCAicm9vdF9vbmx5IjogZmFsc2UsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJhcmd2X2Vudmlyb25tZW50X2RpcmVjdG9yeV9vdXRwdXRfZmFpbHVyZSIsICJyZXN1bHQiOiAicGFzc2VkIn0NCnsiY2FzZSI6ICJyb290X2V4aXRfd2FpdHNfZm9yX2Rlc2NlbmRhbnQiLCAicmVzdWx0IjogInBhc3NlZCJ9DQp7ImNhc2UiOiAibmF0aXZlX2NyZWF0aW9uX2ZhaWx1cmUiLCAicmVzdWx0IjogInBhc3NlZCJ9DQp7ImV2ZW50IjogInB1YmxpY19wcm9jZXNzX3RyZWVfcGFzc2VkIiwgIm1hY2hpbmUiOiAiQVJNNjQifQ0K",
+          "text": "{\"case\": \"whole_tree_abort\", \"root_only\": false, \"result\": \"passed\"}\r\n{\"case\": \"argv_environment_directory_output_failure\", \"result\": \"passed\"}\r\n{\"case\": \"root_exit_waits_for_descendant\", \"result\": \"passed\"}\r\n{\"case\": \"native_creation_failure\", \"result\": \"passed\"}\r\n{\"event\": \"public_process_tree_passed\", \"machine\": \"ARM64\"}\r\n"
+        }
+      },
+      "ssh_exit": 0,
+      "post_cleanup": "passed",
+      "workflow_conclusion": "failure",
+      "expected_failure": "Record the deliberate build failure (exit 17)",
+      "job_id": 122538537190,
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Create owned partial build state",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "conclusion": "failure",
+          "name": "Record the deliberate build failure",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Debug the original failed workspace",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Debug the original failed workspace",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Create owned partial build state",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "status": "completed"
+        }
+      ],
+      "hosted_log_sha256": "e42008858353af57057a693d72c0f784a88ef0c174737ad15b7af95311ae9007",
+      "lifecycle_log": "Debug - aarch64-pc-windows-msvc\tPost Debug the original failed workspace\t2026-10-27T23:46:12.1389723Z Reason: exited\nDebug - aarch64-pc-windows-msvc\tPost Debug the original failed workspace\t2026-10-27T23:46:12.1389892Z Exit code: 0\nDebug - aarch64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T23:46:12.9658368Z Same-runner incremental retry preserved the completed part"
+    }
+  },
+  "storage_cleanup_source_sha256": "34b05783d323b94dbf4f0aedfc59899e23e207ad99fb6f2709654347e993b4df"
+}
