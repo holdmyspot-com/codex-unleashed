@@ -102,6 +102,20 @@ The recorded invocation supplies only `--test-threads=1`, without `--nocapture`,
 
 The action declares a bundled bwrap runfile and `CARGO_BIN_EXE_bwrap`, but the fixture guard checks trusted system `PATH` bwrap independently. Bundled availability alone cannot establish that this guard passed. Actual upstream system-bwrap discovery and namespace capability remain unknown. The next comparison must expose the guard path from an authoritative upstream execution; reproducing only the container image does not establish the historical executor's filesystem or kernel policy.
 
+The retained extraction includes every platform property for these test actions:
+`Arch=amd64`, `OSFamily=Linux` and
+`docker://docker.io/mbolin491/codex-bazel@sha256:0a8e56bfaa3b2e5279db0d3bb2d62b44ba5e5d63a37d97eb8790f49da570af70`.
+Neither the inspected upstream wrapper/RC nor the consuming job log records an
+`x-buildbuddy-platform.*` override or runner recycling. This narrows the
+consuming invocation's configuration; it does not identify the original cached
+execution's request. BuildBuddy's [execution-property documentation](https://www.buildbuddy.io/docs/rbe-platforms/#setting-properties-via-remote-headers)
+states that request headers can override platform properties without storing
+those values in the remote cache. Consequently, the cached platform and a
+local run of its named image cannot by themselves prove the original action's
+filesystem or whether its guard returned early. Do not repeat the image-only
+comparison as a way to close this gate. Fresh upstream output exposing guard
+execution, or an explicit owner disposition of this comparison, is required.
+
 The two supplemental manifest/Python formatter checks above are not prerequisites of the Codex release build. The pinned `rust-release.yml` starts on release-tag pushes; its compilation job depends on `tag-check`. It does not invoke those two checks. Their failures therefore coexist with a successful release build; no passing broader-CI claim follows from the release.
 
 Blocked-descriptor trace evidence is retained under `pristine-shell-blocked-io-1-artifacts`, with receipt `pristine-shell-blocked-io-1-verified.json`. The compiled archive SHA-256 is `0f4e4eba992fa1f04004329c5581306b3b63912d5986e7b7b433cd65d8c519a6`; trace SHA-256 is `af38bf4a28513c5b9c56ba8113a330bd09dac683addd7b1fb5b21e0a89e198af`. The inventory selects exactly one nonignored case. Trace lines 924032–924168 show bwrap creating `/newroot/dev/fd -> /proc/self/fd`, failing target lookup and the tmpfs mount, printing its mount error and exiting. Lines 940398–940420 show the initiating writes to descriptors 19 and 24 returning `EPIPE` before `SIGPIPE` terminates exec-server. These observations identify failed operations, but do not establish the reader-close cause, signal policy or upstream environment equivalence. The overall run is cancelled; neither the traced failure nor skipped null-only phase is a successful acceptance check.
