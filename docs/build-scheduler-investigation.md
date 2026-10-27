@@ -701,13 +701,44 @@ forwarding defect. Frida's [macOS setup](https://frida.re/docs/examples/macos/)
 requires task-port authorization, and its
 [troubleshooting guide](https://frida.re/docs/troubleshooting/) identifies
 headless authorization and executable signing as possible causes. Neither is
-confirmed by the timeout alone. The next diagnostic records Python signing and
+confirmed by the timeout alone. The diagnostic records Python signing and
 developer-authorization state, then calls native `task_for_pid` on an owned
 child under the runner identity and an elevated diagnostic identity. It records
 the kernel result and deallocates any acquired send right. A denied observation
 is retained as denial, never interpreted as successful attachment. No global
 authorization database, signing identity or SIP setting changes. Native
 attachment, forwarding and allocation continuation remain unaccepted.
+
+The task-port diagnostic
+[`40576657427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40576657427)
+at `99ee97283e624dee28db40d43afd29c41b694e20` completes on both native runners.
+The ordinary runner identity (UID 501) receives kernel result 5 and no task
+port; the elevated identity (UID 0) receives result 0 and a nonzero task port
+on each architecture. Each successful acquisition releases its send right,
+and each worker completes its uninstrumented mapping/free/exit sequence.
+The green diagnostic therefore establishes elevated task-port access only;
+it does not establish Frida attachment or forwarding, nor prove that permission
+denial alone caused the earlier Frida timeout.
+
+The elevated run
+[`40577207811`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40577207811)
+at `c7cbfd486e` passes the existing attachment-only and native-forwarding probes
+on both architectures (Intel job 26 seconds, ARM64 job 14 seconds). Each native
+replacement observes exactly one matching 256 MiB mapping call on the worker
+thread; each worker reads back endpoint values 42/43, unmaps the allocation and
+exits normally while instrumentation remains installed. This accepts elevated
+attachment, direct native forwarding and ordinary shutdown for this probe.
+No compiler build or machine authorization-policy change is needed for it.
+
+| Target | Artifact ID | Artifact archive SHA-256 |
+| --- | --- | --- |
+| macOS x86-64 | `12768665065` | `49df9e4196ee2b968750a802098a540b1094a276c9853c0bd863371ad623e0fc` |
+| macOS ARM64 | `12768525443` | `f80dc2c6ae58a0430cec283332df85311386934ac49882832aa2d88e5ab279e2` |
+
+Denied-allocation waiting/retry, compiler coverage, physical-pressure recovery
+and scheduler integration remain unaccepted. The next probe must establish
+native waiting and retry after a genuine allocation denial without making the
+successful forwarding path depend on JavaScript callbacks.
 
 ## Swap-control prerequisites
 
