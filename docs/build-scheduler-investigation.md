@@ -297,10 +297,28 @@ reversible allocation denial. Waiting/retry belongs to the fixture function;
 it is not a blocked kernel call or an injected compiler hook. Even a passing
 result leaves compiler interception, other allocation APIs, physical-pressure
 recovery, FIFO continuation and Cargo/Bazel integration open. Machine swap and
-pagefile settings are unchanged. Native execution is initially unrun. Local
-Python syntax validation passes; the installed actionlint rejects the already
-documented `queue: max` concurrency field, so GitHub's parser remains the
-authoritative workflow check.
+pagefile settings are unchanged. Local Python syntax validation passes; the
+installed actionlint rejects the already documented `queue: max` concurrency
+field. GitHub accepts and executes this workflow with that field.
+
+Run [`40561766827`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40561766827)
+at `3cdc72995e81865072da30ba9d54053008bc4392` passes both native probes. The jobs
+take 23 seconds (x86-64) and 27 seconds (ARM64), including setup and evidence
+upload. Each worker's first 268,435,456-byte request returns null with Windows
+error 1455. After the peer completes and the controller increases only the
+worker's commit allowance, the same PID reports successful allocation, observed
+endpoint bytes 42/43, deallocation and zero exit. This paired result establishes
+controlled commit-limit recovery, not machine-wide pagefile exhaustion.
+
+| Native target | Worker PID | Initial / raised commit limit, bytes | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- | --- | --- |
+| Windows x86-64 | `4764` | `45105152` / `313540608` | `12761136166` | `64a5e277b18f01d8b5f5ee792ad5ad13e2b9ef28637bf033d9493ef0fa8851fd` |
+| Windows ARM64 | `6032` | `45469696` / `313905152` | `12761611088` | `4e1535b91424c1de0ede3efee8c31bf8014e1fdb7e57c6d6e8336e6b29063cc0` |
+
+Both logs identify native Python 3.12.10 with the expected AMD64/ARM64 machine
+and runner architecture. Artifact log bytes are read and hashed directly from
+their downloaded ZIPs in memory; the one-day artifacts leave no local download
+directory. No passing build or cache check is repeated for this diagnostic.
 
 ## Swap-control prerequisites
 
