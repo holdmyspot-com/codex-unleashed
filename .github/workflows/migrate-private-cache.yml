@@ -69,6 +69,25 @@ jobs:
             done < "$scratch/tags.txt"
           done < "$evidence/request.tsv"
 
+      - name: Remove the exact bootstrap now that real caches populate the package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          endpoint="orgs/$owner/packages/container/cargo-cache-main-new"
+          evidence="$RUNNER_TEMP/cache-migration-evidence"
+          gh api --paginate --slurp "$endpoint/versions?per_page=100" > "$evidence/destination-before-cleanup.json"
+          jq -e '[.[][] | select(.metadata.container.tags | length > 0)] | length > 1' "$evidence/destination-before-cleanup.json"
+          jq -c '.[][] | select(.id == 1452472811)' "$evidence/destination-before-cleanup.json" > "$evidence/bootstrap.jsonl"
+          if test -s "$evidence/bootstrap.jsonl"; then
+            jq -e '.name == "sha256:302a00900e339ef6403d59366942ab756c5ac5aaf0ccbc9fc4e4f0678d1fd4d5"' "$evidence/bootstrap.jsonl"
+            jq -e '(.metadata.container.tags | sort) == ["cache-transfer-fixture-40463370931-1", "cache-transfer-fixture-40463370931-1-alias"]' "$evidence/bootstrap.jsonl"
+            gh api --method DELETE "$endpoint/versions/1452472811"
+          fi
+          gh api --paginate --slurp "$endpoint/versions?per_page=100" > "$evidence/destination-after-cleanup.json"
+          jq -e '[.[][] | select(.id == 1452472811)] == []' "$evidence/destination-after-cleanup.json"
+
       - name: Preserve copy receipts for one day
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
