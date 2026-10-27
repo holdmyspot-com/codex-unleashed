@@ -20,6 +20,36 @@ The same run's Linux x86-64 musl release lint/build job `122279734911` succeeds.
 Our pending release-profile CLI check therefore uses the already selected musl
 release boundary rather than expanding to the failing full-workspace GNU archive.
 
+### Shell-failure source applicability
+
+Direct Git blob comparisons between historical baseline
+`6aaac694803004a63c6f393d153c96d22521a6b9` and selected snapshot
+`dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4` establish the following scope.
+Retrieve each commit's recursive tree with
+`gh api repos/openai/codex/git/trees/<commit>?recursive=1`; compare the named
+entries' blob identities, then retrieve differing blobs to inspect their diff.
+The comparison uses complete tree entries rather than the compare API's bounded
+changed-file list.
+
+| Path under `codex-rs/` | Comparison |
+| --- | --- |
+| `exec-server/src/shell_snapshot.rs` | Identical blob `55a831c7cb07cba9cb7b5ab6da84833c89e7eb16`. |
+| `exec-server/src/shell_snapshot_process.rs` | Identical blob `095444fa2cfbe8bce03e44894c29826420e382fa`. |
+| `exec-server/src/shell_snapshot_file.rs` | Identical blob `08ff6df9714771ad970d34852ad37b360f4b8eef`. |
+| `shell-command/src/shell_snapshot.rs` | Identical blob `726be2c6f6dcfcb80c860351c0c40bc59807d02b`. |
+| `exec-server/tests/exec_process/shell_snapshot.rs` | Identical blob `7d022116b128d2f6f768930e7a5a4f204aa70f14`. |
+| `linux-sandbox/src/launcher.rs` | Identical blob `b4455ff210c3c5bd26d4f648debc9d3befc6614d`. |
+| `exec-server/tests/exec_process.rs` | Only change: an unrelated child API-key assertion now requires the prefix `sk-proj-masked` instead of `sk-proj-`. The deferred shell cases are unchanged. |
+| `linux-sandbox/src/bwrap.rs` | Only change: unreadable-glob search-root inspection now propagates filesystem errors other than absent/non-directory roots. The observed descriptor-mount path is unchanged. |
+
+This source comparison supports carrying the historical shell diagnoses forward
+for investigation; it does not establish runtime equivalence across changed
+dependencies or toolchains. The four failures retain their approved step-4 repair
+deferral and failed historical results. Upstream guarded execution remains
+unknown, and no new test pass is claimed. Establish that execution evidence before
+closing the comparison gate; investigate any changed runtime outcome at its actual
+owning boundary.
+
 ## Pristine source and runtime failures
 
 | Failure in our environment | Observed local evidence | Upstream evidence and limitation | Comparison status / next required evidence |
