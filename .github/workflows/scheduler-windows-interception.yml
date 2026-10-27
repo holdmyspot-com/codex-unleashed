@@ -17,6 +17,11 @@ on:
         type: choice
         default: native-fast
         options: [native-fast, native-forward, controls, retry]
+      target:
+        description: Native Windows target to diagnose
+        type: choice
+        default: aarch64-pc-windows-msvc
+        options: [aarch64-pc-windows-msvc, x86_64-pc-windows-msvc, all]
 
 permissions:
   contents: read
@@ -33,8 +38,10 @@ jobs:
           persist-credentials: false
 
       - id: matrix
+        env:
+          PROBE_TARGET: ${{ inputs.target || 'aarch64-pc-windows-msvc' }}
         run: |
-          printf 'value=%s\n' "$(jq -c '{include: [.[] | select(.target | contains("-windows-"))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+          printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(.target | contains("-windows-")) | select(($target == "all") or (.target == $target))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
 
   probe:
     needs: select

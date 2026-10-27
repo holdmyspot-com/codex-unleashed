@@ -117,6 +117,8 @@ def run_probe(api, kernel, mode):
                     script = session.create_script(script_source)
                     script.on("message", receive_message)
                     script.load()
+                    if mode == "native-fast":
+                        expect_hook_event("hook_target")
                     installed = expect_hook_event(installed_event)
                     if installed_event == "hook_installed":
                         assert int(installed["address"], 16) == int(ready["allocation_address"], 16)
