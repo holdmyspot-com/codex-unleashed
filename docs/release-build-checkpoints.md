@@ -725,7 +725,18 @@ pressure in the successful run, without identifying the earlier lost-runner
 cause. The owner-directed limit is therefore extended to two Cargo jobs on
 x86-64 Linux as well; its changed configuration requires verification.
 
-The two macOS clean outcomes and the changed x86-64 resource configuration
+macOS ARM64 run `40434746377`, job `121960656952`, at
+`f0c4987de5a8bd700311ece9d30d35289ba754e4` passes in 3h 26m 15s.
+Compiled-cache restoration is skipped; 1,154 Rust compilation entries accompany
+the four required build stages. Proxy, code-mode-host, CLI and app-server take
+194/481/9,506/2,125 seconds. Both native version smokes report 0.164.0, the
+source diff is empty and dependency verification passes. Evidence artifact
+`12711992154` has verified ZIP SHA-256
+`3291129d26b6b219f7ac88c1a1a3a9baa1b597d6fb72bd8d296899d788e41439`;
+the job-log SHA-256 is
+`cc2e35974eff94a945716d873312ee084e711e0488d4f592fc09e53ca3feca3e`.
+
+The Intel macOS clean outcome and the changed Linux x86-64 resource configuration
 remain unaccepted. The root executor owns
 the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
 then removes that directory.
