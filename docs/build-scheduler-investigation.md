@@ -477,7 +477,29 @@ after a valid instruction prefix. The corrected capture retains 32 raw entry
 bytes, the decoded prefix and the exact failing address/message; it stops at
 an unconditional branch or return rather than decoding past that boundary.
 An undecodable instruction is recorded without bypassing the unchanged
-hook-installation check. Native capture of these values remains unrun.
+hook-installation check.
+
+Corrected capture run
+[`40568126374`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40568126374)
+at `90cadbeefe620f9a978206bb969404650ad1cd46` emits its target record and then
+fails at the unchanged hook-installation check. Artifact `12763876722` has raw
+log SHA-256 `9784fa94c880c6c4046753c36ac7de5a8b213cbf8b0332574aebe80eb8fb83ec`.
+The caller export belongs to `KERNEL32.DLL` at offset `0x714f0`; its entry
+instruction is a relative branch to offset `0x6d4f8` in that module. The raw
+32-byte capture is
+`02f0ff171f2003d51f2003d551050800f8efff171f2003d51f2003d591050800`.
+Decoding stops at that branch with no decode error, accepting the logger repair.
+
+This capture does not yet prove insufficient patch space at the actual
+instrumented address: Frida's
+[redirect resolver](https://github.com/frida/frida-gum/blob/17.24.3/gum/backend-arm64/guminterceptor-arm64.c#L1292)
+follows relative branches before preparing instrumentation. The next required
+check is to inspect that resolved destination and the `KernelBase.VirtualAlloc`
+export, then compare the relevant entry with the pinned relocator's constraints.
+Do not force unchecked relocation or claim an upstream defect from the caller
+thunk's size alone. Normal-replacement shutdown remains failed on both
+architectures; direct native forwarding is accepted only on x86-64, and native
+blocked-allocation recovery remains open.
 
 ### Native macOS address-space-limit diagnostic
 
