@@ -1,0 +1,185 @@
+name: Scheduler Bazel memory admission
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-bazel-memory-admission.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BAZEL_VERSION: 9.2.0
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          # Official Bazel release assets and SHA-256 values for unaccepted targets.
+          assets = {
+              "aarch64-unknown-linux-musl": ("linux-arm64", "049dd21f40ad979db11c3ee68c96a42ce75f1185e69ac61ab20de1501427a410"),
+              "aarch64-apple-darwin": ("darwin-arm64", "dd466352a3e4d3581b8898740ee1ff208866ccbe25f8d367c5dcb950219587e6"),
+              "x86_64-apple-darwin": ("darwin-x86_64", "14c9bcb01303b38192e0e2895051c1bcf19bf89d7e416f5aeeeb48b6b624cfbf"),
+              "x86_64-pc-windows-msvc": ("windows-x86_64.exe", "5fc2f2805b8c697a54732558576938d06bab63aa0f9b6610cc01d2cae0388705"),
+              "aarch64-pc-windows-msvc": ("windows-arm64.exe", "a63eb0c625f7ed958bdc43ce583593d97e67c9ca1432dc6e463535c5aae5ffd2")
+          }
+          selected = [entry for entry in json.loads(Path(".github/release-matrix.json").read_text())
+                      if entry["target"] != "x86_64-unknown-linux-musl"]
+          assert len(selected) == 5
+          assert {entry["target"] for entry in selected} == set(assets)
+          for entry in selected:
+              entry["bazel_asset"], entry["bazel_sha256"] = assets[entry["target"]]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("value=" + json.dumps({"include": selected}) + "\n")
+
+  probe:
+    needs: select
+    name: Admission - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: python
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/test-bazel-memory-admission.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up native Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Create owned diagnostic storage
+        run: |
+          import os
+          from pathlib import Path
+          import tempfile
+
+          # The final cleanup step owns this root, including failed acquisitions.
+          root = Path(tempfile.mkdtemp(prefix="scheduler-bazel-admission-", dir=os.environ["RUNNER_TEMP"]))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as environment:
+              environment.write(f"SCHEDULER_BAZEL_ADMISSION={root}\n")
+              for key in ("TMPDIR", "TMP", "TEMP"):
+                  environment.write(f"{key}={root / 'work'}\n")
+          for name in ("tools", "work", "evidence"):
+              (root / name).mkdir()
+
+      - name: Verify native identity and acquire pinned Bazel
+        env:
+          BAZEL_ASSET: ${{ matrix.bazel_asset }}
+          BAZEL_SHA256: ${{ matrix.bazel_sha256 }}
+        run: |
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import shutil
+          import subprocess
+          import sys
+          from urllib.request import urlopen
+
+          root = Path(os.environ["SCHEDULER_BAZEL_ADMISSION"])
+          identity = {key: os.environ.get(key, "unknown") for key in (
+              "GITHUB_SHA", "RUNNER_OS", "RUNNER_ARCH", "RUNNER_ENVIRONMENT", "ImageOS", "ImageVersion")}
+          identity.update(machine=platform.machine(), python=sys.version,
+                          fixture_sha256=hashlib.sha256(Path(".github/scripts/test-bazel-memory-admission.py").read_bytes()).hexdigest())
+          (root / "evidence" / "identity.json").write_text(json.dumps(identity, indent=2), encoding="utf-8")
+          print(json.dumps(identity), flush=True)
+          assert os.environ["RUNNER_ENVIRONMENT"] == "github-hosted"
+          expected_machines = {"ARM64": ("arm64", "aarch64"), "X64": ("x86_64", "amd64")}
+          assert platform.machine().lower() in expected_machines[os.environ["RUNNER_ARCH"]], identity
+
+          version = os.environ["BAZEL_VERSION"]
+          asset = f"bazel-{version}-{os.environ['BAZEL_ASSET']}"
+          url = f"https://github.com/bazelbuild/bazel/releases/download/{version}/{asset}"
+          executable = root / "tools" / asset
+          with urlopen(url) as response, executable.open("wb") as output:
+              shutil.copyfileobj(response, output)
+          observed_hash = hashlib.sha256(executable.read_bytes()).hexdigest()
+          acquisition = {"url": url, "expected_sha256": os.environ["BAZEL_SHA256"], "observed_sha256": observed_hash}
+          (root / "evidence" / "acquisition.json").write_text(json.dumps(acquisition, indent=2), encoding="utf-8")
+          assert observed_hash == os.environ["BAZEL_SHA256"], acquisition
+          executable.chmod(0o755)
+          result = subprocess.run([str(executable), "--version"], check=True, capture_output=True, text=True)
+          assert result.stdout.strip() == f"bazel {version}", result
+          print(result.stdout, end="", flush=True)
+          (root / "evidence" / "version.txt").write_text(result.stdout, encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as environment:
+              environment.write(f"SCHEDULER_BAZEL_EXECUTABLE={executable}\n")
+
+      - name: Exercise native estimate admission and refusal
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+
+          root = Path(os.environ["SCHEDULER_BAZEL_ADMISSION"])
+          command = [sys.executable, ".github/scripts/test-bazel-memory-admission.py",
+                     "--bazel", os.environ["SCHEDULER_BAZEL_EXECUTABLE"],
+                     "--temporary-directory", str(root / "work")]
+          start = time.monotonic_ns()
+          result = subprocess.run(command, capture_output=True, text=True)
+          elapsed_ns = time.monotonic_ns() - start
+          evidence = root / "evidence"
+          (evidence / "stdout.txt").write_text(result.stdout, encoding="utf-8")
+          (evidence / "stderr.txt").write_text(result.stderr, encoding="utf-8")
+          receipt = {"argv": command, "exit_code": result.returncode, "elapsed_ns": elapsed_ns}
+          (evidence / "receipt.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+          print(json.dumps(receipt), flush=True)
+          print(result.stdout, end="", flush=True)
+          print(result.stderr, end="", file=sys.stderr, flush=True)
+          result.check_returncode()
+
+      - name: Retain native admission evidence for one day
+        if: always() && env.SCHEDULER_BAZEL_ADMISSION != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-bazel-memory-admission-${{ matrix.target }}
+          path: ${{ env.SCHEDULER_BAZEL_ADMISSION }}/evidence
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned diagnostic storage
+        if: always() && env.SCHEDULER_BAZEL_ADMISSION != ''
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          root = Path(os.environ["SCHEDULER_BAZEL_ADMISSION"]).resolve()
+          assert root.parent == Path(os.environ["RUNNER_TEMP"]).resolve()
+          assert root.name.startswith("scheduler-bazel-admission-")
+          shutil.rmtree(root)
+          assert root.exists() is False
+          print("owned_storage_removed=True")

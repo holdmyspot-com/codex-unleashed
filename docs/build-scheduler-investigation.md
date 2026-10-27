@@ -809,6 +809,29 @@ its output. The latter is an expected negative test rather than a repaired
 failure. This validates the maintained diagnostic at its native Bazel execution
 boundary; it does not repeat Codex compilation or accept unrun native platforms.
 
+The focused
+[native admission workflow](../.github/workflows/scheduler-bazel-memory-admission.yml)
+extends that unchanged fixture to the five unaccepted release targets: Linux
+ARM64, both macOS architectures and both Windows architectures. It downloads
+the corresponding standalone Bazel 9.2.0 binary from the
+[official release](https://github.com/bazelbuild/bazel/releases/tag/9.2.0),
+checks its pinned SHA-256 and version, and rejects a Python/runner architecture
+mismatch before running the fixture. It retains native identity, fixture hash,
+acquisition identity, stdout/stderr, elapsed nanoseconds and terminal exit status
+for one day, then removes its owned diagnostic directory. There is no upstream
+checkout, compiler installation, Codex compilation, cache restoration or swap
+change. Its push registration is limited to its own path on `main.new`.
+
+Local YAML parsing and all five embedded Python syntax checks pass. Executing
+the actual matrix-selection step selects exactly the five intended targets and
+their existing free runner labels. The installed actionlint reports only the
+previously established unsupported `queue` concurrency key; the requested queue
+policy is retained, with GitHub ingestion as its acceptance boundary. Native
+acquisition, serialization/refusal, upload and cleanup remain unrun for this
+workflow. Its five-minute job timeout does not promise a terminal fixture receipt
+or child cleanup after a forced runner termination; such a run remains
+failed/incomplete rather than accepted.
+
 ### Memory-load scheduling availability
 
 The current Bazel development source also documents
