@@ -6,15 +6,23 @@ Step 3 of [the restart plan](../plan.md) requires one memory-responsive scheduli
 policy for Cargo and Bazel on Linux, macOS and Windows, including both supported
 architectures of each OS. The owner specifies:
 
-1. Disable machine swap/pagefiles.
-2. Start with the build tool's default job count.
+1. Disable machine swap/pagefiles where verified native control is available;
+   otherwise use the authorized swap-monitoring and ordered retry fallback.
+2. Use the build tool's default job count as the starting concurrency, subject
+   to estimated-memory admission in both swap modes. Refuse admission when the
+   expected demand exceeds the remaining memory budget, including headroom and
+   expected growth of running jobs. Measure unknown work conservatively first.
 3. Block a job's unsatisfied memory allocation and queue that job for continuation.
 4. When a job completes, resume paused jobs from oldest to newest before admitting
-   new work. With no paused jobs, increase admission enough to expect blocking.
+   new work. Apply the memory admission check to resumed and retried jobs too.
 5. Preserve completed build outputs and accurate failure reporting.
 
-The owner selects investigation of exact allocation blocking before choosing an
-implementation. Proactive pressure-based suspension is not an approved substitute.
+The owner replaces deliberate oversubscription with estimated-memory admission
+even when swap can be disabled. Estimates are best-effort; observed demand must
+inform later admission, and an underestimate still requires safe recovery.
+The owner selects investigation of exact allocation blocking as that fallback
+before choosing an implementation. Proactive pressure-based suspension is not
+an approved substitute.
 The owner separately permits terminating and retrying a selected unfinished job
 when retained memory prevents progress. This fallback does not establish that an
 allocation can be blocked or that a killed process can resume.
@@ -39,8 +47,9 @@ integration remain unverified.
 
 No scheduler implementation is selected or accepted by this document. Linux
 swap-control checks pass below; allocation-blocking, FIFO continuation and
-build-tool integration acceptance remain open. Existing two-job Linux limits remain until replacement
-acceptance; the active baseline build is not changed by this investigation.
+build-tool integration acceptance remain open. Existing two-job Linux limits
+remain until replacement acceptance; the active baseline build is not changed by
+this investigation.
 
 ## Existing project code
 
@@ -97,8 +106,8 @@ The investigation must next establish a native blocking boundary for each OS and
 whether swap/pagefiles can actually be disabled on the selected free hosted
 runners. A candidate must demonstrate an unsatisfied allocation waiting while
 independent work completes, followed by successful continuation of that same
-allocation. Then establish FIFO resumption, default-concurrency startup, admission
-growth and the approved targeted-retry escape from retained-memory deadlock.
+allocation. Then establish FIFO resumption, memory-budgeted startup and admission,
+and the approved targeted-retry escape from retained-memory deadlock.
 Only after those premises hold can Cargo and Bazel integration be accepted. Keep
 unresolved paths unknown rather than substituting pressure prediction or claiming
 cross-platform support from a Linux-only result.
@@ -303,4 +312,29 @@ clears `vm_swap_enabled` in the disable path except on macOS ARM64. Its ARM64
 path can return success without clearing that state. This source is the closest
 inspected public tag to the hosted kernel, rather than an exact match for its
 build suffix; native observation must decide acceptance. A successful system-call
-return alone is insufficient. This operation remains unrun.
+return alone is insufficient.
+
+Run [`40552159334`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40552159334)
+at `2116b7333ced6396716688d23b77a3747bec3ca5` passes Intel macOS and retains
+a failed status for ARM64. On Intel, the effective state transitions from 1 to
+0 and back to 1; both native requests return zero. On ARM64, both requests also
+return zero, but the effective state stays 1 throughout. Its diagnostic is
+`Kernel request returned success but swap remains enabled.` The native result
+therefore matches the architecture distinction in the inspected kernel source.
+
+The Intel job takes 16 seconds and ARM64 takes 13 seconds. Their image identities
+remain `20260824.0482.1` and `20260907.0337.1`, respectively. Artifact upload and
+owned-directory cleanup pass for both. The downloaded artifacts contain only
+the two text files per target; the native binary is absent. The download's owned
+directory is removed after inspection.
+
+| Target | Artifact ID | Mach-control-file SHA-256 |
+| --- | --- | --- |
+| macOS x86-64 | `12755467124` | `89ad5b7aeb2309e2c2f7592288bd2ce96de19b46db7976c9ffa9507141a2a816` |
+| macOS ARM64 | `12755422252` | `65db8fe055078c89e17d79210092aaf20ea32dfeff69b1a55335b169c3e85d6e` |
+
+Intel native swap control is accepted at the observed state-transition boundary.
+Neither result proves behavior during compiler memory pressure. ARM64 requires
+the authorized monitoring/retry fallback for this control path. Windows remains
+eligible for the same fallback while active-pagefile removal is unestablished.
+Allocation blocking, ordered retries and Cargo/Bazel integration remain open.
