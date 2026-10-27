@@ -24,12 +24,20 @@ rpc.exports = {
           let observed = false;
           try {
             const listener = Interceptor.attach(entry.address, {
-              onEnter() {
+              onEnter(args) {
                 if (observed)
                   return;
                 observed = true;
+                const request = {};
+                if (entry.name === 'RtlAllocateHeap') {
+                  request.heap = args[0].toString();
+                  request.flags = args[1].toUInt32();
+                  request.requested_bytes_hex = args[2].toString();
+                  request.callers = Thread.backtrace(this.context, Backtracer.ACCURATE)
+                    .map(address => DebugSymbol.fromAddress(address).toString());
+                }
                 send({ event: 'compiler_allocation_observed', pid: Process.id,
-                  thread_id: this.threadId, ...identity });
+                  thread_id: this.threadId, ...identity, ...request });
               }
             });
             allocationListeners.push(listener);

@@ -15,9 +15,9 @@ on:
         default: windows
         options: [windows, macos]
       debug_public_key:
-        description: Optional public SSH key to retain a failed native diagnostic for remote debugging
+        description: Public SSH key for the active Upterm client that starts and observes the remote test
         type: string
-        default: ''
+        required: true
 
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
     needs: select
     name: Compiler - ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ inputs.debug_public_key != '' && 60 || 5 }}
+    timeout-minutes: 60
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.target }}
       cancel-in-progress: false
@@ -103,6 +103,24 @@ jobs:
             --target "$SCHEDULER_COMPILER/package" \
             -r "$REQUIREMENTS"
 
+      - name: Connect before exercising the changed remote workflow
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.debug_public_key }}
+
+      - name: Wait for the connected client's readiness handshake
+        run: |
+          set -euo pipefail
+          for attempt in {1..300}; do
+            if [ -f "$SCHEDULER_COMPILER/client-ready" ]; then
+              printf 'Connected client admitted the native diagnostic\n'
+              exit 0
+            fi
+            sleep 1
+          done
+          printf 'No connected client admitted the native diagnostic within 300 seconds\n' >&2
+          exit 1
+
       - name: Observe native compiler allocations and compare metadata
         env:
           PYTHONPATH: ${{ env.SCHEDULER_COMPILER }}/package
@@ -110,6 +128,7 @@ jobs:
           EXPECTED_HOST: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          trap 'result=$?; printf "%s\n" "$result" > "$SCHEDULER_COMPILER/probe-exit"' EXIT
           executable="$(python -c 'import sys; print(sys.executable)')"
           compiler="$(rustup which rustc --toolchain 1.95.0)"
           launcher=()
@@ -131,9 +150,3 @@ jobs:
             ${{ env.SCHEDULER_COMPILER }}/compiler.log
           retention-days: 1
           if-no-files-found: error
-
-      - name: Debug the retained native diagnostic after failure
-        if: failure() && inputs.debug_public_key != ''
-        uses: ./.github/actions/debug-failed-runner
-        with:
-          public-key: ${{ inputs.debug_public_key }}
