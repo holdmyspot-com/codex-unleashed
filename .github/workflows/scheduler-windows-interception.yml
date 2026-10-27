@@ -8,14 +8,15 @@ on:
       - .github/scripts/probe-windows-interception.py
       - .github/scripts/windows-allocation-interceptor.js
       - .github/scripts/windows-native-allocation-forwarder.js
+      - .github/scripts/windows-native-allocation-fast-forwarder.js
       - .github/scripts/windows-interception-requirements.txt
   workflow_dispatch:
     inputs:
       mode:
-        description: Probe native forwarding, attachment/JavaScript controls, or allocation retry
+        description: Select the native forwarding or allocation retry diagnostic
         type: choice
-        default: native-forward
-        options: [native-forward, controls, retry]
+        default: native-fast
+        options: [native-fast, native-forward, controls, retry]
 
 permissions:
   contents: read
@@ -59,6 +60,7 @@ jobs:
             .github/scripts/probe-windows-interception.py
             .github/scripts/windows-allocation-interceptor.js
             .github/scripts/windows-native-allocation-forwarder.js
+            .github/scripts/windows-native-allocation-fast-forwarder.js
             .github/scripts/windows-interception-requirements.txt
           sparse-checkout-cone-mode: false
 
@@ -92,7 +94,7 @@ jobs:
         env:
           PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
           TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
-          PROBE_MODE: ${{ inputs.mode || 'native-forward' }}
+          PROBE_MODE: ${{ inputs.mode || 'native-fast' }}
         run: |
           set -euo pipefail
           if [ "$PROBE_MODE" = retry ]; then
@@ -100,7 +102,7 @@ jobs:
           elif [ "$PROBE_MODE" = controls ]; then
             modes='attach forward'
           else
-            modes=native-forward
+            modes="$PROBE_MODE"
           fi
           result=0
           for mode in $modes; do

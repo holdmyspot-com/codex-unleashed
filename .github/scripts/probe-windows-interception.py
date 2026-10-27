@@ -62,14 +62,15 @@ def run_probe(api, kernel, mode):
     """Exercise attachment, forwarding, or denied-allocation retry and clean exit.
 
     ``attach`` installs no allocation hook. ``forward`` leaves the JavaScript
-    hook unarmed. ``native-forward`` forwards through a native callback. These
+    hook unarmed. ``native-forward`` forwards through a native callback;
+    ``native-fast`` uses a direct native replacement and original trampoline. These
     controls allow the 256 MiB request before starting it. ``retry`` retains
     the denied-allocation experiment. Every mode requires normal exit within
     30 seconds and kills/reaps an unfinished worker on failure.
     """
     import frida
 
-    is_shutdown_control = mode in ("attach", "forward", "native-forward")
+    is_shutdown_control = mode in ("attach", "forward", "native-forward", "native-fast")
     job_extended_limits = 9
     kill_on_job_close = 0x2000
     process_commit_limit = 0x100
@@ -106,6 +107,9 @@ def run_probe(api, kernel, mode):
                         installed_event = "attachment_ready"
                     elif mode == "native-forward":
                         script_source = Path(__file__).with_name("windows-native-allocation-forwarder.js").read_text()
+                        installed_event = "hook_installed"
+                    elif mode == "native-fast":
+                        script_source = Path(__file__).with_name("windows-native-allocation-fast-forwarder.js").read_text()
                         installed_event = "hook_installed"
                     else:
                         script_source = Path(__file__).with_name("windows-allocation-interceptor.js").read_text()
@@ -194,8 +198,8 @@ def main():
     """Run the controller or its internal worker on matching native Windows Python."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--mode", choices=("attach", "forward", "native-forward", "retry"), default="retry",
-                        help="Instrumentation under test: attachment only, JavaScript/native forwarding hook, or denied-allocation retry (default)")
+    parser.add_argument("--mode", choices=("attach", "forward", "native-forward", "native-fast", "retry"), default="retry",
+                        help="Instrumentation under test: attachment, JavaScript/native forwarding, direct native forwarding, or allocation retry (default)")
     arguments = parser.parse_args()
     assert sys.platform == "win32", "This probe requires native Windows"
     assert ctypes.sizeof(ctypes.c_void_p) == 8, "This probe requires a 64-bit process"
