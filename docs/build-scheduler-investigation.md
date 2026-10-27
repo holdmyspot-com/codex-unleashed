@@ -454,7 +454,7 @@ unrun. No dependency or scheduler implementation is selected by this probe.
 
 ### Native telemetry availability check
 
-The manual
+The
 [Scheduler memory telemetry workflow](../.github/workflows/scheduler-memory-telemetry.yml)
 uses the existing six-target release matrix. It installs only the pinned binary
 candidate, with the six permitted wheel hashes in
@@ -488,3 +488,10 @@ key. That finding is retained; the requested queue policy is not removed to
 appease the linter. GitHub workflow ingestion and native execution remain the
 acceptance boundary for that setting. Native acquisition, sampling and cleanup
 on the six hosted platforms remain unrun until the dispatched workflow returns.
+
+The initial filename dispatch after publishing `41bd0fc421` returns HTTP 404;
+GitHub's workflow inventory lists the existing prerequisite workflow but not the
+new telemetry workflow. A push trigger limited to `main.new` and the diagnostic's
+workflow/requirements paths starts its first native run without changing old
+`main`. Later manual dispatch remains available after registration. Documentation
+updates alone do not trigger another matrix run.
