@@ -437,10 +437,33 @@ returned original trampoline. This avoids the per-call replacement machinery
 shared by the two failed hook variants. The
 [direct forwarder](../.github/scripts/windows-native-allocation-fast-forwarder.js)
 stores the original trampoline before pending hook changes are flushed, while
-the worker is still waiting for allocation permission. Native execution is
-unrun. Pushes run only this new control; manual dispatch retains the previous
-controls and retry experiment. The same allocation, endpoint, deallocation and
-normal-exit checks still apply.
+the worker is still waiting for allocation permission. The same allocation,
+endpoint, deallocation and normal-exit checks still apply.
+
+Direct-forwarding run
+[`40567280406`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40567280406)
+at `539590f907b37641376787b526a1265479c0d938` passes every forwarding assertion
+on x86-64, including normal worker exit. On ARM64, Frida rejects hook installation
+with `unable to intercept function`; the worker has not started allocation.
+This establishes native direct-forwarding behavior on x86-64 only. It neither
+accepts ARM64 interception nor blocked-allocation recovery on either target.
+
+| Native target | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- |
+| Windows x86-64 | `12763312346` | `e3236fc4e50d3c6238fec2089028b4816e083a8d7252958c03fd034db59fe747` |
+| Windows ARM64 | `12763342404` | `0530f27bfa3d2599018cd653a323a7c64c182c28c1a75649ffbbfefceb6dbc43` |
+
+Frida's pinned
+[ARM64 backend](https://github.com/frida/frida-gum/blob/17.24.3/gum/backend-arm64/guminterceptor-arm64.c#L708)
+rejects fast replacement when a full redirect is not relocatable, whereas
+ordinary replacement can use a nearby deflector for a smaller entry. The
+[JavaScript binding](https://github.com/frida/frida-gum/blob/17.24.3/bindings/gumjs/gumquickinterceptor.c#L1112)
+maps the resulting wrong-signature code to the observed message. This is one
+source-supported explanation, not proof of the hosted target's instructions.
+The next native probe records the owning module, export offset and first eight
+instructions before hook installation. It runs ARM64 only, preserving the
+accepted x86-64 result. Manual dispatch can select either Windows target or
+both and retains the prior controls and retry experiment.
 
 ### Native macOS address-space-limit diagnostic
 
