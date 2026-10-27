@@ -710,6 +710,22 @@ ZIP SHA-256
 the job-log SHA-256 is
 `d07008842f8c220c42f58d8894299f8efe2de7d46d78af4cc43b8faa204fd32b`.
 
-The other three clean target outcomes remain unaccepted. The root executor owns
+Linux x86-64 observed clean run `40443272471`, job `121988428946`, at
+`10e3c0bb7023cf09b807796e02eef92c7ea020bf` passes in 52m 58s. GHCR restoration
+is skipped. Build stages take 26/94/192/1,918/731 seconds, and the observer
+records command exit zero. Native smokes and source/dependency guards pass.
+Evidence artifact `12708968439` has uploaded ZIP SHA-256
+`740cc5cd70d832dfb1de7258a04f377f50f99ff6336cb8ef63bed3a826588e8b`;
+the job-log SHA-256 is
+`8510ddbcc5a12998528e3fcd0c7999860266434624f46a0bf33cd6cb7d823748`.
+Its 592 resource samples reach 352.6 MiB available memory and 3,058.6 MiB used
+swap at the same sample. Four rustc processes there use approximately
+5.2/3.9/3.2/2.2 GiB resident memory. No OOM event is captured. This establishes
+pressure in the successful run, without identifying the earlier lost-runner
+cause. The owner-directed limit is therefore extended to two Cargo jobs on
+x86-64 Linux as well; its changed configuration requires verification.
+
+The two macOS clean outcomes and the changed x86-64 resource configuration
+remain unaccepted. The root executor owns
 the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
 then removes that directory.

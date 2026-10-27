@@ -39,7 +39,9 @@ accepted until compilation, native smokes and source/dependency guards finish.
 Linux ARM64 passes those checks in 55m 56s, with GHCR restore skipped and
 1,182 Rust compilation entries. Both Windows targets pass clean compilation,
 native smokes and guards: ARM64 in 1h 21m 14s and x86-64 in 2h 11m 54s.
-Three of six clean targets are accepted; the other three remain pending.
+Three of six clean targets are accepted for the current resource settings.
+Linux x86-64 also passes with its previous concurrency; its new two-job
+configuration still needs verification. Both macOS outcomes remain pending.
 After Intel warm acceptance, its clean run uses
 `4920823fe242847be82bb84120326033dce56d07`, which adds only plan documentation
 to that same build configuration. The completed incremental attempts remain
@@ -54,8 +56,8 @@ recorded separately; no running job is cancelled for clean verification.
 | Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719): clean compilation, native smokes and guards pass. |
 | macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 retries on a fresh runner. |
 
-For the lost x86-64 runner, the job-log API returns HTTP 404; neither memory
-pressure nor the terminating actor is established. The existing Linux observer
+For the lost x86-64 runner, the job-log API returns HTTP 404 and the cause of
+that interruption remains unestablished. The existing Linux observer
 is now selectable for either Linux target in cached or uncached mode, with the
 same release command and concurrency. Eight local executions of the actual
 matrix-selection step verify supported/rejected requests. The short native
@@ -66,8 +68,18 @@ expected syscall entry match the host architecture. Native verification run
 `40443064027` passes on both architectures in 30/33 seconds (x86-64/ARM64),
 including signal/stack capture, resource samples, journal delivery and command
 exit-status propagation. Diagnostic clean build `40443272471` uses that tested
-revision with the same release commands and default x86-64 concurrency;
-its result remains pending.
+revision with the same release commands and default x86-64 concurrency.
+It passes clean compilation, smokes and guards in 52m 58s. Its 592 memory
+samples reach 352.6 MiB available memory and 3,058.6 MiB used swap; the
+lowest-memory sample shows four rustc processes using approximately
+5.2/3.9/3.2/2.2 GiB resident memory. No OOM event is captured, and this pass
+does not explain the earlier lost runner. Following the owner's memory-pressure
+instruction, subsequent Linux x86-64 builds also use `CARGO_BUILD_JOBS=2`.
+All six focused release-step setup checks pass: both Linux targets get two
+jobs, and macOS/Windows keep their prior settings. Verify the changed x86-64
+configuration before accepting its current clean gate. Revisit both Linux
+two-job limits in step 3 when the scheduler accounts for the memory needed by
+concurrent work.
 Actionlint reports only its already-recorded unsupported `queue` key; that
 GitHub-accepted concurrency setting is retained. The other active builds are
 not cancelled or restarted by this observation change.
@@ -127,8 +139,9 @@ Owner-directed response to the measured ARM memory pressure: subsequent Linux
 ARM64 release builds use `CARGO_BUILD_JOBS=2`. Keep incremental outputs and
 private caches; do not interrupt the already-running diagnostic to change its
 concurrency. Revisit this temporary two-job limit in step 3 when the scheduler
-can account for the memory requirements of concurrent work. Other targets
-retain their existing concurrency until evidence warrants a change.
+can account for the memory requirements of concurrent work. The later x86-64
+observation above supplies evidence to extend that limit to both Linux targets;
+macOS and Windows retain their existing concurrency.
 The focused shell checks pass, and incremental cached ARM retry
 `40425326629` at `f4f89c01b89a436bcfebb65d65575f91209f8abf` runs with
 the two-job limit. Attempt 1 passes compilation, native smokes, guards and
