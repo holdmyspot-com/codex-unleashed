@@ -773,8 +773,32 @@ the hook deliberately clobbers `errno` to 4660 and restores the original error;
 the worker must observe `ENOMEM`. The retry case's native deadline is 30 seconds;
 the existing controller event and exit deadlines remain 30 seconds. JavaScript,
 Python, host-C, workflow YAML and Bash syntax checks pass locally. Native
-execution of these new modes remains unrun; accepted forwarding and unrelated
-Codex build checks are not repeated.
+execution is accepted by the focused result below; accepted forwarding and
+unrelated Codex build checks are not repeated.
+
+Run [`40578065387`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40578065387)
+at `717a77346f` passes both new modes on both native macOS architectures.
+The Intel job takes 34 seconds and ARM64 21 seconds, including dependency
+acquisition, evidence upload and cleanup. Both use Python 3.12.10, Frida 17.24.3
+and Darwin 24.6.0. Every first request fails with error 12. The timeout cases
+record one matching callback, one original attempt, poll result zero,
+`MAP_FAILED` and the deliberately clobbered error 4660; each caller receives
+the restored error 12 and exits normally.
+
+In each retry case an independent peer completes while native state still
+records one denied attempt and a pending poll. After permission, the same
+callback makes its second original attempt and returns the exact pointer
+received by the worker. Endpoint values 42/43, successful unmapping, restoration
+of both original resource limits and ordinary exit with the hook installed
+all pass. The worker has no caller-side retry. These observations accept the
+controlled native waiting/continuation and timeout/error-preservation paths;
+actual compiler/child coverage, physical-pressure recovery, FIFO admission and
+retry, and Cargo/Bazel integration remain unmet.
+
+| Target | Artifact ID | Artifact archive SHA-256 |
+| --- | --- | --- |
+| macOS x86-64 | `12767848555` | `d86cd90e1acf33db048738ae60cdbcaee41a75eb4ca2b94ecdaafa32900211e0` |
+| macOS ARM64 | `12768376702` | `343a424dd5649d7fb70827e9316d4ecf953d2948412a082a231075ea61b50c29` |
 
 ## Swap-control prerequisites
 
