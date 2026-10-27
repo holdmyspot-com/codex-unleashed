@@ -501,6 +501,34 @@ thunk's size alone. Normal-replacement shutdown remains failed on both
 architectures; direct native forwarding is accepted only on x86-64, and native
 blocked-allocation recovery remains open.
 
+The resolved-entry capture in run
+[`40569737275`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40569737275)
+at `147bd865c0` follows the relative entry branch without a decode error or
+truncation. Artifact `12764672476` has raw log SHA-256
+`976ee8b9b1d7b4fcdac541e92880f38ce99c6d8e8773292fbd25a757d2a8749f`.
+The destination at Kernel32 offset `0x6d4f8` consists of `adrp x16`,
+`ldr x16, [x16, #0x140]`, and `br x16`: a 12-byte indirect thunk.
+The pinned [relocator](https://github.com/frida/frida-gum/blob/17.24.3/gum/arch-arm64/gumarm64relocator.c#L234)
+stops at the indirect branch; the
+[fast-replacement backend](https://github.com/frida/frida-gum/blob/17.24.3/gum/backend-arm64/guminterceptor-arm64.c#L658)
+requires a 16-byte redirect and rejects this shorter relocatable prefix.
+This establishes an entry-selection limitation, rather than evidence that
+the caller's relative branch alone cannot be followed.
+
+The same capture shows a different `KernelBase.VirtualAlloc` export at module
+offset `0x10f850`, starting with `pacibsp`, `stp`, `mov`, `adrp`, and `ldr`.
+The next native forwarding control targets that implementation export on
+ARM64, keeping the caller's Kernel32 invocation unchanged. The worker reports
+both export addresses independently through ctypes; the controller checks the
+installed address against the selected export. A native counter must observe
+exactly one matching 256 MiB request, followed by the existing endpoint,
+freeing and normal-exit assertions. This detects an installed hook that the
+caller never reaches. x86-64 retains its previously accepted entry selection;
+the added counter there remains unrun. Local JavaScript, Python and embedded-C
+syntax checks pass; native behavior for this revised control remains unrun.
+No relocation safety check is disabled, and neither source-wide interception
+nor blocked-allocation recovery is accepted by a forwarding-only control.
+
 ### Native macOS address-space-limit diagnostic
 
 Apple's current

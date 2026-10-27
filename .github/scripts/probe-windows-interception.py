@@ -38,9 +38,11 @@ def run_worker(api, kernel):
     requested_bytes = 256 * 1024 * 1024
     kernel.GetCurrentThreadId.argtypes = []
     kernel.GetCurrentThreadId.restype = ctypes.c_uint32
+    implementation = ctypes.WinDLL("kernelbase.dll", use_last_error=True)
     api.emit("worker_ready", requested_bytes=requested_bytes,
              thread_id=kernel.GetCurrentThreadId(),
-             allocation_address=hex(ctypes.cast(kernel.VirtualAlloc, ctypes.c_void_p).value))
+             allocation_address=hex(ctypes.cast(kernel.VirtualAlloc, ctypes.c_void_p).value),
+             implementation_address=hex(ctypes.cast(implementation.VirtualAlloc, ctypes.c_void_p).value))
     assert sys.stdin.readline().strip() == "allocate", "Missing allocation start permission"
     pointer = kernel.VirtualAlloc(None, requested_bytes, 0x3000, 0x04)
     if pointer is None:
@@ -63,7 +65,8 @@ def run_probe(api, kernel, mode):
 
     ``attach`` installs no allocation hook. ``forward`` leaves the JavaScript
     hook unarmed. ``native-forward`` forwards through a native callback;
-    ``native-fast`` uses a direct native replacement and original trampoline. These
+    ``native-fast`` uses a direct native replacement and original trampoline,
+    targeting KernelBase on ARM64 and counting the worker's matching call. These
     controls allow the 256 MiB request before starting it. ``retry`` retains
     the denied-allocation experiment. Every mode requires normal exit within
     30 seconds and kills/reaps an unfinished worker on failure.
@@ -117,11 +120,15 @@ def run_probe(api, kernel, mode):
                     script = session.create_script(script_source)
                     script.on("message", receive_message)
                     script.load()
+                    expected_allocation_address = ready["allocation_address"]
                     if mode == "native-fast":
-                        expect_hook_event("hook_target")
+                        target = expect_hook_event("hook_target")
+                        if target["architecture"] == "arm64":
+                            expected_allocation_address = ready["implementation_address"]
+                        assert int(target["replacement_address"], 16) == int(expected_allocation_address, 16)
                     installed = expect_hook_event(installed_event)
                     if installed_event == "hook_installed":
-                        assert int(installed["address"], 16) == int(ready["allocation_address"], 16)
+                        assert int(installed["address"], 16) == int(expected_allocation_address, 16)
 
                     process = api.require_api_success(kernel.OpenProcess(0x0101, False, worker.pid))
                     try:
@@ -163,6 +170,10 @@ def run_probe(api, kernel, mode):
                     returned = api.read_event(worker, reader, "native_call_returned")
                     if mode == "retry":
                         assert int(returned["pointer"], 16) == int(retried["pointer"], 16)
+                    if mode == "native-fast":
+                        observed = reader.submit(script.exports_sync.probe_allocation_count).result(timeout=30)
+                        assert observed == 1, observed
+                        api.emit("native_forwarding_observed", worker_pid=worker.pid, matching_calls=observed)
                     worker.stdin.write("finish\n")
                     worker.stdin.flush()
                     api.read_event(worker, reader, "allocation_freed")

@@ -58,26 +58,45 @@ for (let index = 0; index < 4; index++) {
   branchAddress = ptr(entry.branch_target);
 }
 const kernelBaseAddress = Process.getModuleByName('kernelbase.dll').getExportByName('VirtualAlloc');
+/* Windows ARM64's Kernel32 entry resolves to a 12-byte indirect thunk, which
+ * cannot fit Frida's 16-byte fast redirect. Test the implementation export
+ * instead; the native counter below proves that the caller reaches it. */
+const replacementAddress = Process.arch === 'arm64' ? kernelBaseAddress : allocationAddress;
 send({ event: 'hook_target', pid: Process.id, architecture: Process.arch, entries: branchEntries,
   chain_truncated: branchEntries[branchEntries.length - 1].branch_target !== null,
-  kernelbase_entry: describeEntry(kernelBaseAddress) });
+  kernelbase_entry: describeEntry(kernelBaseAddress), replacement_address: replacementAddress.toString() });
 
 /* The original function pointer is supplied before pending hook installation
  * is flushed by send(), while the owned worker awaits allocation permission. */
 const originalAllocation = Memory.alloc(Process.pointerSize);
+/* Count only requests matching the owned worker's single 256 MiB allocation. */
+const probeAllocationCount = Memory.alloc(4);
+probeAllocationCount.writeU32(0);
 const nativeForwarder = new CModule(`
 #include <stddef.h>
 
 typedef void * (* Allocate)(void *, size_t, unsigned int, unsigned int);
 extern Allocate original_allocation;
+extern unsigned int probe_allocation_count;
 
 /* Call the original trampoline without entering JavaScript or another hook. */
 void * forward_allocate(void * address, size_t bytes,
     unsigned int type, unsigned int protection)
 {
+    const int is_probe_allocation = (bytes == 268435456) &&
+        (type == 0x3000) && (protection == 0x04);
+    if (is_probe_allocation)
+        probe_allocation_count++;
     return original_allocation(address, bytes, type, protection);
 }
-`, { original_allocation: originalAllocation });
+`, { original_allocation: originalAllocation, probe_allocation_count: probeAllocationCount });
 
-originalAllocation.writePointer(Interceptor.replaceFast(allocationAddress, nativeForwarder.forward_allocate));
-send({ event: 'hook_installed', pid: Process.id, address: allocationAddress.toString() });
+rpc.exports = {
+  /* Return the number of matching native calls observed before worker cleanup. */
+  probeAllocationCount() {
+    return probeAllocationCount.readU32();
+  }
+};
+
+originalAllocation.writePointer(Interceptor.replaceFast(replacementAddress, nativeForwarder.forward_allocate));
+send({ event: 'hook_installed', pid: Process.id, address: replacementAddress.toString() });
