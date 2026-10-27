@@ -7,6 +7,10 @@ on:
         description: Use GHCR compiled outputs and Actions downloads for verified release targets
         type: boolean
         default: false
+      require_cache_hit:
+        description: Requires cache=true; fail before compilation if all compiled-cache lookups miss
+        type: boolean
+        default: false
       fail_after_build:
         description: Deliberately fail after compilation to verify partial-cache recovery; retry with false
         type: boolean
@@ -47,10 +51,15 @@ jobs:
       - id: matrix
         env:
           CACHE_ENABLED: ${{ inputs.cache }}
+          CACHE_HIT_REQUIRED: ${{ inputs.require_cache_hit }}
           SELECTED_TARGET: ${{ inputs.target }}
           VERIFY_INVALIDATION: ${{ inputs.verify_invalidation }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
         run: |
+          if [[ "$CACHE_HIT_REQUIRED" == true && "$CACHE_ENABLED" == false ]]; then
+            printf 'require_cache_hit=true requires cache=true.\n' >&2
+            exit 1
+          fi
           if [[ "$TRACE_SIGNALS" == true ]]; then
             case "$SELECTED_TARGET" in
               aarch64-unknown-linux-musl | x86_64-unknown-linux-musl) ;;
@@ -296,6 +305,7 @@ jobs:
         env:
           CACHE_TAG: ${{ steps.cache_inputs.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
+          CACHE_HIT_REQUIRED: ${{ inputs.require_cache_hit }}
         run: |
           set -euo pipefail
           set +e
@@ -323,7 +333,13 @@ jobs:
             set -e
           fi
           case "$result" in
-            0|3) ;;
+            0) ;;
+            3)
+              if [[ "$CACHE_HIT_REQUIRED" == true ]]; then
+                printf 'All compiled-cache lookups missed; require_cache_hit=true prevents a cold build.\n' >&2
+                exit 1
+              fi
+              ;;
             *) exit "$result" ;;
           esac
 
