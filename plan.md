@@ -40,10 +40,9 @@ Linux ARM64 passes those checks in 55m 56s, with GHCR restore skipped and
 1,182 Rust compilation entries. Both Windows targets pass clean compilation,
 native smokes and guards: ARM64 in 1h 21m 14s and x86-64 in 2h 11m 54s.
 macOS ARM64 also passes clean compilation, both native smokes and guards in
-3h 26m 15s, without compiled-cache restoration. Four of six clean targets
-are accepted for the current resource settings.
-Linux x86-64 also passes with its previous concurrency; its new two-job
-configuration still needs verification. The Intel macOS outcome remains pending.
+3h 26m 15s, without compiled-cache restoration. Linux x86-64 passes with its
+two-job limit in 1h 7m 35s. Five of six clean targets are accepted for the current
+resource settings. The Intel macOS outcome remains pending.
 After Intel warm acceptance, its clean run uses
 `4920823fe242847be82bb84120326033dce56d07`, which adds only plan documentation
 to that same build configuration. The completed incremental attempts remain
@@ -78,11 +77,18 @@ lowest-memory sample shows four rustc processes using approximately
 does not explain the earlier lost runner. Following the owner's memory-pressure
 instruction, subsequent Linux x86-64 builds also use `CARGO_BUILD_JOBS=2`.
 All six focused release-step setup checks pass: both Linux targets get two
-jobs, and macOS/Windows keep their prior settings. Verify the changed x86-64
-configuration before accepting its current clean gate: observed clean run
+jobs, and macOS/Windows keep their prior settings. The changed x86-64
+configuration is now accepted by observed clean run
 [`40448755120`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40448755120)
-uses `cache=false`, `trace_signals=true` at
-`2c6626fcd6eae66071ca319b2125877817b54738` and remains pending. Revisit both Linux
+with `cache=false`, `trace_signals=true` at
+`2c6626fcd6eae66071ca319b2125877817b54738`. It passes in 1h 7m 35s with both
+native smokes, empty source diff and verified dependencies. Its 788 memory
+samples retain at least 4,017.1 MiB available memory and use at most
+1,784.4 MiB swap. The clean build takes 14m 37s longer than the preceding
+default-concurrency run, with substantially more observed memory headroom.
+Artifact and log identities are recorded in
+[release-build-checkpoints.md](docs/release-build-checkpoints.md#clean-verification-after-grouped-cache-acceptance).
+Revisit both Linux
 two-job limits in step 3 when the scheduler accounts for the memory needed by
 concurrent work.
 Actionlint reports only its already-recorded unsupported `queue` key; that
