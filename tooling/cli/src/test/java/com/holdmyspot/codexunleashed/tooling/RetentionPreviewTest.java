@@ -23,10 +23,10 @@ public final class RetentionPreviewTest
 	}
 
 	/**
-	 * Protects the newest two numeric stable versions and every alias of a pinned manifest.
+	 * Protects the newest two stable releases and manifests associated with stable or main baselines.
 	 */
 	@Test
-	public void previewsSharedAliasesAndPinnedBaseline()
+	public void previewsSharedAliasesAndProtectedBaselines()
 	{
 		String inventory = """
 			{
@@ -37,14 +37,16 @@ public final class RetentionPreviewTest
 			    {"tag_name":"rust-v0.12.0","draft":true,"prerelease":false},
 			    {"tag_name":"rust-v0.11.0","draft":false,"prerelease":true}
 			  ],
-			  "protected_upstream_refs": ["rust-v0.1.0"],
+			  "protected_upstream_refs": ["rust-v0.1.0", "main", "main"],
 			  "package_versions": [
 			    {"id":1,"metadata":{"container":{"tags":["cargo-release-a-rust-v0.10.0"]}}},
 			    {"id":2,"metadata":{"container":{"tags":["cargo-release-b-rust-v0.8.0","cargo-release-c-rust-v0.1.0"]}}},
 			    {"id":3,"metadata":{"container":{"tags":["cargo-v3-target-parts-v2-partial","cargo-release-d-rust-v0.8.0"]}}},
 			    {"id":4,"metadata":{"container":{"tags":["unrelated"]}}},
 			    {"id":5,"metadata":{"container":{"tags":[]}}},
-			    {"id":6,"metadata":{"container":{"tags":["cargo-release-e-rust-v0.9.0"]}}}
+			    {"id":6,"metadata":{"container":{"tags":["cargo-release-e-rust-v0.9.0"]}}},
+			    {"id":7,"metadata":{"container":{"tags":["cargo-release-f-main","cargo-v3-shared-partial"]}}},
+			    {"id":8,"metadata":{"container":{"tags":["cargo-release-g-main-feature"]}}}
 			  ]
 			}
 			""";
@@ -59,9 +61,9 @@ public final class RetentionPreviewTest
 		}
 		JsonNode result = JsonMapper.builder().build().readTree(output.toString(StandardCharsets.UTF_8));
 		assertEquals(result.path("retained_releases").toString(),
-			"[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.1.0\"]");
-		assertEquals(result.path("retained_version_ids").toString(), "[1,2,6]");
-		assertEquals(result.path("obsolete_version_ids").toString(), "[3,5]");
+			"[\"rust-v0.10.0\",\"rust-v0.9.0\",\"rust-v0.1.0\",\"main\"]");
+		assertEquals(result.path("retained_version_ids").toString(), "[1,2,6,7]");
+		assertEquals(result.path("obsolete_version_ids").toString(), "[3,5,8]");
 		assertEquals(result.path("unmanaged_version_ids").toString(), "[4]");
 		assertTrue(result.path("dry_run").asBoolean());
 	}
@@ -85,6 +87,14 @@ public final class RetentionPreviewTest
 			"{\"id\":1,\"metadata\":{\"container\":{\"tags\":[]}}}]}", "Duplicate package version id: 1");
 		assertRefused(prefix + "[{\"id\":1.0,\"metadata\":{\"container\":{\"tags\":[]}}}]}",
 			"id must be a positive integer");
+		String protectedReferencePrefix = """
+			{"releases":[{"tag_name":"rust-v0.10.0","draft":false,"prerelease":false}],
+			 "package_versions":[],"protected_upstream_refs":
+			""";
+		assertRefused(protectedReferencePrefix + "[\"main-feature\"]}",
+			"Protected reference must be a stable upstream tag or main: main-feature");
+		assertRefused(protectedReferencePrefix + "[\" main\"]}",
+			"Protected reference must be a stable upstream tag or main:  main");
 	}
 
 	/**
