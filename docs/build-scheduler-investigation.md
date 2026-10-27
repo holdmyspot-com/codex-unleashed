@@ -826,11 +826,46 @@ Local YAML parsing and all five embedded Python syntax checks pass. Executing
 the actual matrix-selection step selects exactly the five intended targets and
 their existing free runner labels. The installed actionlint reports only the
 previously established unsupported `queue` concurrency key; the requested queue
-policy is retained, with GitHub ingestion as its acceptance boundary. Native
-acquisition, serialization/refusal, upload and cleanup remain unrun for this
-workflow. Its five-minute job timeout does not promise a terminal fixture receipt
+policy is retained, with GitHub ingestion as its acceptance boundary. Its
+five-minute job timeout does not promise a terminal fixture receipt
 or child cleanup after a forced runner termination; such a run remains
 failed/incomplete rather than accepted.
+
+### Native estimated-admission results
+
+Run [`40571493167`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40571493167)
+at `c1cc66ed00` passes all five native jobs, including acquisition, the unchanged
+fixture, evidence upload and owned-directory cleanup. Each receipt exits zero;
+each stdout reports both `estimated_memory_admission_serialized=True` and
+`oversized_action_refused_before_execution=True`. All observed executable hashes
+agree with the pinned release hashes and every version check returns Bazel 9.2.0.
+Native jobs take 17–44 seconds; the table measures only the fixture command.
+
+| Native target | Fixture elapsed (ns) | Artifact ID | `receipt.json` SHA-256 |
+| --- | ---: | --- | --- |
+| Linux ARM64 | `8443783109` | `12763974490` | `862c5aef83205526da8e0e2aa081a77fa5000cdc343b675700d4d025f8f6ca08` |
+| macOS ARM64 | `8170791458` | `12763784672` | `c979f1bcf3cf4c7a93d37db1a451610e60b1202b238754c6e5cd4024736dbcf3` |
+| macOS x86-64 | `26899962403` | `12765018752` | `07daeefc56e1904561eeec379892450e05074c3e2889c6aa7f74ac0365a1b838` |
+| Windows ARM64 | `13875000000` | `12764144430` | `e846f97ed54ca870167454a489498620c05a1f74ada04c9055eca8ff732f1ba5` |
+| Windows x86-64 | `10156000000` | `12764749427` | `8c99ae3361b95d812e4c854f5a6cea98e98ecd6f286a164882eb4ca79c3872b8` |
+
+The POSIX fixture bytes have SHA-256
+`eeb309f487cd0e26378a16e734ca113e064083e331f472340e2a2b1048dd2be3`;
+the Windows checkout bytes have SHA-256
+`22e8ae8bb06ab994e010081f35e4cd1ae54e19bbaa938d356530252060f13a5e`.
+Replacing LF with CRLF in the local fixture exactly reproduces the Windows
+digest. The same conversion explains the stdout digests:
+`a0ab7914c883fa8fc35dafbf125b3a7fdc5237073ebea1fec507ed56b5c3dc73`
+on POSIX and
+`3253df6fcb257b1794e7852dfda6e7f43fea39df200aaf3008a1731250868b9f`
+on Windows. Parsed output agrees on both assertions; no source repair or repeated
+native run is needed for this byte-level difference.
+
+Together with the accepted local Linux x86-64 result, these receipts accept
+declared-estimate admission and oversized-action refusal on all six platforms.
+They do not accept compiler action estimates, dynamically changing physical
+pressure, allocation blocking, ordered recovery or Cargo/Bazel integration.
+The full scheduler checkpoint remains open.
 
 ### Memory-load scheduling availability
 
