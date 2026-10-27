@@ -417,6 +417,38 @@ The measured-pressure and recovery requirements remain open for the existing
 toolchain; finding a similarly named option in current documentation does not
 complete them.
 
+Checking the latest stable release separately confirms that Bazel 9.3.1 also
+lacks this option in its `ExecutionOptions.java`; upgrading from 9.2.0 to that
+stable release would not provide memory-load admission. The recent stable
+maintenance releases 8.8.2 and 7.7.2 likewise lack the option. The development
+implementation must not be described as an available stable feature.
+
+### Rust action memory estimates
+
+The pinned upstream `MODULE.bazel` selects `rules_rs` 0.0.96. Its
+[`rules_rust` extension](https://github.com/hermeticbuild/rules_rs/blob/v0.0.96/rs/rules_rust.bzl)
+resolves `hermeticbuild/rules_rust` at
+`f19661ba71f77c993ce1eb082053692610fe4313`. The published `rules_rs` archive's
+Rust binary/library/test macros delegate to those `rules_rust` rules.
+
+At that revision,
+[`rustc.bzl`](https://github.com/hermeticbuild/rules_rust/blob/f19661ba71f77c993ce1eb082053692610fe4313/rust/private/rustc.bzl)
+passes `get_rustc_resource_set(rust_toolchain)` for compilation and metadata
+actions. Its
+[`resource callback`](https://github.com/hermeticbuild/rules_rust/blob/f19661ba71f77c993ce1eb082053692610fe4313/rust/private/rustc_resource_set.bzl)
+returns either no callback or a dictionary declaring CPU demand only. It supplies
+no compiler-specific memory demand. Bazel 9.2.0's
+[`actions.run` contract](https://bazel.build/versions/9.2.0/rules/lib/builtins/actions.html#run)
+defaults memory to 250 MB.
+
+This source trace identifies a concrete estimate gap in the Rustc action path;
+it does not measure the effective resources of a running Codex action or prove
+the cause of a particular failed build. Recorded compiler RSS measurements in
+`plan.md` reach multiple GiB, so the default cannot be accepted as a conservative
+estimate for every compiler job. Final integration must establish effective
+action resources and measured demand before relying on Bazel's admission budget.
+No upstream rule or dependency source is modified by this investigation.
+
 ## Cross-platform memory telemetry candidate
 
 `psutil` 7.2.2 is under evaluation for physical-memory availability, swap
@@ -448,9 +480,9 @@ also calculates swap-used bytes from a usage percentage and total capacity.
 Consequently, zero paging counters cannot be interpreted as absence of Windows
 paging activity, and its occupancy value must not be claimed as an exact native
 pagefile byte count. Windows needs an additional verified native signal before
-this candidate can satisfy the monitoring contract. Native macOS/Windows probes,
-measurement during pressure, and the final caller-facing integration remain
-unrun. No dependency or scheduler implementation is selected by this probe.
+this candidate can satisfy the monitoring contract. Native availability results
+follow below; measurement during pressure and the final caller-facing integration
+remain unrun. No dependency or scheduler implementation is selected by this probe.
 
 ### Native telemetry availability check
 
@@ -487,7 +519,7 @@ The installed local actionlint reports only its unsupported `queue` concurrency
 key. That finding is retained; the requested queue policy is not removed to
 appease the linter. GitHub workflow ingestion and native execution remain the
 acceptance boundary for that setting. Native acquisition, sampling and cleanup
-on the six hosted platforms remain unrun until the dispatched workflow returns.
+require the hosted results below.
 
 The initial filename dispatch after publishing `41bd0fc421` returns HTTP 404;
 GitHub's workflow inventory lists the existing prerequisite workflow but not the
@@ -495,3 +527,45 @@ new telemetry workflow. A push trigger limited to `main.new` and the diagnostic'
 workflow/requirements paths starts its first native run without changing old
 `main`. Later manual dispatch remains available after registration. Documentation
 updates alone do not trigger another matrix run.
+
+### Native telemetry results
+
+Run [`40556669684`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40556669684)
+at `39cde88ad7677756a6ebc3c2f80ddb51d6d813cb` passes all six sampling jobs.
+Each imports version 7.2.2 from its owned package directory, produces two valid
+samples, uploads its evidence and successfully removes the owned directory.
+Job durations range from 8 to 34 seconds. GitHub also accepts the workflow's
+requested queue setting; the local linter's rejection is not a hosted failure.
+
+| Native target | Physical RAM (bytes) | First available RAM (bytes) | Artifact ID | `psutil.json` SHA-256 |
+| --- | --- | --- | --- | --- |
+| Linux x86-64 | `16770748416` | `15353716736` | `12757607508` | `7e00e78380c727632ce8c781b882dd13d20fa1a1237d52512bc4923e8b226a4f` |
+| Linux ARM64 | `16715927552` | `15454117888` | `12757107293` | `8d04aad65b647b15737a03e9f2214e11628a65020e301158c4746631b23e652d` |
+| macOS x86-64 | `15032385536` | `10811633664` | `12757297551` | `7dcac7fbc605a4d527f7386c8459d1549dcef685da700860bc43c7f2973ba4fe` |
+| macOS ARM64 | `7516192768` | `3398008832` | `12757596896` | `4753ced218375e021060399b7f8a691c7e6373578f751df6a87fd2b4e01c4e10` |
+| Windows x86-64 | `17174360064` | `14564114432` | `12756963171` | `717cbef2e6be2ffb88581cc41a29698e102435575976264717c1b44d8b022cfa` |
+| Windows ARM64 | `17169387520` | `13620195328` | `12756389759` | `e077e947b67c60621496b46cf84de110f9e377b7050add48d470b4cb2eb96412` |
+
+All samples report zero swap occupancy. macOS ARM64 nevertheless reports
+`14942208` cumulative swap-output bytes in both samples. This illustrates why a
+nonzero lifetime counter is not evidence of current paging activity: recovery
+decisions need changes between samples plus current memory pressure. Other
+targets report zero swap-output counters; Windows always-zero counters retain
+their documented limitation.
+
+Both native Windows inventories report one active pagefile with 2,944 MB
+allocated and zero current/peak usage: `D:\pagefile.sys` on x86-64 and
+`C:\pagefile.sys` on ARM64. Their JSON SHA-256 values are respectively
+`67ea41a7277949021e7100951c770bdc78a204cecca1e1b205cce7e35e739815`
+and `339835ae78666460054e510bc2dd7c074f4bca60729d4b58d29d7fb5e9ce7948`.
+These observations accept native acquisition and idle telemetry availability,
+including the Windows pagefile inventory. They do not yet prove that the signal
+changes correctly under controlled paging pressure or supports safe recovery.
+
+The registration observer initially filters `gh run list --commit` using the
+short hash `39cde88ad7`; it reaches its five-minute observation deadline despite
+the run having already completed. Looking up the workflow without that filter
+locates the successful run. Repeating the query with the full commit hash returns
+the same completed run, establishing the correct observation input. This is an
+observer error, not a lost or failed native run; no matrix job is restarted.
+Artifact ZIPs are inspected in memory, without extracting files into the checkout.
