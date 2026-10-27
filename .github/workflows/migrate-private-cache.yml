@@ -46,22 +46,28 @@ jobs:
           done
           gh api --paginate --slurp "orgs/$owner/packages/container/cargo-cache/versions?per_page=100" > "$evidence/source-versions.json"
 
+          jq -r '.[][] | . as $version | .metadata.container.tags[]
+            | capture("^cargo-seed-v1-(?<target>.+)-[0-9a-f]{64}-parts-v2$")
+            | [.target, $version.name] | @tsv' "$evidence/source-versions.json" >> "$evidence/request.tsv"
+          sort -u "$evidence/request.tsv" -o "$evidence/request.tsv"
+
           while IFS=$'\t' read -r target digest; do
             jq -e --arg digest "$digest" '[.[][] | select(.name == $digest)] | length == 1' "$evidence/source-versions.json"
             jq -r --arg digest "$digest" '.[][] | select(.name == $digest) | .metadata.container.tags[]' \
               "$evidence/source-versions.json" > "$scratch/tags.txt"
-            grep -E "^cargo-seed-v1-$target-[0-9a-f]{64}-parts-v2$" "$scratch/tags.txt"
+            grep -E "^cargo-v3-$target-[0-9a-f]{64}-parts-v2$" "$scratch/tags.txt"
             grep -E '^cargo-release-.*-rust-v0\.164\.0$' "$scratch/tags.txt"
             tags="$(paste -sd, "$scratch/tags.txt")"
-            cp "$scratch/tags.txt" "$evidence/$target-tags.txt"
+            receipt="$target-${digest#sha256:}"
+            cp "$scratch/tags.txt" "$evidence/$receipt-tags.txt"
             oras cp --from-registry-config "$scratch/auth.json" --to-registry-config "$scratch/auth.json" \
-              "$source@$digest" "$destination:$tags" | tee "$evidence/$target-copy.log"
+              "$source@$digest" "$destination:$tags" | tee "$evidence/$receipt-copy.log"
             while IFS= read -r tag; do
               actual="$(oras resolve --registry-config "$scratch/auth.json" "$destination:$tag")"
               test "$actual" = "$digest"
               printf '%s\t%s\t%s\n' "$target" "$tag" "$actual" >> "$evidence/verified-aliases.tsv"
             done < "$scratch/tags.txt"
-          done < .github/cache-package-migration.tsv
+          done < "$evidence/request.tsv"
 
       - name: Preserve copy receipts for one day
         if: always()
