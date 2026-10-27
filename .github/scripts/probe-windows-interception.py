@@ -61,13 +61,15 @@ def run_worker(api, kernel):
 def run_probe(api, kernel, mode):
     """Exercise attachment, forwarding, or denied-allocation retry and clean exit.
 
-    ``attach`` installs no allocation hook. ``forward`` leaves the hook unarmed.
-    Both controls allow the 256 MiB request before starting it. ``retry`` retains
+    ``attach`` installs no allocation hook. ``forward`` leaves the JavaScript
+    hook unarmed. ``native-forward`` forwards through a native callback. These
+    controls allow the 256 MiB request before starting it. ``retry`` retains
     the denied-allocation experiment. Every mode requires normal exit within
     30 seconds and kills/reaps an unfinished worker on failure.
     """
     import frida
 
+    is_shutdown_control = mode in ("attach", "forward", "native-forward")
     job_extended_limits = 9
     kill_on_job_close = 0x2000
     process_commit_limit = 0x100
@@ -102,6 +104,9 @@ def run_probe(api, kernel, mode):
                     if mode == "attach":
                         script_source = "send({event: 'attachment_ready', pid: Process.id});"
                         installed_event = "attachment_ready"
+                    elif mode == "native-forward":
+                        script_source = Path(__file__).with_name("windows-native-allocation-forwarder.js").read_text()
+                        installed_event = "hook_installed"
                     else:
                         script_source = Path(__file__).with_name("windows-allocation-interceptor.js").read_text()
                         installed_event = "hook_installed"
@@ -119,7 +124,7 @@ def run_probe(api, kernel, mode):
                         api.require_api_success(kernel.CloseHandle(process))
                     api.require_api_success(kernel.QueryInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits), None))
                     limits.ProcessMemoryLimit = limits.PeakProcessMemoryUsed + (32 * 1024 * 1024)
-                    if mode in ("attach", "forward"):
+                    if is_shutdown_control:
                         limits.ProcessMemoryLimit += ready["requested_bytes"]
                     limits.BasicLimitInformation.LimitFlags = kill_on_job_close | process_commit_limit
                     api.require_api_success(kernel.SetInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits)))
@@ -158,7 +163,7 @@ def run_probe(api, kernel, mode):
                     try:
                         worker_exit = worker.wait(timeout=30)
                     except subprocess.TimeoutExpired:
-                        if mode in ("attach", "forward"):
+                        if is_shutdown_control:
                             api.emit("shutdown_control_timed_out", mode=mode, worker_pid=worker.pid)
                             raise
                         snapshot = reader.submit(script.exports_sync.inspect_threads).result(timeout=10)
@@ -189,8 +194,8 @@ def main():
     """Run the controller or its internal worker on matching native Windows Python."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--mode", choices=("attach", "forward", "retry"), default="retry",
-                        help="Instrumentation under test: attachment only, forwarding hook, or denied-allocation retry (default)")
+    parser.add_argument("--mode", choices=("attach", "forward", "native-forward", "retry"), default="retry",
+                        help="Instrumentation under test: attachment only, JavaScript/native forwarding hook, or denied-allocation retry (default)")
     arguments = parser.parse_args()
     assert sys.platform == "win32", "This probe requires native Windows"
     assert ctypes.sizeof(ctypes.c_void_p) == 8, "This probe requires a 64-bit process"

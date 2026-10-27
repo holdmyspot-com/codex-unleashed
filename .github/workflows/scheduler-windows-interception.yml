@@ -7,14 +7,15 @@ on:
       - .github/workflows/scheduler-windows-interception.yml
       - .github/scripts/probe-windows-interception.py
       - .github/scripts/windows-allocation-interceptor.js
+      - .github/scripts/windows-native-allocation-forwarder.js
       - .github/scripts/windows-interception-requirements.txt
   workflow_dispatch:
     inputs:
       mode:
-        description: Probe attachment/forwarding controls or denied-allocation retry
+        description: Probe native forwarding, attachment/JavaScript controls, or allocation retry
         type: choice
-        default: controls
-        options: [controls, retry]
+        default: native-forward
+        options: [native-forward, controls, retry]
 
 permissions:
   contents: read
@@ -57,6 +58,7 @@ jobs:
             .github/scripts/probe-windows-allocation.py
             .github/scripts/probe-windows-interception.py
             .github/scripts/windows-allocation-interceptor.js
+            .github/scripts/windows-native-allocation-forwarder.js
             .github/scripts/windows-interception-requirements.txt
           sparse-checkout-cone-mode: false
 
@@ -90,13 +92,15 @@ jobs:
         env:
           PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
           TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
-          PROBE_MODE: ${{ inputs.mode || 'controls' }}
+          PROBE_MODE: ${{ inputs.mode || 'native-forward' }}
         run: |
           set -euo pipefail
           if [ "$PROBE_MODE" = retry ]; then
             modes=retry
-          else
+          elif [ "$PROBE_MODE" = controls ]; then
             modes='attach forward'
+          else
+            modes=native-forward
           fi
           result=0
           for mode in $modes; do
