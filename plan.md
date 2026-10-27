@@ -77,7 +77,10 @@ does not explain the earlier lost runner. Following the owner's memory-pressure
 instruction, subsequent Linux x86-64 builds also use `CARGO_BUILD_JOBS=2`.
 All six focused release-step setup checks pass: both Linux targets get two
 jobs, and macOS/Windows keep their prior settings. Verify the changed x86-64
-configuration before accepting its current clean gate. Revisit both Linux
+configuration before accepting its current clean gate: observed clean run
+[`40448755120`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40448755120)
+uses `cache=false`, `trace_signals=true` at
+`2c6626fcd6eae66071ca319b2125877817b54738` and remains pending. Revisit both Linux
 two-job limits in step 3 when the scheduler accounts for the memory needed by
 concurrent work.
 Actionlint reports only its already-recorded unsupported `queue` key; that
