@@ -355,10 +355,12 @@ jobs:
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
           fi
-          if [[ "$TARGET" == aarch64-unknown-linux-musl ]]; then
-            export CARGO_BUILD_JOBS=2
-            printf 'Limiting ARM64 Cargo compilation to two concurrent jobs after observed memory pressure.\n'
-          fi
+          case "$TARGET" in
+            aarch64-unknown-linux-musl | x86_64-unknown-linux-musl)
+              export CARGO_BUILD_JOBS=2
+              printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
+              ;;
+          esac
           if [[ "$TRACE_SIGNALS" == true ]]; then
             sudo apt-get update -y
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bpftrace
