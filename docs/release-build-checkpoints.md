@@ -750,6 +750,20 @@ limit and revisit it with memory-aware scheduling in step 3. Evidence artifact
 the job-log SHA-256 is
 `5809d40b99b7b8c046b2a120062a7243a7ac09a303deb0eb6cb63909733cfdfb`.
 
-The Intel macOS clean outcome remains unaccepted. The root executor owns
-the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
-then removes that directory.
+Intel macOS run `40438957248` attempt 2, job `121978110058`, at
+`4920823fe242847be82bb84120326033dce56d07` passes in 3h 24m 39s after the
+unchanged retry of the dependency-transfer failure. Compiled-cache restoration
+is skipped. Proxy, code-mode-host, CLI and app-server take
+265/707/7,285/3,946 seconds, with 1,156 Rust compilation entries. Both native
+version smokes report 0.164.0; the source diff is empty and dependency
+verification passes. Evidence artifact `12713602956` has verified ZIP SHA-256
+`1337479a871deec45a0bf0b2a751b4aa0320bffef8e2d62545f980a0a3a4b404`;
+the job-log SHA-256 is
+`d905290afa69c7cdae4477af820492279d4beb054a4eb04d55049a1e21aaaff2`.
+
+All six cumulative clean-build targets now pass at the recorded configuration,
+including both Linux two-job limits. Relevant runtime-test acceptance and
+upstream comparisons remain open, so neither numbered checkpoint is complete.
+The root executor removes the temporary copies under `clean-matrix-NPAgpQ`
+after committing these results; the run/artifact identities and hashes above
+remain the durable evidence references.
