@@ -155,6 +155,15 @@ Candidate interface: [Frida JavaScript API](https://frida.re/docs/javascript-api
 
 ## Swap-control prerequisites
 
+The [native prerequisite diagnostic](../.github/workflows/scheduler-prerequisites.yml)
+uses the existing release matrix and records image identity, active swap/pagefiles
+and relevant control availability without changing memory settings or compiling
+Codex. Each diagnostic job has a five-minute limit and keeps its evidence for one
+day. Its result is an inventory, not acceptance of a swap-disable operation or
+allocation-blocking mechanism. Local actionlint 1.7.12 rejects the documented
+`queue` key, as already established for the baseline workflow; a disposable input
+omitting only that key passes the remaining lint checks.
+
 The native hosted-runner control checks remain unrun. In particular, changing a
 persistent setting does not prove that the current build has no active swap:
 
