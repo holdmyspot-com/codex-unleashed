@@ -671,3 +671,27 @@ is still writing an executable's dependencies. Further dependency build stages
 require evidence that their feature resolution preserves reuse. Single
 compilations and links may still exceed five minutes; the scheduler checkpoint
 must investigate those timings rather than infer a cache miss from duration.
+
+## Clean verification after grouped-cache acceptance
+
+The cumulative clean matrix runs the same default-feature release commands
+with `cache=false`, empty runner-owned Cargo output directories and no GHCR
+restore. These results are separate from incremental cache acceptance and
+do not replace relevant runtime-test gates. The run inventory is in
+[plan.md](../plan.md#current-execution).
+
+Linux ARM64 run `40434744427`, job `121960650857`, at
+`f0c4987de5a8bd700311ece9d30d35289ba754e4` passes in 55m 56s. The compiled
+restore step is skipped; the release step logs 1,182 Rust compilation entries
+and the two-job concurrency limit. Build stages for bwrap, proxy,
+code-mode-host, CLI and app-server take 19/107/216/2,082/805 seconds.
+Both native smokes and source/dependency guards pass. Evidence artifact
+`12705129473` has uploaded ZIP SHA-256
+`9bb8ebee1b133098a1a5b89e35faf52a6f6e833f3a5aeeda1a943bcda2c2e0b8`.
+The retained job log SHA-256 is
+`7c4dac7080801aadc95d1571a5c53d7da6b5a11ff2c27a1721612af4195eb687`.
+The Zig setup action emits its Node.js runtime deprecation annotation; it is
+retained without changing the pinned prerequisite during this verification.
+The other five clean target outcomes remain pending. The root executor owns
+the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
+then removes that directory.
