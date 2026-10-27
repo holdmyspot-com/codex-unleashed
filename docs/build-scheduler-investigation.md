@@ -652,6 +652,33 @@ estimates. Logs are downloaded and hashed in memory from their one-day
 artifacts. The result accepts reversible address-space denial for these owned
 fixtures; it leaves the wider scheduler requirements open.
 
+#### macOS native forwarding candidate
+
+The separate [interception probe](../.github/scripts/probe-macos-interception.py)
+preserves the accepted address-limit fixture. Its owned worker resolves native
+`mmap` through `libSystem`, reports its address and native thread ID, then makes
+one 256 MiB anonymous/private read-write mapping request. The worker accesses
+both endpoints, unmaps the result and exits normally. No address limit or
+machine swap configuration changes in this forwarding check.
+
+An attachment-only control precedes a direct native `CModule` replacement.
+The controller passes the worker's independently resolved address and thread
+ID to the hook; its counter requires the exact request arguments on that
+thread. Acceptance requires one observed matching call, endpoint values 42/43,
+successful unmapping and ordinary worker exit while the hook remains installed.
+Every failure kills/reaps an unfinished owned worker before detachment; hook
+removal cannot rescue a shutdown timeout.
+
+The [focused workflow](../.github/workflows/scheduler-macos-interception.yml)
+selects only the two native macOS release runners, installs Frida 17.24.3 from
+architecture-specific wheels pinned to the published
+[PyPI SHA-256 metadata](https://pypi.org/pypi/frida/17.24.3/json), and retains
+one-day logs/identity before cleaning its owned storage. JavaScript, Python,
+workflow YAML and host-C syntax checks pass locally; two-target selection also
+passes. Native attachment/forwarding remains unrun. Even success accepts only
+this forwarding/lifecycle boundary; denied-allocation waiting/retry, compiler
+coverage and scheduler integration remain separate unmet gates.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the

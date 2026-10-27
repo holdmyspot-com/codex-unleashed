@@ -1,0 +1,5 @@
+# Native macOS wheels for the owned Python 3.12 diagnostic.
+# Hashes come from https://pypi.org/pypi/frida/17.24.3/json.
+frida==17.24.3 \
+    --hash=sha256:837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953 \
+    --hash=sha256:767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac
