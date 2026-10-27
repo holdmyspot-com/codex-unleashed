@@ -1,11 +1,15 @@
 name: Scheduler native prerequisites
 
 on:
-  push:
-    branches: [main.new]
-    paths:
-      - .github/workflows/scheduler-prerequisites.yml
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect memory state or test native swap controls on disposable Linux/macOS runners
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - verify-swap-control
 
 permissions:
   contents: read
@@ -22,9 +26,17 @@ jobs:
           persist-credentials: false
 
       - id: matrix
+        env:
+          OPERATION: ${{ inputs.operation }}
         run: |
           set -euo pipefail
-          printf 'value=%s\n' "$(jq -c '{include: .}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+          matrix="$(jq -c --arg operation "$OPERATION" '
+            if $operation == "verify-swap-control" then
+              {include: map(select((.runner | startswith("ubuntu")) or (.runner | startswith("macos"))))}
+            elif $operation == "inspect" then {include: .}
+            else error("Unsupported diagnostic operation") end
+          ' .github/release-matrix.json)"
+          printf 'value=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
   inspect:
     needs: select
@@ -52,9 +64,10 @@ jobs:
               "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH" "$RUNNER_ENVIRONMENT"
             printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
           } | tee "$evidence/identity.txt"
+          test "$RUNNER_ENVIRONMENT" = github-hosted
 
       - name: Inspect Linux memory controls without changing them
-        if: runner.os == 'Linux'
+        if: inputs.operation == 'inspect' && runner.os == 'Linux'
         run: |
           set -euo pipefail
           {
@@ -73,7 +86,7 @@ jobs:
           } | tee "$SCHEDULER_EVIDENCE/linux.txt"
 
       - name: Inspect macOS memory controls without changing them
-        if: runner.os == 'macOS'
+        if: inputs.operation == 'inspect' && runner.os == 'macOS'
         run: |
           set -euo pipefail
           {
@@ -88,7 +101,7 @@ jobs:
           } | tee "$SCHEDULER_EVIDENCE/macos.txt"
 
       - name: Inspect Windows memory controls without changing them
-        if: runner.os == 'Windows'
+        if: inputs.operation == 'inspect' && runner.os == 'Windows'
         shell: pwsh
         run: |
           & {
@@ -100,6 +113,45 @@ jobs:
             Get-CimInstance Win32_PageFileSetting | Select-Object Name, InitialSize, MaximumSize | Format-List
             whoami /priv
           } | Out-String | Tee-Object -FilePath "$env:SCHEDULER_EVIDENCE/windows.txt"
+
+      - name: Disable Linux swap and verify active state
+        if: inputs.operation == 'verify-swap-control' && runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          {
+            printf 'Active swap before control:\n'
+            swapon --show --bytes
+            sudo -n swapoff --all
+            printf 'Active swap after control:\n'
+            swapon --show --bytes
+            if [[ -z "$(swapon --show --noheadings)" ]]; then
+              printf 'verified_swap_disabled=true\n'
+            else
+              printf 'Swap remains active after swapoff.\n' >&2
+              exit 1
+            fi
+          } 2>&1 | tee "$SCHEDULER_EVIDENCE/swap-control.txt"
+
+      - name: Test macOS runtime swap setter and verify effective state
+        if: inputs.operation == 'verify-swap-control' && runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          previous="$(sysctl -n vm.swap_enabled)"
+          changed=false
+          trap 'if [[ "$changed" == true ]]; then sudo -n sysctl -w "vm.swap_enabled=$previous" > "$SCHEDULER_EVIDENCE/swap-restore.txt" 2>&1; fi' EXIT
+          {
+            printf 'Initial vm.swap_enabled=%s\n' "$previous"
+            sysctl vm.swapusage
+            if sudo -n sysctl -w vm.swap_enabled=0; then
+              changed=true
+            else
+              printf 'Runtime swap setter failed; this operation does not disable swap.\n' >&2
+              exit 1
+            fi
+            sysctl vm.swap_enabled vm.swapusage
+            test "$(sysctl -n vm.swap_enabled)" = 0
+            printf 'verified_swap_disabled=true\n'
+          } > "$SCHEDULER_EVIDENCE/swap-control.txt" 2>&1
 
       - name: Retain diagnostic evidence for one day
         if: always() && env.SCHEDULER_EVIDENCE != ''
