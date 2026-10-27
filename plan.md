@@ -35,7 +35,9 @@ The first five clean-verification runs use `baseline-release-builds.yml` at
 `f0c4987de5a8bd700311ece9d30d35289ba754e4`, with `cache=false` and each
 target selected explicitly. Each job creates an empty owned build-output
 directory and restores no compiled cache. These runs are dispatched, not
-accepted; compilation, native smokes and source/dependency guards must finish.
+accepted until compilation, native smokes and source/dependency guards finish.
+Linux ARM64 now passes those checks in 55m 56s, with GHCR restore skipped and
+1,182 Rust compilation entries. The other target outcomes remain pending.
 After Intel warm acceptance, its clean run uses
 `4920823fe242847be82bb84120326033dce56d07`, which adds only plan documentation
 to that same build configuration. The completed incremental attempts remain
@@ -44,7 +46,7 @@ recorded separately; no running job is cancelled for clean verification.
 | Clean-verification target | Run |
 | --- | --- |
 | Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434) |
-| Linux ARM64 musl | [`40434744427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434744427) |
+| Linux ARM64 musl | [`40434744427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434744427): clean compilation, native smokes and guards pass. |
 | macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377) |
 | Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709) |
 | Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719) |
