@@ -394,3 +394,97 @@ the two smaller actions, and the oversized action is rejected before producing
 its output. The latter is an expected negative test rather than a repaired
 failure. This validates the maintained diagnostic at its native Bazel execution
 boundary; it does not repeat Codex compilation or accept unrun native platforms.
+
+### Memory-load scheduling availability
+
+The current Bazel development source also documents
+`--experimental_memory_load_scheduling`. This must not be confused with the
+estimated-memory admission exercised above. Direct inspection of the pinned
+9.2.0 `ExecutionOptions.java` confirms that this option is absent there.
+
+Upstream commit
+[`0bae75d6382cbaf7303ba213b72d4e69db027216`](https://github.com/bazelbuild/bazel/commit/0bae75d6382cbaf7303ba213b72d4e69db027216),
+dated `2026-08-24T14:13:49Z`, adds the option and its implementation. Its
+`ResourceManager.isMemoryAvailable` consults measured memory usage plus memory
+estimates for newly started actions; when measurement is unavailable, it falls
+back to estimated reservations. This is source inspection, not a native runtime
+acceptance result. It does not establish swap prevention, termination/retry
+ordering, or behavior across our release platforms.
+
+The development option is therefore unavailable to the pinned baseline without
+changing Bazel. No toolchain update or backport is applied for this investigation.
+The measured-pressure and recovery requirements remain open for the existing
+toolchain; finding a similarly named option in current documentation does not
+complete them.
+
+## Cross-platform memory telemetry candidate
+
+`psutil` 7.2.2 is under evaluation for physical-memory availability, swap
+occupancy and process RSS sampling. The
+[published release files](https://pypi.org/project/psutil/7.2.2/#files) include
+ABI-compatible binary wheels for all six release OS/architecture combinations.
+This establishes distribution availability, not native behavior on every target.
+
+A fresh, owned local directory receives only the pinned binary package through
+`pip install --only-binary=:all: --no-deps --target ... psutil==7.2.2`.
+The imported module path is verified inside that directory. The Linux x86-64
+probe returns these decision-relevant values:
+
+| Selected operation/member | Observed value (bytes) |
+| --- | --- |
+| `virtual_memory().available` | `36828274688` |
+| `virtual_memory().total` | `44136525824` |
+| `swap_memory().used` | `2610085888` |
+| `swap_memory().sout` | `20230164480` |
+| `Process(current_pid).memory_info().rss` | `13574144` |
+
+The probe removes its package and temporary directory on exit. It performs no
+allocation-pressure experiment, process termination or Codex compilation.
+
+The [stable API documentation](https://psutil.io/7.2/#psutil.swap_memory)
+specifies that Windows swap-in and swap-out counters always return zero.
+The [pinned Windows implementation](https://github.com/giampaolo/psutil/blob/release-7.2.2/psutil/_pswindows.py)
+also calculates swap-used bytes from a usage percentage and total capacity.
+Consequently, zero paging counters cannot be interpreted as absence of Windows
+paging activity, and its occupancy value must not be claimed as an exact native
+pagefile byte count. Windows needs an additional verified native signal before
+this candidate can satisfy the monitoring contract. Native macOS/Windows probes,
+measurement during pressure, and the final caller-facing integration remain
+unrun. No dependency or scheduler implementation is selected by this probe.
+
+### Native telemetry availability check
+
+The manual
+[Scheduler memory telemetry workflow](../.github/workflows/scheduler-memory-telemetry.yml)
+uses the existing six-target release matrix. It installs only the pinned binary
+candidate, with the six permitted wheel hashes in
+[memory-telemetry-requirements.txt](../.github/scripts/memory-telemetry-requirements.txt),
+inside an owned directory that its cleanup step removes. Two samples record
+available physical memory, swap occupancy, swap-output counters and the sampling
+process's RSS. Windows additionally records native `Win32_PageFileUsage`
+properties, whose `CurrentUsage` unit is megabytes according to
+[Microsoft's contract](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-pagefileusage).
+An empty pagefile inventory is retained as an empty array rather than fabricated
+zero-valued active-pagefile records.
+
+This workflow answers whether each native runner can acquire the package and
+produce the required observations. It neither induces memory pressure nor
+accepts a recovery policy. Its trigger and acceptance boundary differ from
+the swap-control workflow, so it is a separate read-only diagnostic. Both Linux
+architectures require native observations despite sharing an OS; a package-file
+inventory alone cannot provide them. Existing Codex build checks need no rerun
+for this diagnostic.
+
+Local verification installs the hash-locked Linux wheel and executes the exact
+sampling shell step extracted from the workflow. Both samples pass their
+plausibility checks and emit JSON. An initial local invocation cannot find
+`python`; supplying that command through an owned symlink to the installed
+`python3` allows the unchanged step to run. Hosted runs instead obtain that
+command through their explicit setup-python step. The owned local directory
+is removed after each attempt.
+
+The installed local actionlint reports only its unsupported `queue` concurrency
+key. That finding is retained; the requested queue policy is not removed to
+appease the linter. GitHub workflow ingestion and native execution remain the
+acceptance boundary for that setting. Native acquisition, sampling and cleanup
+on the six hosted platforms remain unrun until the dispatched workflow returns.

@@ -1,0 +1,135 @@
+name: Scheduler memory telemetry
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        run: |
+          printf 'value=%s\n' "$(jq -c '{include: .}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  sample:
+    needs: select
+    name: Sample - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/memory-telemetry-requirements.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Create owned telemetry storage
+        run: |
+          set -euo pipefail
+          telemetry="$(mktemp -d "$RUNNER_TEMP/scheduler-telemetry-XXXXXX")"
+          printf 'SCHEDULER_TELEMETRY=%s\n' "$telemetry" >> "$GITHUB_ENV"
+          {
+            printf 'workflow_commit=%s\nrunner_os=%s\nrunner_arch=%s\nrunner_environment=%s\n' \
+              "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH" "$RUNNER_ENVIRONMENT"
+            printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          } | tee "$telemetry/identity.txt"
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+
+      - name: Acquire the pinned telemetry candidate
+        env:
+          TMPDIR: ${{ env.SCHEDULER_TELEMETRY }}
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: --no-deps --require-hashes \
+            --target "$SCHEDULER_TELEMETRY/package" \
+            -r .github/scripts/memory-telemetry-requirements.txt
+
+      - name: Sample native physical memory and swap occupancy
+        env:
+          PYTHONPATH: ${{ env.SCHEDULER_TELEMETRY }}/package
+        run: |
+          python - <<'PY' | tee "$SCHEDULER_TELEMETRY/psutil.json"
+          import json
+          import os
+          import platform
+          import time
+
+          import psutil
+
+          samples = []
+          for sample_index in range(2):
+              memory = psutil.virtual_memory()
+              swap = psutil.swap_memory()
+              process_rss = psutil.Process(os.getpid()).memory_info().rss
+              assert memory.total > 0
+              assert 0 <= memory.available <= memory.total
+              assert swap.used >= 0
+              assert process_rss > 0
+              samples.append({
+                  "sample_index": sample_index,
+                  "monotonic_ns": time.monotonic_ns(),
+                  "physical_total_bytes": memory.total,
+                  "available_bytes": memory.available,
+                  "swap_used_bytes": swap.used,
+                  "swap_out_bytes": swap.sout,
+                  "self_rss_bytes": process_rss
+              })
+              time.sleep(0.2)
+
+          print(json.dumps({
+              "host_os": platform.system(),
+              "machine": platform.machine(),
+              "psutil_version": psutil.__version__,
+              "module": psutil.__file__,
+              "samples": samples
+          }, indent=2))
+          PY
+
+      - name: Read native Windows pagefile occupancy
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pagefiles = @(Get-CimInstance Win32_PageFileUsage | Select-Object Name, AllocatedBaseSize, CurrentUsage, PeakUsage)
+          ConvertTo-Json -InputObject $pagefiles | Tee-Object -FilePath "$env:SCHEDULER_TELEMETRY/windows-pagefiles.json"
+
+      - name: Retain telemetry evidence for one day
+        if: always() && env.SCHEDULER_TELEMETRY != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-memory-telemetry-${{ matrix.target }}
+          path: |
+            ${{ env.SCHEDULER_TELEMETRY }}/identity.txt
+            ${{ env.SCHEDULER_TELEMETRY }}/psutil.json
+            ${{ env.SCHEDULER_TELEMETRY }}/windows-pagefiles.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned telemetry storage
+        if: always() && env.SCHEDULER_TELEMETRY != ''
+        run: rm -rf -- "$SCHEDULER_TELEMETRY"
