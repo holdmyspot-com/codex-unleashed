@@ -70,7 +70,7 @@ projects.
 | Linux cgroup v1 `memory.oom_control` | With its OOM killer disabled, accountable memory requests can sleep on the cgroup OOM waitqueue. Increasing the limit or reducing usage lets them continue. | A plausible exact-blocking facility. Requires an available, writable v1 memory controller and a controller outside the blocked workload. Native allocation-block/continue and ordering tests are unrun. |
 | Linux cgroup v2 `memory.high` / `memory.max` | `memory.high` throttles/reclaims rather than imposing an absolute no-allocation boundary. `memory.max` can invoke the OOM killer when reclaim cannot satisfy the limit. | These documented behaviors do not establish the requested block-and-resume contract. This executor mounts cgroup2 read-only; `memory.high`, `memory.max` and `memory.swap.max` are not writable, and v1 `memory.oom_control` is absent. This is local availability evidence, not hosted-runner evidence. |
 | Windows job-object memory limits | A commit request exceeding a hard process/job memory limit fails. Notification limits can notify while allowing allocation to continue. | Neither behavior alone blocks the failed request for later continuation. Native allocation interception remains to be evaluated. |
-| macOS pressure notifications / process suspension | Apple's documentation describes pressure notification and memory recovery, not an established caller-controlled allocation-wait contract. | Exact allocation blocking, native swap control and compatibility with installed compilers remain unknown. No native macOS probe has run. |
+| macOS pressure notifications / process suspension | Apple's documentation describes pressure notification and memory recovery, not an established caller-controlled allocation-wait contract. | The native address-space-limit fixture below now demonstrates denied mapping and successful retry on both architectures. It does not establish compiler interception, physical-pressure recovery or suspension behavior. |
 
 Authoritative contracts: [Linux v1 OOM control](https://www.kernel.org/doc/html/v5.5/admin-guide/cgroup-v1/memory.html#oom-control),
 [Linux v2 memory controls](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html),
@@ -339,12 +339,31 @@ mapping succeeding after its original limit is restored. It reads/writes both
 endpoints, closes the mapping and exits zero. Missing events fail after 30
 seconds; an unfinished worker is terminated and reaped on cleanup.
 
-Native execution is initially unrun. Python syntax and the two-target selection
-are checked locally; actionlint reports only its known unsupported `queue: max`
-field. This diagnostic changes no global swap setting and runs no Codex build.
-Waiting/retry remains fixture code. A passing result would establish reversible
-address-space denial, not compiler interception, page-fault blocking, physical
-pressure recovery or FIFO scheduling.
+Python syntax and the two-target selection are checked locally; actionlint
+reports only its known unsupported `queue: max` field. GitHub accepts and runs
+the workflow. This diagnostic changes no global swap setting and runs no Codex
+build. Waiting/retry remains fixture code, not compiler interception, page-fault
+blocking, physical-pressure recovery or FIFO scheduling.
+
+Run [`40562742928`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40562742928)
+at `0f7a5ea4617289e0e456e893c43ebeac61a0c203` passes both native probes.
+The Intel job takes 17 seconds and the Apple Silicon job eight seconds, including
+setup and artifact publication. Both use native Python 3.12.10 on Darwin 24.6.0.
+Each 268,435,456-byte mapping fails with `ENOMEM` (12). After the independent
+peer completes, the same worker restores its original soft limit of
+9,223,372,036,854,775,807 bytes, maps the same size, reads back endpoint bytes
+42/43, closes the mapping and exits zero. The hard limit is unchanged.
+
+| Native target | Worker PID | Initial virtual size / temporary soft limit, bytes | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- | --- | --- |
+| macOS Intel | `2920` | `34922926080` / `34956480512` | `12760119328` | `818cedadf649f4b3a09ef271d6ff0c5e6c01825a254ae2d9956e7239a64c1d5c` |
+| macOS Apple Silicon | `1276` | `420688166912` / `420721721344` | `12760184330` | `9dd070801cda89789be0c33b0f99d3e432beaec59b964f26a4f2693a9e76abe6` |
+
+These are virtual-address-space quantities, not physical RAM consumption. The
+large initial virtual sizes must not be used as physical-memory admission
+estimates. Logs are downloaded and hashed in memory from their one-day
+artifacts. The result accepts reversible address-space denial for these owned
+fixtures; it leaves the wider scheduler requirements open.
 
 ## Swap-control prerequisites
 
