@@ -1,0 +1,123 @@
+name: Scheduler compiler allocation coverage
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-compiler-allocations.yml
+      - .github/scripts/probe-compiler-allocations.py
+      - .github/scripts/compiler-allocation-observer.js
+  workflow_dispatch:
+    inputs:
+      debug_public_key:
+        description: Optional public SSH key to retain a failed native diagnostic for remote debugging
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        run: |
+          printf 'value=%s\n' "$(jq -c '{include: [.[] | select(.target | contains("-apple-"))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: select
+    name: Compiler - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ inputs.debug_public_key != '' && 60 || 5 }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/probe-compiler-allocations.py
+            .github/scripts/compiler-allocation-observer.js
+            .github/scripts/macos-interception-requirements.txt
+            .github/actions/
+          sparse-checkout-cone-mode: false
+
+      - name: Set up native Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Set up the selected upstream compiler version
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+
+      - name: Create owned diagnostic storage
+        uses: ./.github/actions/scheduler-compiler-storage
+
+      - name: Record native diagnostic identity
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          {
+            printf 'workflow_commit=%s\nrunner_os=%s\nrunner_arch=%s\n' "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH"
+            printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          } | tee "$SCHEDULER_COMPILER/identity.txt"
+
+      - name: Acquire pinned native instrumentation candidate
+        env:
+          TMPDIR: ${{ env.SCHEDULER_COMPILER }}
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: --no-deps --require-hashes \
+            --target "$SCHEDULER_COMPILER/package" \
+            -r .github/scripts/macos-interception-requirements.txt
+
+      - name: Observe native compiler allocations and compare metadata
+        env:
+          PYTHONPATH: ${{ env.SCHEDULER_COMPILER }}/package
+          TMPDIR: ${{ env.SCHEDULER_COMPILER }}
+          EXPECTED_HOST: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          executable="$(python -c 'import sys; print(sys.executable)')"
+          compiler="$(rustup which rustc --toolchain 1.95.0)"
+          sudo -n env PYTHONPATH="$PYTHONPATH" TMPDIR="$TMPDIR" \
+            "$executable" .github/scripts/probe-compiler-allocations.py \
+            --compiler "$compiler" --expected-host "$EXPECTED_HOST" \
+            --storage "$SCHEDULER_COMPILER" 2>&1 | tee "$SCHEDULER_COMPILER/compiler.log"
+
+      - name: Retain native evidence for one day
+        if: always() && env.SCHEDULER_COMPILER != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-compiler-${{ matrix.target }}
+          path: |
+            ${{ env.SCHEDULER_COMPILER }}/identity.txt
+            ${{ env.SCHEDULER_COMPILER }}/compiler.log
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Debug the retained native diagnostic after failure
+        if: failure() && inputs.debug_public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.debug_public_key }}

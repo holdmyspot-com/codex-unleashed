@@ -1,0 +1,7 @@
+name: Own compiler diagnostic storage
+description: Retain compiler evidence until later debugging finishes, then remove owned storage
+runs:
+  using: node24
+  main: index.cjs
+  post: index.cjs
+  post-if: always()
