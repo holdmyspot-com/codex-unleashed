@@ -575,9 +575,37 @@ This case also requires ordinary worker exit without removing the hook.
 
 Worker-local event handles remain valid until the worker is terminal. Failure
 cleanup kills and reaps the owned worker before detaching instrumentation or
-closing controller handles. These two new behavioral gates are unrun; local
-JavaScript, Python and host-C syntax checks do not establish Windows behavior.
+closing controller handles. Local JavaScript, Python and host-C syntax checks
+precede native execution; they do not themselves establish Windows behavior.
 No accepted forwarding or Codex compilation check needs repetition.
+
+Run [`40573815760`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40573815760)
+at `f3c65873bf73f62d45e09f1d857f105e1e565357` passes both new modes on
+both Windows architectures. The x86-64 job takes 27 seconds and ARM64 takes
+37 seconds, including acquisition, evidence upload and cleanup. Both use native
+Python 3.12.10 and Frida 17.24.3. Their runner images are
+`win25-vs2026` / `20261021.278.1` and
+`win11-vs2026-arm64` / `20261022.194.1`, respectively.
+
+Each first allocation fails with error 1455. In the timeout cases, native state
+records one attempt, `WAIT_TIMEOUT` (258), null pointer and diagnostic sentinel
+536875572; the caller observes the restored error 1455. In each successful
+case, an independent peer completes while native state still shows one attempt
+and a pending wait. After the limit increases and permission is signaled, the
+state records two original attempts, one matching callback and a non-null
+pointer identical to the caller's. Endpoint values 42/43, freeing, final
+last-error agreement and ordinary worker exit all pass without hook removal.
+
+| Target | Artifact ID | Raw interception-log SHA-256 |
+| --- | --- | --- |
+| Windows x86-64 | `12765564247` | `ee08e9bdd4f2580eecd46449ce0968696d46c27f59d2297f3785888daf67aad8` |
+| Windows ARM64 | `12766721140` | `6af6a6e255c0f628bd54c997d581c3976fd4d1e4685d80dfe272b21331268797` |
+
+This accepts blocking and continuation inside the selected native allocation
+hook, plus bounded denial with error preservation, for the controlled worker.
+It does not establish compiler/child allocation coverage, physical-memory
+pressure recovery, ordered multi-job admission/retry or Cargo/Bazel integration.
+No machine pagefile setting, upstream source or compiled cache is changed.
 
 ### Native macOS address-space-limit diagnostic
 
@@ -935,8 +963,9 @@ Rust binary/library/test macros delegate to those `rules_rust` rules.
 
 At that revision,
 [`rustc.bzl`](https://github.com/hermeticbuild/rules_rust/blob/f19661ba71f77c993ce1eb082053692610fe4313/rust/private/rustc.bzl)
-passes `get_rustc_resource_set(rust_toolchain)` for compilation and metadata
-actions. Its
+passes `get_rustc_resource_set(rust_toolchain)` for the full compilation
+action. The separate metadata action supplies no `resource_set` argument and
+therefore retains Bazel's default memory estimate. Its
 [`resource callback`](https://github.com/hermeticbuild/rules_rust/blob/f19661ba71f77c993ce1eb082053692610fe4313/rust/private/rustc_resource_set.bzl)
 returns either no callback or a dictionary declaring CPU demand only. It supplies
 no compiler-specific memory demand. Bazel 9.2.0's
