@@ -9,6 +9,11 @@ on:
       - .github/scripts/compiler-allocation-observer.js
   workflow_dispatch:
     inputs:
+      platform:
+        description: Native compiler platform family to observe
+        type: choice
+        default: windows
+        options: [windows, macos]
       debug_public_key:
         description: Optional public SSH key to retain a failed native diagnostic for remote debugging
         type: string
@@ -30,8 +35,13 @@ jobs:
           persist-credentials: false
 
       - id: matrix
+        env:
+          PROBE_PLATFORM: ${{ inputs.platform }}
         run: |
-          printf 'value=%s\n' "$(jq -c '{include: [.[] | select(.target | contains("-apple-"))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+          printf 'value=%s\n' "$(jq --arg platform "$PROBE_PLATFORM" -c '
+            (if $platform == "windows" then "-windows-" else "-apple-" end) as $family |
+            {include: [.[] | select(.target | contains($family))]}
+          ' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
 
   probe:
     needs: select
@@ -56,6 +66,7 @@ jobs:
             .github/scripts/probe-compiler-allocations.py
             .github/scripts/compiler-allocation-observer.js
             .github/scripts/macos-interception-requirements.txt
+            .github/scripts/windows-interception-requirements.txt
             .github/actions/
           sparse-checkout-cone-mode: false
 
@@ -85,11 +96,12 @@ jobs:
       - name: Acquire pinned native instrumentation candidate
         env:
           TMPDIR: ${{ env.SCHEDULER_COMPILER }}
+          REQUIREMENTS: .github/scripts/${{ inputs.platform }}-interception-requirements.txt
         run: |
           python -m pip install --disable-pip-version-check --no-cache-dir \
             --only-binary=:all: --no-deps --require-hashes \
             --target "$SCHEDULER_COMPILER/package" \
-            -r .github/scripts/macos-interception-requirements.txt
+            -r "$REQUIREMENTS"
 
       - name: Observe native compiler allocations and compare metadata
         env:
@@ -100,7 +112,11 @@ jobs:
           set -euo pipefail
           executable="$(python -c 'import sys; print(sys.executable)')"
           compiler="$(rustup which rustc --toolchain 1.95.0)"
-          sudo -n env PYTHONPATH="$PYTHONPATH" TMPDIR="$TMPDIR" \
+          launcher=()
+          if [ "$RUNNER_OS" = macOS ]; then
+            launcher=(sudo -n env PYTHONPATH="$PYTHONPATH" TMPDIR="$TMPDIR")
+          fi
+          "${launcher[@]}" \
             "$executable" .github/scripts/probe-compiler-allocations.py \
             --compiler "$compiler" --expected-host "$EXPECTED_HOST" \
             --storage "$SCHEDULER_COMPILER" 2>&1 | tee "$SCHEDULER_COMPILER/compiler.log"
