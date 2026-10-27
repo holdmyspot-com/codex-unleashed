@@ -8,7 +8,7 @@ on:
         type: boolean
         default: false
       exec_server_filter:
-        description: Libtest name filter for the focused exec-server integration target; used only when exec_server_shells is true
+        description: 'Libtest name filter for exec-server integration; use * for every case; requires exec_server_shells=true'
         type: string
         default: shell_snapshot
       trace_empty_workspace_roots:
@@ -240,7 +240,11 @@ jobs:
           trap 'kill "$disk_monitor" 2>/dev/null || true; wait "$disk_monitor" || true' EXIT
           comparison_args=()
           if [[ "$BASELINE_EXEC_SERVER_SHELLS" == true ]]; then
-            comparison_args+=(--test_arg="$BASELINE_EXEC_SERVER_FILTER" --test_arg=--nocapture --test_output=all)
+            case "$BASELINE_EXEC_SERVER_FILTER" in
+              '*') ;;
+              *) comparison_args+=(--test_arg="$BASELINE_EXEC_SERVER_FILTER") ;;
+            esac
+            comparison_args+=(--test_arg=--nocapture --test_output=all)
           fi
 
           if [[ "$BUNDLE_BWRAP" == true ]]; then
