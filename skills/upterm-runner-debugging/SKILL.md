@@ -7,7 +7,7 @@ description: Keep an active Upterm connection to a remote runner while testing w
 
 ## Design Goals
 
-- Establish authenticated remote command execution on the retained worker, rather than accepting session startup as proof.
+- Establish authenticated remote command execution on the retained worker and verify transferred files before using them.
 - Preserve failed-run evidence and valid completed work during incremental diagnosis.
 - Keep the workspace available through remote debugging, then close the session and clean up owned resources.
 - Reuse verified provider integrations without assuming their lifecycle applies to another provider.
@@ -36,6 +36,10 @@ Read the destination from the published SSH command. Parse its arguments with a 
 If the execution harness buffers command output or closes standard input, use one foreground owner with Python `pty.openpty()`, `subprocess.Popen()` and `select.select()` to drive SSH. Keep that owner alive through connection, remote execution, terminal exit and child reaping. A detached SSH process is not a durable session owner. Save its transcript in owned storage even on failure.
 
 Wait for the remote shell prompt before sending commands. Immediate piped input was lost in the observed Upterm sessions. Windows Git Bash may render the prompt as `#\x1b[22m ` and append an OSC terminal-title sequence: stripping CSI color sequences alone still leaves a prompt matcher waiting. Handle the actual terminal sequences or normalize `PS1` and `PROMPT_COMMAND` through the existing connection; do not diagnose authentication failure from a prompt-detection timeout. Keep the connection open through commands, diagnosis and retries. Reconnect to the same retained session and verify its workspace when only the client failed.
+
+When transferring files through the interactive shell, encode binary content and send bounded command lines. Include shell syntax in the line's byte count and keep it below the destination terminal's input limit. Base64 payload chunks of 512 ASCII bytes worked on native macOS; roughly 1,000-byte chunks plus shell syntax produced terminal overflow bells and lost input. Wait for a unique remote acknowledgement after each chunk before sending the next. A successful local write only proves submission to the local PTY. Handle partial writes by sending the remaining bytes. After decoding in owned remote storage, compare the received file's size and SHA-256 with the local original before executing it. Ordinary short interactive commands do not need this transfer procedure.
+
+If a transfer loses input, preserve its transcript and use Ctrl-C to clear unfinished shell input when no test command is running. Verify a short command on the same connection, reset only the incomplete transfer file and resend with shorter acknowledged lines. Resume testing after the decoded file matches its original; keep completed build outputs and the worker intact.
 
 Inspect the original failing command and environment, identify the root cause, make a focused change and retry affected work while retaining valid completed outputs. Verify an observable remote effect and the command's result; connection or banner output alone is insufficient. Keep the original failure distinct from a successful retry. Perform the task's required clean verification after incremental success.
 
