@@ -135,7 +135,18 @@ def run_probe(api, kernel):
                     worker.stdin.write("finish\n")
                     worker.stdin.flush()
                     api.read_event(worker, reader, "allocation_freed")
-                    assert worker.wait(timeout=30) == 0
+                    try:
+                        worker_exit = worker.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        snapshot = reader.submit(script.exports_sync.inspect_threads).result(timeout=10)
+                        api.emit("shutdown_thread_snapshot", worker_pid=worker.pid, threads=snapshot)
+                        removed = reader.submit(script.exports_sync.remove_hook).result(timeout=10)
+                        assert removed is True
+                        api.emit("hook_removed_after_shutdown_timeout", worker_pid=worker.pid)
+                        recovered_exit = worker.wait(timeout=30)
+                        api.emit("shutdown_after_hook_removal", worker_pid=worker.pid, exit_code=recovered_exit)
+                        raise AssertionError("Worker shutdown required diagnostic hook removal after its normal exit timed out")
+                    assert worker_exit == 0
                     api.emit("interception_probe_passed", worker_pid=worker.pid, frida_version=frida.__version__)
                 finally:
                     if worker.poll() is None:
