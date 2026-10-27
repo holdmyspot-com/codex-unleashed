@@ -84,3 +84,91 @@ growth and the approved targeted-retry escape from retained-memory deadlock.
 Only after those premises hold can Cargo and Bazel integration be accepted. Keep
 unresolved paths unknown rather than substituting pressure prediction or claiming
 cross-platform support from a Linux-only result.
+
+## Local allocation-interception probe
+
+Frida 17.24.3 is evaluated in an isolated temporary directory, without adding a
+project dependency. Its published Python wheels cover Linux, macOS and Windows
+on x86-64 and ARM64. Wheel availability establishes distribution coverage only;
+the native probe below runs on Linux x86-64 alone. The evaluated Linux wheel has
+SHA-256 `2ba706b7385d56111af5c6cced55361168d3d93babdb300d2ea2b7f76d58a289`.
+
+An owned C subprocess reaches `main`, reports readiness and waits for input before
+calling `malloc(268435456)`. The controller attaches to its resolved `malloc`
+import and uses Frida's documented `Interceptor.replace` with a `NativeCallback`.
+The replacement calls the original allocator through `NativeFunction`. A null
+result reports `ALLOCATION_BLOCKED`, waits and retries inside that same call
+instead of returning null to the fixture.
+
+After installing the hook, the controller restricts only that subprocess's
+`RLIMIT_AS` to its current virtual size plus 32 MiB. This deliberately makes the
+256 MiB request fail. The observed sequence is:
+
+1. The fixture reports readiness and the controller sets the address-space limit
+   to 529,600,512 bytes.
+2. The hook reports `ALLOCATION_BLOCKED`; the fixture has not reported completion.
+3. An independent process exits successfully. The controller restores the
+   subprocess's previous address-space limit.
+4. The same allocator call succeeds; the fixture writes the first and last bytes,
+   reports `ALLOCATION_COMPLETED`, frees its allocation and terminates. The hook
+   also reports `ALLOCATION_RESUMED`.
+
+This establishes waiting and successful retry of a deliberately failed allocator
+call. The address-space limit models allocation denial; independent process
+completion does not itself free the allowance. Physical RAM exhaustion, complete
+page commitment, FIFO admission, retry deadlocks and build-tool integration are
+not exercised. Polling the original allocator is diagnostic behavior, not a
+selected scheduling policy. All fixture processes are owned and terminated on
+the controller's cleanup path.
+
+Separate inspection of the installed Rust 1.95.0 executable locates its own
+exported `malloc`, `calloc`, `realloc` and `free`, in addition to libc's separate
+exports. A Frida-attached `rustc --version` exits normally after symbol inspection.
+This confirms attachment and symbol availability, not interception of its
+compilation allocations. Looking up a single export immediately after spawn first
+fails, while enumerating the module's exports succeeds in the subsequent probe;
+the initialization timing remains unisolated. Native CModule/`replaceFast`
+attempts also let the fixture receive null without the blocking marker; their
+cause remains unknown. The passing result above uses the ordinary callback
+replacement, not those attempts.
+
+A subsequent tiny Rust compilation (`--crate-type=lib --emit=metadata`) observes
+calls to all five compiler-exported allocator entries: `malloc`, `calloc`,
+`realloc`, `aligned_alloc` and `posix_memalign`. Its 2,412-byte metadata output is
+produced without compiler diagnostics. This probe attaches entry observers; it
+does not replace these allocators or force a compiler allocation failure. A
+malloc-only replacement has not established coverage of the other observed
+compiler entry points. Linker and build-script child coverage remains unrun.
+
+The next decisive checks must cover compiler allocation failure and physical
+memory commitment. This executor has `vm.overcommit_memory=1` (always overcommit);
+the [kernel's overcommit contract](https://www.kernel.org/doc/html/latest/mm/overcommit-accounting.html)
+distinguishes that policy from allocation-time commit rejection in mode 2 and
+identifies implicit stack growth as another consideration. An allocator hook
+cannot be assumed to intercept a later page fault merely because allocation
+returns an address. Neither the machine's overcommit policy nor swap settings
+are changed by these probes. No production scheduler or cross-platform guarantee
+follows from this fixture.
+
+Candidate interface: [Frida JavaScript API](https://frida.re/docs/javascript-api/)
+(`Interceptor.replace`, `NativeCallback`, `NativeFunction` and `Thread.sleep`).
+
+## Swap-control prerequisites
+
+The native hosted-runner control checks remain unrun. In particular, changing a
+persistent setting does not prove that the current build has no active swap:
+
+- Microsoft's [Win32_PageFileSetting contract](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-pagefilesetting)
+  describes pagefile settings used at startup, distinct from the current state
+  exposed by `Win32_PageFileUsage`. Deleting settings alone is insufficient
+  evidence that the current runner's active pagefiles have been disabled.
+- Apple's published XNU snapshot
+  [`f6217f891ac0bb64f3d375211650a4c1ff8ca1ea`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/kern/kern_sysctl.c)
+  declares `vm.swap_enabled` and `vm.compressor_mode` with `CTLFLAG_RD`. Those
+  sysctl entries are not runtime setters in that source. This does not establish
+  that every other swap-control mechanism is unavailable, or identify the kernel
+  running on a selected hosted image.
+
+Acceptance needs a supported control operation and a runtime observation of its
+effect on each selected native runner. Do not count a successful configuration
+edit, zero current swap usage, or an unused pagefile as disabling swap.
