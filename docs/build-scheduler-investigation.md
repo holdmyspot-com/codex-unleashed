@@ -274,6 +274,34 @@ before scheduler integration can be accepted. The controller restores the limit
 and terminates its owned compiler on its cleanup path; the outer owner removes
 the package, source, outputs and controller after recording the result.
 
+### Native Windows commit-limit and retry diagnostic
+
+The dedicated [Windows allocation workflow](../.github/workflows/scheduler-windows-allocation.yml)
+selects only the two Windows entries from the release matrix. Its
+[probe](../.github/scripts/probe-windows-allocation.py) uses Python's standard
+library to call native Windows job-object and `VirtualAlloc` APIs; it adds no
+package dependency and does not compile Codex or restore caches.
+
+The controller assigns one owned worker to a kill-on-close job, measures its
+peak committed memory, and sets that worker's commit allowance to the measured
+peak plus 32 MiB. The worker requests a 256 MiB committed reservation. Acceptance
+requires that request to return null, the same worker to remain alive while an
+independent process finishes, and the same request to succeed after the
+controller raises the allowance by 256 MiB. The worker writes and reads both
+ends of the allocation, frees it and exits zero. JSON events bind each stage to
+the worker PID; missing events fail after 30 seconds. Cleanup terminates and
+waits for an unfinished worker and closes its native handles.
+
+This diagnoses whether the hosted Windows job limit can provide a controlled,
+reversible allocation denial. Waiting/retry belongs to the fixture function;
+it is not a blocked kernel call or an injected compiler hook. Even a passing
+result leaves compiler interception, other allocation APIs, physical-pressure
+recovery, FIFO continuation and Cargo/Bazel integration open. Machine swap and
+pagefile settings are unchanged. Native execution is initially unrun. Local
+Python syntax validation passes; the installed actionlint rejects the already
+documented `queue: max` concurrency field, so GitHub's parser remains the
+authoritative workflow check.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the
