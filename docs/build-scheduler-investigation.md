@@ -386,11 +386,38 @@ The next comparison uses the same worker and native package with two controls:
 existing hook without arming its denied-allocation branch. Both allow the
 256 MiB allocation from the start and require the unchanged normal exit check.
 These controls distinguish attachment and basic hook forwarding from blocking
-and retry. Results remain unrun. The diagnostic workflow runs both controls
+and retry. The diagnostic workflow runs both controls
 even if the first fails; manual dispatch can still select the original retry
 experiment. That experiment now bounds arming RPC completion at 30 seconds and
 records its acknowledgment before starting allocation. No Codex compilation or
 already-passing build/cache check is repeated.
+
+Control run
+[`40566071488`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40566071488)
+at `754ddc52b57a2797c0189c3f59a91ae2de1ade47` establishes the same distinction
+on both architectures: attachment alone passes allocation, endpoint checks,
+deallocation and normal exit; the unarmed JavaScript forwarding hook passes
+allocation/deallocation but times out on exit. Both jobs fail as required and
+reap their workers. The shutdown failure therefore does not require allocation
+denial, controller arming or blocked-call retry. The internal wait responsible
+for the hang remains unlocated; the failed thread-snapshot RPC provides no
+stack evidence.
+
+| Native target | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- |
+| Windows x86-64 | `12762807700` | `4d71ede4cd1322ef1884736c2496c7c10a014c78bf10f1c1603c3a0f1fa02ff7` |
+| Windows ARM64 | `12763510945` | `3086e6b6281950dd3718d3ddfa8018cd48153fa5fd743133d150bb7bb9a2799b` |
+
+The next control, `--mode native-forward`, replaces only the forwarding callback
+with a [CModule](https://frida.re/docs/javascript-api/#cmodule) implementation.
+It forwards the same native request without entering JavaScript on allocation,
+while keeping attachment, worker, memory allowance and normal-exit assertions.
+The native module remains alive until the owned session ends. The
+[native forwarder](../.github/scripts/windows-native-allocation-forwarder.js)
+uses Frida's replacement context to call the original allocator. Its native
+execution is unrun; a passing forwarding control alone would not accept blocked
+allocation recovery. Pushes run this changed control only; manual dispatch
+retains the two earlier controls and the retry experiment.
 
 ### Native macOS address-space-limit diagnostic
 
