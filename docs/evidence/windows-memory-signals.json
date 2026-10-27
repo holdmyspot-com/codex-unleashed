@@ -1,0 +1,363 @@
+{
+  "scope": "Native signal acquisition and bounded process load/release; paging-pressure recovery remains unrun.",
+  "source": ".github/scripts/probe-windows-memory-signals.py",
+  "source_sha256": "41d829b7e6fca3f076a0abe008be5e01ae208b2dfb8e6f661e7fded795c730e8",
+  "x64": {
+    "workflow_run": 40597773985,
+    "probe_exit": 0,
+    "ssh_exit": 0,
+    "samples": [
+      {
+        "event": "native_identity",
+        "machine": "AMD64",
+        "python": "3.12.10",
+        "native_platform": "win-amd64"
+      },
+      {
+        "event": "baseline",
+        "monotonic_ns": 562234000000,
+        "physical_total_bytes": 17174360064,
+        "available_bytes": 14557880320,
+        "working_set_bytes": 26300416,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "loaded",
+        "allocated_bytes": 268435456,
+        "monotonic_ns": 563718000000,
+        "physical_total_bytes": 17174360064,
+        "available_bytes": 14291894272,
+        "working_set_bytes": 294928384,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "released",
+        "monotonic_ns": 564968000000,
+        "physical_total_bytes": 17174360064,
+        "available_bytes": 14556737536,
+        "working_set_bytes": 26501120,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "native_memory_load_response_passed",
+        "allocated_bytes": 268435456,
+        "paging_recovery": "unaccepted: bounded load does not establish paging pressure or recovery"
+      },
+      {
+        "event": "native_resources_closed"
+      }
+    ],
+    "smoke_post": "failed: diagnostic marker was written with CRLF instead of required LF; owned storage removed in finally",
+    "deliberate_workflow_failure": "exit 17 remains visible",
+    "ssh_transcript": "\u001b[?9001h\u001b[?1004h\u001b[?2004h\u001b[?25l\u001b[2J\u001b[m\u001b[H\u001b]0;C:\\msys64\\usr\\bin\\bash.exe\u0007\u001b[?25h\u001b[32m\nrunneradmin@runnervmdaln5 \u001b[35mMINGW64 \u001b[33m~\u001b[m\u001b[1m\n#\u001b[22m \u001b]0;~\u0007PS1='# '; unset PROMPT_COMMAND; stty -echo\u001b[?2004l\n\u001b[?2004h# \u001b[?2004l\nRETAINED_ROOT=D:\\a\\_temp\\runner-debug-smoke-23boTl\n/c/hostedtoolcache/windows/Python/3.12.10/x64/python\n\u001b[?2004h# \u001b[?2004l\nNATIVE_IDENTITY AMD64 3.12.10 win-amd64\nRETAINED_STATE_VERIFIED 'completed-part\\nincremental-retry\\n'\n\u001b[?2004h# \u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[12;1HEVALUATION_ACK_000\n# \u001b[?25h\u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[15;1HEVALUATION_ACK_001\n# \u001b[?25h\u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[18;1HEVALUATION_ACK_002\n# \u001b[?25h\u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[21;1HEVALUATION_ACK_003\n# \u001b[?25h\u001b[?2004l\u001b[?25l\u001b[24;1HEVALUATION_ACK_004\u001b[?25h\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nEVALUATION_ACK_005\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nEVALUATION_ACK_006\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nEVALUATION_ACK_007\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nEVALUATION_ACK_008\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nEVALUATION_ACK_009\u001b[?2004h\n#\u001b[1C\u001b[?2004l\nEVALUATION_SOURCE_VERIFIED 3220\n\nEVALUATION_ACK_010\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n{\"machine\": \"AMD64\", \"python\": \"3.12.10\", \"conditions\": {\"low\": {\"query_success\"\n\u001b[23;80H\": 1, \"condition\": 0}, \"high\": {\"query_success\": 1, \"condition\": 1}}, \"counter\": \n\u001b[23;80H \"\\\\Memory\\\\Pages Output/sec\", \"operation_status\": 0, \"counter_status\": 0, \"pages\n\u001b[23;80Hs_output_per_second\": 0.0}\nNATIVE_EVALUATION_EXIT=0\n\nEVALUATION_ACK_011\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_000\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_001\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_002\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_003\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_004\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_005\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_006\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_007\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_008\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_009\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_010\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_011\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_012\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_013\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_014\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nMEMORY_EVALUATION_ACK_015\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n{\"native_memory\": {\"physical_total_bytes\": 17174360064, \"physical_available_byte\n\u001b[23;80Hes\": 14491987968, \"page_size\": 4096, \"working_set_bytes\": 15093760}}\nNATIVE_MEMORY_EVALUATION_EXIT=0\n\nMEMORY_EVALUATION_ACK_016\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_000\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_001\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_002\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_003\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_004\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_005\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_006\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_007\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_008\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_009\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_010\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_011\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_012\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_013\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_014\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_015\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_016\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_017\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_018\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_019\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_020\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_021\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_022\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_023\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_024\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_025\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_026\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_027\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_028\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_029\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nFINAL_SIG_ACK_030\u001b[?2004h\n#\u001b[1C\u001b[?2004l\nSOURCE_VERIFIED\n\nFINAL_SIG_ACK_031\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\u001b]0;Administrator: ~\u0007NATIVE_SIGNAL_EXIT=0\n{\"event\": \"native_identity\", \"machine\": \"AMD64\", \"python\": \"3.12.10\", \"native_pl\n\u001b[23;80Hlatform\": \"win-amd64\"}\n{\"event\": \"baseline\", \"monotonic_ns\": 562234000000, \"physical_total_bytes\": 1717\n\u001b[23;80H74360064, \"available_bytes\": 14557880320, \"working_set_bytes\": 26300416, \"conditi\n\u001b[23;80Hions\": {\"low\": {\"query_success\": 1, \"condition\": 0}, \"high\": {\"query_success\": 1,\n\u001b[23;80H, \"condition\": 1}}, \"pages_output_per_second\": 0.0, \"pdh_operation_status\": 0, \"p\n\u001b[23;80Hpdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"Name\": \"C:\\\\pagefile.sys\", \"All\n\u001b[23;80HlocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsage\": 0}]}\n{\"event\": \"loaded\", \"allocated_bytes\": 268435456, \"monotonic_ns\": 563718000000, \n\u001b[23;80H \"physical_total_bytes\": 17174360064, \"available_bytes\": 14291894272, \"working_se\n\u001b[23;80Het_bytes\": 294928384, \"conditions\": {\"low\": {\"query_success\": 1, \"condition\": 0},\n\u001b[23;80H, \"high\": {\"query_success\": 1, \"condition\": 1}}, \"pages_output_per_second\": 0.0, \n\u001b[23;80H \"pdh_operation_status\": 0, \"pdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"Na\n\u001b[23;80Hame\": \"C:\\\\pagefile.sys\", \"AllocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsag\n\u001b[23;80Hge\": 0}]}\n{\"event\": \"released\", \"monotonic_ns\": 564968000000, \"physical_total_bytes\": 1717\n\u001b[23;80H74360064, \"available_bytes\": 14556737536, \"working_set_bytes\": 26501120, \"conditi\n\u001b[23;80Hions\": {\"low\": {\"query_success\": 1, \"condition\": 0}, \"high\": {\"query_success\": 1,\n\u001b[23;80H, \"condition\": 1}}, \"pages_output_per_second\": 0.0, \"pdh_operation_status\": 0, \"p\n\u001b[23;80Hpdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"Name\": \"C:\\\\pagefile.sys\", \"All\n\u001b[23;80HlocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsage\": 0}]}\n{\"event\": \"native_memory_load_response_passed\", \"allocated_bytes\": 268435456, \"p\n\u001b[23;80Hpaging_recovery\": \"unaccepted: bounded load does not establish paging pressure or\n\u001b[23;80Hr recovery\"}\n{\"event\": \"native_resources_closed\"}\n\nFINAL_SIG_ACK_032\u001b[?2004h\n#\u001b[1C\u001b[?2004l\nSIGNAL_LOG_BEGIN\neyJldmVudCI6ICJuYXRpdmVfaWRlbnRpdHkiLCAibWFjaGluZSI6ICJBTUQ2NCIsICJweXRob24i\nOiAiMy4xMi4xMCIsICJuYXRpdmVfcGxhdGZvcm0iOiAid2luLWFtZDY0In0NCnsiZXZlbnQiOiAi    \nYmFzZWxpbmUiLCAibW9ub3RvbmljX25zIjogNTYyMjM0MDAwMDAwLCAicGh5c2ljYWxfdG90YWxf    \nYnl0ZXMiOiAxNzE3NDM2MDA2NCwgImF2YWlsYWJsZV9ieXRlcyI6IDE0NTU3ODgwMzIwLCAid29y    \na2luZ19zZXRfYnl0ZXMiOiAyNjMwMDQxNiwgImNvbmRpdGlvbnMiOiB7ImxvdyI6IHsicXVlcnlf    \nc3VjY2VzcyI6IDEsICJjb25kaXRpb24iOiAwfSwgImhpZ2giOiB7InF1ZXJ5X3N1Y2Nlc3MiOiAx    \nLCAiY29uZGl0aW9uIjogMX19LCAicGFnZXNfb3V0cHV0X3Blcl9zZWNvbmQiOiAwLjAsICJwZGhf    \nb3BlcmF0aW9uX3N0YXR1cyI6IDAsICJwZGhfY291bnRlcl9zdGF0dXMiOiAwLCAicGFnZWZpbGVz    \nX25hdGl2ZV9tYiI6IFt7Ik5hbWUiOiAiQzpcXHBhZ2VmaWxlLnN5cyIsICJBbGxvY2F0ZWRCYXNl    \nU2l6ZSI6IDI5NDQsICJDdXJyZW50VXNhZ2UiOiAwLCAiUGVha1VzYWdlIjogMH1dfQ0KeyJldmVu    \ndCI6ICJsb2FkZWQiLCAiYWxsb2NhdGVkX2J5dGVzIjogMjY4NDM1NDU2LCAibW9ub3RvbmljX25z    \nIjogNTYzNzE4MDAwMDAwLCAicGh5c2ljYWxfdG90YWxfYnl0ZXMiOiAxNzE3NDM2MDA2NCwgImF2    \nYWlsYWJsZV9ieXRlcyI6IDE0MjkxODk0MjcyLCAid29ya2luZ19zZXRfYnl0ZXMiOiAyOTQ5Mjgz    \nODQsICJjb25kaXRpb25zIjogeyJsb3ciOiB7InF1ZXJ5X3N1Y2Nlc3MiOiAxLCAiY29uZGl0aW9u    \nIjogMH0sICJoaWdoIjogeyJxdWVyeV9zdWNjZXNzIjogMSwgImNvbmRpdGlvbiI6IDF9fSwgInBh    \nZ2VzX291dHB1dF9wZXJfc2Vjb25kIjogMC4wLCAicGRoX29wZXJhdGlvbl9zdGF0dXMiOiAwLCAi    \ncGRoX2NvdW50ZXJfc3RhdHVzIjogMCwgInBhZ2VmaWxlc19uYXRpdmVfbWIiOiBbeyJOYW1lIjog    \nIkM6XFxwYWdlZmlsZS5zeXMiLCAiQWxsb2NhdGVkQmFzZVNpemUiOiAyOTQ0LCAiQ3VycmVudFVz    \nYWdlIjogMCwgIlBlYWtVc2FnZSI6IDB9XX0NCnsiZXZlbnQiOiAicmVsZWFzZWQiLCAibW9ub3Rv    \nbmljX25zIjogNTY0OTY4MDAwMDAwLCAicGh5c2ljYWxfdG90YWxfYnl0ZXMiOiAxNzE3NDM2MDA2    \nNCwgImF2YWlsYWJsZV9ieXRlcyI6IDE0NTU2NzM3NTM2LCAid29ya2luZ19zZXRfYnl0ZXMiOiAy    \nNjUwMTEyMCwgImNvbmRpdGlvbnMiOiB7ImxvdyI6IHsicXVlcnlfc3VjY2VzcyI6IDEsICJjb25k    \naXRpb24iOiAwfSwgImhpZ2giOiB7InF1ZXJ5X3N1Y2Nlc3MiOiAxLCAiY29uZGl0aW9uIjogMX19    \nLCAicGFnZXNfb3V0cHV0X3Blcl9zZWNvbmQiOiAwLjAsICJwZGhfb3BlcmF0aW9uX3N0YXR1cyI6    \nIDAsICJwZGhfY291bnRlcl9zdGF0dXMiOiAwLCAicGFnZWZpbGVzX25hdGl2ZV9tYiI6IFt7Ik5h    \nbWUiOiAiQzpcXHBhZ2VmaWxlLnN5cyIsICJBbGxvY2F0ZWRCYXNlU2l6ZSI6IDI5NDQsICJDdXJy    \nZW50VXNhZ2UiOiAwLCAiUGVha1VzYWdlIjogMH1dfQ0KeyJldmVudCI6ICJuYXRpdmVfbWVtb3J5    \nX2xvYWRfcmVzcG9uc2VfcGFzc2VkIiwgImFsbG9jYXRlZF9ieXRlcyI6IDI2ODQzNTQ1NiwgInBh    \nZ2luZ19yZWNvdmVyeSI6ICJ1bmFjY2VwdGVkOiBib3VuZGVkIGxvYWQgZG9lcyBub3QgZXN0YWJs    \naXNoIHBhZ2luZyBwcmVzc3VyZSBvciByZWNvdmVyeSJ9DQp7ImV2ZW50IjogIm5hdGl2ZV9yZXNv    \ndXJjZXNfY2xvc2VkIn0NCg==\n\nSIGNAL_LOG_END\nSIGNAL_LOG_ACK\n\u001b[?2004h# \u001b[?2004l\nlogout\n\u001b[?1004lConnection to uptermd.upterm.dev closed.\n\n",
+    "smoke_post_failure_log": "Debug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t\ufeff2026-10-27T22:50:24.6189596Z ##[group]Run exit 17\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.6189832Z \u001b[36;1mexit 17\u001b[0m\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.6201118Z shell: C:\\Program Files\\Git\\bin\\bash.EXE --noprofile --norc -e -o pipefail {0}\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.6201350Z env:\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.6201506Z   RUNNER_DEBUG_SMOKE: D:\\a\\_temp\\runner-debug-smoke-23boTl\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.6201698Z ##[endgroup]\nDebug - x86_64-pc-windows-msvc\tRecord the deliberate build failure\t2026-10-27T22:50:24.7845654Z ##[error]Process completed with exit code 17.\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t\ufeff2026-10-27T22:58:34.3229074Z Post job cleanup.\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3565169Z D:\\a\\codex-unleashed\\codex-unleashed\\.github\\actions\\runner-debug-smoke\\index.cjs:25\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3566172Z       throw new Error(`Unexpected retained build state: ${JSON.stringify(actual)}`);\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3566641Z       ^\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3566716Z \nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3566881Z Error: Unexpected retained build state: \"completed-part\\r\\nincremental-retry\\r\\n\"\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3567307Z     at verifyIncrementalRetry (D:\\a\\codex-unleashed\\codex-unleashed\\.github\\actions\\runner-debug-smoke\\index.cjs:25:13)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3567827Z     at Object.<anonymous> (D:\\a\\codex-unleashed\\codex-unleashed\\.github\\actions\\runner-debug-smoke\\index.cjs:33:3)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3568194Z     at Module._compile (node:internal/modules/cjs/loader:1929:14)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3568463Z     at Object..js (node:internal/modules/cjs/loader:2060:10)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3568720Z     at Module.load (node:internal/modules/cjs/loader:1651:32)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3569069Z     at Module._load (node:internal/modules/cjs/loader:1443:12)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3569332Z     at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3569644Z     at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3570077Z     at node:internal/main/run_main_module:33:47\nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3570202Z \nDebug - x86_64-pc-windows-msvc\tPost Create owned partial build state\t2026-10-27T22:58:34.3570280Z Node.js v24.21.0\n",
+    "workflow_jobs": [
+      {
+        "name": "select",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Debug - x86_64-pc-windows-msvc",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create owned partial build state",
+            "conclusion": "success"
+          },
+          {
+            "name": "Record the deliberate build failure",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Create owned partial build state",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  "arm64": {
+    "workflow_run": 40598765365,
+    "probe_exit": 0,
+    "samples": [
+      {
+        "event": "native_identity",
+        "machine": "ARM64",
+        "python": "3.13.17",
+        "native_platform": "win-arm64"
+      },
+      {
+        "event": "baseline",
+        "monotonic_ns": 1396997802900,
+        "physical_total_bytes": 17169387520,
+        "available_bytes": 13795557376,
+        "working_set_bytes": 27897856,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "loaded",
+        "allocated_bytes": 268435456,
+        "monotonic_ns": 1398763978900,
+        "physical_total_bytes": 17169387520,
+        "available_bytes": 13516488704,
+        "working_set_bytes": 296226816,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "released",
+        "monotonic_ns": 1400197075300,
+        "physical_total_bytes": 17169387520,
+        "available_bytes": 13783724032,
+        "working_set_bytes": 27795456,
+        "conditions": {
+          "low": {
+            "query_success": 1,
+            "condition": 0
+          },
+          "high": {
+            "query_success": 1,
+            "condition": 1
+          }
+        },
+        "pages_output_per_second": 0.0,
+        "pdh_operation_status": 0,
+        "pdh_counter_status": 0,
+        "pagefiles_native_mb": [
+          {
+            "Name": "C:\\pagefile.sys",
+            "AllocatedBaseSize": 2944,
+            "CurrentUsage": 0,
+            "PeakUsage": 0
+          }
+        ]
+      },
+      {
+        "event": "native_memory_load_response_passed",
+        "allocated_bytes": 268435456,
+        "paging_recovery": "unaccepted: bounded load does not establish paging pressure or recovery"
+      },
+      {
+        "event": "native_resources_closed"
+      }
+    ],
+    "smoke_post": "remote wait, exact LF marker verification and owned storage cleanup passed; only deliberate exit 17 failed",
+    "ssh_exit": 0,
+    "ssh_transcript": "\u001b[?9001h\u001b[?1004h\u001b[?2004h\u001b[?25l\u001b[2J\u001b[m\u001b[H\u001b]0;C:\\msys64\\usr\\bin\\bash.exe\u0007\u001b[?25h\u001b[32m\nrunneradmin@runnervm8jmba \u001b[35mMINGW64 \u001b[33m~\u001b[m\u001b[1m\n#\u001b[22m \u001b]0;~\u0007PS1='# '; unset PROMPT_COMMAND; stty -echo; printf '\\nARM_SIG_ACK_000\\n'\u001b[?2004l\n\n\u001b[?2004hARM_SIG_ACK_000\n# \u001b[?2004l\nRETRY_MARKER_BYTES_VERIFIED b'completed-part\\nincremental-retry\\n'\n\n\u001b[?2004hARM_SIG_ACK_001\n# \u001b[?2004l\n\n\u001b[?2004hARM_SIG_ACK_002\n# \u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[15;1HARM_SIG_ACK_003\n# \u001b[?25h\u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[18;1HARM_SIG_ACK_004\n# \u001b[?25h\u001b[?2004l\u001b[?2004h\u001b[?25l\u001b[21;1HARM_SIG_ACK_005\n# \u001b[?25h\u001b[?2004l\u001b[?25l\u001b[24;1HARM_SIG_ACK_006\u001b[?25h\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_007\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_008\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_009\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_010\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_011\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_012\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_013\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_014\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_015\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_016\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_017\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_018\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_019\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_020\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_021\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_022\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_023\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_024\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_025\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_026\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_027\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_028\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_029\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_030\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_031\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\nARM_SIG_ACK_032\u001b[?2004h\n#\u001b[1C\u001b[?2004l\nSOURCE_VERIFIED\n\nARM_SIG_ACK_033\u001b[?2004h\n#\u001b[1C\u001b[?2004l\n\u001b]0;Administrator: ~\u0007NATIVE_SIGNAL_EXIT=0\n{\"event\": \"native_identity\", \"machine\": \"ARM64\", \"python\": \"3.13.17\", \"native_pl\n\u001b[23;80Hlatform\": \"win-arm64\"}\n{\"event\": \"baseline\", \"monotonic_ns\": 1396997802900, \"physical_total_bytes\": 171\n\u001b[23;80H169387520, \"available_bytes\": 13795557376, \"working_set_bytes\": 27897856, \"condit\n\u001b[23;80Htions\": {\"low\": {\"query_success\": 1, \"condition\": 0}, \"high\": {\"query_success\": 1\n\u001b[23;80H1, \"condition\": 1}}, \"pages_output_per_second\": 0.0, \"pdh_operation_status\": 0, \"\n\u001b[23;80H\"pdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"Name\": \"C:\\\\pagefile.sys\", \"Al\n\u001b[23;80HllocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsage\": 0}]}\n{\"event\": \"loaded\", \"allocated_bytes\": 268435456, \"monotonic_ns\": 1398763978900,\n\u001b[23;80H, \"physical_total_bytes\": 17169387520, \"available_bytes\": 13516488704, \"working_s\n\u001b[23;80Hset_bytes\": 296226816, \"conditions\": {\"low\": {\"query_success\": 1, \"condition\": 0}\n\u001b[23;80H}, \"high\": {\"query_success\": 1, \"condition\": 1}}, \"pages_output_per_second\": 0.0,\n\u001b[23;80H, \"pdh_operation_status\": 0, \"pdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"N\n\u001b[23;80HName\": \"C:\\\\pagefile.sys\", \"AllocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsa\n\u001b[23;80Hage\": 0}]}\n{\"event\": \"released\", \"monotonic_ns\": 1400197075300, \"physical_total_bytes\": 171\n\u001b[23;80H169387520, \"available_bytes\": 13783724032, \"working_set_bytes\": 27795456, \"condit\n\u001b[23;80Htions\": {\"low\": {\"query_success\": 1, \"condition\": 0}, \"high\": {\"query_success\": 1\n\u001b[23;80H1, \"condition\": 1}}, \"pages_output_per_second\": 0.0, \"pdh_operation_status\": 0, \"\n\u001b[23;80H\"pdh_counter_status\": 0, \"pagefiles_native_mb\": [{\"Name\": \"C:\\\\pagefile.sys\", \"Al\n\u001b[23;80HllocatedBaseSize\": 2944, \"CurrentUsage\": 0, \"PeakUsage\": 0}]}\n{\"event\": \"native_memory_load_response_passed\", \"allocated_bytes\": 268435456, \"p\n\u001b[23;80Hpaging_recovery\": \"unaccepted: bounded load does not establish paging pressure or\n\u001b[23;80Hr recovery\"}\n{\"event\": \"native_resources_closed\"}\n\nARM_SIG_ACK_034\u001b[?2004h\n#\u001b[1C\u001b[?2004l\nSIGNAL_LOG_BEGIN\neyJldmVudCI6ICJuYXRpdmVfaWRlbnRpdHkiLCAibWFjaGluZSI6ICJBUk02NCIsICJweXRob24i\nOiAiMy4xMy4xNyIsICJuYXRpdmVfcGxhdGZvcm0iOiAid2luLWFybTY0In0NCnsiZXZlbnQiOiAi    \nYmFzZWxpbmUiLCAibW9ub3RvbmljX25zIjogMTM5Njk5NzgwMjkwMCwgInBoeXNpY2FsX3RvdGFs    \nX2J5dGVzIjogMTcxNjkzODc1MjAsICJhdmFpbGFibGVfYnl0ZXMiOiAxMzc5NTU1NzM3NiwgIndv    \ncmtpbmdfc2V0X2J5dGVzIjogMjc4OTc4NTYsICJjb25kaXRpb25zIjogeyJsb3ciOiB7InF1ZXJ5    \nX3N1Y2Nlc3MiOiAxLCAiY29uZGl0aW9uIjogMH0sICJoaWdoIjogeyJxdWVyeV9zdWNjZXNzIjog    \nMSwgImNvbmRpdGlvbiI6IDF9fSwgInBhZ2VzX291dHB1dF9wZXJfc2Vjb25kIjogMC4wLCAicGRo    \nX29wZXJhdGlvbl9zdGF0dXMiOiAwLCAicGRoX2NvdW50ZXJfc3RhdHVzIjogMCwgInBhZ2VmaWxl    \nc19uYXRpdmVfbWIiOiBbeyJOYW1lIjogIkM6XFxwYWdlZmlsZS5zeXMiLCAiQWxsb2NhdGVkQmFz    \nZVNpemUiOiAyOTQ0LCAiQ3VycmVudFVzYWdlIjogMCwgIlBlYWtVc2FnZSI6IDB9XX0NCnsiZXZl    \nbnQiOiAibG9hZGVkIiwgImFsbG9jYXRlZF9ieXRlcyI6IDI2ODQzNTQ1NiwgIm1vbm90b25pY19u    \ncyI6IDEzOTg3NjM5Nzg5MDAsICJwaHlzaWNhbF90b3RhbF9ieXRlcyI6IDE3MTY5Mzg3NTIwLCAi    \nYXZhaWxhYmxlX2J5dGVzIjogMTM1MTY0ODg3MDQsICJ3b3JraW5nX3NldF9ieXRlcyI6IDI5NjIy    \nNjgxNiwgImNvbmRpdGlvbnMiOiB7ImxvdyI6IHsicXVlcnlfc3VjY2VzcyI6IDEsICJjb25kaXRp    \nb24iOiAwfSwgImhpZ2giOiB7InF1ZXJ5X3N1Y2Nlc3MiOiAxLCAiY29uZGl0aW9uIjogMX19LCAi    \ncGFnZXNfb3V0cHV0X3Blcl9zZWNvbmQiOiAwLjAsICJwZGhfb3BlcmF0aW9uX3N0YXR1cyI6IDAs    \nICJwZGhfY291bnRlcl9zdGF0dXMiOiAwLCAicGFnZWZpbGVzX25hdGl2ZV9tYiI6IFt7Ik5hbWUi    \nOiAiQzpcXHBhZ2VmaWxlLnN5cyIsICJBbGxvY2F0ZWRCYXNlU2l6ZSI6IDI5NDQsICJDdXJyZW50    \nVXNhZ2UiOiAwLCAiUGVha1VzYWdlIjogMH1dfQ0KeyJldmVudCI6ICJyZWxlYXNlZCIsICJtb25v    \ndG9uaWNfbnMiOiAxNDAwMTk3MDc1MzAwLCAicGh5c2ljYWxfdG90YWxfYnl0ZXMiOiAxNzE2OTM4    \nNzUyMCwgImF2YWlsYWJsZV9ieXRlcyI6IDEzNzgzNzI0MDMyLCAid29ya2luZ19zZXRfYnl0ZXMi    \nOiAyNzc5NTQ1NiwgImNvbmRpdGlvbnMiOiB7ImxvdyI6IHsicXVlcnlfc3VjY2VzcyI6IDEsICJj    \nb25kaXRpb24iOiAwfSwgImhpZ2giOiB7InF1ZXJ5X3N1Y2Nlc3MiOiAxLCAiY29uZGl0aW9uIjog    \nMX19LCAicGFnZXNfb3V0cHV0X3Blcl9zZWNvbmQiOiAwLjAsICJwZGhfb3BlcmF0aW9uX3N0YXR1    \ncyI6IDAsICJwZGhfY291bnRlcl9zdGF0dXMiOiAwLCAicGFnZWZpbGVzX25hdGl2ZV9tYiI6IFt7    \nIk5hbWUiOiAiQzpcXHBhZ2VmaWxlLnN5cyIsICJBbGxvY2F0ZWRCYXNlU2l6ZSI6IDI5NDQsICJD    \ndXJyZW50VXNhZ2UiOiAwLCAiUGVha1VzYWdlIjogMH1dfQ0KeyJldmVudCI6ICJuYXRpdmVfbWVt    \nb3J5X2xvYWRfcmVzcG9uc2VfcGFzc2VkIiwgImFsbG9jYXRlZF9ieXRlcyI6IDI2ODQzNTQ1Niwg    \nInBhZ2luZ19yZWNvdmVyeSI6ICJ1bmFjY2VwdGVkOiBib3VuZGVkIGxvYWQgZG9lcyBub3QgZXN0    \nYWJsaXNoIHBhZ2luZyBwcmVzc3VyZSBvciByZWNvdmVyeSJ9DQp7ImV2ZW50IjogIm5hdGl2ZV9y    \nZXNvdXJjZXNfY2xvc2VkIn0NCg==\n\nSIGNAL_LOG_END\nSIGNAL_LOG_ACK\n\u001b[?2004h# \u001b[?2004l\nlogout\n\u001b[?1004lConnection to uptermd.upterm.dev closed.\n\n",
+    "workflow_jobs": [
+      {
+        "name": "select",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Debug - aarch64-pc-windows-msvc",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create owned partial build state",
+            "conclusion": "success"
+          },
+          {
+            "name": "Record the deliberate build failure",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Create owned partial build state",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  }
+}
