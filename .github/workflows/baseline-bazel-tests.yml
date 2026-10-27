@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       bundle_empty_workspace_bwrap:
-        description: Stage matching bwrap for the focused empty-root case; with tracing, stage only for the diagnostic comparison
+        description: Stage matching bwrap beside the exec-server test binary; with tracing, stage only for the empty-root diagnostic comparison
         type: boolean
         default: false
 
@@ -76,11 +76,9 @@ jobs:
         if: inputs.bundle_empty_workspace_bwrap
         env:
           FOCUSED_COMPARISON: ${{ inputs.exec_server_shells }}
-          TEST_NAME_FILTER: ${{ inputs.exec_server_filter }}
         run: |
           set -euo pipefail
           test "$FOCUSED_COMPARISON" = true
-          test "$TEST_NAME_FILTER" = remote_process_preserves_empty_workspace_roots
 
       - name: Verify pristine upstream source identity
         run: |
