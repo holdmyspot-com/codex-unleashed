@@ -36,8 +36,9 @@ The first five clean-verification runs use `baseline-release-builds.yml` at
 target selected explicitly. Each job creates an empty owned build-output
 directory and restores no compiled cache. These runs are dispatched, not
 accepted until compilation, native smokes and source/dependency guards finish.
-Linux ARM64 now passes those checks in 55m 56s, with GHCR restore skipped and
-1,182 Rust compilation entries. The other target outcomes remain pending.
+Linux ARM64 passes those checks in 55m 56s, with GHCR restore skipped and
+1,182 Rust compilation entries. Windows ARM64 also passes clean compilation,
+native smokes and guards in 1h 21m 14s. Four targets remain unaccepted.
 After Intel warm acceptance, its clean run uses
 `4920823fe242847be82bb84120326033dce56d07`, which adds only plan documentation
 to that same build configuration. The completed incremental attempts remain
@@ -45,11 +46,11 @@ recorded separately; no running job is cancelled for clean verification.
 
 | Clean-verification target | Run |
 | --- | --- |
-| Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434): runner communication is lost in attempt 1; resource-observation preflight must pass before a diagnostic clean retry. |
+| Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434): runner communication is lost in attempt 1. After native observer verification passes, diagnostic clean run [`40443272471`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40443272471) uses `cache=false`, `trace_signals=true` at `10e3c0bb7023cf09b807796e02eef92c7ea020bf`. |
 | Linux ARM64 musl | [`40434744427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434744427): clean compilation, native smokes and guards pass. |
 | macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377) |
 | Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709) |
-| Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719) |
+| Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719): clean compilation, native smokes and guards pass. |
 | macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 retries on a fresh runner. |
 
 For the lost x86-64 runner, the job-log API returns HTTP 404; neither memory
@@ -58,6 +59,14 @@ is now selectable for either Linux target in cached or uncached mode, with the
 same release command and concurrency. Eight local executions of the actual
 matrix-selection step verify supported/rejected requests. The short native
 observer preflight now covers both Linux architectures before diagnostic builds.
+Its first x86-64 attempt captures the expected kill stack and exit status but
+fails an ARM-specific assertion in our diagnostic test; `10e3c0bb70` makes the
+expected syscall entry match the host architecture. Native verification run
+`40443064027` passes on both architectures in 30/33 seconds (x86-64/ARM64),
+including signal/stack capture, resource samples, journal delivery and command
+exit-status propagation. Diagnostic clean build `40443272471` uses that tested
+revision with the same release commands and default x86-64 concurrency;
+its result remains pending.
 Actionlint reports only its already-recorded unsupported `queue` key; that
 GitHub-accepted concurrency setting is retained. The other active builds are
 not cancelled or restarted by this observation change.
