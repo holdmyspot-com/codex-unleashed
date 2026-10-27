@@ -414,10 +414,33 @@ It forwards the same native request without entering JavaScript on allocation,
 while keeping attachment, worker, memory allowance and normal-exit assertions.
 The native module remains alive until the owned session ends. The
 [native forwarder](../.github/scripts/windows-native-allocation-forwarder.js)
-uses Frida's replacement context to call the original allocator. Its native
-execution is unrun; a passing forwarding control alone would not accept blocked
-allocation recovery. Pushes run this changed control only; manual dispatch
-retains the two earlier controls and the retry experiment.
+uses Frida's replacement context to call the original allocator. A passing
+forwarding control alone would not accept blocked allocation recovery.
+
+Native-forwarding run
+[`40566605639`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40566605639)
+at `f0019973714cdf7e79ece6329abccc6e44fd25a7` compiles and installs the native
+callback on both architectures. Both workers allocate, check endpoints and free
+memory, then time out at exit. This rules out JavaScript execution inside the
+callback as a necessary condition for the shutdown hang. It does not identify
+the internal wait. The native callback therefore remains a failed candidate.
+
+| Native target | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- |
+| Windows x86-64 | `12763466571` | `b168b577e085e1e7019d29f6ffdf9fbacc0d00eb08ea9ead6459003f1e1d1e40` |
+| Windows ARM64 | `12763266936` | `3248640ec38b2d53cd293dbb228d0e060e7e71a73f7bf29e18f257711fc65add` |
+
+The next control, `--mode native-fast`, uses Frida's documented
+[`replaceFast`](https://frida.re/docs/javascript-api/#interceptor) mechanism:
+it routes calls directly to a native forwarding callback, which calls the
+returned original trampoline. This avoids the per-call replacement machinery
+shared by the two failed hook variants. The
+[direct forwarder](../.github/scripts/windows-native-allocation-fast-forwarder.js)
+stores the original trampoline before pending hook changes are flushed, while
+the worker is still waiting for allocation permission. Native execution is
+unrun. Pushes run only this new control; manual dispatch retains the previous
+controls and retry experiment. The same allocation, endpoint, deallocation and
+normal-exit checks still apply.
 
 ### Native macOS address-space-limit diagnostic
 
