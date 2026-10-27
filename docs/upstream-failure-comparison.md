@@ -131,8 +131,13 @@ log SHA-256 values are
 `032dba24cfcc287298ab60fd5bc3c47023f31083a8844839dfdd3b48dd433884`
 (upstream primary Cargo job). The root executor owns their temporary copies
 under `clean-matrix-NPAgpQ` until the clean-matrix outcome is recorded,
-then removes that directory. The failed build and skipped native smokes remain
-failed/unrun evidence; upstream success does not pass our clean gate.
+then removes that directory. The failed attempt and its skipped native smokes
+remain failed/unrun evidence; upstream success does not pass our clean gate.
+Our unchanged Intel attempt 2, job `121978110058`, subsequently passes clean
+compilation, both native smokes and source/dependency guards in 3h 24m 39s.
+This accepts the retry without establishing the first runner's network/DNS
+cause. Its artifact and log hashes are retained in
+[release-build-checkpoints.md](release-build-checkpoints.md#clean-verification-after-grouped-cache-acceptance).
 
 ## Downstream setup and wrapper failures
 

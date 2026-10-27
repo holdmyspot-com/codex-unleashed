@@ -27,8 +27,8 @@ results from the remaining acceptance gates; detailed historical receipts follow
 | Step 1 release compilation and native smokes | All six release targets pass pristine uncached builds and native smokes. | Relevant runtime-test acceptance and upstream failure comparisons remain open. |
 | Step 2 original cache format | All six targets pass cold/warm comparisons with unchanged compilations reused. | This does not accept the newer grouped transport. |
 | Step 2 packaged cache helper | Run [`40407974539`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40407974539) at `6e67d90609d78e1cbcdf99eb0c54d41dff1284fa` passes helper build/verification, the packaged launcher/Cargo freshness fixture and source guards on all six native targets. | This fixture does not replace actual Codex grouped-cache acceptance or final clean verification. |
-| Step 2 representative CLI invalidation | Earlier run `40393398689` passes; later-helper run `40421492069` confirms original-input reuse, exactly one CLI rebuild after changing its commit input, changed runtime provenance and zero rebuilds on repetition. | This is Linux x86-64 evidence. Remaining platform-cache, runtime and final clean-verification gates stay open. |
-| Step 2 cache grouped by build step | All six targets pass actual Codex reuse checks. Linux ARM64 warm reuse takes 6m 36s. Intel Mac run `40373556470` attempt 3 resumes the three executable checkpoints saved before the timeout; attempt 4 passes complete warm reuse in 16m 28s with zero Rust compilations. Native smokes, guards and private publication pass. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | The six clean-verification runs below and relevant runtime acceptance remain separate gates. |
+| Step 2 representative CLI invalidation | Earlier run `40393398689` passes; later-helper run `40421492069` confirms original-input reuse, exactly one CLI rebuild after changing its commit input, changed runtime provenance and zero rebuilds on repetition. | This is Linux x86-64 invalidation evidence. Relevant runtime acceptance remains open; all six platform-cache and final clean-build checks now pass separately. |
+| Step 2 cache grouped by build step | All six targets pass actual Codex reuse checks. Linux ARM64 warm reuse takes 6m 36s. Intel Mac run `40373556470` attempt 3 resumes the three executable checkpoints saved before the timeout; attempt 4 passes complete warm reuse in 16m 28s with zero Rust compilations. Native smokes, guards and private publication pass. The cumulative six-target clean matrix below also passes. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Relevant runtime acceptance remains a separate, open gate. |
 | D8 private retention preview | Runs `40404430412` and `40404968404` pass collection, all 37 helper tests, runtime assembly and read-only preview. The latter has zero annotations. | Automatic retention and concurrent-writer/deletion safety remain open; nothing is deleted. |
 
 The first five clean-verification runs use `baseline-release-builds.yml` at
@@ -41,8 +41,9 @@ Linux ARM64 passes those checks in 55m 56s, with GHCR restore skipped and
 native smokes and guards: ARM64 in 1h 21m 14s and x86-64 in 2h 11m 54s.
 macOS ARM64 also passes clean compilation, both native smokes and guards in
 3h 26m 15s, without compiled-cache restoration. Linux x86-64 passes with its
-two-job limit in 1h 7m 35s. Five of six clean targets are accepted for the current
-resource settings. The Intel macOS outcome remains pending.
+two-job limit in 1h 7m 35s. Intel macOS attempt 2 passes in 3h 24m 39s,
+with compilation, both native smokes and source/dependency guards accepted.
+All six clean targets are accepted for the current resource settings.
 After Intel warm acceptance, its clean run uses
 `4920823fe242847be82bb84120326033dce56d07`, which adds only plan documentation
 to that same build configuration. The completed incremental attempts remain
@@ -55,7 +56,7 @@ recorded separately; no running job is cancelled for clean verification.
 | macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377): clean compilation, native smokes and guards pass. |
 | Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709): clean compilation, native smokes and guards pass. |
 | Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719): clean compilation, native smokes and guards pass. |
-| macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 retries on a fresh runner. |
+| macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 passes clean compilation, native smokes and guards on a fresh runner. |
 
 For the lost x86-64 runner, the job-log API returns HTTP 404 and the cause of
 that interruption remains unestablished. The existing Linux observer
