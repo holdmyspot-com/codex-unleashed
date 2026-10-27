@@ -28,8 +28,23 @@ results from the remaining acceptance gates; detailed historical receipts follow
 | Step 2 original cache format | All six targets pass cold/warm comparisons with unchanged compilations reused. | This does not accept the newer grouped transport. |
 | Step 2 packaged cache helper | Run [`40407974539`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40407974539) at `6e67d90609d78e1cbcdf99eb0c54d41dff1284fa` passes helper build/verification, the packaged launcher/Cargo freshness fixture and source guards on all six native targets. | This fixture does not replace actual Codex grouped-cache acceptance or final clean verification. |
 | Step 2 representative CLI invalidation | Earlier run `40393398689` passes; later-helper run `40421492069` confirms original-input reuse, exactly one CLI rebuild after changing its commit input, changed runtime provenance and zero rebuilds on repetition. | This is Linux x86-64 evidence. Remaining platform-cache, runtime and final clean-verification gates stay open. |
-| Step 2 cache grouped by build step | Both Linux targets, both Windows targets and macOS ARM64 pass actual Codex reuse checks. Linux ARM64 warm attempt restores the exact six-group manifest, compiles zero Rust units and passes smokes, guards and private publication in 6m 36s. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Intel Mac run `40373556470` attempt 2 reaches GitHub's six-hour limit after saving three completed executable checkpoints; same-revision attempt 3 resumes from partial cache. Final clean verification of the cumulative setup remains unrun. |
+| Step 2 cache grouped by build step | Both Linux targets, both Windows targets and macOS ARM64 pass actual Codex reuse checks. Linux ARM64 warm attempt restores the exact six-group manifest, compiles zero Rust units and passes smokes, guards and private publication in 6m 36s. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Intel Mac run `40373556470` attempt 2 reaches GitHub's six-hour limit after saving three completed executable checkpoints; same-revision attempt 3 resumes from partial cache. Clean verification is dispatched for the five accepted targets below; Intel clean verification remains unrun. |
 | D8 private retention preview | Runs `40404430412` and `40404968404` pass collection, all 37 helper tests, runtime assembly and read-only preview. The latter has zero annotations. | Automatic retention and concurrent-writer/deletion safety remain open; nothing is deleted. |
+
+Clean verification uses `baseline-release-builds.yml` at
+`f0c4987de5a8bd700311ece9d30d35289ba754e4`, with `cache=false` and each
+target selected explicitly. Each job creates an empty owned build-output
+directory and restores no compiled cache. These runs are dispatched, not
+accepted; compilation, native smokes and source/dependency guards must finish.
+Intel remains on its existing incremental attempt without cancellation.
+
+| Clean-verification target | Run |
+| --- | --- |
+| Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434) |
+| Linux ARM64 musl | [`40434744427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434744427) |
+| macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377) |
+| Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709) |
+| Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719) |
 
 ARM signal-observation preflight `40413519826` passes known-sender capture,
 observation during a real command and propagation of that command's failure
