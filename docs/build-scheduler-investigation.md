@@ -740,6 +740,42 @@ and scheduler integration remain unaccepted. The next probe must establish
 native waiting and retry after a genuine allocation denial without making the
 successful forwarding path depend on JavaScript callbacks.
 
+#### macOS native denied-allocation retry candidate
+
+The next two modes reuse the accepted native address-limit fixture and direct
+`CModule` replacement. `native-retry` and `native-timeout` leave the worker with
+one caller-side `mmap` expression. After instrumentation is installed, the
+worker measures its virtual size and lowers only its own soft `RLIMIT_AS` to
+that size plus 32 MiB. Its 256 MiB mapping must actually fail with `ENOMEM`.
+The native hook selects the owned thread and exact request arguments, records
+that denial, writes one blocked-notification byte to an inherited pipe and
+waits on another inherited pipe without entering JavaScript on that thread.
+
+The pipe wait uses Apple's documented
+[`poll` ABI](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/poll.h);
+resource-limit capture/restoration follows its
+[`rlimit` ABI](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/resource.h).
+The controller closes its copies of the worker's pipe endpoints immediately
+after launch, so killing an unfinished worker also releases a pending reader.
+All other controller endpoints close after the reader and worker are reaped.
+
+The retry case requires one matching callback, one denied original attempt and
+a pending native wait both before and after an independent peer completes.
+Only then does the controller send permission. The hook restores the captured
+limits and makes a second original allocation attempt. Acceptance requires the
+pointer received by the worker to match native state, endpoint values 42/43,
+successful unmapping, both original limits restored and ordinary worker exit
+with instrumentation installed.
+
+The negative case withholds permission and uses a one-second native wait. It
+requires a poll timeout, one original attempt and `MAP_FAILED`. Before return,
+the hook deliberately clobbers `errno` to 4660 and restores the original error;
+the worker must observe `ENOMEM`. The retry case's native deadline is 30 seconds;
+the existing controller event and exit deadlines remain 30 seconds. JavaScript,
+Python, host-C, workflow YAML and Bash syntax checks pass locally. Native
+execution of these new modes remains unrun; accepted forwarding and unrelated
+Codex build checks are not repeated.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the

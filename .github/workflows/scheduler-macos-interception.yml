@@ -7,6 +7,7 @@ on:
       - .github/workflows/scheduler-macos-interception.yml
       - .github/scripts/probe-macos-interception.py
       - .github/scripts/macos-native-allocation-forwarder.js
+      - .github/scripts/macos-native-allocation-retry.js
       - .github/scripts/macos-interception-requirements.txt
   workflow_dispatch:
 
@@ -50,6 +51,7 @@ jobs:
           sparse-checkout: |
             .github/scripts/probe-macos-interception.py
             .github/scripts/macos-native-allocation-forwarder.js
+            .github/scripts/macos-native-allocation-retry.js
             .github/scripts/macos-interception-requirements.txt
           sparse-checkout-cone-mode: false
 
@@ -89,7 +91,7 @@ jobs:
             /usr/sbin/DevToolsSecurity -status
           } > "$SCHEDULER_INTERCEPTION/authorization.txt" 2>&1
 
-      - name: Verify elevated attachment and native forwarding for the owned worker
+      - name: Verify native denied-allocation timeout and retry for the owned worker
         env:
           PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
           TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
@@ -97,7 +99,7 @@ jobs:
           set -euo pipefail
           result=0
           executable="$(python -c 'import sys; print(sys.executable)')"
-          for mode in attach native-fast; do
+          for mode in native-timeout native-retry; do
             if sudo -n env RUNNER_ARCH="$RUNNER_ARCH" PYTHONPATH="$PYTHONPATH" TMPDIR="$TMPDIR" "$executable" .github/scripts/probe-macos-interception.py --mode "$mode" 2>&1 | tee -a "$SCHEDULER_INTERCEPTION/interception.log"; then
               :
             else
