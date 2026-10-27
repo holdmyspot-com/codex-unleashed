@@ -463,9 +463,22 @@ the actual step's environment setup verify two jobs for ARM and no override
 for the other tested target families. This preserves upstream source and
 Cargo compilation inputs, and leaves existing cache identities intact.
 Run `40425326629` is the incremental cached ARM retry with that limit;
-its terminal acceptance remains pending. Independent Linux x86-64
-run `40421492069` exercises the existing actual-CLI input-invalidation check
-at the earlier tested revision; its terminal outcome remains pending. The
+attempt 1 passes compilation, both native smokes, source/dependency guards,
+recording and verified private publication in 1h 17m 23s. CLI and app-server
+Cargo invocations take 51m 22s and 19m 16s; completed earlier stages are reused.
+Across 881 samples, available memory stays at or above 1,426.1 MiB and used
+swap peaks at 567.6 MiB. No OOM event is recorded. This confirms successful
+execution with lower observed memory pressure under the two-job limit;
+it does not establish the initiating actor of the earlier shutdowns.
+The final six-group verified manifest is
+`sha256:03063c5540d04908edc5b5e3bc0ef37b2e6ec6d19a765e21574e8886406939d2`.
+Its save takes 17 seconds, uploads 1,369,821 metadata bytes and reuses all
+five compiled groups. Terminal log: `arm-kernel-signal-EFWxgu/two-jobs.log`,
+SHA-256 `04a8f8e6ddad2e6a818ad9b1860267452a44cdca5070551cf7431a18a9ac6812`.
+Same-revision attempt 2 now checks warm reuse; its result remains pending.
+Independent Linux x86-64
+run `40421492069` passes the existing actual-CLI input-invalidation check
+at the earlier tested revision; the verified receipt and timings appear below. The
 Intel Mac population outcome and resumption follow below.
 
 Intel Mac run `40373556470`, attempt 2 at
