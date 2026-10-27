@@ -1456,3 +1456,59 @@ locates the successful run. Repeating the query with the full commit hash return
 the same completed run, establishing the correct observation input. This is an
 observer error, not a lost or failed native run; no matrix job is restarted.
 Artifact ZIPs are inspected in memory, without extracting files into the checkout.
+
+### Actual macOS compiler denial and continuation
+
+Native Rust 1.95.0 compiler mapping denial and internal retry pass on
+[Intel run `40594782976`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40594782976)
+and [Apple Silicon run `40596753706`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40596753706).
+The [controller](../.github/scripts/probe-macos-compiler-retry.py) compiles a
+20,000-function stdin library normally and with a
+[native mapping hook](../.github/scripts/macos-compiler-mapping-retry.js).
+Both use compiler commit `59807616e1fa2540724bfbac14d7976d7e4a3860`,
+LLVM 22.1.2 and hash-pinned Frida 17.24.3. The
+[durable receipt](evidence/macos-compiler-mapping-retry.json) contains exact
+source hashes, failed controls, original SSH transcripts and terminal workflow
+records. Fresh folders containing only the final controller, hook and pinned
+dependency declaration pass on both architectures. Installed source bytes match
+those verified on each native runner.
+
+The first Intel attempt cannot apply its limit: `setrlimit` returns `EINVAL`.
+A native `task_info` sample before the same failing call measures
+35,204,493,312 bytes, above the controller's earlier allowance of
+35,204,366,336 bytes. An independent native process accepts that allowance,
+distinguishing an invalid value in general from a stale value for this compiler.
+Apple's [kernel implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_resource.c)
+rejects lowering the limit below current usage. The corrected hook obtains
+current virtual size at the mapping boundary, adds 4,096 bytes, then applies
+the limit before calling the original mapping function. This is a controlled
+virtual-address limit; it is not a physical-memory admission estimate.
+
+Intel's 20,480-byte mapping and Apple Silicon's 65,536-byte mapping each return
+`MAP_FAILED` with `ENOMEM`. Native pipe notification records that actual result;
+the hook waits for permission while an independent compiler command completes.
+The hook restores the original address-space limit and retries the same call
+with the same arguments. Both return a valid pointer, resume compilation and
+exit zero without diagnostics. Each instrumented metadata file equals its own
+reference byte for byte: Intel produces 2,986,316 bytes and Apple Silicon
+2,986,317 bytes. Hashes vary between fresh scratch paths; equality is checked
+within each paired command, not across different working directories.
+
+Each worker retains one authenticated Upterm connection through its commands,
+diagnosis and retries. Intel's initial bulk transfer loses terminal input;
+shorter acknowledged chunks recover the same shell and workspace. The updated
+Upterm skill is exercised by transferring its 7,436 bytes and matching the
+received size and SHA-256. Intel's final smoke marker command contains literal
+newlines inside a generated Python string, causing a separate syntax error.
+SSH exits one; remote post wait passes; the smoke fixture's post verification
+fails. This does not change the completed compiler result. The corrected marker
+uses `chr(10)` on Apple Silicon, where SSH exits zero and all post verification
+and cleanup pass. That workflow retains only its deliberate exit-17 failure.
+The receipt preserves the Intel lifecycle failure rather than describing the
+whole workflow as successful.
+
+This accepts the main-thread mapping path under a reversible artificial limit.
+It does not accept all allocator or child-process paths, production thread
+classification, safety when a caller holds another allocator lock, real memory
+pressure, ordered admission/retry, or Cargo/Bazel scheduler integration. Those
+gates remain open; no accepted Codex build or allocator fixture is repeated.

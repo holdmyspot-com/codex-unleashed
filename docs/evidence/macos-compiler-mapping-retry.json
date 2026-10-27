@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "claim": "Native Rust 1.95.0 compiler mmap denial, internal retry and equal reference metadata under controlled address-space limits on both macOS architectures.",
+  "source_sha256": {
+    "probe-macos-compiler-retry.py": "3ce6b64fb41b77fcda2cc411990b57abdf2fa57546647c20572fceacf7363e2e",
+    "macos-compiler-mapping-retry.js": "78089889d12bb442d497ccc369890a214368c3ad3a1862758601e72ac911ff31",
+    "macos-interception-requirements.txt": "1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700"
+  },
+  "source_functions": 20000,
+  "source_sha256_stdin": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994",
+  "root_cause": "Earlier controller limit 35204366336 bytes was lower than 35204493312 bytes at the mmap boundary. Native task_info sampling confirmed growth before setrlimit, whose EINVAL preserved the original limit. Sampling at the mapping boundary before setting current size plus 4096 bytes repairs the diagnostic.",
+  "platform_contract_sources": [
+    "https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_resource.c",
+    "https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/task_info.h"
+  ],
+  "unaccepted": [
+    "physical-pressure recovery",
+    "all allocator and child-process paths",
+    "production thread classification",
+    "concurrent outer allocator lock safety",
+    "FIFO admission and retry",
+    "Cargo and Bazel scheduler integration"
+  ],
+  "targets": [
+    {
+      "target": "x86_64-apple-darwin",
+      "run_id": 40594782976,
+      "workflow": {
+        "conclusion": "failure",
+        "databaseId": 40594782976,
+        "headSha": "34ec035f39649ce3e60ae681f87d3c37d5560507",
+        "jobs": [
+          {
+            "completedAt": "2026-10-27T22:26:10Z",
+            "conclusion": "success",
+            "databaseId": 122507817059,
+            "name": "select",
+            "startedAt": "2026-10-27T22:26:06Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 6,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 7,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40594782976/job/122507817059"
+          },
+          {
+            "completedAt": "2026-10-27T22:40:24Z",
+            "conclusion": "failure",
+            "databaseId": 122507863160,
+            "name": "Debug - x86_64-apple-darwin",
+            "startedAt": "2026-10-27T22:26:17Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Create owned partial build state",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "failure",
+                "name": "Record the deliberate build failure",
+                "number": 4,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Debug the original failed workspace",
+                "number": 5,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Debug the original failed workspace",
+                "number": 8,
+                "status": "completed"
+              },
+              {
+                "conclusion": "failure",
+                "name": "Post Create owned partial build state",
+                "number": 9,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 10,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 11,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40594782976/job/122507863160"
+          }
+        ],
+        "status": "completed"
+      },
+      "native_retry": "passed",
+      "fresh_final_source": "passed",
+      "ssh_exit": 1,
+      "transcript_sha256": "473137551ad64dc8188d962b6636847086359e83d3067b0c53a6281dc10070a9",
+      "transcript": "\r\nThe default interactive shell is now zsh.\r\nTo update your account to use zsh, please run `chsh -s /bin/zsh`.\r\nFor more details, please visit https://support.apple.com/kb/HT208050.\r\n\u001b[?1034hbash-3.2$ \r\u001b[Kbash-3.2$ \r\u001b[Kbash-3.2$ PS1='# '; unset PROMPT_COMMAND; stty -echo\r\n# REMOTE_CONNECTED\r\nx86_64\r\nRETAINED_STORAGE=/Users/runner/work/_temp/runner-debug-smoke-xegXej\r\n/usr/local/bin/python3\r\n/Users/runner/.cargo/bin/rustup\r\nstable-x86_64-apple-darwin\u001b[1m\u001b[94m (active, default)\u001b[0m\r\n# # \u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007\u0007# \r\n# # \r\nRECOVERY_CHECK\r\nMC_ROOT=/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler\r\nspeed 9600 baud; 0 rows; 0 columns;\r\nlflags: icanon isig iexten -echo echoe -echok echoke -echonl echoctl\r\n\t-echoprt -altwerase -noflsh -tostop -flusho pendin -nokerninfo\r\n\t-extproc\r\niflags: -istrip icrnl -inlcr -igncr ixon -ixoff ixany imaxbel -iutf8\r\n\t-ignbrk brkint -inpck -ignpar -parmrk\r\noflags: opost onlcr -oxtabs -onocr -onlret\r\ncflags: cread cs8 -parenb -parodd hupcl -clocal -cstopb -crtscts -dsrflow\r\n\t-dtrflow -mdmbuf\r\ncchars: discard = ^O; dsusp = ^Y; eof = ^D; eol = <undef>;\r\n\teol2 = <undef>; erase = ^?; intr = ^C; kill = ^U; lnext = ^V;\r\n\tmin = 1; quit = ^\\; reprint = ^R; start = ^Q; status = ^T;\r\n\tstop = ^S; susp = ^Z; time = 0; werase = ^W;\r\n# \r\nTRANSFER_ACK_000\r\n# \r\nTRANSFER_ACK_001\r\n# \r\nTRANSFER_ACK_002\r\n# \r\nTRANSFER_ACK_003\r\n# \r\nTRANSFER_ACK_004\r\n# \r\nTRANSFER_ACK_005\r\n# \r\nTRANSFER_ACK_006\r\n# \r\nTRANSFER_ACK_007\r\n# \r\nTRANSFER_ACK_008\r\n# \r\nTRANSFER_ACK_009\r\n# \r\nTRANSFER_ACK_010\r\n# \r\nTRANSFER_ACK_011\r\n# \r\nTRANSFER_ACK_012\r\n# \r\nTRANSFER_ACK_013\r\n# \r\nTRANSFER_ACK_014\r\n# FINAL_SOURCE_PATHS ['macos-compiler-mapping-retry.js', 'macos-interception-requirements.txt', 'probe-macos-compiler-retry.py']\r\n# rustc 1.98.0 (88d9e12ae 2026-08-18)\r\nbinary: rustc\r\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\r\ncommit-date: 2026-08-18\r\nhost: x86_64-apple-darwin\r\nrelease: 1.98.0\r\nLLVM version: 22.1.8\r\nREMOTE_STAGED_OK\r\n# # info: syncing channel updates for 1.95.0-x86_64-apple-darwin\r\ninfo: latest update on 2026-04-16 for version 1.95.0 (59807616e 2026-04-14)\r\ninfo: downloading 3 components\r\n\r\n  1.95.0-x86_64-apple-darwin installed - rustc 1.95.0 (59807616e 2026-04-14)\r\n\r\ninfo: default toolchain set to 1.95.0-x86_64-apple-darwin\r\ninfo: self-update is disabled for this build of rustup\r\ninfo: any updates to rustup will need to be fetched with your system package manager\r\nRUST_INSTALL_EXIT=0\r\n# Collecting frida==17.24.3 (from -r /Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/candidate/macos-interception-requirements.txt (line 3))\r\n  Downloading frida-17.24.3-cp37-abi3-macosx_10_13_x86_64.whl (33.5 MB)\r\n     \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 33.5/33.5 MB 62.3 MB/s  0:00:00\r\nInstalling collected packages: frida\r\nSuccessfully installed frida-17.24.3\r\nPIP_INSTALL_EXIT=0\r\nINSTALLS_FINISHED\r\n# COMPILER_PATH=/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/runtime/rustup/toolchains/1.95.0-x86_64-apple-darwin/bin/rustc\r\n# {\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-apple-darwin\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 13666, \"virtual_kib\": 34379912, \"target\": \"0x7ff81627e5d7\", \"architecture\": \"x64\", \"original_soft\": \"9223372036854775807\", \"original_hard\": \"9223372036854775807\", \"limited_soft\": \"35205033984\"}\r\n{\"event\": \"compiler_terminal_failure\", \"exit\": -9, \"stdout\": \"\", \"stderr\": \"\"}\r\nTraceback (most recent call last):\r\n  File \"/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/candidate/probe-macos-compiler-retry.py\", line 162, in <module>\r\n    run_probe(arguments.compiler, arguments.expected_host, arguments.storage)\r\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/candidate/probe-macos-compiler-retry.py\", line 98, in run_probe\r\n    assert denied['phase'] == 1, denied\r\n           ^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: {'phase': 0, 'thread_id': 37759, 'requested_bytes': 20480, 'attempts': 0, 'errno': 22, 'pointer': -1, 'limited_soft': 35205033984, 'original_soft': 9223372036854775807, 'restored': -1, 'permission': -2}\r\nFIRST_PROBE_EXIT=1\r\n# LIMIT_API 5 (9223372036854775807, 9223372036854775807)\r\nLIMIT_SET (35205033984, 9223372036854775807)\r\nLIMIT_API_CHECK_DONE\r\n# \r\nSAMPLE_ACK_000\r\n# \r\nSAMPLE_ACK_001\r\n# \r\nSAMPLE_ACK_002\r\n# \r\nSAMPLE_ACK_003\r\n# \r\nSAMPLE_ACK_004\r\n# \r\nSAMPLE_ACK_005\r\n# \r\nSAMPLE_ACK_006\r\n# \r\nSAMPLE_ACK_007\r\n# \r\nSAMPLE_ACK_008\r\n# \r\nSAMPLE_ACK_009\r\n# \r\nSAMPLE_ACK_010\r\n# \r\nSAMPLE_ACK_011\r\n# \r\nSAMPLE_ACK_012\r\n# \r\nSAMPLE_ACK_013\r\n# \r\nSAMPLE_ACK_014\r\n# \r\nSAMPLE_ACK_015\r\n# \r\nSAMPLE_ACK_016\r\n# \r\nSAMPLE_ACK_017\r\n# \r\nSAMPLE_ACK_018\r\n# \r\nSAMPLE_ACK_019\r\n# \r\nSAMPLE_ACK_020\r\n# \r\nSAMPLE_ACK_021\r\n# \r\nSAMPLE_ACK_022\r\n# \r\nSAMPLE_ACK_023\r\n# \r\nSAMPLE_ACK_024\r\n# \r\nSAMPLE_ACK_025\r\n# \r\nSAMPLE_ACK_026\r\n# \r\nSAMPLE_ACK_027\r\n# \r\nSAMPLE_ACK_028\r\n# \r\nSAMPLE_ACK_029\r\n# \r\nSAMPLE_ACK_030\r\n# \r\nSAMPLE_ACK_031\r\n# \r\nSAMPLE_ACK_032\r\n# \r\nSAMPLE_ACK_033\r\n# \r\nSAMPLE_ACK_034\r\n# \r\nSAMPLE_ACK_035\r\n# \r\nSAMPLE_ACK_036\r\n# \r\nSAMPLE_ACK_037\r\n# \r\nSAMPLE_ACK_038\r\n# \r\nSAMPLE_ACK_039\r\n# \r\nSAMPLE_ACK_040\r\n# \r\nSAMPLE_ACK_041\r\n# \r\nSAMPLE_ACK_042\r\n# \r\nSAMPLE_ACK_043\r\n# \r\nSAMPLE_ACK_044\r\n# \r\nSAMPLE_ACK_045\r\n# \r\nSAMPLE_ACK_046\r\n# \r\nSAMPLE_ACK_047\r\n# {\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-apple-darwin\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 16307, \"virtual_kib\": 34379260, \"target\": \"0x7ff81627e5d7\", \"architecture\": \"x64\", \"original_soft\": \"9223372036854775807\", \"original_hard\": \"9223372036854775807\", \"limited_soft\": \"35204366336\"}\r\n{\"event\": \"compiler_address_size_at_limit_application\", \"state\": {\"phase\": 3, \"thread_id\": 44002, \"requested_bytes\": 35204493312, \"attempts\": 0, \"errno\": 0, \"pointer\": 0, \"limited_soft\": 35204366336, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"compiler_terminal_failure\", \"exit\": -9, \"stdout\": \"\", \"stderr\": \"\"}\r\nTraceback (most recent call last):\r\n  File \"/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/candidate/probe-macos-compiler-retry.py\", line 165, in <module>\r\n    run_probe(arguments.compiler, arguments.expected_host, arguments.storage)\r\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"/Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/candidate/probe-macos-compiler-retry.py\", line 101, in run_probe\r\n    assert denied['phase'] == 1, denied\r\n           ^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: {'phase': 0, 'thread_id': 44002, 'requested_bytes': 20480, 'attempts': 0, 'errno': 22, 'pointer': -1, 'limited_soft': 35204366336, 'original_soft': 9223372036854775807, 'restored': -1, 'permission': -2}\r\nADDRESS_SAMPLE_EXIT=1\r\n\r\nSAMPLE_ACK_048\r\n# \r\nBOUNDARY_ACK_000\r\n# \r\nBOUNDARY_ACK_001\r\n# \r\nBOUNDARY_ACK_002\r\n# \r\nBOUNDARY_ACK_003\r\n# \r\nBOUNDARY_ACK_004\r\n# \r\nBOUNDARY_ACK_005\r\n# \r\nBOUNDARY_ACK_006\r\n# \r\nBOUNDARY_ACK_007\r\n# \r\nBOUNDARY_ACK_008\r\n# \r\nBOUNDARY_ACK_009\r\n# \r\nBOUNDARY_ACK_010\r\n# \r\nBOUNDARY_ACK_011\r\n# \r\nBOUNDARY_ACK_012\r\n# \r\nBOUNDARY_ACK_013\r\n# \r\nBOUNDARY_ACK_014\r\n# \r\nBOUNDARY_ACK_015\r\n# \r\nBOUNDARY_ACK_016\r\n# \r\nBOUNDARY_ACK_017\r\n# \r\nBOUNDARY_ACK_018\r\n# \r\nBOUNDARY_ACK_019\r\n# \r\nBOUNDARY_ACK_020\r\n# {\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-apple-darwin\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 17090, \"virtual_kib\": 34406908, \"target\": \"0x7ff81627e5d7\", \"architecture\": \"x64\", \"original_soft\": \"9223372036854775807\", \"original_hard\": \"9223372036854775807\", \"limited_soft\": \"35232677888\"}\r\n{\"event\": \"compiler_address_size_at_limit_application\", \"state\": {\"phase\": 3, \"thread_id\": 46167, \"requested_bytes\": 35232804864, \"attempts\": 0, \"errno\": 0, \"pointer\": 0, \"limited_soft\": 35232808960, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"compiler_mapping_blocked\", \"compiler_pid\": 17090, \"state\": {\"phase\": 1, \"thread_id\": 46167, \"requested_bytes\": 20480, \"attempts\": 1, \"errno\": 12, \"pointer\": -1, \"limited_soft\": 35232808960, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 17090}\r\n{\"event\": \"compiler_mapping_retried\", \"compiler_pid\": 17090, \"state\": {\"phase\": 2, \"thread_id\": 46167, \"requested_bytes\": 20480, \"attempts\": 2, \"errno\": 2, \"pointer\": 4343013376, \"limited_soft\": 35232808960, \"original_soft\": 9223372036854775807, \"restored\": 0, \"permission\": 1}}\r\n{\"event\": \"compiler_mapping_retry_passed\", \"compiler_pid\": 17090, \"exit\": 0, \"metadata_bytes\": 2986316, \"metadata_sha256\": \"4a53b8e445687cc4a867a03bebb3a37b927a34754eb70b2e2ea9f467ca5e6b2a\"}\r\nBOUNDARY_PROBE_EXIT=0\r\n\r\nBOUNDARY_ACK_021\r\n# \r\nSKILL_ACK_000\r\n# \r\nSKILL_ACK_001\r\n# \r\nSKILL_ACK_002\r\n# \r\nSKILL_ACK_003\r\n# \r\nSKILL_ACK_004\r\n# \r\nSKILL_ACK_005\r\n# \r\nSKILL_ACK_006\r\n# \r\nSKILL_ACK_007\r\n# \r\nSKILL_ACK_008\r\n# \r\nSKILL_ACK_009\r\n# \r\nSKILL_ACK_010\r\n# \r\nSKILL_ACK_011\r\n# \r\nSKILL_ACK_012\r\n# \r\nSKILL_ACK_013\r\n# \r\nSKILL_ACK_014\r\n# \r\nSKILL_ACK_015\r\n# \r\nSKILL_ACK_016\r\n# \r\nSKILL_ACK_017\r\n# \r\nSKILL_ACK_018\r\n# \r\nSKILL_ACK_019\r\n# \r\nSKILL_ACK_020\r\n# SKILL_TRANSFER_VERIFIED {\"bytes\": 7436, \"sha256\": \"7769160d9477ffe10b40529dcf969f7067e9052315f1373ac1d1699fc1aeb3bf\"}\r\n\r\nSKILL_ACK_021\r\n# RECREATION_EMPTY_BEGIN\r\nRECREATION_EMPTY_END\r\n\r\nRECREATION_ACK_000\r\n# \r\nRECREATION_ACK_001\r\n# \r\nRECREATION_ACK_002\r\n# \r\nRECREATION_ACK_003\r\n# \r\nRECREATION_ACK_004\r\n# \r\nRECREATION_ACK_005\r\n# \r\nRECREATION_ACK_006\r\n# \r\nRECREATION_ACK_007\r\n# \r\nRECREATION_ACK_008\r\n# \r\nRECREATION_ACK_009\r\n# \r\nRECREATION_ACK_010\r\n# \r\nRECREATION_ACK_011\r\n# \r\nRECREATION_ACK_012\r\n# \r\nRECREATION_ACK_013\r\n# \r\nRECREATION_ACK_014\r\n# \r\nRECREATION_ACK_015\r\n# \r\nRECREATION_ACK_016\r\n# \r\nRECREATION_ACK_017\r\n# \r\nRECREATION_ACK_018\r\n# \r\nRECREATION_ACK_019\r\n# \r\nRECREATION_ACK_020\r\n# \r\nRECREATION_ACK_021\r\n# SOURCE_VERIFIED macos-compiler-mapping-retry.js 7470 78089889d12bb442d497ccc369890a214368c3ad3a1862758601e72ac911ff31\r\n\r\nRECREATION_ACK_022\r\n# \r\nRECREATION_ACK_023\r\n# \r\nRECREATION_ACK_024\r\n# \r\nRECREATION_ACK_025\r\n# \r\nRECREATION_ACK_026\r\n# \r\nRECREATION_ACK_027\r\n# \r\nRECREATION_ACK_028\r\n# \r\nRECREATION_ACK_029\r\n# \r\nRECREATION_ACK_030\r\n# \r\nRECREATION_ACK_031\r\n# \r\nRECREATION_ACK_032\r\n# \r\nRECREATION_ACK_033\r\n# \r\nRECREATION_ACK_034\r\n# \r\nRECREATION_ACK_035\r\n# \r\nRECREATION_ACK_036\r\n# \r\nRECREATION_ACK_037\r\n# \r\nRECREATION_ACK_038\r\n# \r\nRECREATION_ACK_039\r\n# \r\nRECREATION_ACK_040\r\n# \r\nRECREATION_ACK_041\r\n# \r\nRECREATION_ACK_042\r\n# \r\nRECREATION_ACK_043\r\n# \r\nRECREATION_ACK_044\r\n# \r\nRECREATION_ACK_045\r\n# \r\nRECREATION_ACK_046\r\n# \r\nRECREATION_ACK_047\r\n# \r\nRECREATION_ACK_048\r\n# \r\nRECREATION_ACK_049\r\n# SOURCE_VERIFIED probe-macos-compiler-retry.py 9694 3ce6b64fb41b77fcda2cc411990b57abdf2fa57546647c20572fceacf7363e2e\r\n\r\nRECREATION_ACK_050\r\n# \r\nRECREATION_ACK_051\r\n# \r\nRECREATION_ACK_052\r\n# SOURCE_VERIFIED macos-interception-requirements.txt 306 1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700\r\n\r\nRECREATION_ACK_053\r\n# macos-compiler-mapping-retry.js\t\tprobe-macos-compiler-retry.py\r\nmacos-interception-requirements.txt\r\nCollecting frida==17.24.3 (from -r /Users/runner/work/_temp/runner-debug-smoke-xegXej/macos-compiler/recreation/macos-interception-requirements.txt (line 3))\r\n  Using cached frida-17.24.3-cp37-abi3-macosx_10_13_x86_64.whl (33.5 MB)\r\nInstalling collected packages: frida\r\nSuccessfully installed frida-17.24.3\r\nRECREATION_INSTALL_EXIT=0\r\n\r\nRECREATION_ACK_054\r\n# {\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-apple-darwin\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 20833, \"target\": \"0x7ff81627e5d7\", \"architecture\": \"x64\", \"original_soft\": \"9223372036854775807\", \"original_hard\": \"9223372036854775807\", \"allowance_bytes\": 4096}\r\n{\"event\": \"compiler_address_size_at_limit_application\", \"state\": {\"phase\": 3, \"thread_id\": 54487, \"requested_bytes\": 35204493312, \"attempts\": 0, \"errno\": 0, \"pointer\": 0, \"limited_soft\": 35204497408, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"compiler_mapping_blocked\", \"compiler_pid\": 20833, \"state\": {\"phase\": 1, \"thread_id\": 54487, \"requested_bytes\": 20480, \"attempts\": 1, \"errno\": 12, \"pointer\": -1, \"limited_soft\": 35204497408, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 20833}\r\n{\"event\": \"compiler_mapping_retried\", \"compiler_pid\": 20833, \"state\": {\"phase\": 2, \"thread_id\": 54487, \"requested_bytes\": 20480, \"attempts\": 2, \"errno\": 2, \"pointer\": 4430065664, \"limited_soft\": 35204497408, \"original_soft\": 9223372036854775807, \"restored\": 0, \"permission\": 1}}\r\n{\"event\": \"compiler_mapping_retry_passed\", \"compiler_pid\": 20833, \"exit\": 0, \"metadata_bytes\": 2986316, \"metadata_sha256\": \"b2387ee82dba11866d53d36cda84615b633ba935f1e7f02a190d4bc9ff600ad9\"}\r\nRECREATION_PROBE_EXIT=0\r\n\r\nRECREATION_ACK_055\r\n# > > >   File \u001b[35m\"<string>\"\u001b[0m, line \u001b[35m1\u001b[0m\r\n    from pathlib import Path; import sys; p=Path(sys.argv[1])/\"build-progress.txt\"; assert p.read_text()==\u001b[1;31m\"\u001b[0mcompleted-part\r\n                                                                                                          \u001b[1;31m^\u001b[0m\r\n\u001b[1;35mSyntaxError\u001b[0m: \u001b[35munterminated string literal (detected at line 1)\u001b[0m\r\n# exit\r\nConnection to uptermd.upterm.dev closed.\r\r\n",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 13666,
+          "virtual_kib": 34379912,
+          "target": "0x7ff81627e5d7",
+          "architecture": "x64",
+          "original_soft": "9223372036854775807",
+          "original_hard": "9223372036854775807",
+          "limited_soft": "35205033984"
+        },
+        {
+          "event": "compiler_terminal_failure",
+          "exit": -9,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 16307,
+          "virtual_kib": 34379260,
+          "target": "0x7ff81627e5d7",
+          "architecture": "x64",
+          "original_soft": "9223372036854775807",
+          "original_hard": "9223372036854775807",
+          "limited_soft": "35204366336"
+        },
+        {
+          "event": "compiler_address_size_at_limit_application",
+          "state": {
+            "phase": 3,
+            "thread_id": 44002,
+            "requested_bytes": 35204493312,
+            "attempts": 0,
+            "errno": 0,
+            "pointer": 0,
+            "limited_soft": 35204366336,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "compiler_terminal_failure",
+          "exit": -9,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 17090,
+          "virtual_kib": 34406908,
+          "target": "0x7ff81627e5d7",
+          "architecture": "x64",
+          "original_soft": "9223372036854775807",
+          "original_hard": "9223372036854775807",
+          "limited_soft": "35232677888"
+        },
+        {
+          "event": "compiler_address_size_at_limit_application",
+          "state": {
+            "phase": 3,
+            "thread_id": 46167,
+            "requested_bytes": 35232804864,
+            "attempts": 0,
+            "errno": 0,
+            "pointer": 0,
+            "limited_soft": 35232808960,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "compiler_mapping_blocked",
+          "compiler_pid": 17090,
+          "state": {
+            "phase": 1,
+            "thread_id": 46167,
+            "requested_bytes": 20480,
+            "attempts": 1,
+            "errno": 12,
+            "pointer": -1,
+            "limited_soft": 35232808960,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 17090
+        },
+        {
+          "event": "compiler_mapping_retried",
+          "compiler_pid": 17090,
+          "state": {
+            "phase": 2,
+            "thread_id": 46167,
+            "requested_bytes": 20480,
+            "attempts": 2,
+            "errno": 2,
+            "pointer": 4343013376,
+            "limited_soft": 35232808960,
+            "original_soft": 9223372036854775807,
+            "restored": 0,
+            "permission": 1
+          }
+        },
+        {
+          "event": "compiler_mapping_retry_passed",
+          "compiler_pid": 17090,
+          "exit": 0,
+          "metadata_bytes": 2986316,
+          "metadata_sha256": "4a53b8e445687cc4a867a03bebb3a37b927a34754eb70b2e2ea9f467ca5e6b2a"
+        },
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 20833,
+          "target": "0x7ff81627e5d7",
+          "architecture": "x64",
+          "original_soft": "9223372036854775807",
+          "original_hard": "9223372036854775807",
+          "allowance_bytes": 4096
+        },
+        {
+          "event": "compiler_address_size_at_limit_application",
+          "state": {
+            "phase": 3,
+            "thread_id": 54487,
+            "requested_bytes": 35204493312,
+            "attempts": 0,
+            "errno": 0,
+            "pointer": 0,
+            "limited_soft": 35204497408,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "compiler_mapping_blocked",
+          "compiler_pid": 20833,
+          "state": {
+            "phase": 1,
+            "thread_id": 54487,
+            "requested_bytes": 20480,
+            "attempts": 1,
+            "errno": 12,
+            "pointer": -1,
+            "limited_soft": 35204497408,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 20833
+        },
+        {
+          "event": "compiler_mapping_retried",
+          "compiler_pid": 20833,
+          "state": {
+            "phase": 2,
+            "thread_id": 54487,
+            "requested_bytes": 20480,
+            "attempts": 2,
+            "errno": 2,
+            "pointer": 4430065664,
+            "limited_soft": 35204497408,
+            "original_soft": 9223372036854775807,
+            "restored": 0,
+            "permission": 1
+          }
+        },
+        {
+          "event": "compiler_mapping_retry_passed",
+          "compiler_pid": 20833,
+          "exit": 0,
+          "metadata_bytes": 2986316,
+          "metadata_sha256": "b2387ee82dba11866d53d36cda84615b633ba935f1e7f02a190d4bc9ff600ad9"
+        }
+      ],
+      "cleanup_outcome": "post fixture fails because generated Python marker command contained literal newlines; remote wait passes; native proof remains passed"
+    },
+    {
+      "target": "aarch64-apple-darwin",
+      "run_id": 40596753706,
+      "workflow": {
+        "conclusion": "failure",
+        "databaseId": 40596753706,
+        "headSha": "92027d02b52c5e3bc94470ae9fb4d63ccc8fbaf1",
+        "jobs": [
+          {
+            "completedAt": "2026-10-27T22:41:49Z",
+            "conclusion": "success",
+            "databaseId": 122514496246,
+            "name": "select",
+            "startedAt": "2026-10-27T22:41:46Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 6,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 7,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40596753706/job/122514496246"
+          },
+          {
+            "completedAt": "2026-10-27T22:44:11Z",
+            "conclusion": "failure",
+            "databaseId": 122514532616,
+            "name": "Debug - aarch64-apple-darwin",
+            "startedAt": "2026-10-27T22:41:52Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Create owned partial build state",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "failure",
+                "name": "Record the deliberate build failure",
+                "number": 4,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Debug the original failed workspace",
+                "number": 5,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Debug the original failed workspace",
+                "number": 8,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Create owned partial build state",
+                "number": 9,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 10,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 11,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40596753706/job/122514532616"
+          }
+        ],
+        "status": "completed"
+      },
+      "native_retry": "passed",
+      "fresh_final_source": "passed",
+      "ssh_exit": 0,
+      "transcript_sha256": "1a91aa9a3019f0d1840c009615f9249fc3f780d486b804049fa0324b5e165935",
+      "transcript": "\r\nThe default interactive shell is now zsh.\r\nTo update your account to use zsh, please run `chsh -s /bin/zsh`.\r\nFor more details, please visit https://support.apple.com/kb/HT208050.\r\n\u001b[?1034hbash-3.2$ \r\u001b[Kbash-3.2$ \r\u001b[Kbash-3.2$ PS1='# '; unset PROMPT_COMMAND; stty -echo\r\n# arm64\r\nNATIVE_PYTHON=/opt/homebrew/bin/python3\r\n# RETAINED_STATE_VERIFIED 'completed-part\\nincremental-retry\\n'\r\n# ARM_EMPTY_BEGIN\r\nARM_EMPTY_END\r\n\r\nARM_SOURCE_ACK_000\r\n# \r\nARM_SOURCE_ACK_001\r\n# \r\nARM_SOURCE_ACK_002\r\n# \r\nARM_SOURCE_ACK_003\r\n# \r\nARM_SOURCE_ACK_004\r\n# \r\nARM_SOURCE_ACK_005\r\n# \r\nARM_SOURCE_ACK_006\r\n# \r\nARM_SOURCE_ACK_007\r\n# \r\nARM_SOURCE_ACK_008\r\n# \r\nARM_SOURCE_ACK_009\r\n# \r\nARM_SOURCE_ACK_010\r\n# \r\nARM_SOURCE_ACK_011\r\n# \r\nARM_SOURCE_ACK_012\r\n# \r\nARM_SOURCE_ACK_013\r\n# \r\nARM_SOURCE_ACK_014\r\n# \r\nARM_SOURCE_ACK_015\r\n# \r\nARM_SOURCE_ACK_016\r\n# \r\nARM_SOURCE_ACK_017\r\n# \r\nARM_SOURCE_ACK_018\r\n# \r\nARM_SOURCE_ACK_019\r\n# \r\nARM_SOURCE_ACK_020\r\n# \r\nARM_SOURCE_ACK_021\r\n# SOURCE_VERIFIED macos-compiler-mapping-retry.js 7470 78089889d12bb442d497ccc369890a214368c3ad3a1862758601e72ac911ff31\r\n\r\nARM_SOURCE_ACK_022\r\n# \r\nARM_SOURCE_ACK_023\r\n# \r\nARM_SOURCE_ACK_024\r\n# \r\nARM_SOURCE_ACK_025\r\n# \r\nARM_SOURCE_ACK_026\r\n# \r\nARM_SOURCE_ACK_027\r\n# \r\nARM_SOURCE_ACK_028\r\n# \r\nARM_SOURCE_ACK_029\r\n# \r\nARM_SOURCE_ACK_030\r\n# \r\nARM_SOURCE_ACK_031\r\n# \r\nARM_SOURCE_ACK_032\r\n# \r\nARM_SOURCE_ACK_033\r\n# \r\nARM_SOURCE_ACK_034\r\n# \r\nARM_SOURCE_ACK_035\r\n# \r\nARM_SOURCE_ACK_036\r\n# \r\nARM_SOURCE_ACK_037\r\n# \r\nARM_SOURCE_ACK_038\r\n# \r\nARM_SOURCE_ACK_039\r\n# \r\nARM_SOURCE_ACK_040\r\n# \r\nARM_SOURCE_ACK_041\r\n# \r\nARM_SOURCE_ACK_042\r\n# \r\nARM_SOURCE_ACK_043\r\n# \r\nARM_SOURCE_ACK_044\r\n# \r\nARM_SOURCE_ACK_045\r\n# \r\nARM_SOURCE_ACK_046\r\n# \r\nARM_SOURCE_ACK_047\r\n# \r\nARM_SOURCE_ACK_048\r\n# \r\nARM_SOURCE_ACK_049\r\n# SOURCE_VERIFIED probe-macos-compiler-retry.py 9694 3ce6b64fb41b77fcda2cc411990b57abdf2fa57546647c20572fceacf7363e2e\r\n\r\nARM_SOURCE_ACK_050\r\n# \r\nARM_SOURCE_ACK_051\r\n# \r\nARM_SOURCE_ACK_052\r\n# SOURCE_VERIFIED macos-interception-requirements.txt 306 1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700\r\n\r\nARM_SOURCE_ACK_053\r\n# \r\nARM_SOURCE_ACK_054\r\n# info: syncing channel updates for 1.95.0-aarch64-apple-darwin\r\ninfo: latest update on 2026-04-16 for version 1.95.0 (59807616e 2026-04-14)\r\ninfo: downloading 3 components\r\n\r\n  1.95.0-aarch64-apple-darwin installed - rustc 1.95.0 (59807616e 2026-04-14)\r\n\r\ninfo: default toolchain set to 1.95.0-aarch64-apple-darwin\r\ninfo: self-update is disabled for this build of rustup\r\ninfo: any updates to rustup will need to be fetched with your system package manager\r\nRUST_INSTALL_EXIT=0\r\n\r\nARM_SOURCE_ACK_055\r\n# macos-compiler-mapping-retry.js\t\tprobe-macos-compiler-retry.py\r\nmacos-interception-requirements.txt\r\nCollecting frida==17.24.3 (from -r /Users/runner/work/_temp/runner-debug-smoke-Ul9Say/macos-compiler/candidate/macos-interception-requirements.txt (line 3))\r\n  Downloading frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl (46.6 MB)\r\n     \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 46.6/46.6 MB 76.9 MB/s  0:00:00\r\nInstalling collected packages: frida\r\nSuccessfully installed frida-17.24.3\r\nPIP_INSTALL_EXIT=0\r\n\r\nARM_SOURCE_ACK_056\r\n# COMPILER_PATH=/Users/runner/work/_temp/runner-debug-smoke-Ul9Say/macos-compiler/runtime/rustup/toolchains/1.95.0-aarch64-apple-darwin/bin/rustc\r\n\r\nARM_SOURCE_ACK_057\r\n# {\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: aarch64-apple-darwin\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 2933, \"target\": \"0x191ede82c\", \"architecture\": \"arm64\", \"original_soft\": \"9223372036854775807\", \"original_hard\": \"9223372036854775807\", \"allowance_bytes\": 4096}\r\n{\"event\": \"compiler_address_size_at_limit_application\", \"state\": {\"phase\": 3, \"thread_id\": 11898, \"requested_bytes\": 420844339200, \"attempts\": 0, \"errno\": 0, \"pointer\": 0, \"limited_soft\": 420844343296, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"compiler_mapping_blocked\", \"compiler_pid\": 2933, \"state\": {\"phase\": 1, \"thread_id\": 11898, \"requested_bytes\": 65536, \"attempts\": 1, \"errno\": 12, \"pointer\": -1, \"limited_soft\": 420844343296, \"original_soft\": 9223372036854775807, \"restored\": -2, \"permission\": -2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 2933}\r\n{\"event\": \"compiler_mapping_retried\", \"compiler_pid\": 2933, \"state\": {\"phase\": 2, \"thread_id\": 11898, \"requested_bytes\": 65536, \"attempts\": 2, \"errno\": 2, \"pointer\": 4350263296, \"limited_soft\": 420844343296, \"original_soft\": 9223372036854775807, \"restored\": 0, \"permission\": 1}}\r\n{\"event\": \"compiler_mapping_retry_passed\", \"compiler_pid\": 2933, \"exit\": 0, \"metadata_bytes\": 2986317, \"metadata_sha256\": \"bdcce6819ab70c6ac357a7676c80726702bb6ee3c754d0ac948e9aa21c0e2d7f\"}\r\nARM_PROBE_EXIT=0\r\n\r\nARM_SOURCE_ACK_058\r\n# ARM_REMOTE_TESTS_FINISHED\r\nexit\r\nConnection to uptermd.upterm.dev closed.\r\r\n",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 2933,
+          "target": "0x191ede82c",
+          "architecture": "arm64",
+          "original_soft": "9223372036854775807",
+          "original_hard": "9223372036854775807",
+          "allowance_bytes": 4096
+        },
+        {
+          "event": "compiler_address_size_at_limit_application",
+          "state": {
+            "phase": 3,
+            "thread_id": 11898,
+            "requested_bytes": 420844339200,
+            "attempts": 0,
+            "errno": 0,
+            "pointer": 0,
+            "limited_soft": 420844343296,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "compiler_mapping_blocked",
+          "compiler_pid": 2933,
+          "state": {
+            "phase": 1,
+            "thread_id": 11898,
+            "requested_bytes": 65536,
+            "attempts": 1,
+            "errno": 12,
+            "pointer": -1,
+            "limited_soft": 420844343296,
+            "original_soft": 9223372036854775807,
+            "restored": -2,
+            "permission": -2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 2933
+        },
+        {
+          "event": "compiler_mapping_retried",
+          "compiler_pid": 2933,
+          "state": {
+            "phase": 2,
+            "thread_id": 11898,
+            "requested_bytes": 65536,
+            "attempts": 2,
+            "errno": 2,
+            "pointer": 4350263296,
+            "limited_soft": 420844343296,
+            "original_soft": 9223372036854775807,
+            "restored": 0,
+            "permission": 1
+          }
+        },
+        {
+          "event": "compiler_mapping_retry_passed",
+          "compiler_pid": 2933,
+          "exit": 0,
+          "metadata_bytes": 2986317,
+          "metadata_sha256": "bdcce6819ab70c6ac357a7676c80726702bb6ee3c754d0ac948e9aa21c0e2d7f"
+        }
+      ],
+      "cleanup_outcome": "all remote post waits and fixture verification/cleanup pass; only intentional exit 17 fails"
+    }
+  ]
+}
