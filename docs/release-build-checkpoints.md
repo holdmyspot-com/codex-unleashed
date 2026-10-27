@@ -502,10 +502,35 @@ uploads 1,951,054,207 archive bytes and reuses two earlier groups.
 App-server compilation then runs until the job limit. The source guard passes;
 native smokes, dependency acceptance and final verified publication are unrun.
 This is partial progress, not completed platform acceptance.
-Same-revision attempt 3 resumes through the existing partial-cache path;
-its terminal result remains pending. No active job is cancelled by this retry.
+Same-revision attempt 3, job `121934269277`, passes in 1h 41m 57s.
+It restores that exact four-group partial manifest in 225 seconds. Proxy,
+code-mode-host and CLI invocations finish in 50/10/11 seconds without Rust
+compilation; only app-server compiles, taking 76m 15s. Checkpoints take
+193/105/81/266 seconds. Both native smokes, source/dependency guards,
+source recording and verified private publication pass. The final save takes
+303 seconds, reuses all four compiled groups and uploads 1,944,886 metadata
+bytes. Its five-group verified manifest is
+`sha256:7efbda744686a8fb4674f06796b5fc0b3e2779f2282b4f18e699d2a9d05f9dfe`.
+This proves reuse of the three executable checkpoints saved before the timeout;
+the interrupted app-server compilation was not saved at that earlier boundary.
+Same-revision attempt 4, job `121968733632`, passes warm reuse in 16m 28s.
+It restores the exact five-group verified manifest in 232 seconds and logs
+zero Rust compilation entries. Build invocations take 51/7/8/8 seconds;
+partial checkpoints take 100/79/76/80 seconds, reusing all four compiled
+groups and uploading approximately 3.1 MB of metadata each. Both native
+smokes, source/dependency guards, recording and verified private publication
+pass. Final save takes 72 seconds, reuses the four compiled groups and uploads
+1,943,559 metadata bytes. The resulting verified manifest is
+`sha256:26a0b2f35c866a6ee11b3019224138c88aa42f2dd80271669b5006f2ab809459`.
+This closes actual grouped-cache reuse on all six release targets; the clean
+matrix and relevant runtime acceptance remain separate gates. No active job
+is cancelled by either retry.
 Terminal log: `intel-terminal-4ptuzr/job.log`, SHA-256
 `780e39b3e57bee48619b471b898d19ccca7a04e51f5987ffd7323e6b3d3222f9`.
+Attempt-3 log: `intel-terminal-4ptuzr/attempt-3.log`, SHA-256
+`fbbd0a8f71aff62df672b3c91c80a18e51ee3a83c05b8e4847995fc1c2e2fc60`.
+Attempt-4 log: `intel-terminal-4ptuzr/attempt-4.log`, SHA-256
+`f360a1fd3c7007ce094ebc281aa447e2def0c2192299cfc3f5b43bfd9b399cb6`.
 The restart executor owns that temporary evidence directory until Intel
 grouped-cache acceptance is recorded, then removes it.
 
