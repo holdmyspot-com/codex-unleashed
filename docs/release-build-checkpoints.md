@@ -429,11 +429,28 @@ journal-marker delivery, signal capture and exits 0/17/self-SIGKILL.
 This verifies telemetry delivery during ordinary execution; it cannot
 guarantee delivery of the last event during a runner shutdown.
 
-Focused ARM cached build `40421547755` uses that tested revision and remains
-active. Independent Linux x86-64 run `40421492069` exercises the existing
-actual-CLI input-invalidation check at the same revision. Both remain
-acceptance attempts, with no completed result recorded yet. The Intel Mac
-population run is preserved without cancellation.
+Focused ARM cached build `40421547755` uses that tested revision and fails
+after 15 minutes with exit 143 during CLI compilation. Its final memory sample
+reports 189.3 MiB available and all 3,072 MiB swap used, after multiple earlier
+samples with approximately 200–330 MiB available and effectively full swap.
+This establishes severe memory pressure before termination; it does not identify
+the terminating actor or establish an OOM kill. Neither an OOM event nor a
+terminating signal survives in the log. The monitored wrapper, sudo and tee
+processes remain visible in the final sample. The actual compiler processes
+were outside that process selection, so their memory use is not established.
+Terminal evidence: `arm-kernel-signal-EFWxgu/resources-job.log`, SHA-256
+`c763f6fa0860ad584169b5c496f9bcb07285e4d99df29b7248128496a94ced81`.
+
+Revision `46b2728bd8173e4e3f17dd8b8d205d1b49a31772` selects all processes
+ordered by resident memory and includes informational journal messages to
+distinguish the memory consumers and service shutdown sequence. It changes
+diagnostics only; Cargo concurrency is unchanged. Its compilation-free preflight
+`40423436947` passes in 28 seconds, including repeated samples, journal
+delivery and all signal/exit cases. Focused ARM cached build `40423537666`
+uses that tested revision and remains active. Independent Linux x86-64
+run `40421492069` exercises the existing actual-CLI input-invalidation check
+at the earlier tested revision; its terminal outcome remains pending. The
+Intel Mac population run is preserved without cancellation.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
