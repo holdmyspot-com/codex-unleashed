@@ -529,6 +529,26 @@ syntax checks pass; native behavior for this revised control remains unrun.
 No relocation safety check is disabled, and neither source-wide interception
 nor blocked-allocation recovery is accepted by a forwarding-only control.
 
+The implementation-entry control passes on native Windows ARM64 in run
+[`40570652974`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40570652974)
+at `90972a544d`, with its native job completing in 38 seconds. Artifact
+`12763778938` has raw log SHA-256
+`1a5e27c8a386bb4cd8251c2df61c67b624ed532147bca3713f2f04c7678be5c2`.
+The worker independently reports KernelBase address `0x7ffe28b8f850`; the
+installed hook address agrees. The unchanged Kernel32 caller successfully
+allocates 268,435,456 bytes, observes endpoint values 42 and 43, and produces
+`native_forwarding_observed` with `matching_calls: 1`. It frees the allocation
+and exits normally, producing `interception_probe_passed` with Frida 17.24.3.
+Evidence upload and owned-directory cleanup also succeed.
+
+This accepts direct native forwarding on ARM64 at the implementation export,
+alongside the earlier x86-64 forwarding result at its original export. The
+normal-replacement failures retain their failed status. The next unmet native
+interception gate is a failed allocation that waits and retries inside the
+hook, without caller-side retry code, and still permits normal worker exit.
+No Codex compilation, previously accepted release check or x86-64 control is
+repeated for this entry-selection correction.
+
 ### Native macOS address-space-limit diagnostic
 
 Apple's current
