@@ -549,6 +549,36 @@ hook, without caller-side retry code, and still permits normal worker exit.
 No Codex compilation, previously accepted release check or x86-64 control is
 repeated for this entry-selection correction.
 
+#### Native event-based retry candidate
+
+The next Windows diagnostic extends the accepted direct native replacement.
+`native-retry` and `native-timeout` keep the worker's single caller-side
+`VirtualAlloc` expression. The controller creates two unnamed events and
+duplicates their handles into the owned worker before permitting allocation.
+The hook selects only the armed thread's exact 256 MiB request. After an actual
+denial it records the allocation error, signals the blocked event and waits
+inside native code, without entering JavaScript on that thread.
+
+The successful case requires an independent peer to finish while the request
+remains blocked. The controller then raises the worker's job-object limit and
+signals retry permission. The hook calls the original trampoline once more;
+the worker must receive that pointer, access both endpoints, free it and exit
+normally with the hook still installed. The native state must show one matching
+callback and two original allocation attempts.
+
+The negative case leaves permission nonsignaled and uses a one-second native
+wait within the existing 30-second controller deadline. It requires
+`WAIT_TIMEOUT`, one original allocation attempt and a null return. A diagnostic
+last-error sentinel deliberately differs from the first allocation error before
+the hook restores that error; the worker must observe the original error.
+This case also requires ordinary worker exit without removing the hook.
+
+Worker-local event handles remain valid until the worker is terminal. Failure
+cleanup kills and reaps the owned worker before detaching instrumentation or
+closing controller handles. These two new behavioral gates are unrun; local
+JavaScript, Python and host-C syntax checks do not establish Windows behavior.
+No accepted forwarding or Codex compilation check needs repetition.
+
 ### Native macOS address-space-limit diagnostic
 
 Apple's current
