@@ -832,6 +832,38 @@ every allocation, compiler allocation denial/continuation, linker or build-scrip
 children, physical-pressure recovery or scheduler integration. No Codex build
 or previously accepted forwarding/retry fixture is repeated.
 
+#### Native Windows compiler allocation observations
+
+Run [`40585099445`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40585099445)
+at `c6bf0fdd20e93f1d4feb7b0fc39bbddb757c7820` passes on x86-64 and ARM64.
+It reuses the same compiler, instrumentation version, 256-function source and
+within-architecture metadata comparison as the macOS observation above.
+The two native Windows jobs take 38/59 seconds respectively, including setup,
+evidence upload and cleanup. Both compiler processes exit zero without diagnostics.
+
+Each installs nine unique observers without rejection. Both observe
+`RtlAllocateHeap` in `ntdll.dll` and `calloc` in `ucrtbase.dll`. The observers
+at both `VirtualAlloc` exports record no call during this input. Thus the accepted
+VirtualAlloc denial fixture does not establish interception of this real compiler
+workload. This observation does not establish that larger compilations never
+use VirtualAlloc; it identifies a heap-allocation path that further blocking
+experiments must cover. Linker, build-script children and other allocator paths
+remain outside this check.
+
+| Target | Artifact ID | Compiler log SHA-256 | Metadata bytes / SHA-256 |
+| --- | --- | --- | --- |
+| Windows x86-64 | `12771970422` | `dc2363a524066770e64c40469908677ce9a661a8fdf820edef7707349bc626db` | 36,456 / `e9d03d38d278fdc0ca639c45ed70bdadb469c658522c19f2ac13e371b60514fb` |
+| Windows ARM64 | `12769694983` | `57988b2110b8ac906bed03bb4c082740bf5ca736573bcf683ef924269e51218c` | 36,457 / `036619cde93a0b19168833d8838a4d3ec9b0acdd4c4169058d2c797ea1cd7bd5` |
+
+The next Windows denial diagnostic must preserve the heap API's failure behavior
+and test waiting outside its allocator locks. Microsoft's
+[RtlAllocateHeap contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-rtlallocateheap)
+distinguishes null failure from exception-generating heap flags; it is a driver
+API reference, not evidence that the observed user-mode compiler uses particular
+flags. Capture those arguments and establish the actual user-mode boundary before
+selecting a retry hook. No allocation denial or scheduler policy is accepted by
+the successful observation alone.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the
