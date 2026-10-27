@@ -263,8 +263,8 @@ compiled-cache lookup misses; its default remains false for cold population and
 ordinary baseline builds. Expected-negative run `40508191624` at
 `25697e6ad0c610fc569ddcf72ade15acc16aa923` rejects `require_cache_hit=true`
 with `cache=false` during target selection and skips the build job. This checks
-input validation only; miss rejection and successful hit-required compilation
-still need their own execution evidence.
+input validation only; the separate shell and native checks below establish miss
+rejection and successful hit-required compilation.
 
 Focused Linux run [`40502660994`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502660994)
 at `4325b567859884b936eb0aea44ad4a390cd3dc61` passes in 1h 26m 22s,
@@ -274,8 +274,8 @@ report misses. Its compatible identity is
 `cargo-seed-v1-x86_64-unknown-linux-musl-e6b99579981ac5ee52eb93f0af9d8d4395c568678cdf8d93fc8fe3f8d9cc8137`;
 none of the three migrated x86-64 compatible aliases has that identity.
 This is new population, not acceptance of restoration from a migrated cache.
-The input receipt records runner image `20261026.354.1`; explaining each
-difference from the migrated producers requires their matching input receipts.
+The input receipt records runner image `20261026.354.1`. The follow-up below
+isolates the image difference in the compatible key using matching input receipts.
 No cache-compatibility check is relaxed to force a hit.
 
 The five build logs contain 1,184 `Compiling` entries after removing terminal
@@ -288,9 +288,47 @@ save. Downloaded artifact `12738697965` matches its API-reported digest
 `sha256:ada7b5ff5c78b0d6ff242d41040b611cb838b184966213372fbb0ab13d13d05d`.
 The root executor retains its archive and extracted evidence under the session's
 `isolated-cache-acceptance-EUtyoV` until isolated-package acceptance is
-recorded, then removes that owned directory. Follow-up `40508366323` requires
-a cache hit before compilation; it is the next restore check, not another
-unconditional cold population run.
+recorded, then removes that owned directory.
+
+The hit-required follow-up's Linux job `122203527267`, in
+[run `40508366323`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40508366323)
+at `25697e6ad0c610fc569ddcf72ade15acc16aa923`, passes in 6m 39s. It restores
+the migrated six-group manifest
+`sha256:366a6e9ed4ff002d45f4774f82fb991a970a61b95a51fcac4533855c811e9761`
+through compatible identity
+`cargo-seed-v1-x86_64-unknown-linux-musl-f305c9c205330e7e9fa54fbff31ba0f59d69285f7caf5ebd9087a583e365bf30`.
+The transport records 60 seconds; the entire restore step takes 62 seconds.
+Source preparation takes six seconds. All five Cargo logs contain zero
+`Compiling` entries; executable/checkpoint processing takes 2m 2s including
+108 seconds of checkpoint overhead. Both native versions report 0.164.0,
+source guards pass and all six dependency receipts report `verified`. Final
+save takes 18 seconds, reuses five groups and uploads 1,340,609 archive bytes.
+Downloaded artifact `12738732431` matches API-reported SHA-256
+`290f9e9d43f520dc843b07b7e9de4d820875a257b4b0e2ace8e1f1bd986d4fa8`.
+This accepts Linux restoration from the isolated package at the build-job
+boundary. Both jobs are terminal successes, while the workflow aggregate still
+reports `in_progress`; the interrupted observation command is not a workflow
+failure or an additional build result.
+
+The two runs have byte-identical upstream and helper input receipts. Their
+compiler input receipts differ only in runner image: the population run uses
+`20261026.354.1`, while the successful restore uses `20261023.334.3`.
+Recomputing the compatible identities from those receipts reproduces each
+recorded key, and changing only that image line transforms one input set into
+the other. This explains the different lookups without changing compatibility
+policy. Both image-specific populations remain available.
+
+A local check executes the actual restore-step shell with the transport's
+recorded missing-state exit code, `3`, supplied by a fixture. The hit-required
+case exits 1 before the next-step marker; optional caching permits the same
+miss. A hit proceeds and transport exit 42 propagates without reaching that
+marker. The same missing-state check on predecessor `4325b56785` proceeds,
+demonstrating the guard's behavioral difference. This verifies shell branching,
+not registry behavior; the real-registry restore above covers the positive
+integration. The first probe stops at an incorrect harness job-name lookup;
+selecting the step by its actual name fixes only that probe. The root executor
+owns its `cache-hit-guard-fbLDue` evidence directory until these results are
+recorded, then removes it. No additional cold compilation is dispatched.
 
 ## Checks required before reuse
 
