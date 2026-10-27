@@ -12,6 +12,24 @@ rpc.exports = {
   arm(threadId, bytes) {
     configuration = { threadId, bytes };
     return configuration;
+  },
+  // Capture native wait locations after the unchanged worker-exit check times out.
+  inspectThreads() {
+    return Process.enumerateThreads().map(thread => ({
+      id: thread.id,
+      state: thread.state,
+      frames: Thread.backtrace(thread.context, Backtracer.ACCURATE).slice(0, 16).map(address => {
+        const module = Process.findModuleByAddress(address);
+        return { symbol: DebugSymbol.fromAddress(address).toString(),
+          module: module === null ? null : module.name,
+          offset: module === null ? null : address.sub(module.base).toString() };
+      })
+    }));
+  },
+  // Isolate whether leaving this hook active prevents native process shutdown.
+  removeHook() {
+    Interceptor.revert(allocationAddress);
+    return true;
   }
 };
 

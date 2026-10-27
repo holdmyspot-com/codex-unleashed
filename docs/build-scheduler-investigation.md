@@ -344,11 +344,33 @@ workflow removes its owned package/temp directory after retaining one-day logs.
 Frida 17.24.3 is acquired with hash-locked Windows x86-64/ARM64 wheels on native
 Python 3.12. The declared `typing_extensions` dependency applies only below
 Python 3.11, so this diagnostic requires no additional package. This is candidate
-evaluation, not selection as the production scheduler. Native execution is
-initially unrun. Python and JavaScript syntax checks pass locally; actionlint
+evaluation, not selection as the production scheduler. Native execution results
+follow below. Python and JavaScript syntax checks pass locally; actionlint
 reports its known unsupported concurrency `queue` field. A passing run would
 establish interception of one native fixture allocation, leaving actual compiler
 paths, other allocation APIs, FIFO recovery and physical-pressure behavior open.
+
+Initial run
+[`40564230178`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40564230178)
+at `cd530c235908df3c141e254822d6bda2103ac7b3` fails on both architectures.
+Both logs establish an installed hook at the caller's actual function address,
+native error 1455, completion of independent work, successful retry on the same
+thread, the identical pointer reaching the caller, endpoint bytes 42/43 and
+deallocation. Both workers then time out at the unchanged 30-second exit check.
+The probe remains failed: reaching deallocation does not establish clean exit.
+Owned-worker termination/reaping and workflow package-directory cleanup run.
+
+| Native target | Worker PID / thread ID | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- | --- |
+| Windows x86-64 | `5664` / `9152` | `12762715819` | `744bfe69049f17dcbf091f35ee812cd3cb02510efb9bfac5cdf430aee6f8e613` |
+| Windows ARM64 | `9988` / `9992` | `12762780822` | `0d5b48ff3e647e9f133516bde592a4cae21a47fc90e51c406031faeb01a041e8` |
+
+The next diagnostic preserves that exit check and all allocation inputs. Only
+after its timeout does it capture native thread locations and remove the active
+hook, then observe whether the same process exits. It still reports failure if
+this recovery is needed. This distinguishes active-hook shutdown behavior from
+an allocation-retry failure without increasing the original timeout or calling
+the failure an upstream Codex defect. The capture/removal result is unrun.
 
 ### Native macOS address-space-limit diagnostic
 
