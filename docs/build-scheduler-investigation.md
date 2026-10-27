@@ -800,6 +800,38 @@ retry, and Cargo/Bazel integration remain unmet.
 | macOS x86-64 | `12767848555` | `d86cd90e1acf33db048738ae60cdbcaee41a75eb4ca2b94ecdaafa32900211e0` |
 | macOS ARM64 | `12768376702` | `343a424dd5649d7fb70827e9316d4ecf953d2948412a082a231075ea61b50c29` |
 
+#### Native macOS compiler allocation observations
+
+Run [`40584070098`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40584070098)
+at `8c68735317e204d1a39bbd70b3ba060d457af5a1` passes on Intel and Apple Silicon.
+The [compiler diagnostic](../.github/scripts/probe-compiler-allocations.py)
+starts native Rust 1.95.0 waiting for source on standard input, installs entry
+observers, then supplies a 256-function library. Both compilers report commit
+`59807616e1fa2540724bfbac14d7976d7e4a3860`, LLVM 22.1.2 and Frida 17.24.3.
+The source SHA-256 is
+`12191b49f06f0629b5b806ff05b11fed5825c7d6fb0330f44ee575b2c738e55d`.
+
+Both architectures install six unique entry observers in `libSystem.B.dylib`
+without rejection. During compilation, five entries are observed: `malloc`,
+`realloc`, `mmap`, `calloc` and `posix_memalign`. The installed `aligned_alloc`
+observer records no call. Each compiler exits zero without diagnostics.
+After removing the output, the controller repeats the exact command with the
+same source and working directory without instrumentation. Metadata bytes
+match within each architecture. Intel produces 35,839 bytes and Apple Silicon
+35,840 bytes; cross-architecture byte equality is not an acceptance condition.
+
+| Target | Artifact ID | Compiler log SHA-256 | Metadata SHA-256 |
+| --- | --- | --- | --- |
+| macOS x86-64 | `12770722699` | `e112ceb1e632b10d059fadedc285f741c4da37fda38826b83f8d2340fa236097` | `9d645459fcadd3795332e13652172bd7989f4e138845511eb18c81f36e1b8e06` |
+| macOS ARM64 | `12771290331` | `f4ef9e1420fcd1857d55938e2ea351892616ff87893329781973f44b747435a9` | `974427dd04072aa8c7788fbc7f1319fe171a7bee09b75646561e1d6276a232ad` |
+
+The Intel/ARM64 jobs take 67/69 seconds including setup, evidence upload and
+cleanup. This accepts observation of these exports in the actual compiler
+and unchanged metadata for this input. It does not establish interception of
+every allocation, compiler allocation denial/continuation, linker or build-script
+children, physical-pressure recovery or scheduler integration. No Codex build
+or previously accepted forwarding/retry fixture is repeated.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the
