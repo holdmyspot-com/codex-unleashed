@@ -51,7 +51,7 @@ public final class RetentionPreview
 	 * The object must contain release records with tag_name/draft/prerelease fields,
 	 * protected_upstream_refs strings and package_versions with unique positive integer
 	 * IDs and metadata.container.tags string arrays. The two newest distinct numeric stable
-	 * releases and explicit stable references protect every alias of matching Cargo manifests.
+	 * releases and explicit stable or {@code main} references protect every alias of matching Cargo manifests.
 	 * Untagged and other Cargo versions are obsolete candidates; unrelated tagged versions
 	 * are unmanaged. IDs retain inventory order. This preview neither authorizes deletion
 	 * nor accounts for writers that change the registry after collection.
@@ -151,8 +151,9 @@ public final class RetentionPreview
 		Set<String> retained = new LinkedHashSet<>(ordered.subList(0, Math.min(2, ordered.size())));
 		for (String reference : strings(array(document, "protected_upstream_refs")))
 		{
-			if (!STABLE_TAG.matcher(reference).matches())
-				throw new IOException("Protected reference must be a stable upstream tag: " + reference);
+			boolean supportedReference = reference.equals("main") || STABLE_TAG.matcher(reference).matches();
+			if (!supportedReference)
+				throw new IOException("Protected reference must be a stable upstream tag or main: " + reference);
 			retained.add(reference);
 		}
 		return List.copyOf(retained);

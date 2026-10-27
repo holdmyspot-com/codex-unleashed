@@ -117,8 +117,9 @@ jq -n \
 The command reuses old main's numeric stable-version ordering and manifest-level
 Cargo alias policy, using the existing Jackson dependency for JSON. It excludes
 drafts and prereleases, selects the newest two distinct stable tags and adds
-explicit protected stable references. Any matching Cargo alias protects the
-whole package version. Untagged versions and other Cargo versions are reported
+explicit protected stable references or `main`. Other branch names are rejected.
+Any matching Cargo alias protects the whole package version. Untagged versions
+and other Cargo versions are reported
 as obsolete candidates; unrelated tagged versions are unmanaged. All fields and
 unique positive integer version IDs are validated before any preview is emitted.
 No stable release, missing tag arrays, duplicate IDs and malformed JSON fail
