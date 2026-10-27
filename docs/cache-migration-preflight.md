@@ -266,6 +266,32 @@ with `cache=false` during target selection and skips the build job. This checks
 input validation only; miss rejection and successful hit-required compilation
 still need their own execution evidence.
 
+Focused Linux run [`40502660994`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502660994)
+at `4325b567859884b936eb0aea44ad4a390cd3dc61` passes in 1h 26m 22s,
+including both native version smokes, source/dependency guards and verified
+private publication. All four initial lookups (exact/compatible, verified/partial)
+report misses. Its compatible identity is
+`cargo-seed-v1-x86_64-unknown-linux-musl-e6b99579981ac5ee52eb93f0af9d8d4395c568678cdf8d93fc8fe3f8d9cc8137`;
+none of the three migrated x86-64 compatible aliases has that identity.
+This is new population, not acceptance of restoration from a migrated cache.
+The input receipt records runner image `20261026.354.1`; explaining each
+difference from the migrated producers requires their matching input receipts.
+No cache-compatibility check is relaxed to force a hit.
+
+The five build logs contain 1,184 `Compiling` entries after removing terminal
+color codes, summed across invocations rather than counted as distinct packages.
+The CLI and app-server stages take 3,074 and 1,223 seconds. The final manifest is
+`sha256:a835e91c5986dc744973dc09f1239d3337f15445a6f33baa3c44b9a4f7f8a23d`;
+the final save reuses five checkpoint groups, uploads 1,392,131 archive bytes
+and takes 18 seconds. Earlier checkpoint transfers are separate from that final
+save. Downloaded artifact `12738697965` matches its API-reported digest
+`sha256:ada7b5ff5c78b0d6ff242d41040b611cb838b184966213372fbb0ab13d13d05d`.
+The root executor retains its archive and extracted evidence under the session's
+`isolated-cache-acceptance-EUtyoV` until isolated-package acceptance is
+recorded, then removes that owned directory. Follow-up `40508366323` requires
+a cache hit before compilation; it is the next restore check, not another
+unconditional cold population run.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
