@@ -447,7 +447,23 @@ distinguish the memory consumers and service shutdown sequence. It changes
 diagnostics only; Cargo concurrency is unchanged. Its compilation-free preflight
 `40423436947` passes in 28 seconds, including repeated samples, journal
 delivery and all signal/exit cases. Focused ARM cached build `40423537666`
-uses that tested revision and remains active. Independent Linux x86-64
+uses that tested revision and ends with exit 143 during CLI compilation.
+Its final sample identifies four rustc processes with approximately
+4.5/4.2/3.2/2.5 GiB resident memory, alongside only 282.2 MiB available
+memory and 4.9 MiB free swap. This identifies concurrent compilers as the
+dominant resident-memory consumers; the initiating termination event remains
+uncaptured. Terminal log: `arm-kernel-signal-EFWxgu/consumers-job.log`, SHA-256
+`880c513bfe0b8bcc712284c13e1a3132239549366b41f1191428a07795ab3193`.
+
+The owner directs reducing concurrency under memory pressure and revisiting
+the limit with the scheduler. Revision
+`f4f89c01b89a436bcfebb65d65575f91209f8abf` sets `CARGO_BUILD_JOBS=2`
+for the ARM release-build step only. Bash syntax and focused execution of
+the actual step's environment setup verify two jobs for ARM and no override
+for the other tested target families. This preserves upstream source and
+Cargo compilation inputs, and leaves existing cache identities intact.
+Run `40425326629` is the incremental cached ARM retry with that limit;
+its terminal acceptance remains pending. Independent Linux x86-64
 run `40421492069` exercises the existing actual-CLI input-invalidation check
 at the earlier tested revision; its terminal outcome remains pending. The
 Intel Mac population run is preserved without cancellation.

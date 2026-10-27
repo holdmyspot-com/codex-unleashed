@@ -71,8 +71,10 @@ and full 3,072 MiB swap: severe memory pressure is established, but no OOM
 event or terminating actor is captured. The next diagnostic includes all
 processes sorted by resident memory and informational journal messages;
 compilation-free preflight `40423436947` passes in 28 seconds, and focused
-ARM build `40423537666` uses the tested revision. Cargo concurrency and
-upstream source remain unchanged. Independent Linux x86-64 run
+ARM build `40423537666` uses the tested revision and fails with exit 143.
+The final sample identifies four rustc processes using approximately
+4.5/4.2/3.2/2.5 GiB resident memory, with swap nearly full. The exact
+terminating event remains uncaptured. Independent Linux x86-64 run
 `40421492069` exercises the existing actual-CLI changed-input and repeated-input
 reuse checks, with its terminal outcome pending. Neither checkpoint is closed.
 
@@ -82,6 +84,9 @@ private caches; do not interrupt the already-running diagnostic to change its
 concurrency. Revisit this temporary two-job limit in step 3 when the scheduler
 can account for the memory requirements of concurrent work. Other targets
 retain their existing concurrency until evidence warrants a change.
+The focused shell checks pass, and incremental cached ARM retry
+`40425326629` at `f4f89c01b89a436bcfebb65d65575f91209f8abf` runs with
+the two-job limit. Its terminal outcome remains pending.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
