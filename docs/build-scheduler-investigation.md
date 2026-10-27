@@ -45,9 +45,9 @@ than repeatedly killing and retrying it. Retry eligibility does not bypass the
 memory check or the original FIFO order. Native behavior and Cargo/Bazel retry
 integration remain unverified.
 
-No scheduler implementation is selected or accepted by this document. Linux
-swap-control checks pass below; allocation-blocking, FIFO continuation and
-build-tool integration acceptance remain open. Existing two-job Linux limits
+The pure admission/retry policy below is implemented, but no complete scheduler
+integration is accepted by this document. Linux swap-control checks pass below;
+allocation-blocking, FIFO continuation and build-tool integration acceptance remain open. Existing two-job Linux limits
 remain until replacement acceptance; the active baseline build is not changed by
 this investigation.
 
@@ -1544,3 +1544,36 @@ marker bytes: exact marker verification, remote wait and cleanup pass, leaving
 only the deliberately injected exit-17 workflow failure. The receipt retains the
 x86-64 lifecycle failure separately from its accepted native memory result.
 No accepted Codex build or six-platform idle telemetry check is repeated.
+
+### Admission and ordered retry policy
+
+The [policy](../.github/scripts/build_scheduler/policy.py) now selects one control
+request from immutable job, budget and native-observation inputs. It performs
+no process operations and has no third-party runtime dependencies. Fourteen
+[focused checks](../.github/scripts/test-build-scheduler-policy.py) pass locally
+with `python3 -B .github/scripts/test-build-scheduler-policy.py`. The
+[receipt](evidence/scheduler-policy.json) retains source identities, initial
+behavior-specific failures and representative returned decisions.
+
+Admission reserves configured OS headroom and each running action's estimated
+remaining growth. It avoids charging already resident bytes twice. An unknown
+peak allows only isolated measurement; estimates remain best-effort inputs from
+the future controller. Blocked actions take precedence in allocation-denial
+order. Aborted actions retain original positions and await a recorded actual
+completion epoch; an ineligible older retry cannot be bypassed by new work.
+Resumption applies the same memory check while retaining its existing process
+slot. These checks distinguish a one-byte budget shortfall from an exact fit.
+
+During an observed swap incident with current native pressure, the policy selects
+the newest eligible attempt while protecting the oldest running action. A
+STOPPING entry prevents additional decisions until its process tree is reaped.
+Pressure relief stops further termination even if swap occupancy remains high.
+The controller must obtain valid native observations, apply and acknowledge each
+request, retain retry positions, and advance completion epochs only for
+non-aborted action completions. Returned requests do not prove those effects.
+
+This accepts deterministic policy decisions only. Native process-tree lifecycle,
+monitor integration, measured estimate updates, retained-memory deadlock recovery,
+allocation-hook safety and Cargo/Bazel integration remain open. The existing
+fixed build limits remain in force. No remote runner or accepted Codex build is
+needed for these in-process policy checks.

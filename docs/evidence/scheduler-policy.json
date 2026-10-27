@@ -1,0 +1,45 @@
+{
+  "scope": "Pure admission/retry decisions; native lifecycle and Cargo/Bazel integration remain unrun.",
+  "runtime": "3.12.3",
+  "dependencies": "Python standard library only; no third-party acquisition or lockfile required",
+  "source_sha256": "7fccfd30db45d8a4824746aa7a5829ef82fa83938b9211c2ed3fb1af13870c1b",
+  "checks": 14,
+  "rows": [
+    {
+      "case": "remaining growth",
+      "available_bytes": 799,
+      "decision": "wait",
+      "job": null,
+      "reason": "Expected growth exceeds memory remaining after reservations"
+    },
+    {
+      "case": "remaining growth",
+      "available_bytes": 800,
+      "decision": "start",
+      "job": "next",
+      "reason": "Memory estimate fits available budget"
+    },
+    {
+      "case": "swap incident",
+      "current_pressure": true,
+      "decision": "terminate",
+      "job": "newest",
+      "reason": "Relieve observed swap pressure; retain the oldest running job"
+    },
+    {
+      "case": "swap incident",
+      "current_pressure": false,
+      "decision": "wait",
+      "job": null,
+      "reason": "No unfinished work is ready"
+    }
+  ],
+  "decision_observation_source_sha256": "32618a6bb1c9339bf4259059bb4a4f8ba205317c149fb431c9f13c345f9fbc6b",
+  "test_command": "python3 -B .github/scripts/test-build-scheduler-policy.py",
+  "test_result": "14 tests passed; no process or build-tool execution is claimed",
+  "red_controls": [
+    "Initial WAIT-only scratch API failed three decision assertions (start, resume, terminate).",
+    "Construction initially accepted invalid Budget bytes; behavior assertion failed before validation was added.",
+    "RETRY initially accepted its default zero completion epoch; focused assertion failed before requiring a positive epoch."
+  ]
+}
