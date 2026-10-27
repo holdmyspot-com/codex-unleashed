@@ -65,10 +65,16 @@ build/source/dependency setting or cache input changes.
 Resource telemetry preflight `40421425406` at
 `0a7c8e66db46eee5d4dd84f40e174b46ff91d5c2` passes in 22 seconds,
 including repeated memory samples during a command, journal-marker delivery
-and the three signal/exit cases. ARM cached build `40421547755` now runs
-with those diagnostics. Independent Linux x86-64 run `40421492069` exercises
-the existing actual-CLI changed-input and repeated-input reuse checks.
-Both terminal outcomes remain pending; neither closes a checkpoint.
+and the three signal/exit cases. ARM cached build `40421547755` fails after
+15 minutes with exit 143. Its final sample records 189.3 MiB available memory
+and full 3,072 MiB swap: severe memory pressure is established, but no OOM
+event or terminating actor is captured. The next diagnostic includes all
+processes sorted by resident memory and informational journal messages;
+compilation-free preflight `40423436947` passes in 28 seconds, and focused
+ARM build `40423537666` uses the tested revision. Cargo concurrency and
+upstream source remain unchanged. Independent Linux x86-64 run
+`40421492069` exercises the existing actual-CLI changed-input and repeated-input
+reuse checks, with its terminal outcome pending. Neither checkpoint is closed.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
