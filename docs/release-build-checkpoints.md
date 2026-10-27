@@ -475,7 +475,17 @@ The final six-group verified manifest is
 Its save takes 17 seconds, uploads 1,369,821 metadata bytes and reuses all
 five compiled groups. Terminal log: `arm-kernel-signal-EFWxgu/two-jobs.log`,
 SHA-256 `04a8f8e6ddad2e6a818ad9b1860267452a44cdca5070551cf7431a18a9ac6812`.
-Same-revision attempt 2 now checks warm reuse; its result remains pending.
+Same-revision attempt 2, job `121956252785`, passes warm reuse in 6m 36s.
+It restores that exact six-group verified manifest in 84 seconds and logs
+zero Rust compilation entries. Executable build invocations take
+11/1/1/1/1 seconds for bwrap/proxy/code-mode-host/CLI/app-server.
+Checkpoint saves take 28/23/17/16/16 seconds. Both native smokes,
+source/dependency guards, recording and private verified publication pass.
+The final save takes 16 seconds, uploads 1,357,853 metadata bytes and reuses
+all five compiled groups. Warm log: `arm-kernel-signal-EFWxgu/two-jobs-warm.log`,
+SHA-256 `8278aa9d66c22c36a1d9f848a65e96409a4bc5b6babd9f382c57efed1cb2e6e4`.
+This verifies ARM grouped-cache warm reuse; the separate cumulative clean
+matrix and baseline runtime gates remain open.
 Independent Linux x86-64
 run `40421492069` passes the existing actual-CLI input-invalidation check
 at the earlier tested revision; the verified receipt and timings appear below. The

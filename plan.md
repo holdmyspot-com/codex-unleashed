@@ -28,7 +28,7 @@ results from the remaining acceptance gates; detailed historical receipts follow
 | Step 2 original cache format | All six targets pass cold/warm comparisons with unchanged compilations reused. | This does not accept the newer grouped transport. |
 | Step 2 packaged cache helper | Run [`40407974539`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40407974539) at `6e67d90609d78e1cbcdf99eb0c54d41dff1284fa` passes helper build/verification, the packaged launcher/Cargo freshness fixture and source guards on all six native targets. | This fixture does not replace actual Codex grouped-cache acceptance or final clean verification. |
 | Step 2 representative CLI invalidation | Earlier run `40393398689` passes; later-helper run `40421492069` confirms original-input reuse, exactly one CLI rebuild after changing its commit input, changed runtime provenance and zero rebuilds on repetition. | This is Linux x86-64 evidence. Remaining platform-cache, runtime and final clean-verification gates stay open. |
-| Step 2 cache grouped by build step | Linux x86-64, both Windows targets and macOS ARM64 pass actual Codex reuse checks. Linux ARM64 population passes with two Cargo jobs, native smokes, guards and private publication. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Intel Mac run `40373556470` attempt 2 reaches GitHub's six-hour limit after saving three completed executable checkpoints; same-revision attempt 3 resumes from partial cache. Linux ARM64 same-revision warm attempt is active. Final clean verification of the cumulative setup remains unrun. |
+| Step 2 cache grouped by build step | Both Linux targets, both Windows targets and macOS ARM64 pass actual Codex reuse checks. Linux ARM64 warm attempt restores the exact six-group manifest, compiles zero Rust units and passes smokes, guards and private publication in 6m 36s. See [release-build-checkpoints.md](docs/release-build-checkpoints.md). | Intel Mac run `40373556470` attempt 2 reaches GitHub's six-hour limit after saving three completed executable checkpoints; same-revision attempt 3 resumes from partial cache. Final clean verification of the cumulative setup remains unrun. |
 | D8 private retention preview | Runs `40404430412` and `40404968404` pass collection, all 37 helper tests, runtime assembly and read-only preview. The latter has zero annotations. | Automatic retention and concurrent-writer/deletion safety remain open; nothing is deleted. |
 
 ARM signal-observation preflight `40413519826` passes known-sender capture,
@@ -94,7 +94,10 @@ the two-job limit. Attempt 1 passes compilation, native smokes, guards and
 verified private publication in 1h 17m 23s. Its 881 memory samples have at
 least 1,426.1 MiB available memory and at most 567.6 MiB used swap, compared
 with near-full swap in the failed four-job runs. Same-revision attempt 2
-checks warm reuse; its terminal outcome remains pending.
+passes warm reuse in 6m 36s, restoring the exact six-group manifest in
+84 seconds and logging zero Rust compilation entries. Native smokes,
+source/dependency guards and verified private publication pass. Final save
+takes 16 seconds and reuses all five compiled groups.
 
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
