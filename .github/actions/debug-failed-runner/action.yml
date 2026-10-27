@@ -1,0 +1,59 @@
+name: Debug a failed runner
+description: Keep a failed workspace available through key-restricted SSH until the remote shell exits
+inputs:
+  public-key:
+    description: Public SSH key whose private key remains with the debugging client
+    required: true
+outputs:
+  ssh-command:
+    description: SSH command for the owned live debug session
+    value: ${{ steps.upterm.outputs.ssh-command }}
+runs:
+  using: composite
+  steps:
+    - name: Prepare restricted access
+      id: key
+      shell: bash
+      env:
+        DEBUG_PUBLIC_KEY: ${{ inputs.public-key }}
+        DEBUG_ACTION_PATH: ${{ github.action_path }}
+      run: node "$DEBUG_ACTION_PATH/session.cjs" prepare
+
+    - name: Open restricted debug session
+      id: upterm
+      uses: owenthereal/action-upterm@b9dfa526f890bbd5162d781f8d9c69b97731d73d
+      env:
+        UPTERM_AUTHORIZED_KEYS: ${{ steps.key.outputs.key-file }}
+      with:
+        upterm-version: v0.40.0
+        detached: true
+
+    - name: Record live connection details
+      id: connection
+      shell: bash
+      env:
+        DEBUG_ACTION_PATH: ${{ github.action_path }}
+        DEBUG_STORAGE: ${{ steps.key.outputs.storage }}
+        DEBUG_SSH_COMMAND: ${{ steps.upterm.outputs.ssh-command }}
+      run: node "$DEBUG_ACTION_PATH/session.cjs" handoff
+
+    - name: Publish connection details while the runner stays alive
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+      with:
+        name: runner-debug-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ github.run_attempt }}
+        path: ${{ steps.key.outputs.storage }}/connection.json
+        retention-days: 1
+        if-no-files-found: error
+
+    - name: Wait for remote debugging to finish before cleanup
+      shell: bash
+      env:
+        DEBUG_SESSION_NAME: ${{ steps.connection.outputs.session-name }}
+      run: upterm session wait "$DEBUG_SESSION_NAME"
+
+    - name: Remove owned public-key and connection storage
+      if: always() && steps.key.outputs.storage != ''
+      shell: bash
+      env:
+        DEBUG_STORAGE: ${{ steps.key.outputs.storage }}
+      run: node -e 'require("node:fs").rmSync(process.env.DEBUG_STORAGE, {recursive:true, force:true})'

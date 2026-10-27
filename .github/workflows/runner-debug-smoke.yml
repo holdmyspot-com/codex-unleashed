@@ -1,0 +1,91 @@
+name: Runner failure debugging smoke test
+
+on:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/runner-debug-smoke.yml]
+  workflow_dispatch:
+    inputs:
+      public_key:
+        description: Public SSH key for the debugging client
+        type: string
+        required: true
+      target:
+        description: Native target to verify; all exercises the release matrix
+        type: choice
+        default: x86_64-unknown-linux-musl
+        options: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, x86_64-apple-darwin, aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, remaining, all]
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - id: matrix
+        env:
+          PROBE_TARGET: ${{ inputs.target }}
+        run: |
+          printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(($target == "all") or (.target == $target) or (($target == "remaining") and (.target != "x86_64-unknown-linux-musl")))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: select
+    name: Debug - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions/debug-failed-runner
+
+      - name: Create owned partial build state
+        run: |
+          set -euo pipefail
+          diagnostic="$(mktemp -d "$RUNNER_TEMP/runner-debug-smoke-XXXXXX")"
+          printf 'RUNNER_DEBUG_SMOKE=%s\n' "$diagnostic" >> "$GITHUB_ENV"
+          printf 'completed-part\n' > "$diagnostic/build-progress.txt"
+
+      - name: Record the deliberate build failure
+        id: failure
+        run: exit 17
+
+      - name: Debug the original failed workspace
+        if: failure() && steps.failure.outcome == 'failure'
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+
+      - name: Verify manual incremental retry retained completed work
+        if: always() && env.RUNNER_DEBUG_SMOKE != ''
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const actual = fs.readFileSync(path.join(process.env.RUNNER_DEBUG_SMOKE, 'build-progress.txt'), 'utf8');
+          if (actual !== 'completed-part\nincremental-retry\n')
+            throw new Error(`Unexpected retained build state: ${JSON.stringify(actual)}`);
+          console.log('Same-runner incremental retry preserved the completed part');
+          JS
+
+      - name: Remove owned smoke state
+        if: always() && env.RUNNER_DEBUG_SMOKE != ''
+        run: node -e 'require("node:fs").rmSync(process.env.RUNNER_DEBUG_SMOKE, {recursive:true, force:true})'
