@@ -180,6 +180,15 @@ archives are blobs listed directly in the retained manifest's layers, rather
 than independently prunable package versions; protecting that manifest is the
 relevant retention boundary.
 
+The same old-main cleanup also invokes `prune-actions-caches`. Its inspected
+`CacheRetention` classifier recognizes stable-release associations and selected
+legacy prefixes. The restart's Cargo download prefix is
+`upstream-<source-commit>-downloads-v1`, so source comparison places those keys
+outside those managed families. This is classifier analysis, not a hosted
+deletion test. Associating restart dependency-download caches with the approved
+two-stable-release retention policy remains part of D8; moving compiled caches
+to another GHCR package does not implement that Actions retention policy.
+
 ## Private package isolation transfer proof
 
 The focused [cache-package-transfer.yml](../.github/workflows/cache-package-transfer.yml)
