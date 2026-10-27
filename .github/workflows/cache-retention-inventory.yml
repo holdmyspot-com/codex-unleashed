@@ -46,11 +46,11 @@ jobs:
           java-version: 27.0.1
 
       - name: Set up the helper regression fixture's Rust toolchain
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
 
       - name: Build and verify the read-only preview helper
         env:
-          RUSTUP_TOOLCHAIN: 1.99.1
+          RUSTUP_TOOLCHAIN: 1.95.0
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/retention-helper-temp"

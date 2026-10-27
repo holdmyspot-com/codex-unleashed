@@ -1,6 +1,12 @@
-# Stable upstream build baseline
+# Upstream build baseline
 
-## Current baseline constraint
+## Current main snapshot
+
+The owner replaces the stable baseline with upstream main commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`. Source retrieval uses that exact commit, with Rust 1.95.0 and the maintained `prepare-bazel-ci` action (Bazelisk 1.30.0). Node consumers select `.nvmrc` (24.22.1); this includes the cache transport checks, not uncached native compilation. Release jobs record CPU/RAM/disk capacity and effective Cargo concurrency. Linux retains two concurrent Cargo jobs and all hosts remain free standard runners.
+
+The owner directs assuming previously passing checks are equivalent across this version update unless contradictory evidence appears. Carry forward accepted release compilation, native smokes, cache behavior, clean builds and helper results; keep their receipts identified with the versions actually executed. Do not repeat those checks solely because versions changed. Failed and unrun work remains open; contradictory evidence requires only the smallest affected recheck. Private stable caches and cache eligibility remain intact. Retention's stable-only protected-reference contract needs a focused extension before publishing main-snapshot caches. See [plan.md](../plan.md) for the current transition and remaining checkpoints.
+
+## Historical stable baseline constraint
 
 Upstream source and tests remain unmodified through steps 1–3. The owner explicitly approves retaining the diagnosed pipe, TTY, sandbox-profile and blocked-descriptor replay failures as failed baseline checks and defers their repairs to step 4. Those four failures no longer block completing the earlier steps; diagnostic errno injection remains a causal probe, not a normal passing check or production workaround. The blocked-descriptor mount reproduction also remains a failed check. Unrelated failures and unrun gates still need their own evidence and disposition.
 
@@ -266,7 +272,9 @@ These findings remain visible and nonfatal. Recheck each against the cumulative 
 From this project's root, retrieve an independent upstream checkout:
 
 ```sh
-git clone --depth 1 --branch "$(cat .github/upstream-ref)" https://github.com/openai/codex.git upstream
+git init upstream
+git -C upstream fetch --depth 1 https://github.com/openai/codex.git "$(cat .github/upstream-commit)"
+git -C upstream checkout --detach FETCH_HEAD
 git -C upstream rev-parse HEAD
 git -C upstream status --short
 ```

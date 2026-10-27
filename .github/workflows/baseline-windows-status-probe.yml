@@ -43,8 +43,9 @@ jobs:
           persist-credentials: false
 
       - name: Prepare upstream's Bazel host and toolchain
-        uses: ./.github/actions/setup-bazel-ci
+        uses: ./.github/actions/prepare-bazel-ci
         with:
+          cache-scope: baseline-status-probe
           target: x86_64-pc-windows-gnullvm
 
       - name: Compare direct and Bazel workspace status

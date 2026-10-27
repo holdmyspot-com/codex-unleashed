@@ -76,7 +76,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
 
       - name: Set up the upstream Rust toolchain
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
           targets: ${{ matrix.target }}
 
@@ -125,6 +125,11 @@ jobs:
       - name: Select upstream's Windows SQLite configuration
         if: matrix.target == 'x86_64-pc-windows-msvc'
         run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Select the declared Node version for cache transport checks
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: .nvmrc
 
       - name: Set up the GHCR cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d

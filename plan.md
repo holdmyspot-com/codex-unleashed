@@ -2,7 +2,7 @@
 
 ## Goal and starting state
 
-Rebuild Codex Unleashed incrementally from the latest stable OpenAI Codex release on an independent branch named `main.new`. Preserve `main` and its history as the source for selective migration and later discussion. The orphan root contains only this plan; upstream source and the minimum build setup enter in step 1.
+Rebuild Codex Unleashed incrementally from the owner-selected OpenAI Codex baseline on an independent branch named `main.new`. Preserve `main` and its history as the source for selective migration and later discussion. The orphan root contains only this plan; upstream source and the minimum build setup enter in step 1.
 
 Old-main source commit: `545479059ac86394049b6efd3bf4297b1ca18d17`.
 
@@ -15,9 +15,17 @@ Selected scope:
 - GitHub runner cost: use only free standard GitHub-hosted runners. Do not provision or select paid larger runners; investigate storage consumption and adapt the build workflow within the free runners' limits.
 - Branch publication: pushing ongoing work to `main.new` is authorized without repeated approval. Publishing releases remains a separate decision.
 
-The selected stable tag and exact commit are resolved from upstream when step 1 starts and remain fixed through step 6. Do not silently move the baseline as new releases appear.
+The owner explicitly replaces the original stable baseline with upstream main at commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`. `.github/upstream-ref` records `main` and `.github/upstream-commit` supplies the immutable checkout identity. Keep that commit fixed through step 6 unless the owner directs another change; do not follow a moving branch implicitly. Keep upstream source/tests unmodified through steps 1–3.
 
 ## Current execution
+
+The current baseline is upstream main commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`, with Rust 1.95.0, Bazel 9.2.0, Bazelisk 1.30.0 and Node 24.22.1 from its `.nvmrc`. The owner selects this coordinated source/toolchain update after reviewing current upstream workflows. Adopt the maintained `prepare-bazel-ci` action with separate cache scopes, explicit Node selection for cache-transport checks, and routine release-runner CPU/RAM/disk and Cargo-concurrency logging. Python wheel tooling remains outside this change.
+
+The owner directs carrying forward checks that passed on the old versions: assume equivalent behavior unless new evidence contradicts that result. Preserve accepted release compilation, native-smoke, cache, clean-build and helper results and existing cache eligibility; a source/tool version change alone does not trigger their repetition. Do not launch a new cold matrix or rerun passing checks for reassurance. Historical receipts retain their exact original identities; equivalence is an owner-approved acceptance assumption, not a claim those commands ran on this snapshot. Continue failed or unrun required work. If contradictory evidence appears, repeat only the smallest affected check, preserving incremental outputs and private caches. Before enabling main-snapshot cache publication, adapt and verify retention's explicit protected-reference handling, which currently accepts only stable release tags.
+
+The optional release-profile CLI unit check is implemented in `38bb21cff3`; its shell handoff and failure-propagation probes pass. Actual CLI test execution remains unrun. Source/test modifications, product repairs, strict warnings and dependency backports remain outside steps 1–3. Investigate unresolved old failures against the new exact source when needed; do not repeat previously passing checks solely because versions changed.
+
+## Historical stable-baseline execution
 
 The numbered checkpoints remain incomplete. This summary separates accepted build
 results from the remaining acceptance gates; detailed historical receipts follow.
@@ -237,7 +245,7 @@ The owner explicitly defers the two confirmed baseline dependency-audit findings
 
 ## Ordered changes
 
-- [ ] **1. Establish a build of the latest stable upstream Codex with its default configuration.** Resolve the latest non-prerelease upstream release to a tag and commit; record both here. Inspect its maintained build and check entry points and document the exact default build command and required environment for the selected platforms. Use its default features and dependency resolution. Add only the source retrieval and minimum build setup needed for this baseline; keep this uncached baseline independent from downstream scheduling, product patches, dependency upgrades, and strict-warning policy. The owner-authorized caching work in step 2 may overlap for already-verified build paths. If the upstream default makes warnings fatal, document and narrowly disable that policy to honor this step. Acceptance: the baseline build and required upstream checks pass on each selected platform, with warning output retained and the resulting executable passing its maintained smoke check, except for the explicitly recorded owner-approved shell and dependency-audit deferrals above. Those checks retain failed status and must not be reported as passing. Investigate and resolve or explicitly disposition every other baseline failure before proceeding.
+- [ ] **1. Establish a build of the selected upstream Codex with its default configuration.** The owner replaces the original latest-stable selection with the exact upstream-main commit recorded above, including its matching source/tool versions. Inspect its maintained build and check entry points and document the exact default build command and required environment for the selected platforms. Use its default features and dependency resolution. Add only the source retrieval and minimum build setup needed for this baseline; keep this uncached baseline independent from downstream scheduling, product patches, dependency upgrades, and strict-warning policy. The owner-authorized caching work in step 2 may overlap for already-verified build paths. If the upstream default makes warnings fatal, document and narrowly disable that policy to honor this step. Acceptance: the baseline build and required upstream checks pass on each selected platform, with warning output retained and the resulting executable passing its maintained smoke check, except for the explicitly recorded owner-approved shell and dependency-audit deferrals above. Re-establish each finding's applicability to the new source. Those checks retain failed status and must not be reported as passing. Investigate and resolve or explicitly disposition every other baseline failure before proceeding.
 
 - [ ] **2. Add caching to the verified baseline.** Cache reusable downloads, generated inputs, and build outputs through the existing tool interfaces. Define invalidation from the actual inputs that determine each result. Keep build behavior and warning policy equivalent to step 1. Acceptance: cold and warm runs produce working outputs; unchanged inputs reuse cached work, a representative changed input rebuilds its affected work, and cached results pass the same relevant checks as the baseline. Record cache hits, misses, and elapsed times rather than assuming reuse.
 
