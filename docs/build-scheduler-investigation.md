@@ -338,3 +338,59 @@ Neither result proves behavior during compiler memory pressure. ARM64 requires
 the authorized monitoring/retry fallback for this control path. Windows remains
 eligible for the same fallback while active-pagefile removal is unestablished.
 Allocation blocking, ordered retries and Cargo/Bazel integration remain open.
+
+## Bazel estimated-memory admission probe
+
+Bazel 9.2.0 already owns local action admission through
+[`ResourceManager`](https://github.com/bazelbuild/bazel/blob/9.2.0/src/main/java/com/google/devtools/build/lib/actions/ResourceManager.java).
+Its [`local_resources` option](https://github.com/bazelbuild/bazel/blob/9.2.0/src/main/java/com/google/devtools/build/lib/exec/ExecutionOptions.java)
+sets a resource budget; each action supplies a memory estimate. This facility
+reserves estimates rather than disabling swap or sampling current RAM pressure.
+The Bazel server and unrelated processes can consume additional memory, and
+underestimated actions can exceed their reservations. It therefore cannot alone
+prove swap avoidance, exact allocation blocking or ordered recovery.
+
+A local Linux x86-64 fixture exercises the pinned 9.2.0 binary, verified against
+SHA-256 `7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694`.
+The installed 9.3.1 binary is not used. The isolated module contains two custom
+actions declaring 600 MB each, and one declaring 1,200 MB. The smaller actions
+write start/end timestamps around a 0.2-second wait; they do not allocate the
+declared memory. Their execution intervals test the admission boundary, not
+physical-memory consumption.
+
+Both invocations use `--jobs=2`, `--local_resources=cpu=2`,
+`--local_resources=memory=1000`, `--experimental_action_resource_set` and
+`--noallow_one_action_on_resource_unavailable`, with an owned output root and
+all user rc files ignored:
+
+| Invocation | Observed result | Accepted claim |
+| --- | --- | --- |
+| Build the two 600-MB actions together | Exit 0; output timestamps show nonoverlapping execution intervals. | The declared memory estimates serialize those actions despite two available job/CPU slots. |
+| Build the 1,200-MB action | Exit 1 with the specific insufficient-memory-resource diagnostic; its output is absent. | With oversize bypass disabled, an action exceeding the entire budget is refused before execution. |
+
+The initial fixture attempt fails during Starlark analysis because its timestamp
+format contains an unescaped percent sign. No action executes in that attempt;
+it provides no scheduling evidence. Correcting that fixture alone produces the
+results above. Each attempt removes its own module, output root and downloaded
+binary afterward. No Codex compilation, source modification or cache restore is
+performed.
+
+Reuse this native admission mechanism where it fits the final Bazel integration,
+including explicit refusal of oversized work. The remaining integration must
+supply defensible action estimates and a budget with server/OS headroom, observe
+changing pressure, and preserve the approved recovery order. The fixed budget
+probe does not accept those remaining behaviors or establish native behavior on
+macOS/Windows. Cargo's documented job count and compiler-wrapper hook likewise
+do not themselves provide memory admission.
+
+The maintained diagnostic is
+[test-bazel-memory-admission.py](../.github/scripts/test-bazel-memory-admission.py).
+It takes `--bazel` pointing to the pinned executable and `--temporary-directory`
+pointing to an existing owned parent. It creates and removes its isolated module
+and output root, retains outputs between its two invocations, and uses a Python
+worker with monotonic timestamps instead of a shell-specific date command. Its
+local Linux x86-64 execution passes both assertions: estimated memory serializes
+the two smaller actions, and the oversized action is rejected before producing
+its output. The latter is an expected negative test rather than a repaired
+failure. This validates the maintained diagnostic at its native Bazel execution
+boundary; it does not repeat Codex compilation or accept unrun native platforms.
