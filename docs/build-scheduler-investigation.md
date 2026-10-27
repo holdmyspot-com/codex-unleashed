@@ -1512,3 +1512,35 @@ It does not accept all allocator or child-process paths, production thread
 classification, safety when a caller holds another allocator lock, real memory
 pressure, ordered admission/retry, or Cargo/Bazel scheduler integration. Those
 gates remain open; no accepted Codex build or allocator fixture is repeated.
+
+### Native Windows memory signals under bounded load
+
+The [native probe](../.github/scripts/probe-windows-memory-signals.py) passes on
+[x86-64 run `40597773985`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40597773985)
+and [ARM64 run `40598765365`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40598765365).
+The [receipt](evidence/windows-memory-signals.json) records the exact source hash,
+original transcripts and baseline/load/release samples. Final source is transferred
+to a fresh folder on each native worker and its size and SHA-256 match before execution.
+The probe uses standard-library ctypes, native low/high memory notifications,
+GetPerformanceInfo, GetProcessMemoryInfo, PDH English-counter acquisition and
+PowerShell CIM pagefile inventory. PDH operation status and counter status are
+validated separately; failed queries cannot become zero paging measurements.
+
+Each process touches 256 MiB only after observing more than that request plus
+2 GiB available and a false low-memory condition. Working sets change from
+26,300,416 to 294,928,384 to 26,501,120 bytes on x86-64, and from
+27,897,856 to 296,226,816 to 27,795,456 bytes on ARM64. Allocation, release,
+notification/query cleanup and native probe exit zero pass. Both runners report
+zero pages output per second and zero current pagefile occupancy throughout.
+These observations establish acquisition and process load/release attribution,
+not real paging-pressure recovery, notification transitions under pressure or
+production admission estimates.
+
+One Upterm connection remains open per worker through transfer and execution.
+Both SSH clients exit zero. The x86-64 smoke post check fails because the diagnostic
+marker was written through Python text mode, which translates LF to CRLF on
+Windows; its finally block still removes owned storage. ARM64 writes explicit
+marker bytes: exact marker verification, remote wait and cleanup pass, leaving
+only the deliberately injected exit-17 workflow failure. The receipt retains the
+x86-64 lifecycle failure separately from its accepted native memory result.
+No accepted Codex build or six-platform idle telemetry check is repeated.
