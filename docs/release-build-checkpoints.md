@@ -701,6 +701,15 @@ ZIP SHA-256
 the job-log SHA-256 is
 `e42b20bf2a49ec3fc6c8d6c962fb3079075f9cdff58a600f0dbe57fb4603add6`.
 
-The other four clean target outcomes remain unaccepted. The root executor owns
+Windows x86-64 run `40434748709`, job `121960664316`, at the same restart
+revision passes in 2h 11m 54s. GHCR restoration is skipped; the seven build stages
+finish in 270/513/4,578/1,830/123/437/74 seconds. Both native smokes and
+source/dependency guards pass. Evidence artifact `12708224320` has uploaded
+ZIP SHA-256
+`f44784d7e48c7db4497cc6c8072f6452e90406a03d3af2d84521e5bcd5b66a15`;
+the job-log SHA-256 is
+`d07008842f8c220c42f58d8894299f8efe2de7d46d78af4cc43b8faa204fd32b`.
+
+The other three clean target outcomes remain unaccepted. The root executor owns
 the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
 then removes that directory.
