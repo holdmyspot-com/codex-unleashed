@@ -541,6 +541,20 @@ extra original-input rebuild is omitted to keep verification to the least work
 needed for this gate. This is Linux x86-64 evidence; the other required platform
 and clean-matrix gates remain open.
 
+The later helper integration repeats this gate in run `40421492069`, job
+`121916812358`, at `0a7c8e66db46eee5d4dd84f40e174b46ff91d5c2`.
+Downloaded artifact `12701284106` has archive SHA-256
+`688e7b32a48f8531dcb06049285342e7adad7f4fe8a30225cc5ec3cf1fd50293`.
+Its original-input invocation compiles no artifacts in 1.86 seconds;
+changing `CODEX_BUILD_COMMIT` rebuilds exactly the `codex` binary in
+21m 06s, with no non-CLI compilations. The running doctor reports
+`cache-invalidation-6aaac694803004a63c6f393d153c96d22521a6b9` as its commit.
+Repeating the changed input compiles no artifacts in 2.96 seconds.
+The verification receipt passes, the retained pristine-source diff is empty,
+and the native smokes, final source/dependency guards and verified cache save
+pass. This confirms the earlier invalidation result with the later helper;
+it does not close the other-platform or final clean-matrix gates.
+
 Windows ARM64 grouped population run `40373566212`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
 native smokes, source/dependency guards and verified private publication. All
