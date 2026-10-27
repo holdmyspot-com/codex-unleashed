@@ -1577,3 +1577,59 @@ monitor integration, measured estimate updates, retained-memory deadlock recover
 allocation-hook safety and Cargo/Bazel integration remain open. The existing
 fixed build limits remain in force. No remote runner or accepted Codex build is
 needed for these in-process policy checks.
+
+### Native Windows process-tree ownership
+
+The scheduler's [Windows process owner](../.github/scripts/build_scheduler/windows_process.py)
+now passes native lifecycle checks on [x86-64 run `40601516674`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40601516674)
+and [ARM64 run `40603890604`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40603890604).
+The [receipt](evidence/windows-process-tree.json) retains exact source identities,
+raw logs with SHA-256 values, original failures and final results. No Codex build
+is repeated. Each worker receives the final source alone in a fresh directory,
+with the test drivers and fixtures outside it; received hashes are checked before
+execution. One active Upterm connection per worker carries the commands and retries.
+
+`ProcessTree(command, directory, environment, output)` launches an action with an
+explicit argv, working directory and environment, borrowing its binary output.
+It owns the root and descendants through a kill-on-close Job Object. The
+[Windows JOB_LIST process attribute](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)
+assigns ownership during process creation, avoiding the previous suspended-create
+then assign window. The inherited handle list contains only duplicated standard
+streams. Completion requires zero active job processes, so an exited root cannot
+hide a living descendant. Termination stops the whole job; an aborted attempt
+must still be classified separately by the controller, since an already-exited
+root can retain status zero.
+
+The [public-operation checks](../.github/scripts/test-windows-process-tree.py)
+verify descendant termination, live-tree timeout, root-exit waiting, argv quoting,
+Unicode environment, working directory, stdout/stderr, borrowed-output ownership,
+nonzero root status and native creation failure. The root-only termination
+mutation fails with a live descendant; real job termination passes. An invalid
+executable returns Windows error 216 through both Python's launcher and this
+operation on the observed hosts; the test compares their results instead of
+assuming error 193.
+
+A [construction-cleanup regression](../.github/scripts/test-windows-process-cleanup.py)
+injects an error during launch-resource release after native process creation.
+The first prototype leaves six native handles after three failed constructions,
+even after collecting temporary Python runtime objects. Registering process and
+thread ownership before that release keeps the native count unchanged: 143 to
+143 on x86-64 and 125 to 125 on ARM64. The same collection is applied to both
+revisions so temporary runtime retention cannot hide the original leak.
+[Error-preservation checks](../.github/scripts/test-windows-process-errors.py)
+also verify that native creation errors and context-body errors stay primary
+when cleanup fails; the cleanup error remains attached as their cause.
+
+Run each native check with `python -B <test-script> .github/scripts <owned-directory>`.
+The caller supplies an existing, exclusively owned fixture directory and removes
+it after preserving diagnostics; these hosted runs use the smoke action's owned
+storage and post cleanup. The tree check also owns and removes its temporary
+child directory. Both SSH clients and remote waits exit zero. Exact retained
+marker verification and owned-storage cleanup pass on both workers. Each hosting
+workflow retains only its deliberate exit-17 failure; the receipt records that
+failure separately from the passing native checks and post operations.
+
+This accepts the Windows action lifecycle only. The production controller,
+Unix process ownership, memory-monitor integration, estimate updates, allocation
+hook safety, pressure recovery and Cargo/Bazel integration remain open. Existing
+production build limits remain unchanged and scheduler checkpoint 3 is incomplete.
