@@ -135,7 +135,28 @@ The three peer-lookup diagnostics establish an observed Bash/seccomp mechanism i
 | Clean Linux x86-64 runner loses communication | Run `40434705434`, job `121960532451`, fails after 1h 15m 17s with GitHub's lost-runner-communication annotation. Final smokes, guards and evidence upload do not finish. Its job-log API returns HTTP 404, so no compiler terminal result or resource samples are available. | Exact-source upstream release `39894017941` succeeds for primary Cargo job `120252106123`, target `x86_64-unknown-linux-musl`, on `codex-linux-x64-xl`; our host is the free standard Ubuntu 24.04 runner. That success does not identify our runner's interruption cause. The existing signal/resource observer is extended to uncached x86-64 execution, with native preflight required before a diagnostic clean retry; source, release commands and concurrency are unchanged. |
 | Initial macOS and Windows x86-64 release jobs reach our 120-minute limit | GitHub annotations identify our configured job timeout; partial compilation is not platform acceptance. The limit was removed. Windows x86-64 retry `40213213142` succeeds in 2h 8m 8s with source guards and both native smokes; macOS ARM retry `40213209183` also passes both native smokes and source guards; macOS Intel remains pending. | Exact-release upstream `rust-release` run `39894017941` succeeds. Retain the target/job/command match rather than inferring test success from release success. |
 | Intel clean verification cannot retrieve the crates.io index | Run `40438957248` attempt 1, job `121974418865`, fails before any Rust compilation: Cargo cannot transfer the `aw/s-/aws-config` index entry, exhausting its retries with zero transferred bytes. Artifact upload separately fails with `ENOTFOUND`. The source guard passes. | Exact-release upstream run `39894017941`, job `120252151708`, succeeds on target `x86_64-apple-darwin` with Rust 1.99.1: its log updates the crates.io index, downloads `aws-config v1.8.12`, compiles it and completes the release build. Its host is macOS ARM64 on `macos-15-xlarge`, whereas our failing host is native Intel on a free standard runner. Upstream does not exhibit this dependency-acquisition failure. The failed runner's network/DNS cause remains unknown; unchanged attempt 2 retries on a fresh runner without source or configuration changes. |
-| Linux ARM cache jobs lose their runner or receive shutdown | Attempt 1 of `40213329117` loses communication without build logs. Attempt 2 retains `UserCancelled` shutdown classification and exit 143; its initiating actor remains unknown after available audit checks. Guards, smokes and cache save do not execute. | Compare with the exact-release upstream ARM build and its environment. Runner interruption does not establish a compiler or test defect, and upstream release success does not identify the shutdown requester. |
+| Linux ARM cache jobs lose their runner or receive shutdown | Attempt 1 of `40213329117` loses communication without build logs. Attempt 2 retains `UserCancelled` shutdown classification and exit 143; its initiating actor remains unknown after available audit checks. Guards, smokes and cache save do not execute. | Exact-release upstream run `39894017941` passes both ARM Cargo release jobs: primary `120252106552` and app-server `120252106352`. Their logs verify the pinned source, Rust 1.99.1, target and actual successful Cargo invocations. Both use `codex-linux-arm64` hosts with 16 logical CPUs and 62.7 GiB RAM. This establishes upstream build success and a resource difference from our free standard runner; the initiating actor in our interrupted runs remains unknown. |
+
+The upstream ARM logs check out
+`6aaac694803004a63c6f393d153c96d22521a6b9` and install Rust 1.99.1
+(`58cf8f9c3`). Both install the maintained musl prerequisites and build bwrap
+before the consuming binaries. The primary invocation is
+`cargo build --target aarch64-unknown-linux-musl --release --timings --bin codex --bin codex-code-mode-host --bin codex-responses-api-proxy`;
+the app-server invocation selects `codex-app-server` and
+`codex-code-mode-host` with the same target/profile flags. Their Cargo completion
+records report 15m 18s and 9m 28s respectively. Our executable checkpoints split
+that same required binary set into separate invocations. Upstream's successful
+release compilation does not establish that any sandbox test executed.
+
+The public job-log API returns both complete logs. Their SHA-256 values are
+`05e8dce2fc8d9f93f989a9a6e6eee64ce7340509c436fc1e506c2b37a76de450`
+(primary) and
+`18ba92f38c9bea1f742023f30c2da1c72533b20ce6bcd518c65e0b2154dbabaa`
+(app-server). The root executor retains the raw logs under the session's
+`upstream-arm-comparison-vXKDSQ` directory until the failure-comparison gate is
+recorded, then removes that owned directory. The runner shutdown cause remains
+open; no source, dependency or build-concurrency change follows from this
+comparison.
 
 The Intel acquisition comparison uses the public job-log API because
 `gh run view --log` returns empty output for that upstream job. Retained
