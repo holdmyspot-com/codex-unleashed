@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import platform
 import subprocess
 import sys
 import tempfile
@@ -45,7 +46,11 @@ class SignalObservationTest(unittest.TestCase):
                     self.assertIn(f"receiver_pid={command_pid} signal=18 ", result.stdout)
                     if exit_code == 137:
                         self.assertIn(f"receiver_pid={command_pid} signal=9 ", result.stdout)
-                        self.assertIn("__arm64_sys_kill+", result.stdout)
+                        kill_syscall = {
+                            "aarch64": "__arm64_sys_kill+",
+                            "x86_64": "__x64_sys_kill+"
+                        }[platform.machine()]
+                        self.assertIn(kill_syscall, result.stdout)
                     receipt = json.loads((Path(directory) / "signal-probe.json").read_text())
                     self.assertEqual(receipt["status"], "passed")
                     expected_command_exit = -9 if exit_code == 137 else exit_code
