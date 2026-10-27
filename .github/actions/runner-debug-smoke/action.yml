@@ -1,0 +1,7 @@
+name: Own incremental debugging smoke state
+description: Create partial build state and verify it after remote debugging finishes
+runs:
+  using: node24
+  main: index.cjs
+  post: index.cjs
+  post-if: always()

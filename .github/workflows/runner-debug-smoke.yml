@@ -55,14 +55,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-          sparse-checkout: .github/actions/debug-failed-runner
+          sparse-checkout: .github/actions
 
       - name: Create owned partial build state
-        run: |
-          set -euo pipefail
-          diagnostic="$(mktemp -d "$RUNNER_TEMP/runner-debug-smoke-XXXXXX")"
-          printf 'RUNNER_DEBUG_SMOKE=%s\n' "$diagnostic" >> "$GITHUB_ENV"
-          printf 'completed-part\n' > "$diagnostic/build-progress.txt"
+        uses: ./.github/actions/runner-debug-smoke
 
       - name: Record the deliberate build failure
         id: failure
@@ -73,19 +69,3 @@ jobs:
         uses: ./.github/actions/debug-failed-runner
         with:
           public-key: ${{ inputs.public_key }}
-
-      - name: Verify manual incremental retry retained completed work
-        if: always() && env.RUNNER_DEBUG_SMOKE != ''
-        run: |
-          node - <<'JS'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const actual = fs.readFileSync(path.join(process.env.RUNNER_DEBUG_SMOKE, 'build-progress.txt'), 'utf8');
-          if (actual !== 'completed-part\nincremental-retry\n')
-            throw new Error(`Unexpected retained build state: ${JSON.stringify(actual)}`);
-          console.log('Same-runner incremental retry preserved the completed part');
-          JS
-
-      - name: Remove owned smoke state
-        if: always() && env.RUNNER_DEBUG_SMOKE != ''
-        run: node -e 'require("node:fs").rmSync(process.env.RUNNER_DEBUG_SMOKE, {recursive:true, force:true})'
