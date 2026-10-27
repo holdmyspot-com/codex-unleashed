@@ -236,6 +236,16 @@ Their removal mechanism is unobserved. Current compatible snapshots replace
 these historical request entries; migration acceptance does not imply the absent
 historical manifests can still be restored.
 
+Isolated inventory run `40502660726` at
+`4325b567859884b936eb0aea44ad4a390cd3dc61` passes the complete read-only
+workflow in 2m 19s. Its preview retains all eight compiled-cache versions,
+reports zero obsolete candidates and classifies the one bootstrap as unmanaged.
+Follow-up migration/cleanup `40503122313` at
+`613f90ee2caa0cdc081355659055be8bbec25f17` passes in 39 seconds. It verifies
+the bootstrap's exact version ID `1452472811`, digest and complete alias set,
+deletes only that version and confirms its absence from the resulting inventory.
+This completes the bootstrap cleanup handoff; no real build cache is deleted.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
