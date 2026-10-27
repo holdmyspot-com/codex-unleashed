@@ -13,11 +13,9 @@ runs:
   steps:
     - name: Prepare restricted access
       id: key
-      shell: bash
+      uses: ./.github/actions/debug-failed-runner/storage
       env:
         DEBUG_PUBLIC_KEY: ${{ inputs.public-key }}
-        DEBUG_ACTION_PATH: ${{ github.action_path }}
-      run: node "$DEBUG_ACTION_PATH/session.cjs" prepare
 
     - name: Open restricted debug session
       id: upterm
@@ -29,13 +27,23 @@ runs:
         detached: true
 
     - name: Record live connection details
-      id: connection
       shell: bash
       env:
-        DEBUG_ACTION_PATH: ${{ github.action_path }}
         DEBUG_STORAGE: ${{ steps.key.outputs.storage }}
         DEBUG_SSH_COMMAND: ${{ steps.upterm.outputs.ssh-command }}
-      run: node "$DEBUG_ACTION_PATH/session.cjs" handoff
+        DEBUG_JOIN_COMMAND: ${{ steps.upterm.outputs.join-command }}
+      run: |
+        node - <<'JS'
+        const fs = require('node:fs');
+        const path = require('node:path');
+        if (!process.env.DEBUG_SSH_COMMAND)
+          throw new Error('The remote action did not publish an SSH command');
+        fs.writeFileSync(path.join(process.env.DEBUG_STORAGE, 'connection.json'),
+          `${JSON.stringify({sshCommand: process.env.DEBUG_SSH_COMMAND,
+            joinCommand: process.env.DEBUG_JOIN_COMMAND,
+            workspace: process.env.GITHUB_WORKSPACE,
+            resume: 'Exit the remote shell to continue cleanup; the original failed step remains failed.'}, null, 2)}\n`);
+        JS
 
     - name: Publish connection details while the runner stays alive
       uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -44,16 +52,3 @@ runs:
         path: ${{ steps.key.outputs.storage }}/connection.json
         retention-days: 1
         if-no-files-found: error
-
-    - name: Wait for remote debugging to finish before cleanup
-      shell: bash
-      env:
-        DEBUG_SESSION_NAME: ${{ steps.connection.outputs.session-name }}
-      run: upterm session wait "$DEBUG_SESSION_NAME"
-
-    - name: Remove owned public-key and connection storage
-      if: always() && steps.key.outputs.storage != ''
-      shell: bash
-      env:
-        DEBUG_STORAGE: ${{ steps.key.outputs.storage }}
-      run: node -e 'require("node:fs").rmSync(process.env.DEBUG_STORAGE, {recursive:true, force:true})'

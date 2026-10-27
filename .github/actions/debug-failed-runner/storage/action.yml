@@ -1,0 +1,12 @@
+name: Own remote debugging storage
+description: Validate the public SSH key and keep its storage until the later remote session ends
+runs:
+  using: node24
+  main: session.cjs
+  post: session.cjs
+  post-if: always()
+outputs:
+  storage:
+    description: Owned directory for connection details
+  key-file:
+    description: Validated public authorized-key file
