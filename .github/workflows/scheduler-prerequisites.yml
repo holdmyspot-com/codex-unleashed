@@ -10,6 +10,7 @@ on:
         options:
           - inspect
           - verify-swap-control
+          - verify-macos-mach-control
 
 permissions:
   contents: read
@@ -33,6 +34,8 @@ jobs:
           matrix="$(jq -c --arg operation "$OPERATION" '
             if $operation == "verify-swap-control" then
               {include: map(select((.runner | startswith("ubuntu")) or (.runner | startswith("macos"))))}
+            elif $operation == "verify-macos-mach-control" then
+              {include: map(select(.runner | startswith("macos")))}
             elif $operation == "inspect" then {include: .}
             else error("Unsupported diagnostic operation") end
           ' .github/release-matrix.json)"
@@ -152,6 +155,22 @@ jobs:
             test "$(sysctl -n vm.swap_enabled)" = 0
             printf 'verified_swap_disabled=true\n'
           } > "$SCHEDULER_EVIDENCE/swap-control.txt" 2>&1
+
+      - name: Retrieve the native Mach control probe
+        if: inputs.operation == 'verify-macos-mach-control'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/probe-macos-swap-control.c
+          sparse-checkout-cone-mode: false
+
+      - name: Test native Mach control and restore the original state
+        if: inputs.operation == 'verify-macos-mach-control'
+        run: |
+          set -euo pipefail
+          trap 'rm -f -- "$SCHEDULER_EVIDENCE/swap-control-probe"' EXIT
+          cc -std=c11 -Wall -Wextra .github/scripts/probe-macos-swap-control.c -o "$SCHEDULER_EVIDENCE/swap-control-probe"
+          sudo -n "$SCHEDULER_EVIDENCE/swap-control-probe" 2>&1 | tee "$SCHEDULER_EVIDENCE/mach-control.txt"
 
       - name: Retain diagnostic evidence for one day
         if: always() && env.SCHEDULER_EVIDENCE != ''

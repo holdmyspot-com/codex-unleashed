@@ -19,9 +19,27 @@ The owner separately permits terminating and retrying a selected unfinished job
 when retained memory prevents progress. This fallback does not establish that an
 allocation can be blocked or that a killed process can resume.
 
-No scheduler implementation is selected or accepted by this document. Native
-swap-control, allocation-blocking, FIFO continuation and build-tool integration
-checks remain unrun. Existing two-job Linux limits remain until replacement
+When machine swap cannot be disabled, the owner permits monitoring swap usage
+and terminating the newest unfinished build jobs when usage increases. Aborted
+jobs retain their original queue positions and become eligible for retry when
+a running job completes. Preserve completed outputs; terminate the selected
+job's children as well, and wait for their exits before reassessing memory.
+
+Swap occupancy alone cannot establish whether another termination is needed:
+the newest job may occupy RAM while older jobs or unrelated processes own the
+swapped pages. Killing that job can relieve pressure without reducing observed
+swap occupancy. A loop that requires occupancy to decrease can consequently
+kill every build job. The fallback must verify relief using native memory
+pressure, available memory and paging activity alongside swap occupancy, and
+retain the oldest running job while stopping new admissions. If that job alone
+cannot progress within available memory, report insufficient capacity rather
+than repeatedly killing and retrying it. Retry eligibility does not bypass the
+memory check or the original FIFO order. Native behavior and Cargo/Bazel retry
+integration remain unverified.
+
+No scheduler implementation is selected or accepted by this document. Linux
+swap-control checks pass below; allocation-blocking, FIFO continuation and
+build-tool integration acceptance remain open. Existing two-job Linux limits remain until replacement
 acceptance; the active baseline build is not changed by this investigation.
 
 ## Existing project code
@@ -174,7 +192,7 @@ operation because a supported active-pagefile removal operation has not been
 selected; its read-only inventory remains available. The workflow is manual-only
 after the initial inventory, so edits do not repeat completed inspections.
 
-The native hosted-runner control-operation checks remain unrun. In particular, changing a
+Native swap-control acceptance remains incomplete. In particular, changing a
 persistent setting does not prove that the current build has no active swap:
 
 - Microsoft's [Win32_PageFileSetting contract](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-pagefilesetting)
@@ -221,8 +239,8 @@ privilege or controlling active pagefiles is not attempted.
 The Windows ARM64 observation directly demonstrates why startup settings cannot
 stand in for runtime state: its configured drive differs from its active drive.
 The macOS observations likewise show that zero allocated swap does not imply
-`vm.swap_enabled=0`. Native swap-disable operations and their effective-state
-checks are the next unrun prerequisite, followed by allocation-failure probes.
+`vm.swap_enabled=0`. This inventory alone does not accept a swap-disable operation
+or an allocation-failure mechanism; the subsequent control results follow below.
 
 The following one-day artifacts contain `identity.txt` and the platform's raw
 memory inventory. The SHA-256 values are computed from the downloaded memory
@@ -241,3 +259,48 @@ The download operation removes its own temporary directory after reading and
 hashing these files. This durable summary preserves the established observations
 after the short-lived artifacts expire; a later native probe must record its own
 image identity rather than silently treating these images as unchanged.
+
+### Native swap-control results
+
+Run [`40550597505`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40550597505)
+at `39d446bf6f0caa857079fb3105784cede7f658a3` exercises only the four Linux/macOS
+swap-control jobs. Both Linux jobs pass: `sudo -n swapoff --all` removes the
+3,221,221,376-byte active swapfile, the subsequent active-swap listing is empty,
+and the probe reports `verified_swap_disabled=true`. The x86-64 image is
+`20261023.334.3`, differing from the preceding inventory; ARM64 retains
+`20261026.166.1`. These results accept the Linux control operation on those images,
+not a subsequent compiler build without swap.
+
+Both macOS jobs fail at the control operation. Their downloaded diagnostic says
+`sysctl: oid 'vm.swap_enabled' is read only`, followed by the explicit refusal to
+claim swap disabled. Their images match the earlier inventory. Upload and cleanup
+still pass. This rejects that particular runtime setter; it does not establish
+that every other native mechanism is unavailable. Windows active-pagefile
+control remains unrun, and the full scheduler contract remains unaccepted.
+
+Downloaded control-file SHA-256 values and one-day artifact identities:
+
+| Target | Artifact ID | Control-file SHA-256 |
+| --- | --- | --- |
+| Linux x86-64 | `12755066694` | `0c5086594ec838136debcc2e65c1ab20fc678ea0d98af7d9b5f95b36cc2c6821` |
+| Linux ARM64 | `12754857358` | `a9b3c43089736b9bdea933b161adf790af30437d6936d9a2bcb44854f6af6d43` |
+| macOS x86-64 | `12754558107` | `1c5f835d519ffa50f3b3630de9dbc593f3643c6669d80b44dfcc9dea4b8a7483` |
+| macOS ARM64 | `12753539219` | `1c5f835d519ffa50f3b3630de9dbc593f3643c6669d80b44dfcc9dea4b8a7483` |
+
+The download operation removes its own temporary directory after collecting the
+results. No Codex source, build settings or active baseline job is changed.
+
+### Remaining macOS control probe
+
+The manual `verify-macos-mach-control` operation compiles only the small native
+probe on both macOS architectures. It calls `macx_triggers` with
+`SWAP_COMPACT_DISABLE`, reads the effective `vm.swap_enabled` state, requests
+`SWAP_COMPACT_ENABLE` and verifies restoration before reporting acceptance.
+The binary is removed even when the probe fails. No Codex compilation runs.
+
+Apple's published [XNU swap-control implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-11417.140.69/bsd/vm/dp_backing_file.c)
+clears `vm_swap_enabled` in the disable path except on macOS ARM64. Its ARM64
+path can return success without clearing that state. This source is the closest
+inspected public tag to the hosted kernel, rather than an exact match for its
+build suffix; native observation must decide acceptance. A successful system-call
+return alone is insufficient. This operation remains unrun.
