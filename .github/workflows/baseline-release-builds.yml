@@ -15,6 +15,10 @@ on:
         description: Deliberately fail after compilation to verify partial-cache recovery; retry with false
         type: boolean
         default: false
+      verify_cli_units:
+        description: Run CLI library and codex binary unit tests in the release profile
+        type: boolean
+        default: false
       verify_invalidation:
         description: Linux x86-64 cached run only; verify a changed CLI commit input and unchanged-input reuse
         type: boolean
@@ -368,6 +372,7 @@ jobs:
           CACHE_SEED_TAG: ${{ steps.cache_inputs.outputs.seed_tag }}
           CACHE_ENABLED: ${{ inputs.cache }}
           TRACE_SIGNALS: ${{ inputs.trace_signals }}
+          VERIFY_CLI_UNITS: ${{ inputs.verify_cli_units }}
         run: |
           if [[ "$CACHE_ENABLED" == true ]]; then
             export RELEASE_CHECKPOINT_COMMAND="$RUNNER_TEMP/checkpoint-upstream-release.sh"
@@ -378,14 +383,24 @@ jobs:
               printf 'Limiting Linux Cargo compilation to two concurrent jobs after observed memory pressure.\n'
               ;;
           esac
+          release_command=(bash "$RUNNER_TEMP/build-upstream-release.sh")
+          if [[ "$VERIFY_CLI_UNITS" == true ]]; then
+            cat > "$RUNNER_TEMP/build-and-check-upstream-release.sh" <<'SCRIPT'
+          source "$RUNNER_TEMP/build-upstream-release.sh"
+          cargo test --locked --release --target "$TARGET" -p codex-cli --lib --bin codex -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/baseline-evidence/cli-unit-tests.log"
+          SCRIPT
+            release_command=(bash "$RUNNER_TEMP/build-and-check-upstream-release.sh")
+          fi
+
           if [[ "$TRACE_SIGNALS" == true ]]; then
             sudo apt-get update -y
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bpftrace
             cd "$RUNNER_TEMP/baseline-evidence"
             python3 "$RUNNER_TEMP/probe-runner-signals.py" \
-              env --chdir="$GITHUB_WORKSPACE/codex-rs" bash "$RUNNER_TEMP/build-upstream-release.sh"
+              env --chdir="$GITHUB_WORKSPACE/codex-rs" "${release_command[@]}"
           else
-            bash "$RUNNER_TEMP/build-upstream-release.sh"
+            "${release_command[@]}"
           fi
 
       - name: Controlled failure for partial-cache verification

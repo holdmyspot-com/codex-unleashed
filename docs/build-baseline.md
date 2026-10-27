@@ -14,6 +14,18 @@ Remaining work is to match upstream's actual check boundaries: exact source/vers
 
 Windows probe `40201240525` verifies direct CMD and explicit `--config=windows` both produce the pinned Git commit in Bazel's status input; default, default-after-CMD and explicit Unix-script selections omit it. All commands exit zero and tracked source is preserved. This narrows the configuration discrepancy; it does not establish that native compilation or tests pass.
 
+## Selected release-profile CLI unit checks
+
+The release workflow's optional `verify_cli_units=true` check runs the unchanged CLI library and selected `codex` executable's unit tests after the selected release binaries compile. Its explicit target selection excludes `logs_client`, integration-test targets and unrelated workspace projects:
+
+```sh
+cargo test --locked --release --target "$TARGET" -p codex-cli --lib --bin codex -- --nocapture
+```
+
+The check uses the release profile and the existing native target/toolchain settings. It runs in the same shell and output directory as the release build, preserving the two-job Linux limit and completed outputs. This establishes release-profile unit behavior when it passes; it does not establish upstream's separate `ci-test` or Bazel test configuration. First hosted verification selects only Linux x86-64 with `cache=true` and `require_cache_hit=true`, so an unavailable compiled cache stops before a cold release build. Cache preparation, source/dependency guards, native smokes and private partial/verified publication retain their existing acceptance conditions. Warnings remain nonfatal.
+
+A focused execution of the actual build-step shell first fails because enabling the check invokes no test command. After implementation, enabled-success, enabled-failure and disabled cases pass: the selected command receives only the requested CLI targets, a test-command exit 101 fails the step before its next marker, and disabling the option preserves the existing release path. The stronger handoff probe executes the actual release-build script with controlled Cargo, Git and rustc commands. It first detects that a parent-shell test command loses the child-produced commit identity. The corrected command sources the unchanged release script and runs the unit check in the same child shell; the probe verifies both the commit and stripped-helper digest reach the unit command, while exit 101 still propagates. Disabling the option retains the original release command. These probes establish orchestration and environment handoff, not actual Cargo compilation, test results or registry publication. Actionlint reports only its already-recorded unsupported `queue` key, and whitespace verification passes. Hosted runtime acceptance remains unrun until its actual test result, source/dependency guards and native smokes are inspected.
+
 ## Comparison with upstream's own run
 
 The GitHub API reports only `rust-release` run `39894017941` for the exact stable commit, and it succeeds. This is release-build evidence, not proof that the full test matrix passed on the release tag. Its parent is `342ed69a174c206c1de52a59491b131e0753cfa5`; the parent's [blocking-ci run](https://github.com/openai/codex/actions/runs/39710355092) concludes failure, with separate successful and failed platform jobs.
