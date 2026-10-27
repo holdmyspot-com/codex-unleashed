@@ -45,12 +45,22 @@ recorded separately; no running job is cancelled for clean verification.
 
 | Clean-verification target | Run |
 | --- | --- |
-| Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434) |
+| Linux x86-64 musl | [`40434705434`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434705434): runner communication is lost in attempt 1; resource-observation preflight must pass before a diagnostic clean retry. |
 | Linux ARM64 musl | [`40434744427`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434744427): clean compilation, native smokes and guards pass. |
 | macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377) |
 | Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709) |
 | Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719) |
 | macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 retries on a fresh runner. |
+
+For the lost x86-64 runner, the job-log API returns HTTP 404; neither memory
+pressure nor the terminating actor is established. The existing Linux observer
+is now selectable for either Linux target in cached or uncached mode, with the
+same release command and concurrency. Eight local executions of the actual
+matrix-selection step verify supported/rejected requests. The short native
+observer preflight now covers both Linux architectures before diagnostic builds.
+Actionlint reports only its already-recorded unsupported `queue` key; that
+GitHub-accepted concurrency setting is retained. The other active builds are
+not cancelled or restarted by this observation change.
 
 ARM signal-observation preflight `40413519826` passes known-sender capture,
 observation during a real command and propagation of that command's failure
