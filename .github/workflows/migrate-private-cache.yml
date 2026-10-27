@@ -1,0 +1,73 @@
+name: Copy verified caches to the isolated private package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/migrate-private-cache.yml, .github/cache-package-migration.tsv]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: migrate-private-cache
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+
+      - name: Copy only the recorded verified manifests and their current aliases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d "$RUNNER_TEMP/cache-migration.XXXXXX")"
+          trap 'rm -rf -- "$scratch"' EXIT
+          evidence="$RUNNER_TEMP/cache-migration-evidence"
+          mkdir -p "$evidence"
+          cp .github/cache-package-migration.tsv "$evidence/request.tsv"
+          git rev-parse HEAD > "$evidence/restart-commit"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          source="ghcr.io/$owner/cargo-cache"
+          destination="ghcr.io/$owner/cargo-cache-main-new"
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$scratch/auth.json"
+          for package in cargo-cache cargo-cache-main-new; do
+            gh api "orgs/$owner/packages/container/$package" > "$evidence/$package.json"
+            jq -e '.visibility == "private"' "$evidence/$package.json"
+          done
+          gh api --paginate --slurp "orgs/$owner/packages/container/cargo-cache/versions?per_page=100" > "$evidence/source-versions.json"
+
+          while IFS=$'\t' read -r target digest; do
+            jq -e --arg digest "$digest" '[.[][] | select(.name == $digest)] | length == 1' "$evidence/source-versions.json"
+            jq -r --arg digest "$digest" '.[][] | select(.name == $digest) | .metadata.container.tags[]' \
+              "$evidence/source-versions.json" > "$scratch/tags.txt"
+            grep -E "^cargo-seed-v1-$target-[0-9a-f]{64}-parts-v2$" "$scratch/tags.txt"
+            grep -E '^cargo-release-.*-rust-v0\.164\.0$' "$scratch/tags.txt"
+            tags="$(paste -sd, "$scratch/tags.txt")"
+            cp "$scratch/tags.txt" "$evidence/$target-tags.txt"
+            oras cp --from-registry-config "$scratch/auth.json" --to-registry-config "$scratch/auth.json" \
+              "$source@$digest" "$destination:$tags" | tee "$evidence/$target-copy.log"
+            while IFS= read -r tag; do
+              actual="$(oras resolve --registry-config "$scratch/auth.json" "$destination:$tag")"
+              test "$actual" = "$digest"
+              printf '%s\t%s\t%s\n' "$target" "$tag" "$actual" >> "$evidence/verified-aliases.tsv"
+            done < "$scratch/tags.txt"
+          done < .github/cache-package-migration.tsv
+
+      - name: Preserve copy receipts for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: private-cache-migration
+          path: ${{ runner.temp }}/cache-migration-evidence
+          retention-days: 1
+          if-no-files-found: error
