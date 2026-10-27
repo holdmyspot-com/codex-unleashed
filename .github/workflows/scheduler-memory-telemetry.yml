@@ -1,6 +1,11 @@
 name: Scheduler memory telemetry
 
 on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-memory-telemetry.yml
+      - .github/scripts/memory-telemetry-requirements.txt
   workflow_dispatch:
 
 permissions:
