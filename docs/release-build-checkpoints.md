@@ -736,7 +736,20 @@ source diff is empty and dependency verification passes. Evidence artifact
 the job-log SHA-256 is
 `cc2e35974eff94a945716d873312ee084e711e0488d4f592fc09e53ca3feca3e`.
 
-The Intel macOS clean outcome and the changed Linux x86-64 resource configuration
-remain unaccepted. The root executor owns
+Linux x86-64 two-job clean run `40448755120`, job `122006244507`, at
+`2c6626fcd6eae66071ca319b2125877817b54738` passes in 1h 7m 35s. GHCR
+restoration is skipped. The five build stages take 23/124/258/2,534/1,002
+seconds, with 1,184 Rust compilation entries. Both native smokes, the empty
+source diff and dependency verification pass. Its 788 resource samples retain
+at least 4,017.1 MiB available memory and use at most 1,784.4 MiB swap.
+Compared with the preceding default-concurrency run, the job takes 14m 37s
+longer with substantially more observed memory headroom. Keep the two-job
+limit and revisit it with memory-aware scheduling in step 3. Evidence artifact
+`12712142643` has verified ZIP SHA-256
+`13a7a700466a14b3ecdb8d746ce20b7d110e6dd406cc193dc89e8f58a09f7f48`;
+the job-log SHA-256 is
+`5809d40b99b7b8c046b2a120062a7243a7ac09a303deb0eb6cb63909733cfdfb`.
+
+The Intel macOS clean outcome remains unaccepted. The root executor owns
 the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
 then removes that directory.
