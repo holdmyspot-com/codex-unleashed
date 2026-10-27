@@ -180,6 +180,40 @@ archives are blobs listed directly in the retained manifest's layers, rather
 than independently prunable package versions; protecting that manifest is the
 relevant retention boundary.
 
+## Private package isolation transfer proof
+
+The focused [cache-package-transfer.yml](../.github/workflows/cache-package-transfer.yml)
+workflow verifies the existing ORAS copy operation before moving build caches.
+Run [`40501668304`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40501668304)
+at `e95e2aff946422c24a100aa6394341b820fd15e6` passes transfer, consumption
+with a fresh job token, and owned-fixture cleanup. Both package metadata responses
+report private visibility; anonymous resolution is rejected with authentication
+required. The source and both destination aliases resolve to
+`sha256:3f55c33c555f406046915bcdb5a479ebb04051f1568290afff73014f955ab727`.
+The copy reports a server-side mount of the payload blob, and the independent
+consumer pulls byte-identical content. This verifies tiny-artifact transfer and
+workflow access to `ghcr.io/holdmyspot-com/cargo-cache-main-new`; real compiled
+cache migration and subsequent restore remain unrun.
+
+The first run, `40463370931`, already verifies the private copy and server-side
+mount, then fails because the runner lacks ripgrep. Its cleanup deletes source
+version `1452472689`, but GHCR rejects deleting the destination package's last
+tagged version. The correction uses available grep and preserves a last tagged
+bootstrap rather than deleting the package and its access setup. The successful
+run deletes only its owned source/destination versions `1454098082` and
+`1454098221`, after checking tags and the fixture ownership annotation.
+The migration executor owns the earlier bootstrap, identified by tag
+`cache-transfer-fixture-40463370931-1` and digest
+`sha256:302a00900e339ef6403d59366942ab756c5ac5aaf0ccbc9fc4e4f0678d1fd4d5`,
+and must remove it after real cache versions populate the destination.
+
+Next copy the verified restart manifests and their aliases by immutable digest,
+verify destination identities, then switch the build and retention consumers to
+the isolated package. Keep the original caches available until actual restoration
+passes; do not recompile merely to populate the new package. Old main remains
+unchanged. Automatic retention and concurrent publication/deletion acceptance
+remain open.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
