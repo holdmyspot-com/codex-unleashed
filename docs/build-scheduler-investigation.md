@@ -320,6 +320,32 @@ and runner architecture. Artifact log bytes are read and hashed directly from
 their downloaded ZIPs in memory; the one-day artifacts leave no local download
 directory. No passing build or cache check is repeated for this diagnostic.
 
+### Native macOS address-space-limit diagnostic
+
+Apple's current
+[`RLIMIT_AS` implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_resource.c)
+passes a requested soft limit to `vm_map_set_size_limit` and rejects a limit
+below existing usage. That source contract motivates a native probe; it does
+not establish which behavior the hosted macOS 15 kernels expose.
+
+The [macOS allocation workflow](../.github/workflows/scheduler-macos-allocation.yml)
+selects only the Intel and Apple Silicon release runners. Its standard-library
+[probe](../.github/scripts/probe-macos-allocation.py) measures an owned worker's
+virtual size through native `ps`, then sets that worker's soft `RLIMIT_AS` to
+the measured size plus 32 MiB, retaining the original hard limit. It requests a
+256 MiB anonymous/private read-write `mmap`. Acceptance requires `ENOMEM`, an
+independent process completing while the worker waits, and the same worker's
+mapping succeeding after its original limit is restored. It reads/writes both
+endpoints, closes the mapping and exits zero. Missing events fail after 30
+seconds; an unfinished worker is terminated and reaped on cleanup.
+
+Native execution is initially unrun. Python syntax and the two-target selection
+are checked locally; actionlint reports only its known unsupported `queue: max`
+field. This diagnostic changes no global swap setting and runs no Codex build.
+Waiting/retry remains fixture code. A passing result would establish reversible
+address-space denial, not compiler interception, page-fault blocking, physical
+pressure recovery or FIFO scheduling.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the
