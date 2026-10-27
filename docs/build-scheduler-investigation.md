@@ -855,6 +855,20 @@ remain outside this check.
 | Windows x86-64 | `12771970422` | `dc2363a524066770e64c40469908677ce9a661a8fdf820edef7707349bc626db` | 36,456 / `e9d03d38d278fdc0ca639c45ed70bdadb469c658522c19f2ac13e371b60514fb` |
 | Windows ARM64 | `12769694983` | `57988b2110b8ac906bed03bb4c082740bf5ca736573bcf683ef924269e51218c` | 36,457 / `036619cde93a0b19168833d8838a4d3ec9b0acdd4c4169058d2c797ea1cd7bd5` |
 
+The active-Upterm run
+[`40586593167`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40586593167)
+at `117c348bd1806354a49ab706750b26b50626e740` captures arguments and caller
+backtraces for the first observed heap request on both architectures. Both
+requests use flags zero and request 32 bytes. The backtraces include Rust's
+`RawVec::grow_one`, standard-input reading and compiler-driver frames, connecting
+the observed request to compiler code rather than inferring it solely from the
+process identity. Compiler exit, unchanged metadata, live SSH-client exit and
+remote cleanup all pass. The x86-64/ARM64 compiler log SHA-256 values are
+`1fe5f9cd4d33fddf5a5fda9d6864a4f50b4fc025e93007a3d45c5b5fefdc007c` /
+`9f833fbe86ddca71184c427cc69d58459490331dc34d993bc5c5316979b6b342`.
+One small request does not establish the flags or sizes of later heap requests
+or prove denial and continuation.
+
 The next Windows denial diagnostic must preserve the heap API's failure behavior
 and test waiting outside its allocator locks. Microsoft's
 [RtlAllocateHeap contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-rtlallocateheap)
