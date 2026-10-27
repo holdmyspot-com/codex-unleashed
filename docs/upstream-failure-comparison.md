@@ -6,6 +6,20 @@ A direct comparison must identify the source, command, target, toolchain, prereq
 
 This is the working index of current baseline comparisons, not a completed audit of every historical diagnostic attempt. Add each newly observed failure before pursuing its repair. Historical runs with discarded patches retain their original source inputs in [build-baseline.md](build-baseline.md); they cannot establish defects in the pristine baseline. Downstream-only wrapper failures need an explicit no-counterpart determination and their own counterfactual evidence.
 
+## Selected main snapshot
+
+At selected commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`, upstream postmerge run
+[`40529958039`](https://github.com/openai/codex/actions/runs/40529958039) fails before
+its nextest suites execute. Linux GNU archive job
+[`122279734875`](https://github.com/openai/codex/actions/runs/40529958039/job/122279734875)
+runs `cargo test --no-run --profile ci-test --target x86_64-unknown-linux-gnu`
+with Rust 1.95.0; `glib-sys 0.22.8` cannot find `glib-2.0.pc` through pkg-config
+(`glib-2.0 >= 2.56`). This establishes an upstream native-prerequisite failure,
+not a failing test assertion. It does not compare the historical shell assertions.
+The same run's Linux x86-64 musl release lint/build job `122279734911` succeeds.
+Our pending release-profile CLI check therefore uses the already selected musl
+release boundary rather than expanding to the failing full-workspace GNU archive.
+
 ## Pristine source and runtime failures
 
 | Failure in our environment | Observed local evidence | Upstream evidence and limitation | Comparison status / next required evidence |
