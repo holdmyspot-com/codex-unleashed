@@ -56,7 +56,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version-file: .nvmrc
       - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
         with:
           version: 1.3.1
