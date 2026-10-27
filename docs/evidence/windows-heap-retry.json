@@ -1,0 +1,451 @@
+{
+  "contract": "Controlled flags-zero RtlAllocateHeap denial, native timeout and internal retry; not compiler-wide scheduling",
+  "source_sha256": {
+    "probe-windows-interception.py": "eb6715e60ede40520f0ac2b11e827952eaac19788fbfe688b84a9d7c84012905",
+    "windows-native-heap-retry.js": "0235662cc1c7cfe055a4709233bbafc0f607fc5990213a6ddbc75eaacbdc8d7c"
+  },
+  "execution": "Staged source in a new owned remote directory, pinned hash-checked Frida requirement, commands executed through an uninterrupted Upterm client before repository source edits",
+  "x64_source_equivalence": "Only controller documentation was revised between x64 and ARM64 execution; executable logic was unchanged",
+  "results": [
+    {
+      "architecture": "x64",
+      "run": 40587796217,
+      "mode": "timeout",
+      "raw_log_sha256": "aa3d142625fa68186b07c4285eb9113a10eb94da9457474eb41b5e138dd72c4e",
+      "events": [
+        {
+          "event": "native_identity",
+          "pid": 3904,
+          "machine": "AMD64",
+          "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+          "runner_arch": "X64",
+          "mode": "native-timeout",
+          "allocation_api": "heap"
+        },
+        {
+          "event": "worker_ready",
+          "pid": 8464,
+          "requested_bytes": 268435456,
+          "allocation_api": "heap",
+          "thread_id": 5804,
+          "allocation_address": "0x7ff88e61db30",
+          "implementation_address": "0x7ff88e61db30"
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 3904,
+          "payload": {
+            "event": "hook_target",
+            "pid": 8464,
+            "architecture": "x64",
+            "replacement_address": "0x7ff88e61db30"
+          }
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 3904,
+          "payload": {
+            "event": "hook_installed",
+            "pid": 8464,
+            "address": "0x7ff88e61db30"
+          }
+        },
+        {
+          "event": "worker_commit_limit_set",
+          "pid": 3904,
+          "worker_pid": 8464,
+          "peak_commit_bytes": 17305600,
+          "limit_bytes": 50860032
+        },
+        {
+          "event": "native_allocation_blocked",
+          "pid": 3904,
+          "worker_pid": 8464,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "native_call_failed",
+          "pid": 8464,
+          "last_error": 8
+        },
+        {
+          "event": "native_retry_observed",
+          "pid": 3904,
+          "worker_pid": 8464,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 8,
+            "wait_result": 258,
+            "signal_ok": 1,
+            "error_sentinel": 536875572,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "interception_probe_passed",
+          "pid": 3904,
+          "mode": "native-timeout",
+          "worker_pid": 8464,
+          "frida_version": "17.24.3"
+        }
+      ]
+    },
+    {
+      "architecture": "x64",
+      "run": 40587796217,
+      "mode": "retry",
+      "raw_log_sha256": "9d5cbc857578b7c519e0562353527eff3cf33ca9d80eeea7fa8a176fb1fbabda",
+      "events": [
+        {
+          "event": "native_identity",
+          "pid": 5892,
+          "machine": "AMD64",
+          "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+          "runner_arch": "X64",
+          "mode": "native-retry",
+          "allocation_api": "heap"
+        },
+        {
+          "event": "worker_ready",
+          "pid": 7384,
+          "requested_bytes": 268435456,
+          "allocation_api": "heap",
+          "thread_id": 7656,
+          "allocation_address": "0x7ff88e61db30",
+          "implementation_address": "0x7ff88e61db30"
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 5892,
+          "payload": {
+            "event": "hook_target",
+            "pid": 7384,
+            "architecture": "x64",
+            "replacement_address": "0x7ff88e61db30"
+          }
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 5892,
+          "payload": {
+            "event": "hook_installed",
+            "pid": 7384,
+            "address": "0x7ff88e61db30"
+          }
+        },
+        {
+          "event": "worker_commit_limit_set",
+          "pid": 5892,
+          "worker_pid": 7384,
+          "peak_commit_bytes": 17080320,
+          "limit_bytes": 50634752
+        },
+        {
+          "event": "native_allocation_blocked",
+          "pid": 5892,
+          "worker_pid": 7384,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "independent_peer_completed",
+          "pid": 5892,
+          "worker_pid": 7384
+        },
+        {
+          "event": "native_allocation_still_blocked",
+          "pid": 5892,
+          "worker_pid": 7384,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "worker_commit_limit_raised",
+          "pid": 5892,
+          "limit_bytes": 319070208
+        },
+        {
+          "event": "native_call_returned",
+          "pid": 7384,
+          "pointer": "0x1cccbdd2040",
+          "first_byte": 42,
+          "last_byte": 43,
+          "last_error": 0
+        },
+        {
+          "event": "native_retry_observed",
+          "pid": 5892,
+          "worker_pid": 7384,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 0,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x1cccbdd2040"
+          }
+        },
+        {
+          "event": "allocation_freed",
+          "pid": 7384
+        },
+        {
+          "event": "interception_probe_passed",
+          "pid": 5892,
+          "mode": "native-retry",
+          "worker_pid": 7384,
+          "frida_version": "17.24.3"
+        }
+      ]
+    },
+    {
+      "architecture": "arm64",
+      "run": 40588178981,
+      "mode": "timeout",
+      "raw_log_sha256": "fc5ce89f772107d1db0501b5779b599614bdd38d5d303a771395a8e1e549f782",
+      "events": [
+        {
+          "event": "native_identity",
+          "pid": 3940,
+          "machine": "ARM64",
+          "python": "3.13.17 (tags/v3.13.17:64e080d, Oct 21 2026, 14:38:33) [MSC v.1944 64 bit (ARM64)]",
+          "runner_arch": "ARM64",
+          "mode": "native-timeout",
+          "allocation_api": "heap"
+        },
+        {
+          "event": "worker_ready",
+          "pid": 7216,
+          "requested_bytes": 268435456,
+          "allocation_api": "heap",
+          "thread_id": 6772,
+          "allocation_address": "0x7ff9570245b0",
+          "implementation_address": "0x7ff9570245b0"
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 3940,
+          "payload": {
+            "event": "hook_target",
+            "pid": 7216,
+            "architecture": "arm64",
+            "replacement_address": "0x7ff9570245b0"
+          }
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 3940,
+          "payload": {
+            "event": "hook_installed",
+            "pid": 7216,
+            "address": "0x7ff9570245b0"
+          }
+        },
+        {
+          "event": "worker_commit_limit_set",
+          "pid": 3940,
+          "worker_pid": 7216,
+          "peak_commit_bytes": 17260544,
+          "limit_bytes": 50814976
+        },
+        {
+          "event": "native_allocation_blocked",
+          "pid": 3940,
+          "worker_pid": 7216,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "native_call_failed",
+          "pid": 7216,
+          "last_error": 8
+        },
+        {
+          "event": "native_retry_observed",
+          "pid": 3940,
+          "worker_pid": 7216,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 8,
+            "wait_result": 258,
+            "signal_ok": 1,
+            "error_sentinel": 536875572,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "interception_probe_passed",
+          "pid": 3940,
+          "mode": "native-timeout",
+          "worker_pid": 7216,
+          "frida_version": "17.24.3"
+        }
+      ]
+    },
+    {
+      "architecture": "arm64",
+      "run": 40588178981,
+      "mode": "retry",
+      "raw_log_sha256": "c2e15c2a9f73cb58eeb51d0c997021c609f3cffe8de0c6fee31aa4345aa05c69",
+      "events": [
+        {
+          "event": "native_identity",
+          "pid": 7336,
+          "machine": "ARM64",
+          "python": "3.13.17 (tags/v3.13.17:64e080d, Oct 21 2026, 14:38:33) [MSC v.1944 64 bit (ARM64)]",
+          "runner_arch": "ARM64",
+          "mode": "native-retry",
+          "allocation_api": "heap"
+        },
+        {
+          "event": "worker_ready",
+          "pid": 8236,
+          "requested_bytes": 268435456,
+          "allocation_api": "heap",
+          "thread_id": 9616,
+          "allocation_address": "0x7ff9570245b0",
+          "implementation_address": "0x7ff9570245b0"
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 7336,
+          "payload": {
+            "event": "hook_target",
+            "pid": 8236,
+            "architecture": "arm64",
+            "replacement_address": "0x7ff9570245b0"
+          }
+        },
+        {
+          "event": "interceptor_event",
+          "pid": 7336,
+          "payload": {
+            "event": "hook_installed",
+            "pid": 8236,
+            "address": "0x7ff9570245b0"
+          }
+        },
+        {
+          "event": "worker_commit_limit_set",
+          "pid": 7336,
+          "worker_pid": 8236,
+          "peak_commit_bytes": 17285120,
+          "limit_bytes": 50839552
+        },
+        {
+          "event": "native_allocation_blocked",
+          "pid": 7336,
+          "worker_pid": 8236,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "independent_peer_completed",
+          "pid": 7336,
+          "worker_pid": 8236
+        },
+        {
+          "event": "native_allocation_still_blocked",
+          "pid": 7336,
+          "worker_pid": 8236,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 4294967295,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x0"
+          }
+        },
+        {
+          "event": "worker_commit_limit_raised",
+          "pid": 7336,
+          "limit_bytes": 319275008
+        },
+        {
+          "event": "native_call_returned",
+          "pid": 8236,
+          "pointer": "0x255ec800000",
+          "first_byte": 42,
+          "last_byte": 43,
+          "last_error": 0
+        },
+        {
+          "event": "native_retry_observed",
+          "pid": 7336,
+          "worker_pid": 8236,
+          "state": {
+            "matching_calls": 1,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 0,
+            "wait_result": 0,
+            "signal_ok": 1,
+            "error_sentinel": 0,
+            "pointer": "0x255ec800000"
+          }
+        },
+        {
+          "event": "allocation_freed",
+          "pid": 8236
+        },
+        {
+          "event": "interception_probe_passed",
+          "pid": 7336,
+          "mode": "native-retry",
+          "worker_pid": 8236,
+          "frida_version": "17.24.3"
+        }
+      ]
+    }
+  ]
+}
