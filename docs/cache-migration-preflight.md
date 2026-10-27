@@ -217,8 +217,10 @@ remain open.
 Migration run [`40502368002`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502368002)
 at `ca5d6d6ac6a0e2be30af52def835b3c4eabff655` passes in 51 seconds.
 It copies eight current compatible-cache manifests across all six targets and
-verifies all 24 destination aliases against their source digests. The checked
-request is [cache-package-migration.tsv](../.github/cache-package-migration.tsv);
+verifies all 24 destination aliases against their source digests. Its
+copy logs report 41 server-side blob mounts, seven existing blobs and zero
+archive download/upload operations.
+The request is [cache-package-migration.tsv](../.github/cache-package-migration.tsv);
 the workflow also captures current compatible aliases before copying. No source
 cache is deleted and no compilation runs. The build and read-only retention
 inventory now obtain the isolated package name from
