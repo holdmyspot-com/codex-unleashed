@@ -1,0 +1,19 @@
+# Debug a retained remote runner
+
+The reusable action in `.github/actions/debug-failed-runner` opens an SSH session on the original runner after a failed step. It accepts a public SSH key; the client keeps the private key. The connection artifact contains the SSH command and workspace path. Use the repository's `known_hosts` file to verify the relay, and supply the private key with `ssh -i` and `IdentitiesOnly=yes`.
+
+Run `.github/workflows/runner-debug-smoke.yml` with `public_key` and one selected `target` to exercise this without compiling Codex. The action waits during job cleanup for up to ten minutes for the first connection. After a client joins, the session remains available until its shell exits or the job reaches its own timeout. The smoke workflow has a sixty-minute job timeout. Exiting the remote shell lets cleanup finish; it preserves the original failed step's result.
+
+When adding the action to a workflow, retrieve `.github/actions` and invoke it only after failure with a nonempty debugging public key. Place it after the diagnostic steps. Register workspace cleanup as an earlier action's post operation so that it runs after the remote session ends. Normal steps run before the remote action's wait and must not delete the workspace that the session needs. The smoke fixture demonstrates this ordering and verifies retained state in its own post operation.
+
+In the remote shell, inspect the actual failing command and environment before changing anything. Retain valid build outputs, apply the focused correction and retry incrementally. Keep the original failure and retry evidence separate. After incremental success, perform the task's required clean verification. A completed or destroyed runner cannot be recovered through this session; use retained logs and valid partial caches for a replacement runner.
+
+## Verification evidence
+
+At commit `d4793aa2b511c835fc21c2cedca64736e0ff5552`, [Linux x86-64 diagnostic 40581358044](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40581358044) verifies connection after a deliberate exit 17, preservation of a pre-failure output, an incremental update in the same workspace, normal shell exit and successful post verification/cleanup. An unrelated private key is refused with `session ... refused your key`; the authorized key connects and exits zero. The job correctly remains failed solely because of its deliberate failure step. This is a small state-retention diagnostic, not a Codex compilation or a measurement of saved build time.
+
+The preceding [diagnostic 40580537287](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40580537287) preserves the failed integration evidence: a separate process queried the remote action's private session registry and found zero matching sessions. The current action consumes its published SSH output and uses its supported post wait instead. That preceding run also verifies that the unjoined session expires after the ten-minute window.
+
+The [remaining native platform diagnostic 40582297204](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40582297204) verifies the same retained-state update, normal shell exit and post verification/cleanup on Linux ARM64, Intel and Apple Silicon macOS, and Windows x86-64 and ARM64. All five debug and post steps pass; their jobs retain only the deliberate exit 17 failure. Together the two runs accept this facility across all six release platforms without compiling Codex. Windows clients must handle terminal color/control sequences when detecting a shell prompt; a literal uncolored `# ` check missed the connected shell during the first client attempt. The corrected client reconnects to the same session and completes the incremental update without changing the runner action.
+
+The provider-independent development request is in [cat-remote-runner-troubleshooting-prompt.md](cat-remote-runner-troubleshooting-prompt.md).
