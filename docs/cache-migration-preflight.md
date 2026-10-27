@@ -248,6 +248,15 @@ the bootstrap's exact version ID `1452472811`, digest and complete alias set,
 deletes only that version and confirms its absence from the resulting inventory.
 This completes the bootstrap cleanup handoff; no real build cache is deleted.
 
+For cache-only acceptance, dispatch the release workflow with `cache=true` and
+`require_cache_hit=true`. The latter stops before compilation when every
+compiled-cache lookup misses; its default remains false for cold population and
+ordinary baseline builds. Expected-negative run `40508191624` at
+`25697e6ad0c610fc569ddcf72ade15acc16aa923` rejects `require_cache_hit=true`
+with `cache=false` during target selection and skips the build job. This checks
+input validation only; miss rejection and successful hit-required compilation
+still need their own execution evidence.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.
