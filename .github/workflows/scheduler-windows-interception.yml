@@ -9,6 +9,12 @@ on:
       - .github/scripts/windows-allocation-interceptor.js
       - .github/scripts/windows-interception-requirements.txt
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Probe attachment/forwarding controls or denied-allocation retry
+        type: choice
+        default: controls
+        options: [controls, retry]
 
 permissions:
   contents: read
@@ -80,13 +86,27 @@ jobs:
             --target "$SCHEDULER_INTERCEPTION/package" \
             -r .github/scripts/windows-interception-requirements.txt
 
-      - name: Intercept one denied native allocation and retry inside its call
+      - name: Exercise selected native instrumentation boundary
         env:
           PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
           TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
+          PROBE_MODE: ${{ inputs.mode || 'controls' }}
         run: |
           set -euo pipefail
-          python .github/scripts/probe-windows-interception.py 2>&1 | tee "$SCHEDULER_INTERCEPTION/interception.log"
+          if [ "$PROBE_MODE" = retry ]; then
+            modes=retry
+          else
+            modes='attach forward'
+          fi
+          result=0
+          for mode in $modes; do
+            if python .github/scripts/probe-windows-interception.py --mode "$mode" 2>&1 | tee -a "$SCHEDULER_INTERCEPTION/interception.log"; then
+              :
+            else
+              result=1
+            fi
+          done
+          exit "$result"
 
       - name: Retain native evidence for one day
         if: always() && env.SCHEDULER_INTERCEPTION != ''

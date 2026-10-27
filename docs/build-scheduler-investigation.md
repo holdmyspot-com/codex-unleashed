@@ -365,12 +365,32 @@ Owned-worker termination/reaping and workflow package-directory cleanup run.
 | Windows x86-64 | `5664` / `9152` | `12762715819` | `744bfe69049f17dcbf091f35ee812cd3cb02510efb9bfac5cdf430aee6f8e613` |
 | Windows ARM64 | `9988` / `9992` | `12762780822` | `0d5b48ff3e647e9f133516bde592a4cae21a47fc90e51c406031faeb01a041e8` |
 
-The next diagnostic preserves that exit check and all allocation inputs. Only
-after its timeout does it capture native thread locations and remove the active
-hook, then observe whether the same process exits. It still reports failure if
-this recovery is needed. This distinguishes active-hook shutdown behavior from
-an allocation-retry failure without increasing the original timeout or calling
-the failure an upstream Codex defect. The capture/removal result is unrun.
+Follow-up run
+[`40564921832`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40564921832)
+at `39c4df1ea1c361ab8c61575d8463d947c23e87bc` preserves the exit check and
+allocation inputs. The x86-64 worker again recovers, returns the same pointer,
+checks endpoint bytes and frees the allocation. After exit times out, the
+thread-snapshot RPC also times out, so hook removal is never reached. The
+ARM64 job is cancelled after its five-minute job limit; its final retained
+event sets the commit limit, with no subsequent denied-allocation event.
+The record does not establish whether its arming RPC returned. Both jobs retain
+logs and remove their owned diagnostic directories. Neither accepts clean exit.
+
+| Native target | Artifact ID | Raw log SHA-256 |
+| --- | --- | --- |
+| Windows x86-64 | `12760999035` | `c0e49faee0a3dcfca42513d785ccfb6fecec42a6d377414b0e58f41e47814c6b` |
+| Windows ARM64 | `12762254327` | `ba23803b0eddd23b77faac93b5843fe294562aef76fb895908086352cbbd1001` |
+
+The next comparison uses the same worker and native package with two controls:
+`--mode attach` installs no allocation hook; `--mode forward` installs the
+existing hook without arming its denied-allocation branch. Both allow the
+256 MiB allocation from the start and require the unchanged normal exit check.
+These controls distinguish attachment and basic hook forwarding from blocking
+and retry. Results remain unrun. The diagnostic workflow runs both controls
+even if the first fails; manual dispatch can still select the original retry
+experiment. That experiment now bounds arming RPC completion at 30 seconds and
+records its acknowledgment before starting allocation. No Codex compilation or
+already-passing build/cache check is repeated.
 
 ### Native macOS address-space-limit diagnostic
 

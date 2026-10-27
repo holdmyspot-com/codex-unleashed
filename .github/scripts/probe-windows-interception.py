@@ -58,8 +58,14 @@ def run_worker(api, kernel):
     api.emit("allocation_freed")
 
 
-def run_probe(api, kernel):
-    """Require native denial, an independent peer, and retry inside the same hook."""
+def run_probe(api, kernel, mode):
+    """Exercise attachment, forwarding, or denied-allocation retry and clean exit.
+
+    ``attach`` installs no allocation hook. ``forward`` leaves the hook unarmed.
+    Both controls allow the 256 MiB request before starting it. ``retry`` retains
+    the denied-allocation experiment. Every mode requires normal exit within
+    30 seconds and kills/reaps an unfinished worker on failure.
+    """
     import frida
 
     job_extended_limits = 9
@@ -93,11 +99,18 @@ def run_probe(api, kernel):
                         return event
 
                     session = frida.attach(worker.pid)
-                    script = session.create_script(Path(__file__).with_name("windows-allocation-interceptor.js").read_text())
+                    if mode == "attach":
+                        script_source = "send({event: 'attachment_ready', pid: Process.id});"
+                        installed_event = "attachment_ready"
+                    else:
+                        script_source = Path(__file__).with_name("windows-allocation-interceptor.js").read_text()
+                        installed_event = "hook_installed"
+                    script = session.create_script(script_source)
                     script.on("message", receive_message)
                     script.load()
-                    installed = expect_hook_event("hook_installed")
-                    assert int(installed["address"], 16) == int(ready["allocation_address"], 16)
+                    installed = expect_hook_event(installed_event)
+                    if installed_event == "hook_installed":
+                        assert int(installed["address"], 16) == int(ready["allocation_address"], 16)
 
                     process = api.require_api_success(kernel.OpenProcess(0x0101, False, worker.pid))
                     try:
@@ -106,38 +119,48 @@ def run_probe(api, kernel):
                         api.require_api_success(kernel.CloseHandle(process))
                     api.require_api_success(kernel.QueryInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits), None))
                     limits.ProcessMemoryLimit = limits.PeakProcessMemoryUsed + (32 * 1024 * 1024)
+                    if mode in ("attach", "forward"):
+                        limits.ProcessMemoryLimit += ready["requested_bytes"]
                     limits.BasicLimitInformation.LimitFlags = kill_on_job_close | process_commit_limit
                     api.require_api_success(kernel.SetInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits)))
                     api.emit("worker_commit_limit_set", worker_pid=worker.pid,
                              peak_commit_bytes=limits.PeakProcessMemoryUsed, limit_bytes=limits.ProcessMemoryLimit)
-                    armed = script.exports_sync.arm(ready["thread_id"], ready["requested_bytes"])
-                    assert armed == {"threadId": ready["thread_id"], "bytes": ready["requested_bytes"]}
+                    if mode == "retry":
+                        armed = reader.submit(script.exports_sync.arm, ready["thread_id"],
+                                              ready["requested_bytes"]).result(timeout=30)
+                        assert armed == {"threadId": ready["thread_id"], "bytes": ready["requested_bytes"]}
+                        api.emit("allocation_hook_armed", worker_pid=worker.pid, configuration=armed)
                     worker.stdin.write("allocate\n")
                     worker.stdin.flush()
-                    blocked = expect_hook_event("native_allocation_blocked")
-                    assert blocked["thread_id"] == ready["thread_id"]
-                    assert blocked["bytes"] == ready["requested_bytes"]
-                    assert (blocked["allocation_type"], blocked["protection"]) == (0x3000, 0x04)
-                    assert worker.poll() is None
+                    if mode == "retry":
+                        blocked = expect_hook_event("native_allocation_blocked")
+                        assert blocked["thread_id"] == ready["thread_id"]
+                        assert blocked["bytes"] == ready["requested_bytes"]
+                        assert (blocked["allocation_type"], blocked["protection"]) == (0x3000, 0x04)
+                        assert worker.poll() is None
 
-                    subprocess.run([sys.executable, "-c", "pass"], check=True, timeout=30)
-                    api.emit("independent_peer_completed", worker_pid=worker.pid)
-                    limits.ProcessMemoryLimit += ready["requested_bytes"]
-                    api.require_api_success(kernel.SetInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits)))
-                    api.emit("worker_commit_limit_raised", limit_bytes=limits.ProcessMemoryLimit)
-                    script.post({"type": "retry"})
-                    retried = expect_hook_event("native_allocation_retried")
-                    assert retried["succeeded"] is True, retried
-                    assert retried["thread_id"] == blocked["thread_id"]
-                    assert retried["bytes"] == blocked["bytes"]
+                        subprocess.run([sys.executable, "-c", "pass"], check=True, timeout=30)
+                        api.emit("independent_peer_completed", worker_pid=worker.pid)
+                        limits.ProcessMemoryLimit += ready["requested_bytes"]
+                        api.require_api_success(kernel.SetInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits)))
+                        api.emit("worker_commit_limit_raised", limit_bytes=limits.ProcessMemoryLimit)
+                        script.post({"type": "retry"})
+                        retried = expect_hook_event("native_allocation_retried")
+                        assert retried["succeeded"] is True, retried
+                        assert retried["thread_id"] == blocked["thread_id"]
+                        assert retried["bytes"] == blocked["bytes"]
                     returned = api.read_event(worker, reader, "native_call_returned")
-                    assert int(returned["pointer"], 16) == int(retried["pointer"], 16)
+                    if mode == "retry":
+                        assert int(returned["pointer"], 16) == int(retried["pointer"], 16)
                     worker.stdin.write("finish\n")
                     worker.stdin.flush()
                     api.read_event(worker, reader, "allocation_freed")
                     try:
                         worker_exit = worker.wait(timeout=30)
                     except subprocess.TimeoutExpired:
+                        if mode in ("attach", "forward"):
+                            api.emit("shutdown_control_timed_out", mode=mode, worker_pid=worker.pid)
+                            raise
                         snapshot = reader.submit(script.exports_sync.inspect_threads).result(timeout=10)
                         api.emit("shutdown_thread_snapshot", worker_pid=worker.pid, threads=snapshot)
                         removed = reader.submit(script.exports_sync.remove_hook).result(timeout=10)
@@ -147,7 +170,7 @@ def run_probe(api, kernel):
                         api.emit("shutdown_after_hook_removal", worker_pid=worker.pid, exit_code=recovered_exit)
                         raise AssertionError("Worker shutdown required diagnostic hook removal after its normal exit timed out")
                     assert worker_exit == 0
-                    api.emit("interception_probe_passed", worker_pid=worker.pid, frida_version=frida.__version__)
+                    api.emit("interception_probe_passed", mode=mode, worker_pid=worker.pid, frida_version=frida.__version__)
                 finally:
                     if worker.poll() is None:
                         worker.kill()
@@ -166,6 +189,8 @@ def main():
     """Run the controller or its internal worker on matching native Windows Python."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--mode", choices=("attach", "forward", "retry"), default="retry",
+                        help="Instrumentation under test: attachment only, forwarding hook, or denied-allocation retry (default)")
     arguments = parser.parse_args()
     assert sys.platform == "win32", "This probe requires native Windows"
     assert ctypes.sizeof(ctypes.c_void_p) == 8, "This probe requires a 64-bit process"
@@ -178,8 +203,8 @@ def main():
         run_worker(api, kernel)
     else:
         api.emit("native_identity", machine=platform.machine(), python=sys.version,
-                 runner_arch=os.environ.get("RUNNER_ARCH"))
-        run_probe(api, kernel)
+                 runner_arch=os.environ.get("RUNNER_ARCH"), mode=arguments.mode)
+        run_probe(api, kernel, arguments.mode)
 
 
 if __name__ == "__main__":
