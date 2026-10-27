@@ -17,8 +17,15 @@ with Rust 1.95.0; `glib-sys 0.22.8` cannot find `glib-2.0.pc` through pkg-config
 (`glib-2.0 >= 2.56`). This establishes an upstream native-prerequisite failure,
 not a failing test assertion. It does not compare the historical shell assertions.
 The same run's Linux x86-64 musl release lint/build job `122279734911` succeeds.
-Our pending release-profile CLI check therefore uses the already selected musl
-release boundary rather than expanding to the failing full-workspace GNU archive.
+Our release-profile CLI check therefore uses the already selected musl release
+boundary rather than expanding to the failing full-workspace GNU archive.
+Run [`40534698649`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40534698649)
+at restart commit `745ab4d0fbdf8a4590dd72779fae78cd56c4608e` passes that check:
+16 library tests and 314 binary tests pass, one binary test is ignored and none
+fail. Release compilation, native smokes and source/dependency guards also pass.
+This resolves the previously unrun CLI unit check without reproducing upstream's
+unrelated full-workspace prerequisite failure. The historical shell execution
+comparisons below remain open.
 
 ### Shell-failure source applicability
 
