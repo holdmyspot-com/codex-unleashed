@@ -137,10 +137,48 @@ inventory above: it retains all 49 tagged versions and reports exactly the same
 This command has no registry client or deletion operation. Its `dry_run: true`
 result is a point-in-time policy preview, not permission to delete candidates
 while writers can publish new aliases. Automatic pruning and the concurrent
-writer/deletion gate remain unimplemented. The goal executor retains the preview
+writer/deletion gate remain unimplemented on `main.new`. Old main's existing
+cleanup remains active, as documented below. The goal executor retains the preview
 inputs, recreation proof and receipt in session directory
 `retention-preview-Oe7oyA` through retention checkpoint acceptance and owns their
 cleanup then; the previously captured inventory remains available alongside it.
+
+## Interaction with old main's active cleanup
+
+Retention must preserve the pinned restart baseline, but the default branch's
+active cleanup protects its own `rust-v0.163.0` pin and the newest two stable
+releases, so it selects a restart-only `rust-v0.164.0` manifest for deletion once
+two newer stable releases exist. D8 remains open until the actual cleanup
+consumers preserve the restart pin or operate on separate owned cache packages,
+with verification covering both branches and concurrent publication.
+
+The default branch is still `main`. Its scheduled cleanup run
+[`40313104630`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40313104630)
+passes at `f2830d912540ebe647d1e11b20c3121c47ccbbb0`. The workflow and pruning
+script fetched at that exact commit target the same
+`ghcr.io/holdmyspot-com/cargo-cache` package used by the restart. The script's
+SHA-256 is `5b109eee567af3a63abda6ba079a4503e2fef788b514078100a3db3704f05e07`.
+The latest stable release is currently 0.164.0, so this observation does not
+establish that any current restart cache has been deleted.
+
+A local, compilation-free check executes the actual pruning script's AWK
+classifier against synthetic package-version and retained-release inputs:
+
+| Retained releases | Manifest aliases | Deletion candidate |
+| --- | --- | --- |
+| 0.164.0, 0.163.0 | Restart alias ending in 0.164.0 | None |
+| 0.166.0, 0.165.0, 0.163.0 | Restart alias ending in 0.164.0 | Version 42 |
+| 0.166.0, 0.165.0, 0.163.0 | Old-main alias ending in 0.163.0 | None |
+| 0.166.0, 0.165.0, 0.163.0 | Both 0.164.0 and 0.166.0 aliases | None |
+| 0.166.0, 0.165.0, 0.163.0, 0.164.0 | Restart alias ending in 0.164.0 | None |
+
+All five expected classifications match. These are classifier results, not
+registry deletion tests; no registry state is changed. The fixture uses tags
+`cargo-release-example-rust-v<version>` and package version ID 42. Its owner
+removes the temporary receipt after committing this evidence. Grouped-cache
+archives are blobs listed directly in the retained manifest's layers, rather
+than independently prunable package versions; protecting that manifest is the
+relevant retention boundary.
 
 ## Checks required before reuse
 
