@@ -214,6 +214,28 @@ passes; do not recompile merely to populate the new package. Old main remains
 unchanged. Automatic retention and concurrent publication/deletion acceptance
 remain open.
 
+Migration run [`40502368002`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40502368002)
+at `ca5d6d6ac6a0e2be30af52def835b3c4eabff655` passes in 51 seconds.
+It copies eight current compatible-cache manifests across all six targets and
+verifies all 24 destination aliases against their source digests. The checked
+request is [cache-package-migration.tsv](../.github/cache-package-migration.tsv);
+the workflow also captures current compatible aliases before copying. No source
+cache is deleted and no compilation runs. The build and read-only retention
+inventory now obtain the isolated package name from
+[cargo-cache-package](../.github/cargo-cache-package). Native restoration from
+that package remains unverified.
+
+Earlier migration `40502021459` stops before copying because a historical
+verified manifest has lost its compatible alias to a newer save. Follow-up
+`40502205292` copies the current macOS ARM64 manifest, then stops on an absent
+historical manifest. The captured inventory contains neither the recorded Linux
+ARM64 cold digest `03063c5540d04908edc5b5e3bc0ef37b2e6ec6d19a765e21574e8886406939d2`,
+macOS ARM64 cold digest `fb3c9dad00eb827f446cc0294c44d7f2df5eeaaa3fab1688fe57bb5ca0bcf292`,
+nor Windows ARM64 cold digest `6ac592bbee6fa80facec6133ab448b2c4e47cd91cb662ba43b46d1aef4800d82`.
+Their removal mechanism is unobserved. Current compatible snapshots replace
+these historical request entries; migration acceptance does not imply the absent
+historical manifests can still be restored.
+
 ## Checks required before reuse
 
 The baseline exercises development, `ci-test` and release profiles. Validate cache storage, compatibility and cleanup for the consuming profile instead of copying the helper's release-only assumptions into all checks. Retain the selected toolchains, default features, warning policy, source identity and executable behavior.

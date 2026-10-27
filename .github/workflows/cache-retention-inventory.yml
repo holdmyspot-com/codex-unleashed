@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main.new]
-    paths: [.github/workflows/cache-retention-inventory.yml]
+    paths: [.github/workflows/cache-retention-inventory.yml, .github/cargo-cache-package]
 
 permissions:
   contents: read
@@ -31,7 +31,9 @@ jobs:
           cp .github/upstream-ref "$evidence/protected-upstream-ref"
           gh api --paginate 'repos/openai/codex/releases?per_page=20' \
             --jq '.[] | {tag_name, draft, prerelease}' > "$evidence/upstream-releases.jsonl"
-          gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/cargo-cache/versions?per_page=100" \
+          package="$(cat .github/cargo-cache-package)"
+          printf '%s\n' "$package" > "$evidence/package-name"
+          gh api --paginate "orgs/$PACKAGE_OWNER/packages/container/$package/versions?per_page=100" \
             --jq '.[] | {id, name, created_at, updated_at, metadata}' > "$evidence/package-versions.jsonl"
           jq -s '{release_records: length}' "$evidence/upstream-releases.jsonl"
           jq -s '{package_versions: length, untagged_versions: ([.[] | select(.metadata.container.tags == [])] | length)}' \
