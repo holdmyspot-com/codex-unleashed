@@ -466,7 +466,25 @@ Run `40425326629` is the incremental cached ARM retry with that limit;
 its terminal acceptance remains pending. Independent Linux x86-64
 run `40421492069` exercises the existing actual-CLI input-invalidation check
 at the earlier tested revision; its terminal outcome remains pending. The
-Intel Mac population run is preserved without cancellation.
+Intel Mac population outcome and resumption follow below.
+
+Intel Mac run `40373556470`, attempt 2 at
+`0ed6d57794765591f46dee5825484e88e8236495`, is cancelled by GitHub's
+documented six-hour execution limit; the job annotation explicitly names
+that limit. Proxy, code-mode-host and CLI builds finish in 9m 12s,
+32m 44s and 279m 25s, saving checkpoints in 32/80/332 seconds.
+The CLI checkpoint retains four groups at manifest
+`sha256:e31ceb6500ce9c1f7e54b9958d69d914792bdb5c74e16ca575568f55f3bf0e8b`,
+uploads 1,951,054,207 archive bytes and reuses two earlier groups.
+App-server compilation then runs until the job limit. The source guard passes;
+native smokes, dependency acceptance and final verified publication are unrun.
+This is partial progress, not completed platform acceptance.
+Same-revision attempt 3 resumes through the existing partial-cache path;
+its terminal result remains pending. No active job is cancelled by this retry.
+Terminal log: `intel-terminal-4ptuzr/job.log`, SHA-256
+`780e39b3e57bee48619b471b898d19ccca7a04e51f5987ffd7323e6b3d3222f9`.
+The restart executor owns that temporary evidence directory until Intel
+grouped-cache acceptance is recorded, then removes it.
 
 Windows x64 run `40373560817`, attempt 1 at
 `0ed6d57794765591f46dee5825484e88e8236495`, passes all seven executable builds,
