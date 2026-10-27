@@ -675,9 +675,39 @@ architecture-specific wheels pinned to the published
 [PyPI SHA-256 metadata](https://pypi.org/pypi/frida/17.24.3/json), and retains
 one-day logs/identity before cleaning its owned storage. JavaScript, Python,
 workflow YAML and host-C syntax checks pass locally; two-target selection also
-passes. Native attachment/forwarding remains unrun. Even success accepts only
+passes. Those checks do not accept native attachment or forwarding. Even success accepts only
 this forwarding/lifecycle boundary; denied-allocation waiting/retry, compiler
 coverage and scheduler integration remain separate unmet gates.
+
+The initial native run
+[`40574655589`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40574655589)
+at `a8d2e2dd6baedda222bea9063044c33fcb8786cf` fails on both architectures
+before script creation: `frida.attach(worker.pid)` raises
+`frida.TransportError: timeout was reached` in both the attachment-only control
+and the native-forwarding case. No hook is installed and no mapping request is
+started. Both jobs upload evidence and remove owned diagnostic storage. ARM64
+finishes in 64 seconds; the Intel job remains in checkout post-processing until
+the run records terminal failure after ten minutes. The first eight-minute
+observer expires during that post-processing; continuing observation of the
+same run obtains its terminal failure, without restarting or cancelling it.
+
+| Target | Artifact ID | Raw interception-log SHA-256 |
+| --- | --- | --- |
+| macOS x86-64 | `12767052923` | `278de1b85ebb10f0e321cdbb7acb80fdb201cd7a8a1c216496c6f1faee5254ec` |
+| macOS ARM64 | `12766158530` | `01200d1b899c592dcb175989499d9da8cd4dc8de9efbf7947cbc379212a80638` |
+
+The failure establishes an attachment prerequisite, not a relocation or
+forwarding defect. Frida's [macOS setup](https://frida.re/docs/examples/macos/)
+requires task-port authorization, and its
+[troubleshooting guide](https://frida.re/docs/troubleshooting/) identifies
+headless authorization and executable signing as possible causes. Neither is
+confirmed by the timeout alone. The next diagnostic records Python signing and
+developer-authorization state, then calls native `task_for_pid` on an owned
+child under the runner identity and an elevated diagnostic identity. It records
+the kernel result and deallocates any acquired send right. A denied observation
+is retained as denial, never interpreted as successful attachment. No global
+authorization database, signing identity or SIP setting changes. Native
+attachment, forwarding and allocation continuation remain unaccepted.
 
 ## Swap-control prerequisites
 
@@ -1041,6 +1071,27 @@ pagefile byte count. Windows needs an additional verified native signal before
 this candidate can satisfy the monitoring contract. Native availability results
 follow below; measurement during pressure and the final caller-facing integration
 remain unrun. No dependency or scheduler implementation is selected by this probe.
+
+### Windows pressure-signal candidates
+
+Microsoft's
+[`CreateMemoryResourceNotification`](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-creatememoryresourcenotification)
+provides separate native low/high physical-memory notifications. Neither may
+be signaled in the intermediate range. The nonblocking
+[`QueryMemoryResourceNotification`](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-querymemoryresourcenotification)
+returns operation success separately from the output condition state: a
+successful query with a false low-memory state is a valid observation, while
+a failed query leaves that state unknown. These notifications describe physical
+memory pressure, not pagefile occupancy or proof that paging has stopped.
+
+For paging activity, the documented
+[`PdhAddEnglishCounterW`](https://learn.microsoft.com/en-us/windows/win32/api/pdh/nf-pdh-pdhaddenglishcounterw)
+accepts language-neutral counter paths. This is a supported acquisition
+candidate for native performance counters; it has not been exercised here.
+Counter acquisition, valid sampled values and behavior during controlled
+pressure/recovery remain unrun. Keep the accepted Windows pagefile inventory
+and available-RAM observations, and verify these missing signals through a
+focused Windows diagnostic rather than repeating the six-platform idle check.
 
 ### Native telemetry availability check
 

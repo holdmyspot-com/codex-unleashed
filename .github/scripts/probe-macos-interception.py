@@ -80,17 +80,20 @@ def run_probe(mode):
             try:
                 ready = expect_event('worker_ready')
                 messages = queue.Queue()
-                session = frida.attach(worker.pid)
-                if mode == 'attach':
-                    source = "send({event: 'candidate_ready', pid: Process.id});"
+                if mode == 'task-port':
+                    observe_task_port(worker.pid)
                 else:
-                    source = Path(__file__).with_name('macos-native-allocation-forwarder.js').read_text()
-                script = session.create_script(source)
-                script.on('message', lambda message, data: messages.put(message))
-                script.load()
-                message = messages.get(timeout=30)
-                assert message['type'] == 'send', message
-                assert message['payload'] == {'event': 'candidate_ready', 'pid': worker.pid}, message
+                    session = frida.attach(worker.pid)
+                    if mode == 'attach':
+                        source = "send({event: 'candidate_ready', pid: Process.id});"
+                    else:
+                        source = Path(__file__).with_name('macos-native-allocation-forwarder.js').read_text()
+                    script = session.create_script(source)
+                    script.on('message', lambda message, data: messages.put(message))
+                    script.load()
+                    message = messages.get(timeout=30)
+                    assert message['type'] == 'send', message
+                    assert message['payload'] == {'event': 'candidate_ready', 'pid': worker.pid}, message
                 if mode == 'native-fast':
                     installed = reader.submit(script.exports_sync.install, ready['mapping_address'],
                                               ready['thread_id']).result(timeout=30)
@@ -109,7 +112,8 @@ def run_probe(mode):
                 worker.stdin.flush()
                 expect_event('allocation_freed')
                 assert worker.wait(timeout=30) == 0
-                emit('interception_probe_passed', mode=mode, worker_pid=worker.pid,
+                completion = 'task_port_observation_completed' if mode == 'task-port' else 'interception_probe_passed'
+                emit(completion, mode=mode, worker_pid=worker.pid,
                      frida_version=frida.__version__)
             finally:
                 if worker.poll() is None:
@@ -123,11 +127,38 @@ def run_probe(mode):
                         pass
 
 
+def observe_task_port(worker_pid):
+    """Record native task-port access; denial is an observation, not acceptance.
+
+    The acquired send right is deallocated on success. The borrowed current-task
+    port belongs to libSystem and is never deallocated by this diagnostic.
+    """
+    native = ctypes.CDLL('/usr/lib/libSystem.B.dylib')
+    current_task = ctypes.c_uint32.in_dll(native, 'mach_task_self_').value
+    native.task_for_pid.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(ctypes.c_uint32)]
+    native.task_for_pid.restype = ctypes.c_int
+    native.mach_port_deallocate.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+    native.mach_port_deallocate.restype = ctypes.c_int
+    native.mach_error_string.argtypes = [ctypes.c_int]
+    native.mach_error_string.restype = ctypes.c_char_p
+    port = ctypes.c_uint32()
+    emit('task_port_request_started', worker_pid=worker_pid, uid=os.geteuid(), executable=sys.executable)
+    result = native.task_for_pid(current_task, worker_pid, ctypes.byref(port))
+    try:
+        emit('task_port_observed', worker_pid=worker_pid, uid=os.geteuid(),
+             kernel_result=result, description=native.mach_error_string(result).decode(),
+             received_port=port.value)
+    finally:
+        if result == 0:
+            assert port.value != 0, 'Successful task-port acquisition returned a null port'
+            assert native.mach_port_deallocate(current_task, port.value) == 0
+
+
 def main():
     """Select the controller or its internal worker and verify native identity."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--mode', choices=('attach', 'native-fast'), default='native-fast')
+    parser.add_argument('--mode', choices=('attach', 'native-fast', 'task-port'), default='native-fast')
     arguments = parser.parse_args()
     assert sys.platform == 'darwin', 'Native macOS is required'
     assert ctypes.sizeof(ctypes.c_void_p) == 8, 'A 64-bit process is required'
