@@ -15,12 +15,12 @@ on:
       mode:
         description: Select the native forwarding or allocation retry diagnostic
         type: choice
-        default: native-fast
-        options: [native-fast, native-forward, controls, retry]
+        default: native-retry
+        options: [native-retry, native-timeout, native-fast, native-forward, controls, retry]
       target:
         description: Native Windows target to diagnose
         type: choice
-        default: aarch64-pc-windows-msvc
+        default: all
         options: [aarch64-pc-windows-msvc, x86_64-pc-windows-msvc, all]
 
 permissions:
@@ -39,7 +39,7 @@ jobs:
 
       - id: matrix
         env:
-          PROBE_TARGET: ${{ inputs.target || 'aarch64-pc-windows-msvc' }}
+          PROBE_TARGET: ${{ inputs.target || 'all' }}
         run: |
           printf 'value=%s\n' "$(jq --arg target "$PROBE_TARGET" -c '{include: [.[] | select(.target | contains("-windows-")) | select(($target == "all") or (.target == $target))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
 
@@ -101,10 +101,12 @@ jobs:
         env:
           PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
           TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
-          PROBE_MODE: ${{ inputs.mode || 'native-fast' }}
+          PROBE_MODE: ${{ inputs.mode || 'native-retry' }}
         run: |
           set -euo pipefail
-          if [ "$PROBE_MODE" = retry ]; then
+          if [ "$PROBE_MODE" = native-retry ]; then
+            modes='native-timeout native-retry'
+          elif [ "$PROBE_MODE" = retry ]; then
             modes=retry
           elif [ "$PROBE_MODE" = controls ]; then
             modes='attach forward'
