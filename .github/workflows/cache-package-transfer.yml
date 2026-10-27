@@ -76,7 +76,7 @@ jobs:
             exit 1
           else
             cat "$evidence/anonymous.txt"
-            rg '403 Forbidden|401 Unauthorized|denied' "$evidence/anonymous.txt"
+            grep -E '403 Forbidden|401 Unauthorized|unauthorized: authentication required|denied' "$evidence/anonymous.txt"
           fi
 
       - name: Preserve transfer receipts for one day
@@ -124,7 +124,7 @@ jobs:
     steps:
       - uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
 
-      - name: Delete only versions owned by this fixture
+      - name: Remove owned fixtures while retaining the package bootstrap
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -135,10 +135,20 @@ jobs:
           printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin --registry-config "$scratch/auth.json"
           for package in "$SOURCE_PACKAGE" "$DESTINATION_PACKAGE"; do
             repository="ghcr.io/$owner/$package"
-            gh api --paginate "orgs/$owner/packages/container/$package/versions?per_page=100" \
-              | jq -c --arg tag "$FIXTURE_TAG" \
-                '.[] | select(.metadata.container.tags | index($tag)) | {id, name, metadata}' > "$scratch/versions.jsonl"
+            gh api --paginate --slurp "orgs/$owner/packages/container/$package/versions?per_page=100" > "$scratch/inventory.json"
+            jq -c --arg tag "$FIXTURE_TAG" \
+              '.[][] | select(.metadata.container.tags | index($tag)) | {id, name, metadata}' \
+              "$scratch/inventory.json" > "$scratch/versions.jsonl"
             jq -se 'length <= 1' "$scratch/versions.jsonl"
+            tagged_versions="$(jq '[.[][] | select(.metadata.container.tags | length > 0)] | length' "$scratch/inventory.json")"
+            # GHCR refuses to delete a package's last tagged version. The migration
+            # executor owns this bootstrap until real caches are copied, then removes
+            # its recorded version ID; deleting the package would discard its setup.
+            if test "$tagged_versions" = 1; then
+              printf 'retained_package_bootstrap package=%s\n' "$package"
+              cat "$scratch/versions.jsonl"
+              continue
+            fi
             while IFS= read -r version; do
               printf '%s\n' "$version" > "$scratch/version.json"
               jq -e --arg tag "$FIXTURE_TAG" \
