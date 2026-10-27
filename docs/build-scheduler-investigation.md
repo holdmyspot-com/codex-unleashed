@@ -918,6 +918,75 @@ exception-generating heap flags, other allocators, physical-pressure recovery,
 FIFO admission/retry or Cargo/Bazel integration. Accepted VirtualAlloc and Codex
 build checks are not repeated.
 
+#### Actual Windows compiler denial and continuation
+
+The [compiler diagnostic](../.github/scripts/probe-windows-compiler-retry.py)
+and [native heap hook](../.github/scripts/windows-compiler-heap-retry.js)
+compile a 20,000-function stdin library with native Rust 1.95.0. They first
+produce reference metadata, then attach the hook to a second compiler waiting
+for input. The controller constrains only that compiler's job-object commit
+allowance to its measured peak plus 4 KiB. Native events and external
+`ReadProcessMemory` calls report the first denied request without requiring
+JavaScript messages during the constrained interval.
+
+The initial allocation-only hook passes on
+[Windows x86-64 run 40590421451](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40590421451),
+but fails on the ARM64 worker in
+[run 40590891871](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40590891871).
+That compiler exits one with a stdin UTF-8 diagnostic and no matching allocation
+denial event. The ASCII input passes the unconstrained reference compilation.
+A native observer added on the same connected ARM64 worker identifies a
+262,144-byte, flags-zero `RtlReAllocateHeap` request returning null. The observer
+holds that result while independent work completes, then returns the original
+null without retrying; the compiler reproduces the same stdin error. This
+isolates a missing reallocation boundary in our hook. It does not identify
+malformed input or a normal upstream build failure.
+
+Rust's pinned [stdin-input handling](https://github.com/rust-lang/rust/blob/1.95.0/compiler/rustc_driver_impl/src/lib.rs#L350-L357)
+emits that diagnostic for any `read_to_string` error. Its
+[Windows allocator](https://github.com/rust-lang/rust/blob/1.95.0/library/std/src/sys/alloc/windows.rs)
+uses the Windows heap reallocation API. Microsoft's
+[HeapReAlloc contract](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc)
+states that failure retains the original block and that successful reallocation
+preserves its contents; last-error values are not a documented failure-code
+contract for that API.
+
+The corrected hook forwards both heap entry points through native trampolines
+and shares denial reporting, thread exclusion, waiting and retry logic. It waits
+after the original operation returns null, preserves its arguments and retries
+once after the controller restores capacity and grants permission. This is a
+controlled diagnostic, with 30-second native waits, not a scheduler policy.
+
+The corrected candidate passes on that same ARM64 worker and on
+[Windows x86-64 run 40592126381](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40592126381).
+The x86-64 denial is a 1,048,576-byte allocation with flags three; the ARM64 denial
+is a 262,144-byte reallocation with flags zero. Each remains pending through an
+independent compiler process's completion. Raising the commit allowance by
+256 MiB and granting permission produces a nonnull second attempt. Both
+compilers exit zero with empty output streams and byte-identical metadata to
+their respective reference compilations. ARM64 also passes from a newly created,
+explicitly empty folder containing only the final source, reused native API
+helper and pinned dependency declaration. Those staged source bytes are the
+repository's diagnostic source bytes.
+
+[Compiler retry evidence](evidence/windows-compiler-heap-retry.json) retains the
+original failure, the observer's reproduction and successful native results,
+including raw-log hashes and source identities. These commands execute through
+live Upterm clients established before testing. ARM64 diagnosis and retries use
+one uninterrupted connection and the same worker, workspace, toolchain and
+installed dependency. No Codex compilation or upstream source repair is involved.
+All three SSH clients exit zero after deliberate shell exit. Their remote post
+waits and retained-state cleanup pass. Each hosting workflow remains failed
+only for its original deliberate exit 17; successful diagnostic commands do not
+erase that failed step.
+
+This accepts actual compiler continuation at the observed heap boundaries under
+an artificial per-process commit limit. Physical-pressure recovery, complete
+allocator and child-process coverage, production thread classification,
+concurrent caller/outer-lock safety, FIFO admission/retry and Cargo/Bazel
+integration remain unaccepted. A failed second allocation can still return null;
+the diagnostic does not implement indefinite allocation waiting.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the

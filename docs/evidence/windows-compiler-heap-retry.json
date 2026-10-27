@@ -1,0 +1,648 @@
+{
+  "contract": "Actual native Windows compiler heap allocation/reallocation denial and continuation under an owned process commit limit; not full build scheduling",
+  "source_sha256": {
+    "probe-windows-allocation.py": "89aa22ea93ca00c6de3bfb324dd92e339c9dee144191f4d72c8ec3316debed2a",
+    "probe-windows-compiler-retry.py": "d73f8441a488a9377f9089546863bd041d9c7b11d6fe4b1d288ee871201ad306",
+    "windows-compiler-heap-retry.js": "e383bd0b33e01c97bfe3d483629b9f64df69b97fabf21783042f7c221d3d80f8",
+    "windows-interception-requirements.txt": "a1123cae4cf0932714a46f1842470667d7ebb6fd3dc63f22840ab8923b812c90"
+  },
+  "execution": "Final staged source and hash-pinned dependency declaration executed through live Upterm before repository edits; ARM64 diagnosis and retries retain one worker and one SSH connection",
+  "runs": [
+    {
+      "id": 40590421451,
+      "host_workflow_conclusion": "failure",
+      "failed_steps": [
+        "Record the deliberate build failure"
+      ],
+      "ssh_client_exit": 0,
+      "post_steps": [
+        {
+          "name": "Post Debug the original failed workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Create owned partial build state",
+          "conclusion": "success"
+        }
+      ],
+      "transcript_sha256": "9dc05c164a590ee47dca51623c75473a5427d18ed1ea267120d79db68afb536a"
+    },
+    {
+      "id": 40590891871,
+      "host_workflow_conclusion": "failure",
+      "failed_steps": [
+        "Record the deliberate build failure"
+      ],
+      "ssh_client_exit": 0,
+      "post_steps": [
+        {
+          "name": "Post Debug the original failed workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Create owned partial build state",
+          "conclusion": "success"
+        }
+      ],
+      "transcript_sha256": "1a2ab7abad55228402d016d79caf59ae0ff21849bd003c70d00bd3b630801475"
+    },
+    {
+      "id": 40592126381,
+      "host_workflow_conclusion": "failure",
+      "failed_steps": [
+        "Record the deliberate build failure"
+      ],
+      "ssh_client_exit": 0,
+      "post_steps": [
+        {
+          "name": "Post Debug the original failed workspace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Create owned partial build state",
+          "conclusion": "success"
+        }
+      ],
+      "transcript_sha256": "69c3e7919b1bbae9bb5684c16c97f47c2b29ea46bd148444e09b7e4b100c767d"
+    }
+  ],
+  "cases": [
+    {
+      "case": "x64-probe-1",
+      "run": 40590421451,
+      "outcome": "passed",
+      "variant": "allocation-only",
+      "raw_log_sha256": "e0f98bcb8c5378acb55a645a1a8ab1b3d0d58fe38b05fd7124d8cfc0cc440452",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 8648,
+          "initial_threads": [
+            3084
+          ],
+          "state_address": "0x113b46ea8c0",
+          "excluded_threads": [
+            6808,
+            6824,
+            6812,
+            5160
+          ],
+          "target": "0x7ffee657db30",
+          "architecture": "x64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 8648,
+          "peak_bytes": 7647232,
+          "limit_bytes": 7651328
+        },
+        {
+          "event": "compiler_allocation_blocked",
+          "compiler_pid": 8648,
+          "state": {
+            "thread_id": 3084,
+            "flags": 3,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 0
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 8648,
+          "state": {
+            "thread_id": 3084,
+            "flags": 3,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 0
+          }
+        },
+        {
+          "event": "compiler_commit_limit_raised",
+          "limit_bytes": 276086784
+        },
+        {
+          "event": "compiler_allocation_retried",
+          "compiler_pid": 8648,
+          "state": {
+            "thread_id": 3084,
+            "flags": 3,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 6,
+            "permission_wait": 0,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 1184144777280
+          }
+        },
+        {
+          "event": "compiler_heap_retry_passed",
+          "compiler_pid": 8648,
+          "exit": 0,
+          "metadata_bytes": 3089077,
+          "metadata_sha256": "762a5c228d73441d90a72d728ce8899063255db1a58daeaaa0dfb657be449fc1"
+        }
+      ],
+      "raw_log": "{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 8648, \"initial_threads\": [3084], \"state_address\": \"0x113b46ea8c0\", \"excluded_threads\": [6808, 6824, 6812, 5160], \"target\": \"0x7ffee657db30\", \"architecture\": \"x64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 8648, \"peak_bytes\": 7647232, \"limit_bytes\": 7651328}\r\n{\"event\": \"compiler_allocation_blocked\", \"compiler_pid\": 8648, \"state\": {\"thread_id\": 3084, \"flags\": 3, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 0}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 8648, \"state\": {\"thread_id\": 3084, \"flags\": 3, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 0}}\r\n{\"event\": \"compiler_commit_limit_raised\", \"limit_bytes\": 276086784}\r\n{\"event\": \"compiler_allocation_retried\", \"compiler_pid\": 8648, \"state\": {\"thread_id\": 3084, \"flags\": 3, \"attempts\": 2, \"first_error\": 8, \"final_error\": 6, \"permission_wait\": 0, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 1184144777280}}\r\n{\"event\": \"compiler_heap_retry_passed\", \"compiler_pid\": 8648, \"exit\": 0, \"metadata_bytes\": 3089077, \"metadata_sha256\": \"762a5c228d73441d90a72d728ce8899063255db1a58daeaaa0dfb657be449fc1\"}\r\n"
+    },
+    {
+      "case": "arm64-original",
+      "run": 40590891871,
+      "outcome": "failed",
+      "variant": "allocation-only",
+      "raw_log_sha256": "ddb1a28dcc961593a4d7fd8d73e9de2bd59485761403cffdfa5ae37619c1d865",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 2792,
+          "initial_threads": [
+            664
+          ],
+          "state_address": "0x23525b39490",
+          "excluded_threads": [
+            10968,
+            1436,
+            5956,
+            5612
+          ],
+          "target": "0x7ffb45da45b0",
+          "architecture": "arm64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 2792,
+          "peak_bytes": 7471104,
+          "limit_bytes": 7475200
+        },
+        {
+          "event": "compiler_terminal_failure",
+          "exit": 1,
+          "stdout": "",
+          "stderr": "error: couldn't read from stdin, as it did not contain valid UTF-8\n\n"
+        }
+      ],
+      "raw_log": "{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: aarch64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 2792, \"initial_threads\": [664], \"state_address\": \"0x23525b39490\", \"excluded_threads\": [10968, 1436, 5956, 5612], \"target\": \"0x7ffb45da45b0\", \"architecture\": \"arm64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 2792, \"peak_bytes\": 7471104, \"limit_bytes\": 7475200}\r\n{\"event\": \"compiler_terminal_failure\", \"exit\": 1, \"stdout\": \"\", \"stderr\": \"error: couldn't read from stdin, as it did not contain valid UTF-8\\n\\n\"}\r\nTraceback (most recent call last):\r\n  File \"C:\\a\\_temp\\runner-debug-smoke-J4q3G2/compiler-candidate/probe-windows-compiler-retry.py\", line 237, in <module>\r\n    main()\r\n    ~~~~^^\r\n  File \"C:\\a\\_temp\\runner-debug-smoke-J4q3G2/compiler-candidate/probe-windows-compiler-retry.py\", line 233, in main\r\n    run_probe(arguments.compiler, arguments.expected_host, arguments.storage)\r\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"C:\\a\\_temp\\runner-debug-smoke-J4q3G2/compiler-candidate/probe-windows-compiler-retry.py\", line 169, in run_probe\r\n    assert blocked == 0, {'blocked_wait': blocked, 'compiler_exit': child.poll()}\r\n           ^^^^^^^^^^^^\r\nAssertionError: {'blocked_wait': 258, 'compiler_exit': 1}\r\n"
+    },
+    {
+      "case": "arm64-observe",
+      "run": 40590891871,
+      "outcome": "observed original compiler failure",
+      "variant": "reallocation observer without retry",
+      "raw_log_sha256": "acd9077b305ab979f992f8ab77e375b7bef049cb8aad24513cbdb0b29f368584",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 4228,
+          "initial_threads": [
+            9808
+          ],
+          "state_address": "0x1a8d788d450",
+          "excluded_threads": [
+            3804,
+            2480,
+            10072,
+            10388
+          ],
+          "target": "0x7ffb45da45b0",
+          "architecture": "arm64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 4228,
+          "peak_bytes": 7479296,
+          "limit_bytes": 7483392
+        },
+        {
+          "event": "compiler_allocation_blocked",
+          "compiler_pid": 4228,
+          "state": {
+            "thread_id": 9808,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 4228,
+          "state": {
+            "thread_id": 9808,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_commit_limit_raised",
+          "limit_bytes": 275918848
+        },
+        {
+          "event": "observer_compiler_exit",
+          "exit": 1,
+          "stdout": "",
+          "stderr": "error: couldn't read from stdin, as it did not contain valid UTF-8\n\n"
+        },
+        {
+          "event": "reallocation_denial_observed",
+          "state": {
+            "thread_id": 9808,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_terminal_failure",
+          "exit": 1,
+          "stdout": "",
+          "stderr": "error: couldn't read from stdin, as it did not contain valid UTF-8\n\n"
+        }
+      ],
+      "raw_log": "{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: aarch64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 4228, \"initial_threads\": [9808], \"state_address\": \"0x1a8d788d450\", \"excluded_threads\": [3804, 2480, 10072, 10388], \"target\": \"0x7ffb45da45b0\", \"architecture\": \"arm64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 4228, \"peak_bytes\": 7479296, \"limit_bytes\": 7483392}\r\n{\"event\": \"compiler_allocation_blocked\", \"compiler_pid\": 4228, \"state\": {\"thread_id\": 9808, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 4228, \"state\": {\"thread_id\": 9808, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"compiler_commit_limit_raised\", \"limit_bytes\": 275918848}\r\n{\"event\": \"observer_compiler_exit\", \"exit\": 1, \"stdout\": \"\", \"stderr\": \"error: couldn't read from stdin, as it did not contain valid UTF-8\\n\\n\"}\r\n{\"event\": \"reallocation_denial_observed\", \"state\": {\"thread_id\": 9808, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"compiler_terminal_failure\", \"exit\": 1, \"stdout\": \"\", \"stderr\": \"error: couldn't read from stdin, as it did not contain valid UTF-8\\n\\n\"}\r\n"
+    },
+    {
+      "case": "arm64-combined",
+      "run": 40590891871,
+      "outcome": "passed",
+      "variant": "combined-candidate",
+      "raw_log_sha256": "dacd76d1bf25c86469bdb2bb8025caf0848b82d88666a380c2c8275a6c72da68",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 7704,
+          "initial_threads": [
+            10404
+          ],
+          "state_address": "0x1c736a0e280",
+          "excluded_threads": [
+            7488,
+            10104,
+            5012,
+            8920
+          ],
+          "target": "0x7ffb45da45b0",
+          "architecture": "arm64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 7704,
+          "peak_bytes": 7475200,
+          "limit_bytes": 7479296
+        },
+        {
+          "event": "compiler_allocation_blocked",
+          "compiler_pid": 7704,
+          "state": {
+            "thread_id": 10404,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 7704,
+          "state": {
+            "thread_id": 10404,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_commit_limit_raised",
+          "limit_bytes": 275914752
+        },
+        {
+          "event": "compiler_allocation_retried",
+          "compiler_pid": 7704,
+          "state": {
+            "thread_id": 10404,
+            "flags": 0,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 6,
+            "permission_wait": 0,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 1955089235968,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_heap_retry_passed",
+          "compiler_pid": 7704,
+          "exit": 0,
+          "metadata_bytes": 3089078,
+          "metadata_sha256": "74dee207351e2ed545b5b5169241a86c557b19e6c2799bc06952947ac1a3bd86"
+        }
+      ],
+      "raw_log": "{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: aarch64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 7704, \"initial_threads\": [10404], \"state_address\": \"0x1c736a0e280\", \"excluded_threads\": [7488, 10104, 5012, 8920], \"target\": \"0x7ffb45da45b0\", \"architecture\": \"arm64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 7704, \"peak_bytes\": 7475200, \"limit_bytes\": 7479296}\r\n{\"event\": \"compiler_allocation_blocked\", \"compiler_pid\": 7704, \"state\": {\"thread_id\": 10404, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 7704, \"state\": {\"thread_id\": 10404, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"compiler_commit_limit_raised\", \"limit_bytes\": 275914752}\r\n{\"event\": \"compiler_allocation_retried\", \"compiler_pid\": 7704, \"state\": {\"thread_id\": 10404, \"flags\": 0, \"attempts\": 2, \"first_error\": 8, \"final_error\": 6, \"permission_wait\": 0, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 1955089235968, \"operation_id\": 2}}\r\n{\"event\": \"compiler_heap_retry_passed\", \"compiler_pid\": 7704, \"exit\": 0, \"metadata_bytes\": 3089078, \"metadata_sha256\": \"74dee207351e2ed545b5b5169241a86c557b19e6c2799bc06952947ac1a3bd86\"}\r\n"
+    },
+    {
+      "case": "x64-combined",
+      "run": 40592126381,
+      "outcome": "passed",
+      "variant": "combined-candidate",
+      "raw_log_sha256": "f3b0d0af19d96b02f17ceb2408fe6d216cca5d3929709550d6005970a561c3fe",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 7588,
+          "initial_threads": [
+            5824
+          ],
+          "state_address": "0x2b3de95cfd0",
+          "excluded_threads": [
+            6756,
+            7972,
+            7996,
+            7244
+          ],
+          "target": "0x7ffa8239db30",
+          "architecture": "x64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 7588,
+          "peak_bytes": 7688192,
+          "limit_bytes": 7692288
+        },
+        {
+          "event": "compiler_allocation_blocked",
+          "compiler_pid": 7588,
+          "state": {
+            "thread_id": 5824,
+            "flags": 3,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 0,
+            "operation_id": 1
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 7588,
+          "state": {
+            "thread_id": 5824,
+            "flags": 3,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 0,
+            "operation_id": 1
+          }
+        },
+        {
+          "event": "compiler_commit_limit_raised",
+          "limit_bytes": 276127744
+        },
+        {
+          "event": "compiler_allocation_retried",
+          "compiler_pid": 7588,
+          "state": {
+            "thread_id": 5824,
+            "flags": 3,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 6,
+            "permission_wait": 0,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 1048576,
+            "pointer": 2971562205248,
+            "operation_id": 1
+          }
+        },
+        {
+          "event": "compiler_heap_retry_passed",
+          "compiler_pid": 7588,
+          "exit": 0,
+          "metadata_bytes": 3089077,
+          "metadata_sha256": "36eb122d6e83b86b9b1b61dd66f45c1681ba263bc258037e09f10c1658cefc22"
+        }
+      ],
+      "raw_log": "{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: x86_64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 7588, \"initial_threads\": [5824], \"state_address\": \"0x2b3de95cfd0\", \"excluded_threads\": [6756, 7972, 7996, 7244], \"target\": \"0x7ffa8239db30\", \"architecture\": \"x64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 7588, \"peak_bytes\": 7688192, \"limit_bytes\": 7692288}\r\n{\"event\": \"compiler_allocation_blocked\", \"compiler_pid\": 7588, \"state\": {\"thread_id\": 5824, \"flags\": 3, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 0, \"operation_id\": 1}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 7588, \"state\": {\"thread_id\": 5824, \"flags\": 3, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 0, \"operation_id\": 1}}\r\n{\"event\": \"compiler_commit_limit_raised\", \"limit_bytes\": 276127744}\r\n{\"event\": \"compiler_allocation_retried\", \"compiler_pid\": 7588, \"state\": {\"thread_id\": 5824, \"flags\": 3, \"attempts\": 2, \"first_error\": 8, \"final_error\": 6, \"permission_wait\": 0, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 1048576, \"pointer\": 2971562205248, \"operation_id\": 1}}\r\n{\"event\": \"compiler_heap_retry_passed\", \"compiler_pid\": 7588, \"exit\": 0, \"metadata_bytes\": 3089077, \"metadata_sha256\": \"36eb122d6e83b86b9b1b61dd66f45c1681ba263bc258037e09f10c1658cefc22\"}\r\n"
+    },
+    {
+      "case": "arm64-final-proof",
+      "run": 40590891871,
+      "outcome": "passed",
+      "variant": "combined-candidate, fresh empty source folder",
+      "raw_log_sha256": "3d265d2b82b0e47c7f4a674986445da96087b7d724d79340e4704be913220972",
+      "events": [
+        {
+          "event": "compiler_identity",
+          "identity": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-pc-windows-msvc\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+          "frida_version": "17.24.3"
+        },
+        {
+          "event": "compiler_source",
+          "functions": 20000,
+          "sha256": "df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994"
+        },
+        {
+          "event": "compiler_hook_installed",
+          "compiler_pid": 1564,
+          "initial_threads": [
+            4524
+          ],
+          "state_address": "0x1ff7eccdda0",
+          "excluded_threads": [
+            1896,
+            856,
+            6808,
+            5380
+          ],
+          "target": "0x7ffb45da45b0",
+          "architecture": "arm64"
+        },
+        {
+          "event": "compiler_commit_limit_set",
+          "compiler_pid": 1564,
+          "peak_bytes": 7483392,
+          "limit_bytes": 7487488
+        },
+        {
+          "event": "compiler_allocation_blocked",
+          "compiler_pid": 1564,
+          "state": {
+            "thread_id": 4524,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "independent_peer_completed_while_blocked",
+          "compiler_pid": 1564,
+          "state": {
+            "thread_id": 4524,
+            "flags": 0,
+            "attempts": 1,
+            "first_error": 8,
+            "final_error": 0,
+            "permission_wait": 4294967295,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 0,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_commit_limit_raised",
+          "limit_bytes": 275922944
+        },
+        {
+          "event": "compiler_allocation_retried",
+          "compiler_pid": 1564,
+          "state": {
+            "thread_id": 4524,
+            "flags": 0,
+            "attempts": 2,
+            "first_error": 8,
+            "final_error": 6,
+            "permission_wait": 0,
+            "release_wait": 4294967295,
+            "signal_ok": 1,
+            "requested_bytes": 262144,
+            "pointer": 2196865695744,
+            "operation_id": 2
+          }
+        },
+        {
+          "event": "compiler_heap_retry_passed",
+          "compiler_pid": 1564,
+          "exit": 0,
+          "metadata_bytes": 3089078,
+          "metadata_sha256": "1d50b6c510ef3135c2886a61a31b9344fbc9e892ad0d963b07e688ff59f922ff"
+        }
+      ],
+      "raw_log": "Initially empty: []\r\nFinal source and declaration: ['probe-windows-allocation.py', 'probe-windows-compiler-retry.py', 'windows-compiler-heap-retry.js', 'windows-interception-requirements.txt']\r\n{\"event\": \"compiler_identity\", \"identity\": \"rustc 1.95.0 (59807616e 2026-04-14)\\nbinary: rustc\\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\\ncommit-date: 2026-04-14\\nhost: aarch64-pc-windows-msvc\\nrelease: 1.95.0\\nLLVM version: 22.1.2\\n\", \"frida_version\": \"17.24.3\"}\r\n{\"event\": \"compiler_source\", \"functions\": 20000, \"sha256\": \"df2d71c706d156a5b1301eaf5ddc7dc4a612ec6d6b010c5cad67178b05ce7994\"}\r\n{\"event\": \"compiler_hook_installed\", \"compiler_pid\": 1564, \"initial_threads\": [4524], \"state_address\": \"0x1ff7eccdda0\", \"excluded_threads\": [1896, 856, 6808, 5380], \"target\": \"0x7ffb45da45b0\", \"architecture\": \"arm64\"}\r\n{\"event\": \"compiler_commit_limit_set\", \"compiler_pid\": 1564, \"peak_bytes\": 7483392, \"limit_bytes\": 7487488}\r\n{\"event\": \"compiler_allocation_blocked\", \"compiler_pid\": 1564, \"state\": {\"thread_id\": 4524, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"independent_peer_completed_while_blocked\", \"compiler_pid\": 1564, \"state\": {\"thread_id\": 4524, \"flags\": 0, \"attempts\": 1, \"first_error\": 8, \"final_error\": 0, \"permission_wait\": 4294967295, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 0, \"operation_id\": 2}}\r\n{\"event\": \"compiler_commit_limit_raised\", \"limit_bytes\": 275922944}\r\n{\"event\": \"compiler_allocation_retried\", \"compiler_pid\": 1564, \"state\": {\"thread_id\": 4524, \"flags\": 0, \"attempts\": 2, \"first_error\": 8, \"final_error\": 6, \"permission_wait\": 0, \"release_wait\": 4294967295, \"signal_ok\": 1, \"requested_bytes\": 262144, \"pointer\": 2196865695744, \"operation_id\": 2}}\r\n{\"event\": \"compiler_heap_retry_passed\", \"compiler_pid\": 1564, \"exit\": 0, \"metadata_bytes\": 3089078, \"metadata_sha256\": \"1d50b6c510ef3135c2886a61a31b9344fbc9e892ad0d963b07e688ff59f922ff\"}\r\n"
+    }
+  ],
+  "remaining_gates": [
+    "physical-pressure recovery",
+    "complete allocator and child-process coverage",
+    "production thread classification",
+    "concurrent caller and outer-lock safety",
+    "FIFO admission and ordered retry",
+    "Cargo and Bazel scheduler integration"
+  ]
+}
