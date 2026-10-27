@@ -164,7 +164,7 @@ allocation-blocking mechanism. Local actionlint 1.7.12 rejects the documented
 `queue` key, as already established for the baseline workflow; a disposable input
 omitting only that key passes the remaining lint checks.
 
-The native hosted-runner control checks remain unrun. In particular, changing a
+The native hosted-runner control-operation checks remain unrun. In particular, changing a
 persistent setting does not prove that the current build has no active swap:
 
 - Microsoft's [Win32_PageFileSetting contract](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-pagefilesetting)
@@ -181,3 +181,53 @@ persistent setting does not prove that the current build has no active swap:
 Acceptance needs a supported control operation and a runtime observation of its
 effect on each selected native runner. Do not count a successful configuration
 edit, zero current swap usage, or an unused pagefile as disabling swap.
+
+### Hosted read-only inventory
+
+Run [`40548714734`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40548714734)
+at `94ff9c78954410adf99ba7d566dc91e0b16536cf` passes all six native inspections.
+Each inspection job takes 4–8 seconds; the workflow performs no compilation,
+cache restoration or memory-setting change. Artifact upload and owned-directory
+cleanup pass on every target.
+
+| Native target | Image version | Observed runtime swap/pagefiles |
+| --- | --- | --- |
+| Linux x86-64 | `ubuntu24`, `20261026.354.1` | `/swapfile`, 3,221,221,376 bytes, unused; overcommit mode 0. |
+| Linux ARM64 | `ubuntu24-arm64`, `20261026.166.1` | `/swapfile`, 3,221,221,376 bytes, unused; overcommit mode 0. |
+| macOS x86-64 | `macos15`, `20260824.0482.1` | `vm.swap_enabled=1`, `vm.compressor_mode=4`; current swap total and usage are zero. |
+| macOS ARM64 | `macos15`, `20260907.0337.1` | `vm.swap_enabled=1`, `vm.compressor_mode=4`; current swap total and usage are zero. |
+| Windows x86-64 | `win25-vs2026`, `20261021.278.1` | Active `D:\pagefile.sys`, 2,944 MiB allocated, unused. |
+| Windows ARM64 | `win11-vs2026-arm64`, `20261022.194.1` | Active `C:\pagefile.sys`, 2,944 MiB allocated, unused; startup settings instead name `D:\pagefile.sys`. |
+
+Both Linux hosts mount writable cgroup v2 and list the memory controller. The
+probe's unprivileged checks of root-level `memory.oom_control`, `memory.high`,
+`memory.max` and `memory.swap.max` find no readable/writable entries; the process
+belongs to `/system.slice/hosted-compute-agent.service`. This does not test control
+files in that service or creation of a delegated child cgroup. `sudo -n true`
+succeeds on both Linux and both macOS hosts. The Windows token reports
+`SeDebugPrivilege` enabled and `SeCreatePagefilePrivilege` disabled; enabling that
+privilege or controlling active pagefiles is not attempted.
+
+The Windows ARM64 observation directly demonstrates why startup settings cannot
+stand in for runtime state: its configured drive differs from its active drive.
+The macOS observations likewise show that zero allocated swap does not imply
+`vm.swap_enabled=0`. Native swap-disable operations and their effective-state
+checks are the next unrun prerequisite, followed by allocation-failure probes.
+
+The following one-day artifacts contain `identity.txt` and the platform's raw
+memory inventory. The SHA-256 values are computed from the downloaded memory
+inventory files, not inferred from the job's success or the artifact API digest.
+
+| Target | Artifact ID | Memory-inventory SHA-256 |
+| --- | --- | --- |
+| Linux x86-64 | `12753831449` | `063b1c4c60d330ced5c1b0d7f422ef4bd89bd644fa1b96ecdaaeb662dea85ed2` |
+| Linux ARM64 | `12754206930` | `2b2c7fb48a3a09a42d38d8f638cb0a80eb13826ff52a8a57fa75dc66b036e274` |
+| macOS x86-64 | `12752834835` | `b8b0aa01ea6b8ea947ed1ddd7b04338e2a4329e51d38407384731635bcfc450f` |
+| macOS ARM64 | `12754386627` | `d4d98ffec72f1a2cd39b8cbeff9b08cc8c9bdcaf063a80ee6ae5f911742bf651` |
+| Windows x86-64 | `12752799803` | `0ff900fd21babd196be5084455bf95ed61f0bb5f1880199cd7a7b1f008a1b60e` |
+| Windows ARM64 | `12753069375` | `a73b8ee6e1b3a02dfb923f46320d6604564eb7c38c5e709c4942b4afdced5995` |
+
+The download operation removes its own temporary directory after reading and
+hashing these files. This durable summary preserves the established observations
+after the short-lived artifacts expire; a later native probe must record its own
+image identity rather than silently treating these images as unchanged.
