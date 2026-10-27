@@ -692,6 +692,15 @@ The retained job log SHA-256 is
 `7c4dac7080801aadc95d1571a5c53d7da6b5a11ff2c27a1721612af4195eb687`.
 The Zig setup action emits its Node.js runtime deprecation annotation; it is
 retained without changing the pinned prerequisite during this verification.
-The other five clean target outcomes remain pending. The root executor owns
+Windows ARM64 run `40434750719`, job `121960682312`, at the same restart
+revision passes in 1h 21m 14s. GHCR restoration is skipped; all seven default-feature
+build stages finish in 274/321/2,760/1,012/78/248/42 seconds. Both native smokes
+and source/dependency guards pass. Evidence artifact `12706517490` has uploaded
+ZIP SHA-256
+`960e4d5e0a455a5df28dcae592526433f53d2dab22cbf67cf48cc597ba93f49d`;
+the job-log SHA-256 is
+`e42b20bf2a49ec3fc6c8d6c962fb3079075f9cdff58a600f0dbe57fb4603add6`.
+
+The other four clean target outcomes remain unaccepted. The root executor owns
 the temporary logs under `clean-matrix-NPAgpQ` until their results are recorded,
 then removes that directory.
