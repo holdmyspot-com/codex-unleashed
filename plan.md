@@ -76,6 +76,13 @@ upstream source remain unchanged. Independent Linux x86-64 run
 `40421492069` exercises the existing actual-CLI changed-input and repeated-input
 reuse checks, with its terminal outcome pending. Neither checkpoint is closed.
 
+Owner-directed response to the measured ARM memory pressure: subsequent Linux
+ARM64 release builds use `CARGO_BUILD_JOBS=2`. Keep incremental outputs and
+private caches; do not interrupt the already-running diagnostic to change its
+concurrency. Revisit this temporary two-job limit in step 3 when the scheduler
+can account for the memory requirements of concurrent work. Other targets
+retain their existing concurrency until evidence warrants a change.
+
 Focused baseline run `40405970958` at
 `5e2dc28b7372c6170861042f40215c248f87f26d` verifies the ordinary empty-root
 test with its matching built helper staged beside the executable, without
