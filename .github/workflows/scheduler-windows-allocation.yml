@@ -1,0 +1,70 @@
+name: Scheduler Windows allocation probe
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-windows-allocation.yml
+      - .github/scripts/probe-windows-allocation.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        run: |
+          printf 'value=%s\n' "$(jq -c '{include: [.[] | select(.target | contains("-windows-"))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: select
+    name: Probe - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/probe-windows-allocation.py
+          sparse-checkout-cone-mode: false
+
+      - name: Set up native Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Probe isolated Windows allocation denial and retry
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          python .github/scripts/probe-windows-allocation.py 2>&1 | tee windows-allocation-probe.log
+
+      - name: Retain native evidence for one day
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-windows-allocation-${{ matrix.target }}
+          path: windows-allocation-probe.log
+          retention-days: 1
+          if-no-files-found: error
