@@ -119,7 +119,19 @@ The three peer-lookup diagnostics establish an observed Bash/seccomp mechanism i
 | Failure | Verified outcome | Upstream comparison still required |
 | --- | --- | --- |
 | Initial macOS and Windows x86-64 release jobs reach our 120-minute limit | GitHub annotations identify our configured job timeout; partial compilation is not platform acceptance. The limit was removed. Windows x86-64 retry `40213213142` succeeds in 2h 8m 8s with source guards and both native smokes; macOS ARM retry `40213209183` also passes both native smokes and source guards; macOS Intel remains pending. | Exact-release upstream `rust-release` run `39894017941` succeeds. Retain the target/job/command match rather than inferring test success from release success. |
+| Intel clean verification cannot retrieve the crates.io index | Run `40438957248` attempt 1, job `121974418865`, fails before any Rust compilation: Cargo cannot transfer the `aw/s-/aws-config` index entry, exhausting its retries with zero transferred bytes. Artifact upload separately fails with `ENOTFOUND`. The source guard passes. | Exact-release upstream run `39894017941`, job `120252151708`, succeeds on target `x86_64-apple-darwin` with Rust 1.99.1: its log updates the crates.io index, downloads `aws-config v1.8.12`, compiles it and completes the release build. Its host is macOS ARM64 on `macos-15-xlarge`, whereas our failing host is native Intel on a free standard runner. Upstream does not exhibit this dependency-acquisition failure. The failed runner's network/DNS cause remains unknown; unchanged attempt 2 retries on a fresh runner without source or configuration changes. |
 | Linux ARM cache jobs lose their runner or receive shutdown | Attempt 1 of `40213329117` loses communication without build logs. Attempt 2 retains `UserCancelled` shutdown classification and exit 143; its initiating actor remains unknown after available audit checks. Guards, smokes and cache save do not execute. | Compare with the exact-release upstream ARM build and its environment. Runner interruption does not establish a compiler or test defect, and upstream release success does not identify the shutdown requester. |
+
+The Intel acquisition comparison uses the public job-log API because
+`gh run view --log` returns empty output for that upstream job. Retained
+log SHA-256 values are
+`48e9effb7b3474c56155d95bc2c73be588d083084b2739fc4954d43780d1b606`
+(our failed job) and
+`032dba24cfcc287298ab60fd5bc3c47023f31083a8844839dfdd3b48dd433884`
+(upstream primary Cargo job). The root executor owns their temporary copies
+under `clean-matrix-NPAgpQ` until the clean-matrix outcome is recorded,
+then removes that directory. The failed build and skipped native smokes remain
+failed/unrun evidence; upstream success does not pass our clean gate.
 
 ## Downstream setup and wrapper failures
 

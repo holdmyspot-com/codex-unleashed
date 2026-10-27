@@ -48,7 +48,7 @@ recorded separately; no running job is cancelled for clean verification.
 | macOS ARM64 | [`40434746377`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434746377) |
 | Windows x86-64 MSVC | [`40434748709`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434748709) |
 | Windows ARM64 MSVC | [`40434750719`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40434750719) |
-| macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248) |
+| macOS Intel | [`40438957248`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40438957248): attempt 1 fails before compilation on crates.io index transfer; unchanged attempt 2 retries on a fresh runner. |
 
 ARM signal-observation preflight `40413519826` passes known-sender capture,
 observation during a real command and propagation of that command's failure
