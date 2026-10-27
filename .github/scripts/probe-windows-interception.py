@@ -1,11 +1,13 @@
-"""Test a Windows native allocation hook with one caller-side VirtualAlloc.
+"""Test a Windows native allocation hook with one caller-side allocation.
 
 Run on native 64-bit Windows with pinned Frida installed on PYTHONPATH. The
 controller injects only into an owned worker, limits only that worker's committed
 memory, and logs JSON events. The caller performs no allocation retry itself.
 A missing event fails after 30 seconds. Cleanup kills/reaps unfinished work,
 closes job/process handles and detaches the owned instrumentation session.
-This tests one fixture/API path; it does not accept compiler-wide scheduling.
+VirtualAlloc is the default. The heap option uses flags-zero RtlAllocateHeap
+and RtlFreeHeap on the process heap, with native modes only. These controlled
+fixture/API paths do not accept compiler-wide scheduling.
 """
 
 import argparse
@@ -29,10 +31,10 @@ def load_windows_api():
     return module
 
 
-def run_worker(api, kernel, expect_denial):
-    """Make one 256 MiB VirtualAlloc, read/write it, await finish, free and exit.
+def run_worker(api, kernel, expect_denial, allocation_api):
+    """Make one 256 MiB allocation, read/write it, await finish, free and exit.
 
-    An unexpected allocation failure raises the native Windows error. The
+    An unexpected null allocation reports its API and observed last-error value. The
     expected-denial case reports that error and exits after finish permission.
     No caller-side loop or retry is available.
     """
@@ -40,19 +42,40 @@ def run_worker(api, kernel, expect_denial):
     kernel.GetCurrentThreadId.argtypes = []
     kernel.GetCurrentThreadId.restype = ctypes.c_uint32
     implementation = ctypes.WinDLL("kernelbase.dll", use_last_error=True)
-    api.emit("worker_ready", requested_bytes=requested_bytes,
+    allocation = kernel.VirtualAlloc
+    allocation_address = ctypes.cast(allocation, ctypes.c_void_p).value
+    implementation_address = ctypes.cast(implementation.VirtualAlloc, ctypes.c_void_p).value
+    heap = None
+    native_heap = None
+    if allocation_api == "heap":
+        kernel.GetProcessHeap.argtypes = []
+        kernel.GetProcessHeap.restype = ctypes.c_void_p
+        heap = api.require_api_success(kernel.GetProcessHeap())
+        native_heap = ctypes.WinDLL("ntdll.dll", use_last_error=True)
+        native_heap.RtlAllocateHeap.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t]
+        native_heap.RtlAllocateHeap.restype = ctypes.c_void_p
+        native_heap.RtlFreeHeap.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+        native_heap.RtlFreeHeap.restype = ctypes.c_ubyte
+        allocation = native_heap.RtlAllocateHeap
+        allocation_address = ctypes.cast(allocation, ctypes.c_void_p).value
+        implementation_address = allocation_address
+    api.emit("worker_ready", requested_bytes=requested_bytes, allocation_api=allocation_api,
              thread_id=kernel.GetCurrentThreadId(),
-             allocation_address=hex(ctypes.cast(kernel.VirtualAlloc, ctypes.c_void_p).value),
-             implementation_address=hex(ctypes.cast(implementation.VirtualAlloc, ctypes.c_void_p).value))
+             allocation_address=hex(allocation_address),
+             implementation_address=hex(implementation_address))
     assert sys.stdin.readline().strip() == "allocate", "Missing allocation start permission"
-    pointer = kernel.VirtualAlloc(None, requested_bytes, 0x3000, 0x04)
+    if allocation_api == "heap":
+        pointer = allocation(heap, 0, requested_bytes)
+    else:
+        pointer = allocation(None, requested_bytes, 0x3000, 0x04)
     last_error = ctypes.get_last_error()
     if pointer is None:
         if expect_denial:
             api.emit("native_call_failed", last_error=last_error)
             assert sys.stdin.readline().strip() == "finish", "Missing failure completion permission"
             return
-        raise ctypes.WinError(last_error)
+        raise AssertionError({"allocation_api": allocation_api, "null_result": True,
+                              "last_error": last_error})
     assert expect_denial is False, "Expected denied allocation unexpectedly succeeded"
     try:
         ctypes.c_ubyte.from_address(pointer).value = 42
@@ -64,17 +87,21 @@ def run_worker(api, kernel, expect_denial):
                  last_error=last_error)
         assert sys.stdin.readline().strip() == "finish", "Missing allocation cleanup permission"
     finally:
-        api.require_api_success(kernel.VirtualFree(pointer, 0, 0x8000))
+        if allocation_api == "heap":
+            api.require_api_success(native_heap.RtlFreeHeap(heap, 0, pointer))
+        else:
+            api.require_api_success(kernel.VirtualFree(pointer, 0, 0x8000))
     api.emit("allocation_freed")
 
 
-def run_probe(api, kernel, mode):
+def run_probe(api, kernel, mode, allocation_api):
     """Exercise attachment, forwarding, or denied-allocation retry and clean exit.
 
     ``attach`` installs no allocation hook. ``forward`` leaves the JavaScript
     hook unarmed. ``native-forward`` forwards through a native callback;
     ``native-fast`` uses a direct native replacement and original trampoline,
-    targeting KernelBase on ARM64 and counting the worker's matching call. These
+    targeting KernelBase for ARM64 VirtualAlloc or ntdll for heap allocation,
+    and counting the worker's matching call. These
     controls allow the 256 MiB request before starting it. ``native-retry``
     waits on native events inside the replacement; ``native-timeout`` withholds
     permission and verifies the original denial error. ``retry`` retains the
@@ -108,7 +135,7 @@ def run_probe(api, kernel, mode):
         limits.BasicLimitInformation.LimitFlags = kill_on_job_close
         api.require_api_success(kernel.SetInformationJobObject(job, job_extended_limits, ctypes.byref(limits), ctypes.sizeof(limits)))
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as reader:
-            worker_arguments = [sys.executable, __file__, "--worker"]
+            worker_arguments = [sys.executable, __file__, "--worker", "--allocation-api", allocation_api, "--mode", mode]
             if mode == "native-timeout":
                 worker_arguments.append("--expect-denial")
             with subprocess.Popen(worker_arguments, stdin=subprocess.PIPE,
@@ -140,7 +167,8 @@ def run_probe(api, kernel, mode):
                         script_source = Path(__file__).with_name("windows-native-allocation-forwarder.js").read_text()
                         installed_event = "hook_installed"
                     elif is_native_hook:
-                        script_source = Path(__file__).with_name("windows-native-allocation-fast-forwarder.js").read_text()
+                        script_name = "windows-native-heap-retry.js" if allocation_api == "heap" else "windows-native-allocation-fast-forwarder.js"
+                        script_source = Path(__file__).with_name(script_name).read_text()
                         installed_event = "hook_installed"
                     else:
                         script_source = Path(__file__).with_name("windows-allocation-interceptor.js").read_text()
@@ -199,7 +227,8 @@ def run_probe(api, kernel, mode):
                         blocked_state = reader.submit(script.exports_sync.native_retry_state).result(timeout=30)
                         assert blocked_state["matching_calls"] == 1, blocked_state
                         assert blocked_state["attempts"] == 1, blocked_state
-                        assert blocked_state["first_error"] != 0, blocked_state
+                        if allocation_api == "virtual":
+                            assert blocked_state["first_error"] != 0, blocked_state
                         assert worker.poll() is None
                         api.emit("native_allocation_blocked", worker_pid=worker.pid, state=blocked_state)
                         if mode == "native-retry":
@@ -296,12 +325,16 @@ def run_probe(api, kernel, mode):
 def main():
     """Run the controller or its internal worker on matching native Windows Python."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--allocation-api", choices=("virtual", "heap"), default="virtual",
+                        help="Allocation under test: VirtualAlloc (default) or flags-zero RtlAllocateHeap in native modes")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--expect-denial", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--mode", choices=("attach", "forward", "native-forward", "native-fast", "retry",
                                          "native-retry", "native-timeout"), default="retry",
                         help="Instrumentation under test: attachment, forwarding, JavaScript retry (default), native retry, or native timeout")
     arguments = parser.parse_args()
+    if arguments.allocation_api == "heap":
+        assert arguments.mode in ("native-fast", "native-retry", "native-timeout"), "Heap diagnostic requires a native mode"
     assert sys.platform == "win32", "This probe requires native Windows"
     assert ctypes.sizeof(ctypes.c_void_p) == 8, "This probe requires a 64-bit process"
     expected_machine = {"X64": "AMD64", "ARM64": "ARM64"}.get(os.environ.get("RUNNER_ARCH"))
@@ -310,11 +343,11 @@ def main():
     api = load_windows_api()
     kernel = api.bind_kernel_api()
     if arguments.worker:
-        run_worker(api, kernel, arguments.expect_denial)
+        run_worker(api, kernel, arguments.expect_denial, arguments.allocation_api)
     else:
         api.emit("native_identity", machine=platform.machine(), python=sys.version,
-                 runner_arch=os.environ.get("RUNNER_ARCH"), mode=arguments.mode)
-        run_probe(api, kernel, arguments.mode)
+                 runner_arch=os.environ.get("RUNNER_ARCH"), mode=arguments.mode, allocation_api=arguments.allocation_api)
+        run_probe(api, kernel, arguments.mode, arguments.allocation_api)
 
 
 if __name__ == "__main__":

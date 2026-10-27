@@ -878,6 +878,46 @@ flags. Capture those arguments and establish the actual user-mode boundary befor
 selecting a retry hook. No allocation denial or scheduler policy is accepted by
 the successful observation alone.
 
+#### Native Windows heap denial and continuation
+
+The [Windows controller](../.github/scripts/probe-windows-interception.py) now
+also accepts `--allocation-api heap` with `--mode native-timeout` or
+`--mode native-retry`. The worker makes one flags-zero `RtlAllocateHeap` request
+on its process heap, then uses `RtlFreeHeap` after successful endpoint access.
+The [native hook](../.github/scripts/windows-native-heap-retry.js) replaces
+ntdll's implementation directly and forwards through its returned trampoline.
+It waits only after that original call returns null; the caller has no retry.
+
+The staged candidate passes both modes on
+[Windows x86-64 run 40587796217](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40587796217)
+and [Windows ARM64 run 40588178981](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40588178981).
+Each client connects before the candidate is transferred, acquires only its
+pinned/hash-checked Frida declaration into owned storage and runs both tests
+without disconnecting. Native acquisition and execution precede repository
+source edits. The x86-64 run uses native Python 3.12.10; ARM64 uses native
+Python 3.13.17. Both use Frida 17.24.3. Controller documentation changes between
+those runs leave executable logic unchanged.
+
+Every first 256 MiB request returns null under its worker's job-object commit
+allowance of measured peak plus 32 MiB. Both timeout cases record one original
+attempt and native wait result 258, then return null with the original observed
+last-error value 8 after deliberately clobbering it internally. Both retry cases
+remain pending through an independent peer's completion. After the controller
+raises the worker's allowance by 256 MiB and grants permission, the same native
+call makes its second original attempt and returns the matching pointer.
+Endpoint values 42/43, freeing and ordinary worker exit with the hook installed
+all pass. The hook preserves observed last-error state; this does not generalize
+RtlAllocateHeap's documented failure contract to guarantee a particular error.
+
+The [retained event evidence](evidence/windows-heap-retry.json) contains all four
+native logs, their original byte hashes and final source hashes. Both SSH clients
+exit zero after testing. Both remote post waits and retained-state cleanup pass;
+the hosting smoke workflows remain failed only for their original deliberate
+exit 17. These fixtures do not accept actual compiler allocation denial,
+exception-generating heap flags, other allocators, physical-pressure recovery,
+FIFO admission/retry or Cargo/Bazel integration. Accepted VirtualAlloc and Codex
+build checks are not repeated.
+
 ## Swap-control prerequisites
 
 The `inspect` operation of the
