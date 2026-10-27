@@ -1,0 +1,104 @@
+name: Scheduler Windows interception probe
+
+on:
+  push:
+    branches: [main.new]
+    paths:
+      - .github/workflows/scheduler-windows-interception.yml
+      - .github/scripts/probe-windows-interception.py
+      - .github/scripts/windows-allocation-interceptor.js
+      - .github/scripts/windows-interception-requirements.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - id: matrix
+        run: |
+          printf 'value=%s\n' "$(jq -c '{include: [.[] | select(.target | contains("-windows-"))]}' .github/release-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: select
+    name: Intercept - ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.target }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/scripts/probe-windows-allocation.py
+            .github/scripts/probe-windows-interception.py
+            .github/scripts/windows-allocation-interceptor.js
+            .github/scripts/windows-interception-requirements.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Set up native Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+
+      - name: Create owned diagnostic storage
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          diagnostic="$(mktemp -d "$RUNNER_TEMP/scheduler-interception-XXXXXX")"
+          printf 'SCHEDULER_INTERCEPTION=%s\n' "$diagnostic" >> "$GITHUB_ENV"
+          {
+            printf 'workflow_commit=%s\nrunner_os=%s\nrunner_arch=%s\n' "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH"
+            printf 'image_os=%s\nimage_version=%s\n' "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          } | tee "$diagnostic/identity.txt"
+
+      - name: Acquire pinned native instrumentation candidate
+        env:
+          TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            --only-binary=:all: --no-deps --require-hashes \
+            --target "$SCHEDULER_INTERCEPTION/package" \
+            -r .github/scripts/windows-interception-requirements.txt
+
+      - name: Intercept one denied native allocation and retry inside its call
+        env:
+          PYTHONPATH: ${{ env.SCHEDULER_INTERCEPTION }}/package
+          TMPDIR: ${{ env.SCHEDULER_INTERCEPTION }}
+        run: |
+          set -euo pipefail
+          python .github/scripts/probe-windows-interception.py 2>&1 | tee "$SCHEDULER_INTERCEPTION/interception.log"
+
+      - name: Retain native evidence for one day
+        if: always() && env.SCHEDULER_INTERCEPTION != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: scheduler-windows-interception-${{ matrix.target }}
+          path: |
+            ${{ env.SCHEDULER_INTERCEPTION }}/identity.txt
+            ${{ env.SCHEDULER_INTERCEPTION }}/interception.log
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove owned diagnostic storage
+        if: always() && env.SCHEDULER_INTERCEPTION != ''
+        run: rm -rf -- "$SCHEDULER_INTERCEPTION"

@@ -1,0 +1,5 @@
+# Native Windows x86-64 and ARM64 wheels for the isolated diagnostic on Python 3.12.
+# Frida's typing_extensions dependency applies only below Python 3.11.
+frida==17.24.3 \
+    --hash=sha256:61f5a53b146e0e7755d6c2bfa5405e14fe2373818ae5d98105c4eeca3face7d1 \
+    --hash=sha256:049e4056c79e6bffb8365358e416bfc62fd2490d70de99dadf7e673905149ff4
