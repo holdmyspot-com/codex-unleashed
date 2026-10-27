@@ -320,6 +320,36 @@ and runner architecture. Artifact log bytes are read and hashed directly from
 their downloaded ZIPs in memory; the one-day artifacts leave no local download
 directory. No passing build or cache check is repeated for this diagnostic.
 
+### Native Windows interception diagnostic
+
+The [interception workflow](../.github/workflows/scheduler-windows-interception.yml)
+tests the next boundary on both native Windows architectures. Its
+[controller and one-call worker](../.github/scripts/probe-windows-interception.py)
+reuse the accepted Windows probe's API bindings and job-limit structures. The
+worker invokes `VirtualAlloc` once and has no caller-side retry. The
+[Frida hook](../.github/scripts/windows-allocation-interceptor.js) must receive
+the native failure, wait inside that call for controller permission, and return
+the successful retry's pointer to the original caller. Other allocation
+requests retain their native return value and last-error state.
+
+The hook is armed for the worker's specific thread and 256 MiB request after
+injection and commit-limit setup. Acceptance binds the hooked export address to
+the worker's actual function pointer, the denied/retried events to its PID and
+thread, and the returned pointer to the hook's successful native result. An
+independent process must finish before the controller raises the limit and
+permits retry. Endpoint read/write, deallocation and zero worker exit are also
+required. The controller reaps unfinished work and detaches its session; the
+workflow removes its owned package/temp directory after retaining one-day logs.
+
+Frida 17.24.3 is acquired with hash-locked Windows x86-64/ARM64 wheels on native
+Python 3.12. The declared `typing_extensions` dependency applies only below
+Python 3.11, so this diagnostic requires no additional package. This is candidate
+evaluation, not selection as the production scheduler. Native execution is
+initially unrun. Python and JavaScript syntax checks pass locally; actionlint
+reports its known unsupported concurrency `queue` field. A passing run would
+establish interception of one native fixture allocation, leaving actual compiler
+paths, other allocation APIs, FIFO recovery and physical-pressure behavior open.
+
 ### Native macOS address-space-limit diagnostic
 
 Apple's current
