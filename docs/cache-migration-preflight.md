@@ -306,9 +306,10 @@ save takes 18 seconds, reuses five groups and uploads 1,340,609 archive bytes.
 Downloaded artifact `12738732431` matches API-reported SHA-256
 `290f9e9d43f520dc843b07b7e9de4d820875a257b4b0e2ace8e1f1bd986d4fa8`.
 This accepts Linux restoration from the isolated package at the build-job
-boundary. Both jobs are terminal successes, while the workflow aggregate still
-reports `in_progress`; the interrupted observation command is not a workflow
-failure or an additional build result.
+boundary. Both jobs are terminal successes. A subsequent Actions status query confirms
+that the workflow aggregate is also `completed` with conclusion `success`; the
+interrupted observation command is not a workflow failure or an additional
+build result.
 
 The two runs have byte-identical upstream and helper input receipts. Their
 compiler input receipts differ only in runner image: the population run uses
