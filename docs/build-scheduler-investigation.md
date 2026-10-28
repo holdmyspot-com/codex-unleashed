@@ -1633,3 +1633,64 @@ This accepts the Windows action lifecycle only. The production controller,
 Unix process ownership, memory-monitor integration, estimate updates, allocation
 hook safety, pressure recovery and Cargo/Bazel integration remain open. Existing
 production build limits remain unchanged and scheduler checkpoint 3 is incomplete.
+
+### Unix process-ownership candidates
+
+[Linux x86-64 run `40606259448`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40606259448)
+evaluates process ownership on a free native runner with one active Upterm
+connection throughout diagnosis. The [receipt](evidence/unix-process-candidates.json)
+contains exact evaluation sources, verified source hashes, original logs,
+native stacks, runner identity, compressed SSH transcript and terminal job steps.
+These are candidate experiments, not a production Unix owner or a Codex build.
+
+A local check demonstrates why a process group alone cannot own detached
+descendants: after stopping the root's group, a child in its own session still
+handles a signal and reports progress. Both processes are then terminated and
+reaped through their owners. Automatic macOS fork tracking cannot be inferred
+from similarly named FreeBSD APIs: Apple's current
+[event header](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/event.h)
+marks `NOTE_TRACK`, `NOTE_TRACKERR` and `NOTE_CHILD` unsupported since macOS 10.5.
+No macOS ownership result is established here.
+
+Frida 17.24.3's documented
+[child-gating sequence](https://github.com/frida/frida-python/blob/main/examples/child_gating.py)
+is evaluated directly before adding production code. The paired input changes
+only `close_fds` in a Python child launch that starts a new session. With
+descriptor closing disabled, fork and exec are reported, the child completes
+and the root retains exit status 7. With descriptor closing enabled, local and
+native hosted execution both stall after fork; the root stays alive and no exec
+event or child completion occurs. The diagnostic terminates its owned processes
+and retains this failure. Its own zero exit means evidence collection completed,
+not that child gating passed. Loading an otherwise empty script before resumption
+also fails to resolve the local stall.
+
+The hosted native stack shows the root reading its child-launch pipe; the child's
+main stack cannot be symbolized inside injected code and its kernel wait channel
+is a futex. The initial stack attempt records that GDB is absent; installing it
+and retrying on the same worker preserves the original result. The exact lock
+failure remains unresolved. Python 3.12's
+[descriptor-closing path](https://github.com/python/cpython/blob/3.12/Modules/_posixsubprocess.c)
+can call `close_range`, while Frida's pinned
+[descriptor guard](https://github.com/frida/frida-core/blob/17.24.3/lib/payload/fd-guard.vala)
+hooks individual `close` calls. This is a lead, not proof of the full failure
+sequence. This evidence does not accept general build-child ownership or justify
+a dependency repair.
+
+The same runner successfully evaluates Linux's native cgroup v2 alternative.
+A privileged diagnostic creates an exclusive cgroup and moves its pipe-gated
+root into it before allowing that root to launch work. The workload runs as
+ordinary runner UID 1001. Its child starts a separate session, the root exits 7,
+and the child remains a live member of the owned cgroup. Writing `1` to
+`cgroup.kill` terminates it; the diagnostic's subreaper reaps `SIGKILL`,
+`cgroup.events` reports `populated 0`, and the cgroup is removed. This exercises
+the kernel's documented
+[kill and populated-state interfaces](https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files).
+No ancestor resource settings or swap configuration change. The local executor's
+read-only cgroup mount does not prevent this supported hosted path.
+
+The cgroup source is transferred and hash-checked before execution. All diagnostic
+commands use the same connected worker. SSH exits zero, remote scratch and cgroup
+removal are verified, and remote-wait and smoke-state cleanup steps pass. The job
+retains only its deliberate exit-17 failure. Linux ARM64 control, a production
+Linux process owner, macOS ownership and scheduler integration remain unaccepted.
+Existing build limits and previously accepted builds are unchanged.
