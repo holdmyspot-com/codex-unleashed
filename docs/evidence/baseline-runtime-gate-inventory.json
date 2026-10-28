@@ -1017,6 +1017,29 @@
       "guards_cleanup_partial_save": "passed on both",
       "upstream": "Named case reports pass at 0.00s; hidden successful output cannot prove assertions ran. Local elevated control explicitly returns early.",
       "broader_scope": "Additional CLI binaries compiling incrementally; full CLI/app-server runtime acceptance remains open."
+    },
+    "windows_cli_case_coverage": {
+      "evidence": "docs/evidence/windows-cli-runtime-case-coverage.json",
+      "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+      "targets": [
+        {
+          "target": "x86_64-pc-windows-msvc",
+          "run": 40758471648,
+          "required_named_cases": 514,
+          "passing_named_cases": 514,
+          "upstream_ignored": 2,
+          "owner_deferred_cases": 1
+        },
+        {
+          "target": "aarch64-pc-windows-msvc",
+          "run": 40758476050,
+          "required_named_cases": 514,
+          "passing_named_cases": 514,
+          "upstream_ignored": 2,
+          "owner_deferred_cases": 1
+        }
+      ],
+      "decision": "Selected CLI coverage accepted on both native Windows architectures. Retain failed setup/runtime attempts and focused environment corrections. Separate app-server scope and lifecycle remain open."
     }
   },
   "current_source_package_runtime": {
