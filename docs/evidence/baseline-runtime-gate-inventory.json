@@ -941,7 +941,7 @@
         "status": "passed; one case, zero skipped; source and dependency guards pass",
         "evidence": "docs/evidence/macos-intel-focused-runtime.json",
         "cache": "Initial workflow save times out; later guarded private partial save passes, retained in docs/evidence/macos-intel-runtime-helper-controls.json.",
-        "lifecycle": "Live worker retained for six unresolved app-server startup cases; all 561 nonignored CLI cases now have named passing receipts."
+        "lifecycle": "Named CLI/app-server coverage complete after hostname control; remote-session cleanup remains pending."
       },
       "arm64_case_coverage": {
         "run": 40729663557,
@@ -983,7 +983,7 @@
           "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct"
         ],
         "guards": "Final source diff/status empty; dependency guard verified.",
-        "next_action": "Trace six helper PID-file timeouts without source changes; private partial cache save passes and is retained in helper controls."
+        "next_action": "Historical six-case failure set; resolved by the later environment-only hostname control recorded below."
       },
       "intel_case_coverage": {
         "run": 40735603062,
@@ -1003,8 +1003,36 @@
             "missing_pass_receipts": 6
           }
         },
-        "status": "CLI named coverage complete; six selected app-server cases remain failed and unaccepted.",
+        "status": "Historical pre-hostname-control coverage; six missing receipts are supplied by intel_hostname_control.",
         "guards": "Post-control source diff/status empty; dependency guard retained in helper controls."
+      },
+      "intel_hostname_control": {
+        "run": 40735603062,
+        "target": "x86_64-apple-darwin",
+        "evidence": "docs/evidence/macos-intel-runtime-hostname-control.json",
+        "status": "All six previously missing cases pass unchanged under the temporary kernel-hostname control.",
+        "aggregate_named_coverage": {
+          "cli": {
+            "required": 561,
+            "passing": 561,
+            "ignored": 1
+          },
+          "app-server": {
+            "required": 2060,
+            "passing": 2060,
+            "ignored": 1
+          }
+        },
+        "guards": {
+          "source_exit": 0,
+          "dependency_exit": 0,
+          "source_status_empty": true
+        },
+        "cleanup": {
+          "hostname_restoration": "original kernel hostname restored",
+          "hostname": "iad01-dz252-dd115e9b-fe5f-4172-9eff-7cdf8994393f-2EEF915E3F2C.local"
+        },
+        "remaining": "Remote-session cleanup and other native platform acceptance remain open."
       }
     },
     "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward.",
