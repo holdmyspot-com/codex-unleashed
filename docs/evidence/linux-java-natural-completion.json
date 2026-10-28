@@ -1,0 +1,518 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-28T05:40:39.842434Z",
+  "task_contract": "acknowledged",
+  "outcome": "passed-standalone-linux-natural-completion-cluster",
+  "workspace": {
+    "mode": "isolated worktree; no commit or integration",
+    "base_commit": "be10f5f5bb199d800e94778fb9a28a575f6b69c8",
+    "write_allowlist": [
+      "invocation-owned .cat session temp",
+      "docs/evidence/linux-java-natural-completion.json"
+    ],
+    "input": {
+      "path": "/home/gili/codex-unleashed/workspace/docs/evidence/linux-java-process-owner.json",
+      "sha256": "58aa9dfed4906d0ca1764bc82ac459db4de59c4b9c38935b8da30247db08053f"
+    }
+  },
+  "accepted_claim": "The same standalone JDK27 Java owner sources on native free Linux x86_64 and aarch64 runners collect natural adopted-child status23 while preserving root7, complete root0/child0 naturally, never report a held detached child complete, leave terminationRequested false after natural close, and mark premature close after root0 as termination with actual adopted SIGKILL status. Existing explicit termination and failure-before-release cleanup continue to pass.",
+  "api": {
+    "addition": "public boolean observeCompletion() throws IOException",
+    "algorithm": "Observe Java-owned root through zero-time Process.waitFor before native waitpid; collect at most one ready adopted status per call; return false for a collected status, running child or EINTR; complete only on ECHILD plus populated0. Never kill from the natural observation path.",
+    "close": "Skip stopAndReap after recorded completion; otherwise set terminationRequested before forced cleanup. Root status is retained independently of termination and completion.",
+    "confinement": "One dedicated privileged standalone supervisor JVM with no unrelated child processes; caller supplies cgroup parent, command, environment, cwd, unprivileged UID/GID and runtime paths."
+  },
+  "proof_layout": "New proof directory containing source, dependency declaration and resolution only. External Java drivers and independently expiring Python workload remain separate. No new dependency.",
+  "proof_files": {
+    "LinuxProcessTree.java": {
+      "sha256": "7c96dcc482031a9dcfcb8bccf826ed77629b7fb88891799a357fdfcd71c7402e",
+      "bytes": 23685,
+      "text": "import java.io.IOException;\nimport java.io.InputStream;\nimport java.io.OutputStream;\nimport java.lang.foreign.Arena;\nimport java.lang.foreign.FunctionDescriptor;\nimport java.lang.foreign.Linker;\nimport java.lang.foreign.MemorySegment;\nimport java.lang.foreign.ValueLayout;\nimport java.lang.invoke.MethodHandle;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.StandardOpenOption;\nimport java.util.ArrayList;\nimport java.util.LinkedHashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\nimport java.util.Properties;\nimport java.util.concurrent.TimeUnit;\n\n/**\n * Owns one Linux action tree in a dedicated supervisor JVM with no unrelated children.\n * The caller must provide elevated cgroup-management authority and native access.\n * Root observation does not imply descendant completion. Instances are single-thread confined.\n */\npublic final class LinuxProcessTree implements AutoCloseable {\n    /**\n     * Explicit launch context. Executable, Java runtime, class path, directory and parents must be absolute.\n     * The workload's positive UID/GID are distinct from the privileged supervisor identity.\n     * Command arguments and the complete workload environment are copied. No PATH search is performed.\n     */\n    public record Launch(Path cgroupParent, Path scratchParent, Path javaExecutable, Path classPath,\n                         List<String> command, Map<String,String> environment, Path directory, int uid, int gid) {\n        public Launch {\n            for (Path path : List.of(cgroupParent, scratchParent, javaExecutable, classPath, directory)) {\n                if (path.isAbsolute() == false) throw new IllegalArgumentException(\"Launch paths must be absolute: \" + path);\n            }\n            command = List.copyOf(command);\n            environment = Map.copyOf(environment);\n            if (command.isEmpty() || Path.of(command.getFirst()).isAbsolute() == false)\n                throw new IllegalArgumentException(\"The workload requires an absolute executable\");\n            if (uid <= 0 || gid <= 0) throw new IllegalArgumentException(\"Workload UID and GID must be positive\");\n        }\n    }\n\n    private final Launch launch;\n    private final NativeCalls nativeCalls;\n    private Path group;\n    private Path scratch;\n    private Process root;\n    private Integer rootExit;\n    private boolean released;\n    private boolean terminationRequested;\n    private boolean adoptedDrained;\n    private boolean closed;\n    private final Map<Long,Integer> adoptedExits = new LinkedHashMap<>();\n\n    /** Stores immutable launch context; acquisition and failed acquisition cleanup belong to prepare. */\n    private LinuxProcessTree(Launch launch) throws IOException {\n        this.launch = Objects.requireNonNull(launch, \"launch\");\n        nativeCalls = new NativeCalls();\n    }\n\n    /**\n     * Creates an exclusive cgroup and a trusted Java helper; verifies placement before returning.\n     * Workload execution remains gated until release and self-expires after 60 seconds without release.\n     * On failure, owned work is terminated/reaped and acquired storage is removed; cleanup errors are suppressed.\n     * @throws IOException if native authority, process creation, containment or readiness fails\n     */\n    public static LinuxProcessTree prepare(Launch launch) throws IOException {\n        LinuxProcessTree tree = new LinuxProcessTree(launch);\n        try {\n            if (tree.nativeCalls.uid() != 0) throw new IOException(\"This candidate requires an elevated standalone supervisor\");\n            tree.nativeCalls.setSubreaper();\n            tree.scratch = Files.createTempDirectory(launch.scratchParent(), \"java-owner-state-\");\n            tree.group = Files.createTempDirectory(launch.cgroupParent(), \"java-owner-\");\n            tree.writeConfiguration();\n\n            ProcessBuilder builder = new ProcessBuilder(launch.javaExecutable().toString(),\n                \"--enable-native-access=ALL-UNNAMED\", \"-cp\", launch.classPath().toString(),\n                LinuxProcessTree.class.getName(), \"--gate\", tree.scratch.toString());\n            builder.directory(launch.directory().toFile());\n            builder.environment().clear();\n            builder.redirectErrorStream(true);\n            builder.redirectOutput(tree.scratch.resolve(\"workload.log\").toFile());\n            tree.root = builder.start();\n            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);\n            while (Files.exists(tree.scratch.resolve(\"ready\")) == false) {\n                if (tree.root.isAlive() == false) throw new IOException(\"Trusted gate exited before readiness: \" + tree.root.waitFor());\n                if (System.nanoTime() >= deadline) throw new IOException(\"Trusted gate did not become ready within 10 seconds\");\n                Thread.sleep(10);\n            }\n\n            Files.writeString(tree.group.resolve(\"cgroup.procs\"), Long.toString(tree.root.pid()), StandardOpenOption.WRITE);\n            if (tree.members().contains(tree.root.pid()) == false)\n                throw new IOException(\"Trusted gate is absent from its owned cgroup: \" + tree.group);\n            return tree;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            IOException interrupted = new IOException(\"Interrupted during trusted-gate readiness\", failure);\n            tree.closeAfterFailure(interrupted);\n            throw interrupted;\n        } catch (IOException | RuntimeException | Error failure) {\n            tree.closeAfterFailure(failure);\n            throw failure;\n        }\n    }\n\n    /** Stores the workload data for the trusted helper, using the JDK XML properties format. */\n    private void writeConfiguration() throws IOException {\n        Properties values = new Properties();\n        values.setProperty(\"uid\", Integer.toString(launch.uid()));\n        values.setProperty(\"gid\", Integer.toString(launch.gid()));\n        values.setProperty(\"command.count\", Integer.toString(launch.command().size()));\n        for (int index = 0; index < launch.command().size(); index++)\n            values.setProperty(\"command.\" + index, launch.command().get(index));\n        for (var entry : launch.environment().entrySet()) values.setProperty(\"environment.\" + entry.getKey(), entry.getValue());\n        try (OutputStream output = Files.newOutputStream(scratch.resolve(\"launch.xml\"))) {\n            values.storeToXML(output, \"Trusted helper workload inputs\");\n        }\n    }\n\n    /** Releases exactly one contained helper; repeated release or use after close is rejected. */\n    public void release() throws IOException {\n        requireOpen();\n        if (released) throw new IllegalStateException(\"The workload gate is already released\");\n        if (members().contains(root.pid()) == false) throw new IOException(\"Gate lost owned cgroup membership before release\");\n        Files.writeString(scratch.resolve(\"release\"), \"release\\n\", StandardOpenOption.CREATE_NEW);\n        released = true;\n    }\n\n    /** Waits up to 10 seconds for the actual exec-replaced root and preserves its actual Java process exit status. */\n    public int awaitRootExit() throws IOException {\n        requireOpen();\n        if (rootExit != null) return rootExit;\n        try {\n            if (root.waitFor(10, TimeUnit.SECONDS) == false) throw new IOException(\"Workload root did not exit within 10 seconds\");\n            rootExit = root.exitValue();\n            return rootExit;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            throw new IOException(\"Interrupted while observing workload root\", failure);\n        }\n    }\n\n    /** Returns current kernel cgroup membership, retaining detached descendants independently of parent PID. */\n    public List<Long> members() throws IOException {\n        List<Long> result = new ArrayList<>();\n        for (String line : Files.readAllLines(group.resolve(\"cgroup.procs\"))) result.add(Long.parseLong(line));\n        return List.copyOf(result);\n    }\n\n    /** Indicates whether the observed root has exited, no owned task remains, and adopted statuses have been collected. */\n    public boolean isComplete() throws IOException {\n        requireOpen();\n        return rootExit != null && populated() == false && adoptedDrained;\n    }\n\n    /**\n     * Observes natural completion without termination, collecting at most one adopted status.\n     * Returns false while the root or descendants remain, and true only after Java root waiting,\n     * native ECHILD and populated0. Call again to advance pending adopted-status collection.\n     * No signal or cgroup.kill write occurs. Observation failures leave cleanup with the caller.\n     */\n    public boolean observeCompletion() throws IOException {\n        requireOpen();\n        if (isComplete()) return true;\n        if (rootExit == null) {\n            try {\n                if (root.waitFor(0, TimeUnit.NANOSECONDS) == false) return false;\n                rootExit = root.exitValue();\n            } catch (InterruptedException failure) {\n                Thread.currentThread().interrupt();\n                throw new IOException(\"Interrupted while observing natural root completion\", failure);\n            }\n        }\n        if (nativeCalls.observeAdoptedCompletion(adoptedExits) == false) return false;\n        if (populated()) return false;\n        adoptedDrained = true;\n        return true;\n    }\n\n    /** Indicates whether public termination was requested; this remains distinct from a successful root exit. */\n    public boolean terminationRequested() { return terminationRequested; }\n\n    /** Returns collected adopted statuses: negative signal numbers or ordinary nonnegative exit codes. */\n    public Map<Long,Integer> adoptedExits() { return Map.copyOf(adoptedExits); }\n\n    /** Returns the owned cgroup path for direct identity and lifecycle observation. */\n    public Path group() { return group; }\n\n    /** Returns the helper/workload root PID, unchanged by the helper's native execve. */\n    public long rootPid() { return root.pid(); }\n\n    /** Returns the owned helper scratch path; it is removed by close. */\n    public Path scratch() { return scratch; }\n\n    /** Terminates only this cgroup and collects root/adopted statuses; termination remains a distinct outcome. */\n    public void terminate() throws IOException {\n        requireOpen();\n        terminationRequested = true;\n        stopAndReap();\n    }\n\n    /** Reads the authoritative populated field without treating an absent field as an empty group. */\n    private boolean populated() throws IOException {\n        for (String line : Files.readAllLines(group.resolve(\"cgroup.events\"))) {\n            if (line.equals(\"populated 1\")) return true;\n            if (line.equals(\"populated 0\")) return false;\n        }\n        throw new IOException(\"Owned cgroup has no valid populated field: \" + group);\n    }\n\n    /** Kills group members, waits the Java-owned root first, then drains adopted statuses in this standalone JVM. */\n    private void stopAndReap() throws IOException {\n        if (group != null) Files.writeString(group.resolve(\"cgroup.kill\"), \"1\\n\", StandardOpenOption.WRITE);\n        if (root != null) {\n            // A gate may fail before placement; its direct owner still has to stop and reap it.\n            if (root.isAlive()) root.destroyForcibly();\n            awaitRootExit();\n        }\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);\n        try {\n            while (group != null && populated()) {\n                if (System.nanoTime() >= deadline) throw new IOException(\"Owned cgroup remains populated after termination\");\n                Thread.sleep(10);\n            }\n            nativeCalls.drainAdopted(adoptedExits, deadline);\n            adoptedDrained = true;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            throw new IOException(\"Interrupted during owned descendant cleanup\", failure);\n        }\n    }\n\n    /** Attaches cleanup failures without replacing the original acquisition failure. */\n    private void closeAfterFailure(Throwable failure) {\n        try { close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }\n    }\n\n    /** Rejects lifecycle operations after resources were closed. */\n    private void requireOpen() {\n        if (closed) throw new IllegalStateException(\"Owned process tree is closed\");\n    }\n\n    /** Stops/reaps acquired work and removes only the exclusive group and scratch; cleanup failures remain visible. */\n    @Override public void close() throws IOException {\n        if (closed) return;\n        boolean interrupted = Thread.interrupted();\n        IOException failure = null;\n        try {\n            try {\n                // Recorded completion requires root waiting, populated0 and ECHILD before cleanup.\n                if (rootExit == null || adoptedDrained == false) {\n                    terminationRequested = true;\n                    stopAndReap();\n                }\n            } catch (IOException cleanup) { failure = cleanup; }\n            if (group != null) {\n                try { Files.delete(group); } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (root != null) {\n                try { root.getOutputStream().close(); } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (scratch != null) {\n                try (var entries = Files.walk(scratch)) {\n                    for (Path entry : entries.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(entry);\n                } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (failure != null) throw failure;\n            closed = true;\n        } finally {\n            if (interrupted) Thread.currentThread().interrupt();\n        }\n    }\n\n    /** Runs only the trusted helper. Configuration is data; arbitrary workload execution follows release and identity drop. */\n    public static void main(String[] args) throws Exception {\n        if (args.length != 2 || args[0].equals(\"--gate\") == false)\n            throw new IllegalArgumentException(\"Expected --gate and the owned scratch directory\");\n        Path scratch = Path.of(args[1]);\n        Properties values = new Properties();\n        try (InputStream input = Files.newInputStream(scratch.resolve(\"launch.xml\"))) { values.loadFromXML(input); }\n        Files.writeString(scratch.resolve(\"ready\"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);\n        while (Files.exists(scratch.resolve(\"release\")) == false) {\n            if (System.nanoTime() >= deadline) throw new IOException(\"Unreleased trusted gate self-expired after 60 seconds\");\n            Thread.sleep(10);\n        }\n        List<String> command = new ArrayList<>();\n        int count = Integer.parseInt(values.getProperty(\"command.count\"));\n        for (int index = 0; index < count; index++) command.add(values.getProperty(\"command.\" + index));\n        Map<String,String> environment = new LinkedHashMap<>();\n        for (String key : values.stringPropertyNames()) {\n            if (key.startsWith(\"environment.\")) environment.put(key.substring(\"environment.\".length()), values.getProperty(key));\n        }\n        NativeCalls calls = new NativeCalls();\n        calls.dropIdentity(Integer.parseInt(values.getProperty(\"uid\")), Integer.parseInt(values.getProperty(\"gid\")));\n        calls.exec(command, environment);\n    }\n\n    /** Linux libc boundary; native errno is captured per invocation, without JNI or Java process-reaper competition. */\n    private static final class NativeCalls {\n        private final Linker linker = Linker.nativeLinker();\n        private final long errnoOffset = Linker.Option.captureStateLayout().byteOffset(java.lang.foreign.MemoryLayout.PathElement.groupElement(\"errno\"));\n        private final MethodHandle prctl = bind(\"prctl\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), true);\n        private final MethodHandle waitpid = bind(\"waitpid\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), false);\n        private final MethodHandle getuid = bind(\"getuid\", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);\n        private final MethodHandle getgid = bind(\"getgid\", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);\n        private final MethodHandle setgroups = bind(\"setgroups\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), false);\n        private final MethodHandle setgid = bind(\"setgid\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);\n        private final MethodHandle setuid = bind(\"setuid\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);\n        private final MethodHandle execve = bind(\"execve\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);\n\n        /** Binds a libc symbol with captured errno; prctl's trailing arguments are C varargs. */\n        private MethodHandle bind(String name, FunctionDescriptor descriptor, boolean variadic) {\n            MemorySegment symbol = linker.defaultLookup().find(name).orElseThrow(() -> new IllegalStateException(\"Missing Linux libc symbol: \" + name));\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n        }\n\n        /** Returns an operation result and captured errno; unexpected binding failures are reported with their cause. */\n        private int[] call(MethodHandle operation, Object... arguments) throws IOException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment captured = arena.allocate(Linker.Option.captureStateLayout());\n                List<Object> values = new ArrayList<>();\n                values.add(captured);\n                values.addAll(List.of(arguments));\n                int result = (Integer) operation.invokeWithArguments(values);\n                return new int[] { result, captured.get(ValueLayout.JAVA_INT, errnoOffset) };\n            } catch (Throwable failure) {\n                throw new IOException(\"Linux native invocation failed\", failure);\n            }\n        }\n\n        /** Returns the calling process's real UID. */\n        private int uid() throws IOException { return call(getuid)[0]; }\n\n        /** Enables child adoption before any owned root is started. */\n        private void setSubreaper() throws IOException {\n            requireSuccess(\"prctl(PR_SET_CHILD_SUBREAPER)\", call(prctl, 36, 1L, 0L, 0L, 0L));\n        }\n\n        /** Drops all supplementary groups before GID/UID, then verifies the resulting real identities. */\n        private void dropIdentity(int uid, int gid) throws IOException {\n            requireSuccess(\"setgroups\", call(setgroups, 0L, MemorySegment.NULL));\n            requireSuccess(\"setgid\", call(setgid, gid));\n            requireSuccess(\"setuid\", call(setuid, uid));\n            if (uid() != uid || call(getgid)[0] != gid) throw new IOException(\"Workload credential drop did not establish requested identity\");\n        }\n\n        /** Replaces the gated JVM with the workload, preserving its PID and original-process wait ownership. */\n        private void exec(List<String> command, Map<String,String> environment) throws IOException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment arguments = strings(arena, command);\n                List<String> variables = environment.entrySet().stream().map(entry -> entry.getKey() + \"=\" + entry.getValue()).toList();\n                MemorySegment env = strings(arena, variables);\n                int[] result = call(execve, arena.allocateFrom(command.getFirst()), arguments, env);\n                requireSuccess(\"execve(\" + command.getFirst() + \")\", result);\n                throw new IOException(\"execve unexpectedly returned success\");\n            }\n        }\n\n        /** Allocates a null-terminated C pointer vector and UTF-8 strings in the caller-owned arena. */\n        private MemorySegment strings(Arena arena, List<String> values) {\n            MemorySegment vector = arena.allocate(ValueLayout.ADDRESS, values.size() + 1L);\n            for (int index = 0; index < values.size(); index++) vector.setAtIndex(ValueLayout.ADDRESS, index, arena.allocateFrom(values.get(index)));\n            vector.setAtIndex(ValueLayout.ADDRESS, values.size(), MemorySegment.NULL);\n            return vector;\n        }\n\n        /** Collects at most one ready adopted status; true means native ECHILD, not merely no ready status. */\n        private boolean observeAdoptedCompletion(Map<Long,Integer> exits) throws IOException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment status = arena.allocate(ValueLayout.JAVA_INT);\n                int[] result = call(waitpid, -1, status, 1);\n                if (result[0] > 0) {\n                    recordAdoptedExit(exits, result[0], status.get(ValueLayout.JAVA_INT, 0));\n                    return false;\n                }\n                if (result[0] == -1 && result[1] == 10) return true;\n                if (result[0] == -1 && result[1] != 4) requireSuccess(\"waitpid\", result);\n                return false;\n            }\n        }\n\n        /** Preserves actual ordinary exit or negative signal status for an adopted child. */\n        private void recordAdoptedExit(Map<Long,Integer> exits, int pid, int raw) {\n            int signal = raw & 127;\n            exits.put((long) pid, signal == 0 ? raw >> 8 : -signal);\n        }\n\n        /** Drains only after Java's direct root was waited; ECHILD is the authoritative end of adopted status collection. */\n        private void drainAdopted(Map<Long,Integer> exits, long deadline) throws IOException, InterruptedException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment status = arena.allocate(ValueLayout.JAVA_INT);\n                while (true) {\n                    int[] result = call(waitpid, -1, status, 1);\n                    if (result[0] > 0) {\n                        recordAdoptedExit(exits, result[0], status.get(ValueLayout.JAVA_INT, 0));\n                        continue;\n                    }\n                    if (result[0] == -1 && result[1] == 10) return;\n                    if (result[0] == -1 && result[1] != 4) requireSuccess(\"waitpid\", result);\n                    if (System.nanoTime() >= deadline) throw new IOException(\"Adopted children remained unreaped after termination deadline\");\n                    Thread.sleep(10);\n                }\n            }\n        }\n\n        /** Converts a failing libc result into a precise operation/errno diagnostic. */\n        private void requireSuccess(String operation, int[] result) throws IOException {\n            if (result[0] == -1) throw new IOException(operation + \" failed with errno \" + result[1]);\n        }\n    }\n}\n"
+    },
+    "dependencies.json": {
+      "sha256": "44afd4526da49f83909ce2cdcf7131a8546ddbb266d6f974cbe7a16b9ac76e2b",
+      "bytes": 42,
+      "text": "{\"runtime\":{\"java\":27},\"dependencies\":[]}\n"
+    },
+    "dependencies.lock.json": {
+      "sha256": "7bf47e0415ffa1c42011285dd8aa9327b664bc1355c744b3c22d5911a5722ca0",
+      "bytes": 111,
+      "text": "{\"runtime\":{\"java\":27},\"resolvedDependencies\":[],\"nativeLibraries\":[\"host libc\"],\"platform\":\"Linux cgroup v2\"}\n"
+    }
+  },
+  "external_drivers": {
+    "NaturalCompletionGate.java": {
+      "sha256": "e8f11f874339b1d8b71a2aff452024c15af13d4d43cc2c69bf87263f0d81956f",
+      "bytes": 7084,
+      "text": "import java.io.InputStream;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.attribute.PosixFilePermissions;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Properties;\nimport java.util.concurrent.TimeUnit;\n\n/** Exercises natural completion and premature close through the public Java owner. */\npublic final class NaturalCompletionGate {\n    private static Path classes;\n    private static Path fixture;\n    private static Path python;\n    private static Path parent;\n    private static int uid;\n    private static int gid;\n\n    /** Uses explicit platform inputs in a standalone privileged supervisor JVM. */\n    public static void main(String[] args) throws Exception {\n        classes = Path.of(args[0]);\n        Path work = Path.of(args[1]);\n        fixture = Path.of(args[2]);\n        python = Path.of(args[3]);\n        uid = Integer.parseInt(args[4]);\n        gid = Integer.parseInt(args[5]);\n        parent = Path.of(args[6]);\n        Files.createDirectory(work);\n        Files.setPosixFilePermissions(work, PosixFilePermissions.fromString(\"rwxrwxrwx\"));\n        natural(work.resolve(\"root7\"), 7, 23);\n        natural(work.resolve(\"root0\"), 0, 0);\n        premature(work.resolve(\"premature\"));\n        Files.delete(work);\n        System.out.println(\"natural_gate=passed\");\n    }\n\n    /** Creates the same trusted gated launch as the accepted termination driver. */\n    private static LinuxProcessTree.Launch launch(Path work, int rootExit, int leafExit) throws Exception {\n        Files.createDirectory(work);\n        Files.setPosixFilePermissions(work, PosixFilePermissions.fromString(\"rwxrwxrwx\"));\n        return new LinuxProcessTree.Launch(parent, work,\n            Path.of(System.getProperty(\"java.home\"), \"bin\", \"java\"), classes,\n            List.of(python.toString(), fixture.toString(), \"natural-root\", work.resolve(\"root.properties\").toString(),\n                work.resolve(\"leaf.properties\").toString(), work.resolve(\"leaf.release\").toString(),\n                Integer.toString(rootExit), Integer.toString(leafExit)),\n            Map.of(\"OWNER_GATE_TOKEN\", \"java-owner-exact-environment\"), work, uid, gid);\n    }\n\n    /** Holds the descendant until after pending observation, then collects its actual natural status. */\n    private static void natural(Path work, int rootExit, int leafExit) throws Exception {\n        Path group;\n        Path scratch;\n        LinuxProcessTree tree = LinuxProcessTree.prepare(launch(work, rootExit, leafExit));\n        try (tree) {\n            group = tree.group();\n            scratch = tree.scratch();\n            check(Files.exists(work.resolve(\"root.properties\")) == false, \"Workload executed before release\");\n            check(tree.members().contains(tree.rootPid()), \"Trusted gate lacked containment\");\n            tree.release();\n            check(tree.awaitRootExit() == rootExit, \"Natural root status differed\");\n            Properties leaf = readEventually(work.resolve(\"leaf.properties\"));\n            long leafPid = Long.parseLong(leaf.getProperty(\"pid\"));\n            check(Long.parseLong(leaf.getProperty(\"pgid\")) == leafPid, \"Natural child did not detach\");\n            check(tree.members().contains(leafPid), \"Natural child escaped containment\");\n            check(tree.isComplete() == false, \"Root exit completed a held tree\");\n            check(tree.observeCompletion() == false, \"Held descendant was reported complete\");\n            check(tree.terminationRequested() == false, \"Pending observation requested termination\");\n            Files.writeString(work.resolve(\"leaf.release\"), \"release\\n\");\n            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);\n            while (tree.observeCompletion() == false) {\n                if (System.nanoTime() >= deadline)\n                    throw new AssertionError(\"Natural completion remained pending after descendant release\");\n                Thread.sleep(10);\n            }\n            check(tree.isComplete(), \"Natural completion was not retained\");\n            check(tree.observeCompletion(), \"Repeated completion observation regressed\");\n            check(tree.awaitRootExit() == rootExit, \"Natural reaping changed root status\");\n            check(Integer.valueOf(leafExit).equals(tree.adoptedExits().get(leafPid)),\n                \"Missing actual natural child status: \" + tree.adoptedExits());\n            check(tree.terminationRequested() == false, \"Natural reaping requested termination\");\n            System.out.println(\"root\" + rootExit + \"_adopted_exit=\" + tree.adoptedExits().get(leafPid));\n        }\n        check(tree.terminationRequested() == false, \"Natural close requested termination\");\n        check(Files.exists(group) == false && Files.exists(scratch) == false, \"Natural close retained owned storage\");\n        clear(work);\n        System.out.println(\"root\" + rootExit + \"_natural_cleanup=passed\");\n    }\n\n    /** Closing before descendant completion must remain a termination outcome even for root0. */\n    private static void premature(Path work) throws Exception {\n        LinuxProcessTree tree = LinuxProcessTree.prepare(launch(work, 0, 0));\n        Path group = tree.group();\n        Path scratch = tree.scratch();\n        long leafPid;\n        try (tree) {\n            tree.release();\n            check(tree.awaitRootExit() == 0, \"Premature-close root did not return0\");\n            leafPid = Long.parseLong(readEventually(work.resolve(\"leaf.properties\")).getProperty(\"pid\"));\n            check(tree.observeCompletion() == false, \"Held premature-close child completed\");\n        }\n        check(tree.terminationRequested(), \"Premature close lost termination outcome after root0\");\n        check(Integer.valueOf(-9).equals(tree.adoptedExits().get(leafPid)), \"Premature close lacks SIGKILL wait status\");\n        check(Files.exists(group) == false && Files.exists(scratch) == false, \"Premature close retained owned storage\");\n        clear(work);\n        System.out.println(\"premature_close=passed\");\n    }\n\n    /** Reads atomically published fixture data with an independent bounded wait. */\n    private static Properties readEventually(Path path) throws Exception {\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);\n        while (Files.exists(path) == false) {\n            if (System.nanoTime() >= deadline) throw new AssertionError(\"Missing fixture report: \" + path);\n            Thread.sleep(10);\n        }\n        Properties result = new Properties();\n        try (InputStream input = Files.newInputStream(path)) { result.load(input); }\n        return result;\n    }\n\n    /** Removes only the completed fixture's own ordinary files. */\n    private static void clear(Path path) throws Exception {\n        try (var entries = Files.list(path)) {\n            for (Path entry : entries.toList()) Files.delete(entry);\n        }\n        Files.delete(path);\n    }\n\n    /** Makes each required observable behavior an assertion. */\n    private static void check(boolean value, String message) {\n        if (value == false) throw new AssertionError(message);\n    }\n}\n"
+    },
+    "OwnerGate.java": {
+      "sha256": "f0e5cf9481118e0bededc924d767f0c5634ee72abc9efb35992bb3ef49a42174",
+      "bytes": 8768,
+      "text": "import java.io.IOException;\nimport java.io.InputStream;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.attribute.PosixFilePermissions;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Properties;\nimport java.util.concurrent.TimeUnit;\n\n/** Exercises the combined owner public operation; Python supplies only the independently expiring workload. */\npublic final class OwnerGate {\n    /** Runs in a dedicated supervisor JVM, with explicit fixture and platform inputs. */\n    public static void main(String[] args) throws Exception {\n        Path classes = Path.of(args[0]).toAbsolutePath();\n        Path work = Path.of(args[1]).toAbsolutePath();\n        Path fixture = Path.of(args[2]).toAbsolutePath();\n        Path python = Path.of(args[3]);\n        int uid = Integer.parseInt(args[4]);\n        int gid = Integer.parseInt(args[5]);\n        Path parent = Path.of(args[6]);\n        Files.createDirectory(work);\n        Files.setPosixFilePermissions(work, PosixFilePermissions.fromString(\"rwxrwxrwx\"));\n        Path marker = work.resolve(\"root.properties\");\n        Path leafMarker = work.resolve(\"leaf.properties\");\n        var launch = new LinuxProcessTree.Launch(parent, work,\n            Path.of(System.getProperty(\"java.home\"), \"bin\", \"java\"), classes,\n            List.of(python.toString(), fixture.toString(), \"root\", marker.toString(), leafMarker.toString()),\n            Map.of(\"OWNER_GATE_TOKEN\", \"java-owner-exact-environment\"), work, uid, gid);\n        Properties receipt = new Properties();\n        Path group = null;\n        Path scratch = null;\n        long leafPid = 0;\n        try {\n            if (args.length == 8 && args[7].equals(\"--local-refusal\")) {\n                try (var tree = LinuxProcessTree.prepare(launch)) {\n                    throw new AssertionError(\"Unprivileged local acquisition unexpectedly succeeded: \" + tree.group());\n                } catch (IOException expected) {\n                    check(expected.getMessage().equals(\"This candidate requires an elevated standalone supervisor\"), expected.toString());\n                    check(Files.exists(marker) == false, \"Refused launch wrote a workload marker\");\n                    receipt.setProperty(\"local_refusal\", \"passed\");\n                    for (String key : receipt.stringPropertyNames().stream().sorted().toList())\n                        System.out.println(key + \"=\" + receipt.getProperty(key));\n                    return;\n                }\n            }\n            try (var tree = LinuxProcessTree.prepare(launch)) {\n                group = tree.group();\n                scratch = tree.scratch();\n                check(Files.exists(marker) == false, \"Workload ran before gate release\");\n                check(tree.members().contains(tree.rootPid()), \"Gated root was not contained\");\n                receipt.setProperty(\"pre_release_containment\", \"passed\");\n                tree.release();\n                int rootExit = tree.awaitRootExit();\n                check(rootExit == 7, \"Expected actual root exit 7, observed \" + rootExit);\n                Properties root = readEventually(marker);\n                Properties leaf = readEventually(leafMarker);\n                leafPid = Long.parseLong(leaf.getProperty(\"pid\"));\n                check(Integer.parseInt(root.getProperty(\"uid\")) == uid, \"Root UID differs\");\n                check(Integer.parseInt(root.getProperty(\"gid\")) == gid, \"Root GID differs\");\n                check(root.getProperty(\"groups\").equals(\"[]\"), \"Supplementary groups were retained\");\n                check(root.getProperty(\"token\").equals(\"java-owner-exact-environment\"), \"Workload environment differs\");\n                check(Long.parseLong(root.getProperty(\"pid\")) == tree.rootPid(), \"Native exec did not preserve root identity\");\n                check(Integer.parseInt(leaf.getProperty(\"uid\")) == uid, \"Descendant UID differs\");\n                check(Long.parseLong(leaf.getProperty(\"pgid\")) == leafPid, \"Descendant did not detach its session\");\n                check(leaf.getProperty(\"cgroup\").endsWith(\"/\" + group.getFileName()), \"Detached descendant escaped containment\");\n                check(tree.members().contains(leafPid), \"Detached descendant is absent from owned cgroup\");\n                check(tree.isComplete() == false, \"Root exit incorrectly marked tree complete\");\n                receipt.setProperty(\"root_exit\", Integer.toString(rootExit));\n                receipt.setProperty(\"workload_uid\", root.getProperty(\"uid\"));\n                receipt.setProperty(\"workload_gid\", root.getProperty(\"gid\"));\n                receipt.setProperty(\"root_identity\", \"preserved-through-execve\");\n                receipt.setProperty(\"detached_retained\", \"passed\");\n                tree.terminate();\n                check(tree.terminationRequested(), \"Termination outcome was lost\");\n                check(tree.awaitRootExit() == 7, \"Termination overwrote earlier root status\");\n                check(tree.isComplete(), \"Owned tree did not complete after termination/reaping\");\n                check(tree.adoptedExits().get(leafPid) != null && tree.adoptedExits().get(leafPid) == -9,\n                      \"Detached descendant lacks actual SIGKILL wait status: \" + tree.adoptedExits());\n                receipt.setProperty(\"detached_pid\", Long.toString(leafPid));\n                receipt.setProperty(\"adopted_exit\", Integer.toString(tree.adoptedExits().get(leafPid)));\n                receipt.setProperty(\"populated_after_kill\", \"0\");\n                receipt.setProperty(\"termination_distinct_from_root\", \"passed\");\n            }\n            check(Files.exists(group) == false, \"Owned cgroup remained after close\");\n            check(Files.exists(scratch) == false, \"Owned helper scratch remained after close\");\n            receipt.setProperty(\"success_cleanup\", \"passed\");\n            Files.delete(marker);\n            Files.delete(leafMarker);\n\n            Path failedGroup = null;\n            Path failedScratch = null;\n            long failedPid = 0;\n            try {\n                try (var tree = LinuxProcessTree.prepare(launch)) {\n                    failedGroup = tree.group();\n                    failedScratch = tree.scratch();\n                    failedPid = tree.rootPid();\n                    check(Files.exists(marker) == false, \"Workload ran before controlled failure\");\n                    throw new IOException(\"controlled-before-release\");\n                }\n            } catch (IOException expected) {\n                check(expected.getMessage().equals(\"controlled-before-release\"), expected.toString());\n                check(expected.getSuppressed().length == 0, \"Controlled failure acquired suppressed cleanup failures\");\n            }\n            check(failedGroup != null && Files.exists(failedGroup) == false, \"Failed acquisition retained cgroup\");\n            check(failedScratch != null && Files.exists(failedScratch) == false, \"Failed acquisition retained helper scratch\");\n            check(Files.exists(Path.of(\"/proc\", Long.toString(failedPid))) == false, \"Failed gated helper remains visible\");\n            check(Files.exists(marker) == false && Files.exists(leafMarker) == false, \"Controlled failure executed workload\");\n            receipt.setProperty(\"before_release_failure_cleanup\", \"passed\");\n            receipt.setProperty(\"native_machine\", System.getProperty(\"os.arch\"));\n            receipt.setProperty(\"java_version\", System.getProperty(\"java.version\"));\n            receipt.setProperty(\"outcome\", \"passed\");\n            for (String key : receipt.stringPropertyNames().stream().sorted().toList())\n                        System.out.println(key + \"=\" + receipt.getProperty(key));\n        } finally {\n            for (Path path : List.of(marker, leafMarker, marker.resolveSibling(\"root.pending\"), leafMarker.resolveSibling(\"leaf.pending\"))) Files.deleteIfExists(path);\n            Files.delete(work);\n        }\n    }\n\n    /** Reads a whole fixture report after atomic publication, bounded to five seconds. */\n    private static Properties readEventually(Path file) throws Exception {\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);\n        while (Files.exists(file) == false) {\n            if (System.nanoTime() >= deadline) throw new AssertionError(\"Missing workload fixture report: \" + file);\n            Thread.sleep(10);\n        }\n        Properties values = new Properties();\n        try (InputStream input = Files.newInputStream(file)) { values.load(input); }\n        return values;\n    }\n\n    /** Fails the gate when the public operation contradicts a required observable outcome. */\n    private static void check(boolean condition, String failure) {\n        if (condition == false) throw new AssertionError(failure);\n    }\n}\n"
+    },
+    "workload.py": {
+      "sha256": "ae3feab4505e2fb66c7ec42756056f3b506003ed1b7c5f4eaf67642c2b41ef00",
+      "bytes": 1350,
+      "text": "\"\"\"Self-expiring workload fixture; process ownership is implemented only by Java.\"\"\"\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\nimport time\n\n\ndef report(destination):\n    membership = Path('/proc/self/cgroup').read_text().strip()\n    pending = Path(destination).with_suffix('.pending')\n    pending.write_text(\n        f'pid={os.getpid()}\\nuid={os.getuid()}\\ngid={os.getgid()}\\n'\n        f'groups={os.getgroups()}\\npgid={os.getpgrp()}\\n'\n        f'cgroup={membership}\\ntoken={os.environ.get(\"OWNER_GATE_TOKEN\", \"missing\")}\\n')\n    os.replace(pending, destination)\n\n\nif sys.argv[1] == 'natural-leaf':\n    report(sys.argv[2])\n    deadline = time.monotonic() + 20\n    while not Path(sys.argv[3]).exists():\n        if time.monotonic() >= deadline:\n            os._exit(124)\n        time.sleep(0.01)\n    os._exit(int(sys.argv[4]))\nelif sys.argv[1] == 'natural-root':\n    report(sys.argv[2])\n    subprocess.Popen([sys.executable, __file__, 'natural-leaf', sys.argv[3], sys.argv[4], sys.argv[6]],\n                     start_new_session=True, close_fds=True)\n    os._exit(int(sys.argv[5]))\nelif sys.argv[1] == 'leaf':\n    report(sys.argv[2])\n    time.sleep(20)\nelse:\n    report(sys.argv[2])\n    subprocess.Popen([sys.executable, __file__, 'leaf', sys.argv[3]],\n                     start_new_session=True, close_fds=True)\n    os._exit(7)\n"
+    }
+  },
+  "behavioral_red": {
+    "owner_stub": {
+      "sha256": "fef90d64e6052627ecaa1e5642eb9e8313058e042b1609f57b48309129f45c3d",
+      "bytes": 21466,
+      "text": "import java.io.IOException;\nimport java.io.InputStream;\nimport java.io.OutputStream;\nimport java.lang.foreign.Arena;\nimport java.lang.foreign.FunctionDescriptor;\nimport java.lang.foreign.Linker;\nimport java.lang.foreign.MemorySegment;\nimport java.lang.foreign.ValueLayout;\nimport java.lang.invoke.MethodHandle;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.StandardOpenOption;\nimport java.util.ArrayList;\nimport java.util.LinkedHashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Objects;\nimport java.util.Properties;\nimport java.util.concurrent.TimeUnit;\n\n/**\n * Owns one Linux action tree in a dedicated supervisor JVM with no unrelated children.\n * The caller must provide elevated cgroup-management authority and native access.\n * Root observation does not imply descendant completion. Instances are single-thread confined.\n */\npublic final class LinuxProcessTree implements AutoCloseable {\n    /**\n     * Explicit launch context. Executable, Java runtime, class path, directory and parents must be absolute.\n     * The workload's positive UID/GID are distinct from the privileged supervisor identity.\n     * Command arguments and the complete workload environment are copied. No PATH search is performed.\n     */\n    public record Launch(Path cgroupParent, Path scratchParent, Path javaExecutable, Path classPath,\n                         List<String> command, Map<String,String> environment, Path directory, int uid, int gid) {\n        public Launch {\n            for (Path path : List.of(cgroupParent, scratchParent, javaExecutable, classPath, directory)) {\n                if (path.isAbsolute() == false) throw new IllegalArgumentException(\"Launch paths must be absolute: \" + path);\n            }\n            command = List.copyOf(command);\n            environment = Map.copyOf(environment);\n            if (command.isEmpty() || Path.of(command.getFirst()).isAbsolute() == false)\n                throw new IllegalArgumentException(\"The workload requires an absolute executable\");\n            if (uid <= 0 || gid <= 0) throw new IllegalArgumentException(\"Workload UID and GID must be positive\");\n        }\n    }\n\n    private final Launch launch;\n    private final NativeCalls nativeCalls;\n    private Path group;\n    private Path scratch;\n    private Process root;\n    private Integer rootExit;\n    private boolean released;\n    private boolean terminationRequested;\n    private boolean adoptedDrained;\n    private boolean closed;\n    private final Map<Long,Integer> adoptedExits = new LinkedHashMap<>();\n\n    /** Stores immutable launch context; acquisition and failed acquisition cleanup belong to prepare. */\n    private LinuxProcessTree(Launch launch) throws IOException {\n        this.launch = Objects.requireNonNull(launch, \"launch\");\n        nativeCalls = new NativeCalls();\n    }\n\n    /**\n     * Creates an exclusive cgroup and a trusted Java helper; verifies placement before returning.\n     * Workload execution remains gated until release and self-expires after 60 seconds without release.\n     * On failure, owned work is terminated/reaped and acquired storage is removed; cleanup errors are suppressed.\n     * @throws IOException if native authority, process creation, containment or readiness fails\n     */\n    public static LinuxProcessTree prepare(Launch launch) throws IOException {\n        LinuxProcessTree tree = new LinuxProcessTree(launch);\n        try {\n            if (tree.nativeCalls.uid() != 0) throw new IOException(\"This candidate requires an elevated standalone supervisor\");\n            tree.nativeCalls.setSubreaper();\n            tree.scratch = Files.createTempDirectory(launch.scratchParent(), \"java-owner-state-\");\n            tree.group = Files.createTempDirectory(launch.cgroupParent(), \"java-owner-\");\n            tree.writeConfiguration();\n\n            ProcessBuilder builder = new ProcessBuilder(launch.javaExecutable().toString(),\n                \"--enable-native-access=ALL-UNNAMED\", \"-cp\", launch.classPath().toString(),\n                LinuxProcessTree.class.getName(), \"--gate\", tree.scratch.toString());\n            builder.directory(launch.directory().toFile());\n            builder.environment().clear();\n            builder.redirectErrorStream(true);\n            builder.redirectOutput(tree.scratch.resolve(\"workload.log\").toFile());\n            tree.root = builder.start();\n            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);\n            while (Files.exists(tree.scratch.resolve(\"ready\")) == false) {\n                if (tree.root.isAlive() == false) throw new IOException(\"Trusted gate exited before readiness: \" + tree.root.waitFor());\n                if (System.nanoTime() >= deadline) throw new IOException(\"Trusted gate did not become ready within 10 seconds\");\n                Thread.sleep(10);\n            }\n\n            Files.writeString(tree.group.resolve(\"cgroup.procs\"), Long.toString(tree.root.pid()), StandardOpenOption.WRITE);\n            if (tree.members().contains(tree.root.pid()) == false)\n                throw new IOException(\"Trusted gate is absent from its owned cgroup: \" + tree.group);\n            return tree;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            IOException interrupted = new IOException(\"Interrupted during trusted-gate readiness\", failure);\n            tree.closeAfterFailure(interrupted);\n            throw interrupted;\n        } catch (IOException | RuntimeException | Error failure) {\n            tree.closeAfterFailure(failure);\n            throw failure;\n        }\n    }\n\n    /** Stores the workload data for the trusted helper, using the JDK XML properties format. */\n    private void writeConfiguration() throws IOException {\n        Properties values = new Properties();\n        values.setProperty(\"uid\", Integer.toString(launch.uid()));\n        values.setProperty(\"gid\", Integer.toString(launch.gid()));\n        values.setProperty(\"command.count\", Integer.toString(launch.command().size()));\n        for (int index = 0; index < launch.command().size(); index++)\n            values.setProperty(\"command.\" + index, launch.command().get(index));\n        for (var entry : launch.environment().entrySet()) values.setProperty(\"environment.\" + entry.getKey(), entry.getValue());\n        try (OutputStream output = Files.newOutputStream(scratch.resolve(\"launch.xml\"))) {\n            values.storeToXML(output, \"Trusted helper workload inputs\");\n        }\n    }\n\n    /** Releases exactly one contained helper; repeated release or use after close is rejected. */\n    public void release() throws IOException {\n        requireOpen();\n        if (released) throw new IllegalStateException(\"The workload gate is already released\");\n        if (members().contains(root.pid()) == false) throw new IOException(\"Gate lost owned cgroup membership before release\");\n        Files.writeString(scratch.resolve(\"release\"), \"release\\n\", StandardOpenOption.CREATE_NEW);\n        released = true;\n    }\n\n    /** Waits up to 10 seconds for the actual exec-replaced root and preserves its actual Java process exit status. */\n    public int awaitRootExit() throws IOException {\n        requireOpen();\n        if (rootExit != null) return rootExit;\n        try {\n            if (root.waitFor(10, TimeUnit.SECONDS) == false) throw new IOException(\"Workload root did not exit within 10 seconds\");\n            rootExit = root.exitValue();\n            return rootExit;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            throw new IOException(\"Interrupted while observing workload root\", failure);\n        }\n    }\n\n    /** Returns current kernel cgroup membership, retaining detached descendants independently of parent PID. */\n    public List<Long> members() throws IOException {\n        List<Long> result = new ArrayList<>();\n        for (String line : Files.readAllLines(group.resolve(\"cgroup.procs\"))) result.add(Long.parseLong(line));\n        return List.copyOf(result);\n    }\n\n    /** Indicates whether the observed root has exited, no owned task remains, and adopted statuses have been collected. */\n    public boolean isComplete() throws IOException {\n        requireOpen();\n        return rootExit != null && populated() == false && adoptedDrained;\n    }\n\n    /** Observes natural completion; behavioral red stub. */\n    public boolean observeCompletion() throws IOException { return isComplete(); }\n\n    /** Indicates whether public termination was requested; this remains distinct from a successful root exit. */\n    public boolean terminationRequested() { return terminationRequested; }\n\n    /** Returns collected adopted statuses: negative signal numbers or ordinary nonnegative exit codes. */\n    public Map<Long,Integer> adoptedExits() { return Map.copyOf(adoptedExits); }\n\n    /** Returns the owned cgroup path for direct identity and lifecycle observation. */\n    public Path group() { return group; }\n\n    /** Returns the helper/workload root PID, unchanged by the helper's native execve. */\n    public long rootPid() { return root.pid(); }\n\n    /** Returns the owned helper scratch path; it is removed by close. */\n    public Path scratch() { return scratch; }\n\n    /** Terminates only this cgroup and collects root/adopted statuses; termination remains a distinct outcome. */\n    public void terminate() throws IOException {\n        requireOpen();\n        terminationRequested = true;\n        stopAndReap();\n    }\n\n    /** Reads the authoritative populated field without treating an absent field as an empty group. */\n    private boolean populated() throws IOException {\n        for (String line : Files.readAllLines(group.resolve(\"cgroup.events\"))) {\n            if (line.equals(\"populated 1\")) return true;\n            if (line.equals(\"populated 0\")) return false;\n        }\n        throw new IOException(\"Owned cgroup has no valid populated field: \" + group);\n    }\n\n    /** Kills group members, waits the Java-owned root first, then drains adopted statuses in this standalone JVM. */\n    private void stopAndReap() throws IOException {\n        if (group != null) Files.writeString(group.resolve(\"cgroup.kill\"), \"1\\n\", StandardOpenOption.WRITE);\n        if (root != null) {\n            // A gate may fail before placement; its direct owner still has to stop and reap it.\n            if (root.isAlive()) root.destroyForcibly();\n            awaitRootExit();\n        }\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);\n        try {\n            while (group != null && populated()) {\n                if (System.nanoTime() >= deadline) throw new IOException(\"Owned cgroup remains populated after termination\");\n                Thread.sleep(10);\n            }\n            nativeCalls.drainAdopted(adoptedExits, deadline);\n            adoptedDrained = true;\n        } catch (InterruptedException failure) {\n            Thread.currentThread().interrupt();\n            throw new IOException(\"Interrupted during owned descendant cleanup\", failure);\n        }\n    }\n\n    /** Attaches cleanup failures without replacing the original acquisition failure. */\n    private void closeAfterFailure(Throwable failure) {\n        try { close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }\n    }\n\n    /** Rejects lifecycle operations after resources were closed. */\n    private void requireOpen() {\n        if (closed) throw new IllegalStateException(\"Owned process tree is closed\");\n    }\n\n    /** Stops/reaps acquired work and removes only the exclusive group and scratch; cleanup failures remain visible. */\n    @Override public void close() throws IOException {\n        if (closed) return;\n        boolean interrupted = Thread.interrupted();\n        IOException failure = null;\n        try {\n            try { stopAndReap(); } catch (IOException cleanup) { failure = cleanup; }\n            if (group != null) {\n                try { Files.delete(group); } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (root != null) {\n                try { root.getOutputStream().close(); } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (scratch != null) {\n                try (var entries = Files.walk(scratch)) {\n                    for (Path entry : entries.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(entry);\n                } catch (IOException cleanup) {\n                    if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);\n                }\n            }\n            if (failure != null) throw failure;\n            closed = true;\n        } finally {\n            if (interrupted) Thread.currentThread().interrupt();\n        }\n    }\n\n    /** Runs only the trusted helper. Configuration is data; arbitrary workload execution follows release and identity drop. */\n    public static void main(String[] args) throws Exception {\n        if (args.length != 2 || args[0].equals(\"--gate\") == false)\n            throw new IllegalArgumentException(\"Expected --gate and the owned scratch directory\");\n        Path scratch = Path.of(args[1]);\n        Properties values = new Properties();\n        try (InputStream input = Files.newInputStream(scratch.resolve(\"launch.xml\"))) { values.loadFromXML(input); }\n        Files.writeString(scratch.resolve(\"ready\"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);\n        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);\n        while (Files.exists(scratch.resolve(\"release\")) == false) {\n            if (System.nanoTime() >= deadline) throw new IOException(\"Unreleased trusted gate self-expired after 60 seconds\");\n            Thread.sleep(10);\n        }\n        List<String> command = new ArrayList<>();\n        int count = Integer.parseInt(values.getProperty(\"command.count\"));\n        for (int index = 0; index < count; index++) command.add(values.getProperty(\"command.\" + index));\n        Map<String,String> environment = new LinkedHashMap<>();\n        for (String key : values.stringPropertyNames()) {\n            if (key.startsWith(\"environment.\")) environment.put(key.substring(\"environment.\".length()), values.getProperty(key));\n        }\n        NativeCalls calls = new NativeCalls();\n        calls.dropIdentity(Integer.parseInt(values.getProperty(\"uid\")), Integer.parseInt(values.getProperty(\"gid\")));\n        calls.exec(command, environment);\n    }\n\n    /** Linux libc boundary; native errno is captured per invocation, without JNI or Java process-reaper competition. */\n    private static final class NativeCalls {\n        private final Linker linker = Linker.nativeLinker();\n        private final long errnoOffset = Linker.Option.captureStateLayout().byteOffset(java.lang.foreign.MemoryLayout.PathElement.groupElement(\"errno\"));\n        private final MethodHandle prctl = bind(\"prctl\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG), true);\n        private final MethodHandle waitpid = bind(\"waitpid\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT), false);\n        private final MethodHandle getuid = bind(\"getuid\", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);\n        private final MethodHandle getgid = bind(\"getgid\", FunctionDescriptor.of(ValueLayout.JAVA_INT), false);\n        private final MethodHandle setgroups = bind(\"setgroups\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.JAVA_LONG, ValueLayout.ADDRESS), false);\n        private final MethodHandle setgid = bind(\"setgid\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);\n        private final MethodHandle setuid = bind(\"setuid\", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT), false);\n        private final MethodHandle execve = bind(\"execve\", FunctionDescriptor.of(ValueLayout.JAVA_INT,\n            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);\n\n        /** Binds a libc symbol with captured errno; prctl's trailing arguments are C varargs. */\n        private MethodHandle bind(String name, FunctionDescriptor descriptor, boolean variadic) {\n            MemorySegment symbol = linker.defaultLookup().find(name).orElseThrow(() -> new IllegalStateException(\"Missing Linux libc symbol: \" + name));\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n        }\n\n        /** Returns an operation result and captured errno; unexpected binding failures are reported with their cause. */\n        private int[] call(MethodHandle operation, Object... arguments) throws IOException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment captured = arena.allocate(Linker.Option.captureStateLayout());\n                List<Object> values = new ArrayList<>();\n                values.add(captured);\n                values.addAll(List.of(arguments));\n                int result = (Integer) operation.invokeWithArguments(values);\n                return new int[] { result, captured.get(ValueLayout.JAVA_INT, errnoOffset) };\n            } catch (Throwable failure) {\n                throw new IOException(\"Linux native invocation failed\", failure);\n            }\n        }\n\n        /** Returns the calling process's real UID. */\n        private int uid() throws IOException { return call(getuid)[0]; }\n\n        /** Enables child adoption before any owned root is started. */\n        private void setSubreaper() throws IOException {\n            requireSuccess(\"prctl(PR_SET_CHILD_SUBREAPER)\", call(prctl, 36, 1L, 0L, 0L, 0L));\n        }\n\n        /** Drops all supplementary groups before GID/UID, then verifies the resulting real identities. */\n        private void dropIdentity(int uid, int gid) throws IOException {\n            requireSuccess(\"setgroups\", call(setgroups, 0L, MemorySegment.NULL));\n            requireSuccess(\"setgid\", call(setgid, gid));\n            requireSuccess(\"setuid\", call(setuid, uid));\n            if (uid() != uid || call(getgid)[0] != gid) throw new IOException(\"Workload credential drop did not establish requested identity\");\n        }\n\n        /** Replaces the gated JVM with the workload, preserving its PID and original-process wait ownership. */\n        private void exec(List<String> command, Map<String,String> environment) throws IOException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment arguments = strings(arena, command);\n                List<String> variables = environment.entrySet().stream().map(entry -> entry.getKey() + \"=\" + entry.getValue()).toList();\n                MemorySegment env = strings(arena, variables);\n                int[] result = call(execve, arena.allocateFrom(command.getFirst()), arguments, env);\n                requireSuccess(\"execve(\" + command.getFirst() + \")\", result);\n                throw new IOException(\"execve unexpectedly returned success\");\n            }\n        }\n\n        /** Allocates a null-terminated C pointer vector and UTF-8 strings in the caller-owned arena. */\n        private MemorySegment strings(Arena arena, List<String> values) {\n            MemorySegment vector = arena.allocate(ValueLayout.ADDRESS, values.size() + 1L);\n            for (int index = 0; index < values.size(); index++) vector.setAtIndex(ValueLayout.ADDRESS, index, arena.allocateFrom(values.get(index)));\n            vector.setAtIndex(ValueLayout.ADDRESS, values.size(), MemorySegment.NULL);\n            return vector;\n        }\n\n        /** Drains only after Java's direct root was waited; ECHILD is the authoritative end of adopted status collection. */\n        private void drainAdopted(Map<Long,Integer> exits, long deadline) throws IOException, InterruptedException {\n            try (Arena arena = Arena.ofConfined()) {\n                MemorySegment status = arena.allocate(ValueLayout.JAVA_INT);\n                while (true) {\n                    int[] result = call(waitpid, -1, status, 1);\n                    if (result[0] > 0) {\n                        int raw = status.get(ValueLayout.JAVA_INT, 0);\n                        int signal = raw & 127;\n                        exits.put((long) result[0], signal == 0 ? raw >> 8 : -signal);\n                        continue;\n                    }\n                    if (result[0] == -1 && result[1] == 10) return;\n                    if (result[0] == -1 && result[1] != 4) requireSuccess(\"waitpid\", result);\n                    if (System.nanoTime() >= deadline) throw new IOException(\"Adopted children remained unreaped after termination deadline\");\n                    Thread.sleep(10);\n                }\n            }\n        }\n\n        /** Converts a failing libc result into a precise operation/errno diagnostic. */\n        private void requireSuccess(String operation, int[] result) throws IOException {\n            if (result[0] == -1) throw new IOException(operation + \" failed with errno \" + result[1]);\n        }\n    }\n}\n"
+    },
+    "result": {
+      "exit": 1,
+      "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nException in thread \"main\" java.lang.AssertionError: Natural completion remained pending after descendant release\r\n\tat NaturalCompletionGate.natural(NaturalCompletionGate.java:72)\r\n\tat NaturalCompletionGate.main(NaturalCompletionGate.java:30)\r\n__OWNER_DONE_request-031__:1\r\n\u001b[?2004hOWNER> "
+    },
+    "expected_failure": "Natural completion remained pending after descendant release",
+    "classification": "A compiling observeCompletion stub returned the old isComplete query without adopted-status collection. The actual native fixture root exited7 and released its detached descendant to exit23, but observation remained pending. The failed invocation remains failed evidence; only the subsequent repair is passing.",
+    "transfer": {
+      "exit": 0,
+      "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\ne6c27f4ff49070fe68ab9ef15ad088642fb246c35db2d5c0bb44c5316cc7a7b8  red.tar.gz\r\n9618 red.tar.gz\r\n__OWNER_DONE_request-029__:0\r\n\u001b[?2004hOWNER> ",
+      "chunks": 26,
+      "bytes": 9618,
+      "sha256": "e6c27f4ff49070fe68ab9ef15ad088642fb246c35db2d5c0bb44c5316cc7a7b8"
+    }
+  },
+  "verification": {
+    "local_compile": {
+      "arguments": [
+        "javac",
+        "--release",
+        "27",
+        "-Xlint:all",
+        "-d",
+        "classes",
+        "proof/LinuxProcessTree.java",
+        "drivers/NaturalCompletionGate.java",
+        "drivers/OwnerGate.java"
+      ],
+      "exit": 0,
+      "log": {
+        "sha256": "ced413e8f4cf9eada513db6853672c8baa85d60c3f06bbf99c9dd43ae5edd42f",
+        "bytes": 1002,
+        "text": ".cat/sessions/01a17a8f-8b0c-71d2-b6ad-7a2eb92dbd2d/temp/natural-completion-SzcWDi/proof/LinuxProcessTree.java:328: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n                                       ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n.cat/sessions/01a17a8f-8b0c-71d2-b6ad-7a2eb92dbd2d/temp/natural-completion-SzcWDi/proof/LinuxProcessTree.java:329: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n                         ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n2 warnings\n"
+      }
+    },
+    "static_review": {
+      "natural_path_no_kill": true,
+      "root_before_native_wait": true,
+      "ECHILD_before_populated0_and_completion": true,
+      "single_waitpid_per_observation": true,
+      "close_skips_forced_path_only_after_recorded_completion": true
+    },
+    "native_checks": {
+      "x86_64": {
+        "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40638729587",
+        "platform": {
+          "request": {
+            "command": "{ uname -a; id; printf \"ImageOS=%s ImageVersion=%s\\n\" \"$ImageOS\" \"$ImageVersion\"; sudo -n id; test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed-part && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"; }; result=$?; printf '__OWNER_DONE_request-001__:%s\n' \"$result\"",
+            "timeout": 20
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nLinux runnervmtai0g 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux\nuid=1001(runner) gid=1001(runner) groups=1001(runner),4(adm),100(users),118(docker),999(systemd-journal)\nImageOS=ubuntu24 ImageVersion=20261023.334.3\nuid=0(root) gid=0(root) groups=0(root)\n__OWNER_DONE_request-001__:0\nOWNER> "
+          }
+        },
+        "natural_gate": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40638729587 && ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/javac --release 27 -Xlint:all -d classes proof/LinuxProcessTree.java drivers/NaturalCompletionGate.java drivers/OwnerGate.java && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40638729587/classes NaturalCompletionGate /tmp/java-natural-40638729587/classes /tmp/java-natural-40638729587/green-gate /tmp/java-natural-40638729587/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-061__:%s\n' \"$result\"",
+            "timeout": 45
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nproof/LinuxProcessTree.java:328: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n                                       ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\nproof/LinuxProcessTree.java:329: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n                         ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n2 warnings\nroot7_adopted_exit=23\nroot7_natural_cleanup=passed\nroot0_adopted_exit=0\nroot0_natural_cleanup=passed\npremature_close=passed\nnatural_gate=passed\n__OWNER_DONE_request-061__:0\nOWNER> "
+          }
+        },
+        "forced_cleanup_regression": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40638729587 && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40638729587/classes OwnerGate /tmp/java-natural-40638729587/classes /tmp/java-natural-40638729587/termination-regression /tmp/java-natural-40638729587/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-062__:%s\n' \"$result\"",
+            "timeout": 45
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nadopted_exit=-9\nbefore_release_failure_cleanup=passed\ndetached_pid=2823\ndetached_retained=passed\njava_version=27.0.1\nnative_machine=amd64\noutcome=passed\npopulated_after_kill=0\npre_release_containment=passed\nroot_exit=7\nroot_identity=preserved-through-execve\nsuccess_cleanup=passed\ntermination_distinct_from_root=passed\nworkload_gid=1001\nworkload_uid=1001\n__OWNER_DONE_request-062__:0\nOWNER> "
+          }
+        },
+        "cleanup": {
+          "request": {
+            "command": "{ sudo -n find /sys/fs/cgroup -maxdepth 1 -type d -name \"java-owner-*\" -print; sudo -n rm -rf -- /tmp/java-natural-40638729587; test ! -e /tmp/java-natural-40638729587; test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = \"$(printf \"completed-part\\nincremental-retry\")\"; echo TASK_SCRATCH_REMOVED_AND_SMOKE_MARKER_VERIFIED; }; result=$?; printf '__OWNER_DONE_request-064__:%s\n' \"$result\"",
+            "timeout": 30
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nTASK_SCRATCH_REMOVED_AND_SMOKE_MARKER_VERIFIED\n__OWNER_DONE_request-064__:0\nOWNER> "
+          }
+        },
+        "ssh_terminal": {
+          "exit": 0
+        },
+        "hosted_terminal": {
+          "conclusion": "failure",
+          "headSha": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+          "jobs": [
+            {
+              "completedAt": "2026-10-28T05:34:05Z",
+              "conclusion": "success",
+              "databaseId": 122651638121,
+              "name": "select",
+              "startedAt": "2026-10-28T05:34:01Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 6,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 7,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40638729587/job/122651638121"
+            },
+            {
+              "completedAt": "2026-10-28T05:36:42Z",
+              "conclusion": "failure",
+              "databaseId": 122651671976,
+              "name": "Debug - x86_64-unknown-linux-musl",
+              "startedAt": "2026-10-28T05:34:08Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Create owned partial build state",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "failure",
+                  "name": "Record the deliberate build failure",
+                  "number": 4,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Debug the original failed workspace",
+                  "number": 5,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Debug the original failed workspace",
+                  "number": 8,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Create owned partial build state",
+                  "number": 9,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 10,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 11,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40638729587/job/122651671976"
+            }
+          ],
+          "status": "completed",
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40638729587"
+        },
+        "transfer": {
+          "exit": 0,
+          "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nec1412caec83eb3c35c75b158c0154786b9998fde694b13ee6e128568a71764e  green.tar.gz\r\n10088 green.tar.gz\r\n__OWNER_DONE_request-060__:0\r\n\u001b[?2004hOWNER> ",
+          "chunks": 27,
+          "bytes": 10088,
+          "sha256": "ec1412caec83eb3c35c75b158c0154786b9998fde694b13ee6e128568a71764e"
+        },
+        "red_compile": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40638729587 && curl -fsSL https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-linux_x64.tar.gz -o jdk.tar.gz && sha256sum jdk.tar.gz && tar xzf jdk.tar.gz && mkdir classes && ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/java -version && ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/javac --release 27 -Xlint:all -d classes proof/LinuxProcessTree.java drivers/NaturalCompletionGate.java drivers/OwnerGate.java; }; result=$?; printf '__OWNER_DONE_request-030__:%s\n' \"$result\"",
+            "timeout": 180
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nc734ba335498892ecabdf5722526d945e25f41a09cd6d619b72bc20bec60f852  jdk.tar.gz\nopenjdk version \"27.0.1\" 2026-10-20\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing)\nproof/LinuxProcessTree.java:301: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n                                       ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\nproof/LinuxProcessTree.java:302: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n                         ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n2 warnings\n__OWNER_DONE_request-030__:0\nOWNER> "
+          }
+        },
+        "behavioral_red": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40638729587 && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40638729587/classes NaturalCompletionGate /tmp/java-natural-40638729587/classes /tmp/java-natural-40638729587/red-gate /tmp/java-natural-40638729587/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-031__:%s\n' \"$result\"",
+            "timeout": 30
+          },
+          "result": {
+            "exit": 1,
+            "output": "\n> \nException in thread \"main\" java.lang.AssertionError: Natural completion remained pending after descendant release\n\tat NaturalCompletionGate.natural(NaturalCompletionGate.java:72)\n\tat NaturalCompletionGate.main(NaturalCompletionGate.java:30)\n__OWNER_DONE_request-031__:1\nOWNER> "
+          }
+        },
+        "clean_verification": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40638729587 && mkdir clean-classes && ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/javac --release 27 -Xlint:all -d clean-classes proof/LinuxProcessTree.java drivers/NaturalCompletionGate.java drivers/OwnerGate.java && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40638729587/clean-classes NaturalCompletionGate /tmp/java-natural-40638729587/clean-classes /tmp/java-natural-40638729587/clean-gate /tmp/java-natural-40638729587/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-063__:%s\n' \"$result\"",
+            "timeout": 45
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nproof/LinuxProcessTree.java:328: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n                                       ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\nproof/LinuxProcessTree.java:329: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n                         ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n2 warnings\nroot7_adopted_exit=23\nroot7_natural_cleanup=passed\nroot0_adopted_exit=0\nroot0_natural_cleanup=passed\npremature_close=passed\nnatural_gate=passed\n__OWNER_DONE_request-063__:0\nOWNER> "
+          }
+        }
+      },
+      "aarch64": {
+        "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40639018926",
+        "platform": {
+          "request": {
+            "command": "{ uname -a; id; printf \"ImageOS=%s ImageVersion=%s\\n\" \"$ImageOS\" \"$ImageVersion\"; sudo -n id; test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed-part && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"; }; result=$?; printf '__OWNER_DONE_request-001__:%s\n' \"$result\"",
+            "timeout": 20
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nLinux runnervm4yw5a 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:12:01 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux\nuid=1001(runner) gid=1001(runner) groups=1001(runner),4(adm),100(users),118(docker),999(systemd-journal)\nImageOS=ubuntu24-arm64 ImageVersion=20261023.149.3\nuid=0(root) gid=0(root) groups=0(root)\n__OWNER_DONE_request-001__:0\nOWNER> "
+          }
+        },
+        "natural_gate": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40639018926 && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_aarch64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40639018926/classes NaturalCompletionGate /tmp/java-natural-40639018926/classes /tmp/java-natural-40639018926/green-gate /tmp/java-natural-40639018926/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-032__:%s\n' \"$result\"",
+            "timeout": 45
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nroot7_adopted_exit=23\nroot7_natural_cleanup=passed\nroot0_adopted_exit=0\nroot0_natural_cleanup=passed\npremature_close=passed\nnatural_gate=passed\n__OWNER_DONE_request-032__:0\nOWNER> "
+          }
+        },
+        "forced_cleanup_regression": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40639018926 && sudo -n ./zulu27.30.107-ca-jdk27.0.1-linux_aarch64/bin/java --enable-native-access=ALL-UNNAMED -cp /tmp/java-natural-40639018926/classes OwnerGate /tmp/java-natural-40639018926/classes /tmp/java-natural-40639018926/termination-regression /tmp/java-natural-40639018926/drivers/workload.py /usr/bin/python3 1001 1001 /sys/fs/cgroup; }; result=$?; printf '__OWNER_DONE_request-033__:%s\n' \"$result\"",
+            "timeout": 45
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nadopted_exit=-9\nbefore_release_failure_cleanup=passed\ndetached_pid=2792\ndetached_retained=passed\njava_version=27.0.1\nnative_machine=aarch64\noutcome=passed\npopulated_after_kill=0\npre_release_containment=passed\nroot_exit=7\nroot_identity=preserved-through-execve\nsuccess_cleanup=passed\ntermination_distinct_from_root=passed\nworkload_gid=1001\nworkload_uid=1001\n__OWNER_DONE_request-033__:0\nOWNER> "
+          }
+        },
+        "cleanup": {
+          "request": {
+            "command": "{ sudo -n find /sys/fs/cgroup -maxdepth 1 -type d -name \"java-owner-*\" -print; sudo -n rm -rf -- /tmp/java-natural-40639018926; test ! -e /tmp/java-natural-40639018926; test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = \"$(printf \"completed-part\\nincremental-retry\")\"; echo TASK_SCRATCH_REMOVED_AND_SMOKE_MARKER_VERIFIED; }; result=$?; printf '__OWNER_DONE_request-034__:%s\n' \"$result\"",
+            "timeout": 30
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \nTASK_SCRATCH_REMOVED_AND_SMOKE_MARKER_VERIFIED\n__OWNER_DONE_request-034__:0\nOWNER> "
+          }
+        },
+        "ssh_terminal": {
+          "exit": 0
+        },
+        "hosted_terminal": {
+          "conclusion": "failure",
+          "headSha": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+          "jobs": [
+            {
+              "completedAt": "2026-10-28T05:37:00Z",
+              "conclusion": "success",
+              "databaseId": 122652544641,
+              "name": "select",
+              "startedAt": "2026-10-28T05:36:57Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 6,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 7,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40639018926/job/122652544641"
+            },
+            {
+              "completedAt": "2026-10-28T05:38:44Z",
+              "conclusion": "failure",
+              "databaseId": 122652570992,
+              "name": "Debug - aarch64-unknown-linux-musl",
+              "startedAt": "2026-10-28T05:37:05Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Create owned partial build state",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "failure",
+                  "name": "Record the deliberate build failure",
+                  "number": 4,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Debug the original failed workspace",
+                  "number": 5,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Debug the original failed workspace",
+                  "number": 8,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Create owned partial build state",
+                  "number": 9,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 10,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 11,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40639018926/job/122652570992"
+            }
+          ],
+          "status": "completed",
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40639018926"
+        },
+        "transfer": {
+          "exit": 0,
+          "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nec1412caec83eb3c35c75b158c0154786b9998fde694b13ee6e128568a71764e  green.tar.gz\r\n10088 green.tar.gz\r\n__OWNER_DONE_request-030__:0\r\n\u001b[?2004hOWNER> ",
+          "chunks": 27,
+          "bytes": 10088,
+          "sha256": "ec1412caec83eb3c35c75b158c0154786b9998fde694b13ee6e128568a71764e"
+        },
+        "fresh_compile": {
+          "request": {
+            "command": "{ cd /tmp/java-natural-40639018926 && curl -fsSL https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-linux_aarch64.tar.gz -o jdk.tar.gz && sha256sum jdk.tar.gz && tar xzf jdk.tar.gz && mkdir classes && ./zulu27.30.107-ca-jdk27.0.1-linux_aarch64/bin/java -version && ./zulu27.30.107-ca-jdk27.0.1-linux_aarch64/bin/javac --release 27 -Xlint:all -d classes proof/LinuxProcessTree.java drivers/NaturalCompletionGate.java drivers/OwnerGate.java; }; result=$?; printf '__OWNER_DONE_request-031__:%s\n' \"$result\"",
+            "timeout": 180
+          },
+          "result": {
+            "exit": 0,
+            "output": "\n> \n68205d91d32f9dea7b61135ec812fa6576f873bfe454dd12488aab8123a84269  jdk.tar.gz\nopenjdk version \"27.0.1\" 2026-10-20\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing)\nproof/LinuxProcessTree.java:328: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            if (variadic) return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"), Linker.Option.firstVariadicArg(1));\n                                       ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\nproof/LinuxProcessTree.java:329: warning: [restricted] Linker.downcallHandle(MemorySegment,FunctionDescriptor,Option...) is a restricted method.\n            return linker.downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"errno\"));\n                         ^\n  (Restricted methods are unsafe and, if used incorrectly, might crash the Java runtime or corrupt memory)\n2 warnings\n__OWNER_DONE_request-031__:0\nOWNER> "
+          }
+        }
+      }
+    },
+    "clean_start": "The x64 red-to-green retry retained its original worker, JDK and classes. After green, a fresh clean-classes directory compiled final sources and reran the natural gate successfully. ARM64 compiled the final archive into a new empty classes directory and passed on its first native invocation.",
+    "warning_policy": "Two existing FFM restricted-method warnings remain visible on all compilations. No diagnostic was suppressed and warnings were not treated as errors.",
+    "facility_reuse": "Accepted Linux cgroup/subreaper/credential facility evidence was reused from the input evidence. No native facility probe or Codex build was repeated.",
+    "fixture": "Root7/child23 and root0/child0 each hold a detached child until Java explicitly writes its release file. Child wait independently expires after20s. Java completion polling has a5s assertion deadline. Premature-close case holds a child and requires actual SIGKILL wait status after close."
+  },
+  "archive": {
+    "sha256": "ec1412caec83eb3c35c75b158c0154786b9998fde694b13ee6e128568a71764e",
+    "bytes": 10088,
+    "verification": "All final source bytes match archive members; both remote extractions matched its SHA256 and size after individually acknowledged 512-character base64 payload chunks."
+  },
+  "runtime_resolution": {
+    "jdk": "Zulu27.30+107-CA JDK27.0.1+9",
+    "x86_64_url": "https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-linux_x64.tar.gz",
+    "x86_64_archive_sha256": "c734ba335498892ecabdf5722526d945e25f41a09cd6d619b72bc20bec60f852",
+    "aarch64_url": "https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-linux_aarch64.tar.gz",
+    "aarch64_archive_sha256": "68205d91d32f9dea7b61135ec812fa6576f873bfe454dd12488aab8123a84269",
+    "source": "Exact runtime packages already resolved in the accepted input evidence; observed native version and archive hashes retained again in compile receipts."
+  },
+  "scheduler_gating": "Root status is progress only. A controller may accept terminal success only after whole-tree completion/reaping, successful owned-state cleanup, a successful root status and no termination outcome. Controller protocol is not implemented in this cluster.",
+  "limitations": [
+    "Dedicated standalone supervisor JVM only; no shared-JVM Process reaper coordination.",
+    "Native gate uses the existing elevated cgroup-management boundary and explicit unprivileged workload UID/GID1001; not a new unprivileged delegation or hostile-workload escape guarantee.",
+    "Exactly one adopted status is collected per observation; production polling, workload time limits and controller scheduling remain unimplemented.",
+    "Observation failure and fixture timeout remain failures; caller owns eventual close. Exhaustive native error injection and supervisor-death recovery are untested.",
+    "No production controller protocol, cross-platform owner composition, scheduler integration or Codex build acceptance is claimed."
+  ],
+  "cleanup": {
+    "remote": "All invocation-owned helpers, detached descendants and cgroups were terminated/reaped or naturally collected. Drivers assert owned cgroup/scratch removal. Final commands verify task scratch deletion and required smoke retry marker.",
+    "ssh": "Both persistent authenticated SSH clients exited and were reaped with exit0.",
+    "hosted": "Both runs are terminal failure solely from deliberate exit17; debug, post-debug and post-smoke steps succeeded.",
+    "local": "Private/public keys, generated classes and Python bytecode removed after all consumers ended. Candidate sources, red/green archives and receipts retained for parent review.",
+    "retained_task_directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/mac-child-stack-3ZoHGY/worktree/.cat/sessions/01a17a8f-8b0c-71d2-b6ad-7a2eb92dbd2d/temp/natural-completion-SzcWDi",
+    "retained_artifact_owner": "parent /root",
+    "live_resource_owner": "none"
+  }
+}

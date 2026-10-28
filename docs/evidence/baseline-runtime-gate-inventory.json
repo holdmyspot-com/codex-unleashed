@@ -1,0 +1,1039 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "scope": "Static baseline runtime-gate reconciliation. This record does not execute or pass any runtime test.",
+  "sources": [
+    {
+      "upstream_path": "codex-rs/Cargo.toml",
+      "sha256": "1e2d7cdd23a1aec655789b5ab5194a6a56172aed1fbc2ae3e8fbb0e92f95bf2b",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/Cargo.toml"
+    },
+    {
+      "upstream_path": "codex-rs/app-server/Cargo.toml",
+      "sha256": "c7db28ab330cb0257e3255c727f73f5ae888f080a856a72c80eff4feeda2bd47",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/app-server/Cargo.toml"
+    },
+    {
+      "upstream_path": "codex-rs/cli/Cargo.toml",
+      "sha256": "935c7f8fe8d45fb7467e231d377c0cbaa6770a7d9cce149a72093a5a6fa17657",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/cli/Cargo.toml"
+    },
+    {
+      "upstream_path": ".github/workflows/rust-ci-full-nextest-platform.yml",
+      "sha256": "167d414cb6ec8655cf4013644273f60d29cd5a8baf1172b88d1c302ba4e89a3d",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/.github/workflows/rust-ci-full-nextest-platform.yml"
+    },
+    {
+      "upstream_path": ".github/workflows/rust-ci-full.yml",
+      "sha256": "0b5516edda071b97451f193e637cf4bb2009b6a235e9d23ca652d449081dfac9",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/.github/workflows/rust-ci-full.yml"
+    },
+    {
+      "upstream_path": ".github/workflows/rust-ci.yml",
+      "sha256": "c05e33c262c930fb9c1ba0774741180147a2c550b8ab74cb187a008bd9dfb7dc",
+      "source_url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/.github/workflows/rust-ci.yml"
+    }
+  ],
+  "test_directory_inventory": {
+    "cli": [
+      {
+        "path": "codex-rs/cli/tests/app_server.rs",
+        "type": "file",
+        "git_blob_sha": "ba5c01b6c47821c425b5b1f55dae655402e4846c"
+      },
+      {
+        "path": "codex-rs/cli/tests/app_server_daemon.rs",
+        "type": "file",
+        "git_blob_sha": "72b10fa51b3b73615a5070f22977d00bdc2d7c34"
+      },
+      {
+        "path": "codex-rs/cli/tests/app_server_daemon",
+        "type": "dir",
+        "git_blob_sha": "77dfebd7fbc62490a76eadf9568917408cce79a2"
+      },
+      {
+        "path": "codex-rs/cli/tests/app_server_daemon_windows.rs",
+        "type": "file",
+        "git_blob_sha": "5f955cd11d7e33d8825fcfade2ce10c3d6441378"
+      },
+      {
+        "path": "codex-rs/cli/tests/cloud_auth.rs",
+        "type": "file",
+        "git_blob_sha": "01e7eb87e38f662d91c4d8574c9faf894eec587f"
+      },
+      {
+        "path": "codex-rs/cli/tests/cloud_config.rs",
+        "type": "file",
+        "git_blob_sha": "a347297725ecce7d964714ac5536e61e6b93cada"
+      },
+      {
+        "path": "codex-rs/cli/tests/daemon_startup.rs",
+        "type": "file",
+        "git_blob_sha": "ae2fe3eefc2b500607106995fce11dd6f14a8c44"
+      },
+      {
+        "path": "codex-rs/cli/tests/daemon_telemetry.rs",
+        "type": "file",
+        "git_blob_sha": "1d34cefe14b92efcc6cdf01c1f94566b1498d785"
+      },
+      {
+        "path": "codex-rs/cli/tests/debug_clear_memories.rs",
+        "type": "file",
+        "git_blob_sha": "5b44c9772effdad29ed6db705091d50a2d7bfb06"
+      },
+      {
+        "path": "codex-rs/cli/tests/debug_models.rs",
+        "type": "file",
+        "git_blob_sha": "f927742a5941bfeb00e734f90b2b4174e732466a"
+      },
+      {
+        "path": "codex-rs/cli/tests/delete.rs",
+        "type": "file",
+        "git_blob_sha": "854b87b56ee6e277f5dcc3fd6d845569bd852f8f"
+      },
+      {
+        "path": "codex-rs/cli/tests/doctor_enterprise_network.rs",
+        "type": "file",
+        "git_blob_sha": "385e80710169815b04c90ea01ec80b3689bdfc41"
+      },
+      {
+        "path": "codex-rs/cli/tests/doctor_path_safety.rs",
+        "type": "file",
+        "git_blob_sha": "66d6d2c0cfc7821b1a80efb6bc51da5be6823fe2"
+      },
+      {
+        "path": "codex-rs/cli/tests/exec_server.rs",
+        "type": "file",
+        "git_blob_sha": "59c6512602d51af68ab5cd869c3fe9edb211b4bc"
+      },
+      {
+        "path": "codex-rs/cli/tests/exec_server",
+        "type": "dir",
+        "git_blob_sha": "513728cad29d99dbb9577ebb5ec592f0e9cc7348"
+      },
+      {
+        "path": "codex-rs/cli/tests/exec_server_websocket_auth.rs",
+        "type": "file",
+        "git_blob_sha": "d759de2df5c7f497cd7cae313d59699b34124c83"
+      },
+      {
+        "path": "codex-rs/cli/tests/execpolicy.rs",
+        "type": "file",
+        "git_blob_sha": "30b5999c0532b59e032634770d226ff11ebcf31e"
+      },
+      {
+        "path": "codex-rs/cli/tests/features.rs",
+        "type": "file",
+        "git_blob_sha": "6da9fd9325fed3f8d87ede179166557fdb39c97c"
+      },
+      {
+        "path": "codex-rs/cli/tests/login.rs",
+        "type": "file",
+        "git_blob_sha": "b5e729f4ac1b60f490f5a77fefd01cfa183a9ad8"
+      },
+      {
+        "path": "codex-rs/cli/tests/marketplace_add.rs",
+        "type": "file",
+        "git_blob_sha": "a2001d70d4cd108f28f1f06ce8823b918875b601"
+      },
+      {
+        "path": "codex-rs/cli/tests/marketplace_remove.rs",
+        "type": "file",
+        "git_blob_sha": "dbad3c38ca3a17800b06e5961adb103248f045ae"
+      },
+      {
+        "path": "codex-rs/cli/tests/marketplace_upgrade.rs",
+        "type": "file",
+        "git_blob_sha": "e6279e76f68769cb5268b3f3a3dcab5c43040d61"
+      },
+      {
+        "path": "codex-rs/cli/tests/mcp_add_remove.rs",
+        "type": "file",
+        "git_blob_sha": "16bb2c455ad0336aa92fea0ecf3b92b6c0435268"
+      },
+      {
+        "path": "codex-rs/cli/tests/mcp_list.rs",
+        "type": "file",
+        "git_blob_sha": "175ff030a955699cf476444ee0ee549595cfe8a2"
+      },
+      {
+        "path": "codex-rs/cli/tests/mcp_login.rs",
+        "type": "file",
+        "git_blob_sha": "85ef53686b379f71df6fbb2ff74ab44c0623ae36"
+      },
+      {
+        "path": "codex-rs/cli/tests/migrate_nfs_db.rs",
+        "type": "file",
+        "git_blob_sha": "d0778808f72ad9c59125eb35bc86e225c001033d"
+      },
+      {
+        "path": "codex-rs/cli/tests/plugin_cli.rs",
+        "type": "file",
+        "git_blob_sha": "ea80f55a849a6fb5283e511cddbdd518d25e526d"
+      },
+      {
+        "path": "codex-rs/cli/tests/queue.rs",
+        "type": "file",
+        "git_blob_sha": "eff0d90da9c4134a9a4be01e3f1e8b16b79aed24"
+      },
+      {
+        "path": "codex-rs/cli/tests/rollout_trace.rs",
+        "type": "file",
+        "git_blob_sha": "c9bfeb2492effd50aaffbb46cec779adf86ae5b9"
+      },
+      {
+        "path": "codex-rs/cli/tests/sandbox_cloud_config.rs",
+        "type": "file",
+        "git_blob_sha": "dfaded50cd8714d0a3745aec866d1c271bb12df7"
+      },
+      {
+        "path": "codex-rs/cli/tests/sandbox_network_proxy.rs",
+        "type": "file",
+        "git_blob_sha": "a21b5b4ee8c36b83bb47d302bba744b5665083af"
+      },
+      {
+        "path": "codex-rs/cli/tests/sandbox_tty.rs",
+        "type": "file",
+        "git_blob_sha": "d22c98f01a7173eefc1e5e2caa20b2955f77617c"
+      },
+      {
+        "path": "codex-rs/cli/tests/sandbox_uninstall.rs",
+        "type": "file",
+        "git_blob_sha": "4fceef875b1f7048a5b0b02976034b5ef5ed0f99"
+      },
+      {
+        "path": "codex-rs/cli/tests/snapshots",
+        "type": "dir",
+        "git_blob_sha": "e8a6b39c4f672a94c005586cd1f42d08d5848012"
+      },
+      {
+        "path": "codex-rs/cli/tests/update.rs",
+        "type": "file",
+        "git_blob_sha": "cf1742cda7f4a31a48a081cfe2c754d6dd6f0695"
+      },
+      {
+        "path": "codex-rs/cli/tests/worktree.rs",
+        "type": "file",
+        "git_blob_sha": "13b6914968de2dd8789641a146d0353077825c6c"
+      }
+    ],
+    "app-server": [
+      {
+        "path": "codex-rs/app-server/tests/all.rs",
+        "type": "file",
+        "git_blob_sha": "fdf98aa9455bffb74f4dc11df6d237aa948248ef"
+      },
+      {
+        "path": "codex-rs/app-server/tests/common",
+        "type": "dir",
+        "git_blob_sha": "294068da8f524fa574a43b94b82124bb1d39022c"
+      },
+      {
+        "path": "codex-rs/app-server/tests/prompt_prefix.rs",
+        "type": "file",
+        "git_blob_sha": "2281c19b28ab4bee01c6d0d47e43a9a059fbff09"
+      },
+      {
+        "path": "codex-rs/app-server/tests/suite",
+        "type": "dir",
+        "git_blob_sha": "339319805f9843ae227f2bc89c1882769dca88b2"
+      }
+    ]
+  },
+  "owner_disposition": {
+    "comparison_cases": [
+      "remote pipe capture recovery",
+      "remote TTY capture recovery",
+      "remote sandbox profile replay",
+      "blocked-descriptor replay",
+      "empty-workspace-roots"
+    ],
+    "accepted": "Retained upstream per-case passes with hidden assertion execution explicitly unknown.",
+    "preserved": "Four downstream shell failures stay failed and deferred to step 4; other runtime acceptance is not waived."
+  },
+  "findings": [
+    "Current selected upstream rust-ci-full invokes the reusable Cargo nextest archive workflow on five native targets; Intel macOS is absent from that upstream nextest caller, while our selected release matrix still includes it.",
+    "The upstream workspace has 164 members and no default-members field. Its unfiltered archive command therefore selects a broader workspace than only CLI/app-server.",
+    "CLI package codex-cli declares codex and logs_client binary targets, a library, and an explicit app_server_daemon_package integration target. Accepted CLI lib/bin unit evidence does not by itself cover that integration target.",
+    "App-server package codex-app-server declares library/binary targets and has a tests directory. Retained Linux runtime evidence is now summarized below; this does not establish other native-platform runtime passes.",
+    "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
+    "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
+  ],
+  "next_action": "Carry forward the accepted Linux CLI/app-server suites and current-main package-bootstrap pass. Reconcile remaining required native-platform runtime scope and retained results; investigate only the two affected native/Wine first-attempt timing and notification-order conditions. Output-retention authority and the real private grouped-cache entrypoint now pass the tiny fixture in run 40689926766. Identify the cache fingerprint reason before another costly executable rebuild.",
+  "profile": {
+    "upstream_name": "ci-test",
+    "definition": {
+      "inherits": "test",
+      "opt-level": 0
+    },
+    "decision": "Do not claim that release-profile execution reproduces upstream runtime-test configuration."
+  },
+  "product_test_entry_points": [
+    {
+      "package": "codex-cli",
+      "autotests": true,
+      "top_level_rs_files": [
+        "codex-rs/cli/tests/app_server.rs",
+        "codex-rs/cli/tests/app_server_daemon.rs",
+        "codex-rs/cli/tests/app_server_daemon_windows.rs",
+        "codex-rs/cli/tests/cloud_auth.rs",
+        "codex-rs/cli/tests/cloud_config.rs",
+        "codex-rs/cli/tests/daemon_startup.rs",
+        "codex-rs/cli/tests/daemon_telemetry.rs",
+        "codex-rs/cli/tests/debug_clear_memories.rs",
+        "codex-rs/cli/tests/debug_models.rs",
+        "codex-rs/cli/tests/delete.rs",
+        "codex-rs/cli/tests/doctor_enterprise_network.rs",
+        "codex-rs/cli/tests/doctor_path_safety.rs",
+        "codex-rs/cli/tests/exec_server.rs",
+        "codex-rs/cli/tests/exec_server_websocket_auth.rs",
+        "codex-rs/cli/tests/execpolicy.rs",
+        "codex-rs/cli/tests/features.rs",
+        "codex-rs/cli/tests/login.rs",
+        "codex-rs/cli/tests/marketplace_add.rs",
+        "codex-rs/cli/tests/marketplace_remove.rs",
+        "codex-rs/cli/tests/marketplace_upgrade.rs",
+        "codex-rs/cli/tests/mcp_add_remove.rs",
+        "codex-rs/cli/tests/mcp_list.rs",
+        "codex-rs/cli/tests/mcp_login.rs",
+        "codex-rs/cli/tests/migrate_nfs_db.rs",
+        "codex-rs/cli/tests/plugin_cli.rs",
+        "codex-rs/cli/tests/queue.rs",
+        "codex-rs/cli/tests/rollout_trace.rs",
+        "codex-rs/cli/tests/sandbox_cloud_config.rs",
+        "codex-rs/cli/tests/sandbox_network_proxy.rs",
+        "codex-rs/cli/tests/sandbox_tty.rs",
+        "codex-rs/cli/tests/sandbox_uninstall.rs",
+        "codex-rs/cli/tests/update.rs",
+        "codex-rs/cli/tests/worktree.rs"
+      ],
+      "explicit_test_targets": [
+        {
+          "name": "app_server_daemon_package",
+          "path": "tests/app_server_daemon/package.rs"
+        }
+      ],
+      "status": "Retained Linux run 40170497240 covers the listed historical CLI suites with only packaged_daemon_bootstrap_seeds_local_package failed; passing suites carry forward under owner equivalence. Later release-profile CLI unit acceptance remains separately recorded. Other native platforms and newly inventoried entry points remain to reconcile."
+    },
+    {
+      "package": "codex-app-server",
+      "autotests": true,
+      "top_level_rs_files": [
+        "codex-rs/app-server/tests/all.rs",
+        "codex-rs/app-server/tests/prompt_prefix.rs"
+      ],
+      "explicit_test_targets": [],
+      "status": "Linux x86-64 library/binary/all/prompt-prefix suites passed in retained run 40170497240 and are carried forward under owner equivalence; other native-platform runtime acceptance remains to reconcile."
+    }
+  ],
+  "inspected_test_sources": [
+    {
+      "upstream_path": "codex-rs/app-server/tests/all.rs",
+      "sha256": "f484e46e22db99bab05787768d047b60251f6ba95e24387f75034c1dfa1980a3"
+    },
+    {
+      "upstream_path": "codex-rs/app-server/tests/prompt_prefix.rs",
+      "sha256": "a54ee0bc038406be8466916713080c08a4196ca569226aa59fbe3e5cce9df6d7"
+    },
+    {
+      "upstream_path": "codex-rs/cli/tests/app_server.rs",
+      "sha256": "f6d8eea5dd918347970c819826f1f810430a76c57f91792e714e659633316029"
+    },
+    {
+      "upstream_path": "codex-rs/cli/tests/app_server_daemon/package.rs",
+      "sha256": "3109130e70e2b73fe3d82a9fd67503c750fb24b6e6d0b9a64aa9ec04c45edf3b"
+    }
+  ],
+  "observed_helper_contracts": [
+    "CLI app_server.rs launches the actual codex executable through codex_utils_cargo_bin.",
+    "CLI app_server_daemon_package is Unix-only and exercises temporary package installation/replacement, not publication to a registry.",
+    "App-server all.rs aggregates tests/suite into one integration binary.",
+    "App-server prompt_prefix.rs uses mock responses; absent CONTRACT_EXECUTOR_BIN selects ordinary same-version determinism. It does not require downloading another released CLI."
+  ],
+  "pending_owner_scope_decision": "Whether checkpoint 1 requires the broader product runtime suites or accepts the original six-platform build/smoke baseline with known failure dispositions. Neither completion nor exclusion is inferred before the reply.",
+  "historical_runtime_receipts": [
+    {
+      "run_id": 40170497240,
+      "job_id": 121100177966,
+      "artifact_id": 12592990691,
+      "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40170497240",
+      "upstream_commit": "6aaac694803004a63c6f393d153c96d22521a6b9",
+      "restart_commit": "869fd7b200bd8de985bb595d2d6b3693f2227f13",
+      "platform": "Linux x86-64 GNU",
+      "cargo_profile": "ci-test",
+      "nextest_version": "0.9.111",
+      "overall_run_status": "failure; 22610 passed, 45 failed, 49 skipped",
+      "retained_inputs": [
+        {
+          "path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-linux-tests-3-artifact/work/codex-unleashed/codex-unleashed/codex-rs/target/nextest/default/junit.xml",
+          "sha256": "9264eac9c3c320deee3e169d0cba34a958ec532b23c8fd519c588f8bbb46cc24"
+        },
+        {
+          "path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-linux-tests-3-artifact/work/_temp/baseline-test-evidence/applied-check-repairs.diff",
+          "sha256": "b6c9d7fe2557d289f94caa7c5c58130a98a4008c639deed44378413200224e9a"
+        },
+        {
+          "path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-linux-tests-3-artifact/work/_temp/baseline-test-evidence/nextest.log",
+          "sha256": "624f3d8395965597bd3d37cbc185831300944fe0eb6bf1fe6ca84cfdc1ffa283"
+        }
+      ],
+      "applied_patch_paths": [
+        ".github/scripts/verify_cargo_workspace_manifests.py",
+        "scripts/format.py",
+        "sdk/python/tests/test_artifact_workflow_and_binaries.py"
+      ],
+      "source_limitations": "The recorded applied diff changes only repository/SDK checks, not Codex Rust source/tests. This receipt does not assert a final pristine-source guard that the historical job did not expose.",
+      "reuse_decision": "Carry forward passing selected product suites under the owner equivalence instruction; no new execution on the selected main snapshot is claimed. Retain the failed packaged-daemon case. This Linux receipt does not pass other native platforms or unrelated workspace checks.",
+      "selected_suites": [
+        {
+          "suite": "codex-app-server",
+          "counts": {
+            "passed": 398
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-app-server::bin/codex-app-server",
+          "counts": {
+            "passed": 3
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-app-server::all",
+          "counts": {
+            "passed": 1606
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli",
+          "counts": {
+            "passed": 15
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::app_server",
+          "counts": {
+            "passed": 11
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::app_server_daemon",
+          "counts": {
+            "passed": 13
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-app-server::prompt_prefix",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::app_server_daemon_package",
+          "counts": {
+            "failed": 1,
+            "passed": 3
+          },
+          "failed_cases": [
+            "packaged_daemon_bootstrap_seeds_local_package"
+          ],
+          "cases_with_retry_records": [
+            "packaged_daemon_bootstrap_seeds_local_package"
+          ]
+        },
+        {
+          "suite": "codex-cli::cloud_config",
+          "counts": {
+            "passed": 5
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::cloud_auth",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::daemon_startup",
+          "counts": {
+            "passed": 14
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::debug_clear_memories",
+          "counts": {
+            "passed": 2
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::daemon_telemetry",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::debug_models",
+          "counts": {
+            "passed": 2
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::delete",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::doctor_enterprise_network",
+          "counts": {
+            "passed": 2
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::doctor_path_safety",
+          "counts": {
+            "passed": 10
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::exec_server",
+          "counts": {
+            "passed": 12
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::exec_server_websocket_auth",
+          "counts": {
+            "passed": 4
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::execpolicy",
+          "counts": {
+            "passed": 2
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::features",
+          "counts": {
+            "passed": 14
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::login",
+          "counts": {
+            "passed": 9
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::marketplace_add",
+          "counts": {
+            "passed": 5
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::marketplace_remove",
+          "counts": {
+            "passed": 4
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::marketplace_upgrade",
+          "counts": {
+            "passed": 3
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::mcp_add_remove",
+          "counts": {
+            "passed": 12
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::mcp_list",
+          "counts": {
+            "passed": 7
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::mcp_login",
+          "counts": {
+            "passed": 8
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::plugin_cli",
+          "counts": {
+            "passed": 39
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::queue",
+          "counts": {
+            "passed": 8
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::sandbox_network_proxy",
+          "counts": {
+            "passed": 2
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::sandbox_cloud_config",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::sandbox_uninstall",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::update",
+          "counts": {
+            "passed": 1
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::worktree",
+          "counts": {
+            "passed": 3
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::bin/codex",
+          "counts": {
+            "passed": 312
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        },
+        {
+          "suite": "codex-cli::bin/logs_client",
+          "counts": {
+            "passed": 5
+          },
+          "failed_cases": [],
+          "cases_with_retry_records": []
+        }
+      ]
+    }
+  ],
+  "later_bazel_runtime_evidence": {
+    "run_id": 40190837597,
+    "restart_commit": "053b0fa3fd29f332a97fe3072dc6e2a5523f60bd",
+    "source_state": "Historical ten baseline repairs plus two nonfatal policy patches; not pristine-source runtime acceptance.",
+    "receipt_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-bazel-tests-6-verified.json",
+    "receipt_sha256": "b24c133bc0c80dbfd95f2d00bad07c92c5836f5477abe93d156ea84929d0ee6c",
+    "app_server_cases_failed_before_retry": [
+      "suite::v2::app_list::list_apps_force_refetch_patches_updates_from_cached_snapshots",
+      "suite::v2::mcp_server_status::mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls"
+    ],
+    "outcome": "Both later recover under existing upstream Bazel retries. Retain the failed attempts; earlier Cargo passes do not explain their cause or establish first-attempt Bazel acceptance.",
+    "next_action": "Reconcile these two exact cases with existing upstream and downstream receipts before rerunning any larger suite. If their failure remains relevant to the selected pristine baseline, investigate only those cases at their owning Bazel boundary.",
+    "case_observations": [
+      {
+        "case": "suite::v2::mcp_server_status::mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls",
+        "observed_failure": "Request mcpServerStatus/list is sent, then the case returns deadline has elapsed. The selected source bounds response receipt with 500 milliseconds.",
+        "source_path": "codex-rs/app-server/tests/suite/v2/mcp_server_status.rs",
+        "source_sha256": "b9e7d8d464ebcce583e4ea9047c755d07de6ee1a957e93511c8676c3df6c6abc",
+        "source_applicability": "Complete file matches the retained historical source byte-for-byte.",
+        "cause_status": "The log does not establish why response receipt exceeded the deadline. Preserve the failure and compare the exact upstream invocation/resources before changing source or its timeout.",
+        "target": "//codex-rs/app-server:app-server-all-test",
+        "shard": "3 of 16"
+      },
+      {
+        "case": "suite::v2::app_list::list_apps_force_refetch_patches_updates_from_cached_snapshots",
+        "observed_failure": "The first app/list/updated notification contains description Beta v1; the assertion expects None. The source gives connector discovery a 300-millisecond delay and expects the tool-only notification before the richer connector notification.",
+        "source_path": "codex-rs/app-server/tests/suite/v2/app_list.rs",
+        "source_sha256": "e69671f74bf8a38884f591097fa73e021bd5be8df95a2bb97cb0687e704d18d5",
+        "source_applicability": "Complete file matches the retained historical source byte-for-byte.",
+        "cause_status": "The event-order mechanism remains to establish. A separate model-refresh 401 appears in this log but is not established as the cause of the assertion mismatch; no source fix or credential change is selected.",
+        "target": "//codex-rs/app-server:app-server-all-wine-exec-test",
+        "shard": "7 of 16"
+      }
+    ],
+    "failed_log": {
+      "path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/native-bazel-tests-6-shard-1-artifact/bazel-tests.log",
+      "sha256": "86e61b57e75935bc8e2890418be6d17343f42bacfd4723c9a3d226f186b2f6df"
+    },
+    "upstream_comparison": {
+      "upstream_run_id": 39710355092,
+      "upstream_job_id": 119599956802,
+      "invocation_id": "81a0b14c-a642-4af8-b877-1a3d56db58c7",
+      "invocation_url": "https://openai.buildbuddy.io/invocation/81a0b14c-a642-4af8-b877-1a3d56db58c7",
+      "associated_source_commit": "342ed69a174c206c1de52a59491b131e0753cfa5",
+      "target": "//codex-rs/app-server:app-server-all-test",
+      "target_response_sha256": "cd9a76de8e3281690a474e661383d892e7b38e0e22b2cd6e82f938639cce2379",
+      "verified_test_logs": 16,
+      "case_observations": [
+        {
+          "uri": "bytestream://openai.buildbuddy.io/blobs/3cd8b1c13f1f7366baf78359e6e0325c1fe01c69d1eba02ec55fc32aa7fd0bd7/10331",
+          "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F3cd8b1c13f1f7366baf78359e6e0325c1fe01c69d1eba02ec55fc32aa7fd0bd7%2F10331&invocation_id=81a0b14c-a642-4af8-b877-1a3d56db58c7&filename=test.log",
+          "sha256": "3cd8b1c13f1f7366baf78359e6e0325c1fe01c69d1eba02ec55fc32aa7fd0bd7",
+          "bytes": 10331,
+          "matches": [
+            {
+              "line": 39,
+              "text": "test suite::v2::mcp_server_status::mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls ... ok"
+            }
+          ],
+          "summary": [
+            "test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 1513 filtered out; finished in 18.32s"
+          ]
+        },
+        {
+          "uri": "bytestream://openai.buildbuddy.io/blobs/0af17e789df390c4455dd262d3b754c3d4b1b55ca283c974be4a9f3395f9f09e/13044",
+          "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F0af17e789df390c4455dd262d3b754c3d4b1b55ca283c974be4a9f3395f9f09e%2F13044&invocation_id=81a0b14c-a642-4af8-b877-1a3d56db58c7&filename=test.log",
+          "sha256": "0af17e789df390c4455dd262d3b754c3d4b1b55ca283c974be4a9f3395f9f09e",
+          "bytes": 13044,
+          "matches": [
+            {
+              "line": 26,
+              "text": "test suite::v2::app_list::list_apps_force_refetch_patches_updates_from_cached_snapshots ... ok"
+            }
+          ],
+          "summary": [
+            "test result: ok. 122 passed; 0 failed; 0 ignored; 0 measured; 1486 filtered out; finished in 62.80s"
+          ]
+        }
+      ],
+      "test_source_identity": {
+        "app_list.rs": "e69671f74bf8a38884f591097fa73e021bd5be8df95a2bb97cb0687e704d18d5",
+        "mcp_server_status.rs": "b9e7d8d464ebcce583e4ea9047c755d07de6ee1a957e93511c8676c3df6c6abc"
+      },
+      "source_comparison": "Both complete test source files have identical SHA-256 at the associated upstream parent, retained historical downstream source and selected main source.",
+      "result": "Both named cases are individually reported ok in retained upstream logs. Preserve their separate downstream first-attempt failures and passing retries; this comparison does not explain the timing or notification-order difference.",
+      "limitations": "The upstream invocation reused remotely cached results. The originating execution host, time and source are not established; successful-case output remains captured. No fresh upstream execution or downstream first-attempt repair is claimed.",
+      "additional_target_comparison": {
+        "target": "//codex-rs/app-server:app-server-all-wine-exec-test",
+        "target_response_sha256": "298cd4ed4e36a0db3a0497be5e0190f27432585124871c412a75d4c59606d8d2",
+        "case_observations": [
+          {
+            "uri": "bytestream://openai.buildbuddy.io/blobs/6bfe8c7dd0284bf994d51b827386bdeede6c63f6e7d213594c2592a64a15ad67/12266",
+            "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F6bfe8c7dd0284bf994d51b827386bdeede6c63f6e7d213594c2592a64a15ad67%2F12266&invocation_id=81a0b14c-a642-4af8-b877-1a3d56db58c7&filename=test.log",
+            "sha256": "6bfe8c7dd0284bf994d51b827386bdeede6c63f6e7d213594c2592a64a15ad67",
+            "bytes": 12266,
+            "matches": [
+              {
+                "line": 84,
+                "text": "test suite::v2::mcp_server_status::mcp_server_status_list_tools_and_auth_only_skips_slow_inventory_calls ... ok"
+              }
+            ],
+            "summary": [
+              "test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 1513 filtered out; finished in 36.60s"
+            ]
+          },
+          {
+            "uri": "bytestream://openai.buildbuddy.io/blobs/2e8937576bbce2946012339ad59a0867813deb76f04f7417c16a1a6d941d1fe1/14979",
+            "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F2e8937576bbce2946012339ad59a0867813deb76f04f7417c16a1a6d941d1fe1%2F14979&invocation_id=81a0b14c-a642-4af8-b877-1a3d56db58c7&filename=test.log",
+            "sha256": "2e8937576bbce2946012339ad59a0867813deb76f04f7417c16a1a6d941d1fe1",
+            "bytes": 14979,
+            "matches": [
+              {
+                "line": 60,
+                "text": "test suite::v2::app_list::list_apps_force_refetch_patches_updates_from_cached_snapshots ... ok"
+              }
+            ],
+            "summary": [
+              "test result: ok. 122 passed; 0 failed; 0 ignored; 0 measured; 1486 filtered out; finished in 90.10s"
+            ]
+          }
+        ],
+        "result": "The Wine-execution variant also reports both cases ok. This is the matching wrapper for the historical app-list failure; the native target comparison alone would not cover that wrapper."
+      },
+      "execution_comparison": {
+        "native_test_arguments": [
+          "external/bazel_tools/tools/test/test-setup.sh",
+          "codex-rs/app-server/app-server-all-test"
+        ],
+        "partitioning": "Both observed native actions use TEST_TOTAL_SHARDS=16 with no explicit --test-threads argument or RUST_TEST_THREADS setting.",
+        "upstream": "16 remotely cached successful native test actions.",
+        "downstream": "17 native test actions, including the shard-index-2 exit 101 and its retry.",
+        "limitation": "Arguments and partitioning match. Remote execution versus local execution and concurrent resource demand differ; their effect on either failure is not isolated."
+      }
+    }
+  },
+  "native_platform_runtime_reconciliation": {
+    "windows_x86_64": {
+      "run_id": 40190837633,
+      "restart_commit": "053b0fa3fd29f332a97fe3072dc6e2a5523f60bd",
+      "source_state": "Historical ten baseline repairs and two nonfatal policies; not pristine-source acceptance.",
+      "receipt_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-3SlL5r/windows-bazel-tests-5-remaining-artifacts-verified.json",
+      "receipt_sha256": "1c26208c5acd3beac51497fc12f52840bfee4b73e83bd2bccba84d78051c1d1d",
+      "shards": {
+        "gnu2": {
+          "source_identities_verified": true,
+          "applied_diff_sha256": "1cd74cd19da1fa6dd688dc5f555a0d7e8393ecb0f668d98d459eef2567f0b7b9",
+          "source_unchanged": true,
+          "command_receipt": "exit_code=3",
+          "summaries": [
+            "INFO: Build completed, 2 tests FAILED, 4551 total actions",
+            "Executed 75 out of 112 tests: 73 tests pass, 2 fail locally, and 37 were skipped."
+          ],
+          "failed_test_bodies": [
+            "startup_and_doctor_do_not_execute_path_helpers",
+            "suite::git_enrichment::ephemeral_system_thread_prewarm_skips_and_turn_observes_fresh_state::ambient_background_thread",
+            "suite::git_enrichment::ephemeral_system_thread_prewarm_skips_and_turn_observes_fresh_state::system_background_thread",
+            "suite::guardian_retained_context::forked_parent_instructions_do_not_become_local_authorization::preserved_prefix_without_checkpoint",
+            "suite::mcp_tool_cache::cached_mcp_startup_is_eager_for_root_and_lazy_for_subagents",
+            "suite::subagent_notifications::subagent_stop_replaces_stop_and_skips_internal_subagents"
+          ],
+          "opus_dangling_output_reproduced": false
+        },
+        "gnu3": {
+          "source_identities_verified": true,
+          "applied_diff_sha256": "1cd74cd19da1fa6dd688dc5f555a0d7e8393ecb0f668d98d459eef2567f0b7b9",
+          "source_unchanged": true,
+          "command_receipt": "exit_code=1",
+          "summaries": [
+            "ERROR: Build did NOT complete successfully",
+            "Executed 12 out of 136 tests: 11 tests pass, 1 fails to build, 1 fails locally, and 123 were skipped."
+          ],
+          "failed_test_bodies": [
+            "tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
+          ],
+          "opus_dangling_output_reproduced": true
+        },
+        "gnu4": {
+          "source_identities_verified": true,
+          "applied_diff_sha256": "1cd74cd19da1fa6dd688dc5f555a0d7e8393ecb0f668d98d459eef2567f0b7b9",
+          "source_unchanged": true,
+          "command_receipt": "exit_code=1",
+          "summaries": [
+            "ERROR: Build did NOT complete successfully",
+            "Executed 12 out of 139 tests: 12 tests pass, 1 fails to build, and 126 were skipped."
+          ],
+          "failed_test_bodies": [],
+          "opus_dangling_output_reproduced": true
+        },
+        "msvc": {
+          "source_identities_verified": true,
+          "applied_diff_sha256": "1cd74cd19da1fa6dd688dc5f555a0d7e8393ecb0f668d98d459eef2567f0b7b9",
+          "source_unchanged": true,
+          "command_receipt": "exit_code=1",
+          "summaries": [
+            "ERROR: Build did NOT complete successfully",
+            "Executed 15 out of 491 tests: 15 tests pass and 476 were skipped."
+          ],
+          "failed_test_bodies": [],
+          "opus_dangling_output_reproduced": true
+        }
+      },
+      "decision": "Retain observed partial target passes and failures. Do not infer a complete CLI/app-server runtime-suite pass from these aggregate target summaries or from requested GNU-wrapper labels."
+    },
+    "macos": {
+      "run_id": 40183449942,
+      "jobs": [
+        {
+          "id": 121139159406,
+          "runner": "macos-15",
+          "architecture": "ARM64",
+          "conclusion": "failure",
+          "diagnosis": "Retained runner annotation identifies ENOSPC; no test-result claim follows."
+        },
+        {
+          "id": 121139159525,
+          "runner": "macos-15-intel",
+          "architecture": "x86-64",
+          "conclusion": "cancelled"
+        }
+      ],
+      "followup_run_id": 40193545858,
+      "followup_jobs": [
+        {
+          "id": 121169439774,
+          "runner": "macos-15",
+          "conclusion": "cancelled"
+        },
+        {
+          "id": 121169440002,
+          "runner": "macos-15-intel",
+          "conclusion": "cancelled"
+        },
+        {
+          "id": 121169440014,
+          "runner": "macos-15-intel",
+          "conclusion": "cancelled"
+        },
+        {
+          "id": 121169440028,
+          "runner": "macos-15",
+          "conclusion": "cancelled"
+        }
+      ],
+      "status_authority": "GitHub Actions jobs API for each named run, checked during this reconciliation.",
+      "decision": "These failed/cancelled runs do not establish native CLI/app-server runtime-suite acceptance. Historical run 40183449912 is Linux (ubuntu-24.04 job 121139158954), not a macOS receipt."
+    },
+    "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward."
+  },
+  "current_source_package_runtime": {
+    "run_id": 40681183363,
+    "job_id": 122792026783,
+    "restart_commit": "367fe460061f9bb50bb82e578966082123a1cb08",
+    "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+    "target": "x86_64-unknown-linux-musl",
+    "rust": "1.95.0",
+    "command": "cargo +1.95.0 test --locked --release --target \"$TARGET\" -p codex-cli --test app_server_daemon_package packaged_daemon_bootstrap_seeds_local_package -- --exact --nocapture",
+    "test_source_sha256": "3109130e70e2b73fe3d82a9fd67503c750fb24b6e6d0b9a64aa9ec04c45edf3b",
+    "compiled_cache_seed": "ghcr.io/holdmyspot-com/cargo-cache-main-new@sha256:f3fa292ae69dd7083e19da97f802c911b48e34dd9d8d9ed92204427fa7e921b2",
+    "compile_result": "Only codex-cli has a Compiling entry. The observed rustc builds the codex executable with opt-level=3, thin LTO and four codegen units. Dependencies are reused; the precise fingerprint reason for this executable rebuild remains unknown.",
+    "compile_duration": "36m 47s",
+    "test_duration_seconds": 4.6,
+    "test_summary": "1 passed; 0 failed; 0 ignored; 3 filtered out",
+    "exit_code": 0,
+    "log": {
+      "path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/runtime-package-check-O4PaZD/package-test-final.log",
+      "sha256": "5f1511b761743853d56fd74aca6e90f43aec841aeae45cca9ae44ba09421b5aa",
+      "bytes": 34536
+    },
+    "source_guard": {
+      "before_after_equal": true,
+      "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "tracked_status": "empty",
+      "lock_verifier": "verified; no workspace version updates"
+    },
+    "lifecycle": {
+      "persistent_ssh_exit": 0,
+      "control_observation": "The initial client observation times out after 30 minutes. A diagnostic job-control pause exposes the running compiler; the same process resumes. The shell wait for the resumed job returns zero and the full final log is retrieved. The intermediate stop status is not a test failure.",
+      "upterm_post": "success",
+      "marker_verification": "success",
+      "output_retention": "A 411 MiB overlay of new output files is created, but its experimental post upload fails because the selected upload-action entrypoint does not exist. No retained compiled-output artifact is claimed. The finally block removes the package scratch, Cargo target and Cargo home; the original upload error survives cleanup. The client private key is removed after SSH exit.",
+      "retention_followup": "docs/evidence/private-cache-debug-retention.json: run 40689926766 verifies packages:write authority, real grouped-cache push/reuse/pull and private visibility with tiny fixtures; registry fixtures, remote scratch and local key are removed, SSH exits zero and all hosted post steps pass."
+    },
+    "decision": "Accept this focused selected-main package case without a source/test patch. Preserve the separate stable-version failure. The containing diagnostic workflow still fails its deliberate exit-17 step and its output-upload post step; do not call the whole workflow passing.",
+    "compile_diagnostic_limits": {
+      "observed": "The retained log has one Compiling entry, codex-cli. Its separately sampled live process is rustc --crate-name codex, with opt-level=3, thin LTO and codegen-units=4.",
+      "missing": "The command did not enable Cargo fingerprint logging or verbose rustc invocation output. The sampled process command is truncated by ps, and its compiled output tree was removed after the failed retention attempt.",
+      "rejected_conclusion": "No specific cache invalidation cause can be established from those records. STABLE_GIT_COMMIT was explicitly set to the selected upstream commit before the test, so a wholly absent value is not supported by the setup receipt.",
+      "next_observation": "On the next required cache-backed diagnostic, enable Cargo fingerprint tracing and retain its dirty reason before permitting an expensive compiler invocation; preserve the exact environment and prior fingerprint metadata. Do not rerun already accepted tests solely to obtain reassurance."
+    }
+  },
+  "remaining_runtime_scope_review": {
+    "method": "Independent read-only scheduler_readiness follow-up; exact-main retained workflow hashes match the inventory, and the four narrow current-main test sources are inspected. No tests or builds run.",
+    "workflow_copy_root": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/baseline-runtime-audit-gyRxTw",
+    "locator_correction": "baseline-3SlL5r/upstream is historical stable HEAD 6aaac694 and does not contain the selected main object; do not read its worktree as selected-main source.",
+    "upstream_native_runtime_targets": [
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ],
+    "upstream_profile": "ci-test",
+    "upstream_windows_test_threads": 8,
+    "runtime_matrix_limit": "Intel macOS has upstream build coverage but is absent from the maintained nextest caller. Six-target release coverage does not itself establish six-target integration-test coverage.",
+    "missing_historical_cli_suite_records": [
+      {
+        "target": "migrate_nfs_db",
+        "platform_cfg": "Unix",
+        "cases": [
+          "migration_requires_consent_and_preserves_shared_database_mode"
+        ]
+      },
+      {
+        "target": "rollout_trace",
+        "platform_cfg": "No file-level platform cfg",
+        "cases": [
+          "accepted_output_survives_success_and_stream_failure",
+          "accepted_output_survives_interruption_and_shutdown"
+        ]
+      },
+      {
+        "target": "sandbox_tty",
+        "platform_cfg": "macOS",
+        "cases": [
+          "sandbox_blocks_terminal_input_injection"
+        ]
+      },
+      {
+        "target": "app_server_daemon_windows",
+        "platform_cfg": "Windows",
+        "cases": [
+          "winget_package_starts_and_reselects_daemon"
+        ]
+      }
+    ],
+    "decision": "Missing receipts establish unaccepted checks, not failures. Resolve the pending checkpoint scope before scheduling those checks. Never rerun previously accepted suites solely for source/tool version changes.",
+    "scoped_commands": {
+      "cli": "cargo nextest run --cargo-profile ci-test --target \"$TARGET\" -p codex-cli --test <unaccepted-platform-applicable-entrypoint> --no-fail-fast",
+      "app_server": "cargo nextest run --cargo-profile ci-test --target \"$TARGET\" -p codex-app-server --lib --bin codex-app-server --test all --test prompt_prefix --no-fail-fast"
+    },
+    "command_qualification": "These are product-scoped adaptations, not verbatim upstream full-workspace commands. Reconcile existing native receipts, target profile and cache compatibility before executing. Windows adds --test-threads 8.",
+    "required_helper_handoffs": {
+      "linux": "Matching codex-linux-sandbox, with both maintained CARGO_BIN_EXE spellings.",
+      "windows": "Matching codex-windows-sandbox-setup and codex-command-runner, with explicit environment paths."
+    },
+    "scope_question_presented": "Should checkpoint 1 retain broader CLI/app-server runtime acceptance on native platforms, or accept the six-platform build/smoke baseline and defer broader product runtime validation? No answer is inferred."
+  }
+}

@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "scope": "Candidate evaluation only; no production cgroup budget reader is selected or implemented.",
+  "required_behavior": "Keep unavailable and malformed observations distinct from unlimited and true zero; account for finite ancestor remaining memory before admitting build work.",
+  "runtime": "openjdk version \"27\" 2026-09-15\nOpenJDK Runtime Environment Zulu27.28+101-CA (build 27+35)\nOpenJDK 64-Bit Server VM Zulu27.28+101-CA (build 27+35, mixed mode, sharing)\n",
+  "candidate": "com.github.oshi:oshi-common:7.7.2",
+  "candidate_jar_sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51",
+  "candidate_sources_sha256": "8b8214448d9e25cceb0e6a24889e8c4b320b1433fcafbb3e6c1a43d0960afbea",
+  "configuration": "GlobalConfig.OSHI_UTIL_PROC_PATH and OSHI_UTIL_SYS_PATH set to each isolated fixture root before LinuxCgroupInfo initialization; fresh JShell JVM for every case.",
+  "driver": "import java.nio.file.Path;\nimport oshi.util.GlobalConfig;\nimport oshi.software.common.os.linux.LinuxCgroupInfo;\nvar root = Path.of(System.getProperty(\"probe.root\"));\nGlobalConfig.set(GlobalConfig.OSHI_UTIL_PROC_PATH, root.resolve(\"proc\").toString());\nGlobalConfig.set(GlobalConfig.OSHI_UTIL_SYS_PATH, root.resolve(\"sys\").toString());\nvar sample = new LinuxCgroupInfo();\nSystem.out.printf(\"RESULT version=%d memoryLimit=%d memoryUsage=%d%n\", sample.getVersion(), sample.getMemoryLimit(), sample.getMemoryUsage());\n/exit\n",
+  "cases": [
+    {
+      "case": "unlimited-zero",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.current": "0\n",
+        "sys/fs/cgroup/parent/leaf/memory.max": "max\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "max\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 9223372036854775807,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=9223372036854775807 memoryUsage=0\n"
+    },
+    {
+      "case": "missing-limit-zero",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.current": "0\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "max\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 9223372036854775807,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=9223372036854775807 memoryUsage=0\n"
+    },
+    {
+      "case": "zero-limit-zero",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.current": "0\n",
+        "sys/fs/cgroup/parent/leaf/memory.max": "0\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "max\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 0,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=0 memoryUsage=0\n"
+    },
+    {
+      "case": "unlimited-missing-usage",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.max": "max\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "max\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 9223372036854775807,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=9223372036854775807 memoryUsage=0\n"
+    },
+    {
+      "case": "malformed-limit-zero",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.current": "0\n",
+        "sys/fs/cgroup/parent/leaf/memory.max": "invalid\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "max\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 9223372036854775807,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=9223372036854775807 memoryUsage=0\n"
+    },
+    {
+      "case": "ancestor-constrained",
+      "fixture_files_relative_to_case_root": {
+        "proc/filesystems": "nodev\tcgroup2\n",
+        "proc/self/cgroup": "0::/parent/leaf\n",
+        "sys/fs/cgroup/parent/leaf/memory.current": "0\n",
+        "sys/fs/cgroup/parent/leaf/memory.max": "max\n",
+        "sys/fs/cgroup/parent/memory.current": "768\n",
+        "sys/fs/cgroup/parent/memory.max": "1024\n"
+      },
+      "operation": "new LinuxCgroupInfo().getVersion(), getMemoryLimit(), getMemoryUsage()",
+      "result": {
+        "version": 2,
+        "memoryLimit": 9223372036854775807,
+        "memoryUsage": 0
+      },
+      "raw_output": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nRESULT version=2 memoryLimit=9223372036854775807 memoryUsage=0\n"
+    }
+  ],
+  "decision": "Rejected as the sole source of an effective cgroup memory budget.",
+  "observed_conflicts": [
+    "Missing and malformed memory.max both return Long.MAX_VALUE, identical to explicit max.",
+    "Missing memory.current returns 0, identical to a present zero.",
+    "Unlimited leaf below finite ancestor 1024 with ancestor usage 768 still returns Long.MAX_VALUE and leaf usage 0; ancestor remaining allowance 256 is not exposed by these members."
+  ],
+  "warnings": "SLF4J missing-provider warnings are retained verbatim; no diagnostic suppression was applied.",
+  "registry_search": {
+    "responseHeader": {
+      "status": 0,
+      "QTime": 2,
+      "params": {
+        "q": "cgroup",
+        "core": "",
+        "defType": "dismax",
+        "qf": "text^20 g^5 a^10",
+        "indent": "off",
+        "spellcheck": "true",
+        "fl": "id,g,a,latestVersion,p,ec,repositoryId,text,timestamp,versionCount",
+        "start": "",
+        "spellcheck.count": "5",
+        "sort": "score desc,timestamp desc,g asc,a asc",
+        "rows": "30",
+        "wt": "json",
+        "version": "2.2"
+      }
+    },
+    "response": {
+      "numFound": 0,
+      "start": 0,
+      "docs": []
+    },
+    "spellcheck": {
+      "suggestions": [
+        "cgroup",
+        {
+          "numFound": 5,
+          "startOffset": 0,
+          "endOffset": 6,
+          "suggestion": [
+            "dgroup",
+            "igroup",
+            "fgroup",
+            "gtcgroup",
+            "htcgroup"
+          ]
+        }
+      ]
+    }
+  },
+  "remaining_candidate_evaluation": [
+    {
+      "source": "https://github.com/libcgroup/libcgroup",
+      "status": "Visible constrained ancestor and missing-read probes complete. Namespace boundary exposes incomplete effective-budget observations; resolve the production support contract before selecting the reader."
+    }
+  ],
+  "limitations": [
+    "Synthetic cgroup-v2 read fixtures only; no kernel enforcement or cgroup-v1 behavior tested.",
+    "No custom parser or dependency patch is authorized by this evaluation alone."
+  ],
+  "external_candidate_inventory": [
+    {
+      "candidate": "io.github.mweirauch:micrometer-jvm-extras:0.3.0",
+      "acquisition": "https://repo.maven.apache.org/maven2/io/github/mweirauch/micrometer-jvm-extras/0.3.0/micrometer-jvm-extras-0.3.0.jar",
+      "jar_sha256": "9e9699ddddf1d1be033eb99ac2b7b4a2f2213b7ce2ad946b13e943990e8bf223",
+      "public_api_inspection": "Compiled from \"CgroupMemory.java\"\npublic class io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory {\n  io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory();\n  io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory(io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupReader);\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory getInstance();\n  public io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value get(io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY);\n  static {};\n}\nCompiled from \"CgroupMemory.java\"\npublic final class io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY extends java.lang.Enum<io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY> implements io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupReader$ControlFileDescriptor {\n  public static final io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY LIMIT_SOFT;\n  public static final io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY LIMIT_HARD;\n  public static final io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY LIMIT_SWAP;\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY[] values();\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$KEY valueOf(java.lang.String);\n  public java.nio.file.Path controlFileV1();\n  public java.nio.file.Path controlFileV2();\n  static {};\n}\nCompiled from \"CgroupMemory.java\"\npublic final class io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value {\n  public io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value$Status getStatus();\n  public double getDoubleValue();\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value resolved(double);\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value unlimited();\n  public static io.github.mweirauch.micrometer.jvm.extras.sysfs.CgroupMemory$Value unsupported();\n}\n",
+      "observation": "CgroupMemory exposes only LIMIT_SOFT, LIMIT_HARD and LIMIT_SWAP. Value exposes status and doubleValue. The public key set has no memory.current/usage member or ancestor observations.",
+      "status": "Not selected as a complete budget source. Limit-status behavior and possible partial reuse remain untested; do not claim those distinctions fail."
+    },
+    {
+      "candidate": "microsphere-projects/microsphere-observability",
+      "source_commit": "375e98d6294ccce5babfcf0d7440c39b8cc64933",
+      "source": "https://github.com/microsphere-projects/microsphere-observability/blob/375e98d6294ccce5babfcf0d7440c39b8cc64933/microsphere-observability-metrics-micrometer/src/main/java/io/microsphere/metrics/micrometer/instrument/binder/system/CGroupMemoryMetrics.java",
+      "source_sha256": "aca240fe3bf7e36e8ffd340dbf1542de24211007b93c1feaf19024beec7b1fd3",
+      "observation": "The documented class contract explicitly targets cgroup v1. Construction resolves memory/ and binding registers memory.usage_in_bytes and memory.limit_in_bytes. No cgroup-v2 memory.current/memory.max operation is exposed by this class.",
+      "status": "Not selected for required cgroup-v2 budget behavior. No binary runtime behavior claim is made."
+    },
+    {
+      "candidate": "libcgroup 3.2.0",
+      "source_commit": "565c13c49e4511daefa75fb00a6b8695e903019b",
+      "acquisition": "https://api.github.com/repos/libcgroup/libcgroup/tarball/565c13c49e4511daefa75fb00a6b8695e903019b",
+      "source_archive_sha256": "3beeb62191d57d26accd609fc4d4886e459871efa47d536623003e4800733442",
+      "observed_api": [
+        "cgroup_get_cgroup",
+        "cgroup_get_controller",
+        "cgroup_get_value_string",
+        "cgroup_get_value_uint64",
+        "cgroup_get_controller_version"
+      ],
+      "header_source": "https://github.com/libcgroup/libcgroup/blob/565c13c49e4511daefa75fb00a6b8695e903019b/include/libcgroup/groups.h",
+      "status": "Viable FFM candidate under evaluation. Public native getters preserve raw text and missing status. No final production selection yet.",
+      "package_url": "https://deb.debian.org/debian/pool/main/libc/libcgroup/libcgroup3_3.2.0-1_amd64.deb",
+      "package_sha256": "bd0938fc5ed7aaff58aae3d2dad717378b942be9906a9606e08f88078279697d",
+      "library_sha256": "225437e52c9e87e977f645fe639439782252952dbb7c9896f3df3f02bc5d0aab",
+      "probe_driver": "import java.lang.foreign.*;\nimport java.nio.file.Path;\nvar libraryPath = Path.of(System.getProperty(\"probe.library\"));\ntry (var arena = Arena.ofConfined()) {\n    var linker = Linker.nativeLinker();\n    var library = SymbolLookup.libraryLookup(libraryPath, arena);\n    var init = linker.downcallHandle(library.find(\"cgroup_init\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));\n    var create = linker.downcallHandle(library.find(\"cgroup_new_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addController = linker.downcallHandle(library.find(\"cgroup_add_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addValue = linker.downcallHandle(library.find(\"cgroup_add_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getString = linker.downcallHandle(library.find(\"cgroup_get_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getNumber = linker.downcallHandle(library.find(\"cgroup_get_value_uint64\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var destroy = linker.downcallHandle(library.find(\"cgroup_free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    var free = linker.downcallHandle(linker.defaultLookup().find(\"free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    System.out.println(\"INIT status=\" + (int) init.invokeExact());\n    for (String input : new String[] {null, \"max\", \"0\", \"256\", \"invalid\", \"18446744073709551616\", \"256trailing\", \"-1\"}) {\n        var group = (MemorySegment) create.invokeExact(arena.allocateFrom(\"candidate-evaluation\"));\n        if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n        var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n        groupSlot.set(ValueLayout.ADDRESS, 0, group);\n        try {\n            var controller = (MemorySegment) addController.invokeExact(group, arena.allocateFrom(\"memory\"));\n            if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_add_controller returned NULL for memory\");\n            var key = arena.allocateFrom(\"memory.max\");\n            if (input == null) {\n                System.out.println(\"INPUT missing\");\n            } else {\n                System.out.println(\"INPUT \" + input + \" ADD status=\" + (int) addValue.invokeExact(controller, key, arena.allocateFrom(input)));\n            }\n            var textSlot = arena.allocate(ValueLayout.ADDRESS);\n            textSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n            int stringStatus = (int) getString.invokeExact(controller, key, textSlot);\n            var text = textSlot.get(ValueLayout.ADDRESS, 0);\n            try {\n                var stringValue = text.equals(MemorySegment.NULL) ? \"NULL\" : text.reinterpret(Long.MAX_VALUE).getString(0);\n                var numberSlot = arena.allocate(ValueLayout.JAVA_LONG);\n                numberSlot.set(ValueLayout.JAVA_LONG, 0, -123L);\n                int numberStatus = (int) getNumber.invokeExact(controller, key, numberSlot);\n                long number = numberSlot.get(ValueLayout.JAVA_LONG, 0);\n                System.out.println(\"RESULT stringStatus=\" + stringStatus + \" string=\" + stringValue + \" uint64Status=\" + numberStatus + \" uint64Bits=\" + number + \" canonicalNumericText=\" + Long.toUnsignedString(number).equals(stringValue));\n            } finally {\n                free.invokeExact(text);\n            }\n        } finally {\n            destroy.invokeExact(groupSlot);\n            System.out.println(\"CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n        }\n    }\n    var currentPath = linker.downcallHandle(library.find(\"cgroup_get_current_controller_path\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var readGroup = linker.downcallHandle(library.find(\"cgroup_get_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));\n    var findController = linker.downcallHandle(library.find(\"cgroup_get_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var pathSlot = arena.allocate(ValueLayout.ADDRESS);\n    pathSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n    int pathStatus = (int) currentPath.invokeExact(Math.toIntExact(ProcessHandle.current().pid()), arena.allocateFrom(\"memory\"), pathSlot);\n    var path = pathSlot.get(ValueLayout.ADDRESS, 0);\n    try {\n        System.out.println(\"KERNEL pathStatus=\" + pathStatus + \" path=\" + (path.equals(MemorySegment.NULL) ? \"NULL\" : path.reinterpret(Long.MAX_VALUE).getString(0)));\n        if (pathStatus == 0) {\n            var group = (MemorySegment) create.invokeExact(path);\n            if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n            var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n            groupSlot.set(ValueLayout.ADDRESS, 0, group);\n            try {\n                int readStatus = (int) readGroup.invokeExact(group);\n                System.out.println(\"KERNEL readStatus=\" + readStatus);\n                if (readStatus == 0) {\n                    var controller = (MemorySegment) findController.invokeExact(group, arena.allocateFrom(\"memory\"));\n                    System.out.println(\"KERNEL memoryControllerNull=\" + controller.equals(MemorySegment.NULL));\n                    if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_get_controller returned NULL for memory\");\n                    for (String name : new String[] {\"memory.max\", \"memory.current\"}) {\n                        var valueSlot = arena.allocate(ValueLayout.ADDRESS);\n                        valueSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n                        int status = (int) getString.invokeExact(controller, arena.allocateFrom(name), valueSlot);\n                        var value = valueSlot.get(ValueLayout.ADDRESS, 0);\n                        try {\n                            System.out.println(\"KERNEL key=\" + name + \" status=\" + status + \" value=\" + (value.equals(MemorySegment.NULL) ? \"NULL\" : value.reinterpret(Long.MAX_VALUE).getString(0)));\n                        } finally {\n                            free.invokeExact(value);\n                        }\n                    }\n                }\n            } finally {\n                destroy.invokeExact(groupSlot);\n                System.out.println(\"KERNEL CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n            }\n        }\n    } finally {\n        free.invokeExact(path);\n    }\n}\n/exit\n",
+      "raw_output": "INIT status=0\nINPUT missing\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT max ADD status=0\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 0 ADD status=0\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\nCLEANUP groupNull=true\nINPUT 256 ADD status=0\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\nCLEANUP groupNull=true\nINPUT invalid ADD status=0\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 18446744073709551616 ADD status=0\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 256trailing ADD status=0\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT -1 ADD status=0\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\nCLEANUP groupNull=true\nKERNEL pathStatus=0 path=/non-systemd\nKERNEL readStatus=0\nKERNEL memoryControllerNull=false\nKERNEL key=memory.max status=0 value=max\nKERNEL key=memory.current status=0 value=34875011072\nKERNEL CLEANUP groupNull=true\n",
+      "observations": [
+        "Missing parameter: string and uint64 getters return ECGROUPVALUENOTEXIST (50015).",
+        "Explicit max: string getter preserves max; uint64 getter returns ECGINVAL (50011).",
+        "Zero and 256: string and uint64 getters return success with the corresponding values.",
+        "Overflow, trailing text and negative input: uint64 getter reports success; comparing its unsigned canonical text with the returned raw string distinguishes all three tested invalid representations.",
+        "Actual current process path lookup and cgroup_get_cgroup succeed. memory.max is max; memory.current is 34875011072 at observation time.",
+        "All eight synthetic groups and one kernel-loaded group are freed; cgroup_free resets every group pointer to NULL."
+      ],
+      "limitations": [
+        "Synthetic malformed values use in-memory cgroup structures.",
+        "Constrained visible ancestor reads now pass on native Linux x86-64. The tested namespace configurations hide or misalign ancestors; the getter-only operation does not determine the effective budget there.",
+        "Native library distribution on Linux ARM64 and fresh-folder final public-operation proof remain unrun.",
+        "The numeric getter alone does not reject malformed boundary inputs; any selected use must retain and verify its raw string result."
+      ],
+      "ancestor_probe": {
+        "driver": "import java.lang.foreign.*;\nimport java.nio.file.Path;\nvar libraryPath = Path.of(System.getProperty(\"probe.library\"));\ntry (var arena = Arena.ofConfined()) {\n    var linker = Linker.nativeLinker();\n    var library = SymbolLookup.libraryLookup(libraryPath, arena);\n    var init = linker.downcallHandle(library.find(\"cgroup_init\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));\n    var create = linker.downcallHandle(library.find(\"cgroup_new_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addController = linker.downcallHandle(library.find(\"cgroup_add_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addValue = linker.downcallHandle(library.find(\"cgroup_add_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getString = linker.downcallHandle(library.find(\"cgroup_get_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getNumber = linker.downcallHandle(library.find(\"cgroup_get_value_uint64\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var destroy = linker.downcallHandle(library.find(\"cgroup_free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    var free = linker.downcallHandle(linker.defaultLookup().find(\"free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    System.out.println(\"INIT status=\" + (int) init.invokeExact());\n    for (String input : new String[] {null, \"max\", \"0\", \"256\", \"invalid\", \"18446744073709551616\", \"256trailing\", \"-1\"}) {\n        var group = (MemorySegment) create.invokeExact(arena.allocateFrom(\"candidate-evaluation\"));\n        if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n        var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n        groupSlot.set(ValueLayout.ADDRESS, 0, group);\n        try {\n            var controller = (MemorySegment) addController.invokeExact(group, arena.allocateFrom(\"memory\"));\n            if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_add_controller returned NULL for memory\");\n            var key = arena.allocateFrom(\"memory.max\");\n            if (input == null) {\n                System.out.println(\"INPUT missing\");\n            } else {\n                System.out.println(\"INPUT \" + input + \" ADD status=\" + (int) addValue.invokeExact(controller, key, arena.allocateFrom(input)));\n            }\n            var textSlot = arena.allocate(ValueLayout.ADDRESS);\n            textSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n            int stringStatus = (int) getString.invokeExact(controller, key, textSlot);\n            var text = textSlot.get(ValueLayout.ADDRESS, 0);\n            try {\n                var stringValue = text.equals(MemorySegment.NULL) ? \"NULL\" : text.reinterpret(Long.MAX_VALUE).getString(0);\n                var numberSlot = arena.allocate(ValueLayout.JAVA_LONG);\n                numberSlot.set(ValueLayout.JAVA_LONG, 0, -123L);\n                int numberStatus = (int) getNumber.invokeExact(controller, key, numberSlot);\n                long number = numberSlot.get(ValueLayout.JAVA_LONG, 0);\n                System.out.println(\"RESULT stringStatus=\" + stringStatus + \" string=\" + stringValue + \" uint64Status=\" + numberStatus + \" uint64Bits=\" + number + \" canonicalNumericText=\" + Long.toUnsignedString(number).equals(stringValue));\n            } finally {\n                free.invokeExact(text);\n            }\n        } finally {\n            destroy.invokeExact(groupSlot);\n            System.out.println(\"CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n        }\n    }\n    var currentPath = linker.downcallHandle(library.find(\"cgroup_get_current_controller_path\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var readGroup = linker.downcallHandle(library.find(\"cgroup_get_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));\n    var findController = linker.downcallHandle(library.find(\"cgroup_get_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var pathSlot = arena.allocate(ValueLayout.ADDRESS);\n    pathSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n    int pathStatus = (int) currentPath.invokeExact(Math.toIntExact(ProcessHandle.current().pid()), arena.allocateFrom(\"memory\"), pathSlot);\n    var path = pathSlot.get(ValueLayout.ADDRESS, 0);\n    try {\n        System.out.println(\"KERNEL pathStatus=\" + pathStatus + \" path=\" + (path.equals(MemorySegment.NULL) ? \"NULL\" : path.reinterpret(Long.MAX_VALUE).getString(0)));\n        if (pathStatus == 0) {\n          for (var ancestor = Path.of(path.reinterpret(Long.MAX_VALUE).getString(0)); ancestor != null; ancestor = ancestor.getParent()) {\n            System.out.println(\"KERNEL ancestor=\" + ancestor);\n            var group = (MemorySegment) create.invokeExact(arena.allocateFrom(ancestor.toString()));\n            if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n            var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n            groupSlot.set(ValueLayout.ADDRESS, 0, group);\n            try {\n                int readStatus = (int) readGroup.invokeExact(group);\n                System.out.println(\"KERNEL readStatus=\" + readStatus);\n                if (readStatus == 0) {\n                    var controller = (MemorySegment) findController.invokeExact(group, arena.allocateFrom(\"memory\"));\n                    System.out.println(\"KERNEL memoryControllerNull=\" + controller.equals(MemorySegment.NULL));\n                    if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_get_controller returned NULL for memory\");\n                    for (String name : new String[] {\"memory.max\", \"memory.current\"}) {\n                        var valueSlot = arena.allocate(ValueLayout.ADDRESS);\n                        valueSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n                        int status = (int) getString.invokeExact(controller, arena.allocateFrom(name), valueSlot);\n                        var value = valueSlot.get(ValueLayout.ADDRESS, 0);\n                        try {\n                            System.out.println(\"KERNEL key=\" + name + \" status=\" + status + \" value=\" + (value.equals(MemorySegment.NULL) ? \"NULL\" : value.reinterpret(Long.MAX_VALUE).getString(0)));\n                        } finally {\n                            free.invokeExact(value);\n                        }\n                    }\n                }\n            } finally {\n                destroy.invokeExact(groupSlot);\n                System.out.println(\"KERNEL CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n            }\n          }\n        }\n    } finally {\n        free.invokeExact(path);\n    }\n}\n/exit\n",
+        "raw_output": "INIT status=0\nINPUT missing\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT max ADD status=0\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 0 ADD status=0\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\nCLEANUP groupNull=true\nINPUT 256 ADD status=0\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\nCLEANUP groupNull=true\nINPUT invalid ADD status=0\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 18446744073709551616 ADD status=0\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT 256trailing ADD status=0\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\nCLEANUP groupNull=true\nINPUT -1 ADD status=0\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\nCLEANUP groupNull=true\nKERNEL pathStatus=0 path=/non-systemd\nKERNEL ancestor=/non-systemd\nKERNEL readStatus=0\nKERNEL memoryControllerNull=false\nKERNEL key=memory.max status=0 value=max\nKERNEL key=memory.current status=0 value=33242640384\nKERNEL CLEANUP groupNull=true\nKERNEL ancestor=/\nKERNEL readStatus=0\nKERNEL memoryControllerNull=false\nKERNEL key=memory.max status=0 value=max\nKERNEL key=memory.current status=0 value=34336821248\nKERNEL CLEANUP groupNull=true\n",
+        "raw_output_sha256": "50467c8bc34b9a1acda15eee9c24656fd2c186c9e294f851fe65150e4182deba",
+        "observation": "Both the current cgroup /non-systemd and its visible root ancestor load successfully. Both memory.max values are max; their independently observed memory.current values differ.",
+        "cleanup": "All eight synthetic groups and both kernel-loaded groups are freed; each pointer is reset to NULL.",
+        "limits": "This establishes visible ancestor reads, not constrained-ancestor correctness or visibility of ancestors outside the cgroup namespace."
+      },
+      "remote_constrained_and_namespace_probe": {
+        "run": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40675708143",
+        "scope": "Linux x86-64 candidate FFM API evaluation only; no Codex rebuild or production reader change.",
+        "jdk": {
+          "abi": "any",
+          "arch": "x86",
+          "archive_type": "tar.gz",
+          "availability_type": "CA",
+          "build_date": "2026-10-21T04:36:26",
+          "certifications": [
+            "tck"
+          ],
+          "cpu_gen": [],
+          "crac_supported": false,
+          "crs_supported": false,
+          "distro_version": [
+            27,
+            30,
+            107,
+            0
+          ],
+          "download_url": "https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-linux_x64.tar.gz",
+          "hw_bitness": 64,
+          "java_package_features": [
+            "jdk"
+          ],
+          "java_package_type": "jdk",
+          "java_version": [
+            27,
+            0,
+            1
+          ],
+          "javafx_bundled": false,
+          "last_modified": "2026-10-21T12:56:38",
+          "latest": true,
+          "lib_c_type": "glibc",
+          "md5_hash": "004a55f633861ba50048e8f7cadd327f",
+          "name": "zulu27.30.107-ca-jdk27.0.1-linux_x64.tar.gz",
+          "openjdk_build_number": 9,
+          "os": "linux",
+          "package_uuid": "7ad2ee3a-1a3f-4b5a-b3e3-fd8ca684b115",
+          "product": "zulu",
+          "release_status": "ga",
+          "release_type": "PSU",
+          "sha256_hash": "c734ba335498892ecabdf5722526d945e25f41a09cd6d619b72bc20bec60f852",
+          "signatures": [
+            {
+              "details": {
+                "digest_algo": "8",
+                "key_id": "B1998361219BD9C9",
+                "sig_algo": "1",
+                "sig_version": "4",
+                "timestamp": "2026-10-21T06:03:07"
+              },
+              "signature": "iQIzBAABCAAdFiEEJ7wMjLPYFiP1m9rcsZmDYSGb2ckFAmrYVZsACgkQsZmDYSGb2cmJGxAAyjDB8pKzcqOanfQmQwLCnXKVL2gYRlgQLh6WYtYS6D5BXMbog7pWkSyn8ba8tlAC53ORTekH7ty2B4Aj+3ce9IQOK7R/acMU9tiOUNCPBvinvRJE12IEEZZos2XOk6GL4MfYB2a0CMb40JmTXQ7Vs3mnQEtHB/nMP3GAt4VqEIJPZ2ikL9JDGtSMw7VBzahBpcgf3gImMBBrrPPFL6sPLTR7Sm3G467O4MvcFP4j7ugv1KOqhPDur71vJSyhCv15G1FDhKKdIulG5RUcufXVqdAPyLPQ9KTIFtL3W9klfOvkLUtw/PBzHchHEN3+lbXUNPKc0NlP8VANrE78VJvJFf5u4MTKzdBdUSLGbQ2w9G9riqUt4K2CZC1kKyerU8Mts8Q3EAnn59bnqxGqizr1BGbv/NFS9RFj93Zzpt98wP7bRLGObVYMD4NushEt6YULAxKKItG7j+TznzKTd5nw7FOe4QzJEg1yrI+kud0Yp2+FEbTamRBVTCvP8E/zfdsBlRMkKhbmoVq+0xSaTplly67covUnr9R9D8FAu9623zMZcSBtnfiWUs7VC31D5Rw6lAQ41jtoDmXLoVHzungAXAAcK46vGas19CHG6hoiOIdPkkXZsmmxTyNHXPYMgbCOxTkcvwwI8Nh+sVn4wGs8/KG/cptk138bXXZqxc04Ryk=",
+              "signature_index": 0,
+              "type": "openpgp",
+              "url": "https://api.azul.com/metadata/v1/zulu/packages/7ad2ee3a-1a3f-4b5a-b3e3-fd8ca684b115/signature-binary?signature-index=0"
+            }
+          ],
+          "size": 233795000,
+          "support_term": "sts"
+        },
+        "source": "import java.lang.foreign.*;\nimport java.nio.file.Path;\nvar libraryPath = Path.of(System.getProperty(\"probe.library\"));\ntry (var arena = Arena.ofConfined()) {\n    var linker = Linker.nativeLinker();\n    var library = SymbolLookup.libraryLookup(libraryPath, arena);\n    var init = linker.downcallHandle(library.find(\"cgroup_init\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));\n    var create = linker.downcallHandle(library.find(\"cgroup_new_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addController = linker.downcallHandle(library.find(\"cgroup_add_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var addValue = linker.downcallHandle(library.find(\"cgroup_add_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getString = linker.downcallHandle(library.find(\"cgroup_get_value_string\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var getNumber = linker.downcallHandle(library.find(\"cgroup_get_value_uint64\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var destroy = linker.downcallHandle(library.find(\"cgroup_free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    var free = linker.downcallHandle(linker.defaultLookup().find(\"free\").orElseThrow(), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));\n    System.out.println(\"INIT status=\" + (int) init.invokeExact());\n    for (String input : new String[] {null, \"max\", \"0\", \"256\", \"invalid\", \"18446744073709551616\", \"256trailing\", \"-1\"}) {\n        var group = (MemorySegment) create.invokeExact(arena.allocateFrom(\"candidate-evaluation\"));\n        if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n        var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n        groupSlot.set(ValueLayout.ADDRESS, 0, group);\n        try {\n            var controller = (MemorySegment) addController.invokeExact(group, arena.allocateFrom(\"memory\"));\n            if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_add_controller returned NULL for memory\");\n            var key = arena.allocateFrom(\"memory.max\");\n            if (input == null) {\n                System.out.println(\"INPUT missing\");\n            } else {\n                System.out.println(\"INPUT \" + input + \" ADD status=\" + (int) addValue.invokeExact(controller, key, arena.allocateFrom(input)));\n            }\n            var textSlot = arena.allocate(ValueLayout.ADDRESS);\n            textSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n            int stringStatus = (int) getString.invokeExact(controller, key, textSlot);\n            var text = textSlot.get(ValueLayout.ADDRESS, 0);\n            try {\n                var stringValue = text.equals(MemorySegment.NULL) ? \"NULL\" : text.reinterpret(Long.MAX_VALUE).getString(0);\n                var numberSlot = arena.allocate(ValueLayout.JAVA_LONG);\n                numberSlot.set(ValueLayout.JAVA_LONG, 0, -123L);\n                int numberStatus = (int) getNumber.invokeExact(controller, key, numberSlot);\n                long number = numberSlot.get(ValueLayout.JAVA_LONG, 0);\n                System.out.println(\"RESULT stringStatus=\" + stringStatus + \" string=\" + stringValue + \" uint64Status=\" + numberStatus + \" uint64Bits=\" + number + \" canonicalNumericText=\" + Long.toUnsignedString(number).equals(stringValue));\n            } finally {\n                free.invokeExact(text);\n            }\n        } finally {\n            destroy.invokeExact(groupSlot);\n            System.out.println(\"CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n        }\n    }\n    var currentPath = linker.downcallHandle(library.find(\"cgroup_get_current_controller_path\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var readGroup = linker.downcallHandle(library.find(\"cgroup_get_cgroup\").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));\n    var findController = linker.downcallHandle(library.find(\"cgroup_get_controller\").orElseThrow(), FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n    var pathSlot = arena.allocate(ValueLayout.ADDRESS);\n    pathSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n    int pathStatus = (int) currentPath.invokeExact(Math.toIntExact(ProcessHandle.current().pid()), arena.allocateFrom(\"memory\"), pathSlot);\n    var path = pathSlot.get(ValueLayout.ADDRESS, 0);\n    try {\n        System.out.println(\"KERNEL pathStatus=\" + pathStatus + \" path=\" + (path.equals(MemorySegment.NULL) ? \"NULL\" : path.reinterpret(Long.MAX_VALUE).getString(0)));\n        if (pathStatus == 0) {\n          for (var ancestor = Path.of(path.reinterpret(Long.MAX_VALUE).getString(0)); ancestor != null; ancestor = ancestor.getParent()) {\n            System.out.println(\"KERNEL ancestor=\" + ancestor);\n            var group = (MemorySegment) create.invokeExact(arena.allocateFrom(ancestor.toString()));\n            if (group.equals(MemorySegment.NULL)) throw new OutOfMemoryError(\"cgroup_new_cgroup returned NULL\");\n            var groupSlot = arena.allocate(ValueLayout.ADDRESS);\n            groupSlot.set(ValueLayout.ADDRESS, 0, group);\n            try {\n                int readStatus = (int) readGroup.invokeExact(group);\n                System.out.println(\"KERNEL readStatus=\" + readStatus);\n                if (readStatus == 0) {\n                    var controller = (MemorySegment) findController.invokeExact(group, arena.allocateFrom(\"memory\"));\n                    System.out.println(\"KERNEL memoryControllerNull=\" + controller.equals(MemorySegment.NULL));\n                    if (controller.equals(MemorySegment.NULL)) throw new UnsupportedOperationException(\"cgroup_get_controller returned NULL for memory\");\n                    for (String name : new String[] {\"memory.max\", \"memory.current\"}) {\n                        var valueSlot = arena.allocate(ValueLayout.ADDRESS);\n                        valueSlot.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL);\n                        int status = (int) getString.invokeExact(controller, arena.allocateFrom(name), valueSlot);\n                        var value = valueSlot.get(ValueLayout.ADDRESS, 0);\n                        try {\n                            System.out.println(\"KERNEL key=\" + name + \" status=\" + status + \" value=\" + (value.equals(MemorySegment.NULL) ? \"NULL\" : value.reinterpret(Long.MAX_VALUE).getString(0)));\n                        } finally {\n                            free.invokeExact(value);\n                        }\n                    }\n                }\n            } finally {\n                destroy.invokeExact(groupSlot);\n                System.out.println(\"KERNEL CLEANUP groupNull=\" + groupSlot.get(ValueLayout.ADDRESS, 0).equals(MemorySegment.NULL));\n            }\n          }\n        }\n    } finally {\n        free.invokeExact(path);\n    }\n}\n/exit\n",
+        "source_sha256": "205d0b1f11860913c7155e4a58b278a5daae5f7ace1e8da40f0f842ae8011c36",
+        "commands": {
+          "run-probe.py": "import rpc, shlex, json\nfrom pathlib import Path\nbase=Path(__file__).resolve().parent\nremote=\"/home/runner/work/codex-unleashed/codex-unleashed/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/cgroup-native-40675708143\"\njava=remote+\"/zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/jshell\"\nprobe=shlex.join([java,\"--enable-native-access=ALL-UNNAMED\",\"-R--enable-native-access=ALL-UNNAMED\",\"-R-Dprobe.library=\"+remote+\"/libcgroup.so.3.2.0\",remote+\"/libcgroup-candidate.jsh\"])\nchild='printf \"%s\\n\" \"$BASHPID\" > /sys/fs/cgroup/codex-memory-probe-40675708143/leaf/cgroup.procs; exec '+probe\nscript=\"\"\"set -eu; parent=/sys/fs/cgroup/codex-memory-probe-40675708143; mkdir \"$parent\"; trap 'rmdir \"$parent/leaf\"; rmdir \"$parent\"' EXIT; printf \"2147483648\\n\" > \"$parent/memory.max\"; printf \"+memory\\n\" > \"$parent/cgroup.subtree_control\"; mkdir \"$parent/leaf\"; printf \"LEAF_LIMIT \"; cat \"$parent/leaf/memory.max\"; printf \"PARENT_LIMIT \"; cat \"$parent/memory.max\"; bash -c \"\"\"+shlex.quote(child)\nresult=rpc.rpc(\"sudo bash -c \"+shlex.quote(script),180)\n(base/'constrained-ancestor.json').write_text(json.dumps(result,indent=2))\nprint(result['output'])\n",
+          "run-namespace-probe.py": "import rpc, shlex, json\nfrom pathlib import Path\nbase=Path(__file__).resolve().parent\nremote=\"/home/runner/work/codex-unleashed/codex-unleashed/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/cgroup-native-40675708143\"\njava=remote+\"/zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/jshell\"\nprobe=shlex.join([java,\"--enable-native-access=ALL-UNNAMED\",\"-R--enable-native-access=ALL-UNNAMED\",\"-R-Dprobe.library=\"+remote+\"/libcgroup.so.3.2.0\",remote+\"/libcgroup-candidate.jsh\"])\nchild='printf \"%s\\n\" \"$BASHPID\" > /sys/fs/cgroup/codex-memory-probe-40675708143/leaf/cgroup.procs; exec unshare --cgroup --fork '+probe\nscript=\"\"\"set -eu; parent=/sys/fs/cgroup/codex-memory-probe-40675708143; mkdir \"$parent\"; trap 'rmdir \"$parent/leaf\"; rmdir \"$parent\"' EXIT; printf \"2147483648\\n\" > \"$parent/memory.max\"; printf \"+memory\\n\" > \"$parent/cgroup.subtree_control\"; mkdir \"$parent/leaf\"; printf \"LEAF_LIMIT \"; cat \"$parent/leaf/memory.max\"; printf \"PARENT_LIMIT \"; cat \"$parent/memory.max\"; bash -c \"\"\"+shlex.quote(child)\nresult=rpc.rpc(\"sudo bash -c \"+shlex.quote(script),180)\n(base/'namespace-original-mount.json').write_text(json.dumps(result,indent=2))\nprint(result['output'])\n",
+          "run-remounted-fresh-probe.py": "import rpc, shlex, json\nfrom pathlib import Path\nbase=Path(__file__).resolve().parent\nremote=\"/home/runner/work/codex-unleashed/codex-unleashed/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/cgroup-native-40675708143\"\njava=remote+\"/zulu27.30.107-ca-jdk27.0.1-linux_x64/bin/jshell\"\nprobe=shlex.join([java,\"--enable-native-access=ALL-UNNAMED\",\"-R--enable-native-access=ALL-UNNAMED\",\"-R-Dprobe.library=\"+remote+\"/libcgroup.so.3.2.0\",remote+\"/libcgroup-candidate.jsh\"])\nchild='printf \"%s\\n\" \"$BASHPID\" > /sys/fs/cgroup/codex-memory-probe-40675708143/leaf/cgroup.procs; exec '+probe\nnested='set -eu; mount --make-rprivate /; umount /sys/fs/cgroup; mount -t cgroup2 cgroup2 /sys/fs/cgroup; cat /proc/self/cgroup; findmnt -n -o TARGET,FSROOT /sys/fs/cgroup; exec '+probe\nchild='printf \"%s\\n\" \"$BASHPID\" > /sys/fs/cgroup/codex-memory-probe-40675708143/leaf/cgroup.procs; exec unshare --cgroup --mount --fork bash -c '+shlex.quote(nested)\nscript=\"\"\"set -eu; parent=/sys/fs/cgroup/codex-memory-probe-40675708143; mkdir \"$parent\"; trap 'rmdir \"$parent/leaf\"; rmdir \"$parent\"' EXIT; printf \"2147483648\\n\" > \"$parent/memory.max\"; printf \"+memory\\n\" > \"$parent/cgroup.subtree_control\"; mkdir \"$parent/leaf\"; printf \"LEAF_LIMIT \"; cat \"$parent/leaf/memory.max\"; printf \"PARENT_LIMIT \"; cat \"$parent/memory.max\"; bash -c \"\"\"+shlex.quote(child)\nresult=rpc.rpc(\"sudo bash -c \"+shlex.quote(script),180)\n(base/'namespace-remounted-fresh.json').write_text(json.dumps(result,indent=2))\nprint(result['output'])\n"
+        },
+        "receipts": {
+          "constrained-ancestor.json": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nLEAF_LIMIT max\r\nPARENT_LIMIT 2147483648\r\nOct 28, 2026 10:59:49 AM java.util.prefs.FileSystemPreferences setupUserRoot\r\nINFO: Created user preferences directory.\r\nINIT status=0\r\nINPUT missing\r\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT max ADD status=0\r\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 0 ADD status=0\r\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT 256 ADD status=0\r\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT invalid ADD status=0\r\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 18446744073709551616 ADD status=0\r\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 256trailing ADD status=0\r\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT -1 ADD status=0\r\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nKERNEL pathStatus=0 path=/codex-memory-probe-40675708143/leaf\r\nKERNEL ancestor=/codex-memory-probe-40675708143/leaf\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=0 value=max\r\nKERNEL key=memory.current status=0 value=209182720\r\nKERNEL CLEANUP groupNull=true\r\nKERNEL ancestor=/codex-memory-probe-40675708143\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=0 value=2147483648\r\nKERNEL key=memory.current status=0 value=209457152\r\nKERNEL CLEANUP groupNull=true\r\nKERNEL ancestor=/\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=50015 value=NULL\r\nKERNEL key=memory.current status=50015 value=NULL\r\nKERNEL CLEANUP groupNull=true\r\n__OWNER_DONE_request-190__:0\r\n\u001b[?2004hOWNER> "
+          },
+          "namespace-original-mount.json": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nLEAF_LIMIT max\r\nPARENT_LIMIT 2147483648\r\nINIT status=0\r\nINPUT missing\r\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT max ADD status=0\r\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 0 ADD status=0\r\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT 256 ADD status=0\r\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT invalid ADD status=0\r\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 18446744073709551616 ADD status=0\r\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 256trailing ADD status=0\r\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT -1 ADD status=0\r\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nKERNEL pathStatus=0 path=/\r\nKERNEL ancestor=/\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=50015 value=NULL\r\nKERNEL key=memory.current status=50015 value=NULL\r\nKERNEL CLEANUP groupNull=true\r\n__OWNER_DONE_request-191__:0\r\n\u001b[?2004hOWNER> "
+          },
+          "namespace-remounted.json": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nLEAF_LIMIT max\r\nPARENT_LIMIT 2147483648\r\nmount: /sys/fs/cgroup: none already mounted on /sys/fs/pstore.\r\n       dmesg(1) may have more information after failed mount system call.\r\n0::/\r\n/sys/fs/cgroup /../..\r\nINIT status=0\r\nINPUT missing\r\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT max ADD status=0\r\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 0 ADD status=0\r\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT 256 ADD status=0\r\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT invalid ADD status=0\r\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 18446744073709551616 ADD status=0\r\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 256trailing ADD status=0\r\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT -1 ADD status=0\r\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nKERNEL pathStatus=0 path=/\r\nKERNEL ancestor=/\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=50015 value=NULL\r\nKERNEL key=memory.current status=50015 value=NULL\r\nKERNEL CLEANUP groupNull=true\r\n__OWNER_DONE_request-192__:0\r\n\u001b[?2004hOWNER> "
+          },
+          "namespace-remounted-fresh.json": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nLEAF_LIMIT max\r\nPARENT_LIMIT 2147483648\r\n0::/\r\n/sys/fs/cgroup /\r\nINIT status=0\r\nINPUT missing\r\nRESULT stringStatus=50015 string=NULL uint64Status=50015 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT max ADD status=0\r\nRESULT stringStatus=0 string=max uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 0 ADD status=0\r\nRESULT stringStatus=0 string=0 uint64Status=0 uint64Bits=0 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT 256 ADD status=0\r\nRESULT stringStatus=0 string=256 uint64Status=0 uint64Bits=256 canonicalNumericText=true\r\nCLEANUP groupNull=true\r\nINPUT invalid ADD status=0\r\nRESULT stringStatus=0 string=invalid uint64Status=50011 uint64Bits=-123 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 18446744073709551616 ADD status=0\r\nRESULT stringStatus=0 string=18446744073709551616 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT 256trailing ADD status=0\r\nRESULT stringStatus=0 string=256trailing uint64Status=0 uint64Bits=256 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nINPUT -1 ADD status=0\r\nRESULT stringStatus=0 string=-1 uint64Status=0 uint64Bits=-1 canonicalNumericText=false\r\nCLEANUP groupNull=true\r\nKERNEL pathStatus=0 path=/\r\nKERNEL ancestor=/\r\nKERNEL readStatus=0\r\nKERNEL memoryControllerNull=false\r\nKERNEL key=memory.max status=0 value=max\r\nKERNEL key=memory.current status=0 value=199634944\r\nKERNEL CLEANUP groupNull=true\r\n__OWNER_DONE_request-194__:0\r\n\u001b[?2004hOWNER> "
+          },
+          "transfer.json": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n1c76e9d580921bd49344665aac528e4f777a39bd6f4680d683e84d05f02ed1c3  candidate.tar.gz\r\n70915 candidate.tar.gz\r\n__OWNER_DONE_request-189__:0\r\n\u001b[?2004hOWNER> "
+          },
+          "ssh-terminal.json": {
+            "exit": 0
+          },
+          "request-193.result": {
+            "exit": 32,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nLEAF_LIMIT max\r\nPARENT_LIMIT 2147483648\r\nmount: /sys/fs/cgroup: cgroup2 already mounted on /sys/fs/cgroup.\r\n       dmesg(1) may have more information after failed mount system call.\r\n__OWNER_DONE_request-193__:32\r\n\u001b[?2004hOWNER> "
+          },
+          "request-195.result": {
+            "exit": 0,
+            "output": "\u001b[?2004l\r\r\n\u001b[?2004h> \u001b[?2004l\r\r\nCGROUP_REMOVED\r\nSCRATCH_REMOVED\r\n__OWNER_DONE_request-195__:0\r\n\u001b[?2004hOWNER> "
+          }
+        },
+        "workflow": {
+          "conclusion": "failure",
+          "jobs": [
+            {
+              "completedAt": "2026-10-28T10:53:57Z",
+              "conclusion": "success",
+              "databaseId": 122773455310,
+              "name": "select",
+              "startedAt": "2026-10-28T10:53:51Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 6,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 7,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40675708143/job/122773455310"
+            },
+            {
+              "completedAt": "2026-10-28T11:02:31Z",
+              "conclusion": "failure",
+              "databaseId": 122773519222,
+              "name": "Debug - x86_64-unknown-linux-musl",
+              "startedAt": "2026-10-28T10:53:59Z",
+              "status": "completed",
+              "steps": [
+                {
+                  "conclusion": "success",
+                  "name": "Set up job",
+                  "number": 1,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 2,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Create owned partial build state",
+                  "number": 3,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "failure",
+                  "name": "Record the deliberate build failure",
+                  "number": 4,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Debug the original failed workspace",
+                  "number": 5,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Debug the original failed workspace",
+                  "number": 8,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Create owned partial build state",
+                  "number": 9,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                  "number": 10,
+                  "status": "completed"
+                },
+                {
+                  "conclusion": "success",
+                  "name": "Complete job",
+                  "number": 11,
+                  "status": "completed"
+                }
+              ],
+              "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40675708143/job/122773519222"
+            }
+          ],
+          "status": "completed"
+        },
+        "transcript_sha256": "bbc8a2ddb5548c45099341e5ffbde32731c410ede41d6205b7f2ca8de827b94e",
+        "observations": [
+          "Unrestricted hierarchy: leaf memory.max=max; parent memory.max=2147483648; cgroup_get_cgroup + string getters retrieve each independently with status zero. Parent usage=209457152 and leaf usage=209182720 at observation time.",
+          "Initial hierarchy root has no memory.max or memory.current values; both getters report 50015 with NULL, not max or zero.",
+          "Cgroup namespace with original mount: current path becomes /; mount remains rooted outside the new namespace; getters at that path report missing values.",
+          "Fresh private cgroup mount inside the namespace: current path and mount root are both /; getter returns max and memory.current=199634944. The fixture parent still has a 2147483648 limit outside that visible hierarchy.",
+          "The initial mount-over-existing fixture failed; its subsequent API results are not fresh-mount evidence. A fail-fast retry records mount exit 32; the corrected private-namespace fixture unmounts before mounting and then succeeds.",
+          "Cgroup and remote scratch cleanup are verified; SSH child exits zero; both hosted post operations pass. The workflow retains only the intentional exit-17 smoke failure."
+        ],
+        "decision": "The exact native getters support visible ancestor observations, but cannot alone establish a complete effective budget across the tested namespace boundary. Do not interpret missing or visible unlimited as evidence that no hidden ancestor limits exist. Candidate remains unselected.",
+        "unverified": [
+          "Linux ARM64 distribution and packaging",
+          "Final public-operation construction and fresh-folder proof",
+          "Supported production treatment of unobservable ancestor constraints"
+        ]
+      }
+    }
+  ],
+  "continuation": "No custom cgroup parser is selected. Finish the remaining applicable reuse evaluation, then prove the final public reader and declarations in a fresh empty folder before integrating production source.",
+  "jdk_numeric_candidate": {
+    "operation": "Long.parseUnsignedLong(input), then Long.toUnsignedString(value).equals(input)",
+    "driver": "for (String input : new String[] {\"0\", \"256\", \"18446744073709551615\", \"18446744073709551616\", \"256trailing\", \"-1\", \"+256\", \"0256\", \"max\"}) {\n    try {\n        long value = Long.parseUnsignedLong(input);\n        var canonical = Long.toUnsignedString(value);\n        System.out.println(\"INPUT=\" + input + \" bits=\" + value + \" canonical=\" + canonical + \" equal=\" + canonical.equals(input));\n    } catch (NumberFormatException failure) {\n        System.out.println(\"INPUT=\" + input + \" failure=\" + failure.getClass().getName() + \" message=\" + failure.getMessage());\n    }\n}\n/exit\n",
+    "raw_output": "INPUT=0 bits=0 canonical=0 equal=true\nINPUT=256 bits=256 canonical=256 equal=true\nINPUT=18446744073709551615 bits=-1 canonical=18446744073709551615 equal=true\nINPUT=18446744073709551616 failure=java.lang.NumberFormatException message=String value 18446744073709551616 exceeds range of unsigned long.\nINPUT=256trailing failure=java.lang.NumberFormatException message=For input string: \"256trailing\"\nINPUT=-1 failure=java.lang.NumberFormatException message=Illegal leading minus sign on unsigned string -1.\nINPUT=+256 bits=256 canonical=256 equal=false\nINPUT=0256 bits=256 canonical=256 equal=false\nINPUT=max failure=java.lang.NumberFormatException message=For input string: \"max\"\n",
+    "raw_output_sha256": "832623108efadeacebf404d8472df23965d2b83e35162a62211d15cf06f341eb",
+    "observation": "The selected JDK calls preserve zero and UINT64_MAX, reject tested overflow/trailing/negative inputs, and expose noncanonical leading-plus and leading-zero forms through canonical comparison.",
+    "limitation": "Evaluation only. The full reader, dependency declaration, acquisition, mount mapping and ancestor-budget operation have not passed fresh-folder proof."
+  }
+}
