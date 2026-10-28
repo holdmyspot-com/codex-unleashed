@@ -1024,8 +1024,14 @@
           "status": "passed",
           "evidence": "docs/evidence/macos-sandbox-tty-prerequisite.json",
           "run": 40728132425,
-          "scope": "Seatbelt availability only; the case remains unrun.",
+          "scope": "Seatbelt availability only; native test acceptance is recorded separately.",
           "workflow": ".github/workflows/baseline-macos-focused-runtime.yml"
+        },
+        "runtime_acceptance": {
+          "status": "passed",
+          "run": 40729663557,
+          "evidence": "docs/evidence/macos-focused-runtime.json",
+          "scope": "One selected-main macOS ARM64 case executes with zero skips; workflow cleanup remains pending while the worker is reused."
         }
       },
       {
