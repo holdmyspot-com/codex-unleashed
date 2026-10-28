@@ -41,7 +41,7 @@ jobs:
     name: Debug - ${{ matrix.target }}
     permissions:
       contents: read
-      packages: read
+      packages: write
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
