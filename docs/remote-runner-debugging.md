@@ -8,6 +8,18 @@ When testing changes to a remote-runner workflow, follow [remote-runner-testing.
 
 The action is detached, so ordinary steps continue immediately while its wait occurs during post-job cleanup. Register workspace cleanup as an earlier action's post operation so that reverse post order runs it after the remote session ends. Ordinary steps must not delete the workspace that the session needs. The historical failure smoke fixture demonstrates this cleanup ordering and verifies retained state in its own post operation; it does not establish connection before testing.
 
+For [the focused macOS runtime workflow](../.github/workflows/baseline-macos-focused-runtime.yml), dispatch with the client's public key, retrieve its connection artifact, and authenticate within the ten-minute readiness window. In that connected shell, run:
+
+```sh
+test -n "$FOCUSED_RUNTIME" &&
+test -d "$FOCUSED_RUNTIME/evidence" &&
+test ! -e "$FOCUSED_RUNTIME/evidence/test.log" &&
+test ! -e "$FOCUSED_RUNTIME/client-ready" &&
+printf 'authenticated-client-ready\n' > "$FOCUSED_RUNTIME/client-ready"
+```
+
+The storage action supplies `FOCUSED_RUNTIME` to the remote shell. Only the authenticated client creates this marker; creating it releases the workflow's test steps. Keep that same connection open until `"$FOCUSED_RUNTIME/evidence/runtime-outcome.json"` appears, then inspect its test, source-guard and cache-save outcomes and the retained `test.log`. A readiness marker proves connection before testing, not a passing test. Troubleshoot and retry in this directory before exiting the shell; its storage is removed after the session ends. Collect the evidence before exiting, including any failed attempt and incremental retry.
+
 In the remote shell, inspect the actual failing command and environment before changing anything. Retain valid build outputs, apply the focused correction and retry incrementally. Keep the original failure and retry evidence separate. After incremental success, perform the task's required clean verification. A completed or destroyed runner cannot be recovered through this session; use retained logs and valid partial caches for a replacement runner.
 
 ## Verification evidence
