@@ -991,6 +991,11 @@
       "aarch64-pc-windows-msvc"
     ],
     "upstream_profile": "ci-test",
+    "profile_cache_preflight": {
+      "evidence": "docs/evidence/cargo-test-profile-cache-preflight.json",
+      "status": "passed-local-identity-and-grouping-only",
+      "decision": "Include the profile and complete build configuration in compiler-input bytes. The focused macOS sandbox_tty case remains unrun; no ci-test executable or native compiled-cache artifact has been established. Existing release-cache acceptance is retained."
+    },
     "upstream_windows_test_threads": 8,
     "runtime_matrix_limit": "Intel macOS has upstream build coverage but is absent from the maintained nextest caller. Six-target release coverage does not itself establish six-target integration-test coverage.",
     "missing_historical_cli_suite_records": [
