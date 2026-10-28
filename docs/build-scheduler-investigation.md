@@ -1547,13 +1547,22 @@ No accepted Codex build or six-platform idle telemetry check is repeated.
 
 ### Admission and ordered retry policy
 
-The [policy](../.github/scripts/build_scheduler/policy.py) now selects one control
-request from immutable job, budget and native-observation inputs. It performs
-no process operations and has no third-party runtime dependencies. Fourteen
-[focused checks](../.github/scripts/test-build-scheduler-policy.py) pass locally
-with `python3 -B .github/scripts/test-build-scheduler-policy.py`. The
-[receipt](evidence/scheduler-policy.json) retains source identities, initial
-behavior-specific failures and representative returned decisions.
+The Java [policy](../tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java)
+selects one control request from immutable job, budget and native-observation
+inputs. It performs no process operations and uses only Java platform APIs.
+Twelve [focused checks](../tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyTest.java)
+pass locally with `mvn -B -f tooling/cli/pom.xml -Dtest=PolicyTest test`;
+complete tooling verification passes all 49 tests. The
+[Java receipt](evidence/java-scheduler-policy.json) records source identities,
+commands, results and representative decisions from the compiled public operation.
+
+This is a behavior-preserving port of the Python prototype. Its fourteen checks
+pass before the port; the [prototype receipt](evidence/scheduler-policy.json)
+retains the original behavior-specific failures. Python remains probe/reference
+code and is not the production scheduler runtime. Java checks cover the same
+decision cases, plus exact-fit and overflow boundaries, invalid lifecycle records
+and ambiguous ordering. Aggregate memory reservations use exact integer arithmetic
+even when their sum exceeds a signed `long`.
 
 Admission reserves configured OS headroom and each running action's estimated
 remaining growth. It avoids charging already resident bytes twice. An unknown

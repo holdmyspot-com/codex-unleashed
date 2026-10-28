@@ -1,0 +1,47 @@
+{
+  "scope": "Java admission/retry decisions only; native Java lifecycle, monitoring, controller and Cargo/Bazel integration remain unrun.",
+  "migration": "Behavior-preserving port of the Python prototype; its 14 existing checks pass before the port. The historical red controls remain in scheduler-policy.json.",
+  "runtime": "Zulu OpenJDK 27+35 on Linux x86-64",
+  "runtime_dependencies": "Java platform only; no new module or third-party dependency",
+  "source": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java",
+  "source_sha256": "c2d31a937708d0576dc633dab7d6ba0ce4e32c5e6b0f4aaa076dc089bb8f8588",
+  "tests": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyTest.java",
+  "tests_sha256": "fc9f7ddeb569b813f49453523197eb2d369a5349fe87ad7e54b240281030a832",
+  "focused_command": "mvn -B -f tooling/cli/pom.xml -Djava.io.tmpdir=<invocation-owned CAT_TEMP child> -Dtest=PolicyTest test",
+  "focused_result": {"tests": 12, "failures": 0, "errors": 0, "skipped": 0, "maven_seconds": 4.440},
+  "verification_command": "RUSTUP_TOOLCHAIN=1.99.1 mvn -B -ntp -f tooling/cli/pom.xml -Djava.io.tmpdir=<same invocation-owned CAT_TEMP child> verify",
+  "verification_result": {"tests": 49, "failures": 0, "errors": 0, "skipped": 0, "maven_seconds": 17.157},
+  "finished_at": "2026-10-28T00:49:16Z",
+  "diagnostics": "Existing duplicate java.io.tmpdir, absent SLF4J provider and restricted native-access warnings remain visible and nonfatal.",
+  "observation_boundary": "A Java source-launch probe invokes Policy.chooseAction from Maven's compiled classes; no copied policy implementation or native process effect is used.",
+  "rows": [
+    {
+      "case": "remaining growth",
+      "available_bytes": 799,
+      "control": "WAIT",
+      "job_name": null,
+      "reason": "Expected growth exceeds memory remaining after reservations"
+    },
+    {
+      "case": "remaining growth",
+      "available_bytes": 800,
+      "control": "START",
+      "job_name": "next",
+      "reason": "Memory estimate fits available budget"
+    },
+    {
+      "case": "swap incident",
+      "current_pressure": true,
+      "control": "TERMINATE",
+      "job_name": "newest",
+      "reason": "Relieve observed swap pressure; retain the oldest running job"
+    },
+    {
+      "case": "swap incident",
+      "current_pressure": false,
+      "control": "WAIT",
+      "job_name": null,
+      "reason": "No unfinished work is ready"
+    }
+  ]
+}
