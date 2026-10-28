@@ -136,8 +136,7 @@ jobs:
             sleep 2
           done
 
-      - name: Check the test's native prerequisite before compiling
-        id: prerequisite
+      - name: Record native runner capacity
         shell: pwsh
         run: |
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -150,10 +149,6 @@ jobs:
             Format-List | Out-File "$env:FOCUSED_RUNTIME/evidence/capacity.txt"
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free |
             Out-File -Append "$env:FOCUSED_RUNTIME/evidence/capacity.txt"
-          if ($elevated) {
-            [Console]::Error.WriteLine('This case requires a non-elevated process. Retain the worker for environment diagnosis before a cold compilation.')
-            exit 78
-          }
 
       - name: Identify profile-specific compiled state
         id: cache
@@ -164,7 +159,7 @@ jobs:
           cp upstream/codex-rs/Cargo.lock "$evidence/upstream-Cargo.lock"
           git -C upstream diff --exit-code HEAD
           test -z "$(git -C upstream status --porcelain)"
-          sha256sum .github/workflows/baseline-windows-focused-runtime.yml > "$evidence/wrappers.txt"
+          sha256sum .github/workflows/baseline-windows-focused-runtime.yml .github/scripts/run-windows-runtime-standard-user.ps1 > "$evidence/wrappers.txt"
           sha256sum .github/scripts/ghcr-cargo-target-cache.sh .github/scripts/cargo-cache-parts.py .github/scripts/verify-cargo-lock.py > "$evidence/helpers.txt"
           {
             rustc -vV
@@ -200,19 +195,19 @@ jobs:
           done
           printf 'No profile-compatible state exists; this focused build starts cold.\n'
 
-      - name: Run only the unaccepted Windows case
-        id: test
+      - name: Compile only the unaccepted Windows case and record reusable metadata
         working-directory: upstream/codex-rs
         run: |
-          set -uo pipefail
-          cargo nextest run --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --no-fail-fast --test-threads 8 --success-output immediate -E 'test(=winget_package_starts_and_reselects_daemon)' 2>&1 | tee "$FOCUSED_RUNTIME/evidence/test.log"
-          result=${PIPESTATUS[0]}
-          if [[ "$result" == 0 ]] && grep -Fq 'requires a non-elevated Windows runner' "$FOCUSED_RUNTIME/evidence/test.log"; then
-            printf 'The test returned without exercising its Windows assertions; retain this as unaccepted.\n' >&2
-            result=78
-          fi
-          printf '%s\n' "$result" > "$FOCUSED_RUNTIME/evidence/test-exit"
-          exit "$result"
+          set -euo pipefail
+          cargo nextest list --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --list-type binaries-only --message-format json > "$FOCUSED_RUNTIME/evidence/binaries.json" 2> "$FOCUSED_RUNTIME/evidence/compile.log"
+          cargo metadata --format-version 1 > "$FOCUSED_RUNTIME/evidence/cargo.json"
+
+      - name: Run the compiled Windows case as a native standard user
+        id: test
+        shell: pwsh
+        run: |
+          & .github/scripts/run-windows-runtime-standard-user.ps1 -TestFilter 'test(=winget_package_starts_and_reselects_daemon)'
+          exit $LASTEXITCODE
 
       - name: Verify source and dependency identity
         id: guard
