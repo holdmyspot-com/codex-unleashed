@@ -940,8 +940,8 @@
         "case": "sandbox_blocks_terminal_input_injection",
         "status": "passed; one case, zero skipped; source and dependency guards pass",
         "evidence": "docs/evidence/macos-intel-focused-runtime.json",
-        "cache": "GHCR upload timeout; not saved",
-        "lifecycle": "Live worker retained for remaining CLI tests; terminal workflow cleanup pending."
+        "cache": "Initial workflow save times out; later guarded private partial save passes, retained in docs/evidence/macos-intel-runtime-helper-controls.json.",
+        "lifecycle": "Live worker retained for six unresolved app-server startup cases; all 561 nonignored CLI cases now have named passing receipts."
       },
       "arm64_case_coverage": {
         "run": 40729663557,
@@ -958,9 +958,66 @@
         },
         "guards": "Final source diff/status empty; dependency guard verified.",
         "limitations": "Original failed outcomes retained. Not a single green whole-suite invocation; exact installed-app contention/path-decode attribution and runner cleanup remain separate."
+      },
+      "intel_helper_controls": {
+        "run": 40735603062,
+        "target": "x86_64-apple-darwin",
+        "evidence": "docs/evidence/macos-intel-runtime-helper-controls.json",
+        "remaining_cli": "All 561 discovered nonignored CLI cases have named passing receipts across the original run and separately accepted sandbox case; one upstream-ignored case.",
+        "original_app_server": {
+          "passed": 2005,
+          "failed": 55,
+          "skipped": 1
+        },
+        "failed_case_control": {
+          "passed": 49,
+          "failed": 6,
+          "selected": 55
+        },
+        "remaining_failures": [
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_batched",
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::optional_direct",
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_batched",
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::plugin_link_direct",
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_batched",
+          "suite::v2::selected_capability_stack::selected_plugin_mcp_startup_respects_explicit_mentions::structured_mention_direct"
+        ],
+        "guards": "Final source diff/status empty; dependency guard verified.",
+        "next_action": "Trace six helper PID-file timeouts without source changes; private partial cache save passes and is retained in helper controls."
+      },
+      "intel_case_coverage": {
+        "run": 40735603062,
+        "target": "x86_64-apple-darwin",
+        "evidence": "docs/evidence/macos-intel-runtime-case-coverage.json",
+        "summary": {
+          "cli": {
+            "required_named_cases": 561,
+            "passing_named_cases": 561,
+            "ignored_cases": 1,
+            "missing_pass_receipts": 0
+          },
+          "app-server": {
+            "required_named_cases": 2060,
+            "passing_named_cases": 2054,
+            "ignored_cases": 1,
+            "missing_pass_receipts": 6
+          }
+        },
+        "status": "CLI named coverage complete; six selected app-server cases remain failed and unaccepted.",
+        "guards": "Post-control source diff/status empty; dependency guard retained in helper controls."
       }
     },
-    "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward."
+    "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward.",
+    "current_windows_standard_user": {
+      "evidence": "docs/evidence/windows-native-runtime-results.json",
+      "x86_64_run": 40758471648,
+      "arm64_run": 40758476050,
+      "compilation": "passed on both",
+      "runtime": "One selected daemon case fails on both: fixture CODEX_HOME directory absent. No approved deferral.",
+      "guards_cleanup_partial_save": "passed on both",
+      "upstream": "Named case reports pass at 0.00s; hidden successful output cannot prove assertions ran. Local elevated control explicitly returns early.",
+      "broader_scope": "Additional CLI binaries compiling incrementally; full CLI/app-server runtime acceptance remains open."
+    }
   },
   "current_source_package_runtime": {
     "run_id": 40681183363,
