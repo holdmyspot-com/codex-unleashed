@@ -1073,6 +1073,41 @@
         }
       ],
       "decision": "Selected CLI coverage accepted on both native Windows architectures. Retain failed setup/runtime attempts and focused environment corrections. Separate app-server scope and lifecycle remain open."
+    },
+    "linux_x64_new_cases": {
+      "run": 40782505990,
+      "target": "x86_64-unknown-linux-gnu",
+      "evidence": "docs/evidence/linux-x64-new-runtime-cases.json",
+      "required_cases": [
+        [
+          "codex-cli::migrate_nfs_db",
+          "migration_requires_consent_and_preserves_shared_database_mode"
+        ],
+        [
+          "codex-cli::rollout_trace",
+          "accepted_output_survives_interruption_and_shutdown"
+        ],
+        [
+          "codex-cli::rollout_trace",
+          "accepted_output_survives_success_and_stream_failure"
+        ]
+      ],
+      "summary": {
+        "selected": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "runtime_seconds": "1.883"
+      },
+      "guards": {
+        "source_diff_empty": true,
+        "source_status_empty": true,
+        "dependency_result": {
+          "result": "verified",
+          "workspace_version_updates": {}
+        }
+      },
+      "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 and Windows app-server work remain open."
     }
   },
   "current_source_package_runtime": {
