@@ -1,0 +1,7 @@
+name: Own focused runtime build storage
+description: Retain the build and evidence until remote debugging ends, then remove owned storage
+runs:
+  using: node24
+  main: index.cjs
+  post: index.cjs
+  post-if: always()

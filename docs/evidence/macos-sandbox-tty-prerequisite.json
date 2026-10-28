@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "scope": "Native prerequisite only; no Codex compilation or sandbox_tty case execution.",
+  "source_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "source_test": {
+    "path": "codex-rs/cli/tests/sandbox_tty.rs",
+    "sha256": "11e091c879314aa2e94304b90437a8718035f10c82cc67e8bef409249a537c17",
+    "text": "//! Exercises the public macOS sandbox runner with a disposable controlling terminal.\n\n#![cfg(target_os = \"macos\")]\n\nuse std::collections::HashMap;\nuse std::path::Path;\nuse std::process::Command;\nuse std::time::Duration;\n\nuse anyhow::Context as _;\nuse codex_utils_pty::SpawnedProcess;\nuse codex_utils_pty::TerminalSize;\nuse codex_utils_pty::spawn_pty_process;\nuse pretty_assertions::assert_eq;\nuse tempfile::TempDir;\n\nconst PROBE: &str = r#\"\nimport errno, fcntl, os, select, signal, struct, sys, termios, tty\n\nsignal.alarm(15)\nassert os.isatty(0)\nassert os.tcgetpgrp(0) == os.getpgrp()\nassert struct.unpack(\"HHHH\", fcntl.ioctl(0, termios.TIOCGWINSZ, b\"\\0\" * 8))[:2] == (24, 80)\noriginal = termios.tcgetattr(0)\ntry:\n    tty.setraw(0)\n    print(\"__ready__\", flush=True)\n    assert os.read(0, 1) == b\"k\"\n    try:\n        fcntl.ioctl(0, termios.TIOCSTI, b\"x\")\n    except OSError as error:\n        assert sys.argv[1] == \"deny\", error\n        assert error.errno == errno.EPERM, error\n        assert not select.select([0], [], [], 0)[0]\n    else:\n        assert os.read(0, 1) == b\"x\"\n        assert sys.argv[1] == \"allow\", \"TIOCSTI unexpectedly succeeded\"\nfinally:\n    termios.tcsetattr(0, termios.TCSANOW, original)\nprint(\"__passed__\", flush=True)\n\"#;\n\n#[tokio::test]\nasync fn sandbox_blocks_terminal_input_injection() -> anyhow::Result<()> {\n    let availability = Command::new(\"/usr/bin/sandbox-exec\")\n        .args([\"-p\", \"(version 1)(allow default)\", \"/usr/bin/true\"])\n        .output()?;\n    if !availability.status.success()\n        && String::from_utf8_lossy(&availability.stderr)\n            .contains(\"sandbox-exec: sandbox_apply: Operation not permitted\")\n    {\n        eprintln!(\"skipping terminal injection test: nested Seatbelt is unavailable\");\n        return Ok(());\n    }\n    assert!(availability.status.success(), \"{availability:?}\");\n\n    let codex_home = TempDir::new()?;\n    let mut env: HashMap<String, String> = std::env::vars().collect();\n    env.insert(\n        \"CODEX_HOME\".to_string(),\n        codex_home.path().to_string_lossy().into_owned(),\n    );\n\n    // The control proves this is a readable, foreground controlling terminal on\n    // which TIOCSTI would otherwise work. All injected input stays in this PTY.\n    run_probe(\n        \"/usr/bin/python3\",\n        vec![\"-c\".to_string(), PROBE.to_string(), \"allow\".to_string()],\n        codex_home.path(),\n        &env,\n    )\n    .await?;\n\n    let codex = codex_utils_cargo_bin::cargo_bin(\"codex\")?;\n    run_probe(\n        &codex.to_string_lossy(),\n        vec![\n            \"sandbox\".to_string(),\n            \"-P\".to_string(),\n            \":read-only\".to_string(),\n            \"--\".to_string(),\n            \"/usr/bin/python3\".to_string(),\n            \"-c\".to_string(),\n            PROBE.to_string(),\n            \"deny\".to_string(),\n        ],\n        codex_home.path(),\n        &env,\n    )\n    .await\n}\n\nasync fn run_probe(\n    program: &str,\n    args: Vec<String>,\n    cwd: &Path,\n    env: &HashMap<String, String>,\n) -> anyhow::Result<()> {\n    let SpawnedProcess {\n        session,\n        mut stdout_rx,\n        exit_rx,\n        ..\n    } = spawn_pty_process(\n        program,\n        &args,\n        cwd,\n        env,\n        /*arg0*/ &None,\n        TerminalSize::default(),\n        codex_utils_pty::ChildFds::Inherited(&[]),\n    )\n    .await?;\n    let mut output = Vec::new();\n    let mut sent_input = false;\n    let code = tokio::time::timeout(Duration::from_secs(30), async {\n        while let Some(bytes) = stdout_rx.recv().await {\n            output.extend_from_slice(&bytes);\n            if !sent_input && String::from_utf8_lossy(&output).contains(\"__ready__\") {\n                session.writer_sender().send(b\"k\".to_vec()).await?;\n                sent_input = true;\n            }\n        }\n        Ok::<_, anyhow::Error>(exit_rx.await?)\n    })\n    .await\n    .context(\"terminal probe timed out\")??;\n    let output = String::from_utf8_lossy(&output);\n    assert_eq!(code, 0, \"terminal probe failed: {output}\");\n    assert!(output.contains(\"__passed__\"), \"{output}\");\n    Ok(())\n}\n"
+  },
+  "upstream_setup_ci": {
+    "path": ".github/actions/setup-ci/action.yml",
+    "sha256": "6a6781409f2071d6c47355b0195c116c4c7d9d3e96ef25d4dff4e324cfa6b320",
+    "text": "name: setup-ci\ndescription: Prepare common tools and environment shared by CI jobs.\noutputs:\n  bazel-output-base:\n    description: Filesystem path used for Bazel's output base.\n    value: ${{ steps.configure_ci_build_paths.outputs.bazel-output-base }}\n  cargo-target-dir:\n    description: Filesystem path used for Cargo's target directory.\n    value: ${{ steps.configure_ci_build_paths.outputs.cargo-target-dir }}\n\nruns:\n  using: composite\n  steps:\n    # setup-ci expects either this step or the Unix fallback below to define\n    # CI_BUILD_ROOT. Windows uses a Dev Drive because Cargo and Bazel\n    # spend significant time reading and writing build/cache trees.\n    - name: Configure Dev Drive (Windows)\n      if: runner.os == 'Windows'\n      shell: pwsh\n      run: ./.github/scripts/setup-dev-drive.ps1\n\n    - name: Configure CI build root (Unix)\n      if: runner.os != 'Windows'\n      shell: bash\n      run: echo \"CI_BUILD_ROOT=$HOME/.cache/codex-ci\" >> \"$GITHUB_ENV\"\n\n    - name: Enable unprivileged user namespaces (Linux)\n      if: runner.os == 'Linux'\n      shell: bash\n      run: |\n        sudo sysctl -w kernel.unprivileged_userns_clone=1\n        if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then\n          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0\n        fi\n\n    - name: Configure CI build paths\n      id: configure_ci_build_paths\n      shell: bash\n      run: |\n        set -euo pipefail\n        # setup-bazel passes output_base explicitly, so keep both it and the\n        # user root under the shared build root. Keep these directory names tiny\n        # on every platform so Windows Bazel paths do not overflow argv or\n        # confuse test MANIFEST handling.\n        bazel_output_base=\"$CI_BUILD_ROOT/o\"\n        bazel_output_user_root=\"$CI_BUILD_ROOT/b\"\n        bazel_repository_cache=\"$CI_BUILD_ROOT/bazel-repository-cache\"\n        bazel_repo_contents_cache=\"$CI_BUILD_ROOT/bazel-repo-contents-cache-$GITHUB_RUN_ID-$GITHUB_JOB\"\n        cargo_target_dir=\"$CI_BUILD_ROOT/cargo-target\"\n        tmp=\"$CI_BUILD_ROOT/tmp\"\n\n        build_dirs=(\n          \"$bazel_output_base\"\n          \"$bazel_output_user_root\"\n          \"$bazel_repository_cache\"\n          \"$bazel_repo_contents_cache\"\n          \"$cargo_target_dir\"\n          \"$tmp\"\n        )\n        mkdir -p \"${build_dirs[@]}\"\n        echo \"bazel-output-base=$bazel_output_base\" >> \"$GITHUB_OUTPUT\"\n        echo \"cargo-target-dir=$cargo_target_dir\" >> \"$GITHUB_OUTPUT\"\n\n        {\n          echo \"CODEX_REPO_ROOT=$GITHUB_WORKSPACE\"\n          echo \"BAZEL_OUTPUT_BASE=$bazel_output_base\"\n          echo \"BAZEL_OUTPUT_USER_ROOT=$bazel_output_user_root\"\n          echo \"BAZEL_REPOSITORY_CACHE=$bazel_repository_cache\"\n          echo \"BAZEL_REPO_CONTENTS_CACHE=$bazel_repo_contents_cache\"\n          echo \"CARGO_TARGET_DIR=$cargo_target_dir\"\n          echo \"TEMP=$tmp\"\n          echo \"TMP=$tmp\"\n        } >> \"$GITHUB_ENV\"\n\n    - name: Prefer the Git CLI for Cargo git dependencies\n      shell: bash\n      run: echo \"CARGO_NET_GIT_FETCH_WITH_CLI=true\" >> \"$GITHUB_ENV\"\n\n    - name: Configure curl retries for DotSlash\n      shell: bash\n      run: mkdir -p \"$RUNNER_TEMP/dotslash-curl\" && echo retry-all-errors > \"$RUNNER_TEMP/dotslash-curl/.curlrc\"\n\n    - name: Install DotSlash\n      uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2\n      env:\n        CURL_HOME: ${{ runner.temp }}/dotslash-curl\n\n    - name: Install just\n      uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21\n      with:\n        tool: just@1.51.0\n\n    # Some integration tests spawn DotSlash from a stable system path rather\n    # than inheriting the action-local PATH entry.\n    - name: Make DotSlash available in PATH (Unix)\n      if: runner.os != 'Windows'\n      shell: bash\n      run: |\n        if [[ -w /usr/local/bin ]]; then\n          cp \"$(which dotslash)\" /usr/local/bin\n        else\n          sudo cp \"$(which dotslash)\" /usr/local/bin\n        fi\n\n    - name: Make DotSlash available in PATH (Windows)\n      if: runner.os == 'Windows'\n      shell: pwsh\n      run: Copy-Item (Get-Command dotslash).Source -Destination \"$env:LOCALAPPDATA\\Microsoft\\WindowsApps\\dotslash.exe\"\n\n    - name: Enable Git long paths (Windows)\n      if: runner.os == 'Windows'\n      shell: pwsh\n      run: git config --global core.longpaths true\n"
+  },
+  "prerequisite": {
+    "command": [
+      "/usr/bin/sandbox-exec",
+      "-p",
+      "(version 1)(allow default)",
+      "/usr/bin/true"
+    ],
+    "exit": 0,
+    "platform": {
+      "os": "macOS",
+      "version": "15.7.9",
+      "build": "24G830",
+      "architecture": "arm64",
+      "kernel": "24.6.0"
+    },
+    "decision": "The selected test's nested-Seatbelt early-return condition is absent for this prerequisite invocation. The actual test remains unrun."
+  },
+  "remote_session": {
+    "workflow": {
+      "conclusion": "failure",
+      "headSha": "c1321e884465fb57fe5efd97fd01edecf0a50d5a",
+      "jobs": [
+        {
+          "completedAt": "2026-10-28T16:39:43Z",
+          "conclusion": "success",
+          "databaseId": 122956838636,
+          "name": "select",
+          "startedAt": "2026-10-28T16:39:38Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 6,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 7,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40728132425/job/122956838636"
+        },
+        {
+          "completedAt": "2026-10-28T16:43:57Z",
+          "conclusion": "failure",
+          "databaseId": 122956910228,
+          "name": "Debug - aarch64-apple-darwin",
+          "startedAt": "2026-10-28T16:39:48Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure",
+              "number": 4,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace",
+              "number": 5,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace",
+              "number": 8,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state",
+              "number": 9,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 10,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40728132425/job/122956910228"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40728132425"
+    },
+    "artifact": {
+      "id": 12833591764,
+      "node_id": "MDg6QXJ0aWZhY3QxMjgzMzU5MTc2NA==",
+      "name": "runner-debug-macOS-ARM64-probe-1",
+      "size_in_bytes": 330,
+      "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/artifacts/12833591764",
+      "archive_download_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/artifacts/12833591764/zip",
+      "expired": false,
+      "digest": "sha256:18c17ac6f1607a3069d706a51519fe74c210a6d2b4d7d6d4b2a496dba4a4da0c",
+      "created_at": "2026-10-28T16:39:58Z",
+      "updated_at": "2026-10-28T16:39:58Z",
+      "expires_at": "2026-10-29T16:39:56Z",
+      "workflow_run": {
+        "id": 40728132425,
+        "repository_id": 1356304765,
+        "head_repository_id": 1356304765,
+        "head_branch": "main.new",
+        "head_sha": "c1321e884465fb57fe5efd97fd01edecf0a50d5a"
+      }
+    },
+    "ssh_terminal": {
+      "exit": 0,
+      "completed": 3
+    },
+    "transcript": "\r\nThe default interactive shell is now zsh.\r\nTo update your account to use zsh, please run `chsh -s /bin/zsh`.\r\nFor more details, please visit https://support.apple.com/kb/HT208050.\r\n\u001b[?1034hbash-3.2$ \r\u001b[Kbash-3.2$ \r\u001b[Kbash-3.2$ test -d \"$RUNNER_DEBUG_SMOKE\" && test \"$(cat \"$RUNNER_DEBUG_SMOKE/buil \rd-progress.txt\")\" = completed-part; printf \"\\nCLIENT-READY-STATUS-%s\\nCLIENT-REA \rDY-FINISHED\\n\" \"$?\"\r\n\r\nCLIENT-READY-STATUS-0\r\nCLIENT-READY-FINISHED\r\nbash-3.2$ /usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true >  \r\"$RUNNER_DEBUG_SMOKE/seatbelt.stdout\" 2> \"$RUNNER_DEBUG_SMOKE/seatbelt.stderr\";  \rseatbelt_status=$?; printf \"\\nSEATBELT-STATUS-%s\\n\" \"$seatbelt_status\"; cat \"$RU \rNNER_DEBUG_SMOKE/seatbelt.stdout\" \"$RUNNER_DEBUG_SMOKE/seatbelt.stderr\"; sw_vers \r; uname -m; sysctl kern.osrelease; printf \"\\nSEATBELT-FINISHED\\n\"\r\n\r\nSEATBELT-STATUS-0\r\nProductName:\t\tmacOS\r\nProductVersion:\t\t15.7.9\r\nBuildVersion:\t\t24G830\r\narm64\r\nkern.osrelease: 24.6.0\r\n\r\nSEATBELT-FINISHED\r\nbash-3.2$ python3 -c 'import os;from pathlib import Path;p=Path(os.environ[\"RUNN \rER_DEBUG_SMOKE\"])/\"build-progress.txt\";assert p.read_bytes()==b\"completed-part\"+ \rbytes([10]);p.write_bytes(b\"completed-part\"+bytes([10])+b\"incremental-retry\"+byt \res([10]));print(\"MARKER-UPDATED\")'\r\nMARKER-UPDATED\r\nbash-3.2$ exit\r\nexit\r\nConnection to uptermd.upterm.dev closed.\r\r\n",
+    "transcript_sha256": "4180c5dd2515f6afb843a30de3c4c10c5ee9b7c1c549683e3259c5338b778956",
+    "commands": [
+      {
+        "command": "test -d \"$RUNNER_DEBUG_SMOKE\" && test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed-part; printf \"\\nCLIENT-READY-STATUS-%s\\nCLIENT-READY-FINISHED\\n\" \"$?\"",
+        "marker": "CLIENT-READY-FINISHED"
+      },
+      {
+        "command": "/usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true > \"$RUNNER_DEBUG_SMOKE/seatbelt.stdout\" 2> \"$RUNNER_DEBUG_SMOKE/seatbelt.stderr\"; seatbelt_status=$?; printf \"\\nSEATBELT-STATUS-%s\\n\" \"$seatbelt_status\"; cat \"$RUNNER_DEBUG_SMOKE/seatbelt.stdout\" \"$RUNNER_DEBUG_SMOKE/seatbelt.stderr\"; sw_vers; uname -m; sysctl kern.osrelease; printf \"\\nSEATBELT-FINISHED\\n\"",
+        "marker": "SEATBELT-FINISHED"
+      },
+      {
+        "command": "python3 -c 'import os;from pathlib import Path;p=Path(os.environ[\"RUNNER_DEBUG_SMOKE\"])/\"build-progress.txt\";assert p.read_bytes()==b\"completed-part\"+bytes([10]);p.write_bytes(b\"completed-part\"+bytes([10])+b\"incremental-retry\"+bytes([10]));print(\"MARKER-UPDATED\")'",
+        "marker": "MARKER-UPDATED"
+      },
+      {
+        "command": "exit",
+        "marker": "SESSION-EXIT-REQUESTED"
+      }
+    ],
+    "cleanup": "Smoke marker verification, remote session post, and owned-storage cleanup pass. Only the deliberate exit-17 workflow step fails."
+  },
+  "local_storage_gate": {
+    "status": "passed",
+    "checks": [
+      "creates and publishes isolated build directories",
+      "retains completed outputs before post",
+      "post removes only owned storage",
+      "borrowed workspace data preserved"
+    ]
+  },
+  "workflow_preflight": {
+    "yaml": "parsed",
+    "inline_bash": "syntax passed",
+    "storage_lifecycle": "passed",
+    "node_syntax": "passed",
+    "actionlint": "Installed validator rejects queue: max. With only that syntax diagnostic excluded at invocation, remaining checks pass. Required queue behavior is retained; GitHub validation remains unrun.",
+    "concurrency_authority": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency"
+  }
+}
