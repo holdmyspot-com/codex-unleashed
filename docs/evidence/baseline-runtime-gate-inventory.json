@@ -1107,7 +1107,8 @@
           "workspace_version_updates": {}
         }
       },
-      "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 and Windows app-server work remain open."
+      "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 and Windows app-server work remain open.",
+      "lifecycle": "SSH exits zero; complete hosted job and every post step succeed; owned private key removed."
     }
   },
   "current_source_package_runtime": {
