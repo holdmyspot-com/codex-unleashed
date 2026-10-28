@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "scope": "Terminal lifecycle of the two accepted Windows native CLI/app-server runtime sessions; deferred daemon-fixture failures remain failures.",
+  "platforms": {
+    "x86_64": {
+      "run_id": 40758471648,
+      "job_id": 123063652630,
+      "hosted_status": "completed",
+      "hosted_conclusion": "failure",
+      "started_at": "2026-10-28T19:54:23Z",
+      "completed_at": "2026-10-28T23:33:17Z",
+      "ssh_terminal": {
+        "exit": 0,
+        "completed": 1
+      },
+      "final_owned_target_executables": {
+        "TargetRoot": "D:\\a\\_temp\\codex-runtime-eqfkk1\\target",
+        "Processes": []
+      },
+      "post_steps": {
+        "Post Connect before the changed remote commands": "success",
+        "Post Cache Cargo downloads": "skipped",
+        "Post Retrieve pristine selected upstream": "success",
+        "Post Own build state through later remote-session cleanup": "success",
+        "Post Retrieve restart inputs": "success"
+      },
+      "interpretation": "Accepted named CLI/app-server results are separate from the original owner-deferred daemon fixture failure. Normal SSH exit and hosted Upterm/storage cleanup pass.",
+      "client_private_key_removed": true,
+      "raw_evidence": [
+        {
+          "locator": "gh run view 40758471648 --json status,conclusion,jobs",
+          "bytes": 3383,
+          "sha256": "cc856849a5c4dfda33ec3fae630158eb2cee2ca9c0a10f792e441e47ee801f47",
+          "text": "{\"conclusion\":\"failure\",\"jobs\":[{\"completedAt\":\"2026-10-28T23:33:17Z\",\"conclusion\":\"failure\",\"databaseId\":123063652630,\"name\":\"test\",\"startedAt\":\"2026-10-28T19:54:23Z\",\"status\":\"completed\",\"steps\":[{\"conclusion\":\"success\",\"name\":\"Set up job\",\"number\":1,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retrieve restart inputs\",\"number\":2,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Read exact source and runner selection\",\"number\":3,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Own build state through later remote-session cleanup\",\"number\":4,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retrieve pristine selected upstream\",\"number\":5,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Set up matching Rust\",\"number\":6,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Install upstream's nextest version\",\"number\":7,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Expose the matching MSVC environment\",\"number\":8,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Preserve the accepted x86-64 SQLite build configuration\",\"number\":9,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Cache Cargo downloads\",\"number\":10,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Set up existing private cache transport\",\"number\":11,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Authenticate private GHCR access\",\"number\":12,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Connect before the changed remote commands\",\"number\":13,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Wait for authenticated client readiness\",\"number\":14,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Record native runner capacity\",\"number\":15,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Identify profile-specific compiled state\",\"number\":16,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Restore verified or partial compiled state\",\"number\":17,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Compile only the unaccepted Windows case and record reusable metadata\",\"number\":18,\"status\":\"completed\"},{\"conclusion\":\"failure\",\"name\":\"Run the compiled Windows case as a native standard user\",\"number\":19,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Verify source and dependency identity\",\"number\":20,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Save compiled outputs without changing the test result\",\"number\":21,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Publish test and cache outcomes to the live client\",\"number\":22,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retain focused evidence for one day\",\"number\":23,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Connect before the changed remote commands\",\"number\":42,\"status\":\"completed\"},{\"conclusion\":\"skipped\",\"name\":\"Post Cache Cargo downloads\",\"number\":43,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Retrieve pristine selected upstream\",\"number\":44,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Own build state through later remote-session cleanup\",\"number\":45,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Retrieve restart inputs\",\"number\":46,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Complete job\",\"number\":47,\"status\":\"completed\"}],\"url\":\"https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40758471648/job/123063652630\"}],\"status\":\"completed\"}\n"
+        },
+        {
+          "locator": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-x64-resume-hnhjp12_/ssh-exit.json",
+          "bytes": 27,
+          "sha256": "3120b4b448a78c57cab2f7ea950e038577c2189f802f93458dcc047275404b2f",
+          "text": "{\"exit\": 0, \"completed\": 1}"
+        },
+        {
+          "locator": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-runtime-reconnect-_1tmx9xx/ssh-transcript normalized final process inventory and command result",
+          "bytes": 140,
+          "sha256": "111939c451b2b5979d1b4d3c617893fcf08fce25daa56e90f10f29a883a8ea19",
+          "text": "\n{\"TargetRoot\":\"D:\\\\a\\\\_temp\\\\codex-runtime-eqfkk1\\\\target\",\"Processes\":[]}\n\nREMOTE-COMMAND-EXIT=0\nWINDOWS-X64-FINAL-OWNED-PROCESS-INVENTORY"
+        }
+      ],
+      "private_key_cleanup_observation": {
+        "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-x64-runtime-ex0q2q6d/client-key",
+        "exists_after_terminal_unlink": false,
+        "ownership": "Removed by parent only after both SSH and hosted workflow terminal results were established."
+      }
+    },
+    "arm64": {
+      "run_id": 40758476050,
+      "job_id": 123063667140,
+      "hosted_status": "completed",
+      "hosted_conclusion": "failure",
+      "started_at": "2026-10-28T19:54:30Z",
+      "completed_at": "2026-10-28T23:35:25Z",
+      "ssh_terminal": {
+        "exit": 0,
+        "completed": 5
+      },
+      "final_owned_target_executables": {
+        "TargetRoot": "C:\\a\\_temp\\codex-runtime-2gLMZ3\\target",
+        "Processes": []
+      },
+      "post_steps": {
+        "Post Connect before the changed remote commands": "success",
+        "Post Cache Cargo downloads": "skipped",
+        "Post Retrieve pristine selected upstream": "success",
+        "Post Own build state through later remote-session cleanup": "success",
+        "Post Retrieve restart inputs": "success"
+      },
+      "interpretation": "Accepted named CLI/app-server results are separate from the original owner-deferred daemon fixture failure. Normal SSH exit and hosted Upterm/storage cleanup pass.",
+      "client_private_key_removed": true,
+      "raw_evidence": [
+        {
+          "locator": "gh run view 40758476050 --json status,conclusion,jobs",
+          "bytes": 3383,
+          "sha256": "5975bc06455c4ccf9d7225bbfeebea830eae52face9bb36a39725032ff8c1487",
+          "text": "{\"conclusion\":\"failure\",\"jobs\":[{\"completedAt\":\"2026-10-28T23:35:25Z\",\"conclusion\":\"failure\",\"databaseId\":123063667140,\"name\":\"test\",\"startedAt\":\"2026-10-28T19:54:30Z\",\"status\":\"completed\",\"steps\":[{\"conclusion\":\"success\",\"name\":\"Set up job\",\"number\":1,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retrieve restart inputs\",\"number\":2,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Read exact source and runner selection\",\"number\":3,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Own build state through later remote-session cleanup\",\"number\":4,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retrieve pristine selected upstream\",\"number\":5,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Set up matching Rust\",\"number\":6,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Install upstream's nextest version\",\"number\":7,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Expose the matching MSVC environment\",\"number\":8,\"status\":\"completed\"},{\"conclusion\":\"skipped\",\"name\":\"Preserve the accepted x86-64 SQLite build configuration\",\"number\":9,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Cache Cargo downloads\",\"number\":10,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Set up existing private cache transport\",\"number\":11,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Authenticate private GHCR access\",\"number\":12,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Connect before the changed remote commands\",\"number\":13,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Wait for authenticated client readiness\",\"number\":14,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Record native runner capacity\",\"number\":15,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Identify profile-specific compiled state\",\"number\":16,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Restore verified or partial compiled state\",\"number\":17,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Compile only the unaccepted Windows case and record reusable metadata\",\"number\":18,\"status\":\"completed\"},{\"conclusion\":\"failure\",\"name\":\"Run the compiled Windows case as a native standard user\",\"number\":19,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Verify source and dependency identity\",\"number\":20,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Save compiled outputs without changing the test result\",\"number\":21,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Publish test and cache outcomes to the live client\",\"number\":22,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Retain focused evidence for one day\",\"number\":23,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Connect before the changed remote commands\",\"number\":42,\"status\":\"completed\"},{\"conclusion\":\"skipped\",\"name\":\"Post Cache Cargo downloads\",\"number\":43,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Retrieve pristine selected upstream\",\"number\":44,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Own build state through later remote-session cleanup\",\"number\":45,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Post Retrieve restart inputs\",\"number\":46,\"status\":\"completed\"},{\"conclusion\":\"success\",\"name\":\"Complete job\",\"number\":47,\"status\":\"completed\"}],\"url\":\"https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40758476050/job/123063667140\"}],\"status\":\"completed\"}\n"
+        },
+        {
+          "locator": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-arm64-resume-5xafnbgt/ssh-exit.json",
+          "bytes": 27,
+          "sha256": "5a4a9da7fbeea199f7731e99cf1ab8ebef186fc57b0202474972cf958a97650d",
+          "text": "{\"exit\": 0, \"completed\": 5}"
+        },
+        {
+          "locator": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-arm64-resume-5xafnbgt/ssh-transcript normalized final process inventory and command result",
+          "bytes": 140,
+          "sha256": "fa502daee4d74bde1475324c46dab006b699f04025e4a3cb4e74e310f3a13162",
+          "text": "\n{\"TargetRoot\":\"C:\\\\a\\\\_temp\\\\codex-runtime-2gLMZ3\\\\target\",\"Processes\":[]}\n\nREMOTE-COMMAND-EXIT=0\nWINDOWS-X64-FINAL-OWNED-PROCESS-INVENTORY"
+        }
+      ],
+      "private_key_cleanup_observation": {
+        "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-arm64-runtime-19n_g7r9/client-key",
+        "exists_after_terminal_unlink": false,
+        "ownership": "Removed by parent only after both SSH and hosted workflow terminal results were established."
+      }
+    }
+  }
+}
