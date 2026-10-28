@@ -39,8 +39,13 @@ jobs:
   probe:
     needs: select
     name: Debug - ${{ matrix.target }}
+    permissions:
+      contents: read
+      packages: read
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.target }}
       cancel-in-progress: false
