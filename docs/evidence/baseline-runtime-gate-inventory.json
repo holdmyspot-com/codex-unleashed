@@ -941,7 +941,7 @@
         "status": "passed; one case, zero skipped; source and dependency guards pass",
         "evidence": "docs/evidence/macos-intel-focused-runtime.json",
         "cache": "Initial workflow save times out; later guarded private partial save passes, retained in docs/evidence/macos-intel-runtime-helper-controls.json.",
-        "lifecycle": "Named CLI/app-server coverage complete after hostname control; remote-session cleanup remains pending."
+        "lifecycle": "Terminal SSH exit zero and hosted Upterm/storage post cleanup succeeds; original workflow cache failure retained."
       },
       "arm64_case_coverage": {
         "run": 40729663557,
@@ -1032,7 +1032,12 @@
           "hostname_restoration": "original kernel hostname restored",
           "hostname": "iad01-dz252-dd115e9b-fe5f-4172-9eff-7cdf8994393f-2EEF915E3F2C.local"
         },
-        "remaining": "Remote-session cleanup and other native platform acceptance remain open."
+        "remaining": "Other native platform acceptance remains open; session lifecycle is recorded separately."
+      },
+      "session_lifecycle": {
+        "evidence": "docs/evidence/macos-runtime-session-lifecycle.json",
+        "intel": "SSH exits zero and hosted Upterm/storage post cleanup succeeds.",
+        "arm64": "Hosted six-hour limit cancels Upterm post; storage post succeeds. Original host unavailable on cleanup-only reconnect; manual short-TMPDIR removal unverified."
       }
     },
     "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward.",
