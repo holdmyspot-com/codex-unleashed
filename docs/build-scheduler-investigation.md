@@ -2331,3 +2331,42 @@ SSH exits zero, and hosted remote-wait and smoke cleanup pass. The workflow
 retains only its deliberate exit-17 failure. Production handshake, controller
 death recovery, ARM64 composition, polling/deadlines and Cargo/Bazel integration
 remain open; checkpoint 3 is incomplete.
+
+### Java controller-owned Linux cgroup lifecycle
+
+`LinuxCgroup` now provides the controller's independent cleanup boundary in the
+JDK 27 tooling module. It creates an exclusive cgroup-v2 subtree without moving
+the controller into it, reads recursive live-process population, requests
+subtree termination and removes owned groups after population becomes empty.
+Successful repeated close has no effect, and cleanup preserves the caller's
+interrupt. Population does not establish that child statuses have been reaped;
+the dedicated process owner must still collect them.
+
+Native Linux x86-64 [run 40716859351](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40716859351)
+exercises nested Java children through explicit termination, forced close and
+interrupted close. The standalone source passes after incremental compilation
+and after compilation into a fresh class directory. The identical source also
+passes from the actual named tooling-module JAR with its existing runtime
+dependencies. No new dependency is required. Maintained acquisition checks
+reject invalid arguments and ordinary filesystems before creating owned state;
+the complete Maven verification passes 92 tests with no failures, errors or
+skips. Warnings remain visible and nonfatal.
+
+The packaged-module diagnostic initially rejects Java's `file:/` URL spelling
+because Python's `Path.as_uri()` emits `file:///`. Its native operation has
+already returned zero with all three cases passing. Comparing the parsed file
+location accepts both spellings and rejects a different JAR or scheme, using
+the retained result without repeating those successful tests. A preceding runner
+acquisition attempt ends before an SSH connection is established; it supplies
+no native result. The successful attempt starts discovery and connection under
+one foreground owner and retains that connection through evidence collection
+and cleanup.
+
+[linux-java-cgroup-lifecycle.json](evidence/linux-java-cgroup-lifecycle.json)
+retains the exact production source, failing behavior checks, passing native
+receipts, packaged-module identity, Maven results and both acquisition outcomes.
+Owned native groups and remote storage are removed, SSH exits zero, and hosted
+debug and post steps pass. The workflow retains only its intentional exit-17
+failure. Production supervisor placement, handshake and controller-death
+recovery, ARM64 composition, memory admission and Cargo/Bazel integration remain
+open. This component does not complete checkpoint 3.
