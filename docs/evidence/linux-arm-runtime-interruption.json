@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "run_id": 40782020085,
+  "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "outcome": "interrupted; native ARM64 runtime coverage unaccepted",
+  "cause": "Unknown. Exit 143 and shell termination are observed; no controller terminal receipt or runtime archive was retained. No upstream code/test failure is established.",
+  "hosted": {
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "completedAt": "2026-10-28T23:03:16Z",
+        "conclusion": "failure",
+        "databaseId": 123145812098,
+        "name": "test",
+        "startedAt": "2026-10-28T22:42:38Z",
+        "status": "completed",
+        "steps": [
+          {
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Retrieve restart inputs",
+            "number": 2,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Read exact source and runner selection",
+            "number": 3,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Retrieve pristine selected upstream",
+            "number": 4,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Prepare upstream's native test host",
+            "number": 5,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Own build state through later remote-session cleanup",
+            "number": 6,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Set up matching Rust",
+            "number": 7,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Install upstream's nextest version",
+            "number": 8,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Cache Cargo downloads",
+            "number": 9,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Set up existing private cache transport",
+            "number": 10,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Authenticate private GHCR access",
+            "number": 11,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Connect before the changed remote commands",
+            "number": 12,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Wait for authenticated client readiness",
+            "number": 13,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Install native Linux test prerequisites",
+            "number": 14,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Identify profile-specific compiled state",
+            "number": 15,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Restore verified or partial compiled state",
+            "number": 16,
+            "status": "completed"
+          },
+          {
+            "conclusion": "failure",
+            "name": "Await the retained client's runtime result",
+            "number": 17,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Verify source and dependency identity",
+            "number": 18,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Save compiled outputs without changing the test result",
+            "number": 19,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Publish test and cache outcomes to the live client",
+            "number": 20,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Retain focused evidence for one day",
+            "number": 21,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Post Connect before the changed remote commands",
+            "number": 38,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Post Cache Cargo downloads",
+            "number": 39,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Post Own build state through later remote-session cleanup",
+            "number": 40,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Post Retrieve pristine selected upstream",
+            "number": 41,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Post Retrieve restart inputs",
+            "number": 42,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 43,
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40782020085/job/123145812098"
+      }
+    ],
+    "status": "completed"
+  },
+  "annotations": [
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/holdmyspot-com/codex-unleashed/blob/f1a889d1ca58b2b2d645b76535a7c5f2879dba02/.github",
+      "start_line": 44,
+      "start_column": null,
+      "end_line": 44,
+      "end_column": null,
+      "annotation_level": "failure",
+      "title": "",
+      "message": "Process completed with exit code 143.",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/holdmyspot-com/codex-unleashed/blob/f1a889d1ca58b2b2d645b76535a7c5f2879dba02/.github",
+      "start_line": 105,
+      "start_column": null,
+      "end_line": 105,
+      "end_column": null,
+      "annotation_level": "notice",
+      "title": "",
+      "message": "Join: upterm join ssh://UbyE4jH3TvOfUE8vjU2c@uptermd.upterm.dev\nSSH: ssh UbyE4jH3TvOfUE8vjU2c@uptermd.upterm.dev",
+      "raw_details": ""
+    },
+    {
+      "path": ".github",
+      "blob_href": "https://github.com/holdmyspot-com/codex-unleashed/blob/f1a889d1ca58b2b2d645b76535a7c5f2879dba02/.github",
+      "start_line": 1,
+      "start_column": null,
+      "end_line": 1,
+      "end_column": null,
+      "annotation_level": "warning",
+      "title": "",
+      "message": "Unexpected input(s) 'toolchain', valid inputs are ['targets', 'target', 'components']",
+      "raw_details": ""
+    }
+  ],
+  "failed_step_log": "test\tAwait the retained client's runtime result\t\ufeff2026-10-28T22:44:22.4023301Z ##[group]Run set -euo pipefail\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4023625Z \u001b[36;1mset -euo pipefail\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4023960Z \u001b[36;1mprintf '%s\\n' \"$TARGET\" > \"$FOCUSED_RUNTIME/evidence/environment-ready\"\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4024333Z \u001b[36;1mdeadline=$((SECONDS+17400))\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4024688Z \u001b[36;1muntil [[ -f \"$FOCUSED_RUNTIME/evidence/runtime-controller-exit\" ]]; do\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4025072Z \u001b[36;1m  if (( SECONDS >= deadline )); then\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4025550Z \u001b[36;1m    printf 'The retained runtime controller did not finish within its available execution window.\\n' >&2\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4026012Z \u001b[36;1m    exit 124\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4026205Z \u001b[36;1m  fi\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4026379Z \u001b[36;1m  sleep 10\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4026566Z \u001b[36;1mdone\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4027123Z \u001b[36;1mresult=\"$(cat \"$FOCUSED_RUNTIME/evidence/runtime-controller-exit\")\"\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4027494Z \u001b[36;1mcase \"$result\" in\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4027851Z \u001b[36;1m  0 | 1 | 2 | 3 | 4 | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 124) exit \"$result\" ;;\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4028633Z \u001b[36;1m  *) printf 'Invalid runtime controller exit receipt: %s\\n' \"$result\" >&2; exit 1 ;;\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4029029Z \u001b[36;1mesac\u001b[0m\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4061356Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4061680Z env:\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4061869Z   TARGET: aarch64-unknown-linux-gnu\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4062138Z   CODEX_CI_TARGET: aarch64-unknown-linux-gnu\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4062404Z   CODEX_CI_PROFILE: ci-test\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4062621Z   CARGO_INCREMENTAL: 0\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4062818Z   CARGO_CACHE_PARTS: 1\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4063016Z   RUST_BACKTRACE: 1\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4063204Z   RUST_LIB_BACKTRACE: 0\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4063447Z   RUST_MIN_STACK: 8388608\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4063676Z   CI_BUILD_ROOT: /home/runner/.cache/codex-ci\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4064049Z   CODEX_REPO_ROOT: /home/runner/work/codex-unleashed/codex-unleashed/upstream\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4064458Z   BAZEL_OUTPUT_BASE: /home/runner/.cache/codex-ci/o\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4064790Z   BAZEL_OUTPUT_USER_ROOT: /home/runner/.cache/codex-ci/b\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4065195Z   BAZEL_REPOSITORY_CACHE: /home/runner/.cache/codex-ci/bazel-repository-cache\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4065750Z   BAZEL_REPO_CONTENTS_CACHE: /home/runner/.cache/codex-ci/bazel-repo-contents-cache-40782020085-test\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4066286Z   CARGO_TARGET_DIR: /home/runner/work/_temp/codex-runtime-Fl6tFh/target\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4066641Z   TEMP: /home/runner/.cache/codex-ci/tmp\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4066901Z   TMP: /home/runner/.cache/codex-ci/tmp\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4067152Z   CARGO_NET_GIT_FETCH_WITH_CLI: true\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4067464Z   FOCUSED_RUNTIME: /home/runner/work/_temp/codex-runtime-Fl6tFh\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4067875Z   CARGO_HOME: /home/runner/work/_temp/codex-runtime-Fl6tFh/cargo-home\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4068478Z   TMPDIR: /home/runner/work/_temp/codex-runtime-Fl6tFh/tmp\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4068782Z   CARGO_TERM_COLOR: always\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4069004Z   CACHE_ON_FAILURE: false\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4069309Z   CARGO_CACHE_REPOSITORY: ghcr.io/holdmyspot-com/cargo-cache-main-new\ntest\tAwait the retained client's runtime result\t2026-10-28T22:44:22.4069645Z ##[endgroup]\ntest\tAwait the retained client's runtime result\t2026-10-28T23:03:08.8038718Z ##[error]Process completed with exit code 143.\n",
+  "local_receipts": {
+    "linux-arm-runtime-wy1pep/ssh-exit.json": {
+      "bytes": 28,
+      "sha256": "9aceb4d8e429cbc8b5b985e49af92254ca39a104dc043d0e6dabdd63163d79c4",
+      "text": "{\"exit\": 1, \"completed\": 26}"
+    },
+    "linux-arm-recovery-hezaiak5/ssh-exit.json": {
+      "bytes": 29,
+      "sha256": "e9408a019c9cc36a23c8b770ee803a965c5b94ef99c2f7bca5ebcaa15eaf1c35",
+      "text": "{\"exit\": 255, \"completed\": 0}"
+    },
+    "linux-arm-recovery-hezaiak5/ssh-transcript": {
+      "bytes": 306,
+      "sha256": "be3218584f4acd2b0a0358ed0768beb53144cb5f540d79edc5a4dff1e99c70aa",
+      "text": "upterm: no host is connected for session UbyE4jH3TvOfUE8vjU2c right now. If it's reconnecting, try again once it's back; on some relays the host then has a new command to share. Otherwise it may have ended, or the ID may be wrong.\r\nUbyE4jH3TvOfUE8vjU2c@uptermd.upterm.dev: Permission denied (publickey).\r\r\n"
+    }
+  },
+  "replacement_run_id": 40788318198,
+  "recovery": "Original hosted job is terminal; original Upterm relay reports no connected host. Replacement retains the same source and workflow; private partial cache restoration is attempted before any unresolved compilation. No active job was cancelled."
+}
