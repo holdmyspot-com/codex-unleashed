@@ -188,8 +188,37 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "$TARGET" > "$FOCUSED_RUNTIME/evidence/environment-ready"
+          report_progress() {
+            printf '\nNative runtime progress at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/' /proc/meminfo
+            printf 'Load: '
+            cat /proc/loadavg
+            df -h "$FOCUSED_RUNTIME"
+            for metric in /proc/pressure/memory /sys/fs/cgroup/memory.events /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max; do
+              printf '%s: ' "$metric"
+              if [[ -r "$metric" ]]; then cat "$metric"; else printf 'unavailable\n'; fi
+            done
+            ps -eo pid,ppid,comm,rss,pcpu --sort=-rss | sed -n '1,9p'
+            if [[ -d "$FOCUSED_RUNTIME/evidence/native-runtime" ]]; then
+              find "$FOCUSED_RUNTIME/evidence/native-runtime" -maxdepth 2 -type f -name '*-exit' -print -exec cat {} \;
+              for build_log in "$FOCUSED_RUNTIME"/evidence/native-runtime/*/build.log; do
+                if [[ -f "$build_log" ]]; then printf '%s\n' "$build_log"; tail -n 2 "$build_log"; fi
+              done
+            fi
+            if sudo -n journalctl -k --since '-90 seconds' --priority warning --no-pager -n 5; then
+              :
+            else
+              printf 'Kernel warning diagnostics unavailable.\n'
+            fi
+          }
+
           deadline=$((SECONDS+17400))
+          next_progress=0
           until [[ -f "$FOCUSED_RUNTIME/evidence/runtime-controller-exit" ]]; do
+            if (( SECONDS >= next_progress )); then
+              if report_progress | tee "$FOCUSED_RUNTIME/evidence/runtime-progress.txt"; then :; else printf 'Runtime progress sampling failed; controller outcome remains authoritative.\n'; fi
+              next_progress=$((SECONDS+60))
+            fi
             if (( SECONDS >= deadline )); then
               printf 'The retained runtime controller did not finish within its available execution window.\n' >&2
               exit 124

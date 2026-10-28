@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Observe the original connected controller on replacement native Linux ARM64 run 40788318198. Retain its exact discovery, named outcomes and source/dependency guards; compare any new failure with upstream before repair. Continue only unresolved work in the same workspace, then retain private-cache and terminal lifecycle receipts. Accepted other-platform tests must not be repeated.",
+  "next_action": "Run the focused Linux ARM64 workflow with periodic host/stage diagnostics, connect before execution, restore private partial state and continue only unresolved native CLI/app-server work. Investigate any resource-pressure or shutdown evidence before another retry; retain named outcomes and final guards/cache/lifecycle. Accepted other-platform tests must not be repeated.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -1170,7 +1170,7 @@
       "replacement_job": 123166970911,
       "source_state": "Exact selected source; environment-only diagnostic harness.",
       "cache_restore": "Two-part private partial hit in 48 seconds, digest sha256:5b5191d67082ad5d778c491d970515d18c8bbf51f36e0ae417d0739adeb63d3b.",
-      "status": "Active connected native runtime controller; no terminal runtime acceptance claimed."
+      "status": "Second runner shutdown confirmed; no terminal runtime acceptance. Preserve its partial cache and diagnose host pressure on the next instrumented retained worker."
     }
   },
   "current_source_package_runtime": {
