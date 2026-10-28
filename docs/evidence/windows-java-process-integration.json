@@ -1,0 +1,1043 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-28T05:56:22.298440+00:00",
+  "outcome": "passed-local-project-and-named-module-integration",
+  "source": {
+    "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java",
+    "sha256": "be5a44f5b2bcab983673c12da398298dd9f4fca1fea9acaf5c7e657479c66570",
+    "native_evidence": "docs/evidence/windows-java-process-owner.json",
+    "equivalence": "Production source is byte-identical to both accepted native standalone sources. No new dependency or module export is introduced."
+  },
+  "new_tests": {
+    "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java",
+    "sha256": "7bb296fc927b6187ac4961c8a4c86a0d2559a6c579fe9a11104fa9b5ed648379",
+    "cases": 7,
+    "claim": "Preserve zero/nonzero/unsigned root statuses and abortion independently; reject values outside unsigned DWORD range."
+  },
+  "build_inputs": {
+    "tooling/cli/pom.xml": "07aa5a1ec15b59a36ebd6861be489b0d9effbd113cd4768913f9226c3b457e6d",
+    "tooling/cli/src/main/java/module-info.java": "1871074f7a114387c21191d4f350302dbd4dcd774067ff6fdcec89a721bbe3e1"
+  },
+  "jdk": "Zulu OpenJDK 27+35 on local Linux x86_64",
+  "initial_complete_verification": {
+    "receipt": {
+      "exit": 0,
+      "completed_at": "2026-10-28T05:49:55.585512+00:00",
+      "command": "mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local=$PWD/.cat/work/temp/build-caches/maven/repository verify",
+      "log": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/maven.log"
+    },
+    "log": {
+      "sha256": "e0ccea0712ae3c5f8cfd7764a816d6c94ca405d3fd62fca64fb248a0df773c54",
+      "bytes": 5473,
+      "text": "[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------< com.holdmyspot.codexunleashed:tooling-cli >--------------\n[INFO] Building Codex build cache inputs 1.0-SNAPSHOT\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- resources:3.4.0:resources (default-resources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/main/resources\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-compile) @ tooling-cli ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 26 source files with javac [debug release 27 module-path] to ../../.cat/work/temp/build-caches/maven/source-cache/classes\n[INFO] \n[INFO] --- resources:3.4.0:testResources (default-testResources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/test/resources\n[INFO] \n[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ tooling-cli ---\n[INFO] Recompiling the module because of changed dependency.\n[INFO] Compiling 12 source files with javac [debug release 27 module-path] to ../../.cat/work/temp/build-caches/maven/source-cache/test-classes\n[INFO] \n[INFO] --- surefire:3.6.0:test (default-test) @ tooling-cli ---\n[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider\n[INFO] TestNG is present. Adding per default org.junit.support:testng-engine:1.1.0\n[INFO] \n[INFO] -------------------------------------------------------\n[INFO]  T E S T S\n[INFO] -------------------------------------------------------\nSLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\nWARNING: A restricted method in java.lang.foreign.Linker has been called\nWARNING: java.lang.foreign.Linker::downcallHandle has been called by com.holdmyspot.codexunleashed.tooling.UnixFileTimes$Binding in module com.holdmyspot.codexunleashed.tooling (file:/home/gili/codex-unleashed/workspace/tooling/cli/../../.cat/work/temp/build-caches/maven/source-cache/classes/)\nWARNING: Use --enable-native-access=com.holdmyspot.codexunleashed.tooling to avoid a warning for callers in this module\nWARNING: Restricted methods will be blocked in a future release unless native access is enabled\n\n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.341 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.199 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.088 s -- in com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 12.69 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 72, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] \n[INFO] --- jar:3.5.1:jar (default-jar) @ tooling-cli ---\n[INFO] Building jar: /home/gili/codex-unleashed/workspace/tooling/cli/../../.cat/work/temp/build-caches/maven/source-cache/tooling-cli-1.0-SNAPSHOT.jar\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  18.949 s\n[INFO] Finished at: 2026-10-28T01:49:55-04:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    "tests": 72
+  },
+  "focused_verification": {
+    "receipt": {
+      "exit": 0,
+      "completed_at": "2026-10-28T05:53:16.320081+00:00",
+      "command": "mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local=$PWD/.cat/work/temp/build-caches/maven/repository -Dtest=WindowsProcessTest test"
+    },
+    "log": {
+      "sha256": "8ba09a38d99fc2dc3a897257559020ea1ba3e534510bfd15036ed881af29af41",
+      "bytes": 2340,
+      "text": "[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------< com.holdmyspot.codexunleashed:tooling-cli >--------------\n[INFO] Building Codex build cache inputs 1.0-SNAPSHOT\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- resources:3.4.0:resources (default-resources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/main/resources\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-compile) @ tooling-cli ---\n[INFO] Nothing to compile - all classes are up to date.\n[INFO] \n[INFO] --- resources:3.4.0:testResources (default-testResources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/test/resources\n[INFO] \n[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ tooling-cli ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 13 source files with javac [debug release 27 module-path] to ../../.cat/work/temp/build-caches/maven/source-cache/test-classes\n[INFO] \n[INFO] --- surefire:3.6.0:test (default-test) @ tooling-cli ---\n[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider\n[INFO] TestNG is present. Adding per default org.junit.support:testng-engine:1.1.0\n[INFO] \n[INFO] -------------------------------------------------------\n[INFO]  T E S T S\n[INFO] -------------------------------------------------------\nSLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.064 s -- in com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  5.033 s\n[INFO] Finished at: 2026-10-28T01:53:16-04:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    "tests": 7
+  },
+  "complete_verification": {
+    "receipt": {
+      "exit": 0,
+      "completed_at": "2026-10-28T05:54:34.227287+00:00",
+      "command": "mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local=$PWD/.cat/work/temp/build-caches/maven/repository verify"
+    },
+    "log": {
+      "sha256": "13fe3747a3d3a7e80da06cf1291e010f6bb3127fa4e6049b30b555f9b061bb4b",
+      "bytes": 5245,
+      "text": "[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------< com.holdmyspot.codexunleashed:tooling-cli >--------------\n[INFO] Building Codex build cache inputs 1.0-SNAPSHOT\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- resources:3.4.0:resources (default-resources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/main/resources\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-compile) @ tooling-cli ---\n[INFO] Nothing to compile - all classes are up to date.\n[INFO] \n[INFO] --- resources:3.4.0:testResources (default-testResources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/test/resources\n[INFO] \n[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ tooling-cli ---\n[INFO] Nothing to compile - all classes are up to date.\n[INFO] \n[INFO] --- surefire:3.6.0:test (default-test) @ tooling-cli ---\n[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider\n[INFO] TestNG is present. Adding per default org.junit.support:testng-engine:1.1.0\n[INFO] \n[INFO] -------------------------------------------------------\n[INFO]  T E S T S\n[INFO] -------------------------------------------------------\nSLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\nWARNING: A restricted method in java.lang.foreign.Linker has been called\nWARNING: java.lang.foreign.Linker::downcallHandle has been called by com.holdmyspot.codexunleashed.tooling.UnixFileTimes$Binding in module com.holdmyspot.codexunleashed.tooling (file:/home/gili/codex-unleashed/workspace/tooling/cli/../../.cat/work/temp/build-caches/maven/source-cache/classes/)\nWARNING: Use --enable-native-access=com.holdmyspot.codexunleashed.tooling to avoid a warning for callers in this module\nWARNING: Restricted methods will be blocked in a future release unless native access is enabled\n\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.460 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.87 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.060 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.084 s -- in com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.043 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 79, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] \n[INFO] --- jar:3.5.1:jar (default-jar) @ tooling-cli ---\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  15.430 s\n[INFO] Finished at: 2026-10-28T01:54:34-04:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    "tests": 79
+  },
+  "named_module": {
+    "command": [
+      "java",
+      "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/tmp",
+      "--module-path",
+      "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/modules",
+      "--add-modules",
+      "com.holdmyspot.codexunleashed.tooling",
+      "--add-exports",
+      "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED",
+      "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/UnsupportedCheck.java",
+      "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52"
+    ],
+    "exit": 0,
+    "output": "module=com.holdmyspot.codexunleashed.tooling\nmodule-source=file:///home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/modules/tooling-cli-1.0-SNAPSHOT.jar\nUNSUPPORTED_PLATFORM_EXPLICIT=WindowsProcess requires native 64-bit Windows\nUNSIGNED_RESULT_RANGE_PASSED\n",
+    "completed_at": "2026-10-28T05:52:12.846468+00:00",
+    "driver": "import com.holdmyspot.codexunleashed.scheduler.WindowsProcess;\nimport java.lang.foreign.MemorySegment;\nimport java.nio.file.Path;\nimport java.util.List;\nimport java.util.Map;\n/**\n * Verifies explicit unsupported-platform rejection without a native fallback.\n */\npublic final class UnsupportedCheck\n{\n    /**\n     * Calls the real operation with otherwise-valid Linux launch inputs.\n     * @param arguments explicit existing fixture directory\n     * @throws Exception if unsupported acquisition appears successful or hides its category\n     */\n    public static void main(String[] arguments) throws Exception\n    {\n        var module=WindowsProcess.class.getModule();\n        if(module.isNamed()==false)throw new AssertionError(\"Owner was not loaded from a named module\");\n        System.out.println(\"module=\"+module.getName());\n        System.out.println(\"module-source=\"+module.getLayer().configuration().findModule(module.getName()).orElseThrow().reference().location().orElseThrow());\n        Path executable=Path.of(System.getProperty(\"java.home\"),\"bin\",\"java\");\n        try\n        {\n            WindowsProcess.start(List.of(executable.toString(),\"-version\"),Path.of(arguments[0]),\n                Map.of(),MemorySegment.ofAddress(1));\n            throw new AssertionError(\"Unsupported platform incorrectly launched\");\n        }\n        catch(UnsupportedOperationException expected)\n        {\n            if(expected.getMessage().contains(\"64-bit Windows\")==false)throw expected;\n            System.out.println(\"UNSUPPORTED_PLATFORM_EXPLICIT=\"+expected.getMessage());\n        }\n        if(new WindowsProcess.Result(4294967295L,false).rootExit()!=4294967295L)\n            throw new AssertionError(\"Unsigned result boundary changed\");\n        try\n        {\n            new WindowsProcess.Result(4294967296L,false);\n            throw new AssertionError(\"Out-of-range root status accepted\");\n        }\n        catch(IllegalArgumentException expected)\n        {\n            System.out.println(\"UNSIGNED_RESULT_RANGE_PASSED\");\n        }\n    }\n}\n",
+    "runtime_artifacts": [
+      {
+        "name": "commons-io-2.20.0.jar",
+        "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+      },
+      {
+        "name": "jackson-annotations-2.22.jar",
+        "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+      },
+      {
+        "name": "jackson-core-3.2.3.jar",
+        "sha256": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+      },
+      {
+        "name": "jackson-databind-3.2.3.jar",
+        "sha256": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2"
+      },
+      {
+        "name": "oshi-core-ffm-7.7.2.jar",
+        "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db"
+      },
+      {
+        "name": "oshi-common-7.7.2.jar",
+        "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51"
+      },
+      {
+        "name": "slf4j-api-2.0.20.jar",
+        "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+      },
+      {
+        "name": "tooling-cli-1.0-SNAPSHOT.jar",
+        "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+      }
+    ],
+    "setup_repair": "Use an external consumer namespace with an explicit diagnostic add-exports, matching the accepted memory-module probe. Named-module package ownership rejects a second source-launcher definition in the same package."
+  },
+  "setup_diagnostics": [
+    {
+      "command": [
+        "java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/tmp",
+        "--module-path",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/modules",
+        "--add-modules",
+        "com.holdmyspot.codexunleashed.tooling",
+        "--add-exports",
+        "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/UnsupportedCheck.java",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52"
+      ],
+      "exit": 1,
+      "output": "error: end of path to source file does not match its package name com.holdmyspot.codexunleashed.scheduler: /home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/UnsupportedCheck.java\n",
+      "completed_at": "2026-10-28T05:51:29.784935+00:00",
+      "driver": "package com.holdmyspot.codexunleashed.scheduler;\nimport java.lang.foreign.MemorySegment;\nimport java.nio.file.Path;\nimport java.util.List;\nimport java.util.Map;\n/**\n * Verifies explicit unsupported-platform rejection without a native fallback.\n */\npublic final class UnsupportedCheck\n{\n    /**\n     * Calls the real operation with otherwise-valid Linux launch inputs.\n     * @param arguments explicit existing fixture directory\n     * @throws Exception if unsupported acquisition appears successful or hides its category\n     */\n    public static void main(String[] arguments) throws Exception\n    {\n        var module=WindowsProcess.class.getModule();\n        if(module.isNamed()==false)throw new AssertionError(\"Owner was not loaded from a named module\");\n        System.out.println(\"module=\"+module.getName());\n        System.out.println(\"module-source=\"+module.getLayer().configuration().findModule(module.getName()).orElseThrow().reference().location().orElseThrow());\n        Path executable=Path.of(System.getProperty(\"java.home\"),\"bin\",\"java\");\n        try\n        {\n            WindowsProcess.start(List.of(executable.toString(),\"-version\"),Path.of(arguments[0]),\n                Map.of(),MemorySegment.ofAddress(1));\n            throw new AssertionError(\"Unsupported platform incorrectly launched\");\n        }\n        catch(UnsupportedOperationException expected)\n        {\n            if(expected.getMessage().contains(\"64-bit Windows\")==false)throw expected;\n            System.out.println(\"UNSUPPORTED_PLATFORM_EXPLICIT=\"+expected.getMessage());\n        }\n        if(new WindowsProcess.Result(4294967295L,false).rootExit()!=4294967295L)\n            throw new AssertionError(\"Unsigned result boundary changed\");\n        try\n        {\n            new WindowsProcess.Result(4294967296L,false);\n            throw new AssertionError(\"Out-of-range root status accepted\");\n        }\n        catch(IllegalArgumentException expected)\n        {\n            System.out.println(\"UNSIGNED_RESULT_RANGE_PASSED\");\n        }\n    }\n}\n",
+      "runtime_artifacts": [
+        {
+          "name": "commons-io-2.20.0.jar",
+          "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+        },
+        {
+          "name": "jackson-annotations-2.22.jar",
+          "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+        },
+        {
+          "name": "jackson-core-3.2.3.jar",
+          "sha256": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+        },
+        {
+          "name": "jackson-databind-3.2.3.jar",
+          "sha256": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2"
+        },
+        {
+          "name": "oshi-core-ffm-7.7.2.jar",
+          "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db"
+        },
+        {
+          "name": "oshi-common-7.7.2.jar",
+          "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51"
+        },
+        {
+          "name": "slf4j-api-2.0.20.jar",
+          "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+        },
+        {
+          "name": "tooling-cli-1.0-SNAPSHOT.jar",
+          "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+        }
+      ]
+    },
+    {
+      "command": [
+        "java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/tmp",
+        "--module-path",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/modules",
+        "--add-modules",
+        "com.holdmyspot.codexunleashed.tooling",
+        "--add-exports",
+        "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52"
+      ],
+      "exit": 1,
+      "output": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java:1: error: package exists in another module: com.holdmyspot.codexunleashed.tooling\npackage com.holdmyspot.codexunleashed.scheduler;\n^\n/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java:18: error: cannot find symbol\n        var module=WindowsProcess.class.getModule();\n                   ^\n  symbol:   class WindowsProcess\n  location: class UnsupportedCheck\n/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java:25: error: cannot find symbol\n            WindowsProcess.start(List.of(executable.toString(),\"-version\"),Path.of(arguments[0]),\n            ^\n  symbol:   variable WindowsProcess\n  location: class UnsupportedCheck\n/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java:34: error: package WindowsProcess does not exist\n        if(new WindowsProcess.Result(4294967295L,false).rootExit()!=4294967295L)\n                             ^\n/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-owner-integration-Z3nU52/driver/com/holdmyspot/codexunleashed/scheduler/UnsupportedCheck.java:38: error: package WindowsProcess does not exist\n            new WindowsProcess.Result(4294967296L,false);\n                              ^\n5 errors\nerror: compilation failed\n",
+      "completed_at": "2026-10-28T05:51:54.486186+00:00",
+      "driver": "package com.holdmyspot.codexunleashed.scheduler;\nimport java.lang.foreign.MemorySegment;\nimport java.nio.file.Path;\nimport java.util.List;\nimport java.util.Map;\n/**\n * Verifies explicit unsupported-platform rejection without a native fallback.\n */\npublic final class UnsupportedCheck\n{\n    /**\n     * Calls the real operation with otherwise-valid Linux launch inputs.\n     * @param arguments explicit existing fixture directory\n     * @throws Exception if unsupported acquisition appears successful or hides its category\n     */\n    public static void main(String[] arguments) throws Exception\n    {\n        var module=WindowsProcess.class.getModule();\n        if(module.isNamed()==false)throw new AssertionError(\"Owner was not loaded from a named module\");\n        System.out.println(\"module=\"+module.getName());\n        System.out.println(\"module-source=\"+module.getLayer().configuration().findModule(module.getName()).orElseThrow().reference().location().orElseThrow());\n        Path executable=Path.of(System.getProperty(\"java.home\"),\"bin\",\"java\");\n        try\n        {\n            WindowsProcess.start(List.of(executable.toString(),\"-version\"),Path.of(arguments[0]),\n                Map.of(),MemorySegment.ofAddress(1));\n            throw new AssertionError(\"Unsupported platform incorrectly launched\");\n        }\n        catch(UnsupportedOperationException expected)\n        {\n            if(expected.getMessage().contains(\"64-bit Windows\")==false)throw expected;\n            System.out.println(\"UNSUPPORTED_PLATFORM_EXPLICIT=\"+expected.getMessage());\n        }\n        if(new WindowsProcess.Result(4294967295L,false).rootExit()!=4294967295L)\n            throw new AssertionError(\"Unsigned result boundary changed\");\n        try\n        {\n            new WindowsProcess.Result(4294967296L,false);\n            throw new AssertionError(\"Out-of-range root status accepted\");\n        }\n        catch(IllegalArgumentException expected)\n        {\n            System.out.println(\"UNSIGNED_RESULT_RANGE_PASSED\");\n        }\n    }\n}\n",
+      "runtime_artifacts": [
+        {
+          "name": "commons-io-2.20.0.jar",
+          "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+        },
+        {
+          "name": "jackson-annotations-2.22.jar",
+          "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+        },
+        {
+          "name": "jackson-core-3.2.3.jar",
+          "sha256": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+        },
+        {
+          "name": "jackson-databind-3.2.3.jar",
+          "sha256": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2"
+        },
+        {
+          "name": "oshi-core-ffm-7.7.2.jar",
+          "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db"
+        },
+        {
+          "name": "oshi-common-7.7.2.jar",
+          "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51"
+        },
+        {
+          "name": "slf4j-api-2.0.20.jar",
+          "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+        },
+        {
+          "name": "tooling-cli-1.0-SNAPSHOT.jar",
+          "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+        }
+      ],
+      "setup_repair": "Place the unchanged driver under directories matching its Java package, as JDK 27 source launching requires."
+    }
+  ],
+  "setup_cause": "The copied standalone driver used the production package. JDK27 source launching first rejects its directory/package mismatch, then JPMS rejects a split package. An external consumer namespace with a diagnostic add-exports loads the unchanged actual module. These are fixture setup failures, not behavioral regressions or native owner defects.",
+  "warnings": "Existing SLF4J no-provider and native-access runtime warnings remain visible and nonfatal.",
+  "accepted_scope": "Current production source compiles into the actual named tooling module; seven public result-contract cases and all 79 tooling tests pass. The JAR-loaded operation rejects Linux explicitly and preserves/rejects unsigned status boundaries. Native Windows behavior is carried forward only for the identical source from the earlier standalone receipts. The integrated actual named module and fresh linked distribution now also pass the native x64 ownership suite, with handle accounting and expected launcher behavior retained in native_windows_x64. The same integrated module and fresh linked runtime also pass on Windows ARM64, with the independent native Java-process census empty.",
+  "remaining_gates": [
+    "Actual process-memory measurement and pressure control",
+    "Controller composition, ordered retries and Cargo/Bazel acceptance across all six platforms"
+  ],
+  "cleanup": {
+    "owner": "/root",
+    "local": "The invocation-owned scratch, copied runtime JARs, driver and logs are removed after their exact receipts are embedded here. Production source and tests remain in their maintained paths.",
+    "live_resources": "none; both Maven tool sessions and the module subprocess have terminal results."
+  },
+  "native_windows_x64": {
+    "recorded_at": "2026-10-28T06:19:26.226895+00:00",
+    "run": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40641527043",
+    "workflow_ref": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+    "source_delivery": "Unpublished local module and distribution assembler transferred over one authenticated persistent Upterm connection; complete bundle and every runtime dependency hash verified before compilation/execution.",
+    "inputs": {
+      "drivers/OwnerChecks.java": {
+        "size": 22880,
+        "sha256": "1972e8287629ccd4cfbd303b2d88956ea767e3039605e453d636ec7fd8df0119"
+      },
+      "drivers/Workload.java": {
+        "size": 2423,
+        "sha256": "305d29c5a5525605bef41b6fbde0d14cb43e8d7fa92d99b25bef69be2b16e4fd"
+      },
+      "build/DistributionMain.java": {
+        "size": 3565,
+        "sha256": "87afa03d72e9af18de909381562a11e2b3bfa9a0f26bef2c0110b08366294557"
+      },
+      "modules/tooling-cli-1.0-SNAPSHOT.jar": {
+        "size": 132485,
+        "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+      },
+      "dependencies.json": {
+        "size": 1560,
+        "sha256": "3e4c921e65b7727f6cb295c1af5e79988045532b4c48e0d185e768192c90ea1b"
+      }
+    },
+    "runtime_artifacts": [
+      {
+        "name": "commons-io-2.20.0.jar",
+        "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+      },
+      {
+        "name": "jackson-annotations-2.22.jar",
+        "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+      },
+      {
+        "name": "jackson-core-3.2.3.jar",
+        "sha256": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+      },
+      {
+        "name": "jackson-databind-3.2.3.jar",
+        "sha256": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2"
+      },
+      {
+        "name": "oshi-core-ffm-7.7.2.jar",
+        "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db"
+      },
+      {
+        "name": "oshi-common-7.7.2.jar",
+        "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51"
+      },
+      {
+        "name": "slf4j-api-2.0.20.jar",
+        "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+      },
+      {
+        "name": "tooling-cli-1.0-SNAPSHOT.jar",
+        "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+      }
+    ],
+    "orchestration": "from rpc import rpc,base\nimport shlex,json\n\ndef execute(name,command,timeout=120):\n result=rpc(command,timeout)\n (base/(name+'.json')).write_text(json.dumps(result,indent=2))\n print(name+': '+result['output'],flush=True)\n\nexecute(\"jdk-setup\",'curl -fL --retry 2 https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_x64.zip -o jdk.zip > jdk-download.log 2>&1 && echo \\'1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c  jdk.zip\\' | sha256sum -c - && unzip -q jdk.zip -d jdk && export JAVA_HOME=$(find \"$PWD/jdk\" -mindepth 1 -maxdepth 1 -type d) && \"$JAVA_HOME/bin/java.exe\" -version',240)\nprogram=\"import pathlib,json,urllib.request,hashlib; deps=json.loads(pathlib.Path('dependencies.json').read_text()); [(pathlib.Path('modules',d['name']).write_bytes(urllib.request.urlopen(d['url']).read())) for d in deps]; inputs=json.loads(pathlib.Path('inputs.json').read_text()); [(print('VERIFIED',n),None) if len(pathlib.Path(n).read_bytes())==v['size'] and hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==v['sha256'] else (_ for _ in ()).throw(ValueError(n)) for n,v in inputs.items()]; [(print('VERIFIED_DEPENDENCY',d['name'])) if hashlib.sha256(pathlib.Path('modules',d['name']).read_bytes()).hexdigest()==d['sha256'] else (_ for _ in ()).throw(ValueError(d['name'])) for d in deps]\"\nexecute('dependencies','python -c '+shlex.quote(program),180)\nexecute('fixture-compile','mkdir -p classes build-classes module-run runtime-run; \"$JAVA_HOME/bin/javac.exe\" --release 27 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=drivers -d classes drivers/*.java && \"$JAVA_HOME/bin/javac.exe\" --release 27 -d build-classes build/DistributionMain.java',120)\nexecute('named-module','\"$JAVA_HOME/bin/java.exe\" -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/module-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > named-module.log 2>&1; result=$?; cat named-module.log; test \"$result\" = 0',120)\nexecute('distribution-assemble','\"$JAVA_HOME/bin/java.exe\" -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -cp build-classes com.holdmyspot.codexunleashed.distribution.DistributionMain modules runtime > distribution.log 2>&1; result=$?; cat distribution.log; test \"$result\" = 0',180)\nexecute('bundled-runtime','runtime/bin/java.exe -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/runtime-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > bundled-runtime.log 2>&1; result=$?; cat bundled-runtime.log; test \"$result\" = 0',120)\nexecute('launcher','TMPDIR=\"$PWD/tmp\" bash runtime/bin/codex-tooling > launcher.log 2>&1; result=$?; cat launcher.log; test \"$result\" = 2',60)\n",
+    "phases": {
+      "jdk-setup": {
+        "exit": 0,
+        "output": "jdk.zip: OK\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing) \u001b[24;1H\n__OWNER_DONE_request-353__:0\r\n"
+      },
+      "dependencies": {
+        "exit": 0,
+        "output": "VERIFIED drivers/OwnerChecks.java\r\nVERIFIED drivers/Workload.java\r\nVERIFIED build/DistributionMain.java\r\nVERIFIED modules/tooling-cli-1.0-SNAPSHOT.jar\r\nVERIFIED dependencies.json\r\nVERIFIED_DEPENDENCY commons-io-2.20.0.jar\r\nVERIFIED_DEPENDENCY jackson-annotations-2.22.jar\r\nVERIFIED_DEPENDENCY jackson-core-3.2.3.jar\r\nVERIFIED_DEPENDENCY jackson-databind-3.2.3.jar\r\nVERIFIED_DEPENDENCY oshi-core-ffm-7.7.2.jar\r\nVERIFIED_DEPENDENCY oshi-common-7.7.2.jar\r\nVERIFIED_DEPENDENCY slf4j-api-2.0.20.jar\r\n__OWNER_DONE_request-354__:0\r\n"
+      },
+      "fixture-compile": {
+        "exit": 0,
+        "output": "__OWNER_DONE_request-355__:0\r\n"
+      },
+      "named-module": {
+        "exit": 0,
+        "output": "IDENTITY=Windows Server 2025/amd64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUQ6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLXB3bHViNVx3aW5kb3dzLW1vZHVsZVxtb2R1bGUtcnVuDQpT\r\n\u001b[23;80HTVERFUlJfUkVUQUlORUQNCg==\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=5128\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=2760\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=3312\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2184\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5384\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4304\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1556\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1544\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6376\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6096\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2792\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=620\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=664\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7192\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4372\r\nPASS HANDLE_ACCOUNTING before=313 after=313 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-356__:0\r\n"
+      },
+      "distribution-assemble": {
+        "exit": 0,
+        "output": "__OWNER_DONE_request-357__:0\r\n"
+      },
+      "bundled-runtime": {
+        "exit": 0,
+        "output": "IDENTITY=Windows Server 2025/amd64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUQ6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLXB3bHViNVx3aW5kb3dzLW1vZHVsZVxydW50aW1lLXJ1bg0K\r\n\u001b[23;80HKU1RERVJSX1JFVEFJTkVEDQo=\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=7412\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=8400\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=3668\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7504\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7436\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7864\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1616\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8324\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4508\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5704\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4548\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1416\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2408\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=872\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5140\r\nPASS HANDLE_ACCOUNTING before=305 after=305 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-358__:0\r\n"
+      },
+      "launcher": {
+        "exit": 0,
+        "output": "Usage: codex-tooling clean-cached-release-binaries [--record-source-inputs] <wor\r\n\u001b[23;80Hrkspace> <target> [binary ...]\r\n       codex-tooling preview-ghcr-retention < inventory.json\r\n__OWNER_DONE_request-359__:0\r\n"
+      },
+      "remote-cleanup": {
+        "exit": 0,
+        "output": "ERROR: Invalid argument/option - 'C:/msys64/FI'.\r\nType \"TASKLIST /?\" for usage.\r\nOWNED_NATIVE_STORAGE_REMOVED\r\n__OWNER_DONE_request-362__:0\r\n"
+      }
+    },
+    "native_log_archive": {
+      "encoding": "base64-zip",
+      "size": 7680,
+      "sha256": "c2416f7816a521cdf25276db3772352848d352cf6a8566d53d1e8f6e1c39f640",
+      "data": "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"
+    },
+    "ssh_transcript": {
+      "encoding": "base64-gzip",
+      "uncompressed_size": 36432,
+      "sha256": "f9be668e2d569433f03f9cde592e36ed6444c588f1f8d969362e6a1f6d37f543",
+      "data": "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"
+    },
+    "diagnostic_requests": [
+      {
+        "identity": "request-001",
+        "request": {
+          "command": "{ pwd; uname -m; python --version; }; result=$?; printf '__OWNER_DONE_request-001__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "\u001b[?2004l\u001b[?2004h\u001b[?2004l\r\n> \r\n/home/runneradmin\r\nx86_64\r\nPython 3.12.10\r\n\u001b[?2004h__OWNER_DONE_request-001__:0\r\nOWNER> "
+        }
+      },
+      {
+        "identity": "request-002",
+        "request": {
+          "command": "{ test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed-part && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"; mkdir -p \"$RUNNER_DEBUG_SMOKE/windows-module\"; cd \"$RUNNER_DEBUG_SMOKE/windows-module\"; export TMPDIR=\"$PWD/tmp\"; mkdir -p tmp; pwd; command -v python; python -c \"import sys; print(sys.executable)\"; }; result=$?; printf '__OWNER_DONE_request-002__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "\u001b[?2004l\u001b[?2004h\u001b[?2004l\r\n> \r\n/d/a/_temp/runner-debug-smoke-pwlub5/windows-module\r\n/c/hostedtoolcache/windows/Python/3.12.10/x64/python\r\nC:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\python.exe\r\n__OWNER_DONE_request-002__:0\r\n\u001b[?2004h"
+        }
+      },
+      {
+        "identity": "request-003",
+        "request": {
+          "command": "{ : > inputs.b64; }; result=$?; printf '__OWNER_DONE_request-003__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "\u001b[?2004l\u001b[?2004h\u001b[?2004l\u001b[?2004h\r\n> \r\n__OWNER_DONE_request-003__:0\r\nOWNER> "
+        }
+      },
+      {
+        "identity": "request-004",
+        "request": {
+          "command": "{ printf '%s' 'H4sICHKR4WoC/2lucHV0cy50YXIA7L0HVFNNtz9sp4hdERAxhg5JqIqCoFQBaVKlG5IDBEICKVSxAGLDhgUVwY6VoiKiWAErNizYsCA2EBEVBft/5pyTECARfd7nvd9d67uspZBzZva0vX+7zJ4JncOIRThcPdc4FsKxDkdokVxKBDWW2utf/NEHPxONjdHf4KfL7wnGE4yFz7DnBoYTDAx6EfR7/Q/88Lk8Kgc03+v/nz/RVFokNQwh0NhRlHA2kx6VwI1m8yg0Nh2J57OYCJUbjtApXBr4n89EOGayjKhoNodHgDxCYbApOp2fMKmsMEoom4Mwwlhi3zFYsexIpOsrFqBEC6dyuAiP4sGjsuhUDt0a+8ztXjKUwexGgceIQig2fA6Vx2CzOr/i8xjMrsXRZzQ2i8bncBAWj+IJqrP5PNt4GhItgQIHCUPiKW5UHg/hgPd6OjqyBB2CbTzCoTG4CJfAC0cIVBqPT2USHEElAhtKFHjKYfPDwgks0LFY' >> inputs.b64; }; result=$?; printf '__OWNER_DONE_request-004__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "\u001b[?2004l\u001b[?2004h\u001b[?2004l\u001b[?2004h\r\n> \r\n__OWNER_DONE_request-004__:0\r\nOWNER> "
+        }
+      },
+      {
+        "identity": "request-005",
+        "request": {
+          "command": "{ printf '%s' 'hODDYNHZcVwCk8pngTnlEsBYCeHgPyasTGPzWTwGmCVAWU82mh/CZNAIoQwWIEljUrlcgoiUyibJEsBPNJBfKg8hAC7mgcKge+EEDpvNM5P4Fo5I8tvoBF44HL6Y9x48Dugb1hOE+7si2GAdWLFUJoNuy+GwOVhpdM7gjw7Bnc/CpiyUTeNzETqBg4BRMhmhCC2BBicDzEsolcHkcwBxPoOHUAQ1p0VTOdQoApUTxo8CS8dFJxoUZsTzYGE6g4PQeGxOAonARpcSkIUTQmazmAlksIgchMsFjwlRgMWFNOEygWURrj+BEQq6QGCHcBFOLDUEdCgMDhP2iItX0sMmAFskfPyxbAadEEVlsLSwmfAP7OinNqFrIygBbBnhD+ylOVwECjtUS1jNXz9Q20xYBlseMaUMREvBJRaW8Ujg8pAoShjCc+OwoxEOL0GLiHJ1ODsKIWqTiCEMFpGEPULiwZMOOvhS90wKLUiJBsWI2toUHtsyhMtm8nkIrKgFH2DT' >> inputs.b64; }; result=$?; printf '__OWNER_DONE_request-005__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "timeout": true,
+          "output": "\u001b[?2004l\u001b[?2004h\u001b[?2004l\r\n> \r\n__OWNER_DONE_request-005__:0\u001b[?2004h\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-006",
+        "request": {
+          "command": "{ bind 'set enable-bracketed-paste off'; PS1=''; printf 'STATUS_NORMALIZATION_CHECK\\n'; }; result=$?; printf '__OWNER_DONE_request-006__:%s\n' \"$result\"",
+          "timeout": 15
+        },
+        "result": {
+          "exit": 0,
+          "output": "\u001b[?2004l\r\u001b[?2004h\u001b[?2004l\n>\r\nSTATUS_NORMALIZATION_CHECK\r\n__OWNER_DONE_request-006__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-007",
+        "request": {
+          "command": "{ python -c 'import pathlib,hashlib,json; p=pathlib.Path('\"'\"'inputs.b64'\"'\"').read_bytes(); print('\"'\"'PARTIAL='\"'\"'+json.dumps(dict(size=len(p),sha256=hashlib.sha256(p).hexdigest())))'; }; result=$?; printf '__OWNER_DONE_request-007__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "> PARTIAL={\"size\": 1024, \"sha256\": \"0d2ab38807cf40773d5e1f3b3355348676ff9e55c0a4\r\n\u001b[23;80H462b4c9278103c4001065\"}\r\n__OWNER_DONE_request-007__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-008",
+        "request": {
+          "command": "{ PS2=\"\"; stty cols 1000 rows 1000; export COLUMNS=1000; printf \"TERMINAL_NORMALIZED\\n\"; }; result=$?; printf '__OWNER_DONE_request-008__:%s\n' \"$result\"",
+          "timeout": 15
+        },
+        "result": {
+          "exit": 0,
+          "output": "> TERMINAL_NORMALIZED\r\n__OWNER_DONE_request-008__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-009",
+        "request": {
+          "command": "{ python -c 'import pathlib,hashlib,json; p=pathlib.Path('\"'\"'inputs.b64'\"'\"').read_bytes(); print('\"'\"'PARTIAL='\"'\"'+json.dumps(dict(size=len(p),sha256=hashlib.sha256(p).hexdigest())))'; }; result=$?; printf '__OWNER_DONE_request-009__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "PARTIAL={\"size\": 1024, \"sha256\": \"0d2ab38807cf40773d5e1f3b3355348676ff9e55c0a462\r\n\u001b[23;80H2b4c9278103c4001065\"}\r\n__OWNER_DONE_request-009__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-010",
+        "request": {
+          "command": "{ python -c 'import pathlib,hashlib; p=pathlib.Path('\"'\"'inputs.b64'\"'\"').read_bytes(); h=hashlib.sha256(p).hexdigest(); print('\"'\"'SIZE='\"'\"'+str(len(p))); [print('\"'\"'HASH='\"'\"'+h[i:i+24]) for i in range(0,len(h),24)]'; }; result=$?; printf '__OWNER_DONE_request-010__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "SIZE=1024\r\nHASH=0d2ab38807cf40773d5e1f3b\r\nHASH=3355348676ff9e55c0a462b4\r\nHASH=c9278103c4001065\r\n__OWNER_DONE_request-010__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-353",
+        "request": {
+          "command": "{ curl -fL --retry 2 https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_x64.zip -o jdk.zip > jdk-download.log 2>&1 && echo '1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c  jdk.zip' | sha256sum -c - && unzip -q jdk.zip -d jdk && export JAVA_HOME=$(find \"$PWD/jdk\" -mindepth 1 -maxdepth 1 -type d) && \"$JAVA_HOME/bin/java.exe\" -version; }; result=$?; printf '__OWNER_DONE_request-353__:%s\n' \"$result\"",
+          "timeout": 240
+        },
+        "result": {
+          "exit": 0,
+          "output": "jdk.zip: OK\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing) \u001b[24;1H\n__OWNER_DONE_request-353__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-354",
+        "request": {
+          "command": "{ python -c 'import pathlib,json,urllib.request,hashlib; deps=json.loads(pathlib.Path('\"'\"'dependencies.json'\"'\"').read_text()); [(pathlib.Path('\"'\"'modules'\"'\"',d['\"'\"'name'\"'\"']).write_bytes(urllib.request.urlopen(d['\"'\"'url'\"'\"']).read())) for d in deps]; inputs=json.loads(pathlib.Path('\"'\"'inputs.json'\"'\"').read_text()); [(print('\"'\"'VERIFIED'\"'\"',n),None) if len(pathlib.Path(n).read_bytes())==v['\"'\"'size'\"'\"'] and hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==v['\"'\"'sha256'\"'\"'] else (_ for _ in ()).throw(ValueError(n)) for n,v in inputs.items()]; [(print('\"'\"'VERIFIED_DEPENDENCY'\"'\"',d['\"'\"'name'\"'\"'])) if hashlib.sha256(pathlib.Path('\"'\"'modules'\"'\"',d['\"'\"'name'\"'\"']).read_bytes()).hexdigest()==d['\"'\"'sha256'\"'\"'] else (_ for _ in ()).throw(ValueError(d['\"'\"'name'\"'\"'])) for d in deps]'; }; result=$?; printf '__OWNER_DONE_request-354__:%s\n' \"$result\"",
+          "timeout": 180
+        },
+        "result": {
+          "exit": 0,
+          "output": "VERIFIED drivers/OwnerChecks.java\r\nVERIFIED drivers/Workload.java\r\nVERIFIED build/DistributionMain.java\r\nVERIFIED modules/tooling-cli-1.0-SNAPSHOT.jar\r\nVERIFIED dependencies.json\r\nVERIFIED_DEPENDENCY commons-io-2.20.0.jar\r\nVERIFIED_DEPENDENCY jackson-annotations-2.22.jar\r\nVERIFIED_DEPENDENCY jackson-core-3.2.3.jar\r\nVERIFIED_DEPENDENCY jackson-databind-3.2.3.jar\r\nVERIFIED_DEPENDENCY oshi-core-ffm-7.7.2.jar\r\nVERIFIED_DEPENDENCY oshi-common-7.7.2.jar\r\nVERIFIED_DEPENDENCY slf4j-api-2.0.20.jar\r\n__OWNER_DONE_request-354__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-355",
+        "request": {
+          "command": "{ mkdir -p classes build-classes module-run runtime-run; \"$JAVA_HOME/bin/javac.exe\" --release 27 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=drivers -d classes drivers/*.java && \"$JAVA_HOME/bin/javac.exe\" --release 27 -d build-classes build/DistributionMain.java; }; result=$?; printf '__OWNER_DONE_request-355__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-355__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-356",
+        "request": {
+          "command": "{ \"$JAVA_HOME/bin/java.exe\" -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/module-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > named-module.log 2>&1; result=$?; cat named-module.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-356__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "IDENTITY=Windows Server 2025/amd64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUQ6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLXB3bHViNVx3aW5kb3dzLW1vZHVsZVxtb2R1bGUtcnVuDQpT\r\n\u001b[23;80HTVERFUlJfUkVUQUlORUQNCg==\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=5128\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=2760\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=3312\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2184\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5384\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4304\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1556\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1544\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6376\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6096\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2792\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=620\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=664\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7192\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4372\r\nPASS HANDLE_ACCOUNTING before=313 after=313 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-356__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-357",
+        "request": {
+          "command": "{ \"$JAVA_HOME/bin/java.exe\" -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -cp build-classes com.holdmyspot.codexunleashed.distribution.DistributionMain modules runtime > distribution.log 2>&1; result=$?; cat distribution.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-357__:%s\n' \"$result\"",
+          "timeout": 180
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-357__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-358",
+        "request": {
+          "command": "{ runtime/bin/java.exe -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/runtime-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > bundled-runtime.log 2>&1; result=$?; cat bundled-runtime.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-358__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "IDENTITY=Windows Server 2025/amd64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUQ6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLXB3bHViNVx3aW5kb3dzLW1vZHVsZVxydW50aW1lLXJ1bg0K\r\n\u001b[23;80HKU1RERVJSX1JFVEFJTkVEDQo=\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=7412\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=8400\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=3668\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7504\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7436\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7864\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1616\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8324\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4508\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5704\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4548\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1416\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2408\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=872\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5140\r\nPASS HANDLE_ACCOUNTING before=305 after=305 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-358__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-359",
+        "request": {
+          "command": "{ TMPDIR=\"$PWD/tmp\" bash runtime/bin/codex-tooling > launcher.log 2>&1; result=$?; cat launcher.log; test \"$result\" = 2; }; result=$?; printf '__OWNER_DONE_request-359__:%s\n' \"$result\"",
+          "timeout": 60
+        },
+        "result": {
+          "exit": 0,
+          "output": "Usage: codex-tooling clean-cached-release-binaries [--record-source-inputs] <wor\r\n\u001b[23;80Hrkspace> <target> [binary ...]\r\n       codex-tooling preview-ghcr-retention < inventory.json\r\n__OWNER_DONE_request-359__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-360",
+        "request": {
+          "command": "{ python -c 'import io,zipfile,pathlib,base64,hashlib; b=io.BytesIO(); z=zipfile.ZipFile(b,'\"'\"'w'\"'\"',zipfile.ZIP_DEFLATED); paths=list(pathlib.Path('\"'\"'.'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'module-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'runtime-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+[pathlib.Path('\"'\"'inputs.json'\"'\"'),pathlib.Path('\"'\"'dependencies.json'\"'\"'),pathlib.Path('\"'\"'runtime/release'\"'\"')]; [z.write(p,str(p)) for p in paths]; z.close(); raw=b.getvalue(); h=hashlib.sha256(raw).hexdigest(); print('\"'\"'SIZE='\"'\"'+str(len(raw))); [print('\"'\"'HASH='\"'\"'+h[i:i+24]) for i in range(0,len(h),24)]; data=base64.b64encode(raw).decode(); [print('\"'\"'DATA='\"'\"'+data[i:i+48]) for i in range(0,len(data),48)]'; }; result=$?; printf '__OWNER_DONE_request-360__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 1,
+          "output": "Traceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\zipfile\\__init__.py\", \r\n\u001b[23;80H line 1854, in write\r\n    zinfo = ZipInfo.from_file(filename, arcname,\r\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\zipfile\\__init__.py\", \r\n\u001b[23;80H line 573, in from_file\r\n    zinfo = cls(arcname, date_time)\r\n            ^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"C:\\hostedtoolcache\\windows\\Python\\3.12.10\\x64\\Lib\\zipfile\\__init__.py\", \r\n\u001b[23;80H line 398, in __init__\r\n    raise ValueError('ZIP does not support timestamps before 1980')\r\nValueError: ZIP does not support timestamps before 1980\r\n__OWNER_DONE_request-360__:1\r\n"
+        }
+      },
+      {
+        "identity": "request-361",
+        "request": {
+          "command": "{ python -c 'import io,zipfile,pathlib,base64,hashlib; b=io.BytesIO(); z=zipfile.ZipFile(b,'\"'\"'w'\"'\"',zipfile.ZIP_DEFLATED); paths=list(pathlib.Path('\"'\"'.'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'module-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'runtime-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+[pathlib.Path('\"'\"'inputs.json'\"'\"'),pathlib.Path('\"'\"'dependencies.json'\"'\"'),pathlib.Path('\"'\"'runtime/release'\"'\"')]; [z.writestr(str(p),p.read_bytes()) for p in paths]; z.close(); raw=b.getvalue(); h=hashlib.sha256(raw).hexdigest(); print('\"'\"'SIZE='\"'\"'+str(len(raw))); [print('\"'\"'HASH='\"'\"'+h[i:i+24]) for i in range(0,len(h),24)]; data=base64.b64encode(raw).decode(); [print('\"'\"'DATA='\"'\"'+data[i:i+48]) for i in range(0,len(data),48)]'; }; result=$?; printf '__OWNER_DONE_request-361__:%s\n' \"$result\"",
+          "timeout": 120
+        }
+      },
+      {
+        "identity": "request-362",
+        "request": {
+          "command": "{ tasklist.exe /FI \"IMAGENAME eq java.exe\" /FO CSV /NH; cd ..; rm -rf -- windows-module; test ! -e windows-module; printf \"OWNED_NATIVE_STORAGE_REMOVED\\n\"; }; result=$?; printf '__OWNER_DONE_request-362__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "ERROR: Invalid argument/option - 'C:/msys64/FI'.\r\nType \"TASKLIST /?\" for usage.\r\nOWNED_NATIVE_STORAGE_REMOVED\r\n__OWNER_DONE_request-362__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-363",
+        "request": {
+          "exit": true
+        },
+        "result": {
+          "ssh_exit": 0
+        }
+      }
+    ],
+    "terminal_jobs": {
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 122660546242,
+          "name": "select",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\""
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "id": 122660575484,
+          "name": "Debug - x86_64-pc-windows-msvc",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job"
+            }
+          ]
+        }
+      ]
+    },
+    "ssh_terminal": {
+      "exit": 0
+    },
+    "accepted_scope": [
+      "Actual named-module ownership suite passes on Windows x64/JDK27.0.1+9; 48 repeated operations retain native handle count 313.",
+      "Fresh linked runtime ownership suite passes; 48 repeated operations retain native handle count 305.",
+      "Packaged shell launcher executes and returns expected invalid-arguments status 2."
+    ],
+    "diagnostic_limits": [
+      "The transfer initially misclassified command success as a timeout because terminal-control bytes separate status and newline. Disabling bracketed paste through the same connection restores status acquisition.",
+      "Initial partial-transfer JSON response wraps at the native console width. A short-line size/hash response verifies and resumes the existing 1024-byte prefix; full 131356-byte transfer hash matches.",
+      "Initial evidence ZIP collection rejects the input archive's epoch timestamp. Collecting file bytes with writestr succeeds; native tests are not repeated.",
+      "The final independent tasklist census fails because MSYS converts /FI into a path. Its output does not prove process absence. Actual suite assertions verify root/descendant termination, and removal of all owned JDK/runtime/test files plus hosted post-cleanup succeeds."
+    ],
+    "cleanup": "Owned remote test directory removed. Persistent SSH exits and is reaped with status zero. Both hosted debug and partial-state post steps pass; the run retains only its deliberate exit-17 failure. Local owned scratch and dedicated authentication key removed after durable evidence collection. ARM64 successor owns a separate new scratch/key and the copied nonsecret test inputs."
+  },
+  "native_windows_arm64": {
+    "recorded_at": "2026-10-28T06:28:30.559932+00:00",
+    "run": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40643328224",
+    "workflow_ref": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+    "source_delivery": "Unpublished local module and distribution assembler transferred over one authenticated persistent Upterm connection; complete bundle and every runtime dependency hash verified before compilation/execution.",
+    "inputs": {
+      "drivers/OwnerChecks.java": {
+        "size": 22880,
+        "sha256": "1972e8287629ccd4cfbd303b2d88956ea767e3039605e453d636ec7fd8df0119"
+      },
+      "drivers/Workload.java": {
+        "size": 2423,
+        "sha256": "305d29c5a5525605bef41b6fbde0d14cb43e8d7fa92d99b25bef69be2b16e4fd"
+      },
+      "build/DistributionMain.java": {
+        "size": 3565,
+        "sha256": "87afa03d72e9af18de909381562a11e2b3bfa9a0f26bef2c0110b08366294557"
+      },
+      "modules/tooling-cli-1.0-SNAPSHOT.jar": {
+        "size": 132485,
+        "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+      },
+      "dependencies.json": {
+        "size": 1560,
+        "sha256": "3e4c921e65b7727f6cb295c1af5e79988045532b4c48e0d185e768192c90ea1b"
+      }
+    },
+    "runtime_artifacts": [
+      {
+        "name": "commons-io-2.20.0.jar",
+        "sha256": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
+      },
+      {
+        "name": "jackson-annotations-2.22.jar",
+        "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+      },
+      {
+        "name": "jackson-core-3.2.3.jar",
+        "sha256": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+      },
+      {
+        "name": "jackson-databind-3.2.3.jar",
+        "sha256": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2"
+      },
+      {
+        "name": "oshi-core-ffm-7.7.2.jar",
+        "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db"
+      },
+      {
+        "name": "oshi-common-7.7.2.jar",
+        "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51"
+      },
+      {
+        "name": "slf4j-api-2.0.20.jar",
+        "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439"
+      },
+      {
+        "name": "tooling-cli-1.0-SNAPSHOT.jar",
+        "sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5"
+      }
+    ],
+    "orchestration": "from rpc import rpc,base\nimport shlex,json\n\ndef execute(name,command,timeout=120):\n result=rpc(command,timeout)\n (base/(name+'.json')).write_text(json.dumps(result,indent=2))\n print(name+': '+result['output'],flush=True)\n\nexecute(\"jdk-setup\",'curl -fL --retry 2 https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_aarch64.zip -o jdk.zip > jdk-download.log 2>&1 && echo \\'ba7a97ac574fbf176a84ce5f430233a297def2e5205b8bdb6290da454c4d8b33  jdk.zip\\' | sha256sum -c - && unzip -q jdk.zip -d jdk && export JAVA_HOME=$(find \"$PWD/jdk\" -mindepth 1 -maxdepth 1 -type d) && \"$JAVA_HOME/bin/java.exe\" -version',240)\nprogram=\"import pathlib,json,urllib.request,hashlib; deps=json.loads(pathlib.Path('dependencies.json').read_text()); [(pathlib.Path('modules',d['name']).write_bytes(urllib.request.urlopen(d['url']).read())) for d in deps]; inputs=json.loads(pathlib.Path('inputs.json').read_text()); [(print('VERIFIED',n),None) if len(pathlib.Path(n).read_bytes())==v['size'] and hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==v['sha256'] else (_ for _ in ()).throw(ValueError(n)) for n,v in inputs.items()]; [(print('VERIFIED_DEPENDENCY',d['name'])) if hashlib.sha256(pathlib.Path('modules',d['name']).read_bytes()).hexdigest()==d['sha256'] else (_ for _ in ()).throw(ValueError(d['name'])) for d in deps]\"\nexecute('dependencies','python -c '+shlex.quote(program),180)\nexecute('fixture-compile','mkdir -p classes build-classes module-run runtime-run; \"$JAVA_HOME/bin/javac.exe\" --release 27 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=drivers -d classes drivers/*.java && \"$JAVA_HOME/bin/javac.exe\" --release 27 -d build-classes build/DistributionMain.java',120)\nexecute('named-module','\"$JAVA_HOME/bin/java.exe\" -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/module-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > named-module.log 2>&1; result=$?; cat named-module.log; test \"$result\" = 0',120)\nexecute('distribution-assemble','\"$JAVA_HOME/bin/java.exe\" -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -cp build-classes com.holdmyspot.codexunleashed.distribution.DistributionMain modules runtime > distribution.log 2>&1; result=$?; cat distribution.log; test \"$result\" = 0',180)\nexecute('bundled-runtime','runtime/bin/java.exe -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/runtime-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > bundled-runtime.log 2>&1; result=$?; cat bundled-runtime.log; test \"$result\" = 0',120)\nexecute('launcher','TMPDIR=\"$PWD/tmp\" bash runtime/bin/codex-tooling > launcher.log 2>&1; result=$?; cat launcher.log; test \"$result\" = 2',60)\n",
+    "phases": {
+      "jdk-setup": {
+        "exit": 0,
+        "output": "jdk.zip: OK\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode)\r\n__OWNER_DONE_request-348__:0\r\n"
+      },
+      "dependencies": {
+        "exit": 0,
+        "output": "VERIFIED drivers/OwnerChecks.java\r\nVERIFIED drivers/Workload.java\r\nVERIFIED build/DistributionMain.java\r\nVERIFIED modules/tooling-cli-1.0-SNAPSHOT.jar\r\nVERIFIED dependencies.json\r\nVERIFIED_DEPENDENCY commons-io-2.20.0.jar\r\nVERIFIED_DEPENDENCY jackson-annotations-2.22.jar\r\nVERIFIED_DEPENDENCY jackson-core-3.2.3.jar\r\nVERIFIED_DEPENDENCY jackson-databind-3.2.3.jar\r\nVERIFIED_DEPENDENCY oshi-core-ffm-7.7.2.jar\r\nVERIFIED_DEPENDENCY oshi-common-7.7.2.jar\r\nVERIFIED_DEPENDENCY slf4j-api-2.0.20.jar\r\n__OWNER_DONE_request-349__:0\r\n"
+      },
+      "fixture-compile": {
+        "exit": 0,
+        "output": "__OWNER_DONE_request-350__:0\r\n"
+      },
+      "named-module": {
+        "exit": 0,
+        "output": "IDENTITY=Windows 11/aarch64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUM6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLTNzTXBrYVx3aW5kb3dzLW1vZHVsZVxtb2R1bGUtcnVuDQpT\r\n\u001b[23;80HTVERFUlJfUkVUQUlORUQNCg==\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=5948\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=540\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10544\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1948\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1640\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=872\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8756\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10428\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10560\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=11188\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10160\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8120\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5796\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10932\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4716\r\nPASS HANDLE_ACCOUNTING before=316 after=316 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-351__:0\r\nOWNER>\u001b[1C"
+      },
+      "distribution-assemble": {
+        "exit": 0,
+        "output": "__OWNER_DONE_request-352__:0\r\n"
+      },
+      "bundled-runtime": {
+        "exit": 0,
+        "output": "IDENTITY=Windows 11/aarch64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUM6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLTNzTXBrYVx3aW5kb3dzLW1vZHVsZVxydW50aW1lLXJ1bg0K\r\n\u001b[23;80HKU1RERVJSX1JFVEFJTkVEDQo=\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=6720\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=6300\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4728\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=636\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9004\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6960\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7828\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8700\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9104\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7976\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2844\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9784\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7796\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10184\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6632\r\nPASS HANDLE_ACCOUNTING before=308 after=308 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-353__:0\r\nOWNER>\u001b[1C"
+      },
+      "launcher": {
+        "exit": 0,
+        "output": "Usage: codex-tooling clean-cached-release-binaries [--record-source-input\r\n\u001b[23;80Hts] <workspace> <target> [binary ...]\r\n       codex-tooling preview-ghcr-retention < inventory.json\r\n__OWNER_DONE_request-354__:0\r\nOWNER>\u001b[1C"
+      },
+      "process-census": {
+        "exit": 0,
+        "output": "INFO: No tasks are running which match the specified criteria.\r\n__OWNER_DONE_request-361__:0\r\nOWNER>\u001b[1C"
+      },
+      "remote-cleanup": {
+        "exit": 0,
+        "output": "OWNED_NATIVE_STORAGE_REMOVED\r\n__OWNER_DONE_request-362__:0\r\nOWNER>\u001b[1C"
+      }
+    },
+    "native_log_archive": {
+      "encoding": "base64-zip",
+      "size": 8069,
+      "sha256": "aedb1a8b48cfd246d08d135899eaae9864e3159f17f7c6eff1e388f9353d7bba",
+      "data": "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"
+    },
+    "ssh_transcript": {
+      "encoding": "base64-gzip",
+      "uncompressed_size": 38621,
+      "sha256": "0209535b141c9c1607b204e44429f7c44dc53772c11fcdfb0df990ce4481244c",
+      "data": "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"
+    },
+    "diagnostic_requests": [
+      {
+        "identity": "request-001",
+        "request": {
+          "command": "{ test \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed-part && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"; mkdir -p \"$RUNNER_DEBUG_SMOKE/windows-module\"; cd \"$RUNNER_DEBUG_SMOKE/windows-module\"; export TMPDIR=\"$PWD/tmp\"; mkdir -p tmp; pwd; uname -m; python -c \"import sys; print(sys.executable)\"; }; result=$?; printf '__OWNER_DONE_request-001__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "/c/a/_temp/runner-debug-smoke-3sMpka/windows-module\r\nx86_64\r\nC:\\hostedtoolcache\\windows\\Python\\3.13.17\\arm64\\python.exe\r\n__OWNER_DONE_request-001__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-348",
+        "request": {
+          "command": "{ curl -fL --retry 2 https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_aarch64.zip -o jdk.zip > jdk-download.log 2>&1 && echo 'ba7a97ac574fbf176a84ce5f430233a297def2e5205b8bdb6290da454c4d8b33  jdk.zip' | sha256sum -c - && unzip -q jdk.zip -d jdk && export JAVA_HOME=$(find \"$PWD/jdk\" -mindepth 1 -maxdepth 1 -type d) && \"$JAVA_HOME/bin/java.exe\" -version; }; result=$?; printf '__OWNER_DONE_request-348__:%s\n' \"$result\"",
+          "timeout": 240
+        },
+        "result": {
+          "exit": 0,
+          "output": "jdk.zip: OK\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode)\r\n__OWNER_DONE_request-348__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-349",
+        "request": {
+          "command": "{ python -c 'import pathlib,json,urllib.request,hashlib; deps=json.loads(pathlib.Path('\"'\"'dependencies.json'\"'\"').read_text()); [(pathlib.Path('\"'\"'modules'\"'\"',d['\"'\"'name'\"'\"']).write_bytes(urllib.request.urlopen(d['\"'\"'url'\"'\"']).read())) for d in deps]; inputs=json.loads(pathlib.Path('\"'\"'inputs.json'\"'\"').read_text()); [(print('\"'\"'VERIFIED'\"'\"',n),None) if len(pathlib.Path(n).read_bytes())==v['\"'\"'size'\"'\"'] and hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==v['\"'\"'sha256'\"'\"'] else (_ for _ in ()).throw(ValueError(n)) for n,v in inputs.items()]; [(print('\"'\"'VERIFIED_DEPENDENCY'\"'\"',d['\"'\"'name'\"'\"'])) if hashlib.sha256(pathlib.Path('\"'\"'modules'\"'\"',d['\"'\"'name'\"'\"']).read_bytes()).hexdigest()==d['\"'\"'sha256'\"'\"'] else (_ for _ in ()).throw(ValueError(d['\"'\"'name'\"'\"'])) for d in deps]'; }; result=$?; printf '__OWNER_DONE_request-349__:%s\n' \"$result\"",
+          "timeout": 180
+        },
+        "result": {
+          "exit": 0,
+          "output": "VERIFIED drivers/OwnerChecks.java\r\nVERIFIED drivers/Workload.java\r\nVERIFIED build/DistributionMain.java\r\nVERIFIED modules/tooling-cli-1.0-SNAPSHOT.jar\r\nVERIFIED dependencies.json\r\nVERIFIED_DEPENDENCY commons-io-2.20.0.jar\r\nVERIFIED_DEPENDENCY jackson-annotations-2.22.jar\r\nVERIFIED_DEPENDENCY jackson-core-3.2.3.jar\r\nVERIFIED_DEPENDENCY jackson-databind-3.2.3.jar\r\nVERIFIED_DEPENDENCY oshi-core-ffm-7.7.2.jar\r\nVERIFIED_DEPENDENCY oshi-common-7.7.2.jar\r\nVERIFIED_DEPENDENCY slf4j-api-2.0.20.jar\r\n__OWNER_DONE_request-349__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-350",
+        "request": {
+          "command": "{ mkdir -p classes build-classes module-run runtime-run; \"$JAVA_HOME/bin/javac.exe\" --release 27 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=drivers -d classes drivers/*.java && \"$JAVA_HOME/bin/javac.exe\" --release 27 -d build-classes build/DistributionMain.java; }; result=$?; printf '__OWNER_DONE_request-350__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-350__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-351",
+        "request": {
+          "command": "{ \"$JAVA_HOME/bin/java.exe\" -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --module-path modules --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/module-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > named-module.log 2>&1; result=$?; cat named-module.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-351__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "IDENTITY=Windows 11/aarch64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUM6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLTNzTXBrYVx3aW5kb3dzLW1vZHVsZVxtb2R1bGUtcnVuDQpT\r\n\u001b[23;80HTVERFUlJfUkVUQUlORUQNCg==\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=5948\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=540\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10544\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1948\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=1640\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=872\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8756\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10428\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10560\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=11188\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10160\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8120\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=5796\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10932\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4716\r\nPASS HANDLE_ACCOUNTING before=316 after=316 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-351__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-352",
+        "request": {
+          "command": "{ \"$JAVA_HOME/bin/java.exe\" -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -cp build-classes com.holdmyspot.codexunleashed.distribution.DistributionMain modules runtime > distribution.log 2>&1; result=$?; cat distribution.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-352__:%s\n' \"$result\"",
+          "timeout": 180
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-352__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-353",
+        "request": {
+          "command": "{ runtime/bin/java.exe -Xint -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" -Dfile.encoding=UTF-8 --patch-module com.holdmyspot.codexunleashed.tooling=classes --enable-native-access=com.holdmyspot.codexunleashed.tooling -cp classes -m com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.OwnerChecks \"$(cygpath -w \"$PWD/runtime-run\")\" \"$(cygpath -w \"$(command -v python)\")\" > bundled-runtime.log 2>&1; result=$?; cat bundled-runtime.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-353__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "IDENTITY=Windows 11/aarch64/27.0.1+9\r\nJAVA_DIRECT_CONTROL=RElSRUNUX0FSR1M9Q25Od1lXTmxJSFpoYkhWbENuRjFiM1JsZG1Gc2RXVWdj\r\n\u001b[23;80HjMnhoYzJoY0lIUnlZV2xzYVc1blhGd2dQejgvDQpFTlY9bGl0ZXJhbCA/PyB2YWx1ZQ0KQ1dEPUM6XGFc\r\n\u001b[23;80HcX3RlbXBccnVubmVyLWRlYnVnLXNtb2tlLTNzTXBrYVx3aW5kb3dzLW1vZHVsZVxydW50aW1lLXJ1bg0K\r\n\u001b[23;80HKU1RERVJSX1JFVEFJTkVEDQo=\r\nPASS launch_inputs_output_root7_borrowed_handle via_python_fixture\r\nPASS native_WCHAR_argument_environment=3f00\r\nPASS native_WCHAR_argument_environment=fdff\r\nPASS native_WCHAR_argument_environment=00d8\r\nPASS native_WCHAR_argument_environment=3dd800de\r\nPASS live_descendant_remains_pending\r\nPASS whole_tree_termination_root0_aborted child=6720\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS close_drains_and_idempotence\r\nPASS construction_failure_after_launch root=6300\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=4728\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=636\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9004\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6960\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7828\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=8700\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9104\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7976\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=2844\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=9784\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=7796\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=10184\r\nPASS active_root_abort125\r\nPASS construction_failure cleanup_injected=false primary=CreateProcessW failed w\r\n\u001b[23;80Hwith Windows error 216 suppressed=0\r\nPASS construction_failure cleanup_injected=true primary=CreateProcessW failed wi\r\n\u001b[23;80Hith Windows error 216 suppressed=2\r\nPASS construction_failure_after_launch root=6632\r\nPASS HANDLE_ACCOUNTING before=308 after=308 repeated_owned_operations=48        \r\nJAVA_WINDOWS_OWNER_ALL_PASSED\r\n__OWNER_DONE_request-353__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-354",
+        "request": {
+          "command": "{ TMPDIR=\"$PWD/tmp\" bash runtime/bin/codex-tooling > launcher.log 2>&1; result=$?; cat launcher.log; test \"$result\" = 2; }; result=$?; printf '__OWNER_DONE_request-354__:%s\n' \"$result\"",
+          "timeout": 60
+        },
+        "result": {
+          "exit": 0,
+          "output": "Usage: codex-tooling clean-cached-release-binaries [--record-source-input\r\n\u001b[23;80Hts] <workspace> <target> [binary ...]\r\n       codex-tooling preview-ghcr-retention < inventory.json\r\n__OWNER_DONE_request-354__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-355",
+        "request": {
+          "command": "{ : > memory-driver.b64; }; result=$?; printf '__OWNER_DONE_request-355__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-355__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-356",
+        "request": {
+          "command": "{ printf '%s' 'aW1wb3J0IGNvbS5ob2xkbXlzcG90LmNvZGV4dW5sZWFzaGVkLnNjaGVkdWxlci5XaW5kb3dzTWVtb3J5OwpjbGFzcyBEcml2ZXIgewogcHVibGljIHN0YXRpYyB2b2lkIG1haW4oU3RyaW5nW10gYXJncykgdGhyb3dzIEV4Y2VwdGlvbiB7CiAgdmFyIHNhbXBsZT1XaW5kb3dzTWVtb3J5LnJlYWQoKTsKICBpZiAoc2FtcGxlLnRvdGFsQnl0ZXMoKTw9MCB8fCBzYW1wbGUuYXZhaWxhYmxlQnl0ZXMoKTwwIHx8IHNhbXBsZS5hdmFpbGFibGVCeXRlcygpPnNhbXBsZS50b3RhbEJ5dGVzKCkgfHwgc2FtcGxlLnN3YXBVc2VkQnl0ZXMoKTwwKSB0aHJvdyBuZXcgQXNzZXJ0aW9uRXJyb3Ioc2FtcGxlKTsKICBTeXN0ZW0ub3V0LnByaW50bG4oImphdmE9IitTeXN0ZW0uZ2V0UHJvcGVy' >> memory-driver.b64; }; result=$?; printf '__OWNER_DONE_request-356__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-356__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-357",
+        "request": {
+          "command": "{ printf '%s' 'dHkoImphdmEudmVyc2lvbiIpKyI6YXJjaD0iK1N5c3RlbS5nZXRQcm9wZXJ0eSgib3MuYXJjaCIpKTsKICBTeXN0ZW0ub3V0LnByaW50bG4oc2FtcGxlKTsKICBTeXN0ZW0ub3V0LnByaW50bG4oIldJTkRPV1NfTUVNT1JZX1BVQkxJQ19PUEVSQVRJT05fUEFTU0VEIik7CiB9Cn0K' >> memory-driver.b64; }; result=$?; printf '__OWNER_DONE_request-357__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "__OWNER_DONE_request-357__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-358",
+        "request": {
+          "command": "{ base64 -d memory-driver.b64 > Driver.java; echo '9d8b0b3dbadb983de45325e01381636520ea64120bf8c7b397ec1525c2fe14b2  Driver.java' | sha256sum -c -; mkdir -p memory-classes; \"$JAVA_HOME/bin/javac.exe\" --module-path modules --add-modules com.holdmyspot.codexunleashed.tooling --add-exports com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED -d memory-classes Driver.java; }; result=$?; printf '__OWNER_DONE_request-358__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "Driver.java: OK\r\n__OWNER_DONE_request-358__:0\r\n"
+        }
+      },
+      {
+        "identity": "request-359",
+        "request": {
+          "command": "{ runtime/bin/java.exe -Djava.io.tmpdir=\"$(cygpath -w \"$PWD/tmp\")\" --add-modules com.holdmyspot.codexunleashed.tooling --add-exports com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED --enable-native-access=com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm -cp memory-classes Driver > memory-runtime.log 2>&1; result=$?; cat memory-runtime.log; test \"$result\" = 0; }; result=$?; printf '__OWNER_DONE_request-359__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "SLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=aarch64\r\nSample[totalBytes=17169387520, availableBytes=13605703680, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n__OWNER_DONE_request-359__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-360",
+        "request": {
+          "command": "{ python -c 'import io,zipfile,pathlib,base64,hashlib; b=io.BytesIO(); z=zipfile.ZipFile(b,'\"'\"'w'\"'\"',zipfile.ZIP_DEFLATED); paths=list(pathlib.Path('\"'\"'.'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'module-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+list(pathlib.Path('\"'\"'runtime-run'\"'\"').glob('\"'\"'*.log'\"'\"'))+[pathlib.Path('\"'\"'inputs.json'\"'\"'),pathlib.Path('\"'\"'dependencies.json'\"'\"'),pathlib.Path('\"'\"'runtime/release'\"'\"')]; [z.writestr(str(p),p.read_bytes()) for p in paths]; z.close(); raw=b.getvalue(); h=hashlib.sha256(raw).hexdigest(); print('\"'\"'SIZE='\"'\"'+str(len(raw))); [print('\"'\"'HASH='\"'\"'+h[i:i+24]) for i in range(0,len(h),24)]; data=base64.b64encode(raw).decode(); [print('\"'\"'DATA='\"'\"'+data[i:i+48]) for i in range(0,len(data),48)]'; }; result=$?; printf '__OWNER_DONE_request-360__:%s\n' \"$result\"",
+          "timeout": 120
+        }
+      },
+      {
+        "identity": "request-361",
+        "request": {
+          "command": "{ MSYS_NO_PATHCONV=1 tasklist.exe /FI \"IMAGENAME eq java.exe\" /FO CSV /NH; }; result=$?; printf '__OWNER_DONE_request-361__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "INFO: No tasks are running which match the specified criteria.\r\n__OWNER_DONE_request-361__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-362",
+        "request": {
+          "command": "{ cd ..; rm -rf -- windows-module; test ! -e windows-module && printf \"OWNED_NATIVE_STORAGE_REMOVED\\n\"; }; result=$?; printf '__OWNER_DONE_request-362__:%s\n' \"$result\"",
+          "timeout": 120
+        },
+        "result": {
+          "exit": 0,
+          "output": "OWNED_NATIVE_STORAGE_REMOVED\r\n__OWNER_DONE_request-362__:0\r\nOWNER>\u001b[1C"
+        }
+      },
+      {
+        "identity": "request-363",
+        "request": {
+          "exit": true
+        },
+        "result": {
+          "ssh_exit": 0
+        }
+      }
+    ],
+    "ssh_terminal": {
+      "exit": 0
+    },
+    "accepted_scope": [
+      "Actual integrated named-module ownership suite passes on native Windows ARM64/JDK27.0.1+9; handle count 316 remains unchanged after 48 repeated operations.",
+      "Fresh linked distribution passes the ownership suite; handle count 308 remains unchanged after 48 repeated operations.",
+      "Packaged launcher returns expected invalid-arguments status 2.",
+      "Independent native tasklist census reports no Java processes; owned storage removal passes."
+    ],
+    "cleanup": "Owned remote test directory removed and native Java-process census empty. Persistent SSH exits and is reaped with status zero. Hosted debug and partial-state post steps pass; only the deliberate exit-17 failure remains. Local owned scratch and dedicated authentication key removed after durable evidence collection.",
+    "terminal_jobs": {
+      "jobs": [
+        {
+          "conclusion": "success",
+          "id": 122666303039,
+          "name": "select",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\""
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "id": 122666341072,
+          "name": "Debug - aarch64-pc-windows-msvc",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
