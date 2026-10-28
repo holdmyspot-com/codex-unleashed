@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scope": "Swap-growth history supplied to the Java scheduler policy; no native effects.",
+  "runtime": "Zulu27.28+101-CA OpenJDK 27+35, Linux x86_64",
+  "selection": "Accepted Policy already consumes swapRecovery separately from current native memoryPressure. Java per-instance state and exact primitive byte comparisons implement this local value mapping; no additional external capability, parser or scheduling policy is introduced.",
+  "source": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SwapRecovery.java",
+  "source_sha256": "ea67f8250665d1da02103e3043286cb208767c810850a7df195f60a4d9f30289",
+  "tests": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SwapRecoveryTest.java",
+  "tests_sha256": "9a8e34c58903b818a7f8a938827fb5110ff1016e85c93aaa62508d576d3465c5",
+  "contract": "First successful sample establishes baseline without claiming growth. Later growth latches an incident. The latch persists during pressure and clears on a non-growing sample without pressure. Negative input is rejected without mutating history. Instances belong to one controller thread; unsuccessful native reads must not call observe.",
+  "fresh_folder_proof": {
+    "initial_state": "A fresh empty proof directory is created and checked before adding source and these two declaration artifacts. Driver and classes remain outside it.",
+    "dependency_declaration": "Runtime/build: JDK 27, standard module java.base; no external dependencies.\n",
+    "resolution": "Zulu27.28+101-CA OpenJDK 27+35, Linux x86_64; javac --release 27.\n",
+    "final_source_matches_integrated_source": true,
+    "public_operation": "SwapRecovery.observe(long swapUsedBytes, boolean memoryPressure)",
+    "driver": "import com.holdmyspot.codexunleashed.scheduler.SwapRecovery;\n\n/**\n * Exercises actual history updates without sampling or controlling native processes.\n */\nclass SwapRecoveryProbe\n{\n    /**\n     * Checks growth, latched pressure, relief, invalid reads and exact long boundaries.\n     *\n     * @param arguments unused\n     */\n    public static void main(String[] arguments)\n    {\n        var history = new SwapRecovery();\n        check(history.observe(100, true), false, \"first occupied sample\");\n        check(history.observe(101, true), true, \"observed swap growth\");\n        check(history.observe(101, true), true, \"unchanged occupancy with pressure\");\n        check(history.observe(101, false), false, \"pressure relief without swap decrease\");\n        check(history.observe(101, true), false, \"old occupancy after recovery\");\n        check(history.observe(102, false), true, \"growth before pressure\");\n        try\n        {\n            history.observe(-1, false);\n            throw new AssertionError(\"negative sample accepted\");\n        }\n        catch (IllegalArgumentException expected)\n        {\n            System.out.println(\"negative sample rejected\");\n        }\n        check(history.observe(102, true), true, \"invalid sample preserved history\");\n        check(history.observe(0, false), false, \"occupancy reset without pressure\");\n        check(history.observe(Long.MAX_VALUE, true), true, \"exact large growth\");\n        check(history.observe(Long.MAX_VALUE, false), false, \"large occupancy with relief\");\n    }\n\n    /**\n     * Checks and prints the public operation's decision.\n     *\n     * @param actual the observed incident state\n     * @param expected the required incident state\n     * @param name the represented sample transition\n     */\n    private static void check(boolean actual, boolean expected, String name)\n    {\n        if (actual != expected)\n            throw new AssertionError(name + \": expected \" + expected + \", observed \" + actual);\n        System.out.println(name + \"=\" + actual);\n    }\n}\n",
+    "compile_command": "javac --release 27 -d <owned-root>/classes <owned-root>/proof/SwapRecovery.java <owned-root>/SwapRecoveryProbe.java",
+    "run_command": "java -cp <owned-root>/classes SwapRecoveryProbe",
+    "red": {
+      "exit": 1,
+      "output": "first occupied sample=false\njava.lang.AssertionError: observed swap growth: expected true, observed false"
+    },
+    "green": {
+      "exit": 0,
+      "output": "first occupied sample=false\nobserved swap growth=true\nunchanged occupancy with pressure=true\npressure relief without swap decrease=false\nold occupancy after recovery=false\ngrowth before pressure=true\nnegative sample rejected\ninvalid sample preserved history=true\noccupancy reset without pressure=false\nexact large growth=true\nlarge occupancy with relief=false\n"
+    }
+  },
+  "focused_command": "mvn -B -ntp -f tooling/cli/pom.xml -Dtest=SwapRecoveryTest test",
+  "focused_result": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "verification_command": "mvn -B -ntp -f tooling/cli/pom.xml verify",
+  "verification_result": {
+    "tests": 85,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "build": "success"
+  },
+  "verification_environment": "TMPDIR and the Maven JVM java.io.tmpdir point to the invocation-owned scratch directory. Set the Maven JVM property via MAVEN_OPTS so the configured Surefire argLine receives it without duplicate user-property injection.",
+  "jar_consumer": {
+    "compile_driver": "javac --release 27 -cp .cat/work/temp/build-caches/maven/source-cache/classes -d <owned-root>/integrated-driver <owned-root>/SwapRecoveryProbe.java",
+    "run_command": "java -cp .cat/work/temp/build-caches/maven/source-cache/tooling-cli-1.0-SNAPSHOT.jar:<owned-root>/integrated-driver SwapRecoveryProbe",
+    "jar_sha256": "a58ca9e2ec032a64ec391b3df0a11d7144dedd353af150d42439d5e1a25b8bf2",
+    "exit": 0,
+    "output": "first occupied sample=false\nobserved swap growth=true\nunchanged occupancy with pressure=true\npressure relief without swap decrease=false\nold occupancy after recovery=false\ngrowth before pressure=true\nnegative sample rejected\ninvalid sample preserved history=true\noccupancy reset without pressure=false\nexact large growth=true\nlarge occupancy with relief=false\n",
+    "scope": "Actual Maven-built JAR through classpath consumer; no named-module or linked-runtime acceptance is inferred."
+  },
+  "warnings": [
+    "Existing SLF4J no-provider and restricted FFM access diagnostics remain visible and nonfatal.",
+    "The initial focused invocation injects java.io.tmpdir both as a Maven user property and through the existing Surefire argLine. The complete invocation supplies it only to the Maven JVM; the duplicate-property diagnostic is absent. No check or warning is suppressed."
+  ],
+  "remaining_gates": [
+    "Native measurement validity and physical-pressure classification",
+    "Controller acknowledgements, whole-tree lifecycle and completion epochs",
+    "Cargo/Bazel integration and full platform acceptance"
+  ],
+  "cleanup": "Invocation-owned proof, drivers and compiled scratch are removed after their evidence is embedded. Existing Maven incremental outputs remain in the owned build cache."
+}
