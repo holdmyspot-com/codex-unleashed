@@ -1,0 +1,65 @@
+{
+  "scope": "Local new-profile identity and grouping preflight; no Cargo compilation or registry transfer. Existing unchanged transport acceptance is carried forward.",
+  "target": "aarch64-apple-darwin",
+  "shared_inputs": {
+    "upstream": "upstream=dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4\n",
+    "wrappers": "unchanged-wrappers\n",
+    "helper": "unchanged-helper\n",
+    "changed_wrapper": "changed-wrapper\n",
+    "saving_build_step": "CLI"
+  },
+  "profile_only_inputs": {
+    "release": "profile=release\n",
+    "ci-test": "profile=ci-test\n"
+  },
+  "release": {
+    "tag": "cargo-v3-aarch64-apple-darwin-6140fd04dd6fea7a8afbe88dbb916461a8ccd79f6e57a157f1f7700f26133f2d",
+    "seed_tag": "cargo-seed-v1-aarch64-apple-darwin-4adb8ee2d2251219cd494aca21f2e2d00cdd5d78c8f308b4056c2592d432fbc0"
+  },
+  "ci_test": {
+    "tag": "cargo-v3-aarch64-apple-darwin-3bf0f28506aee116c672d7970604fe72e3fd72727fcb6217217421749a628afc",
+    "seed_tag": "cargo-seed-v1-aarch64-apple-darwin-674d399a17b2c8c957228e4d54a59b42a1c641dd7adb5af97310f6a8d62f4d6e"
+  },
+  "changed_wrapper": {
+    "tag": "cargo-v3-aarch64-apple-darwin-c9f18b7656ec3f5fba40a54b7461a2f082f757006d2b58e6373f9a4ffafc543d",
+    "seed_tag": "cargo-seed-v1-aarch64-apple-darwin-674d399a17b2c8c957228e4d54a59b42a1c641dd7adb5af97310f6a8d62f4d6e"
+  },
+  "accepted": {
+    "exact_profile_keys_differ": true,
+    "compatible_profile_keys_differ": true,
+    "wrapper_only_change_retains_compatible_key": true,
+    "distinct_profile_paths_and_contents_preserved": {
+      "aarch64-apple-darwin/release/deps/fixture-output": "3933e3274b63dc01fd286d6d939a626867c83a4603fc4347e0f8b8856f1b98fd",
+      "aarch64-apple-darwin/ci-test/deps/fixture-output": "2fa93a3d7ec4b6b69a5ecb6bcb99de840177502affcc7f8e850c31e472c8bd7d"
+    },
+    "later_save_retains_first_saving_owner": true
+  },
+  "helper_sources": {
+    ".github/scripts/cargo-cache-keys.py": "7bb3a387b8cec5642e9cbba86aaa0a85dbe210d9c597d80e498ddb347e392d43",
+    ".github/scripts/cargo-cache-parts.py": "f795e9681f8c5bb2bc0ffc5106aad1a7787323c64e59b546237a464e57158dc2"
+  },
+  "limitations": [
+    "No macOS test executable or ci-test cache artifact has been established.",
+    "Compiler identity must explicitly include profile and full build configuration when preparing a native test workflow.",
+    "No new transport or full-build claim follows."
+  ],
+  "schema_version": 1,
+  "recorded_at": "2026-10-28T16:19:48.771092+00:00",
+  "source_commit": "363089634f1cfd399e4a609243aed0db949a754b",
+  "native_gate": {
+    "status": "unrun",
+    "target": "aarch64-apple-darwin",
+    "profile": "ci-test",
+    "case": "sandbox_blocks_terminal_input_injection",
+    "command": "cargo nextest run --target aarch64-apple-darwin --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast -E 'test(=sandbox_blocks_terminal_input_injection)'",
+    "inventory_pointer": "docs/evidence/baseline-runtime-gate-inventory.json#/remaining_runtime_scope_review/missing_historical_cli_suite_records/2",
+    "free_runner": "macos-15",
+    "upstream_runner": "macos-15-xlarge is outside the owner-authorized free-runner scope; use only the same target/profile, not that runner size."
+  },
+  "cache_contract": {
+    "owner": "Workflow records profile and complete build configuration in the compiler input bytes passed to cargo-cache-keys.py.",
+    "evidence": "Changing only the compiler-input profile bytes separates both exact and compatible identities. A wrapper-only change leaves the compatible identity unchanged.",
+    "existing_transport": "cargo-cache-parts.py groups an arbitrary target tree by saving build step. The fixture proves distinct profile-relative paths and content are retained in those groups. This is not a new upload/download round-trip claim.",
+    "unverified": "No corresponding native ci-test compiled cache or executable is established."
+  }
+}
