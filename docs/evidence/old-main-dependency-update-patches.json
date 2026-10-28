@@ -1,0 +1,398 @@
+{
+  "schema_version": 1,
+  "scope": "Read-only source and dependency-resolution comparison; no source updates, builds or dependency audits executed.",
+  "old_main_commit": "545479059ac86394049b6efd3bf4297b1ca18d17",
+  "selected_upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "sources": [
+    {
+      "path": "codex-rs/Cargo.lock",
+      "sha256": "4211c3957f776cde3dc4ba4707799eda6f47c82026f76503a87874afe3a6bb84",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/Cargo.lock"
+    },
+    {
+      "path": "codex-rs/deny.toml",
+      "sha256": "442fee5dc6aa7f6d5cfca338dcc50d1efec6ddb52f1907283d2058cffbcea034",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/deny.toml"
+    },
+    {
+      "path": "codex-rs/.cargo/audit.toml",
+      "sha256": "9bd5bd768d3b318d690e63e813f27198c97bb7a29e241740ec73b46f00d192e5",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/.cargo/audit.toml"
+    },
+    {
+      "path": "defs.bzl",
+      "sha256": "8102696f28d2eb6d1de2dbf50e97bbc2bb3997bfe007d228bdb51dfd23204399",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/defs.bzl"
+    },
+    {
+      "path": "codex-rs/core-plugins/src/startup_sync.rs",
+      "sha256": "57b3a9295919060467a976b70ea18dc0ebfd824f0e788c0c491df4038fe37641",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/codex-rs/core-plugins/src/startup_sync.rs"
+    },
+    {
+      "path": "MODULE.bazel.lock",
+      "sha256": "3ecc33d29ead1e020200d85824a808901db07f302b119652a4a1a7c7e1a24444",
+      "url": "https://github.com/openai/codex/blob/dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4/MODULE.bazel.lock"
+    }
+  ],
+  "locked_packages": [
+    {
+      "name": "rustls",
+      "version": "0.23.46",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf",
+      "dependencies": [
+        "aws-lc-rs",
+        "log",
+        "once_cell",
+        "ring",
+        "rustls-pki-types",
+        "rustls-webpki",
+        "subtle",
+        "zeroize"
+      ]
+    },
+    {
+      "name": "serde_yaml",
+      "version": "0.9.34+deprecated",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47",
+      "dependencies": [
+        "indexmap 2.14.0",
+        "itoa",
+        "ryu",
+        "serde",
+        "unsafe-libyaml"
+      ]
+    },
+    {
+      "name": "unsafe-libyaml",
+      "version": "0.2.11",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+    },
+    {
+      "name": "zip",
+      "version": "9.0.0",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "711e8c9646791c49b7eb799a19c4ae70a9b8372ddc6a1fa4778defd1e2aa5d5e",
+      "dependencies": [
+        "aes 0.9.3",
+        "bzip2",
+        "constant_time_eq 0.4.2",
+        "crc32fast",
+        "deflate64",
+        "flate2",
+        "getrandom 0.4.2",
+        "hmac 0.13.0",
+        "indexmap 2.14.0",
+        "lzma-rust2",
+        "memchr",
+        "pbkdf2 0.13.0",
+        "sha1 0.11.0",
+        "time",
+        "typed-path",
+        "zeroize",
+        "zopfli",
+        "zstd"
+      ]
+    },
+    {
+      "name": "zstd-sys",
+      "version": "2.0.16+zstd.1.5.7",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748",
+      "dependencies": [
+        "cc",
+        "pkg-config"
+      ]
+    }
+  ],
+  "workspace_dependencies": {
+    "serde_yaml": "0.9",
+    "yaml_serde": null,
+    "rustls": {
+      "version": "0.23.46",
+      "default-features": false,
+      "features": [
+        "aws_lc_rs",
+        "std"
+      ]
+    },
+    "zip": {
+      "version": "9.0.0",
+      "default-features": false,
+      "features": [
+        "aes-crypto",
+        "bzip2-rs",
+        "deflate",
+        "deflate64",
+        "lzma",
+        "time",
+        "xz",
+        "zstd"
+      ]
+    }
+  },
+  "rustls_bazel_metadata": [
+    {
+      "key": "rustls_0.23.46",
+      "path": [
+        "facts",
+        "@@rules_rs+//rs:extensions.bzl%crate",
+        "rustls_0.23.46"
+      ],
+      "metadata": {
+        "dependencies": [
+          {
+            "default_features": false,
+            "name": "aws-lc-rs",
+            "optional": true,
+            "req": "^1.18"
+          },
+          {
+            "kind": "dev",
+            "name": "base64",
+            "req": "^0.22"
+          },
+          {
+            "kind": "dev",
+            "name": "bencher",
+            "req": "^0.1.5"
+          },
+          {
+            "default_features": false,
+            "features": [
+              "std"
+            ],
+            "name": "brotli",
+            "optional": true,
+            "req": "^8"
+          },
+          {
+            "name": "brotli-decompressor",
+            "optional": true,
+            "req": "^5.0.0"
+          },
+          {
+            "kind": "dev",
+            "name": "env_logger",
+            "req": "^0.11"
+          },
+          {
+            "default_features": false,
+            "features": [
+              "default-hasher",
+              "inline-more"
+            ],
+            "name": "hashbrown",
+            "optional": true,
+            "req": "^0.15"
+          },
+          {
+            "kind": "dev",
+            "name": "hex",
+            "req": "^0.4"
+          },
+          {
+            "name": "log",
+            "optional": true,
+            "req": "^0.4.8"
+          },
+          {
+            "kind": "dev",
+            "name": "log",
+            "req": "^0.4.8"
+          },
+          {
+            "kind": "dev",
+            "name": "macro_rules_attribute",
+            "req": "^0.2"
+          },
+          {
+            "kind": "dev",
+            "name": "num-bigint",
+            "req": "^0.4.4"
+          },
+          {
+            "default_features": false,
+            "features": [
+              "alloc",
+              "race"
+            ],
+            "name": "once_cell",
+            "req": "^1.16"
+          },
+          {
+            "features": [
+              "alloc"
+            ],
+            "name": "pki-types",
+            "package": "rustls-pki-types",
+            "req": "^1.12"
+          },
+          {
+            "default_features": false,
+            "features": [
+              "pem",
+              "aws_lc_rs"
+            ],
+            "kind": "dev",
+            "name": "rcgen",
+            "req": "^0.14"
+          },
+          {
+            "name": "ring",
+            "optional": true,
+            "req": "^0.17"
+          },
+          {
+            "kind": "build",
+            "name": "rustversion",
+            "optional": true,
+            "req": "^1.0.6"
+          },
+          {
+            "features": [
+              "derive"
+            ],
+            "kind": "dev",
+            "name": "serde",
+            "req": "^1"
+          },
+          {
+            "kind": "dev",
+            "name": "serde_json",
+            "req": "^1"
+          },
+          {
+            "default_features": false,
+            "name": "subtle",
+            "req": "^2.5.0"
+          },
+          {
+            "default_features": false,
+            "kind": "dev",
+            "name": "time",
+            "req": "^0.3.6"
+          },
+          {
+            "default_features": false,
+            "features": [
+              "alloc"
+            ],
+            "name": "webpki",
+            "package": "rustls-webpki",
+            "req": "^0.103.14"
+          },
+          {
+            "kind": "dev",
+            "name": "webpki-roots",
+            "req": "^1"
+          },
+          {
+            "kind": "dev",
+            "name": "x509-parser",
+            "req": "^0.17"
+          },
+          {
+            "name": "zeroize",
+            "req": "^1.8"
+          },
+          {
+            "name": "zlib-rs",
+            "optional": true,
+            "req": "^0.6"
+          }
+        ],
+        "features": {
+          "aws-lc-rs": [
+            "aws_lc_rs"
+          ],
+          "aws_lc_rs": [
+            "dep:aws-lc-rs",
+            "webpki/aws-lc-rs",
+            "aws-lc-rs/aws-lc-sys",
+            "aws-lc-rs/prebuilt-nasm"
+          ],
+          "brotli": [
+            "dep:brotli",
+            "dep:brotli-decompressor",
+            "std"
+          ],
+          "custom-provider": [],
+          "default": [
+            "aws_lc_rs",
+            "logging",
+            "prefer-post-quantum",
+            "std",
+            "tls12"
+          ],
+          "fips": [
+            "aws_lc_rs",
+            "aws-lc-rs?/fips",
+            "webpki/aws-lc-rs-fips"
+          ],
+          "logging": [
+            "log"
+          ],
+          "prefer-post-quantum": [
+            "aws_lc_rs"
+          ],
+          "read_buf": [
+            "rustversion",
+            "std"
+          ],
+          "ring": [
+            "dep:ring",
+            "webpki/ring"
+          ],
+          "std": [
+            "webpki/std",
+            "pki-types/std",
+            "once_cell/std"
+          ],
+          "tls12": [],
+          "zlib": [
+            "dep:zlib-rs"
+          ]
+        }
+      }
+    }
+  ],
+  "patches": [
+    {
+      "path": "patches/openai/codex/security-RUSTSEC-2024-0449/maintained-yaml-parser.patch",
+      "blob": "66785e4e0917da812cb22f59e89d9cc86f977e94",
+      "sha256": "2e9d946a65735837f66cefd71f0e0672bb825f9f709f7c067e1f4653d7ff62cb",
+      "classification": "Step-7 published dependency replacement candidate; not migrated.",
+      "observation_and_limit": "Old patch replaces the serde_yaml dependency alias with published yaml_serde 0.10.7/libyaml-rs 0.3.0 and removes the corresponding unmaintained-package policy exceptions. Selected upstream retains serde_yaml 0.9.34+deprecated and unsafe-libyaml 0.2.11, including both policy entries. This is a package migration, not a dependency-source security backport. Select current stable replacements and check semantics/license/policy during step 7; do not copy old generated lock data or remove exceptions before migration actually eliminates the package."
+    },
+    {
+      "path": "patches/openai/codex/security-RUSTSEC-2024-0449/yaml-parser-bazel-aliases.patch",
+      "blob": "a07c9a602c3816be840186f078fd019828c0c16c",
+      "sha256": "39d6f257540031fd026675f380d8f3b5b3c81341d69026fdac365f7af094af5b",
+      "classification": "Conditional first-party Bazel support for step-7 dependency aliases; not migrated.",
+      "observation_and_limit": "Adds dependency aliases to generated build-script, library, binary and integration-test rules plus a skill-frontmatter behavioral regression. Selected upstream defs.bzl contains no alias declarations. That source observation does not prove that rules_rs cannot supply aliases elsewhere; reproduce the actual selected renamed-dependency consumer before adapting this first-party build repair. No unrelated SDK build is required."
+    },
+    {
+      "path": "patches/openai/codex/security-RUSTSEC-2026-0346/update-rustls.patch",
+      "blob": "09696682722a39671dd69e2f903890ccdf37e67c",
+      "sha256": "2b17014c19964a0dc3e1891de310e48d2972afaade11f792a35c1d61348754ea",
+      "classification": "Exact intended Rustls resolution already present upstream; not migrated.",
+      "observation_and_limit": "Old patch changes Rustls 0.23.45 to 0.23.46 with registry checksum 48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf and refreshes its Bazel metadata. Selected upstream Cargo manifest and lock already select 0.23.46 with that checksum; MODULE.bazel.lock contains rustls_0.23.46 and no rustls_0.23.45 key. The historical patch need not be copied to establish that resolution. This does not claim that every current Rustls advisory is resolved or replace step-7 latest-stable discovery."
+    },
+    {
+      "path": "patches/openai/codex/security-RUSTSEC-2026-0367/zip-security-update.patch",
+      "blob": "c27a71514a193817c6b3efd4f6bcfbfe21b59b10",
+      "sha256": "e4b081ffc35d58ca955ea83379374b328cf61a555c4b3c65767d58c789ff3c37",
+      "classification": "Step-7 ZIP update and compatibility-review candidate; old major-version migration not replayed.",
+      "observation_and_limit": "Old patch changes ZIP 2.4.2 to 9.0.4, adapts plugin-reader APIs, preserves then-default compression features, adds a libbz2-rs-sys license allowance and rebases a zstd-sys dependency overlay. Selected upstream already uses ZIP 9.0.0 with explicit compression features and default-features=false. Its plugin extraction handles entry.name() as a fallible result and contains no old ZipFile helper signature. Resolve the then-latest stable ZIP and actual remaining compatibility changes during step 7; preserve current feature choices, regenerate dependency metadata and investigate any demonstrated overlay need separately. Old patch audit/test claims are historical, not fresh acceptance."
+    }
+  ],
+  "acceptance_limits": [
+    "Static resolution comparison does not establish complete advisory absence or runtime safety.",
+    "Latest stable versions will be selected when checkpoint 7 starts.",
+    "No dependency-source backport or premature strict-warning policy is introduced."
+  ]
+}

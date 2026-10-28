@@ -1587,6 +1587,12 @@ allocation-hook safety and Cargo/Bazel integration remain open. The existing
 fixed build limits remain in force. No remote runner or accepted Codex build is
 needed for these in-process policy checks.
 
+### Observed swap-growth history
+
+The Java [SwapRecovery](../tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SwapRecovery.java) now supplies the policy’s swap-incident state from successive successful occupancy measurements. An occupied first sample establishes a baseline. Later growth latches recovery; current pressure retains it, and a non-growing sample without pressure clears it even if swap occupancy remains high. Invalid negative samples leave history unchanged. Each controller owns its own history and skips failed native reads.
+
+Six focused checks pass, including the actual policy handoff: growth with pressure selects the newest attempt, pressure relief stops recovery, and the retry still awaits a non-aborted completion. Complete tooling verification passes all 85 tests, and a consumer of the Maven-built JAR reproduces the standalone JDK 27 decisions. [The receipt](evidence/java-swap-recovery.json) retains the initial behavioral failure, exact source identities, driver, results and limitations. This accepts history updates only; native measurement, controller effects and Cargo/Bazel integration remain open.
+
 ### Native Windows process-tree ownership
 
 The scheduler's [Windows process owner](../.github/scripts/build_scheduler/windows_process.py)
@@ -1743,3 +1749,551 @@ architectures, but Java launch, identity handling, whole-tree completion and
 cleanup still need their own checks. Reusing the platform evidence does not
 establish that the Java integration works, and changing implementation language
 does not require repeating accepted Codex builds.
+
+### Java memory-monitor selection
+
+The owner requires assessment of Windows and macOS before implementing the
+platform layer. Prefer direct calls when the required code is small; otherwise
+evaluate a library, preferring FFM over JNI. The assessment includes native
+layouts, error handling, handle cleanup and both architectures, rather than
+counting only function declarations.
+
+OSHI 7.7.2 has an FFM backend compatible with the tooling's JDK 27. Its published
+source archive has SHA-256
+`f77d2a03739fbc06c53eff1aca941923a72c496307bdb08ba5ee744e899d5cf9`.
+The evaluated runtime JARs total 1,899,959 bytes: 720,861 for the FFM backend,
+1,108,843 for shared OSHI code and 70,255 for the SLF4J API. The published POMs
+require no JNA dependency for this backend; the evaluation logging provider and
+JNA candidate artifacts are excluded from that total. These sizes describe
+artifacts, not runtime memory or sampling overhead.
+
+Source inspection establishes these distinctions. Native Java probes have also
+passed on macOS ARM64 with JDK 27 and Windows x64 with JDK 25, using the
+exported helpers through JPMS. The probe source, hashes, results and runner
+cleanup receipts are recorded in
+[`java-memory-monitor-candidates.json`](evidence/java-memory-monitor-candidates.json).
+
+| API | Observed source contract | Consequence for selection |
+| --- | --- | --- |
+| OSHI high-level macOS swap and Windows memory queries | Some native query failures become zero measurements. | These observations alone cannot establish that swap is unused or that a zero is a successful query. |
+| `PerfCounterQueryFFM.queryValuesFromPDH` | Returns a map that omits counters which fail to add or read; an open/collect failure returns an empty map. Raw reads check both operation status and counter status. | A required key with value zero can be distinguished from a missing observation. This exported helper remains a Windows candidate. |
+| `PerfCounterQueryFFM.queryValues` | May fall back to WMI; the WMI property conversion can return zero on failure. | Do not substitute this overload for the PDH-only candidate without proving the same failure distinction. |
+| `SysctlUtilFFM.sysctl(String, MemorySegment)` | Returns boolean success for a caller-supplied result buffer. | This exported helper remains a macOS candidate for swap usage and other sysctl observations; the caller still owns native layout validation. |
+| OSHI raw Windows/macOS bindings | Their packages are not exported by the FFM module. | Public Java declarations do not make these bindings usable through the tooling's JPMS dependency boundary. |
+| `PerfDataUtilFFM.queryWildcardCounters` | Individual failed process-counter reads are replaced with zero in the returned lists. | Its returned values alone cannot distinguish a failed resident-memory query from a successful zero; the scalar PDH helper's failure distinction does not extend to this API. |
+
+The high-level `GlobalMemory` and `VirtualMemory` interfaces return primitive
+`long` measurements without per-measurement capability or validity results.
+`OSProcess.updateAttributes()` does report whole-process refresh failure through
+`false` and `State.INVALID`, but it does not guarantee that every individual
+counter was read successfully: the Windows wildcard path can supply a zero
+working set inside an otherwise accepted process block. Therefore, checking
+process validity alone does not repair the missing measurement distinction.
+Upstream already discusses this limitation in
+[issue 1341, Determining supported and unsupported metrics](https://github.com/oshi/oshi/issues/1341).
+The maintainer confirms the absence of runtime support discovery and discusses
+nullable/optional values as a future design; the reporter closes the issue
+without an API change. The later
+[jSpecify proposal, issue 3593](https://github.com/oshi/oshi/issues/3593)
+confirms that the high-level API still uses numeric sentinels and that the
+annotation change does not change runtime behavior. Neither closed status proves
+that the zero-versus-unavailable ambiguity was repaired.
+
+The generic raw WMI API passed a Windows x64 Java probe through the exported
+FFM module in [run 40617491986](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40617491986).
+The PID-filtered `Win32_Process` query returned a positive `WorkingSetSize` as a
+uint64 decimal string. Raw access retained a null `TerminationDate` separately
+from numeric zero PID and session values; querying an absent class returned
+zero rows. Convenience numeric getters must not erase those distinctions.
+An empty result cannot authorize recording zero usage: it may mean an absent
+process or a failed query. This probe did not exercise a successful zero working
+set, repeated COM lifetime, sampling overhead, process-tree accounting or ARM64.
+Those checks remain required before production selection. All 19 remote commands
+returned zero, the owned probe directory was removed and SSH exited zero. The
+smoke workflow retained its deliberate failure; its debug and incremental-state
+verification post steps succeeded.
+
+Apple's [published pressure sysctl implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-10063.101.15/bsd/kern/kern_memorystatus_notify.c)
+converts internal pressure levels to notification flags before returning a
+32-bit value. The returned normal/warning/critical flags are 1/2/4; the
+internal enum described by the kernel's pressure guide must not be used to
+interpret this sysctl. The source skips the privilege check on macOS and marks
+the production sysctl as hidden from enumeration. The macOS ARM64 Java probe
+returned normal pressure (1), positive physical memory, and a successful swap
+query reporting zero total and used bytes. Deliberately absent sysctl queries
+returned the supplied scalar sentinel or boolean failure, rather than a
+successful zero measurement.
+
+The small Linux reader remains an isolated candidate, with no production
+source or dependency added. Its compiled public operation now passes a fixture
+with exact byte conversion and cumulative counters, rejects an absent PSI file
+with `NoSuchFileException`, rejects inconsistent record values with
+`IllegalArgumentException`, and reads live local Linux counters successfully.
+The candidate source SHA-256 is
+`bca08e1b4abaae7cc1518e6fe8527ac9b57b9e78d87ea91321c1918457f6fa02`.
+This proves the local reader candidate only; it does not pass the complete
+monitor, process-tree residency, cgroup-budget or cross-platform scheduler gates.
+
+The Windows x64 Java probe returned a present paging-counter key with raw value
+zero, and an empty map for a deliberately absent counter object. This establishes
+failure distinction only; the raw counter's units and conversion still need
+verification before using it to measure pagefile occupancy.
+
+A separate macOS shell probe found that `vm.page_inactive_count` is not exposed
+through `sysctl` on that runner. This was a direct command, not an OSHI failure.
+Apple's [Mach VM statistics structure](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_statistics.h)
+contains `inactive_count`, and OSHI's
+[macOS FFM memory reader](https://www.oshi.ooo/xref/oshi/hardware/platform/mac/MacGlobalMemoryFFM.html)
+reads it through `host_statistics`. Thus the unavailable sysctl does not rule
+out native acquisition of this measurement.
+
+The JDK's
+[`OperatingSystemMXBean`](https://docs.oracle.com/en/java/javase/27/docs/api/jdk.management/com/sun/management/OperatingSystemMXBean.html)
+is also a reuse candidate, but its similarly named measurements are not a
+complete substitute. The inspected OpenJDK master
+[macOS implementation](https://github.com/openjdk/jdk/blob/master/src/jdk.management/unix/native/libmanagement_ext/OperatingSystemImpl.c)
+returns free pages without inactive pages for `getFreeMemorySize`; its swap
+queries use `vm.swapusage` and throw on native query failure. The inspected
+[Windows implementation](https://github.com/openjdk/jdk/blob/master/src/jdk.management/windows/native/libmanagement_ext/OperatingSystemImpl.c)
+returns `MEMORYSTATUSEX.ullTotalPageFile` and `ullAvailPageFile` as total and free
+swap, respectively. Microsoft defines these as
+[commit limits and available commit](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex),
+which include physical-memory backing. Their difference must not be used as
+actual pagefile occupancy: it can increase when a build commits memory that
+remains in RAM. The Windows implementation also does not check the native
+`GlobalMemoryStatusEx` return status. These source findings do not replace a
+probe of the selected runtime, but rule out assuming one portable bean supplies
+all required measurements with the same meaning and explicit failures.
+
+The Windows ARM64 candidates pass on native Zulu JDK 27.0.1 in
+[run 40618310675](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40618310675).
+The exported PDH-only helper returns available physical bytes and raw paging
+input/output observations, omits an intentionally absent counter and retains a
+present zero output count. The PID-filtered raw WMI probe also passes, including
+null versus numeric-zero observations. Eight PDH samples take about 3.2 seconds
+for initial native setup and 5–8 milliseconds for subsequent reads, including
+the deliberately absent counter. These are acquisition timings, not complete
+monitor overhead. Raw paging values need counter-width, reset/wrap and delta
+handling; they must not be interpreted as formatted per-second rates.
+Microsoft's [counter descriptions](https://techcommunity.microsoft.com/blog/askperf/an-overview-of-troubleshooting-memory-issues---part-two/372679)
+also include mapped-file traffic in paging activity. Therefore these counters
+alone cannot establish pagefile pressure or occupancy.
+
+Initial JDK extraction fails because the runner's tar interprets a Windows drive
+colon as remote-host syntax. Extraction through the installed JDK's ZIP reader
+repairs setup on the same connected worker, preserving downloaded inputs. Both
+probes then pass incrementally and from fresh source folders, with matching
+source hashes. SSH exits zero; remote scratch removal and all debug/smoke post
+verification pass. The hosting workflow retains only its deliberate exit 17.
+Original setup failures and final receipts are preserved in the candidate JSON.
+
+A small direct macOS FFM candidate now passes on
+[Intel run 40619181622](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40619181622)
+and [Apple Silicon run 40619262698](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40619262698).
+It uses native host VM statistics for free-plus-inactive physical bytes and
+`proc_pid_rusage` for per-PID resident bytes, together with OSHI's exported
+sysctl helper for page size, total memory and pressure. Each native SDK verifies
+the required buffer sizes, counts and offsets through a compiled ABI check.
+Both Java runs preserve the native failure distinction: an invalid VM flavor
+returns status 4; an absent process returns -1 with errno 3. The owned host port
+is released successfully. Sixteen samples and fresh-source verification pass on
+both architectures. The existing sysctl candidate also passes on Intel, including
+successful zero swap versus missing-query results; the accepted ARM64 sysctl
+probe is not repeated.
+
+The first source transfer uses an unsupported BSD base64 positional input and
+leaves empty source files. Feeding the decoder through stdin repairs that cause
+on the same connected workers. Verified downloaded jars are retained; only the
+failed transfers and dependent checks are retried before fresh-source checks.
+Both SSH clients exit zero, remote scratch is removed, and all debug, incremental
+state and cleanup post steps pass. Both workflows retain their deliberate exit
+17. Exact sources, failures, native results and cleanup receipts are retained in
+the candidate JSON.
+
+Free-plus-inactive bytes are an admission estimate rather than a guarantee of
+immediate reclamation; OS headroom and remaining worker growth still apply.
+Self-PID residency does not establish complete process-tree accounting, PID-reuse
+handling or inaccessible-child behavior. Required checks still include those
+operations, Windows pressure/occupancy semantics, physical-pressure recovery and
+the complete Java monitor's public operation before production integration.
+The completed probes do not establish a complete memory monitor or scheduler.
+Keep Upterm connected throughout further remote probes and incremental retries.
+
+The Windows occupancy candidate uses the exported PDH-only operation
+`PerfCounterQueryFFM.queryValuesFromPDH(PagingFile.PagingPercentProperty.class,
+"Paging File")`. OSHI 7.7.2 defines its required `PERCENTUSAGE` key as the
+`_Total` instance's `% Usage` counter. Its
+[Windows memory implementation](https://www.oshi.ooo/xref/oshi/hardware/common/platform/windows/WindowsVirtualMemory.html)
+documents the raw result in pages and multiplies it by native page size for
+bytes. The displayed percentage name must not cause the raw value to be
+interpreted as a percentage. Physical-memory admission remains independent of
+pagefile occupancy: growth detects an incident, while successful zero occupancy
+alone does not establish enough RAM for another build job.
+
+On Windows x64, [run 40620703945 attempt 4](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40620703945/attempts/4)
+passes eight samples and a fresh-source rerun on native Temurin 25.0.4.1.
+Every sample returns a present zero-usage key and omits the deliberately absent
+counter object. Independent PowerShell observations report zero raw usage and
+zero `Win32_PageFileUsage.CurrentUsage`. The raw counter's base of 753,664 pages
+multiplied by the native 4,096-byte page size equals the independently reported
+2,944 MiB allocated pagefile. This checks the base's units; zero observations
+cannot establish nonzero numerator scaling, occupancy growth or recovery.
+Subsequent occupancy queries take approximately 0.21–0.40 ms in this probe,
+excluding initialization, missing-counter queries and complete-monitor work.
+The same operation now passes on native Windows ARM64 with Zulu 27.0.1 in
+[run 40622716377](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40622716377),
+including eight samples, fresh-source verification and the same native zero
+usage/base/page-size observations. The complete monitor remains unrun.
+
+A bounded ARM64 fixture allocates and touches 256 MiB of native memory using
+seeded random bytes, then successfully calls `K32EmptyWorkingSet` on its own
+process. All 84 observations before allocation, after trimming and after release
+still report zero pagefile usage. This does not establish a counter defect:
+[Microsoft's contract](https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-emptyworkingset)
+removes pages from the working set without guaranteeing a pagefile write.
+The fixture is inconclusive for nonzero occupancy, growth and recovery. It does
+not exhaust RAM or change pagefile configuration; retain the unrun transition
+gates rather than label zero observations a successful growth test.
+
+The first three attempts fail in the local client before any occupancy query:
+an absent banner expectation, inherited stdin EOF, and a numeric receipt parser
+that rejects terminal controls between the exit status and newline. The final
+client reads a command file, normalizes those controls, preserves its connection
+through observation deadlines, and sends remote shell exit only for explicit
+`EXIT`. A local closed-stdin fixture verifies retained access and explicit exit;
+the captured failing receipt verifies the parser correction. The final native
+commands and fresh-source check run through one persistent connection. Owned
+remote scratch removal and SSH exit zero are verified; every final hosted post
+step succeeds, leaving only the deliberate exit 17 failure. Exact sources,
+failures, client corrections, receipts and cleanup are retained in
+`windows_pagefile_occupancy_candidate` in the candidate JSON. No production
+monitor dependency or source change is selected by this partial evidence.
+
+The Windows physical-pressure candidate uses three small direct FFM calls:
+`CreateMemoryResourceNotification(0)`, `QueryMemoryResourceNotification` and
+`CloseHandle`. Microsoft's
+[query contract](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-querymemoryresourcenotification)
+returns operation success separately from the pressure flag written into the
+output buffer, preserving valid false observations independently of native
+failure. ARM64 run 40622716377 and
+[x64 run 40623900794](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40623900794)
+both pass eight false-pressure samples and fresh-source reruns. A null-handle
+query returns zero with native error 87, while an invalid notification type
+returns a null handle with the same error. Each valid handle closes with a
+nonzero result. Last-error contents after a successful native operation are
+not interpreted as a failure.
+
+A false low-memory signal does not mean that high-memory availability is
+signaled: Windows documents an intermediate range where neither event is
+signaled. Admission still needs measured available bytes, headroom and estimated
+remaining worker growth. True-pressure and recovery transitions remain unrun,
+as do complete-monitor and owned-process-tree integration. These candidate
+checks add no production dependency or source change. The candidate JSON retains
+exact sources, hashes, native return values and cleanup receipts; both remote
+connections stayed active through their checks and fresh-source verification.
+SSH exits and owned scratch removal are verified on both workers. Every hosted
+post step succeeds; each workflow retains only its deliberate exit 17 failure.
+
+### Java Linux host-memory reader
+
+The production `LinuxMemory.read(Path procRoot)` operation now reads host
+physical-memory, swap-occupancy and cumulative activity counters. It uses
+`MemAvailable`, converts kernel kB values exactly to bytes, and returns
+`pswpout` pages and PSI `some.total` microseconds without interpreting their
+absolute values as current pressure. Missing, unreadable, malformed,
+overflowing or inconsistent observations fail acquisition rather than becoming
+zero measurements. Calls share no mutable sampling state.
+
+The source is byte-identical to the accepted isolated recreation, with SHA-256
+`bca08e1b4abaae7cc1518e6fe8527ac9b57b9e78d87ea91321c1918457f6fa02`.
+The first test-only attempt cannot compile because the API is absent; that is
+not the behavioral red gate. After adding its minimal declaration, the focused
+`LinuxMemoryTest#readsHostCounters` invocation fails at runtime because sampling
+is unimplemented. Replacing the temporary stub with the recreated operation
+passes all fourteen focused cases. Complete Java tooling verification then
+passes all 63 tests with `mvn -B -ntp -f tooling/cli/pom.xml verify`; the exact
+commands, temporary-directory settings, logs and source identities are retained
+under `linux_production_reader` in
+[the memory-monitor evidence](evidence/java-memory-monitor-candidates.json).
+
+The controlled proc-file fixtures verify exact nonzero results, successful zero
+availability/swap/activity, null-root rejection and eleven missing or invalid
+observation cases. They do not establish native Linux ARM64 execution, cgroup
+budget handling, owned-process residency, a complete cross-platform monitor or
+controller integration. Those gates remain open. No accepted Codex build is
+repeated and no dependency is added by this component.
+
+### Windows physical-memory acquisition and macOS swap units
+
+The Java FFM `K32GetPerformanceInfo` candidate passes on native Windows x64 and
+ARM64 using JDK 27.0.1. Each run reads four successful physical-memory samples
+from the 104-byte native structure, converts pages to bytes with exact integer
+multiplication, and separately requires an invalid-size query to fail with a
+captured native error. Both architectures report native error 24 for that
+negative case. This establishes the isolated physical-memory acquisition and
+failure distinction; it does not accept the combined monitor or scheduler.
+The source and command receipts are retained under `windows_physical_candidate`
+in [the memory-monitor evidence](evidence/java-memory-monitor-candidates.json).
+
+Apple's native `xsw_usage` declaration and producer establish that total,
+available and used swap values are already bytes. They require no page-size
+multiplication. The 32-byte, eight-byte-aligned structure places those fields at
+byte offsets 0, 8 and 16; page size and the four-byte encrypted flag follow at
+24 and 28. The authoritative source links are retained under
+`macos_swap_native_contract` in the same evidence file. This resolves the
+conflicting OSHI field comments without repeating the accepted native zero-swap
+checks. Nonzero swap growth and recovery remain unexercised.
+
+### Java macOS host-memory reader
+
+The production `MacMemory.read()` operation returns total and available physical
+bytes, actual swap capacity and occupancy, and the native pressure level. It
+combines exported OSHI 7.7.2 FFM sysctl operations with direct Mach FFM calls,
+using JDK 27. Its initial integrated source matches the independently recreated
+operation; subsequent constructor validation is recorded below. Exact sources,
+dependencies, resolution, hashes and receipts are retained under
+`macos_public_operation` in
+[the memory-monitor evidence](evidence/java-memory-monitor-candidates.json).
+
+The combined public operation and the actual packaged named module pass on
+[Intel run 40629445969](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40629445969)
+and [Apple Silicon run 40629448398](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40629448398).
+Both verify valid zero swap and reject missing total-memory, page-size, swap and
+pressure observations, invalid swap values and unknown pressure flags. Real Mach
+send-right reference counts stay balanced across these success and failure
+cases. Apple Silicon also reports 393216 occupied swap bytes in its packaged
+module call; that observation establishes neither swap growth nor recovery.
+
+Native access must be granted to both the tooling module and `com.github.oshi.ffm`.
+With only the tooling grant and strict native-access checks, OSHI returns an
+unavailable sentinel and the reader rejects the sample with `IOException`.
+The diagnostic wrapper expected a different exception message and remains
+recorded as failed. Granting both modules makes the packaged operation pass.
+The actual locally generated runtime launcher separately passes a diagnostic
+main that checks native access for both named modules under strict checking.
+Complete tooling Maven verification passes all 63 tests. These results cover
+the module and launcher boundaries, not complete native distribution images.
+
+Each native worker uses one persistent Upterm connection through testing and
+scratch cleanup. Both SSH clients exit zero, and every hosted debug wait,
+partial-state verification and cleanup post step passes. Overall workflow
+failure retains the deliberately injected initial exit 17.
+
+Public-operation failure cases for null host ports, failed Mach acquisition,
+short VM results, inconsistent available bytes and failed host-port release
+remain unexercised. Simultaneous acquisition and cleanup failure also needs a
+focused check. Native warning/critical pressure transitions, swap growth and
+recovery, process-tree residency and scheduler integration remain open. Existing
+warnings remain visible for the planned warning-repair checkpoint; step 3 is
+incomplete.
+
+### Integrated Java memory readers
+
+The Java `WindowsMemory.read()` public operation passes on native
+[x86-64 run 40632595641](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632595641)
+and [ARM64 run 40632917434](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632917434),
+using JDK 27.0.1. Both named-module checks also pass. The integrated production
+source is byte-identical to that standalone source, SHA-256
+`5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8`.
+It uses the existing OSHI dependencies; no additional dependency change is needed.
+
+Native fixtures preserve valid zero occupancy, reject missing/negative/overflowing
+pagefile values, propagate an injected runtime failure, and retain equal process
+handle counts before and after each operation. They replace the exported PDH
+result while retaining real Windows notification handles and physical queries;
+they do not simulate those native handles. Both persistent Upterm connections,
+owned scratch cleanup and hosted post steps finish successfully. Exact source,
+resolution, drivers, original setup failure, incremental recovery and receipts are
+retained in [Windows reader evidence](evidence/windows-memory-public-operation.json).
+Actual nonzero pagefile growth/recovery, true low-memory transitions, forced
+native acquisition/release failures and complete native distribution images
+remain unaccepted.
+
+The macOS sample constructor initially accepted values violating its documented
+ranges and an absent pressure level. Nine focused `MacMemoryTest` cases first
+produce eight failures, then pass after constructor range/null validation. The
+native acquisition and ownership code is unchanged; its accepted native results
+are carried forward without another matrix. This source differs from the initial
+standalone source only by constructor validation and its `Objects` import. The
+first Maven attempt instead fails before tests because its default local
+repository is read-only; selecting the existing workspace-owned Maven repository
+resolves that environment error. It is not the behavioral red result.
+
+Complete tooling verification now passes all 72 tests with
+`mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local="$PWD/.cat/work/temp/build-caches/maven/repository" verify`,
+using an owned temporary directory through `TMPDIR` and `MAVEN_OPTS`.
+A separate invocation loads that actual integrated named-module JAR, acquires
+real Linux x86-64 `/proc` counters, and verifies Windows platform rejection and
+macOS sample rejection. Its nonzero host swap observation is a single sample,
+not evidence of growth or pressure recovery. The final JAR/dependency hashes,
+driver, exact command and output are retained under
+`current_integrated_memory_module` in
+[the memory-monitor evidence](evidence/java-memory-monitor-candidates.json).
+Linux ARM64 acquisition, effective cgroup budgets, complete native distribution
+images and scheduler composition remain open. Warnings remain visible.
+
+### macOS child gating with closed descriptors
+
+The first native child-gating check on
+[Apple Silicon run 40632806176](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632806176)
+fails its progress deadline when the child closes inherited descriptors:
+Frida observes fork/resume, but no exec or child-ready event follows. A focused
+control that preserves descriptors tracks a detached child and a grandchild
+created after root exit, retains root status 7 and verifies descendant
+termination. The control's initial fixture publication race is retained;
+atomic publication fixes that harness error before the control passes.
+
+This establishes descriptor-dependent progress, not the exact stalled native
+operation. The normal-descriptor gate remains failed, so Intel is not dispatched
+and macOS ownership is not accepted. No Frida source or dependency patch is made.
+Recorded workload PIDs are absent after cleanup, owned scratch and keys are
+removed, SSH exits zero, and hosted cleanup succeeds. Sources, receipts and
+limitations are retained in
+[macOS child-gating evidence](evidence/macos-child-gating.json). Java ownership,
+complete child coverage and scheduler integration remain open.
+
+Follow-up [run 40637336139](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40637336139) identifies four inherited `KQUEUE` descriptors that the child closes before entering the exec stall: preserving only the acquired queue descriptors passes root-status preservation, post-root detached-descendant tracking and termination, while a matched control with identical inspection/setup order and no queue preservation reproduces the timeout. This establishes queue closure as a causal factor on Apple Silicon, while the exact internal queue consumer and a production solution remain unresolved; [macos-descriptor-closure.json](evidence/macos-descriptor-closure.json) retains both outcomes, sources and native logs, and [macos-child-stack.json](evidence/macos-child-stack.json) retains the preceding native stacks without accepting a dependency patch or changing the ordinary failed gate.
+
+### Standalone Java Windows process owner
+
+The JDK 27 FFM `WindowsProcess` public operation passes on native
+[x86-64 run 40636264285](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40636264285)
+and [ARM64 run 40635839271](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40635839271).
+Both archives contain identical production source, SHA-256
+`be5a44f5b2bcab983673c12da398298dd9f4fca1fea9acaf5c7e657479c66570`,
+with the standalone dependency declarations and native driver identities retained in
+[windows-java-process-owner.json](evidence/windows-java-process-owner.json).
+
+The native checks exercise atomic Job Object membership, direct arguments,
+explicit environment and working directory, preserved UTF-16 code units,
+borrowed output, root status, surviving descendants, whole-tree termination,
+idempotent close and construction-failure cleanup. Root-only termination fails
+the retained regression. A controlled failure after successful native launch
+requires the owner to terminate its process before returning the original error;
+secondary release failures remain suppressed on that error. Repeating 48 owned
+operations leaves process handle counts unchanged: 307 on x86-64 and 308 on ARM64.
+These accounting checks use the interpreter to avoid attributing JVM compiler
+initialization handles to the owner.
+
+The ARM64 fixture initially exposes a child-readiness publication race; only
+that fixture changes to publish its PID atomically. Its final archive retains
+that version, while the x86-64 archive retains the earlier passing fixture.
+The production source and checking driver match on both hosts. Parent validation
+checks archive CRCs, source/declaration bytes, each native driver hash, combined
+gate results and terminal cleanup. Both SSH owners exit zero, remote storage is
+removed, and hosted post steps pass; the workflows retain only their deliberate
+exit-17 failures.
+
+The production `WindowsProcess` source is now integrated byte-for-byte into the
+tooling module. Seven maintained result-contract cases cover unsigned DWORD
+boundaries and abortion independently of root success; complete Maven
+verification passes all 79 tooling tests. A separate local consumer loads the
+actual named-module JAR, verifies explicit Linux rejection and checks accepted
+and rejected unsigned status boundaries. It uses a diagnostic `add-exports`
+without changing the production module's exports. The initial copied driver
+fails source-launcher package layout and split-package checks before execution;
+moving that consumer outside the production package resolves those fixture
+errors. [windows-java-process-integration.json](evidence/windows-java-process-integration.json)
+preserves commands, artifact/source identities, original failures and passing
+receipts. Temporary probe storage is removed, and existing warnings remain
+visible and nonfatal.
+
+Native [x86-64 run `40641527043`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40641527043)
+also passes the ownership suite using the actual named-module JAR and a fresh
+linked JDK 27 runtime. Native handles balance across 48 repeated operations in
+each: 313 before/after for the module and 305 before/after for the distribution.
+The packaged launcher returns its expected usage status. The integration
+evidence retains the raw logs, verified input hashes, transfer/collection
+failures and successful retries through one persistent Upterm connection.
+Owned storage removal, SSH reaping and hosted post-cleanup pass. A separate
+process census fails because MSYS converts the native command's option into a
+path; that census supplies no process-absence evidence.
+
+Native [ARM64 run `40643328224`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40643328224)
+passes the same actual-module and fresh-runtime ownership suites. Handle counts
+balance at 316 and 308 across 48 operations each, and the packaged launcher
+returns its expected usage status. The same linked runtime also executes the
+existing `WindowsMemory.read()` consumer: physical counters are valid, pagefile
+occupancy is present zero and the low-memory flag is false. This accepts that
+ARM64 distribution boundary; nonzero occupancy, pressure transitions and the
+x86-64 linked-runtime memory operation remain unverified. A native process
+census reports no Java processes, and remote storage removal, SSH reaping and
+hosted post-cleanup pass.
+
+Memory measurement for owned processes, admission/pressure control and actual
+Cargo/Bazel composition remain open. The detached-descendant case ends through
+explicit termination; this evidence does not establish its natural-completion
+path.
+
+### Standalone Java Linux natural completion
+
+The Linux Java owner now observes natural whole-tree completion on native
+[x86-64 run 40638729587](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40638729587)
+and [ARM64 run 40639018926](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40639018926).
+Its public `observeCompletion()` operation waits for Java's root reaper before
+collecting adopted statuses through nonblocking `waitpid`. It completes only
+after the kernel reports no children and the owned cgroup is unpopulated.
+A root exit alone leaves a live detached descendant pending.
+
+Both native gates retain root 7 with descendant 23 and root 0 with descendant 0,
+then remove owned state without requesting termination. Closing with a held
+descendant instead records termination and its actual SIGKILL wait status,
+including when the root already exited zero. Existing explicit termination and
+failure-before-release cleanup continue to pass. The compiled stub first fails
+because natural completion remains pending after descendant release; the
+corrected source passes incrementally and from fresh classes. Two existing FFM
+warnings remain visible and nonfatal.
+
+Parent validation verifies the final archive and all embedded source hashes,
+matches source/declaration/driver bytes, and checks the original failure,
+passing lifecycle receipts and cleanup. Both SSH owners exit zero, owned
+processes and storage are removed, and hosted post steps pass. Both workflows
+retain only their deliberate exit-17 failures. Exact inputs and results are in
+[linux-java-natural-completion.json](evidence/linux-java-natural-completion.json).
+
+The operation still requires a dedicated privileged supervisor JVM with no
+unrelated children. Production polling, deadlines, controller protocol,
+supervisor-death recovery, shared-JVM reaper coordination and cross-platform
+scheduler integration remain unaccepted. These native checks accept standalone
+ownership behavior, not checkpoint 3 or a Codex build.
+
+### Effective Linux cgroup memory budget candidates
+
+The scheduler must account for restrictive ancestor cgroups as well as host
+physical availability. An unlimited leaf does not establish unlimited admission
+capacity. Missing counters must remain distinguishable from unlimited limits
+and present-zero usage.
+
+Six isolated cgroup-v2 fixtures reject OSHI 7.7.2's `LinuxCgroupInfo` as the
+sole budget source. Its public memory getters map missing and malformed limits
+to the same value as explicit `max`, and missing usage to the same value as
+present zero. An unlimited leaf beneath a parent with a 1,024-byte limit and
+768-byte usage still exposes only the leaf's unlimited limit and zero usage.
+
+Stable libcgroup 3.2.0 remains under evaluation through JDK 27 FFM. Its string
+getter preserves explicit `max` and zero, and returns a distinct missing-value
+status. Actual kernel reads succeed for both the current cgroup and its visible
+root ancestor. All ten group objects from that probe are freed, with their
+pointers reset to null. Its unsigned numeric getter alone accepts the tested
+overflow, trailing-text and negative inputs. A separate JDK parser probe
+rejects those inputs and distinguishes leading-plus and leading-zero forms
+through canonical comparison.
+
+[linux-cgroup-budget-candidates.json](evidence/linux-cgroup-budget-candidates.json)
+retains fixture inputs, exact public API results, native library/source hashes,
+drivers and raw output. These results establish candidate capabilities only.
+Native Linux x86-64 [run 40675708143](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40675708143)
+now verifies a visible unlimited leaf beneath a 2 GiB parent: the same getters
+retrieve the parent limit and each group's usage separately. The real hierarchy
+root returns an explicit missing-value status rather than zero or unlimited.
+
+The namespace checks expose a separate limit on this candidate operation.
+With the original mount, the namespace-relative process path selects a root
+with missing counters. After a fresh private mount, the visible root reports
+`max` even though the fixture's hidden parent still imposes 2 GiB. Reading the
+visible hierarchy alone therefore does not establish the complete effective
+budget. These observations do not select a production reader; handling
+unobservable constraints, Linux ARM64 distribution and the final public-operation
+proof remain open. The persistent Upterm client remains connected throughout
+these probes; remote scratch/cgroup cleanup, client exit and both hosted post
+operations pass. The smoke workflow retains its intentional exit-17 failure.

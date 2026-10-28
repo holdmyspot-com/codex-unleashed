@@ -1,0 +1,1217 @@
+{
+  "task_contract": "acknowledged",
+  "scope": "Native macOS Frida child-gating facility investigation only. No production source, dependency, scheduler, workflow or security-policy change.",
+  "outcome": "Normal inherited-descriptor closing gate failed on native Apple Silicon. Descriptor-inheritance control retained the detached child and post-root grandchild; its first receipt exposed a scratch JSON publication race, and the affected control passed after bounded read-readiness handling. Intel was not dispatched.",
+  "accepted_claim": "The retained normal case fails its 12-second progress gate on native arm64. A close_fds=False control demonstrates descriptor-dependent progress and post-root descendant tracking/termination; it does not accept normal-descriptor process ownership.",
+  "run_id": 40632806176,
+  "job_id": 122632901423,
+  "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632806176",
+  "job_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632806176/job/122632901423",
+  "source_ref": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+  "runner": {
+    "kernel": "24.6.0",
+    "machine": "arm64",
+    "image": "macos15",
+    "image_version": "20260907.0337.1",
+    "python": "3.12.10",
+    "python_executable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+    "controller_uid": 0,
+    "workload_uid": 501,
+    "jdk": "Temurin 21.0.12.1+1 LTS",
+    "identity_receipts": [
+      {
+        "index": 0,
+        "operation": "test -d \"$RUNNER_DEBUG_SMOKE\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && printf 'incremental-retry\\n' >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && export MAC_CHILD_SCRATCH=$(mktemp -d \"$RUNNER_TEMP/mac-child-tracking-XXXXXX\") && printf 'REMOTE_SCRATCH=%s\\n' \"$MAC_CHILD_SCRATCH\" && uname -a && command -v python3 && python3 -V && java -version && id && sudo -n true",
+        "exit": 0,
+        "output": "completed-part\r\nREMOTE_SCRATCH=/Users/runner/work/_temp/mac-child-tracking-mz1E6n\r\nDarwin iad20-gt1023-7a4fc4ff-8d72-4138-84ab-d445e0ab7860-62DA512B1016.local 24.6.0 Darwin Kernel Version 24.6.0: Tue Jul 21 20:51:34 PDT 2026; root:xnu-11417.140.69.711.44~1/RELEASE_ARM64_VMAPPLE arm64\r\n/opt/homebrew/bin/python3\r\nPython 3.14.7\r\nopenjdk version \"21.0.12.1\" 2026-08-18 LTS\r\nOpenJDK Runtime Environment Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS)\r\nOpenJDK 64-Bit Server VM Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS, mixed mode, sharing)\r\nuid=501(runner) gid=20(staff) groups=20(staff),12(everyone),61(localaccounts),79(_appserverusr),80(admin),81(_appserveradm),264(_webdeveloper),701(com.apple.sharepoint.group.1),33(_appstore),98(_lpadmin),100(_lpoperator),204(_developer),250(_analyticsusers),395(com.apple.access_ftp),398(com.apple.access_screensharing),399(com.apple.access_ssh),400(com.apple.access_remote_ae)\r\n\r\nOCCUPANCY_RESULT_0_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 1,
+        "operation": "ls \"$RUNNER_TOOL_CACHE/Python\"; printf \"IMAGE=%s VERSION=%s\\n\" \"$ImageOS\" \"$ImageVersion\"",
+        "exit": 0,
+        "output": "3.11.9\t3.12.10\t3.13.15\t3.14.7\r\nIMAGE=macos15 VERSION=20260907.0337.1\r\n\r\nOCCUPANCY_RESULT_1_END:0\r\nOCCUPANCY> "
+      }
+    ]
+  },
+  "dependencies": {
+    "frida": "17.24.3",
+    "recipe": ".github/scripts/macos-interception-requirements.txt",
+    "recipe_sha256": "1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700",
+    "require_hashes": true,
+    "wheel": "frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl",
+    "allowed_wheel_sha256": [
+      "837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953",
+      "767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac"
+    ],
+    "installed_frida_abi3_so_sha256": "a6e39d2f4989d189a8ecf05d475b75ec6489d8851ec46f86a789ab7f7d90f6d3",
+    "acquisition_receipt": {
+      "index": 32,
+      "operation": "export MAC_CHILD_PY=\"$RUNNER_TOOL_CACHE/Python/3.12.10/arm64/bin/python3\"; test -x \"$MAC_CHILD_PY\" && printf %s '# Native macOS wheels for the owned Python 3.12 diagnostic.\n# Hashes come from https://pypi.org/pypi/frida/17.24.3/json.\nfrida==17.24.3 \\\n    --hash=sha256:837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953 \\\n    --hash=sha256:767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac\n' > \"$MAC_CHILD_SCRATCH/requirements.txt\" && TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -m pip install --index-url https://pypi.org/simple --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps --require-hashes --target \"$MAC_CHILD_SCRATCH/package\" -r \"$MAC_CHILD_SCRATCH/requirements.txt\" && \"$MAC_CHILD_PY\" -V && shasum -a 256 \"$MAC_CHILD_SCRATCH/package/_frida\"* \"$MAC_CHILD_SCRATCH/requirements.txt\"",
+      "exit": 1,
+      "output": "> > > > > Collecting frida==17.24.3 (from -r /Users/runner/work/_temp/mac-child-tracking-mz1E6n/requirements.txt (line 3))\r\n  Downloading frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl (46.6 MB)\r\n\u001b[?25l     \u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m0.0/46.6 MB\u001b[0m \u001b[31m?\u001b[0m eta \u001b[36m-:--:--\u001b[0m\r\u001b[2K     \u001b[38;5;197m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m\u001b[38;5;197m\u2578\u001b[0m\u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m9.2/46.6 MB\u001b[0m \u001b[31m43.6 MB/s\u001b[0m eta \u001b[36m0:00:01\u001b[0m\r\u001b[2K     \u001b[38;5;197m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m\u001b[38;5;197m\u2578\u001b[0m\u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m29.1/46.6 MB\u001b[0m \u001b[31m60.7 MB/s\u001b[0m eta \u001b[36m0:00:01\u001b[0m\r\u001b[2K     \u001b[38;5;70m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m46.6/46.6 MB\u001b[0m \u001b[31m79.8 MB/s\u001b[0m  \u001b[33m0:00:00\u001b[0m\r\n\u001b[?25hInstalling collected packages: frida\r\nSuccessfully installed frida-17.24.3\r\nPython 3.12.10\r\nshasum: /Users/runner/work/_temp/mac-child-tracking-mz1E6n/package/_frida*: No such file or directory\r\n1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700  /Users/runner/work/_temp/mac-child-tracking-mz1E6n/requirements.txt\r\n\r\nOCCUPANCY_RESULT_32_END:1\r\nOCCUPANCY> "
+    },
+    "acquisition_note": "pip hash-checked installation succeeded. The combined acquisition command exited 1 because its subsequent shasum glob pointed at package/_frida instead of package/frida/_frida.abi3.so. Receipt 33 correctly hashes the installed native library before the original probe.",
+    "selected_wheel_sha256": "767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac",
+    "selected_wheel_metadata": {
+      "comment_text": null,
+      "core-metadata": {
+        "sha256": "0d337d068d4f6efdcd59491bfe4fdaba2bd15e9b4284d158199ac95725a10c5f"
+      },
+      "digests": {
+        "blake2b_256": "92886e642a6a80351b9acf85cde93e4da173a61bad3e9db223532f7c2a3fde7f",
+        "md5": "3aeb628befd69270df33cd8155109d5f",
+        "sha256": "767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac"
+      },
+      "downloads": -1,
+      "filename": "frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl",
+      "has_sig": false,
+      "md5_digest": "3aeb628befd69270df33cd8155109d5f",
+      "packagetype": "bdist_wheel",
+      "python_version": "cp37",
+      "requires_python": ">=3.7",
+      "size": 46643033,
+      "upload_time": "2026-10-19T09:27:53",
+      "upload_time_iso_8601": "2026-10-19T09:27:53.505492Z",
+      "url": "https://files.pythonhosted.org/packages/92/88/6e642a6a80351b9acf85cde93e4da173a61bad3e9db223532f7c2a3fde7f/frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl",
+      "yanked": false,
+      "yanked_reason": null
+    }
+  },
+  "supported_sequence": {
+    "reference": "https://github.com/frida/frida-python/blob/main/examples/child_gating.py",
+    "used": [
+      "register device child-added callback",
+      "spawn root with subprocess.Popen and file permission gate, retaining wait ownership",
+      "attach root and enable_child_gating before permission release",
+      "retain child identity independently, attach, enable_child_gating, load script, retain references, resume",
+      "handle process-replaced versus process-terminated detach independently",
+      "continue controller after root exit and retain descendant sessions"
+    ],
+    "root_launch_note": "Uses an attached, explicitly gated root rather than Frida device.spawn so root wait status is obtained at its actual parent boundary."
+  },
+  "source_files": {
+    "fixture.py": {
+      "bytes": 2199,
+      "sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+      "source": "import json\nimport os\nfrom pathlib import Path\nimport signal\nimport subprocess\nimport sys\nimport time\n\nrole, directory, close_mode = sys.argv[1:]\ndirectory = Path(directory)\ndeadline = time.monotonic() + 35\nsignal.alarm(40)\n\n\ndef record(name, **values):\n    values.update(pid=os.getpid(), ppid=os.getppid(), pgid=os.getpgrp(),\n                  sid=os.getsid(0), uid=os.getuid(), monotonic_ns=time.monotonic_ns())\n    (directory / (name + '.json')).write_text(json.dumps(values) + '\\n')\n\n\ndef await_file(name):\n    while not (directory / name).exists():\n        if time.monotonic() > deadline:\n            record(role + '-deadline', waiting=name)\n            os._exit(124)\n        time.sleep(0.02)\n\n\ndef spawn(next_role):\n    return subprocess.Popen([sys.executable, __file__, next_role,\n                             str(directory), close_mode],\n                            close_fds=close_mode == 'close',\n                            start_new_session=True,\n                            stdin=subprocess.DEVNULL,\n                            stdout=subprocess.DEVNULL,\n                            stderr=subprocess.DEVNULL)\n\n\nrecord(role + '-ready')\nif role == 'root':\n    await_file('root-go')\n    child = spawn('child')\n    record('root-child-created', child_pid=child.pid)\n    await_file('child-ready.json')\n    record('root-exit', status=7)\n    os._exit(7)\nelif role == 'child':\n    # Popen performed setsid and normal close_fds before this interpreter ran.\n    await_file('root-reaped.json')\n    record('child-after-root')\n    grandchild = spawn('grandchild')\n    record('child-grandchild-created', grandchild_pid=grandchild.pid)\n    await_file('grandchild-ready.json')\n    result = grandchild.wait(timeout=max(1, deadline - time.monotonic()))\n    record('grandchild-reaped', returncode=result)\n    signal.signal(signal.SIGTERM, lambda sig, frame: (\n        record('child-terminating', signal=sig), os._exit(128 + sig)))\n    record('child-awaiting-termination')\n    while time.monotonic() < deadline:\n        time.sleep(0.05)\n    record('child-deadline')\n    os._exit(124)\nelse:\n    while time.monotonic() < deadline:\n        time.sleep(0.05)\n    record('grandchild-deadline')\n    os._exit(124)\n"
+    },
+    "probe-v1.py": {
+      "bytes": 7522,
+      "sha256": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c",
+      "source": "import argparse\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport platform\nimport queue\nimport signal\nimport subprocess\nimport sys\nimport time\n\nimport frida\n\nparser = argparse.ArgumentParser()\nparser.add_argument('--directory', type=Path, required=True)\nparser.add_argument('--mode', choices=['close', 'inherit'], default='close')\nargs = parser.parse_args()\nargs.directory.mkdir()\nos.chmod(args.directory, 0o777)\ndirectory = args.directory\nevents = []\npending = queue.Queue()\nsessions = {}\nknown = set()\ndetached = []\ndevice = frida.get_local_device()\nroot = None\nsuccess = False\n\n\ndef emit(event, **data):\n    record = dict(event=event, monotonic_ns=time.monotonic_ns(), **data)\n    events.append(record)\n    print(json.dumps(record), flush=True)\n\n\ndef attach(pid):\n    session = device.attach(pid)\n    session.on('detached', lambda reason, crash=None:\n               pending.put(('detached', (pid, session, reason))))\n    session.enable_child_gating()\n    script = session.create_script('send({probe: \"child-gating-ready\"});')\n    script.load()\n    # Keep every session/script reachable before resuming the child.\n    sessions[pid] = (session, script)\n    emit('gating_enabled', pid=pid)\n\n\ndef pump(seconds=0.05):\n    try:\n        kind, data = pending.get(timeout=seconds)\n    except queue.Empty:\n        return\n    if kind == 'child':\n        child = data\n        known.add(child.pid)\n        emit('child_added', pid=child.pid, parent_pid=child.parent_pid,\n             origin=str(child.origin), identifier=child.identifier)\n        attach(child.pid)\n        device.resume(child.pid)\n        emit('child_resumed', pid=child.pid)\n    else:\n        pid, session, reason = data\n        detached.append((pid, reason))\n        if pid in sessions and sessions[pid][0] is session:\n            sessions.pop(pid)\n        emit('session_detached', pid=pid, reason=reason)\n\n\ndef until(predicate, label, seconds=12):\n    deadline = time.monotonic() + seconds\n    while not predicate():\n        if time.monotonic() > deadline:\n            raise TimeoutError(label)\n        pump()\n\n\ndef read(name):\n    return json.loads((directory / (name + '.json')).read_text())\n\n\ndef absent(pid):\n    try:\n        os.kill(pid, 0)\n        return False\n    except ProcessLookupError:\n        return True\n\n\ndevice.on('child-added', lambda child: pending.put(('child', child)))\ntry:\n    emit('identity', kernel=platform.release(), machine=platform.machine(),\n         python=sys.version, executable=sys.executable, frida=frida.__version__,\n         uid=os.getuid(), workload_uid=int(os.environ.get('SUDO_UID', os.getuid())),\n         mode=args.mode)\n    fixture = Path(__file__).with_name('fixture.py')\n    emit('source', fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),\n         probe_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())\n    root = subprocess.Popen([sys.executable, str(fixture), 'root',\n                             str(directory), args.mode],\n                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,\n                            stderr=subprocess.DEVNULL, close_fds=True,\n                            user=int(os.environ.get('SUDO_UID', os.getuid())),\n                            group=int(os.environ.get('SUDO_GID', os.getgid())))\n    known.add(root.pid)\n    attach(root.pid)\n    (directory / 'root-go').touch()\n    until(lambda: root.poll() is not None, 'root failed to exit')\n    root_status = root.wait()\n    emit('root_reaped', pid=root.pid, returncode=root_status)\n    if root_status != 7:\n        raise AssertionError('root exit must remain 7')\n    (directory / 'root-reaped.json').write_text(json.dumps({'pid': root.pid, 'returncode': root_status}))\n    until(lambda: (directory / 'grandchild-ready.json').exists(),\n          'post-root grandchild did not reach ready')\n    child = read('child-ready')\n    grandchild = read('grandchild-ready')\n    if child['pid'] not in known or grandchild['pid'] not in known:\n        raise AssertionError('fixture descendant lacks child-added event')\n    if child['sid'] != child['pid'] or grandchild['sid'] != grandchild['pid']:\n        raise AssertionError('descendants did not detach sessions')\n    if read('child-after-root')['monotonic_ns'] < read('root-exit')['monotonic_ns']:\n        raise AssertionError('grandchild creation boundary precedes root exit')\n    emit('tree_retained_after_root', root_pid=root.pid, child=child,\n         grandchild=grandchild, child_after_root=read('child-after-root'))\n    os.kill(grandchild['pid'], signal.SIGTERM)\n    emit('owned_signal', pid=grandchild['pid'], signal=signal.SIGTERM)\n    until(lambda: (directory / 'grandchild-reaped.json').exists(),\n          'child did not reap grandchild')\n    reaped = read('grandchild-reaped')\n    if reaped['returncode'] != -signal.SIGTERM:\n        raise AssertionError('grandchild was not reaped with SIGTERM')\n    until(lambda: (directory / 'child-awaiting-termination.json').exists(),\n          'child not awaiting termination')\n    os.kill(child['pid'], signal.SIGTERM)\n    emit('owned_signal', pid=child['pid'], signal=signal.SIGTERM)\n    until(lambda: absent(child['pid']) and absent(grandchild['pid']),\n          'descendant terminal absence not observed')\n    until(lambda: all(any(pid == target and reason == 'process-terminated'\n                          for pid, reason in detached)\n                      for target in [child['pid'], grandchild['pid']]),\n          'missing terminal Frida detach events')\n    emit('descendants_terminal', child_pid=child['pid'],\n         grandchild_pid=grandchild['pid'], grandchild_reaped=reaped,\n         child_terminating=read('child-terminating'),\n         child_reaping_boundary='PID 1 after root exit; absence observed, launchd wait syscall not traced')\n    success = True\nexcept Exception as error:\n    emit('probe_failure', error_type=type(error).__name__, error=str(error))\nfinally:\n    for file in directory.glob('*-ready.json'):\n        try:\n            known.add(json.loads(file.read_text())['pid'])\n        except Exception:\n            pass\n    for pid in sorted(known):\n        if not absent(pid):\n            try:\n                device.kill(pid)\n                emit('cleanup_kill', pid=pid, method='frida.device.kill')\n            except Exception as error:\n                emit('cleanup_kill_error', pid=pid, error=str(error))\n                try:\n                    os.kill(pid, signal.SIGKILL)\n                    emit('cleanup_kill', pid=pid, method='os.kill')\n                except ProcessLookupError:\n                    pass\n    if root is not None:\n        try:\n            emit('cleanup_root_reaped', pid=root.pid, returncode=root.wait(timeout=5))\n        except Exception as error:\n            emit('cleanup_root_reap_error', error=str(error))\n    for session, script in list(sessions.values()):\n        try:\n            session.detach()\n        except frida.InvalidOperationError:\n            pass\n    time.sleep(0.5)\n    emit('cleanup_terminal', identities=sorted(known),\n         absent={str(pid): absent(pid) for pid in sorted(known)})\n    emit('probe_result', passed=success, mode=args.mode)\n    (directory / 'controller-events.json').write_text(json.dumps(events, indent=2) + '\\n')\n    print('FIXTURE_RECORDS=' + json.dumps({f.name: json.loads(f.read_text())\n                                         for f in directory.glob('*.json')\n                                         if f.name != 'controller-events.json'}), flush=True)\nsys.exit(0 if success else 1)\n"
+    },
+    "probe.py": {
+      "bytes": 7824,
+      "sha256": "81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1",
+      "source": "import argparse\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport platform\nimport queue\nimport signal\nimport subprocess\nimport sys\nimport time\n\nimport frida\n\nparser = argparse.ArgumentParser()\nparser.add_argument('--directory', type=Path, required=True)\nparser.add_argument('--mode', choices=['close', 'inherit'], default='close')\nargs = parser.parse_args()\nargs.directory.mkdir()\nos.chmod(args.directory, 0o777)\ndirectory = args.directory\nevents = []\npending = queue.Queue()\nsessions = {}\nknown = set()\ndetached = []\ndevice = frida.get_local_device()\nroot = None\nsuccess = False\n\n\ndef emit(event, **data):\n    record = dict(event=event, monotonic_ns=time.monotonic_ns(), **data)\n    events.append(record)\n    print(json.dumps(record), flush=True)\n\n\ndef attach(pid):\n    session = device.attach(pid)\n    session.on('detached', lambda reason, crash=None:\n               pending.put(('detached', (pid, session, reason))))\n    session.enable_child_gating()\n    script = session.create_script('send({probe: \"child-gating-ready\"});')\n    script.load()\n    # Keep every session/script reachable before resuming the child.\n    sessions[pid] = (session, script)\n    emit('gating_enabled', pid=pid)\n\n\ndef pump(seconds=0.05):\n    try:\n        kind, data = pending.get(timeout=seconds)\n    except queue.Empty:\n        return\n    if kind == 'child':\n        child = data\n        known.add(child.pid)\n        emit('child_added', pid=child.pid, parent_pid=child.parent_pid,\n             origin=str(child.origin), identifier=child.identifier)\n        attach(child.pid)\n        device.resume(child.pid)\n        emit('child_resumed', pid=child.pid)\n    else:\n        pid, session, reason = data\n        detached.append((pid, reason))\n        if pid in sessions and sessions[pid][0] is session:\n            sessions.pop(pid)\n        emit('session_detached', pid=pid, reason=reason)\n\n\ndef until(predicate, label, seconds=12):\n    deadline = time.monotonic() + seconds\n    while not predicate():\n        if time.monotonic() > deadline:\n            raise TimeoutError(label)\n        pump()\n\n\ndef read(name):\n    # Existence precedes write completion; do not treat partial publication as an event failure.\n    deadline = time.monotonic() + 2\n    while True:\n        try:\n            return json.loads((directory / (name + '.json')).read_text())\n        except json.JSONDecodeError:\n            if time.monotonic() > deadline:\n                raise\n            time.sleep(0.01)\n\n\ndef absent(pid):\n    try:\n        os.kill(pid, 0)\n        return False\n    except ProcessLookupError:\n        return True\n\n\ndevice.on('child-added', lambda child: pending.put(('child', child)))\ntry:\n    emit('identity', kernel=platform.release(), machine=platform.machine(),\n         python=sys.version, executable=sys.executable, frida=frida.__version__,\n         uid=os.getuid(), workload_uid=int(os.environ.get('SUDO_UID', os.getuid())),\n         mode=args.mode)\n    fixture = Path(__file__).with_name('fixture.py')\n    emit('source', fixture_sha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),\n         probe_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())\n    root = subprocess.Popen([sys.executable, str(fixture), 'root',\n                             str(directory), args.mode],\n                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,\n                            stderr=subprocess.DEVNULL, close_fds=True,\n                            user=int(os.environ.get('SUDO_UID', os.getuid())),\n                            group=int(os.environ.get('SUDO_GID', os.getgid())))\n    known.add(root.pid)\n    attach(root.pid)\n    (directory / 'root-go').touch()\n    until(lambda: root.poll() is not None, 'root failed to exit')\n    root_status = root.wait()\n    emit('root_reaped', pid=root.pid, returncode=root_status)\n    if root_status != 7:\n        raise AssertionError('root exit must remain 7')\n    (directory / 'root-reaped.json').write_text(json.dumps({'pid': root.pid, 'returncode': root_status}))\n    until(lambda: (directory / 'grandchild-ready.json').exists(),\n          'post-root grandchild did not reach ready')\n    child = read('child-ready')\n    grandchild = read('grandchild-ready')\n    if child['pid'] not in known or grandchild['pid'] not in known:\n        raise AssertionError('fixture descendant lacks child-added event')\n    if child['sid'] != child['pid'] or grandchild['sid'] != grandchild['pid']:\n        raise AssertionError('descendants did not detach sessions')\n    if read('child-after-root')['monotonic_ns'] < read('root-exit')['monotonic_ns']:\n        raise AssertionError('grandchild creation boundary precedes root exit')\n    emit('tree_retained_after_root', root_pid=root.pid, child=child,\n         grandchild=grandchild, child_after_root=read('child-after-root'))\n    os.kill(grandchild['pid'], signal.SIGTERM)\n    emit('owned_signal', pid=grandchild['pid'], signal=signal.SIGTERM)\n    until(lambda: (directory / 'grandchild-reaped.json').exists(),\n          'child did not reap grandchild')\n    reaped = read('grandchild-reaped')\n    if reaped['returncode'] != -signal.SIGTERM:\n        raise AssertionError('grandchild was not reaped with SIGTERM')\n    until(lambda: (directory / 'child-awaiting-termination.json').exists(),\n          'child not awaiting termination')\n    os.kill(child['pid'], signal.SIGTERM)\n    emit('owned_signal', pid=child['pid'], signal=signal.SIGTERM)\n    until(lambda: absent(child['pid']) and absent(grandchild['pid']),\n          'descendant terminal absence not observed')\n    until(lambda: all(any(pid == target and reason == 'process-terminated'\n                          for pid, reason in detached)\n                      for target in [child['pid'], grandchild['pid']]),\n          'missing terminal Frida detach events')\n    emit('descendants_terminal', child_pid=child['pid'],\n         grandchild_pid=grandchild['pid'], grandchild_reaped=reaped,\n         child_terminating=read('child-terminating'),\n         child_reaping_boundary='PID 1 after root exit; absence observed, launchd wait syscall not traced')\n    success = True\nexcept Exception as error:\n    emit('probe_failure', error_type=type(error).__name__, error=str(error))\nfinally:\n    for file in directory.glob('*-ready.json'):\n        try:\n            known.add(json.loads(file.read_text())['pid'])\n        except Exception:\n            pass\n    for pid in sorted(known):\n        if not absent(pid):\n            try:\n                device.kill(pid)\n                emit('cleanup_kill', pid=pid, method='frida.device.kill')\n            except Exception as error:\n                emit('cleanup_kill_error', pid=pid, error=str(error))\n                try:\n                    os.kill(pid, signal.SIGKILL)\n                    emit('cleanup_kill', pid=pid, method='os.kill')\n                except ProcessLookupError:\n                    pass\n    if root is not None:\n        try:\n            emit('cleanup_root_reaped', pid=root.pid, returncode=root.wait(timeout=5))\n        except Exception as error:\n            emit('cleanup_root_reap_error', error=str(error))\n    for session, script in list(sessions.values()):\n        try:\n            session.detach()\n        except frida.InvalidOperationError:\n            pass\n    time.sleep(0.5)\n    emit('cleanup_terminal', identities=sorted(known),\n         absent={str(pid): absent(pid) for pid in sorted(known)})\n    emit('probe_result', passed=success, mode=args.mode)\n    (directory / 'controller-events.json').write_text(json.dumps(events, indent=2) + '\\n')\n    print('FIXTURE_RECORDS=' + json.dumps({f.name: json.loads(f.read_text())\n                                         for f in directory.glob('*.json')\n                                         if f.name != 'controller-events.json'}), flush=True)\nsys.exit(0 if success else 1)\n"
+    },
+    "client.py": {
+      "bytes": 3317,
+      "sha256": "f1eb1962e3468640cf5d8825ca9cd39b08e829cd4ec2ba68208e6495bdb551d9",
+      "source": "import json, os, pty, re, select, shlex, subprocess, sys, time\nfrom pathlib import Path\nroot=Path(sys.argv[1]).resolve()\nconnection=json.loads((root/'connection.json').read_text())\nargs=shlex.split(connection['sshCommand'])\nmaster,slave=pty.openpty()\nchild=subprocess.Popen([args[0],'-tt','-o','ServerAliveInterval=30','-i',str(root.parent/'client-key'),'-o','IdentitiesOnly=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile=.github/actions/debug-failed-runner/known_hosts',*args[1:]],stdin=slave,stdout=slave,stderr=slave)\nos.close(slave)\ntranscript=open(root/'transcript.log','ab',buffering=0)\nreceipts=[]\ndef send(data):\n while data:\n  count=os.write(master,data)\n  data=data[count:]\ndef read_until(marker,seconds=300,result=False):\n output=b''\n pattern=re.escape(marker)+(rb'([0-9]+)[\\r\\n]' if result else b'')\n deadline=time.monotonic()+seconds\n while re.search(pattern,re.sub(rb'\\x1b\\[[0-?]*[ -/]*[@-~]',b'',output)) is None:\n  if time.monotonic()>deadline:\n   raise TimeoutError('Remote marker deadline: '+repr(marker))\n  ready,_,_=select.select([master],[],[],1)\n  if ready:\n   try: chunk=os.read(master,65536)\n   except OSError: raise EOFError('SSH terminal ended before expected marker')\n   if chunk==b'': raise EOFError('SSH terminal closed')\n   transcript.write(chunk)\n   output+=chunk\n return output\ndef read_prompt():\n output=b''\n while True:\n  ready,_,_=select.select([master],[],[],1)\n  if ready:\n   chunk=os.read(master,65536)\n   if chunk==b'':raise EOFError('SSH ended before shell prompt')\n   transcript.write(chunk);output+=chunk\n   clean=re.sub(rb'\\x1b\\][^\\x07]*(?:\\x07|\\x1b\\\\)',b'',output)\n   clean=re.sub(rb'\\x1b\\[[0-?]*[ -/]*[@-~]',b'',clean)\n   if re.search(rb'(?m)(?:^|[\\r\\n])[^\\r\\n]*[$#%] *$',clean):return\ntry:\n read_prompt()\n send(b\"export PS1='OCCUPANCY> '; unset PROMPT_COMMAND; stty -echo cols 240; printf '\\\\nOCCUPANCY_READY\\\\n'\\n\")\n print(read_until(b'OCCUPANCY_READY').decode(errors='replace'),flush=True)\n print('CLIENT_READY',flush=True)\n command_index=0\n while child.poll() is None:\n  commands=(root/'commands.jsonl').read_text().splitlines()\n  if command_index == len(commands):\n   ready,_,_=select.select([master],[],[],0.2)\n   if ready:\n    try: chunk=os.read(master,65536)\n    except OSError: break\n    if chunk==b'': break\n    transcript.write(chunk)\n   continue\n  command=json.loads(commands[command_index])\n  command_index+=1\n  if command=='EXIT':\n   send(b'exit\\n')\n   print('SSH_EXIT='+str(child.wait(timeout=30)),flush=True)\n   break\n  index=len(receipts)\n  marker=('OCCUPANCY_RESULT_'+str(index)+'_END:').encode()\n  suffix=\"; occupancy_status=$?; printf '\\\\nOCCUPANCY_RESULT_\"+str(index)+\"_END:%s\\\\n' \\\"$occupancy_status\\\"\\n\"\n  send((command+suffix).encode())\n  output=read_until(marker,result=True)\n  status=int(re.search(re.escape(marker)+rb'([0-9]+)[\\r\\n]',re.sub(rb'\\x1b\\[[0-?]*[ -/]*[@-~]',b'',output))[1])\n  receipt={'index':index,'operation':command,'exit':status,'output':output.decode(errors='replace')}\n  receipts.append(receipt)\n  (root/'receipts.json').write_text(json.dumps(receipts,indent=2)+'\\n')\n  print(json.dumps(receipt),flush=True)\nfinally:\n if child.poll() is None:\n  child.terminate(); child.wait(timeout=10)\n transcript.close(); os.close(master)\n (root/'client-exit.json').write_text(json.dumps({'ssh_exit':child.returncode})+'\\n')\n"
+    },
+    "requirements.txt": {
+      "bytes": 306,
+      "sha256": "1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700",
+      "source": "# Native macOS wheels for the owned Python 3.12 diagnostic.\n# Hashes come from https://pypi.org/pypi/frida/17.24.3/json.\nfrida==17.24.3 \\\n    --hash=sha256:837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953 \\\n    --hash=sha256:767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac\n"
+    }
+  },
+  "harness_readiness_repair": {
+    "reason": "File existence can precede completed write_text; original focused control caught JSONDecodeError immediately after grandchild-reaped creation. Completed retained file contains wait status -15.",
+    "diff": "--- probe-v1.py\n+++ probe.py\n@@ -77,7 +77,15 @@\n \n \n def read(name):\n-    return json.loads((directory / (name + '.json')).read_text())\n+    # Existence precedes write completion; do not treat partial publication as an event failure.\n+    deadline = time.monotonic() + 2\n+    while True:\n+        try:\n+            return json.loads((directory / (name + '.json')).read_text())\n+        except json.JSONDecodeError:\n+            if time.monotonic() > deadline:\n+                raise\n+            time.sleep(0.01)\n \n \n def absent(pid):\n",
+    "scope": "Only read(name) retries partial JSON for up to two seconds. Fixture, Frida version, gating sequence, deadlines, launch flags, assertions and cleanup are unchanged. Only the affected inherit control is repeated."
+  },
+  "commands": {
+    "acquire": "export MAC_CHILD_PY=\"$RUNNER_TOOL_CACHE/Python/3.12.10/arm64/bin/python3\"; test -x \"$MAC_CHILD_PY\" && printf %s '# Native macOS wheels for the owned Python 3.12 diagnostic.\n# Hashes come from https://pypi.org/pypi/frida/17.24.3/json.\nfrida==17.24.3 \\\n    --hash=sha256:837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953 \\\n    --hash=sha256:767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac\n' > \"$MAC_CHILD_SCRATCH/requirements.txt\" && TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -m pip install --index-url https://pypi.org/simple --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps --require-hashes --target \"$MAC_CHILD_SCRATCH/package\" -r \"$MAC_CHILD_SCRATCH/requirements.txt\" && \"$MAC_CHILD_PY\" -V && shasum -a 256 \"$MAC_CHILD_SCRATCH/package/_frida\"* \"$MAC_CHILD_SCRATCH/requirements.txt\"",
+    "normal": "PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" \"$MAC_CHILD_PY\" -c 'import frida,hashlib,pathlib; p=pathlib.Path(frida.__file__).parent; print(\"FRIDA\",frida.__version__); [(print(\"INSTALLED_NATIVE_SHA256\",str(f),hashlib.sha256(f.read_bytes()).hexdigest())) for f in p.glob(\"*.so\")]' && sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode close --directory \"$MAC_CHILD_SCRATCH/normal\" > \"$MAC_CHILD_SCRATCH/normal.log\" 2>&1; mac_probe_status=$?; cat \"$MAC_CHILD_SCRATCH/normal.log\"; printf \"NORMAL_EXIT=%s\\n\" \"$mac_probe_status\"; test \"$mac_probe_status\" = 0",
+    "original_control": "sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode inherit --directory \"$MAC_CHILD_SCRATCH/control\" > \"$MAC_CHILD_SCRATCH/control.log\" 2>&1; mac_control_status=$?; cat \"$MAC_CHILD_SCRATCH/control.log\"; printf \"CONTROL_EXIT=%s\\n\" \"$mac_control_status\"; test \"$mac_control_status\" = 0",
+    "readiness_control": "sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode inherit --directory \"$MAC_CHILD_SCRATCH/control-readiness\" > \"$MAC_CHILD_SCRATCH/control-readiness.log\" 2>&1; mac_control_status=$?; cat \"$MAC_CHILD_SCRATCH/control-readiness.log\"; printf \"CONTROL_READINESS_EXIT=%s\\n\" \"$mac_control_status\"; test \"$mac_control_status\" = 0",
+    "archive": "\"$MAC_CHILD_PY\" -c 'import os,pathlib,tarfile,hashlib,base64,json\np=pathlib.Path(os.environ['\"'\"'MAC_CHILD_SCRATCH'\"'\"'])\nfiles=sorted(f for f in p.rglob('\"'\"'*'\"'\"') if f.is_file() and '\"'\"'package'\"'\"' not in f.relative_to(p).parts and f.suffix!='\"'\"'.b64'\"'\"')\nprint('\"'\"'ARCHIVE_INPUTS='\"'\"'+json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in files},sort_keys=True))\na=p/'\"'\"'evidence.tar.gz'\"'\"'\nwith tarfile.open(a,'\"'\"'w:gz'\"'\"') as t:\n for f in files:t.add(f,arcname=str(f.relative_to(p)),recursive=False)\nb=a.read_bytes()\nprint('\"'\"'ARCHIVE_SHA256='\"'\"'+hashlib.sha256(b).hexdigest())\nprint('\"'\"'ARCHIVE_BASE64='\"'\"'+base64.b64encode(b).decode())'",
+    "cleanup": "\"$MAC_CHILD_PY\" -c 'import os,pathlib,json\np=pathlib.Path(os.environ['\"'\"'MAC_CHILD_SCRATCH'\"'\"']);ids=set()\nfor f in p.glob('\"'\"'*/controller-events.json'\"'\"'):\n for e in json.loads(f.read_text()):\n  if e['\"'\"'event'\"'\"']=='\"'\"'cleanup_terminal'\"'\"':ids.update(e['\"'\"'identities'\"'\"'])\nresult={}\nfor pid in sorted(ids):\n try:os.kill(pid,0);result[str(pid)]=False\n except ProcessLookupError:result[str(pid)]=True\nprint('\"'\"'FINAL_OWNED_PROCESS_ABSENCE='\"'\"'+json.dumps(result,sort_keys=True))\nassert all(result.values())' && case \"$MAC_CHILD_SCRATCH\" in \"$RUNNER_TEMP\"/mac-child-tracking-*) rm -rf -- \"$MAC_CHILD_SCRATCH\" ;; *) false ;; esac && test ! -e \"$MAC_CHILD_SCRATCH\" && printf \"OWNED_REMOTE_SCRATCH_REMOVED\\n\""
+  },
+  "gate_states": {
+    "authenticated_connection_before_testing": "passed",
+    "source_transfer_size_and_sha256": "passed",
+    "pinned_native_dependency": "passed",
+    "normal_close_fds": "failed",
+    "normal_root_exit_7": "not reached",
+    "normal_post_root_grandchild": "not reached",
+    "original_inherit_control": "failed harness read",
+    "corrected_inherit_control": "passed",
+    "other_macos_architecture": "not run because first architecture normal gate failed",
+    "production_process_ownership": "unaccepted",
+    "scheduler": "unaccepted"
+  },
+  "results": {
+    "original": {
+      "mode": "close",
+      "close_fds": true,
+      "probe_sha256": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c",
+      "exit": 1,
+      "root_pid": 4080,
+      "child_pid": 4087,
+      "events": [
+        {
+          "event": "identity",
+          "monotonic_ns": 264999477458,
+          "kernel": "24.6.0",
+          "machine": "arm64",
+          "python": "3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]",
+          "executable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+          "frida": "17.24.3",
+          "uid": 0,
+          "workload_uid": 501,
+          "mode": "close"
+        },
+        {
+          "event": "source",
+          "monotonic_ns": 265000574583,
+          "fixture_sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+          "probe_sha256": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c"
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 265591783791,
+          "pid": 4080
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 265783119333,
+          "pid": 4087,
+          "parent_pid": 4080,
+          "origin": "fork",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 265793430000,
+          "pid": 4087
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 265793608458,
+          "pid": 4087
+        },
+        {
+          "event": "probe_failure",
+          "monotonic_ns": 277640943083,
+          "error_type": "TimeoutError",
+          "error": "root failed to exit"
+        },
+        {
+          "event": "cleanup_kill",
+          "monotonic_ns": 277652681250,
+          "pid": 4080,
+          "method": "frida.device.kill"
+        },
+        {
+          "event": "cleanup_kill",
+          "monotonic_ns": 277654301208,
+          "pid": 4087,
+          "method": "frida.device.kill"
+        },
+        {
+          "event": "cleanup_root_reaped",
+          "monotonic_ns": 277654377666,
+          "pid": 4080,
+          "returncode": -9
+        },
+        {
+          "event": "cleanup_terminal",
+          "monotonic_ns": 278178642250,
+          "identities": [
+            4080,
+            4087
+          ],
+          "absent": {
+            "4080": true,
+            "4087": true
+          }
+        },
+        {
+          "event": "probe_result",
+          "monotonic_ns": 278178757291,
+          "passed": false,
+          "mode": "close"
+        }
+      ],
+      "result": "failed: root did not exit within 12-second gate; fork observed/resumed, no exec or child-ready observed; cleanup root wait=-9",
+      "root_exit_7": "not reached",
+      "detached_descendant": "not reached",
+      "post_root_grandchild": "not reached",
+      "termination": "cleanup killed both owned PIDs and verified absence"
+    },
+    "focused_control_original": {
+      "mode": "inherit",
+      "close_fds": false,
+      "probe_sha256": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c",
+      "exit": 1,
+      "events": [
+        {
+          "event": "identity",
+          "monotonic_ns": 296380540958,
+          "kernel": "24.6.0",
+          "machine": "arm64",
+          "python": "3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]",
+          "executable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+          "frida": "17.24.3",
+          "uid": 0,
+          "workload_uid": 501,
+          "mode": "inherit"
+        },
+        {
+          "event": "source",
+          "monotonic_ns": 296381079541,
+          "fixture_sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+          "probe_sha256": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c"
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 297121984083,
+          "pid": 4703
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 297140089583,
+          "pid": 4707,
+          "parent_pid": 4703,
+          "origin": "fork",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 297144292125,
+          "pid": 4707
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 297144643000,
+          "pid": 4707
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 297147768250,
+          "pid": 4707,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 297168442000,
+          "pid": 4707,
+          "parent_pid": 4707,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 300129967375,
+          "pid": 4707
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 300132528375,
+          "pid": 4707
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 300136562666,
+          "pid": 4707,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 300157014791,
+          "pid": 4707,
+          "parent_pid": 4707,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 300655265791,
+          "pid": 4707
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 300657666625,
+          "pid": 4707
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 300725360166,
+          "pid": 4703,
+          "reason": "process-terminated"
+        },
+        {
+          "event": "root_reaped",
+          "monotonic_ns": 300725483166,
+          "pid": 4703,
+          "returncode": 7
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 300756914708,
+          "pid": 4739,
+          "parent_pid": 4707,
+          "origin": "fork",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 300761794458,
+          "pid": 4739
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 300762177583,
+          "pid": 4739
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 300765743500,
+          "pid": 4739,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 300785937875,
+          "pid": 4739,
+          "parent_pid": 4739,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 301480725583,
+          "pid": 4739
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 301485296083,
+          "pid": 4739
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 301491275750,
+          "pid": 4739,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 301509162208,
+          "pid": 4739,
+          "parent_pid": 4739,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 302130590083,
+          "pid": 4739
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 302131302125,
+          "pid": 4739
+        },
+        {
+          "event": "tree_retained_after_root",
+          "monotonic_ns": 302198845500,
+          "root_pid": 4703,
+          "child": {
+            "pid": 4707,
+            "ppid": 4703,
+            "pgid": 4707,
+            "sid": 4707,
+            "uid": 501,
+            "monotonic_ns": 300701875000
+          },
+          "grandchild": {
+            "pid": 4739,
+            "ppid": 4707,
+            "pgid": 4739,
+            "sid": 4739,
+            "uid": 501,
+            "monotonic_ns": 302164334208
+          },
+          "child_after_root": {
+            "pid": 4707,
+            "ppid": 1,
+            "pgid": 4707,
+            "sid": 4707,
+            "uid": 501,
+            "monotonic_ns": 300746907750
+          }
+        },
+        {
+          "event": "owned_signal",
+          "monotonic_ns": 302199142333,
+          "pid": 4739,
+          "signal": 15
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 302202330416,
+          "pid": 4739,
+          "reason": "process-terminated"
+        },
+        {
+          "event": "probe_failure",
+          "monotonic_ns": 302203175583,
+          "error_type": "JSONDecodeError",
+          "error": "Expecting value: line 1 column 1 (char 0)"
+        },
+        {
+          "event": "cleanup_kill",
+          "monotonic_ns": 302211967750,
+          "pid": 4707,
+          "method": "frida.device.kill"
+        },
+        {
+          "event": "cleanup_root_reaped",
+          "monotonic_ns": 302212197000,
+          "pid": 4703,
+          "returncode": 7
+        },
+        {
+          "event": "cleanup_terminal",
+          "monotonic_ns": 302765351666,
+          "identities": [
+            4703,
+            4707,
+            4739
+          ],
+          "absent": {
+            "4703": true,
+            "4707": true,
+            "4739": true
+          }
+        },
+        {
+          "event": "probe_result",
+          "monotonic_ns": 302765425291,
+          "passed": false,
+          "mode": "inherit"
+        }
+      ],
+      "result": "failed harness JSON read after grandchild termination, with root=7 and both descendants tracked",
+      "fixture_records": {
+        "control/child-after-root.json": {
+          "pid": 4707,
+          "ppid": 1,
+          "pgid": 4707,
+          "sid": 4707,
+          "uid": 501,
+          "monotonic_ns": 300746907750
+        },
+        "control/child-awaiting-termination.json": {
+          "pid": 4707,
+          "ppid": 1,
+          "pgid": 4707,
+          "sid": 4707,
+          "uid": 501,
+          "monotonic_ns": 302205508916
+        },
+        "control/child-grandchild-created.json": {
+          "grandchild_pid": 4739,
+          "pid": 4707,
+          "ppid": 1,
+          "pgid": 4707,
+          "sid": 4707,
+          "uid": 501,
+          "monotonic_ns": 300765603750
+        },
+        "control/child-ready.json": {
+          "pid": 4707,
+          "ppid": 4703,
+          "pgid": 4707,
+          "sid": 4707,
+          "uid": 501,
+          "monotonic_ns": 300701875000
+        },
+        "control/grandchild-ready.json": {
+          "pid": 4739,
+          "ppid": 4707,
+          "pgid": 4739,
+          "sid": 4739,
+          "uid": 501,
+          "monotonic_ns": 302164334208
+        },
+        "control/grandchild-reaped.json": {
+          "returncode": -15,
+          "pid": 4707,
+          "ppid": 1,
+          "pgid": 4707,
+          "sid": 4707,
+          "uid": 501,
+          "monotonic_ns": 302201272166
+        },
+        "control/root-child-created.json": {
+          "child_pid": 4707,
+          "pid": 4703,
+          "ppid": 4700,
+          "pgid": 4699,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 297147599541
+        },
+        "control/root-exit.json": {
+          "status": 7,
+          "pid": 4703,
+          "ppid": 4700,
+          "pgid": 4699,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 300715579583
+        },
+        "control/root-ready.json": {
+          "pid": 4703,
+          "ppid": 4700,
+          "pgid": 4699,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 296444472208
+        },
+        "control/root-reaped.json": {
+          "pid": 4703,
+          "returncode": 7
+        }
+      }
+    },
+    "focused_control_readiness_retry": {
+      "mode": "inherit",
+      "close_fds": false,
+      "probe_sha256": "81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1",
+      "exit": 0,
+      "events": [
+        {
+          "event": "identity",
+          "monotonic_ns": 349206311583,
+          "kernel": "24.6.0",
+          "machine": "arm64",
+          "python": "3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]",
+          "executable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+          "frida": "17.24.3",
+          "uid": 0,
+          "workload_uid": 501,
+          "mode": "inherit"
+        },
+        {
+          "event": "source",
+          "monotonic_ns": 349207060041,
+          "fixture_sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+          "probe_sha256": "81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1"
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 350119887708,
+          "pid": 6184
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 350149002333,
+          "pid": 6305,
+          "parent_pid": 6184,
+          "origin": "fork",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 350153192458,
+          "pid": 6305
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 350153422708,
+          "pid": 6305
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 350156563333,
+          "pid": 6305,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 350177806291,
+          "pid": 6305,
+          "parent_pid": 6305,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 351369409458,
+          "pid": 6305
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 351370808541,
+          "pid": 6305
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 351390756125,
+          "pid": 6305,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 351409352791,
+          "pid": 6305,
+          "parent_pid": 6305,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 352036924375,
+          "pid": 6305
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 352037835458,
+          "pid": 6305
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 352147324666,
+          "pid": 6184,
+          "reason": "process-terminated"
+        },
+        {
+          "event": "root_reaped",
+          "monotonic_ns": 352147443166,
+          "pid": 6184,
+          "returncode": 7
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 352300554541,
+          "pid": 6318,
+          "parent_pid": 6305,
+          "origin": "fork",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 352303411416,
+          "pid": 6318
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 352303575875,
+          "pid": 6318
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 352305203375,
+          "pid": 6318,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 352327934166,
+          "pid": 6318,
+          "parent_pid": 6318,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 352967288958,
+          "pid": 6318
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 352967960791,
+          "pid": 6318
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 352975266666,
+          "pid": 6318,
+          "reason": "process-replaced"
+        },
+        {
+          "event": "child_added",
+          "monotonic_ns": 352995586916,
+          "pid": 6318,
+          "parent_pid": 6318,
+          "origin": "exec",
+          "identifier": null
+        },
+        {
+          "event": "gating_enabled",
+          "monotonic_ns": 353451618333,
+          "pid": 6318
+        },
+        {
+          "event": "child_resumed",
+          "monotonic_ns": 353452759833,
+          "pid": 6318
+        },
+        {
+          "event": "tree_retained_after_root",
+          "monotonic_ns": 353642394708,
+          "root_pid": 6184,
+          "child": {
+            "pid": 6305,
+            "ppid": 6184,
+            "pgid": 6305,
+            "sid": 6305,
+            "uid": 501,
+            "monotonic_ns": 352082934083
+          },
+          "grandchild": {
+            "pid": 6318,
+            "ppid": 6305,
+            "pgid": 6318,
+            "sid": 6318,
+            "uid": 501,
+            "monotonic_ns": 353489885625
+          },
+          "child_after_root": {
+            "pid": 6305,
+            "ppid": 1,
+            "pgid": 6305,
+            "sid": 6305,
+            "uid": 501,
+            "monotonic_ns": 352294926500
+          }
+        },
+        {
+          "event": "owned_signal",
+          "monotonic_ns": 353642715625,
+          "pid": 6318,
+          "signal": 15
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 353644997958,
+          "pid": 6318,
+          "reason": "process-terminated"
+        },
+        {
+          "event": "owned_signal",
+          "monotonic_ns": 353752880958,
+          "pid": 6305,
+          "signal": 15
+        },
+        {
+          "event": "session_detached",
+          "monotonic_ns": 353808306750,
+          "pid": 6305,
+          "reason": "process-terminated"
+        },
+        {
+          "event": "descendants_terminal",
+          "monotonic_ns": 353808654416,
+          "child_pid": 6305,
+          "grandchild_pid": 6318,
+          "grandchild_reaped": {
+            "returncode": -15,
+            "pid": 6305,
+            "ppid": 1,
+            "pgid": 6305,
+            "sid": 6305,
+            "uid": 501,
+            "monotonic_ns": 353716351458
+          },
+          "child_terminating": {
+            "signal": 15,
+            "pid": 6305,
+            "ppid": 1,
+            "pgid": 6305,
+            "sid": 6305,
+            "uid": 501,
+            "monotonic_ns": 353804707375
+          },
+          "child_reaping_boundary": "PID 1 after root exit; absence observed, launchd wait syscall not traced"
+        },
+        {
+          "event": "cleanup_root_reaped",
+          "monotonic_ns": 353810308541,
+          "pid": 6184,
+          "returncode": 7
+        },
+        {
+          "event": "cleanup_terminal",
+          "monotonic_ns": 354392068125,
+          "identities": [
+            6184,
+            6305,
+            6318
+          ],
+          "absent": {
+            "6184": true,
+            "6305": true,
+            "6318": true
+          }
+        },
+        {
+          "event": "probe_result",
+          "monotonic_ns": 354392165250,
+          "passed": true,
+          "mode": "inherit"
+        }
+      ],
+      "result": "focused control passed after scratch JSON readiness repair",
+      "root_pid": 6184,
+      "root_wait_status": 7,
+      "child_pid": 6305,
+      "grandchild_pid": 6318,
+      "grandchild_wait_status": -15,
+      "fixture_records": {
+        "control-readiness/child-after-root.json": {
+          "pid": 6305,
+          "ppid": 1,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 352294926500
+        },
+        "control-readiness/child-awaiting-termination.json": {
+          "pid": 6305,
+          "ppid": 1,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 353717372333
+        },
+        "control-readiness/child-grandchild-created.json": {
+          "grandchild_pid": 6318,
+          "pid": 6305,
+          "ppid": 1,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 352305031958
+        },
+        "control-readiness/child-ready.json": {
+          "pid": 6305,
+          "ppid": 6184,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 352082934083
+        },
+        "control-readiness/child-terminating.json": {
+          "signal": 15,
+          "pid": 6305,
+          "ppid": 1,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 353804707375
+        },
+        "control-readiness/grandchild-ready.json": {
+          "pid": 6318,
+          "ppid": 6305,
+          "pgid": 6318,
+          "sid": 6318,
+          "uid": 501,
+          "monotonic_ns": 353489885625
+        },
+        "control-readiness/grandchild-reaped.json": {
+          "returncode": -15,
+          "pid": 6305,
+          "ppid": 1,
+          "pgid": 6305,
+          "sid": 6305,
+          "uid": 501,
+          "monotonic_ns": 353716351458
+        },
+        "control-readiness/root-child-created.json": {
+          "child_pid": 6305,
+          "pid": 6184,
+          "ppid": 6104,
+          "pgid": 6103,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 350156924375
+        },
+        "control-readiness/root-exit.json": {
+          "status": 7,
+          "pid": 6184,
+          "ppid": 6104,
+          "pgid": 6103,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 352143578166
+        },
+        "control-readiness/root-ready.json": {
+          "pid": 6184,
+          "ppid": 6104,
+          "pgid": 6103,
+          "sid": 1404,
+          "uid": 501,
+          "monotonic_ns": 349269512000
+        },
+        "control-readiness/root-reaped.json": {
+          "pid": 6184,
+          "returncode": 7
+        }
+      }
+    }
+  },
+  "causal_observations": [
+    "The original and first focused control use identical fixture and controller hashes. Only close_fds changes. Original stops after fork/resume with no exec/readiness; control reaches exec, root wait=7, detached child ppid=1 and post-root grandchild.",
+    "The successful control requires an active independent controller after root exit. Grandchild fork event occurs after controller root_reaped; this exceeds one-time descendant snapshot coverage.",
+    "Both control descendants have SID equal to their PID. Their readiness and Frida event identities agree.",
+    "Grandchild SIGTERM is reaped by child with wait status -15. Child handles SIGTERM, emits its terminating record, generates process-terminated detach and becomes absent. Its parent is PID 1; no claim of a controller waitpid on the orphaned child is made."
+  ],
+  "limitations": [
+    "The normal result is a bounded 12-second progress failure, not proof that the process could never progress. No native stack/syscall trace identifies the exact stalled operation.",
+    "The successful control uses close_fds=False and therefore does not satisfy the required normal-descriptor gate or authorize a workaround.",
+    "Fixture roles install 35-second logical deadlines and 40-second alarms after interpreter startup. A child stalled before interpreter entry has not installed its own alarm; the independent controller timeout/known-PID cleanup bounded the observed run. Observer-crash containment is not established.",
+    "PID signaling/absence checks do not establish race-free identity-safe production cancellation or general containment.",
+    "Orphan child reparenting to PID 1, terminal event and disappearance are observed; launchd actual wait syscall and exit status are not traced.",
+    "Only Apple Silicon is evaluated. Intel is withheld by the specified first-architecture gate.",
+    "No Java integration, general build workload ownership, Frida dependency repair or scheduler acceptance is established."
+  ],
+  "native_archive": {
+    "encoding": "tar+gzip+base64",
+    "bytes": 8816,
+    "sha256": "fac450fb5be2353e8f4f8cc8bd4c0876b4432fc4b51b5aa64c21a9f487ce04cf",
+    "all_member_hashes_verified": true,
+    "member_hashes": {
+      "control-readiness.log": "715b02da1b72cdd5e32b2a7d5ef6f8edabe30830b209a3316c8a115639122e51",
+      "control-readiness/child-after-root.json": "65e5259aeb84fc95c89013006a751e65a26400b73ded409cb13c76ffa36347dd",
+      "control-readiness/child-awaiting-termination.json": "ac018ab34eb1a61e2e29c74b53fc0c7d938343f13ba0d6a5ccd239aa936b45f0",
+      "control-readiness/child-grandchild-created.json": "b858bfe11846ed32281e6873aaba1897015528ce81765577fbefa25eaeccfc9d",
+      "control-readiness/child-ready.json": "59e0c6e2bbeb4b433267c2ba94d4cda2036d715aca90c2d1ecea844ccfd2790b",
+      "control-readiness/child-terminating.json": "5ade18c51f5c9a26c0f315dacac61d6982b30c978ff17a11b3b88c7a0d85c1aa",
+      "control-readiness/controller-events.json": "138862853613c95282357111b5589869f827e55836fdcfa611efd8d4900343fd",
+      "control-readiness/grandchild-ready.json": "3c91ee3e3c689b754bffb18cd243b6b20c29ac36c64233db9345e62e560ce185",
+      "control-readiness/grandchild-reaped.json": "8fd45460b14dd239b1be895bad0115e89233ff28a5aecce2632d63e0ca4c056f",
+      "control-readiness/root-child-created.json": "7626cdd7aad985f92b8c5f56e9eb2051d6493a587f6188b5fc8e1c707c58dc19",
+      "control-readiness/root-exit.json": "3e9f0448c68e80de75fd8fa7b18a216efceb0b6f5e02cec8e0992cf0b7dd32a0",
+      "control-readiness/root-go": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "control-readiness/root-ready.json": "87ec29189174ca9fc5a6d6e7d5d32780ae1ed1cbb1cef39c1286faffbad08bfa",
+      "control-readiness/root-reaped.json": "b228a2d52a22e203b43372c2070be5c8f1e5f7f25d9770f132c457b9cd70c345",
+      "control.log": "e2a1cfdc29950edab8b6bb86bc9cdf0d86feda779944968447902257a3290aff",
+      "control/child-after-root.json": "f86fe4d5a3ee0401dafd847a7bde327b4661c613d1b84ec32a1d01e9c5ae0fb1",
+      "control/child-awaiting-termination.json": "04570778063970b8387649b5bc6df8c4e5859cb949e9e44de41fd016fa163e15",
+      "control/child-grandchild-created.json": "e59f285baa1794fa797e9436ad9d20cca347bbddc8d72f9a80d7c3eb06deabef",
+      "control/child-ready.json": "73e6df19b0042b8f2c00bcc10af1393c4fb6225970364244d794ab8385209219",
+      "control/controller-events.json": "3b4f9abbf4a0771d638059cc850569d75c0792d8b3bcd5ae0c8e344906111327",
+      "control/grandchild-ready.json": "5583e8041a131dc29e2681dd27d96291f2084250c373df84191435686fbb2c67",
+      "control/grandchild-reaped.json": "0a070e969ebf96172cb16ede36d3ce5d4719e30dbf964af232eeace44ce6e3ca",
+      "control/root-child-created.json": "80924aa72955a6f74b807ed74f47cf17ef23da220126ff199fa8ba08f1bac971",
+      "control/root-exit.json": "f5682caab65cbf7a99e77e3f837220bea42390a6d069b7959cc04dc7fd6cb4c0",
+      "control/root-go": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "control/root-ready.json": "9648c11688a7937e96d9c7b2d10813e6c968547e6474bc29e793d62f3190f589",
+      "control/root-reaped.json": "012a99bec9e14250b8af5511ee213807cc4d38dce36d0c108a4873509032d78d",
+      "fixture.py": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+      "normal.log": "e6b0ac88b666e41e11cd214d856220a9ca4c645c6cee15bf33f52d1f116c4054",
+      "normal/controller-events.json": "27f7a7d2a9ba6343df1641b939f17fd8874e2577ff7bbf20070f15b9b5450740",
+      "normal/root-go": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normal/root-ready.json": "fc43e3357322d3a679a0087b17c3a905f37bfffc2d27d497536f56e11bed7be3",
+      "probe-v1.py": "8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c",
+      "probe.py": "81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1",
+      "requirements.txt": "1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700"
+    },
+    "data": "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"
+  },
+  "ssh": {
+    "connections": 1,
+    "foreground_owner": "client.py Python PTY owner",
+    "exit": 0,
+    "transcript": {
+      "bytes": 34172,
+      "sha256": "16ecd10caa58e1e773167cd3bf496e6c660fcac61131d5abcbdbec5f8463a115",
+      "encoding": "gzip+base64",
+      "compressed_sha256": "fc108c21dcc5e6f6a86f3e6bf164301636b0d0ee3f1d15002c915ee606c37036",
+      "data": "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"
+    },
+    "receipt_count": 62,
+    "selected_receipts": [
+      {
+        "index": 0,
+        "operation": "test -d \"$RUNNER_DEBUG_SMOKE\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && printf 'incremental-retry\\n' >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && export MAC_CHILD_SCRATCH=$(mktemp -d \"$RUNNER_TEMP/mac-child-tracking-XXXXXX\") && printf 'REMOTE_SCRATCH=%s\\n' \"$MAC_CHILD_SCRATCH\" && uname -a && command -v python3 && python3 -V && java -version && id && sudo -n true",
+        "exit": 0,
+        "output": "completed-part\r\nREMOTE_SCRATCH=/Users/runner/work/_temp/mac-child-tracking-mz1E6n\r\nDarwin iad20-gt1023-7a4fc4ff-8d72-4138-84ab-d445e0ab7860-62DA512B1016.local 24.6.0 Darwin Kernel Version 24.6.0: Tue Jul 21 20:51:34 PDT 2026; root:xnu-11417.140.69.711.44~1/RELEASE_ARM64_VMAPPLE arm64\r\n/opt/homebrew/bin/python3\r\nPython 3.14.7\r\nopenjdk version \"21.0.12.1\" 2026-08-18 LTS\r\nOpenJDK Runtime Environment Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS)\r\nOpenJDK 64-Bit Server VM Temurin-21.0.12.1+1 (build 21.0.12.1+1-LTS, mixed mode, sharing)\r\nuid=501(runner) gid=20(staff) groups=20(staff),12(everyone),61(localaccounts),79(_appserverusr),80(admin),81(_appserveradm),264(_webdeveloper),701(com.apple.sharepoint.group.1),33(_appstore),98(_lpadmin),100(_lpoperator),204(_developer),250(_analyticsusers),395(com.apple.access_ftp),398(com.apple.access_screensharing),399(com.apple.access_ssh),400(com.apple.access_remote_ae)\r\n\r\nOCCUPANCY_RESULT_0_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 1,
+        "operation": "ls \"$RUNNER_TOOL_CACHE/Python\"; printf \"IMAGE=%s VERSION=%s\\n\" \"$ImageOS\" \"$ImageVersion\"",
+        "exit": 0,
+        "output": "3.11.9\t3.12.10\t3.13.15\t3.14.7\r\nIMAGE=macos15 VERSION=20260907.0337.1\r\n\r\nOCCUPANCY_RESULT_1_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 9,
+        "operation": "python3 -c 'import base64,pathlib,hashlib; p=pathlib.Path(__import__(\"os\").environ[\"MAC_CHILD_SCRATCH\"]); b=base64.b64decode((p/\"fixture.py.b64\").read_bytes()); assert len(b)==2199 and hashlib.sha256(b).hexdigest()==\"b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490\"; (p/\"fixture.py\").write_bytes(b); print(\"SOURCE_VERIFIED fixture.py\",len(b),hashlib.sha256(b).hexdigest())'",
+        "exit": 0,
+        "output": "SOURCE_VERIFIED fixture.py 2199 b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490\r\n\r\nOCCUPANCY_RESULT_9_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 31,
+        "operation": "python3 -c 'import base64,pathlib,hashlib; p=pathlib.Path(__import__(\"os\").environ[\"MAC_CHILD_SCRATCH\"]); b=base64.b64decode((p/\"probe.py.b64\").read_bytes()); assert len(b)==7522 and hashlib.sha256(b).hexdigest()==\"8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c\"; (p/\"probe.py\").write_bytes(b); print(\"SOURCE_VERIFIED probe.py\",len(b),hashlib.sha256(b).hexdigest())'",
+        "exit": 0,
+        "output": "SOURCE_VERIFIED probe.py 7522 8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c\r\n\r\nOCCUPANCY_RESULT_31_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 32,
+        "operation": "export MAC_CHILD_PY=\"$RUNNER_TOOL_CACHE/Python/3.12.10/arm64/bin/python3\"; test -x \"$MAC_CHILD_PY\" && printf %s '# Native macOS wheels for the owned Python 3.12 diagnostic.\n# Hashes come from https://pypi.org/pypi/frida/17.24.3/json.\nfrida==17.24.3 \\\n    --hash=sha256:837f0c74ebac09c6cb99f5631f58ac852afbd3a25bfc1d66971cc3e3b7aad953 \\\n    --hash=sha256:767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac\n' > \"$MAC_CHILD_SCRATCH/requirements.txt\" && TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -m pip install --index-url https://pypi.org/simple --disable-pip-version-check --no-cache-dir --only-binary=:all: --no-deps --require-hashes --target \"$MAC_CHILD_SCRATCH/package\" -r \"$MAC_CHILD_SCRATCH/requirements.txt\" && \"$MAC_CHILD_PY\" -V && shasum -a 256 \"$MAC_CHILD_SCRATCH/package/_frida\"* \"$MAC_CHILD_SCRATCH/requirements.txt\"",
+        "exit": 1,
+        "output": "> > > > > Collecting frida==17.24.3 (from -r /Users/runner/work/_temp/mac-child-tracking-mz1E6n/requirements.txt (line 3))\r\n  Downloading frida-17.24.3-cp37-abi3-macosx_11_0_arm64.whl (46.6 MB)\r\n\u001b[?25l     \u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m0.0/46.6 MB\u001b[0m \u001b[31m?\u001b[0m eta \u001b[36m-:--:--\u001b[0m\r\u001b[2K     \u001b[38;5;197m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m\u001b[38;5;197m\u2578\u001b[0m\u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m9.2/46.6 MB\u001b[0m \u001b[31m43.6 MB/s\u001b[0m eta \u001b[36m0:00:01\u001b[0m\r\u001b[2K     \u001b[38;5;197m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m\u001b[38;5;197m\u2578\u001b[0m\u001b[38;5;237m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m29.1/46.6 MB\u001b[0m \u001b[31m60.7 MB/s\u001b[0m eta \u001b[36m0:00:01\u001b[0m\r\u001b[2K     \u001b[38;5;70m\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u001b[0m \u001b[32m46.6/46.6 MB\u001b[0m \u001b[31m79.8 MB/s\u001b[0m  \u001b[33m0:00:00\u001b[0m\r\n\u001b[?25hInstalling collected packages: frida\r\nSuccessfully installed frida-17.24.3\r\nPython 3.12.10\r\nshasum: /Users/runner/work/_temp/mac-child-tracking-mz1E6n/package/_frida*: No such file or directory\r\n1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700  /Users/runner/work/_temp/mac-child-tracking-mz1E6n/requirements.txt\r\n\r\nOCCUPANCY_RESULT_32_END:1\r\nOCCUPANCY> "
+      },
+      {
+        "index": 33,
+        "operation": "PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" \"$MAC_CHILD_PY\" -c 'import frida,hashlib,pathlib; p=pathlib.Path(frida.__file__).parent; print(\"FRIDA\",frida.__version__); [(print(\"INSTALLED_NATIVE_SHA256\",str(f),hashlib.sha256(f.read_bytes()).hexdigest())) for f in p.glob(\"*.so\")]' && sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode close --directory \"$MAC_CHILD_SCRATCH/normal\" > \"$MAC_CHILD_SCRATCH/normal.log\" 2>&1; mac_probe_status=$?; cat \"$MAC_CHILD_SCRATCH/normal.log\"; printf \"NORMAL_EXIT=%s\\n\" \"$mac_probe_status\"; test \"$mac_probe_status\" = 0",
+        "exit": 1,
+        "output": "FRIDA 17.24.3\r\nINSTALLED_NATIVE_SHA256 /Users/runner/work/_temp/mac-child-tracking-mz1E6n/package/frida/_frida.abi3.so a6e39d2f4989d189a8ecf05d475b75ec6489d8851ec46f86a789ab7f7d90f6d3\r\n{\"event\": \"identity\", \"monotonic_ns\": 264999477458, \"kernel\": \"24.6.0\", \"machine\": \"arm64\", \"python\": \"3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]\", \"executable\": \"/Library/Frameworks/Python.framework/Versions/3.12/bin/python3\", \"frida\": \"17.24.3\", \"uid\": 0, \"workload_uid\": 501, \"mode\": \"close\"}\r\n{\"event\": \"source\", \"monotonic_ns\": 265000574583, \"fixture_sha256\": \"b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490\", \"probe_sha256\": \"8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c\"}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 265591783791, \"pid\": 4080}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 265783119333, \"pid\": 4087, \"parent_pid\": 4080, \"origin\": \"fork\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 265793430000, \"pid\": 4087}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 265793608458, \"pid\": 4087}\r\n{\"event\": \"probe_failure\", \"monotonic_ns\": 277640943083, \"error_type\": \"TimeoutError\", \"error\": \"root failed to exit\"}\r\n{\"event\": \"cleanup_kill\", \"monotonic_ns\": 277652681250, \"pid\": 4080, \"method\": \"frida.device.kill\"}\r\n{\"event\": \"cleanup_kill\", \"monotonic_ns\": 277654301208, \"pid\": 4087, \"method\": \"frida.device.kill\"}\r\n{\"event\": \"cleanup_root_reaped\", \"monotonic_ns\": 277654377666, \"pid\": 4080, \"returncode\": -9}\r\n{\"event\": \"cleanup_terminal\", \"monotonic_ns\": 278178642250, \"identities\": [4080, 4087], \"absent\": {\"4080\": true, \"4087\": true}}\r\n{\"event\": \"probe_result\", \"monotonic_ns\": 278178757291, \"passed\": false, \"mode\": \"close\"}\r\nFIXTURE_RECORDS={\"root-ready.json\": {\"pid\": 4080, \"ppid\": 4077, \"pgid\": 4076, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 265215335291}}\r\nNORMAL_EXIT=1\r\n\r\nOCCUPANCY_RESULT_33_END:1\r\nOCCUPANCY> "
+      },
+      {
+        "index": 34,
+        "operation": "sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode inherit --directory \"$MAC_CHILD_SCRATCH/control\" > \"$MAC_CHILD_SCRATCH/control.log\" 2>&1; mac_control_status=$?; cat \"$MAC_CHILD_SCRATCH/control.log\"; printf \"CONTROL_EXIT=%s\\n\" \"$mac_control_status\"; test \"$mac_control_status\" = 0",
+        "exit": 1,
+        "output": "{\"event\": \"identity\", \"monotonic_ns\": 296380540958, \"kernel\": \"24.6.0\", \"machine\": \"arm64\", \"python\": \"3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]\", \"executable\": \"/Library/Frameworks/Python.framework/Versions/3.12/bin/python3\", \"frida\": \"17.24.3\", \"uid\": 0, \"workload_uid\": 501, \"mode\": \"inherit\"}\r\n{\"event\": \"source\", \"monotonic_ns\": 296381079541, \"fixture_sha256\": \"b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490\", \"probe_sha256\": \"8b0a49dc8fb5c3c47b68a7678e20546ffa685770cdb7ba4d5d05b645fdb73d5c\"}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 297121984083, \"pid\": 4703}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 297140089583, \"pid\": 4707, \"parent_pid\": 4703, \"origin\": \"fork\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 297144292125, \"pid\": 4707}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 297144643000, \"pid\": 4707}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 297147768250, \"pid\": 4707, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 297168442000, \"pid\": 4707, \"parent_pid\": 4707, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 300129967375, \"pid\": 4707}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 300132528375, \"pid\": 4707}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 300136562666, \"pid\": 4707, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 300157014791, \"pid\": 4707, \"parent_pid\": 4707, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 300655265791, \"pid\": 4707}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 300657666625, \"pid\": 4707}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 300725360166, \"pid\": 4703, \"reason\": \"process-terminated\"}\r\n{\"event\": \"root_reaped\", \"monotonic_ns\": 300725483166, \"pid\": 4703, \"returncode\": 7}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 300756914708, \"pid\": 4739, \"parent_pid\": 4707, \"origin\": \"fork\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 300761794458, \"pid\": 4739}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 300762177583, \"pid\": 4739}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 300765743500, \"pid\": 4739, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 300785937875, \"pid\": 4739, \"parent_pid\": 4739, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 301480725583, \"pid\": 4739}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 301485296083, \"pid\": 4739}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 301491275750, \"pid\": 4739, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 301509162208, \"pid\": 4739, \"parent_pid\": 4739, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 302130590083, \"pid\": 4739}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 302131302125, \"pid\": 4739}\r\n{\"event\": \"tree_retained_after_root\", \"monotonic_ns\": 302198845500, \"root_pid\": 4703, \"child\": {\"pid\": 4707, \"ppid\": 4703, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 300701875000}, \"grandchild\": {\"pid\": 4739, \"ppid\": 4707, \"pgid\": 4739, \"sid\": 4739, \"uid\": 501, \"monotonic_ns\": 302164334208}, \"child_after_root\": {\"pid\": 4707, \"ppid\": 1, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 300746907750}}\r\n{\"event\": \"owned_signal\", \"monotonic_ns\": 302199142333, \"pid\": 4739, \"signal\": 15}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 302202330416, \"pid\": 4739, \"reason\": \"process-terminated\"}\r\n{\"event\": \"probe_failure\", \"monotonic_ns\": 302203175583, \"error_type\": \"JSONDecodeError\", \"error\": \"Expecting value: line 1 column 1 (char 0)\"}\r\n{\"event\": \"cleanup_kill\", \"monotonic_ns\": 302211967750, \"pid\": 4707, \"method\": \"frida.device.kill\"}\r\n{\"event\": \"cleanup_root_reaped\", \"monotonic_ns\": 302212197000, \"pid\": 4703, \"returncode\": 7}\r\n{\"event\": \"cleanup_terminal\", \"monotonic_ns\": 302765351666, \"identities\": [4703, 4707, 4739], \"absent\": {\"4703\": true, \"4707\": true, \"4739\": true}}\r\n{\"event\": \"probe_result\", \"monotonic_ns\": 302765425291, \"passed\": false, \"mode\": \"inherit\"}\r\nFIXTURE_RECORDS={\"child-awaiting-termination.json\": {\"pid\": 4707, \"ppid\": 1, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 302205508916}, \"child-ready.json\": {\"pid\": 4707, \"ppid\": 4703, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 300701875000}, \"root-ready.json\": {\"pid\": 4703, \"ppid\": 4700, \"pgid\": 4699, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 296444472208}, \"root-child-created.json\": {\"child_pid\": 4707, \"pid\": 4703, \"ppid\": 4700, \"pgid\": 4699, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 297147599541}, \"root-reaped.json\": {\"pid\": 4703, \"returncode\": 7}, \"child-after-root.json\": {\"pid\": 4707, \"ppid\": 1, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 300746907750}, \"child-grandchild-created.json\": {\"grandchild_pid\": 4739, \"pid\": 4707, \"ppid\": 1, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 300765603750}, \"grandchild-ready.json\": {\"pid\": 4739, \"ppid\": 4707, \"pgid\": 4739, \"sid\": 4739, \"uid\": 501, \"monotonic_ns\": 302164334208}, \"root-exit.json\": {\"status\": 7, \"pid\": 4703, \"ppid\": 4700, \"pgid\": 4699, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 300715579583}, \"grandchild-reaped.json\": {\"returncode\": -15, \"pid\": 4707, \"ppid\": 1, \"pgid\": 4707, \"sid\": 4707, \"uid\": 501, \"monotonic_ns\": 302201272166}}\r\nCONTROL_EXIT=1\r\n\r\nOCCUPANCY_RESULT_34_END:1\r\nOCCUPANCY> "
+      },
+      {
+        "index": 58,
+        "operation": "python3 -c 'import base64,pathlib,hashlib; p=pathlib.Path(__import__(\"os\").environ[\"MAC_CHILD_SCRATCH\"]); b=base64.b64decode((p/\"probe.py.b64\").read_bytes()); assert len(b)==7824 and hashlib.sha256(b).hexdigest()==\"81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1\"; (p/\"probe.py\").write_bytes(b); print(\"SOURCE_VERIFIED probe.py\",len(b),hashlib.sha256(b).hexdigest())'",
+        "exit": 0,
+        "output": "SOURCE_VERIFIED probe.py 7824 81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1\r\n\r\nOCCUPANCY_RESULT_58_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 59,
+        "operation": "sudo -n env SUDO_UID=\"$UID\" SUDO_GID=\"$(id -g)\" PYTHONPATH=\"$MAC_CHILD_SCRATCH/package\" TMPDIR=\"$MAC_CHILD_SCRATCH\" \"$MAC_CHILD_PY\" -u \"$MAC_CHILD_SCRATCH/probe.py\" --mode inherit --directory \"$MAC_CHILD_SCRATCH/control-readiness\" > \"$MAC_CHILD_SCRATCH/control-readiness.log\" 2>&1; mac_control_status=$?; cat \"$MAC_CHILD_SCRATCH/control-readiness.log\"; printf \"CONTROL_READINESS_EXIT=%s\\n\" \"$mac_control_status\"; test \"$mac_control_status\" = 0",
+        "exit": 0,
+        "output": "{\"event\": \"identity\", \"monotonic_ns\": 349206311583, \"kernel\": \"24.6.0\", \"machine\": \"arm64\", \"python\": \"3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]\", \"executable\": \"/Library/Frameworks/Python.framework/Versions/3.12/bin/python3\", \"frida\": \"17.24.3\", \"uid\": 0, \"workload_uid\": 501, \"mode\": \"inherit\"}\r\n{\"event\": \"source\", \"monotonic_ns\": 349207060041, \"fixture_sha256\": \"b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490\", \"probe_sha256\": \"81cbbf5a1689001d5ab80495cdbe8eee91c4533c928a0fe346319dc8a7cecae1\"}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 350119887708, \"pid\": 6184}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 350149002333, \"pid\": 6305, \"parent_pid\": 6184, \"origin\": \"fork\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 350153192458, \"pid\": 6305}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 350153422708, \"pid\": 6305}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 350156563333, \"pid\": 6305, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 350177806291, \"pid\": 6305, \"parent_pid\": 6305, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 351369409458, \"pid\": 6305}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 351370808541, \"pid\": 6305}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 351390756125, \"pid\": 6305, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 351409352791, \"pid\": 6305, \"parent_pid\": 6305, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 352036924375, \"pid\": 6305}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 352037835458, \"pid\": 6305}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 352147324666, \"pid\": 6184, \"reason\": \"process-terminated\"}\r\n{\"event\": \"root_reaped\", \"monotonic_ns\": 352147443166, \"pid\": 6184, \"returncode\": 7}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 352300554541, \"pid\": 6318, \"parent_pid\": 6305, \"origin\": \"fork\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 352303411416, \"pid\": 6318}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 352303575875, \"pid\": 6318}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 352305203375, \"pid\": 6318, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 352327934166, \"pid\": 6318, \"parent_pid\": 6318, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 352967288958, \"pid\": 6318}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 352967960791, \"pid\": 6318}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 352975266666, \"pid\": 6318, \"reason\": \"process-replaced\"}\r\n{\"event\": \"child_added\", \"monotonic_ns\": 352995586916, \"pid\": 6318, \"parent_pid\": 6318, \"origin\": \"exec\", \"identifier\": null}\r\n{\"event\": \"gating_enabled\", \"monotonic_ns\": 353451618333, \"pid\": 6318}\r\n{\"event\": \"child_resumed\", \"monotonic_ns\": 353452759833, \"pid\": 6318}\r\n{\"event\": \"tree_retained_after_root\", \"monotonic_ns\": 353642394708, \"root_pid\": 6184, \"child\": {\"pid\": 6305, \"ppid\": 6184, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 352082934083}, \"grandchild\": {\"pid\": 6318, \"ppid\": 6305, \"pgid\": 6318, \"sid\": 6318, \"uid\": 501, \"monotonic_ns\": 353489885625}, \"child_after_root\": {\"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 352294926500}}\r\n{\"event\": \"owned_signal\", \"monotonic_ns\": 353642715625, \"pid\": 6318, \"signal\": 15}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 353644997958, \"pid\": 6318, \"reason\": \"process-terminated\"}\r\n{\"event\": \"owned_signal\", \"monotonic_ns\": 353752880958, \"pid\": 6305, \"signal\": 15}\r\n{\"event\": \"session_detached\", \"monotonic_ns\": 353808306750, \"pid\": 6305, \"reason\": \"process-terminated\"}\r\n{\"event\": \"descendants_terminal\", \"monotonic_ns\": 353808654416, \"child_pid\": 6305, \"grandchild_pid\": 6318, \"grandchild_reaped\": {\"returncode\": -15, \"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 353716351458}, \"child_terminating\": {\"signal\": 15, \"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 353804707375}, \"child_reaping_boundary\": \"PID 1 after root exit; absence observed, launchd wait syscall not traced\"}\r\n{\"event\": \"cleanup_root_reaped\", \"monotonic_ns\": 353810308541, \"pid\": 6184, \"returncode\": 7}\r\n{\"event\": \"cleanup_terminal\", \"monotonic_ns\": 354392068125, \"identities\": [6184, 6305, 6318], \"absent\": {\"6184\": true, \"6305\": true, \"6318\": true}}\r\n{\"event\": \"probe_result\", \"monotonic_ns\": 354392165250, \"passed\": true, \"mode\": \"inherit\"}\r\nFIXTURE_RECORDS={\"child-awaiting-termination.json\": {\"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 353717372333}, \"child-ready.json\": {\"pid\": 6305, \"ppid\": 6184, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 352082934083}, \"root-ready.json\": {\"pid\": 6184, \"ppid\": 6104, \"pgid\": 6103, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 349269512000}, \"root-child-created.json\": {\"child_pid\": 6305, \"pid\": 6184, \"ppid\": 6104, \"pgid\": 6103, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 350156924375}, \"root-reaped.json\": {\"pid\": 6184, \"returncode\": 7}, \"child-after-root.json\": {\"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 352294926500}, \"child-grandchild-created.json\": {\"grandchild_pid\": 6318, \"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 352305031958}, \"grandchild-ready.json\": {\"pid\": 6318, \"ppid\": 6305, \"pgid\": 6318, \"sid\": 6318, \"uid\": 501, \"monotonic_ns\": 353489885625}, \"root-exit.json\": {\"status\": 7, \"pid\": 6184, \"ppid\": 6104, \"pgid\": 6103, \"sid\": 1404, \"uid\": 501, \"monotonic_ns\": 352143578166}, \"child-terminating.json\": {\"signal\": 15, \"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 353804707375}, \"grandchild-reaped.json\": {\"returncode\": -15, \"pid\": 6305, \"ppid\": 1, \"pgid\": 6305, \"sid\": 6305, \"uid\": 501, \"monotonic_ns\": 353716351458}}\r\nCONTROL_READINESS_EXIT=0\r\n\r\nOCCUPANCY_RESULT_59_END:0\r\nOCCUPANCY> "
+      },
+      {
+        "index": 61,
+        "operation": "\"$MAC_CHILD_PY\" -c 'import os,pathlib,json\np=pathlib.Path(os.environ['\"'\"'MAC_CHILD_SCRATCH'\"'\"']);ids=set()\nfor f in p.glob('\"'\"'*/controller-events.json'\"'\"'):\n for e in json.loads(f.read_text()):\n  if e['\"'\"'event'\"'\"']=='\"'\"'cleanup_terminal'\"'\"':ids.update(e['\"'\"'identities'\"'\"'])\nresult={}\nfor pid in sorted(ids):\n try:os.kill(pid,0);result[str(pid)]=False\n except ProcessLookupError:result[str(pid)]=True\nprint('\"'\"'FINAL_OWNED_PROCESS_ABSENCE='\"'\"'+json.dumps(result,sort_keys=True))\nassert all(result.values())' && case \"$MAC_CHILD_SCRATCH\" in \"$RUNNER_TEMP\"/mac-child-tracking-*) rm -rf -- \"$MAC_CHILD_SCRATCH\" ;; *) false ;; esac && test ! -e \"$MAC_CHILD_SCRATCH\" && printf \"OWNED_REMOTE_SCRATCH_REMOVED\\n\"",
+        "exit": 0,
+        "output": "> > > > > > > > > > FINAL_OWNED_PROCESS_ABSENCE={\"4080\": true, \"4087\": true, \"4703\": true, \"4707\": true, \"4739\": true, \"6184\": true, \"6305\": true, \"6318\": true}\r\nOWNED_REMOTE_SCRATCH_REMOVED\r\n\r\nOCCUPANCY_RESULT_61_END:0\r\nOCCUPANCY> "
+      }
+    ],
+    "known_hosts_source": ".github/actions/debug-failed-runner/known_hosts"
+  },
+  "hosted": {
+    "run_status": "completed",
+    "conclusion": "failure",
+    "interpretation": "Failure is the existing deliberate exit 17, not an automatic verdict on remote commands. Remote original/control failures and retry success are preserved separately.",
+    "job_steps": [
+      {
+        "name": "Set up job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 1,
+        "started_at": "2026-10-28T04:31:39Z",
+        "completed_at": "2026-10-28T04:31:39Z"
+      },
+      {
+        "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 2,
+        "started_at": "2026-10-28T04:31:39Z",
+        "completed_at": "2026-10-28T04:31:42Z"
+      },
+      {
+        "name": "Create owned partial build state",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 3,
+        "started_at": "2026-10-28T04:31:42Z",
+        "completed_at": "2026-10-28T04:31:42Z"
+      },
+      {
+        "name": "Record the deliberate build failure",
+        "status": "completed",
+        "conclusion": "failure",
+        "number": 4,
+        "started_at": "2026-10-28T04:31:42Z",
+        "completed_at": "2026-10-28T04:31:42Z"
+      },
+      {
+        "name": "Debug the original failed workspace",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 5,
+        "started_at": "2026-10-28T04:31:42Z",
+        "completed_at": "2026-10-28T04:31:46Z"
+      },
+      {
+        "name": "Post Debug the original failed workspace",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 8,
+        "started_at": "2026-10-28T04:31:46Z",
+        "completed_at": "2026-10-28T04:37:29Z"
+      },
+      {
+        "name": "Post Create owned partial build state",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 9,
+        "started_at": "2026-10-28T04:37:29Z",
+        "completed_at": "2026-10-28T04:37:29Z"
+      },
+      {
+        "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 10,
+        "started_at": "2026-10-28T04:37:29Z",
+        "completed_at": "2026-10-28T04:37:29Z"
+      },
+      {
+        "name": "Complete job",
+        "status": "completed",
+        "conclusion": "success",
+        "number": 11,
+        "started_at": "2026-10-28T04:37:29Z",
+        "completed_at": "2026-10-28T04:37:30Z"
+      }
+    ],
+    "job_log": {
+      "bytes": 83628,
+      "sha256": "9ed5ac192e5ab3d9174d022d03df98c244e1cf2e22dcf65e98fdc5e91bf3387a",
+      "encoding": "gzip+base64",
+      "compressed_sha256": "80e9dfe816a2b0f5b4fdb39b72aea360d8d1cf75db19d0e7ebb09b85b34203c5",
+      "data": "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"
+    }
+  },
+  "cleanup": {
+    "owner": "remaining_shell_paths",
+    "remote_scratch": "/Users/runner/work/_temp/mac-child-tracking-mz1E6n",
+    "remote_scratch_removed": true,
+    "all_recorded_workload_pids_absent": true,
+    "checked_pids": [
+      4080,
+      4087,
+      4703,
+      4707,
+      4739,
+      6184,
+      6305,
+      6318
+    ],
+    "client_key_pair_removed": true,
+    "ssh_child_reaped": true,
+    "ssh_exit": 0,
+    "post_debug_session": "success",
+    "post_smoke_storage": "success",
+    "receipt": {
+      "index": 61,
+      "operation": "\"$MAC_CHILD_PY\" -c 'import os,pathlib,json\np=pathlib.Path(os.environ['\"'\"'MAC_CHILD_SCRATCH'\"'\"']);ids=set()\nfor f in p.glob('\"'\"'*/controller-events.json'\"'\"'):\n for e in json.loads(f.read_text()):\n  if e['\"'\"'event'\"'\"']=='\"'\"'cleanup_terminal'\"'\"':ids.update(e['\"'\"'identities'\"'\"'])\nresult={}\nfor pid in sorted(ids):\n try:os.kill(pid,0);result[str(pid)]=False\n except ProcessLookupError:result[str(pid)]=True\nprint('\"'\"'FINAL_OWNED_PROCESS_ABSENCE='\"'\"'+json.dumps(result,sort_keys=True))\nassert all(result.values())' && case \"$MAC_CHILD_SCRATCH\" in \"$RUNNER_TEMP\"/mac-child-tracking-*) rm -rf -- \"$MAC_CHILD_SCRATCH\" ;; *) false ;; esac && test ! -e \"$MAC_CHILD_SCRATCH\" && printf \"OWNED_REMOTE_SCRATCH_REMOVED\\n\"",
+      "exit": 0,
+      "output": "> > > > > > > > > > FINAL_OWNED_PROCESS_ABSENCE={\"4080\": true, \"4087\": true, \"4703\": true, \"4707\": true, \"4739\": true, \"6184\": true, \"6305\": true, \"6318\": true}\r\nOWNED_REMOTE_SCRATCH_REMOVED\r\n\r\nOCCUPANCY_RESULT_61_END:0\r\nOCCUPANCY> "
+    }
+  },
+  "remaining_gates": [
+    "normal-descriptor macOS child progress",
+    "post-root tracking with normal descriptor closing",
+    "Intel gate after first architecture passes",
+    "production-safe identity and cleanup design",
+    "Java integration and scheduler"
+  ],
+  "changed_paths": [
+    "docs/evidence/macos-child-gating.json",
+    ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/mac-child-tracking-ZLCben/**"
+  ]
+}

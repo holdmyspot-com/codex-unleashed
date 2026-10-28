@@ -4,6 +4,14 @@ The restart must establish whether each failure in our environment also occurs u
 
 A direct comparison must identify the source, command, target, toolchain, prerequisites, execution environment and whether the relevant fixture actually executed. Keep the observed local mechanism separate from the upstream outcome. A reported cached test pass without evidence that its guarded assertions executed, a fixture capability return, or an earlier setup failure leaves functional comparability unknown. Unknown is an unmet comparison gate. The owner-approved four-test repair deferral preserves failed status through steps 1–3; it does not resolve this gate.
 
+The owner subsequently accepts the retained upstream per-case passes for the
+four deferred shell failures and the empty-workspace-roots case with the hidden
+assertion-execution limitation. That explicit disposition closes those five
+upstream outcome comparisons without establishing functional comparability.
+Historical unknown labels below describe the evidence; they no longer require
+fresh upstream execution for checkpoint 1. The four downstream failures remain
+failed, with repairs deferred to step 4. Other runtime gates remain open.
+
 This is the working index of current baseline comparisons, not a completed audit of every historical diagnostic attempt. Add each newly observed failure before pursuing its repair. Historical runs with discarded patches retain their original source inputs in [build-baseline.md](build-baseline.md); they cannot establish defects in the pristine baseline. Downstream-only wrapper failures need an explicit no-counterpart determination and their own counterfactual evidence.
 
 ## Selected main snapshot
@@ -25,7 +33,9 @@ at restart commit `745ab4d0fbdf8a4590dd72779fae78cd56c4608e` passes that check:
 fail. Release compilation, native smokes and source/dependency guards also pass.
 This resolves the previously unrun CLI unit check without reproducing upstream's
 unrelated full-workspace prerequisite failure. The historical shell execution
-comparisons below remain open.
+comparisons below have the owner's explicit disposition: accept the reported
+upstream passes while retaining unknown assertion execution and the four
+downstream failures.
 
 ### Shell-failure source applicability
 
@@ -53,18 +63,18 @@ This source comparison supports carrying the historical shell diagnoses forward
 for investigation; it does not establish runtime equivalence across changed
 dependencies or toolchains. The four failures retain their approved step-4 repair
 deferral and failed historical results. Upstream guarded execution remains
-unknown, and no new test pass is claimed. Establish that execution evidence before
-closing the comparison gate; investigate any changed runtime outcome at its actual
-owning boundary.
+unknown, and no new test pass is claimed. The owner accepts the reported
+upstream passes with that limitation; investigate any changed runtime outcome
+at its actual owning boundary.
 
 ## Pristine source and runtime failures
 
 | Failure in our environment | Observed local evidence | Upstream evidence and limitation | Comparison status / next required evidence |
 | --- | --- | --- | --- |
-| Remote pipe capture recovery | Run `40217047017`: ordinary and observational execution fail; the unchanged case executes and passes under the focused null-stdin peer-lookup errno diagnostic. | The upstream per-case log reports this case `ok`; successful-test output is hidden and the target is remotely cached. See the retained evidence below. | **Reported upstream pass; guarded execution unknown.** Obtain guard/assertion execution evidence. Repair deferred to step 4. |
-| Remote TTY capture recovery | Run `40220070685`: ordinary/null-only phases fail; stdin-only diagnostic passes with exactly two injected TTY peer lookups. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. | **Reported upstream pass; guarded execution unknown.** Obtain guard/assertion execution evidence. Repair deferred to step 4. |
-| Remote sandbox profile replay | Run `40215033696`: ordinary/traced phases fail; focused null-stdin errno diagnostic passes. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. The separate postmerge archive job fails before tests. | **Reported upstream pass; guarded execution unknown.** Obtain guard/assertion execution evidence. Repair deferred to step 4. |
-| Blocked-descriptor replay | Run `40220417153`: both ordinary attempts fail. Retained trace shows a dangling `/newroot/dev/fd` symlink, failed tmpfs mount (`ENOENT`), bwrap exit 1, then eight-byte exec-server writes returning `EPIPE` and fatal `SIGPIPE`. The trace step remains alive after both test attempts and reaches the job limit; artifacts and source guards are retained. Null-only phase is skipped. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. | **Reported upstream pass; guarded execution unknown.** Establish upstream guard/assertion execution and the pipe reader lifecycle/signal-disposition policy before repair. The owner approves deferring repair to step 4 while retaining failed status and this open upstream execution comparison. |
+| Remote pipe capture recovery | Run `40217047017`: ordinary and observational execution fail; the unchanged case executes and passes under the focused null-stdin peer-lookup errno diagnostic. | The upstream per-case log reports this case `ok`; successful-test output is hidden and the target is remotely cached. See the retained evidence below. | **Owner accepts the reported upstream pass with guarded execution unknown.** Comparison disposed of; downstream failure retained, with repair deferred to step 4. |
+| Remote TTY capture recovery | Run `40220070685`: ordinary/null-only phases fail; stdin-only diagnostic passes with exactly two injected TTY peer lookups. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. | **Owner accepts the reported upstream pass with guarded execution unknown.** Comparison disposed of; downstream failure retained, with repair deferred to step 4. |
+| Remote sandbox profile replay | Run `40215033696`: ordinary/traced phases fail; focused null-stdin errno diagnostic passes. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. The separate postmerge archive job fails before tests. | **Owner accepts the reported upstream pass with guarded execution unknown.** Comparison disposed of; downstream failure retained, with repair deferred to step 4. |
+| Blocked-descriptor replay | Run `40220417153`: both ordinary attempts fail. Retained trace shows a dangling `/newroot/dev/fd` symlink, failed tmpfs mount (`ENOENT`), bwrap exit 1, then eight-byte exec-server writes returning `EPIPE` and fatal `SIGPIPE`. The trace step remains alive after both test attempts and reaches the job limit; artifacts and source guards are retained. Null-only phase is skipped. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations. | **Owner accepts the reported upstream pass with guarded execution unknown.** Comparison disposed of; downstream failure retained, with repair deferred to step 4. Establish the pipe reader lifecycle/signal-disposition policy before repair. |
 | Local blocked-descriptor fixture setup | A focused pristine Cargo invocation stops before replay assertions: `/tmp/codex-daemon-1000` already exists with owner 1000 and mode 0000. The unchanged `codex-uds` prerequisite requires a user-owned directory with mode 0700 and deliberately ignores `TMPDIR`. Incremental compilation takes 2.83 seconds; the case fails in 0.10 seconds. | The upstream case is reported `ok`, but its directory state and guarded execution remain unknown. | **Different local setup failure isolated.** An outer bwrap with ephemeral `/tmp` and a usable `/dev` leaves the host directory untouched and reaches the same 25-second transport recovery timeout. The observational trace reproduces `/newroot/dev/fd` tmpfs mount `ENOENT` and exec-server `SIGPIPE`. Pristine source is restored clean. Receipts: `blocked-isolated-dev-tmp-owner.json` and `blocked-isolated-dev-tmp-traced-owner.json`. Upstream guarded execution remains unknown. |
 | Empty-workspace-roots remote process timeout | Pristine serial Bazel run `40207065002` reports the separate timeout. A focused local Cargo run passes in 0.17 seconds without a bwrap skip message; receipt `empty-root-incremental-owner.json` retains source/dependency guards and 32.70-second incremental compilation. Focused hosted Bazel run `40302440271` then executes exactly this case, with 71 filtered out, and fails with `deadline has elapsed` after 2.12 seconds. No skip message is emitted; the final source guard passes and before/after diffs match. Artifact `12641248361`, SHA-256 `c0c0caf641af254522fbd1113d1d640868f75ebd7eacfcf0cf78809f29c3a087`, is checked in `test-filter-proof-0NBXQJ/hosted-verified.json`. | The upstream per-case log reports this case `ok`, with the same capture and remote-cache limitations; per-case duration and assertion execution remain unknown. | **Missing bundled helper isolated in the hosted child; upstream guarded execution unknown.** Broader-suite execution is not required to reproduce the timeout. Run `40305433807` repeats the ordinary timeout in 2.21 seconds, with identical source diffs. Its trace phase never launches the test because the downstream prefix cannot resolve the logical executable path; the empty trace provides no evidence about the timeout. Corrected focused run `40308835332` now captures the actual case: ordinary/traced failures take 2.11/3.31 seconds, with source guards passing and an 8.514-second incremental trace invocation. The zero-environment sandbox child loses PATH and Bazel runfile discovery, finds no sibling helper, and panics at launcher.rs:60; the test backtrace locates the event-receive deadline at exec_process.rs:1535. The upstream guarded-execution comparison remains unknown. The bundled-helper counterfactual below preserves these failed results. |
 | Workspace-manifest validation | Retained clean-source check exits 1 because `code-mode/Cargo.toml` has no feature table while the checker retains its stale exception. Earlier checker repair is discarded. | Parent repo-check job `119599956729` runs the same script and reports the exact stale `MANIFEST_FEATURE_EXCEPTIONS` failure. Checker and affected manifest are byte-identical to the pinned release. Retained upstream log SHA-256: `0a31c873316e50fe9f22eab288e3abbc279298e64728694ee5acfcddc80634dd`. | **Same check fails upstream.** This is a stale checker exception, not a demonstrated build-environment difference. Supplemental repository check outside release-build dependencies; retain failed status for later review without making it a baseline gate or scheduling a repair. |
@@ -170,6 +180,13 @@ local run of its named image cannot by themselves prove the original action's
 filesystem or whether its guard returned early. Do not repeat the image-only
 comparison as a way to close this gate. Fresh upstream output exposing guard
 execution, or an explicit owner disposition of this comparison, is required.
+
+The owner provides that disposition: accept the reported upstream per-case
+passes with the limitation that successful-case output cannot prove sandbox
+assertion execution. No fresh upstream execution is required to dispose of
+these five comparisons. This accepts the reported upstream outcome only; it
+does not pass the four downstream failures, authorize source repairs before
+step 4, or close other runtime checks.
 
 The two supplemental manifest/Python formatter checks above are not prerequisites of the Codex release build. The pinned `rust-release.yml` starts on release-tag pushes; its compilation job depends on `tag-check`. It does not invoke those two checks. Their failures therefore coexist with a successful release build; no passing broader-CI claim follows from the release.
 
