@@ -1,0 +1,635 @@
+{
+  "task_contract": "acknowledged",
+  "status": "standalone_native_proof_passed_both_architectures_production_source_integrated_complete_tooling_verification_passed",
+  "scope": "One complete Windows host-memory acquisition operation; no Codex build, scheduler admission/controller integration, production source edit or workflow edit.",
+  "contract": {
+    "entry_point": "com.holdmyspot.codexunleashed.scheduler.WindowsMemory.read() throws IOException",
+    "result": "Sample(long totalBytes,long availableBytes,long swapUsedBytes,boolean lowMemory)",
+    "observations": "Sequential, not atomic. Actual pagefile occupancy only; no inferred swap capacity from commit counters. Missing PDH map member is failure, present zero is success. Return only after every acquisition, validation and owned-handle cleanup succeeds.",
+    "platform": "64-bit Windows only; other environments rejected with UnsupportedOperationException.",
+    "native_operations": [
+      "K32GetPerformanceInfo: PERFORMANCE_INFORMATION size104 alignment8; PhysicalTotal32 PhysicalAvailable40 PageSize80; exact page-to-byte multiplication",
+      "CreateMemoryResourceNotification(0), QueryMemoryResourceNotification and CloseHandle with GetLastError captured and read only on failure",
+      "OSHI PerfCounterQueryFFM.queryValuesFromPDH(PagingFile.PagingPercentProperty.class,\"Paging File\") map PERCENTUSAGE raw used pages"
+    ],
+    "cleanup": "Notification handle enters try-with-resources immediately; it closes before its enclosing native arena. Close failure prevents success, and a simultaneous original failure retains its close failure as suppressed."
+  },
+  "selection": {
+    "contract": "Standalone WindowsMemory.read complete sequential total/available/actual-pagefile-occupancy/low-memory sample; all acquisition and cleanup must succeed.",
+    "reuse_evidence": "docs/evidence/java-memory-monitor-candidates.json",
+    "selected_operations": [
+      "windows_physical_candidate.source K32GetPerformanceInfo(104)",
+      "windows_pressure_candidate.source CreateMemoryResourceNotification(0)/QueryMemoryResourceNotification/CloseHandle",
+      "windows_pagefile_occupancy_candidate.candidate_operation PDH-only PERCENTUSAGE raw pages"
+    ],
+    "invariant": "A successful present zero/false is data; unavailable or invalid acquisition fails without producing a Sample. macOS reader is analogous; commit charge is dissimilar and excluded from actual occupancy.",
+    "gates": {
+      "red_behavior": "passed",
+      "standalone_compile": "passed",
+      "native_x64": "passed",
+      "native_arm64": "passed",
+      "failure_zero_cleanup": "passed",
+      "cleanup": "passed"
+    },
+    "owner": "/root/windows_public_operation"
+  },
+  "reused_evidence": "docs/evidence/java-memory-monitor-candidates.json#/{windows_physical_candidate,windows_pressure_candidate,windows_pagefile_occupancy_candidate}",
+  "standalone_recreation": {
+    "allocated_root": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222",
+    "initial_inventory_empty": true,
+    "proof_folder": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/proof",
+    "proof_inventory": [
+      "WindowsMemory.java",
+      "pom.xml",
+      "resolution.json"
+    ],
+    "source": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/proof/WindowsMemory.java",
+      "sha256": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+      "source": "package com.holdmyspot.codexunleashed.scheduler;\n\nimport java.io.IOException;\nimport java.lang.foreign.Arena;\nimport java.lang.foreign.FunctionDescriptor;\nimport java.lang.foreign.Linker;\nimport java.lang.foreign.MemoryLayout;\nimport java.lang.foreign.MemorySegment;\nimport java.lang.foreign.SymbolLookup;\nimport java.lang.foreign.ValueLayout;\nimport java.lang.invoke.MethodHandle;\nimport oshi.driver.common.windows.perfmon.PagingFile;\nimport oshi.ffm.util.platform.windows.PerfCounterQueryFFM;\n\n/**\n * Reads Windows host-memory counters without converting unavailable measurements to zero.\n * Concurrent calls own independent native scopes and notification handles.\n */\npublic final class WindowsMemory\n{\n    /**\n     * Prevents construction of this stateless reader.\n     */\n    private WindowsMemory()\n    {\n    }\n\n    /**\n     * Holds sequential host observations rather than an atomic kernel snapshot.\n     *\n     * @param totalBytes the positive physical-memory capacity in bytes\n     * @param availableBytes the available physical bytes, from zero through physical capacity\n     * @param swapUsedBytes the nonnegative actual pagefile occupancy in bytes\n     * @param lowMemory indicates whether the native low-memory notification is signaled\n     */\n    public record Sample(long totalBytes, long availableBytes, long swapUsedBytes, boolean lowMemory)\n    {\n        /**\n         * Creates a sample whose byte quantities satisfy their documented ranges.\n         *\n         * @param totalBytes the positive physical-memory capacity in bytes\n         * @param availableBytes the available physical bytes, from zero through physical capacity\n         * @param swapUsedBytes the nonnegative actual pagefile occupancy in bytes\n         * @param lowMemory indicates whether the native low-memory notification is signaled\n         * @throws IllegalArgumentException if a byte quantity violates its documented range\n         */\n        public Sample\n        {\n            if (totalBytes <= 0 || availableBytes < 0 || availableBytes > totalBytes || swapUsedBytes < 0)\n                throw new IllegalArgumentException(\"Memory bytes require total > 0, 0 <= available <= total and swap used >= 0: \"\n                    + totalBytes + \"/\" + availableBytes + \"/\" + swapUsedBytes);\n        }\n    }\n\n    /**\n     * Reads physical memory, actual pagefile occupancy and low-memory pressure on 64-bit Windows.\n     * A successful zero occupancy and a successful false notification remain valid measurements.\n     * The owned notification handle is closed before return, including after acquisition failure;\n     * cleanup failure prevents success and is suppressed when another failure already exists.\n     *\n     * @return a complete host-memory sample\n     * @throws UnsupportedOperationException if the platform, process width or required symbol is unsupported\n     * @throws IOException if acquisition, counter validation, exact arithmetic or native cleanup fails\n     */\n    public static Sample read() throws IOException\n    {\n        if (!System.getProperty(\"os.name\", \"\").startsWith(\"Windows\"))\n            throw new UnsupportedOperationException(\"WindowsMemory requires Windows\");\n        if (ValueLayout.ADDRESS.byteSize() != 8)\n            throw new UnsupportedOperationException(\"WindowsMemory requires a 64-bit process\");\n\n        try (Arena arena = Arena.ofConfined())\n        {\n            var library = SymbolLookup.libraryLookup(\"Kernel32.dll\", arena);\n            var getInfo = bind(library, \"K32GetPerformanceInfo\",\n                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));\n            var create = bind(library, \"CreateMemoryResourceNotification\",\n                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));\n            var query = bind(library, \"QueryMemoryResourceNotification\",\n                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));\n            var close = bind(library, \"CloseHandle\",\n                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));\n            var errorLayout = Linker.Option.captureStateLayout();\n            var errors = arena.allocate(errorLayout);\n            long errorOffset = errorLayout.byteOffset(MemoryLayout.PathElement.groupElement(\"GetLastError\"));\n            MemorySegment handle = (MemorySegment) invoke(\"CreateMemoryResourceNotification\", create, errors, 0);\n            if (handle.address() == 0)\n                throw nativeFailure(\"CreateMemoryResourceNotification\", errors, errorOffset);\n\n            try (Notification notification = new Notification(close, errors, errorOffset, handle))\n            {\n                // The Windows SDK's 64-bit PERFORMANCE_INFORMATION is 104 bytes, aligned to eight bytes.\n                var info = arena.allocate(104, 8);\n                info.set(ValueLayout.JAVA_INT, 0, 104);\n                int infoStatus = (int) invoke(\"K32GetPerformanceInfo\", getInfo, errors, info, 104);\n                if (infoStatus == 0)\n                    throw nativeFailure(\"K32GetPerformanceInfo\", errors, errorOffset);\n                long pageBytes = info.get(ValueLayout.JAVA_LONG, 80);\n                long totalPages = info.get(ValueLayout.JAVA_LONG, 32);\n                long availablePages = info.get(ValueLayout.JAVA_LONG, 40);\n                if (pageBytes <= 0 || totalPages <= 0 || availablePages < 0 || availablePages > totalPages)\n                    throw new IOException(\"Physical counters require page bytes > 0, total pages > 0 and 0 <= available <= total pages: \"\n                        + pageBytes + \"/\" + totalPages + \"/\" + availablePages);\n                long totalBytes = Math.multiplyExact(totalPages, pageBytes);\n                long availableBytes = Math.multiplyExact(availablePages, pageBytes);\n\n                var occupancy = PerfCounterQueryFFM.queryValuesFromPDH(PagingFile.PagingPercentProperty.class,\n                    \"Paging File\");\n                Long usedPages = occupancy.get(PagingFile.PagingPercentProperty.PERCENTUSAGE);\n                if (usedPages == null)\n                    throw new IOException(\"Paging File PERCENTUSAGE acquisition returned no value\");\n                if (usedPages < 0)\n                    throw new IOException(\"Paging File PERCENTUSAGE must return nonnegative used pages: \" + usedPages);\n                long swapUsedBytes = Math.multiplyExact(usedPages, pageBytes);\n\n                var pressure = arena.allocate(ValueLayout.JAVA_INT);\n                int queryStatus = (int) invoke(\"QueryMemoryResourceNotification\", query, errors, handle, pressure);\n                if (queryStatus == 0)\n                    throw nativeFailure(\"QueryMemoryResourceNotification\", errors, errorOffset);\n                boolean lowMemory = pressure.get(ValueLayout.JAVA_INT, 0) != 0;\n                return new Sample(totalBytes, availableBytes, swapUsedBytes, lowMemory);\n            }\n        }\n        catch (ArithmeticException e)\n        {\n            throw new IOException(\"Native memory counters exceed the signed 64-bit byte range\", e);\n        }\n    }\n\n    /**\n     * Binds a required Windows symbol with captured last-error state.\n     *\n     * @param library the library lookup owned by this call's native scope\n     * @param name the required native symbol\n     * @param descriptor the function's native return and argument layouts\n     * @return the bound native function\n     * @throws UnsupportedOperationException if the required symbol is absent\n     */\n    private static MethodHandle bind(SymbolLookup library, String name, FunctionDescriptor descriptor)\n    {\n        var symbol = library.find(name).orElseThrow(() ->\n            new UnsupportedOperationException(\"Required Windows native symbol is absent: \" + name));\n        return Linker.nativeLinker().downcallHandle(symbol, descriptor, Linker.Option.captureCallState(\"GetLastError\"));\n    }\n\n    /**\n     * Invokes a native operation while preserving runtime exceptions and errors.\n     *\n     * @param operation the native operation identified in a checked failure\n     * @param function the bound function\n     * @param arguments the function's native arguments, including captured error storage\n     * @return the native result with its declared carrier type\n     * @throws IOException if invocation raises a checked failure\n     */\n    private static Object invoke(String operation, MethodHandle function, Object... arguments) throws IOException\n    {\n        try\n        {\n            return function.invokeWithArguments(arguments);\n        }\n        catch (RuntimeException | Error e)\n        {\n            throw e;\n        }\n        catch (Throwable e)\n        {\n            throw new IOException(\"Native invocation failed: \" + operation, e);\n        }\n    }\n\n    /**\n     * Creates a diagnostic from last-error state captured by a failed native call.\n     *\n     * @param operation the native operation that reported failure\n     * @param errors the storage captured by that call\n     * @param errorOffset the last-error field's byte offset in the storage\n     * @return the failure with its unsigned Windows error code\n     */\n    private static IOException nativeFailure(String operation, MemorySegment errors, long errorOffset)\n    {\n        return new IOException(operation + \" failed with Windows error \"\n            + Integer.toUnsignedLong(errors.get(ValueLayout.JAVA_INT, errorOffset)));\n    }\n\n    /**\n     * Owns one memory-resource notification handle until its enclosing native scope closes.\n     *\n     * @param release the native handle-release function\n     * @param errors the enclosing native scope's captured-error storage\n     * @param errorOffset the last-error field's byte offset in the storage\n     * @param handle the owned notification handle\n     */\n    private record Notification(MethodHandle release, MemorySegment errors, long errorOffset, MemorySegment handle)\n        implements AutoCloseable\n    {\n        /**\n         * Closes the owned notification handle.\n         *\n         * @throws IOException if native handle release fails\n         */\n        @Override\n        public void close() throws IOException\n        {\n            int status = (int) invoke(\"CloseHandle\", release, errors, handle);\n            if (status == 0)\n                throw nativeFailure(\"CloseHandle\", errors, errorOffset);\n        }\n    }\n}\n"
+    },
+    "dependency_declaration": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/proof/pom.xml",
+      "sha256": "69bcc764e962caa0a215efbd17994822254af70c4e3db63668224809f4fea521",
+      "source": "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion><groupId>com.holdmyspot.codexunleashed</groupId><artifactId>windows-memory-proof</artifactId><version>1</version><properties><maven.compiler.release>27</maven.compiler.release></properties><dependencies>\n<dependency><groupId>com.github.oshi</groupId><artifactId>oshi-core-ffm</artifactId><version>7.7.2</version></dependency>\n<dependency><groupId>com.github.oshi</groupId><artifactId>oshi-common</artifactId><version>7.7.2</version></dependency>\n<dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.20</version></dependency>\n</dependencies></project>\n"
+    },
+    "resolution_file": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/proof/resolution.json",
+      "sha256": "de072a56d7fc8a10036b4bb77f137e2c44ae2c0f1be33f93cea41e76965f8251",
+      "source": "{\n  \"java_release\": 27,\n  \"artifacts\": [\n    {\n      \"group\": \"com.github.oshi\",\n      \"artifact\": \"oshi-core-ffm\",\n      \"version\": \"7.7.2\",\n      \"url\": \"https://repo.maven.apache.org/maven2/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar\",\n      \"sha256\": \"c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db\",\n      \"bytes\": 720861\n    },\n    {\n      \"group\": \"com.github.oshi\",\n      \"artifact\": \"oshi-common\",\n      \"version\": \"7.7.2\",\n      \"url\": \"https://repo.maven.apache.org/maven2/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar\",\n      \"sha256\": \"69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51\",\n      \"bytes\": 1108843\n    },\n    {\n      \"group\": \"org.slf4j\",\n      \"artifact\": \"slf4j-api\",\n      \"version\": \"2.0.20\",\n      \"url\": \"https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar\",\n      \"sha256\": \"7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439\",\n      \"bytes\": 70255\n    }\n  ]\n}\n"
+    },
+    "resolution": {
+      "java_release": 27,
+      "artifacts": [
+        {
+          "group": "com.github.oshi",
+          "artifact": "oshi-core-ffm",
+          "version": "7.7.2",
+          "url": "https://repo.maven.apache.org/maven2/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar",
+          "sha256": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db",
+          "bytes": 720861
+        },
+        {
+          "group": "com.github.oshi",
+          "artifact": "oshi-common",
+          "version": "7.7.2",
+          "url": "https://repo.maven.apache.org/maven2/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar",
+          "sha256": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51",
+          "bytes": 1108843
+        },
+        {
+          "group": "org.slf4j",
+          "artifact": "slf4j-api",
+          "version": "2.0.20",
+          "url": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar",
+          "sha256": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439",
+          "bytes": 70255
+        }
+      ]
+    },
+    "proof_only_tools": "JDK27 compiler/runtime and external Java test drivers; no evaluation dependency added to final declaration."
+  },
+  "behavioral_red": {
+    "command": "javac --release 27 -d .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/classes .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/WindowsMemory.java .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/Driver.java && java -cp .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/classes Driver",
+    "stub": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/WindowsMemory.java",
+      "sha256": "4b02e43ca6ba6f12ee40382e9a3feddaa734e5a89498ff8c7a70cbd0d80e08e6",
+      "source": "package com.holdmyspot.codexunleashed.scheduler;\nimport java.io.IOException;\npublic final class WindowsMemory {\n public record Sample(long totalBytes,long availableBytes,long swapUsedBytes,boolean lowMemory) {}\n public static Sample read() throws IOException {throw new UnsupportedOperationException(\"Windows memory reader not implemented\");}\n}\n"
+    },
+    "exit": 1,
+    "output": "Exception in thread \"main\" java.lang.UnsupportedOperationException: Windows memory reader not implemented\n\tat com.holdmyspot.codexunleashed.scheduler.WindowsMemory.read(WindowsMemory.java:5)\n\tat Driver.main(Driver.java:4)\n",
+    "meaning": "Driver compiled and invoked the caller-facing operation, which failed behaviorally because it was unimplemented."
+  },
+  "local_checks": {
+    "final_compile": {
+      "command": "javac --release 27 --module-path .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/jars --add-modules com.github.oshi.ffm -d .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/classes .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/proof/WindowsMemory.java .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/Driver.java",
+      "exit": 0
+    },
+    "initial_compile_failure": {
+      "diagnostic": "invalid accessor method in record Notification: return type of accessor method close() must match type of record component close",
+      "correction": "Renamed the MethodHandle record component from close to release; no operation behavior changed. Final compile succeeded."
+    },
+    "platform_and_sample_contract": {
+      "command": "java --module-path .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/jars --add-modules com.github.oshi.ffm -cp .cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/classes PlatformDriver",
+      "exit": 0,
+      "observations": [
+        "Non-Windows read rejected with UnsupportedOperationException: WindowsMemory requires Windows",
+        "Sample rejected total0, available-1, available>total, swapUsed-1",
+        "Sample(1,0,0,false) accepted"
+      ],
+      "driver": {
+        "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/PlatformDriver.java",
+        "sha256": "2ab82eb6728c1b3a493233906b586cb8bc1296ecc6f0d6433d89a1ebe1237fcf",
+        "source": "import com.holdmyspot.codexunleashed.scheduler.WindowsMemory;\nclass PlatformDriver {\n public static void main(String[] args) throws Exception {\n  try {WindowsMemory.read();throw new AssertionError(\"Non-Windows accepted\");} catch (UnsupportedOperationException expected) {System.out.println(expected);}\n  long[][] rejected={{0,0,0},{1,-1,0},{1,2,0},{1,0,-1}};\n  for(var values:rejected) {try {new WindowsMemory.Sample(values[0],values[1],values[2],false);throw new AssertionError(\"Invalid sample accepted\");}catch(IllegalArgumentException expected){System.out.println(expected);}}\n  System.out.println(new WindowsMemory.Sample(1,0,0,false));\n  System.out.println(\"PLATFORM_AND_SAMPLE_CONTRACT_PASSED\");\n }\n}"
+      }
+    }
+  },
+  "drivers": {
+    "public_operation": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/Driver.java",
+      "sha256": "9d8b0b3dbadb983de45325e01381636520ea64120bf8c7b397ec1525c2fe14b2",
+      "source": "import com.holdmyspot.codexunleashed.scheduler.WindowsMemory;\nclass Driver {\n public static void main(String[] args) throws Exception {\n  var sample=WindowsMemory.read();\n  if (sample.totalBytes()<=0 || sample.availableBytes()<0 || sample.availableBytes()>sample.totalBytes() || sample.swapUsedBytes()<0) throw new AssertionError(sample);\n  System.out.println(\"java=\"+System.getProperty(\"java.version\")+\":arch=\"+System.getProperty(\"os.arch\"));\n  System.out.println(sample);\n  System.out.println(\"WINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\");\n }\n}\n"
+    },
+    "module_declaration": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/module-info.java",
+      "sha256": "85b6bcc46fb079567b4f1c4179c258c8b48c821e0aaf23e756c3706f6caf5566",
+      "source": "module com.holdmyspot.codexunleashed.tooling { requires com.github.oshi.ffm; }\n"
+    },
+    "failure_driver": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/fixtures/FailureDriver.java",
+      "sha256": "854ca0a623a48b118334e9dd90c8f6d27dabd6b0d26d5e4b101ac566be6a8d3a",
+      "source": "import com.holdmyspot.codexunleashed.scheduler.WindowsMemory;\nimport java.io.IOException;\nimport java.lang.foreign.*;\nimport java.lang.invoke.MethodHandle;\nimport oshi.ffm.util.platform.windows.PerfCounterQueryFFM;\nclass FailureDriver {\n static int count(MethodHandle query,MemorySegment process,MemorySegment output)throws Throwable {\n  if((int)query.invokeExact(process,output)==0)throw new AssertionError(\"GetProcessHandleCount failed\");\n  return output.get(ValueLayout.JAVA_INT,0);\n }\n public static void main(String[] args)throws Throwable {\n  try(var arena=Arena.ofConfined()){\n   var kernel=SymbolLookup.libraryLookup(\"Kernel32.dll\",arena);var linker=Linker.nativeLinker();\n   var current=linker.downcallHandle(kernel.find(\"GetCurrentProcess\").orElseThrow(),FunctionDescriptor.of(ValueLayout.ADDRESS));\n   var query=linker.downcallHandle(kernel.find(\"GetProcessHandleCount\").orElseThrow(),FunctionDescriptor.of(ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS));\n   MemorySegment process=(MemorySegment)current.invokeExact();var output=arena.allocate(ValueLayout.JAVA_INT);\n   WindowsMemory.read();WindowsMemory.read();\n   for(String mode:new String[]{\"missing\",\"negative\",\"overflow\",\"runtime\",\"zero\"}){\n    PerfCounterQueryFFM.mode=mode;int before=count(query,process,output);\n    try {var sample=WindowsMemory.read();if(!mode.equals(\"zero\")||sample.swapUsedBytes()!=0)throw new AssertionError(mode+\":\"+sample);System.out.println(mode+\":\"+sample);}\n    catch(IOException failure){String expected=switch(mode){case \"missing\"->\"Paging File PERCENTUSAGE acquisition returned no value\";case \"negative\"->\"Paging File PERCENTUSAGE must return nonnegative used pages: -1\";case \"overflow\"->\"Native memory counters exceed the signed 64-bit byte range\";default->throw new AssertionError(mode,failure);};if(!failure.getMessage().equals(expected))throw new AssertionError(\"Wrong acquisition failed\",failure);if(mode.equals(\"overflow\") && !(failure.getCause() instanceof ArithmeticException))throw new AssertionError(\"Arithmetic cause lost\",failure);System.out.println(mode+\":\"+failure+\":cause=\"+failure.getCause());}\n    catch(IllegalStateException failure){if(!mode.equals(\"runtime\")||!failure.getMessage().equals(\"fixture-runtime\"))throw failure;System.out.println(mode+\":\"+failure);}\n    int after=count(query,process,output);if(before!=after)throw new AssertionError(mode+\":handles=\"+before+\"->\"+after);\n    System.out.println(mode+\":handles=\"+before+\"->\"+after);\n   }\n  }\n  System.out.println(\"WINDOWS_MEMORY_FAILURE_ZERO_CLEANUP_PASSED\");\n }\n}\n"
+    },
+    "controlled_pdh_boundary": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/fixtures/PerfCounterQueryFFM.java",
+      "sha256": "da3bda33183ef4a089b3b15414b13898a9ea6ca9a6932eb1d0f3068fe4943496",
+      "source": "package oshi.ffm.util.platform.windows;\nimport java.util.Map;\nimport oshi.driver.common.windows.perfmon.PdhCounterProperty;\n/** Controls only the external PDH map returned to the unchanged WindowsMemory operation. */\npublic final class PerfCounterQueryFFM {\n public static String mode=\"zero\";\n public static <T extends Enum<T> & PdhCounterProperty> Map<T,Long> queryValuesFromPDH(Class<T> type,String object) {\n  if (!object.equals(\"Paging File\")) throw new AssertionError(object);\n  if(mode.equals(\"missing\"))return Map.of();\n  if(mode.equals(\"runtime\"))throw new IllegalStateException(\"fixture-runtime\");\n  long value=switch(mode){case \"zero\"->0;case \"negative\"->-1;case \"overflow\"->Long.MAX_VALUE;default->throw new AssertionError(mode);};\n  return Map.of(Enum.valueOf(type,\"PERCENTUSAGE\"),value);\n }\n}\n"
+    }
+  },
+  "fixture_scope": "The actual unchanged WindowsMemory operation executes real native physical/notification calls; only the external OSHI PDH map boundary is replaced on the classpath. Missing, negative and overflowing map inputs must produce the exact owning IOException; overflow retains ArithmeticException. Runtime failure propagates. Present zero produces zero occupancy. Native GetProcessHandleCount before/after each call checks notification cleanup. No fixture result establishes real PDH failure behavior or native true-pressure transitions.",
+  "platforms": {
+    "x64": {
+      "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632595641",
+      "receipts": {
+        "connected": {
+          "index": 0,
+          "operation": "printf \"CONNECTED\\n\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && win_root=$(mktemp -d -p \"$RUNNER_TEMP\" windows-memory-XXXXXX) && trap 'rm -rf -- \"$win_root\"' EXIT && printf \"OWNED_ROOT=%s\\n\" \"$win_root\" && mkdir \"$win_root/jars\" \"$win_root/classes\" && : > \"$win_root/source.tar.gz.b64\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nCONNECTED\r\ncompleted-part\r\nOWNED_ROOT=D:\\a\\_temp/windows-memory-EHpX5U\r\n\r\n\u001b[?2004hOCCUPANCY_RESULT_0_END:0\r\nOCCUPANCY> "
+        },
+        "inventory": {
+          "index": 20,
+          "operation": "test \"$(sha256sum < \"$win_root/source.tar.gz\" | cut -d \" \" -f 1)\" = \"0ac684a7c495acd56d6b84d7902a772c9be3b85f7733f80b2f6ec9cff116eb3e\" && tar -xzf \"$win_root/source.tar.gz\" -C \"$win_root\" && find \"$win_root/proof\" -maxdepth 1 -type f -print && sha256sum < \"$win_root/proof/WindowsMemory.java\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\n/d/a/_temp/windows-memory-EHpX5U/proof/pom.xml\r\n/d/a/_temp/windows-memory-EHpX5U/proof/resolution.json\r\n/d/a/_temp/windows-memory-EHpX5U/proof/WindowsMemory.java\r\n5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8 *-\r\n\nOCCUPANCY_RESULT_20_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "jdk": {
+          "index": 24,
+          "operation": "test \"$(sha256sum < \"$win_root/jdk.zip\" | cut -d \" \" -f 1)\" = \"1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c\" && unzip -q \"$win_root/jdk.zip\" -d \"$win_root/jdk\" && win_java=$(find \"$win_root/jdk\" -name java.exe -path \"*/bin/java.exe\" -print -quit) && win_javac=\"${win_java%java.exe}javac.exe\" && \"$win_java\" -version",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing) \u001b[24;1H\n\nOCCUPANCY_RESULT_24_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "native_public_operation": {
+          "index": 25,
+          "operation": "win_cp=$(cygpath -w \"$win_root/classes\") && win_modules=$(cygpath -w \"$win_root/jars\") && \"$win_javac\" --release 27 --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -d \"$(cygpath -w \"$win_root/classes\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" \"$(cygpath -w \"$win_root/drivers/Driver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -cp \"$win_cp\" Driver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nSLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=amd64\r\nSample[totalBytes=17174360064, availableBytes=14434144256, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n\nOCCUPANCY_RESULT_25_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "named_module_public_operation": {
+          "index": 33,
+          "operation": "mkdir \"$win_root/named-classes\" && \"$win_javac\" --release 27 --module-path \"$win_modules\" -d \"$(cygpath -w \"$win_root/named-classes\")\" \"$(cygpath -w \"$win_root/drivers/module-info.java\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" && \"$win_java\" --enable-native-access=com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules;$(cygpath -w \"$win_root/named-classes\")\" --add-modules com.holdmyspot.codexunleashed.tooling --add-exports com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED -cp \"$win_cp\" Driver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nSLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=amd64\r\nSample[totalBytes=17174360064, availableBytes=14321750016, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n\nOCCUPANCY_RESULT_33_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "failure_zero_cleanup": {
+          "index": 43,
+          "operation": "\"$win_javac\" --release 27 -cp \"$win_classpath\" -d \"$(cygpath -w \"$win_root/fixture-classes\")\" \"$(cygpath -w \"$win_root/fixtures/PerfCounterQueryFFM.java\")\" \"$(cygpath -w \"$win_root/fixtures/FailureDriver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" -cp \"$(cygpath -w \"$win_root/fixture-classes\");$win_classpath\" FailureDriver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nmissing:java.io.IOException: Paging File PERCENTUSAGE acquisition returned no va\r\n\u001b[23;80Halue:cause=null\r\nmissing:handles=305->305\r\nnegative:java.io.IOException: Paging File PERCENTUSAGE must return nonnegative u\r\n\u001b[23;80Hused pages: -1:cause=null\r\nnegative:handles=305->305\r\noverflow:java.io.IOException: Native memory counters exceed the signed 64-bit by\r\n\u001b[23;80Hyte range:cause=java.lang.ArithmeticException: long overflow\r\noverflow:handles=305->305\r\nruntime:java.lang.IllegalStateException: fixture-runtime\r\nruntime:handles=305->305\r\nzero:Sample[totalBytes=17174360064, availableBytes=14382919680, swapUsedBytes=0,\r\n\u001b[23;80H, lowMemory=false]\r\nzero:handles=305->305\r\nWINDOWS_MEMORY_FAILURE_ZERO_CLEANUP_PASSED\r\n\nOCCUPANCY_RESULT_43_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "remote_cleanup": {
+          "index": 44,
+          "operation": "test -n \"$win_root\" && test -f \"$win_root/proof/WindowsMemory.java\" && rm -rf -- \"$win_root\" && test ! -e \"$win_root\" && printf \"REMOTE_OWNED_ROOT_REMOVED\\n\" && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nREMOTE_OWNED_ROOT_REMOVED\r\ncompleted-part\r\nincremental-retry\r\n\nOCCUPANCY_RESULT_44_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        }
+      },
+      "client_terminal": {
+        "ssh_exit": 0
+      },
+      "hosted_terminal": {
+        "conclusion": "failure",
+        "headSha": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+        "jobs": [
+          {
+            "completedAt": "2026-10-28T04:29:29Z",
+            "conclusion": "success",
+            "databaseId": 122632208705,
+            "name": "select",
+            "startedAt": "2026-10-28T04:29:24Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 6,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 7,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632595641/job/122632208705"
+          },
+          {
+            "completedAt": "2026-10-28T04:34:46Z",
+            "conclusion": "failure",
+            "databaseId": 122632241067,
+            "name": "Debug - x86_64-pc-windows-msvc",
+            "startedAt": "2026-10-28T04:29:31Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Create owned partial build state",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "failure",
+                "name": "Record the deliberate build failure",
+                "number": 4,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Debug the original failed workspace",
+                "number": 5,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Debug the original failed workspace",
+                "number": 8,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Create owned partial build state",
+                "number": 9,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 10,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 11,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632595641/job/122632241067"
+          }
+        ],
+        "status": "completed",
+        "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632595641"
+      },
+      "transcript_sha256": "ee4ed91124ecb67c9f49099cd8eabad98e3eb575f38b8f31b17374779ca258cb",
+      "all_receipts_sha256": "9ac8261b727f8f2781ad27f865306e1efdd5fda9d3af85410ab005c410ad54d4"
+    },
+    "arm64": {
+      "run_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632917434",
+      "receipts": {
+        "connected": {
+          "index": 0,
+          "operation": "printf \"CONNECTED\\n\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && win_root=$(mktemp -d -p \"$RUNNER_TEMP\" windows-memory-XXXXXX) && win_root=$(cygpath -u \"$win_root\") && trap 'rm -rf -- \"$win_root\"' EXIT && printf \"OWNED_ROOT=%s\\n\" \"$win_root\" && mkdir \"$win_root/jars\" \"$win_root/classes\" && : > \"$win_root/source.tar.gz.b64\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nCONNECTED\r\ncompleted-part\r\nOWNED_ROOT=/c/a/_temp/windows-memory-JWObZu\r\n\r\n\u001b[?2004hOCCUPANCY_RESULT_0_END:0\r\nOCCUPANCY> "
+        },
+        "inventory": {
+          "index": 13,
+          "operation": "base64 -d < \"$win_root/source.tar.gz.b64\" > \"$win_root/source.tar.gz\" && test \"$(sha256sum < \"$win_root/source.tar.gz\" | cut -d \" \" -f 1)\" = \"0ac684a7c495acd56d6b84d7902a772c9be3b85f7733f80b2f6ec9cff116eb3e\" && tar -xzf \"$win_root/source.tar.gz\" -C \"$win_root\" && find \"$win_root/proof\" -maxdepth 1 -type f -print && sha256sum < \"$win_root/proof/WindowsMemory.java\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\n/c/a/_temp/windows-memory-JWObZu/proof/pom.xml\r\n/c/a/_temp/windows-memory-JWObZu/proof/resolution.json\r\n/c/a/_temp/windows-memory-JWObZu/proof/WindowsMemory.java\r\n5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8 *-\r\n\nOCCUPANCY_RESULT_13_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "jdk": {
+          "index": 17,
+          "operation": "curl --fail --location --silent --show-error https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_aarch64.zip --output \"$win_root/jdk.zip\" && test \"$(sha256sum < \"$win_root/jdk.zip\" | cut -d \" \" -f 1)\" = \"ba7a97ac574fbf176a84ce5f430233a297def2e5205b8bdb6290da454c4d8b33\" && unzip -q \"$win_root/jdk.zip\" -d \"$win_root/jdk\" && win_java=$(find \"$win_root/jdk\" -name java.exe -path \"*/bin/java.exe\" -print -quit) && win_javac=\"${win_java%java.exe}javac.exe\" && \"$win_java\" -version",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode)\r\n\nOCCUPANCY_RESULT_17_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "native_public_operation": {
+          "index": 18,
+          "operation": "win_cp=$(cygpath -w \"$win_root/classes\") && win_modules=$(cygpath -w \"$win_root/jars\") && \"$win_javac\" --release 27 --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -d \"$(cygpath -w \"$win_root/classes\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" \"$(cygpath -w \"$win_root/drivers/Driver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -cp \"$win_cp\" Driver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nSLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=aarch64\r\nSample[totalBytes=17169387520, availableBytes=13210820608, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n\nOCCUPANCY_RESULT_18_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "named_module_public_operation": {
+          "index": 27,
+          "operation": "mkdir \"$win_root/named-classes\" && \"$win_javac\" --release 27 --module-path \"$win_modules\" -d \"$(cygpath -w \"$win_root/named-classes\")\" \"$(cygpath -w \"$win_root/drivers/module-info.java\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" && \"$win_java\" --enable-native-access=com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules;$(cygpath -w \"$win_root/named-classes\")\" --add-modules com.holdmyspot.codexunleashed.tooling --add-exports com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler=ALL-UNNAMED -cp \"$win_cp\" Driver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nSLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=aarch64\r\nSample[totalBytes=17169387520, availableBytes=13544239104, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n\nOCCUPANCY_RESULT_27_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "failure_zero_cleanup": {
+          "index": 26,
+          "operation": "tar -xzf \"$win_root/fixtures-final.tar.gz\" -C \"$win_root\" && mkdir \"$win_root/fixture-classes\" && win_classpath=\"$(cygpath -w \"$win_root/classes\");$(cygpath -w \"$win_root/jars\")/*\" && \"$win_javac\" --release 27 -cp \"$win_classpath\" -d \"$(cygpath -w \"$win_root/fixture-classes\")\" \"$(cygpath -w \"$win_root/fixtures/PerfCounterQueryFFM.java\")\" \"$(cygpath -w \"$win_root/fixtures/FailureDriver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" -cp \"$(cygpath -w \"$win_root/fixture-classes\");$win_classpath\" FailureDriver",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nmissing:java.io.IOException: Paging File PERCENTUSAGE acquisition returned no va\r\n\u001b[23;80Halue:cause=null\r\nmissing:handles=304->304\r\nnegative:java.io.IOException: Paging File PERCENTUSAGE must return nonnegative u\r\n\u001b[23;80Hused pages: -1:cause=null\r\nnegative:handles=304->304\r\noverflow:java.io.IOException: Native memory counters exceed the signed 64-bit by\r\n\u001b[23;80Hyte range:cause=java.lang.ArithmeticException: long overflow\r\noverflow:handles=304->304\r\nruntime:java.lang.IllegalStateException: fixture-runtime\r\nruntime:handles=304->304\r\nzero:Sample[totalBytes=17169387520, availableBytes=13534367744, swapUsedBytes=0,\r\n\u001b[23;80H, lowMemory=false]\r\nzero:handles=304->304\r\nWINDOWS_MEMORY_FAILURE_ZERO_CLEANUP_PASSED\r\n\nOCCUPANCY_RESULT_26_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        },
+        "remote_cleanup": {
+          "index": 28,
+          "operation": "test -n \"$win_root\" && test -f \"$win_root/proof/WindowsMemory.java\" && rm -rf -- \"$win_root\" && test ! -e \"$win_root\" && printf \"REMOTE_OWNED_ROOT_REMOVED\\n\" && printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progress.txt\" && cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\"",
+          "exit": 0,
+          "output": "\u001b[?2004l\r\nREMOTE_OWNED_ROOT_REMOVED\r\ncompleted-part\r\nincremental-retry\r\n\nOCCUPANCY_RESULT_28_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+        }
+      },
+      "client_terminal": {
+        "ssh_exit": 0
+      },
+      "hosted_terminal": {
+        "conclusion": "failure",
+        "headSha": "f5adb68728fcab37945a2135594fe6b5b0111ee2",
+        "jobs": [
+          {
+            "completedAt": "2026-10-28T04:32:49Z",
+            "conclusion": "success",
+            "databaseId": 122633223755,
+            "name": "select",
+            "startedAt": "2026-10-28T04:32:44Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 6,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 7,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632917434/job/122633223755"
+          },
+          {
+            "completedAt": "2026-10-28T04:35:10Z",
+            "conclusion": "failure",
+            "databaseId": 122633258924,
+            "name": "Debug - aarch64-pc-windows-msvc",
+            "startedAt": "2026-10-28T04:32:51Z",
+            "status": "completed",
+            "steps": [
+              {
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 2,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Create owned partial build state",
+                "number": 3,
+                "status": "completed"
+              },
+              {
+                "conclusion": "failure",
+                "name": "Record the deliberate build failure",
+                "number": 4,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Debug the original failed workspace",
+                "number": 5,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Debug the original failed workspace",
+                "number": 8,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Create owned partial build state",
+                "number": 9,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+                "number": 10,
+                "status": "completed"
+              },
+              {
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 11,
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632917434/job/122633258924"
+          }
+        ],
+        "status": "completed",
+        "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40632917434"
+      },
+      "transcript_sha256": "336e8a81805598ed52d5e8b2b672c07d3175ac34169cae7925e7e036c1dfda3d",
+      "all_receipts_sha256": "7b6553630d9a25b07e407c3c0a4e92f05539d968ca15b67bdf1552292d984d1b"
+    }
+  },
+  "warnings": [
+    "OSHI initialization emits SLF4J no-provider warnings with the approved dependency declaration. Retained visible; no suppression or new dependency added."
+  ],
+  "remaining_gates": [
+    "Native integrated distribution images and scheduler controller composition remain unrun; production source integration and complete tooling verification now pass.",
+    "No true low-memory transition or native pagefile growth/recovery/nonzero occupancy was induced; do not infer those from successful zero/false observations.",
+    "Native CreateMemoryResourceNotification, K32GetPerformanceInfo, QueryMemoryResourceNotification and CloseHandle failure branches are not forced through this combined public operation. Earlier isolated candidate negative results remain separate evidence.",
+    "Simultaneous acquisition/CloseHandle failure and Error from a downcall are unexercised; try-with-resources and the invocation helper implement the required propagation contract.",
+    "No 32-bit Windows runtime was tested; address-width guard is present."
+  ],
+  "cleanup": {
+    "owner": "/root/windows_public_operation",
+    "remote": "Owned root removed and absence verified on both native workers before normal shell exit. Original workspace incremental-retry marker written, SSH children reaped with exit0, all hosted post operations succeeded. Only deliberate exit17 remains failed.",
+    "client_keys": "Owned key pair and both symlinks removed after both clients and hosted jobs terminated.",
+    "local_scratch": "Owned scratch root removed after exact source/declaration/resolution, drivers, relevant original failure/native/cleanup receipts and their hashes were retained in this evidence file. Removal and absence verified.",
+    "verified_at": "2026-10-28T04:37:09.077873+00:00"
+  },
+  "created_at": "2026-10-28T04:36:40.259616+00:00",
+  "incremental_setup_recovery": {
+    "x64_original_failures": [
+      {
+        "index": 13,
+        "operation": "base64 -d < \"$win_root/source.tar.gz.b64\" > \"$win_root/source.tar.gz\" && test \"$(sha256sum \"$win_root/source.tar.gz\" | cut -d \" \" -f 1)\" = \"0ac684a7c495acd56d6b84d7902a772c9be3b85f7733f80b2f6ec9cff116eb3e\" && tar -xzf \"$win_root/source.tar.gz\" -C \"$win_root\" && find \"$win_root/proof\" -maxdepth 1 -type f -print && sha256sum \"$win_root/proof/WindowsMemory.java\"",
+        "exit": 1,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_13_END:1\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 14,
+        "operation": "curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar --output \"$win_root/jars/oshi-core-ffm-7.7.2.jar\" && test \"$(sha256sum \"$win_root/jars/oshi-core-ffm-7.7.2.jar\" | cut -d \" \" -f 1)\" = \"c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db\"",
+        "exit": 1,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_14_END:1\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 15,
+        "operation": "curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar --output \"$win_root/jars/oshi-common-7.7.2.jar\" && test \"$(sha256sum \"$win_root/jars/oshi-common-7.7.2.jar\" | cut -d \" \" -f 1)\" = \"69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51\"",
+        "exit": 1,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_15_END:1\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 16,
+        "operation": "curl --fail --location --silent --show-error https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar --output \"$win_root/jars/slf4j-api-2.0.20.jar\" && test \"$(sha256sum \"$win_root/jars/slf4j-api-2.0.20.jar\" | cut -d \" \" -f 1)\" = \"7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439\"",
+        "exit": 1,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_16_END:1\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 17,
+        "operation": "curl --fail --location --silent --show-error https://cdn.azul.com/zulu/bin/zulu27.30.107-ca-jdk27.0.1-win_x64.zip --output \"$win_root/jdk.zip\" && test \"$(sha256sum \"$win_root/jdk.zip\" | cut -d \" \" -f 1)\" = \"1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c\" && unzip -q \"$win_root/jdk.zip\" -d \"$win_root/jdk\" && win_java=$(find \"$win_root/jdk\" -name java.exe -path \"*/bin/java.exe\" -print -quit) && win_javac=\"${win_java%java.exe}javac.exe\" && \"$win_java\" -version",
+        "exit": 1,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_17_END:1\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 18,
+        "operation": "win_cp=$(cygpath -w \"$win_root/classes\") && win_modules=$(cygpath -w \"$win_root/jars\") && \"$win_javac\" --release 27 --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -d \"$(cygpath -w \"$win_root/classes\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" \"$(cygpath -w \"$win_root/drivers/Driver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -cp \"$win_cp\" Driver",
+        "exit": 127,
+        "output": "\u001b[?2004l\r\nbash: : command not found\r\n\nOCCUPANCY_RESULT_18_END:127\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      }
+    ],
+    "same_worker_diagnostic": {
+      "index": 19,
+      "operation": "printf \"ORIGINAL_ROOT=%s\\n\" \"$win_root\" && win_root=$(cygpath -u \"$win_root\") && printf \"NORMALIZED_ROOT=%s\\n\" \"$win_root\" && sha256sum < \"$win_root/source.tar.gz\" && sha256sum < \"$win_root/jdk.zip\" && for artifact in \"$win_root\"/jars/*.jar; do sha256sum < \"$artifact\"; done",
+      "exit": 0,
+      "output": "\u001b[?2004l\r\nORIGINAL_ROOT=D:\\a\\_temp/windows-memory-EHpX5U\r\nNORMALIZED_ROOT=/d/a/_temp/windows-memory-EHpX5U\r\n0ac684a7c495acd56d6b84d7902a772c9be3b85f7733f80b2f6ec9cff116eb3e *-\r\n1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c *-\r\n69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51 *-\r\nc055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db *-\r\n7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439 *-\r\n\nOCCUPANCY_RESULT_19_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+    },
+    "classification": "Shell hash-verification/setup failure, before public-operation compilation. Downloaded bytes were intact; stdin hashes matched retained expectations. Changing raw Windows root to cygpath-normalized form and hashing stdin allowed the same downloads to pass and reused them for compile/run. Escaped filename digest formatting is the inferred cause of the original silent string-comparison failures, not a source defect.",
+    "recovery_receipts": [
+      {
+        "index": 20,
+        "operation": "test \"$(sha256sum < \"$win_root/source.tar.gz\" | cut -d \" \" -f 1)\" = \"0ac684a7c495acd56d6b84d7902a772c9be3b85f7733f80b2f6ec9cff116eb3e\" && tar -xzf \"$win_root/source.tar.gz\" -C \"$win_root\" && find \"$win_root/proof\" -maxdepth 1 -type f -print && sha256sum < \"$win_root/proof/WindowsMemory.java\"",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\n/d/a/_temp/windows-memory-EHpX5U/proof/pom.xml\r\n/d/a/_temp/windows-memory-EHpX5U/proof/resolution.json\r\n/d/a/_temp/windows-memory-EHpX5U/proof/WindowsMemory.java\r\n5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8 *-\r\n\nOCCUPANCY_RESULT_20_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 21,
+        "operation": "test \"$(sha256sum < \"$win_root/jars/oshi-core-ffm-7.7.2.jar\" | cut -d \" \" -f 1)\" = \"c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db\"",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_21_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 22,
+        "operation": "test \"$(sha256sum < \"$win_root/jars/oshi-common-7.7.2.jar\" | cut -d \" \" -f 1)\" = \"69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51\"",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_22_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 23,
+        "operation": "test \"$(sha256sum < \"$win_root/jars/slf4j-api-2.0.20.jar\" | cut -d \" \" -f 1)\" = \"7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439\"",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\n\nOCCUPANCY_RESULT_23_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 24,
+        "operation": "test \"$(sha256sum < \"$win_root/jdk.zip\" | cut -d \" \" -f 1)\" = \"1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c\" && unzip -q \"$win_root/jdk.zip\" -d \"$win_root/jdk\" && win_java=$(find \"$win_root/jdk\" -name java.exe -path \"*/bin/java.exe\" -print -quit) && win_javac=\"${win_java%java.exe}javac.exe\" && \"$win_java\" -version",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\nopenjdk version \"27.0.1\" 2026-10-20\r\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\r\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing) \u001b[24;1H\n\nOCCUPANCY_RESULT_24_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      },
+      {
+        "index": 25,
+        "operation": "win_cp=$(cygpath -w \"$win_root/classes\") && win_modules=$(cygpath -w \"$win_root/jars\") && \"$win_javac\" --release 27 --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -d \"$(cygpath -w \"$win_root/classes\")\" \"$(cygpath -w \"$win_root/proof/WindowsMemory.java\")\" \"$(cygpath -w \"$win_root/drivers/Driver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED,com.github.oshi.ffm --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" --module-path \"$win_modules\" --add-modules com.github.oshi.ffm -cp \"$win_cp\" Driver",
+        "exit": 0,
+        "output": "\u001b[?2004l\r\nSLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=amd64\r\nSample[totalBytes=17174360064, availableBytes=14434144256, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n\nOCCUPANCY_RESULT_25_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+      }
+    ],
+    "initial_fixture_driver": {
+      "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/fixtures/FailureDriver-v1.java",
+      "sha256": "5a24d972edccad1894be92453e6102ac34fd51b6d867603fbaa9a80cde1d11a1",
+      "source": "import com.holdmyspot.codexunleashed.scheduler.WindowsMemory;\nimport java.io.IOException;\nimport java.lang.foreign.*;\nimport java.lang.invoke.MethodHandle;\nimport oshi.ffm.util.platform.windows.PerfCounterQueryFFM;\nclass FailureDriver {\n static int count(MethodHandle query,MemorySegment process,MemorySegment output)throws Throwable {\n  if((int)query.invokeExact(process,output)==0)throw new AssertionError(\"GetProcessHandleCount failed\");\n  return output.get(ValueLayout.JAVA_INT,0);\n }\n public static void main(String[] args)throws Throwable {\n  try(var arena=Arena.ofConfined()){\n   var kernel=SymbolLookup.libraryLookup(\"Kernel32.dll\",arena);var linker=Linker.nativeLinker();\n   var current=linker.downcallHandle(kernel.find(\"GetCurrentProcess\").orElseThrow(),FunctionDescriptor.of(ValueLayout.ADDRESS));\n   var query=linker.downcallHandle(kernel.find(\"GetProcessHandleCount\").orElseThrow(),FunctionDescriptor.of(ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS));\n   MemorySegment process=(MemorySegment)current.invokeExact();var output=arena.allocate(ValueLayout.JAVA_INT);\n   WindowsMemory.read();WindowsMemory.read();\n   for(String mode:new String[]{\"missing\",\"negative\",\"overflow\",\"runtime\",\"zero\"}){\n    PerfCounterQueryFFM.mode=mode;int before=count(query,process,output);\n    try {var sample=WindowsMemory.read();if(!mode.equals(\"zero\")||sample.swapUsedBytes()!=0)throw new AssertionError(mode+\":\"+sample);System.out.println(mode+\":\"+sample);}\n    catch(IOException failure){if(mode.equals(\"zero\")||mode.equals(\"runtime\"))throw failure;System.out.println(mode+\":\"+failure+\":cause=\"+failure.getCause());}\n    catch(IllegalStateException failure){if(!mode.equals(\"runtime\")||!failure.getMessage().equals(\"fixture-runtime\"))throw failure;System.out.println(mode+\":\"+failure);}\n    int after=count(query,process,output);if(before!=after)throw new AssertionError(mode+\":handles=\"+before+\"->\"+after);\n    System.out.println(mode+\":handles=\"+before+\"->\"+after);\n   }\n  }\n  System.out.println(\"WINDOWS_MEMORY_FAILURE_ZERO_CLEANUP_PASSED\");\n }\n}\n"
+    },
+    "initial_fixture_receipt": {
+      "index": 32,
+      "operation": "tar -xzf \"$win_root/fixtures.tar.gz\" -C \"$win_root\" && mkdir \"$win_root/fixture-classes\" && win_classpath=\"$(cygpath -w \"$win_root/classes\");$(cygpath -w \"$win_root/jars\")/*\" && \"$win_javac\" --release 27 -cp \"$win_classpath\" -d \"$(cygpath -w \"$win_root/fixture-classes\")\" \"$(cygpath -w \"$win_root/fixtures/PerfCounterQueryFFM.java\")\" \"$(cygpath -w \"$win_root/fixtures/FailureDriver.java\")\" && \"$win_java\" --enable-native-access=ALL-UNNAMED --illegal-native-access=deny \"-Djava.io.tmpdir=$(cygpath -w \"$win_root\")\" -cp \"$(cygpath -w \"$win_root/fixture-classes\");$win_classpath\" FailureDriver",
+      "exit": 0,
+      "output": "\u001b[?2004l\r\nmissing:java.io.IOException: Paging File PERCENTUSAGE acquisition returned no va\r\n\u001b[23;80Halue:cause=null\r\nmissing:handles=306->306\r\nnegative:java.io.IOException: Paging File PERCENTUSAGE must return nonnegative u\r\n\u001b[23;80Hused pages: -1:cause=null\r\nnegative:handles=306->306\r\noverflow:java.io.IOException: Native memory counters exceed the signed 64-bit by\r\n\u001b[23;80Hyte range:cause=java.lang.ArithmeticException: long overflow\r\noverflow:handles=306->306\r\nruntime:java.lang.IllegalStateException: fixture-runtime\r\nruntime:handles=306->306\r\nzero:Sample[totalBytes=17174360064, availableBytes=14324940800, swapUsedBytes=0,\r\n\u001b[23;80H, lowMemory=false]\r\nzero:handles=306->306\r\nWINDOWS_MEMORY_FAILURE_ZERO_CLEANUP_PASSED\r\n\nOCCUPANCY_RESULT_32_END:0\u001b[?2004h\r\nOCCUPANCY>\u001b[1C"
+    },
+    "fixture_refinement": "After the first successful fixture run, strengthened IOException assertions to require the exact PDH failure message and arithmetic cause, then reran only that focused fixture with unchanged production-shaped source."
+  },
+  "production_integration": {
+    "source": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMemory.java",
+    "source_sha256": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+    "identical_to_standalone_source": true,
+    "dependency_changes": "None beyond the existing OSHI FFM/common 7.7.2 and SLF4J 2.0.20 declarations used by the standalone proof.",
+    "complete_verification": {
+      "command": "TMPDIR=<owned-root> MAVEN_OPTS=-Djava.io.tmpdir=<owned-root> mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local=$PWD/.cat/work/temp/build-caches/maven/repository verify",
+      "exit": 0,
+      "tests": 72,
+      "failures": 0,
+      "log": "[INFO] Scanning for projects...\n[INFO] \n[INFO] -------------< com.holdmyspot.codexunleashed:tooling-cli >--------------\n[INFO] Building Codex build cache inputs 1.0-SNAPSHOT\n[INFO]   from pom.xml\n[INFO] --------------------------------[ jar ]---------------------------------\n[INFO] \n[INFO] --- resources:3.4.0:resources (default-resources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/main/resources\n[INFO] \n[INFO] --- compiler:3.16.0:compile (default-compile) @ tooling-cli ---\n[INFO] Recompiling the module because of changed source code.\n[INFO] Compiling 25 source files with javac [debug release 27 module-path] to ../../.cat/work/temp/build-caches/maven/source-cache/classes\n[INFO] \n[INFO] --- resources:3.4.0:testResources (default-testResources) @ tooling-cli ---\n[INFO] skip non existing resourceDirectory /home/gili/codex-unleashed/workspace/tooling/cli/src/test/resources\n[INFO] \n[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ tooling-cli ---\n[INFO] Recompiling the module because of changed dependency.\n[INFO] Compiling 12 source files with javac [debug release 27 module-path] to ../../.cat/work/temp/build-caches/maven/source-cache/test-classes\n[INFO] \n[INFO] --- surefire:3.6.0:test (default-test) @ tooling-cli ---\n[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider\n[INFO] TestNG is present. Adding per default org.junit.support:testng-engine:1.1.0\n[INFO] \n[INFO] -------------------------------------------------------\n[INFO]  T E S T S\n[INFO] -------------------------------------------------------\nSLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\nWARNING: A restricted method in java.lang.foreign.Linker has been called\nWARNING: java.lang.foreign.Linker::downcallHandle has been called by com.holdmyspot.codexunleashed.tooling.UnixFileTimes$Binding in module com.holdmyspot.codexunleashed.tooling (file:/home/gili/codex-unleashed/workspace/tooling/cli/../../.cat/work/temp/build-caches/maven/source-cache/classes/)\nWARNING: Use --enable-native-access=com.holdmyspot.codexunleashed.tooling to avoid a warning for callers in this module\nWARNING: Restricted methods will be blocked in a future release unless native access is enabled\n\n[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.359 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.065 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in com.holdmyspot.codexunleashed.scheduler.MacMemoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.034 s -- in com.holdmyspot.codexunleashed.scheduler.PolicyTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.190 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest\n[INFO] Running com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.087 s -- in com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest\n[INFO] Running com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.967 s -- in com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 72, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] \n[INFO] --- jar:3.5.1:jar (default-jar) @ tooling-cli ---\n[INFO] Building jar: /home/gili/codex-unleashed/workspace/tooling/cli/../../.cat/work/temp/build-caches/maven/source-cache/tooling-cli-1.0-SNAPSHOT.jar\n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------\n[INFO] Total time:  15.562 s\n[INFO] Finished at: 2026-10-28T00:41:07-04:00\n[INFO] ------------------------------------------------------------------------\n"
+    },
+    "native_evidence_scope": "Both earlier named-module native checks execute the identical standalone source with selected dependencies and native-access grants. The integrated fresh linked production distribution now executes the real public operation on Windows ARM64; its physical counters are valid, pagefile occupancy is present zero and lowMemory is false. The x64 integrated linked distribution memory operation remains unverified.",
+    "bundled_runtime_arm64": {
+      "run": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40643328224",
+      "tooling_jar_sha256": "46b2ed63fcb62fbd3f4d5701093a1d3d7f506194cc26b6b3a431a51711691aa5",
+      "source_sha256": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+      "driver": {
+        "historical_path": ".cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/windows-public-operation-9dB222/drivers/Driver.java",
+        "sha256": "9d8b0b3dbadb983de45325e01381636520ea64120bf8c7b397ec1525c2fe14b2",
+        "source": "import com.holdmyspot.codexunleashed.scheduler.WindowsMemory;\nclass Driver {\n public static void main(String[] args) throws Exception {\n  var sample=WindowsMemory.read();\n  if (sample.totalBytes()<=0 || sample.availableBytes()<0 || sample.availableBytes()>sample.totalBytes() || sample.swapUsedBytes()<0) throw new AssertionError(sample);\n  System.out.println(\"java=\"+System.getProperty(\"java.version\")+\":arch=\"+System.getProperty(\"os.arch\"));\n  System.out.println(sample);\n  System.out.println(\"WINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\");\n }\n}\n"
+      },
+      "compile": {
+        "exit": 0,
+        "output": "Driver.java: OK\r\n__OWNER_DONE_request-358__:0\r\n"
+      },
+      "execution": {
+        "exit": 0,
+        "output": "SLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details. \u001b[24;1H\njava=27.0.1:arch=aarch64\r\nSample[totalBytes=17169387520, availableBytes=13605703680, swapUsedBytes=0, lowM\r\n\u001b[23;80HMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n__OWNER_DONE_request-359__:0\r\nOWNER>\u001b[1C"
+      },
+      "raw_log": "SLF4J(W): No SLF4J providers were found.\r\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\r\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\r\njava=27.0.1:arch=aarch64\r\nSample[totalBytes=17169387520, availableBytes=13605703680, swapUsedBytes=0, lowMemory=false]\r\nWINDOWS_MEMORY_PUBLIC_OPERATION_PASSED\r\n",
+      "raw_log_sha256": "a5056610bc77c4aac893f31ca483a405c91e89eb3e734b0fc8be8a13e93caa58",
+      "archive_locator": "windows-java-process-integration.json: native_windows_arm64.native_log_archive",
+      "scope": "The existing real public-operation consumer executes WindowsMemory.read() from the fresh linked production runtime on ARM64. Physical counters are valid, pagefile occupancy is present zero, and lowMemory is false. Nonzero growth/recovery, true-pressure transitions and the x64 integrated distribution remain unverified."
+    }
+  }
+}
