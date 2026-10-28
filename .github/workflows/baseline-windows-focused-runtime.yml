@@ -1,0 +1,266 @@
+name: Focused upstream Windows runtime
+
+on:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/baseline-windows-focused-runtime.yml]
+  workflow_dispatch:
+    inputs:
+      public_key:
+        description: Public SSH key for the client that connects before testing
+        required: true
+        type: string
+      target:
+        description: Native Windows target from the existing free release matrix
+        type: choice
+        default: x86_64-pc-windows-msvc
+        options: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ (inputs.target == 'aarch64-pc-windows-msvc' && 'windows-11-arm') || 'windows-2025' }}
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ inputs.target }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      TARGET: ${{ inputs.target }}
+      CODEX_CI_TARGET: ${{ inputs.target }}
+      CODEX_CI_PROFILE: ci-test
+      CARGO_INCREMENTAL: '0'
+      CARGO_CACHE_PARTS: '1'
+      RUST_BACKTRACE: '1'
+      RUST_LIB_BACKTRACE: '0'
+      RUST_MIN_STACK: '8388608'
+      NEXTEST_STATUS_LEVEL: leak
+      GIT_REDIRECT_STDIN: NUL
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Retrieve restart inputs
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Read exact source and runner selection
+        id: source
+        run: |
+          set -euo pipefail
+          git config --global core.longpaths true
+          node -e 'const m=require("./.github/release-matrix.json"); const runners={"x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===runners[process.env.TARGET])) throw Error("Target must use an existing free native Windows runner");'
+          printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
+
+      - name: Own build state through later remote-session cleanup
+        uses: ./.github/actions/focused-runtime-storage
+
+      - name: Retrieve pristine selected upstream
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: openai/codex
+          ref: ${{ steps.source.outputs.commit }}
+          path: upstream
+          persist-credentials: false
+
+      - name: Set up matching Rust
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: '1.95.0'
+          targets: ${{ env.TARGET }}
+
+      - name: Install upstream's nextest version
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.103
+
+      - name: Expose the matching MSVC environment
+        uses: ./upstream/.github/actions/setup-msvc-env
+        with:
+          target: ${{ env.TARGET }}
+
+      - name: Preserve the accepted x86-64 SQLite build configuration
+        if: inputs.target == 'x86_64-pc-windows-msvc'
+        run: echo 'LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC' >> "$GITHUB_ENV"
+
+      - name: Cache Cargo downloads
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a
+        with:
+          prefix-key: upstream-${{ steps.source.outputs.commit }}-downloads-v1
+          workspaces: upstream/codex-rs -> ${{ env.CARGO_TARGET_DIR }}
+          cache-targets: false
+          cache-bin: false
+          add-rust-environment-hash-key: false
+          shared-key: ${{ env.TARGET }}
+
+      - name: Set up existing private cache transport
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
+        with:
+          version: 1.3.1
+          url: https://github.com/oras-project/oras/releases/download/v1.3.1/oras_1.3.1_windows_amd64.zip
+
+      - name: Authenticate private GHCR access
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+          printf 'CARGO_CACHE_REPOSITORY=ghcr.io/%s/%s\n' "$owner" "$(cat .github/cargo-cache-package)" >> "$GITHUB_ENV"
+
+      - name: Connect before the changed remote commands
+        id: debug
+        if: always() && env.FOCUSED_RUNTIME != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+
+      - name: Wait for authenticated client readiness
+        if: always() && steps.debug.outcome == 'success'
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS+600))
+          until [[ -f "$FOCUSED_RUNTIME/client-ready" ]]; do
+            if (( SECONDS >= deadline )); then
+              printf 'The authenticated client did not publish readiness within ten minutes.\n' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Check the test's native prerequisite before compiling
+        id: prerequisite
+        shell: pwsh
+        run: |
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          @{ administrator = $elevated; architecture = $env:RUNNER_ARCH } |
+            ConvertTo-Json | Set-Content "$env:FOCUSED_RUNTIME/evidence/platform.json"
+          Get-CimInstance Win32_ComputerSystem |
+            Select-Object NumberOfLogicalProcessors, TotalPhysicalMemory |
+            Format-List | Out-File "$env:FOCUSED_RUNTIME/evidence/capacity.txt"
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free |
+            Out-File -Append "$env:FOCUSED_RUNTIME/evidence/capacity.txt"
+          if ($elevated) {
+            [Console]::Error.WriteLine('This case requires a non-elevated process. Retain the worker for environment diagnosis before a cold compilation.')
+            exit 78
+          }
+
+      - name: Identify profile-specific compiled state
+        id: cache
+        run: |
+          set -euo pipefail
+          evidence="$FOCUSED_RUNTIME/evidence"
+          cp .github/upstream-commit "$evidence/upstream-commit"
+          cp upstream/codex-rs/Cargo.lock "$evidence/upstream-Cargo.lock"
+          git -C upstream diff --exit-code HEAD
+          test -z "$(git -C upstream status --porcelain)"
+          sha256sum .github/workflows/baseline-windows-focused-runtime.yml > "$evidence/wrappers.txt"
+          sha256sum .github/scripts/ghcr-cargo-target-cache.sh .github/scripts/cargo-cache-parts.py .github/scripts/verify-cargo-lock.py > "$evidence/helpers.txt"
+          {
+            rustc -vV
+            cargo --version
+            cargo nextest --version
+            printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
+            printf 'cargo nextest run --target %s --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --no-fail-fast --test-threads 8 --success-output immediate -E test(=winget_package_starts_and_reselects_daemon)\n' "$TARGET"
+            printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
+            env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|LIBSQLITE3_FLAGS|INCLUDE|LIB|LIBPATH|WindowsSdkDir|WindowsSDKVersion|VCToolsInstallDir|VCToolsVersion)='
+            sha256sum upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
+          } > "$evidence/compiler.txt"
+          python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Restore verified or partial compiled state
+        id: restore
+        env:
+          CACHE_TAG: ${{ steps.cache.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
+        run: |
+          set -euo pipefail
+          for tag in "$CACHE_TAG" "$CACHE_SEED_TAG"; do
+            for operation in pull pull-partial; do
+              set +e
+              bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$tag" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" 2>&1 | tee -a "$FOCUSED_RUNTIME/evidence/restore.log"
+              result=${PIPESTATUS[0]}
+              set -e
+              case "$result" in
+                0) exit 0 ;;
+                3) ;;
+                *) exit "$result" ;;
+              esac
+            done
+          done
+          printf 'No profile-compatible state exists; this focused build starts cold.\n'
+
+      - name: Run only the unaccepted Windows case
+        id: test
+        working-directory: upstream/codex-rs
+        run: |
+          set -uo pipefail
+          cargo nextest run --target "$TARGET" --cargo-profile ci-test -p codex-cli --test app_server_daemon_windows --no-fail-fast --test-threads 8 --success-output immediate -E 'test(=winget_package_starts_and_reselects_daemon)' 2>&1 | tee "$FOCUSED_RUNTIME/evidence/test.log"
+          result=${PIPESTATUS[0]}
+          if [[ "$result" == 0 ]] && grep -Fq 'requires a non-elevated Windows runner' "$FOCUSED_RUNTIME/evidence/test.log"; then
+            printf 'The test returned without exercising its Windows assertions; retain this as unaccepted.\n' >&2
+            result=78
+          fi
+          printf '%s\n' "$result" > "$FOCUSED_RUNTIME/evidence/test-exit"
+          exit "$result"
+
+      - name: Verify source and dependency identity
+        id: guard
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          set -euo pipefail
+          evidence="$FOCUSED_RUNTIME/evidence"
+          test "$(git -C upstream rev-parse HEAD)" = "$(cat .github/upstream-commit)"
+          git -C upstream diff --binary > "$evidence/source.diff"
+          git -C upstream diff --exit-code HEAD -- . ':(exclude)codex-rs/Cargo.lock'
+          git -C upstream status --porcelain=v1 --untracked-files=all > "$evidence/source-status.txt"
+          test -z "$(git -C upstream ls-files --others --exclude-standard)"
+          (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
+          python3 .github/scripts/verify-cargo-lock.py "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
+
+      - name: Save compiled outputs without changing the test result
+        id: save
+        if: always() && steps.guard.outcome == 'success'
+        env:
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          CACHE_TAG: ${{ steps.cache.outputs.tag }}
+          CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
+          CARGO_CACHE_STAGE: codex
+        run: |
+          set -euo pipefail
+          operation=push-partial
+          if [[ "$TEST_OUTCOME" == success ]]; then operation=push; fi
+          bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" "$CACHE_SEED_TAG" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/save.log"
+
+      - name: Publish test and cache outcomes to the live client
+        if: always() && env.FOCUSED_RUNTIME != ''
+        env:
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          GUARD_OUTCOME: ${{ steps.guard.outcome }}
+          SAVE_OUTCOME: ${{ steps.save.outcome }}
+        run: |
+          node - <<'JS'
+          const fs=require('node:fs'), path=require('node:path');
+          const output=path.join(process.env.FOCUSED_RUNTIME,'evidence','runtime-outcome.json');
+          fs.writeFileSync(`${output}.pending`, JSON.stringify({test:process.env.TEST_OUTCOME,
+            guard:process.env.GUARD_OUTCOME,save:process.env.SAVE_OUTCOME})+'\n');
+          fs.renameSync(`${output}.pending`,output);
+          JS
+
+      - name: Retain focused evidence for one day
+        if: always() && env.FOCUSED_RUNTIME != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-${{ inputs.target }}-winget-daemon-${{ github.run_attempt }}
+          path: ${{ env.FOCUSED_RUNTIME }}/evidence
+          retention-days: 1
+          if-no-files-found: error
