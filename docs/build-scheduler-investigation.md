@@ -2370,3 +2370,32 @@ debug and post steps pass. The workflow retains only its intentional exit-17
 failure. Production supervisor placement, handshake and controller-death
 recovery, ARM64 composition, memory admission and Cargo/Bazel integration remain
 open. This component does not complete checkpoint 3.
+
+### Packaged Java Linux process owner
+
+`LinuxProcessTree` now contains the previously proven Linux process owner in the
+JDK 27 tooling module. A dedicated supervisor starts a contained helper, drops
+its workload privileges, and releases it only after containment is verified.
+Completion requires the root's exit status, collected adopted-child statuses,
+and an empty cgroup. A root process exiting zero while a detached child remains
+alive therefore stays incomplete. Forced termination remains distinct from
+natural completion.
+
+Native Linux x86-64 [run 40724657386](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40724657386)
+passes a focused natural-completion case from freshly compiled packaged source
+and from the actual named tooling-module JAR. The JAR test also starts the
+trusted helper from that same JAR through its classpath entry point. Both cases
+hold a detached child after the root exits, confirm incomplete status, release
+the child, collect its exit status, and verify cleanup. Existing accepted
+termination and nonzero-status cases are carried forward rather than repeated.
+The only lifecycle-code change uses `Properties.load` to read cgroup population;
+the JDK compiler's syntax tree comparison confirms the remaining changes are
+packaging and documentation. Maven verification passes all 92 tests, and Javadoc
+validation passes without diagnostics. No dependency is added.
+
+[linux-java-process-integration.json](evidence/linux-java-process-integration.json)
+retains source identity, native and packaged-module receipts, diagnostic sources,
+and cleanup outcomes. This component requires a dedicated privileged supervisor;
+its production startup protocol and controller integration remain unfinished.
+ARM64 composition, other-platform integration, memory admission, and Cargo/Bazel
+integration also remain open. Checkpoint 3 is incomplete.
