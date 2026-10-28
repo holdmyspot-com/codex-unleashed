@@ -2297,3 +2297,37 @@ unobservable constraints, Linux ARM64 distribution and the final public-operatio
 proof remain open. The persistent Upterm client remains connected throughout
 these probes; remote scratch/cgroup cleanup, client exit and both hosted post
 operations pass. The smoke workflow retains its intentional exit-17 failure.
+
+### Linux supervisor-death recovery boundary
+
+Native Linux x86-64 [run 40697166596](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40697166596)
+tests recovery independently of the dedicated supervisor, using the unchanged
+accepted JDK 27 owner source. Killing that JVM leaves an owned helper alive
+before workload release, a detached descendant alive after root exit, and an
+owned helper alive before readiness is published. In each case, the diagnostic
+controller kills its previously created parent cgroup, observes it empty,
+verifies that the recorded member PIDs disappear, and removes the owned groups.
+The interrupted supervisor remains a failed action; cleanup supplies no missing
+workload exit status.
+
+A paired Java process-launch probe establishes an earlier placement requirement.
+When the supervisor remains outside the controller's parent cgroup, a new helper
+inherits that outside membership and survives a kill of the controller's group.
+Moving the supervisor inside before it starts the helper makes the helper
+inherit containment, and the same recovery removes it. Production composition
+must therefore place the dedicated supervisor inside the controller-owned
+parent before creating workload helpers. The controller must retain that parent
+and its cleanup authority before consuming any readiness report. The unpublished
+case exercises recovery before that report, after the helper enters its child
+group; the inheritance pair separately exercises helpers before their final
+placement. These probes do not cover every instruction boundary in acquisition.
+
+[linux-supervisor-recovery.json](evidence/linux-supervisor-recovery.json)
+retains exact sources, hashes, five case results, logs and terminal receipts.
+Python provides diagnostic control only; the intended production controller
+remains Java. Both probes use one authenticated Upterm connection through
+collection and cleanup. Owned native groups and remote storage are removed,
+SSH exits zero, and hosted remote-wait and smoke cleanup pass. The workflow
+retains only its deliberate exit-17 failure. Production handshake, controller
+death recovery, ARM64 composition, polling/deadlines and Cargo/Bazel integration
+remain open; checkpoint 3 is incomplete.
