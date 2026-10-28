@@ -350,7 +350,7 @@
     "App-server all.rs aggregates tests/suite into one integration binary.",
     "App-server prompt_prefix.rs uses mock responses; absent CONTRACT_EXECUTOR_BIN selects ordinary same-version determinism. It does not require downloading another released CLI."
   ],
-  "pending_owner_scope_decision": "Whether checkpoint 1 requires the broader product runtime suites or accepts the original six-platform build/smoke baseline with known failure dispositions. Neither completion nor exclusion is inferred before the reply.",
+  "pending_owner_scope_decision": null,
   "historical_runtime_receipts": [
     {
       "run_id": 40170497240,
@@ -1036,7 +1036,7 @@
         ]
       }
     ],
-    "decision": "Missing receipts establish unaccepted checks, not failures. Resolve the pending checkpoint scope before scheduling those checks. Never rerun previously accepted suites solely for source/tool version changes.",
+    "decision": "The owner requires broader Codex CLI/app-server runtime acceptance before checkpoint 1 completes. Reconcile applicable native-platform scopes with retained receipts and run only required unaccepted checks. Missing receipts establish unaccepted checks, not failures. Never rerun previously accepted suites solely for source/tool version changes.",
     "scoped_commands": {
       "cli": "cargo nextest run --cargo-profile ci-test --target \"$TARGET\" -p codex-cli --test <unaccepted-platform-applicable-entrypoint> --no-fail-fast",
       "app_server": "cargo nextest run --cargo-profile ci-test --target \"$TARGET\" -p codex-app-server --lib --bin codex-app-server --test all --test prompt_prefix --no-fail-fast"
@@ -1046,6 +1046,11 @@
       "linux": "Matching codex-linux-sandbox, with both maintained CARGO_BIN_EXE spellings.",
       "windows": "Matching codex-windows-sandbox-setup and codex-command-runner, with explicit environment paths."
     },
-    "scope_question_presented": "Should checkpoint 1 retain broader CLI/app-server runtime acceptance on native platforms, or accept the six-platform build/smoke baseline and defer broader product runtime validation? No answer is inferred."
+    "scope_question_presented": "Resolved by explicit owner reply: require broader runtime tests before checkpoint 1 completes."
+  },
+  "owner_scope_decision": {
+    "decision": "Require broader Codex CLI/app-server runtime tests before checkpoint 1 completes.",
+    "authority": "Explicit owner reply to the checkpoint-1 runtime-scope question.",
+    "constraints": "Carry forward accepted results under the owner equivalence instruction; retain agreed failure deferrals. Build and test only the selected Codex products and their required dependencies/helpers."
   }
 }
