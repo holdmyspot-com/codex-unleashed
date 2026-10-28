@@ -38,6 +38,7 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_CACHE_PARTS: '1'
       RUST_BACKTRACE: '1'
+      RUST_LIB_BACKTRACE: '0'
       RUST_MIN_STACK: '8388608'
     defaults:
       run:

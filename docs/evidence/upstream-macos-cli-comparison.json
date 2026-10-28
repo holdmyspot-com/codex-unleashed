@@ -1,0 +1,1325 @@
+{
+  "invocation": "639a5bd6-0a5d-4dc9-be73-308481048b1e",
+  "receipts": [
+    {
+      "label": "cli-app_server_daemon-test",
+      "bytes": 1136,
+      "sha256": "3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8%2F1136&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "6.923s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "6.923s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-app_server_daemon-test\n-----------------------------------------------------------------------------\n\nrunning 13 tests\ntest bootstrap_reports_updater_bind_failure ... ok\ntest bootstrap_updater_is_ready_in_deep_codex_home ... ok\ntest managed_daemon_restarts_from_deleted_working_directory ... ok\ntest managed_identity_survives_locale_and_timezone_changes ... ok\ntest managed_start_succeeds_when_updater_record_is_invalid ... ok\ntest manual_update_rejects_an_unowned_installation ... ok\ntest package_ownership_check_does_not_start_an_updater ... ok\ntest managed_start_keeps_updater_on_marker_mismatch_but_stops_it_for_pin ... ok\ntest unmanaged_app_server_does_not_launch_updater ... ok\ntest explicit_restart_applies_feature_overrides_and_preserves_saved_settings ... ok\ntest wall_clock_shift_keeps_server_and_updater_managed ... ok\ntest managed_starts_ensure_one_updater_and_recover_a_missing_one ... ok\ntest restart_applies_saved_updater_preference ... ok\n\ntest result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.87s\n\n",
+      "cases": [
+        {
+          "name": "managed_identity_survives_locale_and_timezone_changes",
+          "result": "reported-pass",
+          "line": 9
+        },
+        {
+          "name": "explicit_restart_applies_feature_overrides_and_preserves_saved_settings",
+          "result": "reported-pass",
+          "line": 15
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-app_server_daemon-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.837Z",
+                  "duration": "6.923s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-app_server_daemon-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/db5dcec27ad4af92373232489bd12bfbca963fe4ff7820472ec69ea64f9c2c26/5350944",
+                    "digest": "db5dcec27ad4af92373232489bd12bfbca963fe4ff7820472ec69ea64f9c2c26",
+                    "length": "5350944"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-app_server_daemon-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113837",
+                      "testAttemptStart": "2026-10-27T15:31:53.837Z",
+                      "testAttemptDurationMillis": "6923",
+                      "testAttemptDuration": "6.923s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8/1136"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/8f23ae4081f898603ad078aa5b6addd365a8c183cf929de795672bb7a76b7cc1/1548"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "6.923s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "6.923s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8/1136"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113837",
+                  "firstStartTime": "2026-10-27T15:31:53.837Z",
+                  "lastStopTimeMillis": "1793115120760",
+                  "lastStopTime": "2026-10-27T15:32:00.760Z",
+                  "totalRunDurationMillis": "6923",
+                  "totalRunDuration": "6.923s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "3ed7519ac64d6006828efbd90c2ecb1f9b23d6d830d43303a0203e16365713ba"
+    },
+    {
+      "label": "cli-cloud_auth-test",
+      "bytes": 357,
+      "sha256": "b4e3d73ecb811af958ff4b9a9ea418e56586da02b33b3770afca0ff954fd2006",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2Fb4e3d73ecb811af958ff4b9a9ea418e56586da02b33b3770afca0ff954fd2006%2F357&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "0.118s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "0.118s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-cloud_auth-test\n-----------------------------------------------------------------------------\n\nrunning 1 test\ntest cloud_list_only_allows_trusted_credential_destinations ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s\n\n",
+      "cases": [
+        {
+          "name": "cloud_list_only_allows_trusted_credential_destinations",
+          "result": "reported-pass",
+          "line": 6
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-cloud_auth-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.820Z",
+                  "duration": "0.118s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-cloud_auth-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/f92e94746f234b452f3ea6c62dd44daeff6ee18a7d82a51d1fe49a1e4abc8d77/12058784",
+                    "digest": "f92e94746f234b452f3ea6c62dd44daeff6ee18a7d82a51d1fe49a1e4abc8d77",
+                    "length": "12058784"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-cloud_auth-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113820",
+                      "testAttemptStart": "2026-10-27T15:31:53.820Z",
+                      "testAttemptDurationMillis": "118",
+                      "testAttemptDuration": "0.118s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/b4e3d73ecb811af958ff4b9a9ea418e56586da02b33b3770afca0ff954fd2006/357"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/55d9035d81764ecca94be90b39e9bd761e0c0e51a8c936124746963aea3415c5/755"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "0.118s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "0.118s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/b4e3d73ecb811af958ff4b9a9ea418e56586da02b33b3770afca0ff954fd2006/357"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113820",
+                  "firstStartTime": "2026-10-27T15:31:53.820Z",
+                  "lastStopTimeMillis": "1793115113938",
+                  "lastStopTime": "2026-10-27T15:31:53.938Z",
+                  "totalRunDurationMillis": "118",
+                  "totalRunDuration": "0.118s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "816d5da2413bfc984d379db2392f5ad7318c1d24a5a873ea022a52e00be3f6d4"
+    },
+    {
+      "label": "cli-features-test",
+      "bytes": 1235,
+      "sha256": "b140dd3d1dca84ae6404527e644f11d0ea39acf5b2da51e9b075708668ff95a1",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2Fb140dd3d1dca84ae6404527e644f11d0ea39acf5b2da51e9b075708668ff95a1%2F1235&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "0.320s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "0.320s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-features-test\n-----------------------------------------------------------------------------\n\nrunning 14 tests\ntest features_disable_writes_feature_flag_to_config ... ok\ntest features_enable_under_development_feature_prints_warning ... ok\ntest features_enable_writes_feature_flag_to_config ... ok\ntest features_list_is_sorted_alphabetically_by_feature_name ... ok\ntest mcp_list_reports_invalid_keybinding_reason ... ok\ntest interactive_remote_default_preserves_remote_working_directory_before_requiring_terminal ... ok\ntest remote_start_rejects_add_dir_before_connecting ... ok\ntest features_list_honors_cloud_managed_feature_requirements ... ok\ntest remote_start_rejects_writable_root_overrides_before_connecting ... ok\ntest strict_config_is_not_supported_for_cloud_command ... ok\ntest remote_start_allows_network_access_overrides_before_requiring_terminal ... ok\ntest interactive_validates_config_before_requiring_terminal ... ok\ntest no_daemon_rejects_agents_and_explicit_remote_targets ... ok\ntest strict_config_rejects_unknown_config_override ... ok\n\ntest result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s\n\n",
+      "cases": [
+        {
+          "name": "mcp_list_reports_invalid_keybinding_reason",
+          "result": "reported-pass",
+          "line": 10
+        },
+        {
+          "name": "remote_start_rejects_add_dir_before_connecting",
+          "result": "reported-pass",
+          "line": 12
+        },
+        {
+          "name": "remote_start_rejects_writable_root_overrides_before_connecting",
+          "result": "reported-pass",
+          "line": 14
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-features-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.817Z",
+                  "duration": "0.320s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-features-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/6183eee335846bdd5c95ab433c604308ddf7ffcc7acb69785ac30b75a2f6534e/145010352",
+                    "digest": "6183eee335846bdd5c95ab433c604308ddf7ffcc7acb69785ac30b75a2f6534e",
+                    "length": "145010352"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-features-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113817",
+                      "testAttemptStart": "2026-10-27T15:31:53.817Z",
+                      "testAttemptDurationMillis": "320",
+                      "testAttemptDuration": "0.320s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/b140dd3d1dca84ae6404527e644f11d0ea39acf5b2da51e9b075708668ff95a1/1235"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/2f265206699ab4a45de92f3a5020ae36f1014609c1de453f6b3fb395be9b9ea8/1629"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "0.320s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "0.320s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/b140dd3d1dca84ae6404527e644f11d0ea39acf5b2da51e9b075708668ff95a1/1235"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113817",
+                  "firstStartTime": "2026-10-27T15:31:53.817Z",
+                  "lastStopTimeMillis": "1793115114137",
+                  "lastStopTime": "2026-10-27T15:31:54.137Z",
+                  "totalRunDurationMillis": "320",
+                  "totalRunDuration": "0.320s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "0ca3100e7c488431e97a56e48056f77af5cae9bb29605ce6d3034b4ebe4a17e0"
+    },
+    {
+      "label": "cli-mcp_add_remove-test",
+      "bytes": 971,
+      "sha256": "56d7308826b4d2cd18548852c6baa30d4ff06f20d643161bd842bee1606bd152",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F56d7308826b4d2cd18548852c6baa30d4ff06f20d643161bd842bee1606bd152%2F971&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "0.569s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "0.569s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-mcp_add_remove-test\n-----------------------------------------------------------------------------\n\nrunning 12 tests\ntest add_cant_add_command_and_url ... ok\ntest add_persists_issuer_bound_callback_before_starting_oauth ... ok\ntest add_streamable_http_rejects_removed_flag ... ok\ntest add_and_remove_server_updates_global_config ... ok\ntest add_streamable_http_with_custom_env_var ... ok\ntest add_rejects_blank_client_credentials_before_saving ... ok\ntest add_and_login_discover_oauth_through_configured_http_proxy ... ok\ntest profile_mcp_reports_legacy_profile_migration ... ok\ntest add_with_env_preserves_key_order_and_values ... ok\ntest npm_server_names_round_trip_through_cli ... ok\ntest add_streamable_http_without_manual_token ... ok\ntest add_streamable_http_with_oauth_options ... ok\n\ntest result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s\n\n",
+      "cases": [
+        {
+          "name": "add_rejects_blank_client_credentials_before_saving",
+          "result": "reported-pass",
+          "line": 11
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-mcp_add_remove-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.839Z",
+                  "duration": "0.569s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-mcp_add_remove-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/4a91efd1fde371b7a75302ef571b6cf45a7f1ecf98d36d916681f870b784378d/138528048",
+                    "digest": "4a91efd1fde371b7a75302ef571b6cf45a7f1ecf98d36d916681f870b784378d",
+                    "length": "138528048"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-mcp_add_remove-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113839",
+                      "testAttemptStart": "2026-10-27T15:31:53.839Z",
+                      "testAttemptDurationMillis": "569",
+                      "testAttemptDuration": "0.569s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/56d7308826b4d2cd18548852c6baa30d4ff06f20d643161bd842bee1606bd152/971"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/f32e5f557c34de35d4ac7aa2774143f1876c3c6f1c69120f48ed9301b334bd26/1377"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "0.569s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "0.569s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/56d7308826b4d2cd18548852c6baa30d4ff06f20d643161bd842bee1606bd152/971"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113839",
+                  "firstStartTime": "2026-10-27T15:31:53.839Z",
+                  "lastStopTimeMillis": "1793115114408",
+                  "lastStopTime": "2026-10-27T15:31:54.408Z",
+                  "totalRunDurationMillis": "569",
+                  "totalRunDuration": "0.569s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "705629fe17a852f52c44caf01744ec525f27d6f6ccc65b7a48131eb363a4bbf9"
+    },
+    {
+      "label": "cli-daemon_startup-test",
+      "bytes": 1166,
+      "sha256": "e9f4473af007744e512412d0fbd394191e69d4e0221d11a06f23f3c495da6944",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2Fe9f4473af007744e512412d0fbd394191e69d4e0221d11a06f23f3c495da6944%2F1166&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "8.706s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "8.706s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-daemon_startup-test\n-----------------------------------------------------------------------------\n\nrunning 14 tests\ntest bedrock_onboarding_leaves_a_running_daemon_untouched ... ok\ntest agents_checks_trust_when_starting_after_dismissing_overview ... ok\ntest agents_defers_launch_directory_trust_until_starting_a_task ... ok\ntest daemon_auto_start_preserves_bedrock_onboarding ... ok\ntest agents_can_offer_restart_for_managed_daemon ... ok\ntest auto_daemon_start_attaches_to_shared_server ... ok\ntest daemon_exclusion_survives_fork_picker ... ok\ntest daemon_exclusion_survives_resume_picker ... ok\ntest incompatible_daemon_can_cancel ... ok\ntest discovered_managed_daemon_can_restart_with_auto_start_disabled ... ok\ntest incompatible_daemon_can_restart_with_confirmed_settings ... ok\ntest fresh_daemon_requires_confirmation_to_disable_shared_features ... ok\ntest incompatible_daemon_can_run_embedded ... ok\ntest stopped_daemon_requires_confirmation_to_disable_persisted_features ... ok\n\ntest result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.64s\n\n",
+      "cases": [
+        {
+          "name": "agents_checks_trust_when_starting_after_dismissing_overview",
+          "result": "reported-pass",
+          "line": 7
+        },
+        {
+          "name": "agents_defers_launch_directory_trust_until_starting_a_task",
+          "result": "reported-pass",
+          "line": 8
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-daemon_startup-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.814Z",
+                  "duration": "8.706s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-daemon_startup-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/35aae40055aee551b7f993634850ec1ce53719a1d81d262d74fdb0893146db39/41077216",
+                    "digest": "35aae40055aee551b7f993634850ec1ce53719a1d81d262d74fdb0893146db39",
+                    "length": "41077216"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-daemon_startup-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113814",
+                      "testAttemptStart": "2026-10-27T15:31:53.814Z",
+                      "testAttemptDurationMillis": "8706",
+                      "testAttemptDuration": "8.706s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/e9f4473af007744e512412d0fbd394191e69d4e0221d11a06f23f3c495da6944/1166"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/4873efcb7c57cf37dedf0b53c9889b18030abe6f438ffa6ce60c970c2159ac91/1572"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "8.706s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "8.706s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/e9f4473af007744e512412d0fbd394191e69d4e0221d11a06f23f3c495da6944/1166"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113814",
+                  "firstStartTime": "2026-10-27T15:31:53.814Z",
+                  "lastStopTimeMillis": "1793115122520",
+                  "lastStopTime": "2026-10-27T15:32:02.520Z",
+                  "totalRunDurationMillis": "8706",
+                  "totalRunDuration": "8.706s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "7c0a04f27a2576c9f6d2f3d41dd7f10c6060a331ecb75fea6e842ace5ce05584"
+    },
+    {
+      "label": "cli-worktree-test",
+      "bytes": 486,
+      "sha256": "4829c47fc05669db5f9694f01f98f4715b2971f4b406ad93436caf1a9b9c326f",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F4829c47fc05669db5f9694f01f98f4715b2971f4b406ad93436caf1a9b9c326f%2F486&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "42.434s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "42.434s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:cli-worktree-test\n-----------------------------------------------------------------------------\n\nrunning 3 tests\ntest terminal_queries_reply_once_across_every_split ... ok\ntest daemon_worktree_start_and_fork_bind_owner_before_turn ... ok\ntest interactive_worktree_start_and_fork_bind_owner_before_turn ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.31s\n\n",
+      "cases": [
+        {
+          "name": "daemon_worktree_start_and_fork_bind_owner_before_turn",
+          "result": "reported-pass",
+          "line": 7
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:cli-worktree-test",
+                  "ruleType": "rust_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.837Z",
+                  "duration": "42.434s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/cli-worktree-test",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/ff97da26eb53ee99f0a5747bdb5e797c6bba15d4bc179b9a9db5b46e0d0844fc/100078560",
+                    "digest": "ff97da26eb53ee99f0a5747bdb5e797c6bba15d4bc179b9a9db5b46e0d0844fc",
+                    "length": "100078560"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:cli-worktree-test",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113837",
+                      "testAttemptStart": "2026-10-27T15:31:53.837Z",
+                      "testAttemptDurationMillis": "42434",
+                      "testAttemptDuration": "42.434s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/4829c47fc05669db5f9694f01f98f4715b2971f4b406ad93436caf1a9b9c326f/486"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/35a4377178175d0e084b40cf8e64770ca902ce66132fb349d153960d7ef0d37d/882"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "42.434s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "42.434s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/4829c47fc05669db5f9694f01f98f4715b2971f4b406ad93436caf1a9b9c326f/486"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113837",
+                  "firstStartTime": "2026-10-27T15:31:53.837Z",
+                  "lastStopTimeMillis": "1793115156271",
+                  "lastStopTime": "2026-10-27T15:32:36.271Z",
+                  "totalRunDurationMillis": "42434",
+                  "totalRunDuration": "42.434s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "10743ff6143cba257635fa210662f1368da3d42b5612ee7e431bc7c43639f7a3"
+    },
+    {
+      "label": "codex-bin-unit-tests",
+      "bytes": 26089,
+      "sha256": "730d238b38b37fa80d4e9ca6ca77163228dc9c3841e8231535e344892c5e6575",
+      "url": "https://openai.buildbuddy.io/file/download?bytestream_url=bytestream%3A%2F%2Fopenai.buildbuddy.io%2Fblobs%2F730d238b38b37fa80d4e9ca6ca77163228dc9c3841e8231535e344892c5e6575%2F26089&invocation_id=639a5bd6-0a5d-4dc9-be73-308481048b1e&filename=test.log",
+      "execution_info": {
+        "strategy": "darwin-sandbox",
+        "timingBreakdown": {
+          "child": [
+            {
+              "name": "parseTime",
+              "time": "0s"
+            },
+            {
+              "name": "fetchTime",
+              "time": "0s"
+            },
+            {
+              "name": "queueTime",
+              "time": "0s"
+            },
+            {
+              "name": "uploadTime",
+              "time": "0s"
+            },
+            {
+              "name": "setupTime",
+              "time": "0s"
+            },
+            {
+              "name": "executionWallTime",
+              "time": "11.323s"
+            },
+            {
+              "name": "processOutputsTime",
+              "time": "0s"
+            },
+            {
+              "name": "networkTime",
+              "time": "0s"
+            }
+          ],
+          "name": "totalTime",
+          "time": "11.323s"
+        }
+      },
+      "log": "exec ${PAGER:-/usr/bin/less} \"$0\" || exit 1\nExecuting tests from //codex-rs/cli:codex-bin-unit-tests\n-----------------------------------------------------------------------------\n\nrunning 328 tests\ntest desktop_app::mac::tests::codex_new_thread_url_encodes_workspace_path ... ok\ntest daemon_install::tests::running_daemon_replacement_prompt ... ok\ntest desktop_app::mac::tests::parses_mount_point_from_tab_separated_hdiutil_output ... ok\ntest desktop_app::mac::tests::parses_mount_point_with_spaces ... ok\ntest desktop_app::mac::tests::finds_chatgpt_app_with_codex_bundle_identifier ... ok\ntest desktop_app::mac::tests::ignores_classic_chatgpt_app ... ok\ntest config_override_args::tests::preserves_scoped_overrides_and_forwarded_arguments ... ok\ntest daemon_update_tests::daemon_handoff_uses_selected_executable_and_propagates_failure ... ok\ntest desktop_app::mac::tests::refuses_to_launch_unsigned_existing_codex_app ... ok\ntest desktop_app::mac::tests::rejects_unsigned_app_with_codex_bundle_identifier ... ok\n/var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/T/.tmp3hrILN/Codex.app: replacing existing signature\ntest doctor::background::tests::invalid_settings_are_not_reported_as_effective ... ok\ntest doctor::background::tests::running_background_server_reports_app_server_version ... ok\ntest doctor::desktop::macos_security::tests::exhaustion_and_unavailable_history_have_actionable_warnings ... ok\ntest doctor::desktop::macos_security::tests::gatekeeper_failures_require_actionable_security_evidence ... ok\ntest doctor::desktop::macos_security::tests::only_matching_enforced_apple_security_events_are_failures ... ok\ntest doctor::desktop::windows_security::tests::an_unavailable_reader_is_not_reported_as_clean ... ok\ntest doctor::desktop::windows_security::tests::defender_distinguishes_detection_and_remediation ... ok\ntest doctor::desktop::windows_security::tests::every_source_distinguishes_audits_from_blocks ... ok\ntest doctor::desktop::windows_security::tests::evidence_is_bounded_redacted_and_correctly_classified ... ok\ntest doctor::desktop::windows_security::tests::only_trusted_codex_executables_are_reported ... ok\ntest doctor::desktop_tests::current_desktop_session_reports_the_latest_local_handshake ... ok\ntest doctor::desktop_tests::failed_handshake_does_not_expose_sensitive_log_fields ... ok\ntest doctor::desktop_tests::handshake_failure_in_the_middle_of_a_log_segment_is_detected ... ok\ntest doctor::desktop_tests::stopped_desktop_does_not_report_a_failure ... ok\ntest doctor::disk::tests::disk_capacity_is_reported_without_loaded_configuration ... ok\ntest desktop_app::mac::tests::rejects_valid_signature_without_openai_signing_identity ... ok\ntest doctor::disk::tests::disk_measurement_errors_produce_complete_warning_diagnostics ... ok\ntest doctor::disk::tests::nonexistent_relative_codex_home_uses_current_directory_capacity ... ok\ntest doctor::disk::tests::disk_capacity_thresholds_produce_complete_diagnostics ... ok\ntest doctor::background::tests::not_running_background_server_stays_ok_without_version ... ok\ntest doctor::filesystem_paths::tests::blocked_probe_fixture ... ignored, subprocess fixture for the bounded filesystem probe test\ntest doctor::filesystem_paths::tests::attributes_home_relative_subtree_paths_to_their_config_layer ... ok\ntest doctor::background::tests::configured_updates_and_missing_updater_record_are_visible ... ok\ntest doctor::background::tests::failed_version_probe_reports_unavailable ... ok\ntest doctor::git::tests::reports_git_candidates_and_repo_metadata ... ok\ntest doctor::git::tests::warns_when_git_repo_has_no_git_executable ... ok\ntest doctor::filesystem_paths::tests::deduplicates_literal_paths_without_expanding_globs_or_special_paths ... ok\ntest doctor::output::tests::copyable_items_use_check_status ... ok\ntest doctor::output::tests::detail_value_colors_inline_statuses_and_low_signal_values ... ok\ntest doctor::output::tests::missing_env_diagnostics_in_json_and_text ... ok\ntest doctor::output::tests::redact_detail_distinguishes_database_paths_from_field_labels ... ok\ntest doctor::output::tests::redact_detail_preserves_env_var_names ... ok\ntest doctor::output::tests::redact_detail_preserves_missing_env_diagnostics ... ok\ntest doctor::output::tests::redact_detail_preserves_secret_presence_booleans ... ok\ntest doctor::filesystem_paths::tests::attributes_paths_inherited_through_managed_profiles_to_their_config_layer ... ok\ntest doctor::output::tests::redact_detail_sanitizes_secret_url_path_segments ... ok\ntest doctor::output::tests::redact_detail_sanitizes_urls ... ok\ntest doctor::output::tests::render_human_report_can_emit_color ... ok\ntest doctor::output::tests::render_human_report_explains_terminal_warning_issue ... ok\ntest doctor::output::tests::render_human_report_includes_details_by_default_without_color ... ok\ntest doctor::output::tests::render_human_report_includes_memories_db_in_state_health_summary ... ok\ntest doctor::output::tests::render_human_report_includes_redacted_details ... ok\ntest doctor::output::tests::render_human_report_includes_threads_row_in_environment ... ok\ntest doctor::output::tests::render_human_report_expands_feature_flags_with_all ... ok\ntest doctor::output::tests::render_human_report_promotes_notes_without_changing_statuses ... ok\ntest doctor::output::tests::render_human_report_supports_ascii_output ... ok\ntest doctor::output::tests::render_human_report_supports_summary_output_without_color ... ok\ntest doctor::output::tests::update_note_emphasizes_available_version_and_dims_context ... ok\ntest doctor::progress::tests::progress_is_quiet_for_dumb_terminal ... ok\ntest doctor::output::tests::render_human_report_snapshot_covers_environment_rows ... ok\ntest doctor::progress::tests::progress_is_quiet_for_json ... ok\ntest doctor::progress::tests::progress_is_quiet_for_non_tty ... ok\ntest doctor::progress::tests::progress_is_shown_for_human_tty_output ... ok\ntest doctor::security::tests::detected_products_preserve_partial_inspection_visibility ... ok\ntest doctor::security::tests::each_endpoint_product_requires_vendor_specific_app_exclusions ... ok\ntest doctor::security::tests::endpoint_product_guidance_preserves_structured_json_contract ... ok\ntest doctor::security::tests::multiple_endpoint_products_each_get_distinct_guidance ... ok\ntest doctor::security::tests::no_endpoint_products_require_no_remediation ... ok\ntest doctor::filesystem_paths::tests::excludes_scoped_origins_replaced_by_a_scalar_grant ... ok\ntest doctor::security::tests::unavailable_endpoint_inspection_does_not_require_remediation ... ok\ntest doctor::system::tests::system_check_reports_os_language_locale_editor_and_pager_env ... ok\ntest doctor::system::tests::system_check_handles_missing_os_language ... ok\ntest doctor::sandbox::tests::reports_missing_linux_sandbox_helper ... ok\ntest doctor::tests::executable_path_exists_rejects_non_executable_file ... ok\ntest doctor::tests::color_output_summary_reports_disabled_reasons ... ok\ntest doctor::tests::config_overrides_from_interactive_preserves_global_options ... ok\ntest doctor::tests::mcp_check_does_not_probe_environment_stdio_on_the_host ... ok\ntest doctor::tests::mcp_check_fails_required_remote_stdio_env_var ... ok\ntest doctor::tests::mcp_check_ignores_disabled_servers ... ok\ntest doctor::tests::mcp_check_skips_host_path_checks_for_remote_stdio ... ok\ntest doctor::tests::mcp_check_fails_required_missing_stdio_command ... ok\ntest doctor::tests::mcp_check_validates_remote_stdio_cwd ... ok\ntest doctor::tests::mcp_check_warns_for_optional_http_reachability ... ok\ntest doctor::tests::overall_status_prefers_fail ... ok\ntest doctor::tests::provider_reachability_adds_models_route_probe_for_openai_compatible_base_urls ... ok\ntest doctor::tests::provider_reachability_api_key_does_not_require_chatgpt ... ok\ntest doctor::tests::provider_reachability_chatgpt_uses_inference_endpoint ... ok\ntest doctor::tests::provider_reachability_mode_uses_api_key_auth ... ok\ntest doctor::tests::provider_reachability_outcome_reports_required_failures ... ok\ntest doctor::tests::http_probe_treats_http_status_as_reachable ... ok\ntest doctor::network::tests::provider_reachability_rejects_proxy_authentication_challenges ... ok\ntest doctor::tests::provider_reachability_skips_route_probe_for_bedrock ... ok\ntest doctor::tests::provider_reachability_uses_active_provider_endpoint ... ok\ntest doctor::tests::provider_specific_auth_allows_non_openai_provider_without_env_key ... ok\ntest doctor::tests::provider_specific_auth_fails_when_provider_env_key_is_missing ... ok\ntest doctor::tests::mcp_http_probe_falls_back_to_get_when_head_times_out ... ok\ntest doctor::tests::read_probe_file_rejects_unreadable_file ... ok\ntest doctor::tests::provider_reachability_route_401_keeps_reachability_ok ... ok\ntest doctor::tests::redacted_json_report_structures_and_sanitizes_details ... ok\ntest doctor::tests::run_async_check_notifies_progress ... ok\ntest doctor::tests::run_sync_check_notifies_progress ... ok\ntest doctor::tests::should_enable_color_respects_terminal_inputs ... ok\ntest doctor::tests::provider_reachability_route_404_fails_bad_base_url_path ... ok\ntest doctor::tests::startup_warning_counts_group_known_sources ... ok\ntest doctor::tests::stored_auth_validation_handles_personal_access_token ... ok\ntest doctor::tests::stored_auth_validation_rejects_missing_api_key ... ok\ntest doctor::tests::stored_auth_validation_rejects_missing_chatgpt_tokens ... ok\ntest doctor::tests::terminal_check_allows_missing_tmux_details ... ok\ntest doctor::tests::terminal_check_includes_windows_console_details ... ok\ntest doctor::tests::terminal_check_reports_remote_indicators_as_present_only ... ok\ntest doctor::tests::terminal_check_dumb_requires_interactive_stream ... ok\ntest doctor::tests::terminal_check_warns_for_declared_narrow_terminal ... ok\ntest doctor::tests::terminal_check_prioritizes_unreadable_terminfo_over_warnings ... ok\ntest doctor::tests::terminal_check_warns_for_narrow_terminal ... ok\ntest doctor::tests::terminal_check_warns_for_non_utf8_locale ... ok\ntest doctor::tests::rollout_stats_details_count_plain_and_compressed_files ... ok\ntest doctor::thread_inventory::tests::count_summary_caps_distinct_values ... ok\ntest doctor::thread_inventory::tests::source_category_coarsens_structured_sources ... ok\ntest doctor::thread_inventory::tests::thread_id_from_rollout_stops_after_legacy_header_line_limit ... ok\ntest doctor::thread_inventory::tests::thread_id_from_rollout_falls_back_for_legacy_non_meta_record ... ok\ntest doctor::filesystem_paths::tests::returns_when_a_probe_process_does_not_exit ... ok\ntest doctor::thread_inventory::tests::thread_id_from_rollout_rejects_unusable_headers ... ok\ntest doctor::thread_inventory::tests::thread_id_from_rollout_uses_metadata_after_pre_header_record ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_ignores_compression_temp_files ... ok\ntest doctor::thread_inventory::tests::thread_id_from_rollout_uses_metadata_at_header_line_limit ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_ignores_invalid_utf8_after_session_metadata ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_matches_compressed_rollouts_to_canonical_db_paths ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_ok_when_rollouts_match_db ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_prefers_plain_rollout_over_compressed_sibling ... ok\ntest doctor::title::tests::terminal_title_accepts_configured_items ... ok\ntest doctor::title::tests::terminal_title_omits_project_when_project_item_is_not_selected ... ok\ntest doctor::title::tests::terminal_title_project_value_uses_tui_truncation_shape ... ok\ntest doctor::title::tests::terminal_title_reports_default_items_and_git_project_name ... ok\ntest doctor::title::tests::terminal_title_reports_disabled_configuration ... ok\ntest doctor::title::tests::terminal_title_reports_project_config_fallback ... ok\ntest doctor::title::tests::terminal_title_warns_for_invalid_configured_items ... ok\ntest doctor::title::tests::terminal_title_warns_when_all_configured_items_are_invalid ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_reports_corrupt_compressed_rollout_without_stale_row ... ok\ntest doctor::updates::tests::is_newer_compares_plain_semver ... ok\ntest doctor::updates::tests::macos_update_probe_uses_the_persisted_production_appcast_feed ... ok\ntest doctor::updates::tests::update_action_labels_install_contexts ... ok\ntest doctor::updates::tests::macos_staged_updates_require_a_newer_matching_extracted_bundle ... ok\ntest doctor::updates::tests::windows_store_updates_compare_all_four_production_build_components ... ok\ntest exec_args_tests::exec_help_documents_cyber_access_program ... ok\ntest exec_server_args_tests::exec_server_defaults_preserve_local_and_noise_modes ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_uses_compressed_metadata_id_and_legacy_filename_fallback ... ok\ntest exec_server_args_tests::exec_server_direct_forwarding_remains_rejected ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_uses_metadata_id_when_filename_and_db_disagree ... ok\ntest exec_server_args_tests::exec_server_parses_direct_aws_options ... ok\ntest exec_server_args_tests::exec_server_help_documents_remote_options ... ok\ntest exec_server_args_tests::exec_server_parses_executor_credential_options ... ok\ntest exec_server_args_tests::exec_server_sigv4_does_not_enable_aws_auth_for_noise ... ok\ntest exec_server_args_tests::remote_forwarder_skips_cloud_config ... ok\ntest exec_server_auth::tests::invalid_signing_configuration_is_rejected ... ok\ntest exec_server_args_tests::exec_server_transport_and_aws_options_require_registration_arguments ... ok\ntest exec_server_auth::tests::invalid_signing_request_is_a_permanent_auth_error ... ok\ntest exec_server_credential::tests::eof_before_a_complete_frame_never_authenticates ... ok\ntest exec_server_args_tests::exec_server_rejects_missing_or_conflicting_remote_options ... ok\ntest exec_server_credential::tests::expiry_is_checked_again_on_every_request ... ok\ntest exec_server_credential::tests::parser_rejects_unsupported_schema_without_exposing_input ... ok\ntest exec_server_credential::tests::malformed_rotations_latch_failure_and_clear_existing_credential ... ok\ntest exec_server_telemetry::tests::parent_disconnect_still_stops_executor_after_signal_listener_error ... ok\ntest marketplace_cmd::tests::remove_subcommand_parses_marketplace_name ... ok\ntest marketplace_cmd::tests::sparse_paths_parse_before_or_after_source ... ok\ntest marketplace_cmd::tests::upgrade_subcommand_parses_optional_marketplace_name ... ok\ntest exec_server_auth::tests::signs_requests_without_changing_payload_or_metadata ... ok\ntest exec_server_credential::tests::waits_for_initial_rotation_replaces_token_and_eof_clears_auth ... ok\ntest mcp_cmd::tests::application_network_loader_rejects_malformed_managed_policy ... ok\ntest doctor::thread_inventory::tests::thread_inventory_check_warns_for_missing_stale_and_mismatched_rows ... ok\ntest mcp_cmd::tests::application_network_loader_denies_unlisted_destination_before_connect ... ok\ntest mcp_cmd::tests::application_network_loader_allows_listed_https_destination_to_connect ... ok\ntest mcp_cmd::tests::oauth_client_secret_is_redacted_in_parsed_command_debug ... ok\ntest mcp_cmd::tests::oauth_client_secret_requires_url_and_client_id_without_disclosure ... ok\ntest mcp_login::tests::callback_line_accepts_crlf_and_eof_after_input ... ok\ntest mcp_login::tests::callback_line_is_bounded_and_does_not_expose_input_in_errors ... ok\ntest plugin_cmd::tests::plugin_list_preserves_other_output_errors ... ok\ntest plugin_cmd::tests::plugin_list_treats_broken_pipe_as_success ... ok\ntest remote_control_cmd::tests::daemon_app_server_human_lines_include_path_and_version ... ok\ntest remote_control_cmd::tests::foreground_start_wait_reports_app_server_exit_before_ready ... ok\ntest remote_control_cmd::tests::foreground_start_wait_stops_before_ready ... ok\ntest remote_control_cmd::tests::foreground_wait_aborts_app_server_on_stop_signal ... ok\ntest remote_control_cmd::tests::remote_control_daemon_json_rejects_unstartable_status ... ok\ntest remote_control_cmd::tests::remote_control_human_lines_include_foreground_stop_hint_only ... ok\ntest remote_control_cmd::tests::remote_control_human_start_messages_use_server_name ... ok\ntest remote_control_cmd::tests::remote_control_json_output_marks_foreground_or_daemon ... ok\ntest remote_control_cmd::tests::remote_control_pairing_human_output_labels_the_manual_code ... ok\ntest remote_control_cmd::tests::remote_control_pairing_human_output_requires_manual_code ... ok\ntest remote_control_cmd::tests::remote_control_pairing_json_output_preserves_pairing_artifacts ... ok\ntest mcp_cmd::tests::application_network_mcp_add_denies_initial_oauth_discovery_before_connect ... ok\ntest state_db_recovery::tests::backup_folder_uses_parent_of_first_backup_path ... ok\ntest state_db_recovery::tests::backup_backs_up_only_failed_database_file ... ok\ntest state_db_recovery::tests::backup_replaces_blocking_sqlite_home_file ... ok\ntest tests::agents_subcommand_accepts_remote_session_options ... ok\ntest mcp_cmd::tests::application_network_mcp_add_discovers_when_policy_is_disabled ... ok\ntest tests::app_server_analytics_default_enabled_with_flag ... ok\ntest tests::app_server_analytics_default_disabled_without_flag ... ok\ntest tests::app_server_capability_token_flags_parse ... ok\ntest tests::app_server_grpc_code_mode_host_url_parses_independently_of_listen_transport ... ok\ntest tests::app_server_listen_invalid_url_fails_to_parse ... ok\ntest tests::app_server_listen_off_parses ... ok\ntest tests::app_server_listen_stdio_url_parses ... ok\ntest tests::app_server_listen_unix_socket_path_parses ... ok\ntest tests::app_server_listen_unix_socket_url_parses ... ok\ntest tests::app_server_listen_websocket_url_parses ... ok\ntest tests::app_server_proxy_subcommand_parses ... ok\ntest tests::app_server_proxy_sock_path_parses ... ok\ntest tests::app_server_daemon_subcommands_parse ... ok\ntest tests::app_server_rejects_removed_insecure_non_loopback_flag ... ok\ntest tests::app_server_remote_control_startup_flag_enables_remote_control ... ok\ntest tests::app_server_signed_bearer_flags_parse ... ok\ntest mcp_cmd::tests::application_network_mcp_login_denies_even_an_allowed_mcp_server ... ok\ntest tests::app_server_stdio_flag_conflicts_with_listen ... ok\ntest tests::app_server_stdio_flag_parses ... ok\ntest tests::app_server_subcommands_reject_strict_config ... ok\ntest tests::approve_for_me_defaults_propagate_from_root_to_exec ... ok\ntest tests::approve_for_me_configures_interactive_mode ... ok\ntest tests::archive_merges_scoped_tui_flags ... ok\ntest tests::approve_for_me_conflicts_with_explicit_interactive_permissions ... ok\ntest tests::dangerous_bypass_conflicts_with_approval_policy ... ok\ntest tests::debug_models_parses_bundled_flag ... ok\ntest tests::delete_force_requires_uuid ... ok\ntest tests::debug_prompt_input_parses_prompt_and_images ... ok\ntest tests::exec_resume_last_accepts_prompt_positional ... ok\ntest tests::exec_resume_accepts_output_flags_after_subcommand ... ok\ntest tests::exec_server_remote_api_key_auth_accepts_http_loopback ... ok\ntest tests::exec_server_forward_parses_shared_remote_options ... ok\ntest tests::exec_server_remote_api_key_auth_accepts_https_openai_domains ... ok\ntest tests::exec_server_remote_api_key_auth_rejects_http_openai_domain ... ok\ntest tests::exec_server_remote_api_key_auth_rejects_suffix_spoof ... ok\ntest tests::exec_server_remote_auth_accepts_api_key_auth ... ok\ntest tests::feature_toggles_accept_legacy_linux_sandbox_flag ... ok\ntest tests::feature_toggles_accept_removed_enable_fanout_flag ... ok\ntest tests::feature_toggles_accept_removed_image_detail_original_flag ... ok\ntest tests::feature_toggles_accept_removed_item_ids_flag ... ok\ntest tests::feature_toggles_known_features_generate_overrides ... ok\ntest tests::feature_toggles_unknown_feature_errors ... ok\ntest tests::features_disable_parses_feature_name ... ok\ntest tests::features_enable_parses_feature_name ... ok\ntest tests::app_server_rejects_invalid_code_mode_host_urls ... ok\ntest tests::exec_server_forward_requires_registration_and_destination ... ok\ntest tests::fork_all_flag_sets_show_all ... ok\ntest tests::fork_last_accepts_prompt_positional ... ok\ntest tests::fork_last_rejects_explicit_session_and_prompt ... ok\ntest tests::fork_picker_logic_last ... ok\ntest tests::fork_picker_logic_none_and_not_last ... ok\ntest tests::fork_with_session_id_accepts_prompt_positional ... ok\ntest tests::fork_picker_logic_with_session_id ... ok\ntest tests::format_exit_messages_confirms_archive ... ok\ntest tests::format_exit_messages_colors_commands_and_thread_name ... ok\ntest tests::format_exit_messages_includes_resume_hint_for_fatal_exit ... ok\ntest tests::format_exit_messages_applies_color_when_enabled ... ok\ntest tests::format_exit_messages_includes_session_id_for_fatal_exit_without_resume_hint ... ok\ntest tests::format_exit_messages_names_picker_item_when_thread_has_name ... ok\ntest tests::format_exit_messages_includes_resume_hint_without_color ... ok\ntest tests::format_exit_messages_includes_session_id_without_resume_hint ... ok\ntest tests::format_exit_messages_skips_zero_usage ... ok\ntest tests::interactive_tui_future_stays_bounded ... ok\ntest tests::import_remains_an_interactive_prompt ... ok\ntest tests::later_approve_for_me_overrides_root_exec_sandbox ... ok\ntest tests::later_approve_for_me_overrides_root_tui_approval_policy ... ok\ntest tests::format_exit_messages_preserves_auth_env_through_tui_runner ... ok\ntest tests::later_exec_sandbox_partially_overrides_approve_for_me ... ok\ntest tests::later_resume_approval_policy_partially_overrides_approve_for_me ... ok\ntest tests::plugin_add_parses_under_plugin ... ok\ntest tests::marketplace_no_longer_parses_at_top_level ... ok\ntest tests::not_so_yolo_alias_is_hidden_from_help ... ok\ntest tests::plugin_list_parses_under_plugin ... ok\ntest tests::plugin_marketplace_add_parses_under_plugin ... ok\ntest tests::plugin_marketplace_remove_parses_under_plugin ... ok\ntest tests::plugin_marketplace_upgrade_parses_under_plugin ... ok\ntest tests::profile_loader_overrides_use_explicit_codex_home ... ok\ntest tests::plugin_remove_parses_under_plugin ... ok\ntest tests::profile_v2_is_rejected_for_config_management_subcommands ... ok\ntest tests::profile_v2_rejects_non_plain_names_at_parse_time ... ok\ntest tests::read_remote_auth_token_from_env_var_rejects_empty_values ... ok\ntest tests::read_remote_auth_token_from_env_var_reports_missing_values ... ok\ntest tests::read_remote_auth_token_from_env_var_trims_values ... ok\ntest tests::reject_remote_auth_token_env_for_app_server_generate_internal_json_schema ... ok\ntest tests::reject_remote_auth_token_env_for_app_server_proxy ... ok\ntest tests::reject_remote_auth_token_env_for_app_server_version ... ok\ntest tests::reject_remote_auth_token_env_for_non_interactive_subcommands ... ok\ntest tests::queue_help_lists_supported_options ... ok\ntest tests::reject_remote_mode_for_non_interactive_subcommands ... ok\ntest tests::reject_remote_flag_for_remote_control ... ok\ntest tests::profile_v2_is_allowed_for_runtime_subcommands ... ok\ntest tests::remote_auth_token_env_flag_parses_for_interactive_root ... ok\ntest tests::remote_control_pair_parses ... ok\ntest tests::remote_flag_parses_for_interactive_root ... ok\ntest tests::plugin_marketplace_help_uses_plugin_namespace ... ok\ntest tests::responses_subcommand_is_not_registered ... ok\ntest tests::remote_flag_parses_for_resume_subcommand ... ok\ntest tests::resume_all_flag_sets_show_all ... ok\ntest tests::resume_include_non_interactive_flag_sets_source_filter_override ... ok\ntest tests::resume_last_accepts_prompt_positional ... ok\ntest tests::resume_last_rejects_explicit_session_and_prompt ... ok\ntest tests::resume_merges_bypass_hook_trust_flag ... ok\ntest tests::resume_merges_dangerously_bypass_flag ... ok\ntest tests::resume_merges_option_flags ... ok\ntest tests::resume_and_fork_preserve_no_daemon ... ok\ntest tests::resume_model_flag_applies_when_no_root_flags ... ok\ntest tests::resume_picker_logic_last ... ok\ntest tests::resume_picker_logic_none_and_not_last ... ok\ntest tests::resume_picker_logic_with_session_id ... ok\ntest tests::resume_and_fork_preserve_no_alt_screen ... ok\ntest tests::resume_with_session_id_accepts_prompt_positional ... ok\ntest tests::root_strict_config_is_supported_for_exec_server ... ok\ntest tests::root_strict_config_is_rejected_for_unsupported_subcommands ... ok\ntest tests::sandbox_parses_config_profile ... ok\ntest tests::sandbox_parses_legacy_permissions_profile_alias ... ok\ntest tests::sandbox_help_only_shows_singular_permission_profile ... ok\ntest tests::sandbox_parses_permission_profile ... ok\ntest tests::sandbox_parses_permissions_profile_short_alias ... ok\ntest tests::sandbox_rejects_explicit_profile_controls_without_profile ... ok\ntest tests::strict_config_with_compound_enable_errors ... ok\ntest tests::strict_config_with_unknown_disable_errors ... ok\ntest tests::sandbox_uninstall_respects_command_separator ... ok\ntest tests::strict_config_with_unknown_enable_errors ... ok\ntest tests::strict_config_parses_for_supported_commands ... ok\ntest tests::update_parses_as_update_subcommand ... ok\ntest tests::updater_http_client_factory_propagates_config_errors ... ok\ntest tests::tcp_tunnel_is_hidden_and_accepts_its_control_input_contract ... ok\ntest tests::worktree_flag_supports_interactive_exec_and_explicit_fork_positions ... ok\ntest wsl_paths::tests::normalize_is_noop_on_unix_paths ... ok\ntest wsl_paths::tests::win_to_wsl_basic ... ok\ntest tests::updater_http_client_factory_honors_respect_system_proxy ... ok\ntest tests::worktree_flag_rejects_unsupported_session_and_management_commands ... ok\ntest tests::updater_http_client_factory_enforces_application_requirements ... ok\ntest doctor::updates::tests::version_http_probe_decodes_json_and_rejects_invalid_responses ... ok\n\ntest result: ok. 327 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 11.19s\n\n",
+      "cases": [
+        {
+          "name": "mcp_login::tests::callback_line_is_bounded_and_does_not_expose_input_in_errors",
+          "result": "reported-pass",
+          "line": 181
+        }
+      ],
+      "target_response": {
+        "targetGroups": [
+          {
+            "status": "PASSED",
+            "targets": [
+              {
+                "metadata": {
+                  "label": "//codex-rs/cli:codex-bin-unit-tests",
+                  "ruleType": "workspace_root_test rule",
+                  "testSize": "MEDIUM"
+                },
+                "status": "PASSED",
+                "timing": {
+                  "startTime": "2026-10-27T15:31:53.850Z",
+                  "duration": "11.323s"
+                },
+                "files": [
+                  {
+                    "pathPrefix": [
+                      "bazel-out",
+                      "darwin_arm64-fastbuild",
+                      "bin"
+                    ],
+                    "name": "codex-rs/cli/codex-bin-unit-tests",
+                    "uri": "bytestream://openai.buildbuddy.io/blobs/3c704650e8c7bb667e5b6f82fdfb994c59e7943015579f2726f9b3bcc666cd56/4777",
+                    "digest": "3c704650e8c7bb667e5b6f82fdfb994c59e7943015579f2726f9b3bcc666cd56",
+                    "length": "4777"
+                  }
+                ],
+                "testResultEvents": [
+                  {
+                    "id": {
+                      "testResult": {
+                        "label": "//codex-rs/cli:codex-bin-unit-tests",
+                        "configuration": {
+                          "id": "8802a035f322d3548b9e5fdf989c127cf4d85f28efee2fe7c159899c7eb2289a"
+                        },
+                        "run": 1,
+                        "shard": 1,
+                        "attempt": 1
+                      }
+                    },
+                    "testResult": {
+                      "status": "PASSED",
+                      "testAttemptStartMillisEpoch": "1793115113850",
+                      "testAttemptStart": "2026-10-27T15:31:53.850Z",
+                      "testAttemptDurationMillis": "11323",
+                      "testAttemptDuration": "11.323s",
+                      "testActionOutput": [
+                        {
+                          "name": "test.log",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/730d238b38b37fa80d4e9ca6ca77163228dc9c3841e8231535e344892c5e6575/26089"
+                        },
+                        {
+                          "name": "test.xml",
+                          "uri": "bytestream://openai.buildbuddy.io/blobs/ce395af968c8c36afa0b646be49f3af4432972acc1e5b95ace267f843af636ce/26491"
+                        }
+                      ],
+                      "executionInfo": {
+                        "strategy": "darwin-sandbox",
+                        "timingBreakdown": {
+                          "child": [
+                            {
+                              "name": "parseTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "fetchTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "queueTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "uploadTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "setupTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "executionWallTime",
+                              "time": "11.323s"
+                            },
+                            {
+                              "name": "processOutputsTime",
+                              "time": "0s"
+                            },
+                            {
+                              "name": "networkTime",
+                              "time": "0s"
+                            }
+                          ],
+                          "name": "totalTime",
+                          "time": "11.323s"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "testSummary": {
+                  "overallStatus": "PASSED",
+                  "totalRunCount": 1,
+                  "runCount": 1,
+                  "attemptCount": 1,
+                  "passed": [
+                    {
+                      "uri": "bytestream://openai.buildbuddy.io/blobs/730d238b38b37fa80d4e9ca6ca77163228dc9c3841e8231535e344892c5e6575/26089"
+                    }
+                  ],
+                  "firstStartTimeMillis": "1793115113850",
+                  "firstStartTime": "2026-10-27T15:31:53.850Z",
+                  "lastStopTimeMillis": "1793115125173",
+                  "lastStopTime": "2026-10-27T15:32:05.173Z",
+                  "totalRunDurationMillis": "11323",
+                  "totalRunDuration": "11.323s"
+                }
+              }
+            ],
+            "totalCount": "1"
+          }
+        ]
+      },
+      "target_response_sha256": "f1acd21e98c84126289d452874214e78e9d58562d41cc3d5fab03985274f43f1"
+    }
+  ],
+  "selected_upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "upstream_run": 40529953490,
+  "job": 122279717700,
+  "job_url": "https://github.com/openai/codex/actions/runs/40529953490/job/122279717700",
+  "github_head_sha": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "checked_out_commit": "ef71db84dec3ce45750d6ad9d1204d898c4c64f0",
+  "source_tree_identity": {
+    "selected_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+    "checked_out_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+    "verification": "Both complete root-tree identities returned by GitHub Git commits API match; merge checkout and selected source have the same complete source tree."
+  },
+  "github_job_log": {
+    "bytes": 335529,
+    "sha256": "ad24c6882eeb1cb4831c3e2754aedd5d20bbde82924244cc825c73db7ab66d54",
+    "checkout_evidence": [
+      "2026-10-27T15:21:54.8673370Z [command]/opt/homebrew/bin/git checkout --progress --force refs/remotes/pull/57483/merge",
+      "2026-10-27T15:21:55.7413690Z HEAD is now at ef71db8 Merge dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4 into 75667b341af201f6e20a228437ebfe82b828b53c"
+    ],
+    "target_summary": [
+      "2026-10-27T15:47:02.5103920Z //codex-rs/cli:cli-app_server_daemon-test                                PASSED in 6.9s",
+      "2026-10-27T15:47:02.5108700Z //codex-rs/cli:cli-cloud_auth-test                                       PASSED in 0.1s",
+      "2026-10-27T15:47:02.5111520Z //codex-rs/cli:cli-daemon_startup-test                                   PASSED in 8.7s",
+      "2026-10-27T15:47:02.5131390Z //codex-rs/cli:cli-features-test                                         PASSED in 0.3s",
+      "2026-10-27T15:47:02.5138870Z //codex-rs/cli:cli-mcp_add_remove-test                                   PASSED in 0.6s",
+      "2026-10-27T15:47:02.5158220Z //codex-rs/cli:cli-worktree-test                                         PASSED in 42.4s",
+      "2026-10-27T15:47:02.5158710Z //codex-rs/cli:codex-bin-unit-tests                                      PASSED in 11.3s"
+    ]
+  },
+  "comparison": "All eleven previously failing/timing-out macOS CLI cases are individually reported ok in upstream retained logs. Seven target results use darwin-sandbox and the GitHub summaries do not mark them cached. This establishes upstream reported passes with complete source-tree identity; Cargo nextest and Bazel remain different build/test environments.",
+  "limits": [
+    "Passing libtest output is captured, so these logs do not expose assertion-by-assertion execution or child environment values.",
+    "The unsuccessful nextest archive in postmerge run 40529958039 still supplies no per-case nextest comparison."
+  ]
+}
