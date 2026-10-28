@@ -1,0 +1,119 @@
+{
+  "run_id": 40608627159,
+  "job_id": 122554393208,
+  "source_ref": "8db12a7843f940714688c7173abcbca368648371",
+  "scope": "Native Linux ARM64 cgroup facility only; no production owner or Codex build",
+  "source": {
+    "receipt": "unix-process-candidates.json",
+    "key": "source_files.cgroup-probe.py",
+    "bytes": 3823,
+    "sha256": "3f2f42fcb8d36d44b65b4660e4b854ad8b7f3ab536ee32f1ab50ec706e364d20"
+  },
+  "runner": {
+    "event": "retained_result",
+    "kernel": "6.17.0-1022-azure",
+    "machine": "aarch64",
+    "uid": 1001,
+    "image": "20261023.149.3",
+    "bytes": 496,
+    "sha256": "fad0242e826e005417155b9028ddd6480d6b1a33148040c01e4bcd9d856cf4e4"
+  },
+  "log": {
+    "bytes": 496,
+    "sha256": "fad0242e826e005417155b9028ddd6480d6b1a33148040c01e4bcd9d856cf4e4",
+    "text": "{\"event\": \"detached_child_retained\", \"root_exit\": 7, \"cgroup\": \"/sys/fs/cgroup/codex-scheduler-probe-fvdbsoqr\", \"members\": [2799], \"leaf\": {\"pid\": 2799, \"uid\": 1001, \"group\": 2799, \"membership\": \"0::/codex-scheduler-probe-fvdbsoqr\\n\"}}\n{\"event\": \"cgroup_candidate_passed\", \"root_exit\": 7, \"adopted_exits\": {\"2799\": -9}, \"events\": \"populated 0\\nfrozen 0\\n\"}\n{\"event\": \"owned_cgroup_removed\", \"path\": \"/sys/fs/cgroup/codex-scheduler-probe-fvdbsoqr\", \"exists\": false, \"adopted_exits\": {\"2799\": -9}}\n"
+  },
+  "job": {
+    "conclusion": "failure",
+    "id": 122554393208,
+    "name": "Debug - aarch64-unknown-linux-musl",
+    "status": "completed",
+    "steps": [
+      {
+        "conclusion": "success",
+        "name": "Set up job",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Create owned partial build state",
+        "status": "completed"
+      },
+      {
+        "conclusion": "failure",
+        "name": "Record the deliberate build failure",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Debug the original failed workspace",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Post Debug the original failed workspace",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Post Create owned partial build state",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "name": "Complete job",
+        "status": "completed"
+      }
+    ]
+  },
+  "ssh": {
+    "attempts": [
+      {
+        "file": "linux-arm-cgroup-ssh-initial.log.gz",
+        "bytes": 579,
+        "sha256": "87ebf95bb5d41fedb61ad386342f414270a562a79b17b50ea75ccd5874457f96",
+        "compressed_sha256": "0a3f9e080f8c1d327a74c85fa58a695a76c4ca55c52a60cbf64d285fcf843fe7",
+        "exit": 1
+      },
+      {
+        "file": "linux-arm-cgroup-ssh.log.gz",
+        "bytes": 10062,
+        "sha256": "f58a0a3317efad550ce9d71a854f099d3ccc5147a0cf1ed012485c6471bf9e90",
+        "compressed_sha256": "7d50f8b72e3f49095f96eddf6e0ec63baa7fe669ea1823015750ca89a63c322b",
+        "exit": 0
+      }
+    ],
+    "recovery": "First script-wrapper client authenticated but did not forward input; no test command ran. Closed that client and reconnected to the same retained worker with a PTY owner. Verified workspace and marker before transfer and execution; retained that connection through the test and cleanup."
+  },
+  "cleanup": {
+    "owned_cgroup_removed": true,
+    "remote_storage_removed": true,
+    "ssh_reaped": true,
+    "smoke_post": "success"
+  },
+  "result": {
+    "probe_exit": 0,
+    "root_exit": 7,
+    "workload_uid": 1001,
+    "detached_descendant_exit": -9,
+    "populated_after_kill": 0
+  },
+  "unaccepted": [
+    "production Linux process owner",
+    "macOS process ownership",
+    "production monitor/controller",
+    "physical-pressure recovery",
+    "allocation-hook safety",
+    "Cargo/Bazel integration"
+  ]
+}

@@ -1691,6 +1691,27 @@ read-only cgroup mount does not prevent this supported hosted path.
 The cgroup source is transferred and hash-checked before execution. All diagnostic
 commands use the same connected worker. SSH exits zero, remote scratch and cgroup
 removal are verified, and remote-wait and smoke-state cleanup steps pass. The job
-retains only its deliberate exit-17 failure. Linux ARM64 control, a production
-Linux process owner, macOS ownership and scheduler integration remain unaccepted.
+retains only its deliberate exit-17 failure. This x86-64 result alone leaves
+Linux ARM64 control, a production Linux process owner, macOS ownership and
+scheduler integration unaccepted.
 Existing build limits and previously accepted builds are unchanged.
+
+The identical cgroup probe now passes on Linux ARM64 in
+[run `40608627159`](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40608627159).
+The [ARM64 receipt](evidence/linux-arm-cgroup.json) links the original source
+and retains its hash, native log, SSH transcripts and terminal job steps.
+Its ordinary-user workload runs as UID 1001 on kernel `6.17.0-1022-azure`;
+the detached child remains owned after root exit 7, is killed and reaped with
+`SIGKILL`, and leaves `populated 0` before verified cgroup removal.
+This accepts the native facility on both Linux architectures without repeating
+the accepted x86-64 test or compiling Codex.
+
+The first ARM64 SSH client authenticates, but its command wrapper does not
+forward input. No test command runs through that client. After closing it, a
+PTY client reconnects to the same retained worker, verifies the original
+workspace and marker, then remains connected through source transfer, execution
+and cleanup. The transferred source matches the accepted probe's SHA-256.
+The PTY client exits zero; remote scratch removal, the remote-session post wait,
+smoke-state verification and owned-storage cleanup pass. The job's only failure
+is its deliberately injected exit 17. Production Linux ownership, macOS
+ownership and scheduler integration remain unaccepted.
