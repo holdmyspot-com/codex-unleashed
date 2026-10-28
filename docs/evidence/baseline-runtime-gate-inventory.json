@@ -1019,7 +1019,14 @@
         "platform_cfg": "macOS",
         "cases": [
           "sandbox_blocks_terminal_input_injection"
-        ]
+        ],
+        "native_prerequisite": {
+          "status": "passed",
+          "evidence": "docs/evidence/macos-sandbox-tty-prerequisite.json",
+          "run": 40728132425,
+          "scope": "Seatbelt availability only; the case remains unrun.",
+          "workflow": ".github/workflows/baseline-macos-focused-runtime.yml"
+        }
       },
       {
         "target": "app_server_daemon_windows",
