@@ -45,17 +45,24 @@ passing cases are excluded. The result is 546 passed, nine failed, two timed
 out and five skipped; skipped entries require separate filter/ignore accounting.
 Keep the failed run and subsequent focused diagnostics as distinct results.
 
-The selected upstream run `40529958039` has no corresponding macOS case
-results: archive job `122279734132` fails at `Build nextest archive`, and its
-macOS runtime shards are skipped. This establishes an unavailable per-case
-comparison, not upstream failures or passes for the cases below.
+Upstream's separate blocking Bazel run `40529953490`, job `122279717700`,
+reports all eleven affected cases passing. Its checkout is PR merge commit
+`ef71db84dec3ce45750d6ad9d1204d898c4c64f0`; that commit and selected main have
+the identical complete Git tree `16b1c50831e79726bca339e0da0b51c682944959`.
+Seven SHA-256-verified target logs retain each named `ok` result. Their execution
+strategy is `darwin-sandbox`, and their job summaries are not marked cached.
+[The comparison evidence](evidence/upstream-macos-cli-comparison.json) embeds
+the logs and target responses. This establishes upstream reported passes with
+source identity; Bazel and Cargo nextest remain different execution environments.
+The separate postmerge run `40529958039` still supplies no nextest comparison:
+archive job `122279734132` fails before the macOS runtime shards execute.
 
 | Cases | Controlled observation | Remaining comparison |
 | --- | --- | --- |
-| `managed_identity_survives_locale_and_timezone_changes`, `cloud_list_only_allows_trusted_credential_destinations`, `mcp_list_reports_invalid_keybinding_reason`, `remote_start_rejects_add_dir_before_connecting`, `remote_start_rejects_writable_root_overrides_before_connecting`, `add_rejects_blank_client_credentials_before_saving`, `mcp_login::tests::callback_line_is_bounded_and_does_not_expose_input_in_errors` | Failure output appends library stack traces to strings/snapshots expecting plain errors. Setting only `RUST_LIB_BACKTRACE=0`, while retaining `RUST_BACKTRACE=1`, makes all seven pass without source/test edits. | Selected upstream nextest also sets `RUST_BACKTRACE=1`; no `RUST_LIB_BACKTRACE` override was found in its workflow, setup action, nextest or Cargo configuration. These are diagnostic passes, pending an upstream execution comparison. |
-| `agents_defers_launch_directory_trust_until_starting_a_task` | Our long owned `TMPDIR` wraps the workspace path across terminal lines, preventing the existing snapshot replacement. Changing only `TMPDIR` to a short owned runner-temp directory makes the unchanged case pass in 11.331 seconds. | Upstream preserves its runner-provided `TMPDIR`. Our storage action introduced the long value; move its owned storage directly below `RUNNER_TEMP`, preserving cleanup. |
-| `agents_checks_trust_when_starting_after_dismissing_overview` | The same short-path diagnostic passes. The original failure remains retained; a passing repeat alone does not establish its cause. | Investigate the original failure and upstream execution before attributing it to path length. |
-| `explicit_restart_applies_feature_overrides_and_preserves_saved_settings`, `daemon_worktree_start_and_fork_bind_owner_before_turn` | Both time out in the broad run. With only the short `TMPDIR` change, the first reaches a snapshot failure at line 201; the second still times out. | Inspect the new snapshot diff and the actual stalled process boundary. Neither timeout is accepted or repaired. |
+| `managed_identity_survives_locale_and_timezone_changes`, `cloud_list_only_allows_trusted_credential_destinations`, `mcp_list_reports_invalid_keybinding_reason`, `remote_start_rejects_add_dir_before_connecting`, `remote_start_rejects_writable_root_overrides_before_connecting`, `add_rejects_blank_client_credentials_before_saving`, `mcp_login::tests::callback_line_is_bounded_and_does_not_expose_input_in_errors` | Failure output appends library stack traces to strings/snapshots expecting plain errors. Setting only `RUST_LIB_BACKTRACE=0`, while retaining `RUST_BACKTRACE=1`, makes all seven pass without source/test edits. | All seven are reported passing in upstream's native Bazel run. Its strict test environment does not explicitly set either backtrace variable; the unsuccessful nextest workflow instead sets `RUST_BACKTRACE=1`. Future focused Cargo checks disable library error backtraces while preserving panic backtraces. Retain the failed and controlled results; final source/dependency guards remain required. |
+| `agents_defers_launch_directory_trust_until_starting_a_task` | Our long owned `TMPDIR` wraps the workspace path across terminal lines, preventing the existing snapshot replacement. Changing only `TMPDIR` to a short owned runner-temp directory makes the unchanged case pass in 11.331 seconds. | Upstream preserves its runner-provided `TMPDIR`. Our storage action introduced the long value; it now places owned storage directly below `RUNNER_TEMP`, preserving cleanup. |
+| `agents_checks_trust_when_starting_after_dismissing_overview` | The same short-path diagnostic passes. The original failure remains retained; a passing repeat alone does not establish its cause. | Upstream reports this case passing. Inspect the original failure before attributing it to path length. |
+| `explicit_restart_applies_feature_overrides_and_preserves_saved_settings`, `daemon_worktree_start_and_fork_bind_owner_before_turn` | Both time out in the broad run. With only the short `TMPDIR` change, the first reaches a snapshot failure at line 201; the second still times out. | Upstream reports both passing. Inspect the new snapshot diff and the actual stalled process boundary. Neither timeout is accepted or repaired. |
 
 The local storage-action probe passes runner-temp ownership, exported paths,
 post cleanup and cleanup after setup failure. Existing native workers remain
