@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "run_id": 40689926766,
+  "job_id": 122821890674,
+  "restart_commit": "a615d3049b95afa727f8845c89406ccf9a929b53",
+  "target": "x86_64-unknown-linux-musl",
+  "purpose": "Verify private-cache write authority and the production grouped-cache push/pull operation before another costly retained-runner compilation.",
+  "permission_change": {
+    "workflow": ".github/workflows/runner-debug-smoke.yml",
+    "job": "probe",
+    "packages": "write"
+  },
+  "repository": "ghcr.io/holdmyspot-com/cargo-cache-main-new",
+  "visibility": "private",
+  "oras_version": "1.3.1",
+  "cache_helper": {
+    "path": ".github/scripts/cargo-cache-parts.py",
+    "sha256": "f795e9681f8c5bb2bc0ffc5106aad1a7787323c64e59b546237a464e57158dc2",
+    "delivery": "Smoke checkout includes only .github/actions. Transfer exact helper bytes through the existing persistent SSH channel and verify SHA-256 before executing."
+  },
+  "claims": {
+    "generic_private_roundtrip": "passed; 36-byte fixture push/pull and byte comparison",
+    "grouped_private_roundtrip": "passed; first push saves CLI+metadata; second push adds app-server, reuses one CLI part, and uploads two changed parts; pull restores both outputs and ownership record byte-for-byte",
+    "first_push": {
+      "cache_parts": 2,
+      "uploaded_archive_bytes": 448,
+      "reused_parts": 0
+    },
+    "second_push": {
+      "cache_parts": 3,
+      "uploaded_archive_bytes": 460,
+      "reused_parts": 1
+    },
+    "restored_manifest_digest": "sha256:5234f7c13f63ab2ab15d88f67a01fe53ac3e0825ee6efd553bda4d2cbf50821b"
+  },
+  "setup_failure": {
+    "request": "004",
+    "exit_code": 2,
+    "cause": "Helper was absent from the actions-only sparse checkout. No upload or compilation occurred. The same session continued after exact helper transfer."
+  },
+  "cleanup": {
+    "registry_versions": [
+      1460825623,
+      1460825268,
+      1460796738
+    ],
+    "registry_scope": "Only the three exact fixture digests were deleted; each digest and complete tag list was rechecked before DELETE and subsequent GET returned 404. No release-cache reference was targeted.",
+    "remote_scratch_removed": true,
+    "private_client_key_removed": true,
+    "ssh_exit": 0,
+    "hosted_posts": "All debug, marker and checkout post steps succeeded. The sole failing step is the deliberate exit 17."
+  },
+  "limits": [
+    "Synthetic output files exercise the real private registry, grouped archive helper and authenticated runner authority. They do not establish compiler-output compatibility, unchanged executable reuse or cross-platform runtime acceptance.",
+    "The previous package-test compiled overlay was not retained. Its executable invalidation reason remains unresolved."
+  ],
+  "receipts": {
+    "002": {
+      "sha256": "e56666c643d543dc5e4b3f04bb62fb8e4eb86e28bf7d9f7a59cc5da2afa68a4f",
+      "exit": 0,
+      "output": "\n/home/runner/work/_temp/cache-write-proof-zZB71I/oras.tar.gz: OK\nLogin Succeeded\n\n\n\u280b [....................](   0  B/s)  fixture.txt          -/36  B   0.00%    4ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\n\n\u2819 [....................](   0  B/s)  fixture.txt          -/36  B   0.00%   35ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2839 [                    ]( 152  B/s) Uploading fixtur. 36.00/36  B 100.00%  236ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2838 [                    ](  82  B/s) Uploading fixtur. 36.00/36  B 100.00%  435ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u283c [                    ](  56  B/s) Uploading fixtur. 36.00/36  B 100.00%  635ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2834 [                    ](  43  B/s) Uploading fixtur. 36.00/36  B 100.00%  835ms\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2826 [                    ](   0  B/s) Uploading fixtur. 36.00/36  B 100.00%     1s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2827 [                    ](   0  B/s) Uploading fixtur. 36.00/36  B 100.00%     1s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\n\n\u2713 Uploaded  fixture.txt                                  36/36  B 100.00%     1s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u280b [....................](   0  B/s)  application/vnd.oc. -/563  B   0.00%   47ms\n  \u2514\u2500 sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c    \n\u2713 Uploaded  fixture.txt                                  36/36  B 100.00%     1s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2819 [....................](   0  B/s)  application/vnd.oc. -/563  B   0.00%  246ms\n  \u2514\u2500 sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c    \n\u2713 Uploaded  fixture.txt                                  36/36  B 100.00%     1s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Exists    application/vnd.oci.empty.v1+json              2/2  B 100.00%     0s\n  \u2514\u2500 sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a    \n\u2713 Uploaded  application/vnd.oci.image.manifest.v1+json 563/563  B 100.00%  430ms\n  \u2514\u2500 sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c    \nPushed [registry] ghcr.io/holdmyspot-com/cargo-cache-main-new:diagnostic-write-40689926766\nArtifactType: application/vnd.codex.cache-probe.v1\nDigest: sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c\n\n\n\u2713 Pulled      fixture.txt                                36/36  B 100.00%  607\u00b5s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\n\n\u2713 Pulled      fixture.txt                                36/36  B 100.00%  607\u00b5s\n  \u2514\u2500 sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3    \n\u2713 Pulled      application/vnd.oci.image.manifest.v1+j. 563/563  B 100.00%  126\u00b5s\n  \u2514\u2500 sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c    \nPulled [registry] ghcr.io/holdmyspot-com/cargo-cache-main-new:diagnostic-write-40689926766\nDigest: sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c\n9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3  fixture.txt\n9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3  /home/runner/work/_temp/cache-write-proof-zZB71I/restored/fixture.txt\n{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"artifactType\":\"application/vnd.codex.cache-probe.v1\",\"config\":{\"mediaType\":\"application/vnd.oci.empty.v1+json\",\"digest\":\"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"size\":2,\"data\":\"e30=\"},\"layers\":[{\"mediaType\":\"text/plain\",\"digest\":\"sha256:9481d05108e6694912e01824302797fc3d090e64b397ece8c9674d043ecb06c3\",\"size\":36,\"annotations\":{\"org.opencontainers.image.title\":\"fixture.txt\"}}],\"annotations\":{\"org.opencontainers.image.created\":\"2026-10-28T12:44:58Z\"}}__OWNER_DONE_request-002__:0\nOWNER> "
+    },
+    "004": {
+      "sha256": "a265e375492bb7aea3d7cdceda677c1419bca96b37e636f4af410e2ee01e5075",
+      "exit": 2,
+      "output": "\n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \npython3: can't open file '/home/runner/work/codex-unleashed/codex-unleashed/.github/scripts/cargo-cache-parts.py': [Errno 2] No such file or directory\n__OWNER_DONE_request-004__:2\nOWNER> "
+    },
+    "005": {
+      "sha256": "99b0a615bd4a65252e17f82dabdfd540ca15624e422932f9a30580a5f19e0a71",
+      "exit": 0,
+      "output": "\n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n> \n/home/runner/work/_temp/cache-write-proof-zZB71I/cargo-cache-parts.py: OK\nUploading fa93c0f9e377 application/vnd.oci.image.manifest.v1+json\nUploaded  fa93c0f9e377 application/vnd.oci.image.manifest.v1+json\nPushed: [registry] ghcr.io/holdmyspot-com/cargo-cache-main-new:diagnostic-parts-40689926766\nDigest: sha256:fa93c0f9e37730239944abbf1137dd190daf6bb7d6cd86bc71b5e83064661a63\ncache_parts=2 uploaded_archive_bytes=448 reused_parts=0\nUploading 5234f7c13f63 application/vnd.oci.image.manifest.v1+json\nUploaded  5234f7c13f63 application/vnd.oci.image.manifest.v1+json\nPushed: [registry] ghcr.io/holdmyspot-com/cargo-cache-main-new:diagnostic-parts-40689926766\nDigest: sha256:5234f7c13f63ab2ab15d88f67a01fe53ac3e0825ee6efd553bda4d2cbf50821b\ncache_parts=3 uploaded_archive_bytes=460 reused_parts=1\n\n\n\u2713 Downloaded  application/octet-stream                 211/211  B 100.00%   47\u00b5s\n  \u2514\u2500 sha256:ec43726a5e57c9c549926a8e49e3ec69be5010a6ac6516e0842356039d8459c4    \n\n\n\u2713 Downloaded  application/octet-stream                 209/209  B 100.00%   39\u00b5s\n  \u2514\u2500 sha256:a14b3d5365bcb4e8149164a36ac599e40fd6d1d24015f8b7eeba052c893ed612    \n\n\n\u2713 Downloaded  application/octet-stream                 251/251  B 100.00%   52\u00b5s\n  \u2514\u2500 sha256:378d77290a52c664c08cefd1683daa445037e3b81a53e2f1c0095fca0cf03823    \ncache_result=hit digest=sha256:5234f7c13f63ab2ab15d88f67a01fe53ac3e0825ee6efd553bda4d2cbf50821b cache_parts=3\nf795e9681f8c5bb2bc0ffc5106aad1a7787323c64e59b546237a464e57158dc2  /home/runner/work/_temp/cache-write-proof-zZB71I/cargo-cache-parts.py\n180c2bd2717184818b204fb60bfda4bb588c894d4febd6ae553e77837837e8c9  /home/runner/work/_temp/cache-write-proof-zZB71I/parts-restored/codex\n5585cfa0a11e27c49a3be9b2204ba3198d5c864a3c583ba270454992be2a3af0  /home/runner/work/_temp/cache-write-proof-zZB71I/parts-restored/codex-app-server\n{\"schemaVersion\": 2, \"mediaType\": \"application/vnd.oci.image.manifest.v1+json\", \"artifactType\": \"application/vnd.codex-unleashed.cargo-target.v2\", \"config\": {\"mediaType\": \"application/vnd.oci.empty.v1+json\", \"digest\": \"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\", \"size\": 2}, \"layers\": [{\"annotations\": {\"io.holdmyspot.cargo.group\": \"codex\", \"io.holdmyspot.cargo.inputs\": \"da93875a38a1d6f777093316a67dbbf7f17324c000b473f366725ecec897f4c9\", \"org.opencontainers.image.title\": \"da93875a38a1d6f777093316a67dbbf7f17324c000b473f366725ecec897f4c9.tar.zst\"}, \"digest\": \"sha256:ec43726a5e57c9c549926a8e49e3ec69be5010a6ac6516e0842356039d8459c4\", \"mediaType\": \"application/vnd.codex-unleashed.cargo-target.tar+zstd\", \"size\": 211}, {\"mediaType\": \"application/vnd.codex-unleashed.cargo-target.tar+zstd\", \"digest\": \"sha256:a14b3d5365bcb4e8149164a36ac599e40fd6d1d24015f8b7eeba052c893ed612\", \"size\": 209, \"annotations\": {\"io.holdmyspot.cargo.group\": \"codex-app-server\", \"io.holdmyspot.cargo.inputs\": \"c614a1da3d9ed7200cbcf5779453c0dcfae3b7cb9f93ef968f67dd8ef0725908\", \"org.opencontainers.image.title\": \"c614a1da3d9ed7200cbcf5779453c0dcfae3b7cb9f93ef968f67dd8ef0725908.tar.zst\"}}, {\"mediaType\": \"application/vnd.codex-unleashed.cargo-target.tar+zstd\", \"digest\": \"sha256:378d77290a52c664c08cefd1683daa445037e3b81a53e2f1c0095fca0cf03823\", \"size\": 251, \"annotations\": {\"io.holdmyspot.cargo.group\": \"metadata\", \"io.holdmyspot.cargo.inputs\": \"6899d9502d8b8f4df4a5a4623b0d9d628908db0be03093c0701c1e42e41d45e8\", \"org.opencontainers.image.title\": \"6899d9502d8b8f4df4a5a4623b0d9d628908db0be03093c0701c1e42e41d45e8.tar.zst\"}}]}__OWNER_DONE_request-005__:0\nOWNER> "
+    },
+    "006": {
+      "sha256": "95798d653b8b386f7291278695db7873928d29dafd6cea2dd50eca2cb8e7f39a",
+      "exit": 0,
+      "output": "\n{\n  \"name\": \"cargo-cache-main-new\",\n  \"visibility\": \"private\"\n}\n[{\"id\": 1460825623, \"name\": \"sha256:5234f7c13f63ab2ab15d88f67a01fe53ac3e0825ee6efd553bda4d2cbf50821b\", \"tags\": [\"diagnostic-parts-40689926766\"]}, {\"id\": 1460825268, \"name\": \"sha256:fa93c0f9e37730239944abbf1137dd190daf6bb7d6cd86bc71b5e83064661a63\", \"tags\": []}, {\"id\": 1460796738, \"name\": \"sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c\", \"tags\": [\"diagnostic-write-40689926766\"]}]\n__OWNER_DONE_request-006__:0\nOWNER> "
+    },
+    "007": {
+      "sha256": "ad10f1c8122a294aeb2159311f32c1c9c1a9432371c2ea550fd044265d6f7786",
+      "exit": 0,
+      "output": "\n{\"id\": 1460825623, \"digest\": \"sha256:5234f7c13f63ab2ab15d88f67a01fe53ac3e0825ee6efd553bda4d2cbf50821b\", \"deleted\": true, \"get_after_delete\": \"404\"}\n{\"id\": 1460825268, \"digest\": \"sha256:fa93c0f9e37730239944abbf1137dd190daf6bb7d6cd86bc71b5e83064661a63\", \"deleted\": true, \"get_after_delete\": \"404\"}\n{\"id\": 1460796738, \"digest\": \"sha256:cbdd1e456c30f505cc4f85dff1eed17ad6e6cb82604923e8ef1d3dbde396d98c\", \"deleted\": true, \"get_after_delete\": \"404\"}\n__OWNER_DONE_request-007__:0\nOWNER> "
+    },
+    "008": {
+      "sha256": "eafd9d653c30579d3e26d689d2e5b8425c68ef3f214ec04473f57e0d9f3f5a5e",
+      "exit": 0,
+      "output": "\ncompleted-part\nincremental-retry\nowned_remote_scratch_removed\n__OWNER_DONE_request-008__:0\nOWNER> "
+    }
+  }
+}
