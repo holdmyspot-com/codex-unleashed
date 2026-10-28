@@ -1013,7 +1013,7 @@
       "x86_64_run": 40758471648,
       "arm64_run": 40758476050,
       "compilation": "passed on both",
-      "runtime": "One selected daemon case fails on both: fixture CODEX_HOME directory absent. No approved deferral.",
+      "runtime": "One selected daemon case fails on both: fixture CODEX_HOME directory absent. Owner explicitly defers this named fixture repair to checkpoint 4; failure remains recorded and does not block checkpoints 1\u20133.",
       "guards_cleanup_partial_save": "passed on both",
       "upstream": "Named case reports pass at 0.00s; hidden successful output cannot prove assertions ran. Local elevated control explicitly returns early.",
       "broader_scope": "Additional CLI binaries compiling incrementally; full CLI/app-server runtime acceptance remains open."
