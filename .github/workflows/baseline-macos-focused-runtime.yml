@@ -1,6 +1,9 @@
 name: Focused upstream macOS runtime
 
 on:
+  push:
+    branches: [main.new]
+    paths: [.github/workflows/baseline-macos-focused-runtime.yml]
   workflow_dispatch:
     inputs:
       public_key:
@@ -13,6 +16,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 360
     permissions:
