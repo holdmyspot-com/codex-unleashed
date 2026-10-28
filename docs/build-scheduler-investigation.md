@@ -1715,3 +1715,22 @@ The PTY client exits zero; remote scratch removal, the remote-session post wait,
 smoke-state verification and owned-storage cleanup pass. The job's only failure
 is its deliberately injected exit 17. Production Linux ownership, macOS
 ownership and scheduler integration remain unaccepted.
+
+### Production implementation language
+
+The owner requires the final scheduler to be written in Java. Admission/retry
+policy, controller, memory monitoring and process ownership belong in the
+existing `tooling/cli` Java tooling and its bundled runtime, with native OS
+bindings where required. Python remains limited to probes and test fixtures.
+The existing Python policy and Windows process-owner sources establish
+prototype behavior; they are not the final runtime implementation.
+
+The uncommitted Python Linux process-owner candidate was prepared only in
+session temporary storage and was not tested, copied into production or
+published. That candidate is abandoned. Preserve the accepted native facility
+results, while requiring actual Java public-operation checks for each migrated
+behavior. For example, native cgroup termination already passes on both Linux
+architectures, but Java launch, identity handling, whole-tree completion and
+cleanup still need their own checks. Reusing the platform evidence does not
+establish that the Java integration works, and changing implementation language
+does not require repeating accepted Codex builds.
