@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Carry forward the accepted Linux CLI/app-server suites and current-main package-bootstrap pass. Reconcile remaining required native-platform runtime scope and retained results; investigate only the two affected native/Wine first-attempt timing and notification-order conditions. Output-retention authority and the real private grouped-cache entrypoint now pass the tiny fixture in run 40689926766. Identify the cache fingerprint reason before another costly executable rebuild.",
+  "next_action": "Retain completed ARM64 named-case coverage without rerunning passing tests. Observe the original Intel incremental helper build and failed-case-only retry. Observe native Windows selected-case runs 40758471648/40758476050, then reconcile broader Windows CLI/app-server acceptance against exact named receipts; the single Windows case cannot establish full runtime acceptance.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -942,6 +942,22 @@
         "evidence": "docs/evidence/macos-intel-focused-runtime.json",
         "cache": "GHCR upload timeout; not saved",
         "lifecycle": "Live worker retained for remaining CLI tests; terminal workflow cleanup pending."
+      },
+      "arm64_case_coverage": {
+        "run": 40729663557,
+        "target": "aarch64-apple-darwin",
+        "evidence": "docs/evidence/macos-arm-runtime-case-coverage.json",
+        "status": "Every discovered nonignored selected CLI/app-server case has a named passing receipt across original execution and focused environment controls.",
+        "cli": {
+          "passed_named_cases": 561,
+          "upstream_ignored": 1
+        },
+        "app_server": {
+          "passed_named_cases": 2060,
+          "upstream_ignored": 1
+        },
+        "guards": "Final source diff/status empty; dependency guard verified.",
+        "limitations": "Original failed outcomes retained. Not a single green whole-suite invocation; exact installed-app contention/path-decode attribution and runner cleanup remain separate."
       }
     },
     "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward."
