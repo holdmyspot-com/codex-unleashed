@@ -933,7 +933,16 @@
         }
       ],
       "status_authority": "GitHub Actions jobs API for each named run, checked during this reconciliation.",
-      "decision": "These failed/cancelled runs do not establish native CLI/app-server runtime-suite acceptance. Historical run 40183449912 is Linux (ubuntu-24.04 job 121139158954), not a macOS receipt."
+      "decision": "These failed/cancelled runs do not establish native CLI/app-server runtime-suite acceptance. Historical run 40183449912 is Linux (ubuntu-24.04 job 121139158954), not a macOS receipt.",
+      "focused_intel": {
+        "run": 40735603062,
+        "target": "x86_64-apple-darwin",
+        "case": "sandbox_blocks_terminal_input_injection",
+        "status": "passed; one case, zero skipped; source and dependency guards pass",
+        "evidence": "docs/evidence/macos-intel-focused-runtime.json",
+        "cache": "GHCR upload timeout; not saved",
+        "lifecycle": "Live worker retained for remaining CLI tests; terminal workflow cleanup pending."
+      }
     },
     "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward."
   },
