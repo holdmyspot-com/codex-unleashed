@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Retain completed ARM64 named-case coverage without rerunning passing tests. Observe the original Intel incremental helper build and failed-case-only retry. Observe native Windows selected-case runs 40758471648/40758476050, then reconcile broader Windows CLI/app-server acceptance against exact named receipts; the single Windows case cannot establish full runtime acceptance.",
+  "next_action": "Observe the original connected controller on replacement native Linux ARM64 run 40788318198. Retain its exact discovery, named outcomes and source/dependency guards; compare any new failure with upstream before repair. Continue only unresolved work in the same workspace, then retain private-cache and terminal lifecycle receipts. Accepted other-platform tests must not be repeated.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -957,7 +957,7 @@
           "upstream_ignored": 1
         },
         "guards": "Final source diff/status empty; dependency guard verified.",
-        "limitations": "Original failed outcomes retained. Not a single green whole-suite invocation; exact installed-app contention/path-decode attribution and runner cleanup remain separate."
+        "limitations": "Original failed outcomes retained; accepted named coverage combines original execution and focused environment controls. Source attribution is retained separately; the extra tools/list request producer remains unknown. Terminal lifecycle preserves the six-hour timeout and unverified manual short-TMPDIR removal."
       },
       "intel_helper_controls": {
         "run": 40735603062,
@@ -1038,9 +1038,10 @@
         "evidence": "docs/evidence/macos-runtime-session-lifecycle.json",
         "intel": "SSH exits zero and hosted Upterm/storage post cleanup succeeds.",
         "arm64": "Hosted six-hour limit cancels Upterm post; storage post succeeds. Original host unavailable on cleanup-only reconnect; manual short-TMPDIR removal unverified."
-      }
+      },
+      "source_attribution_evidence": "docs/evidence/macos-runtime-source-attribution.json"
     },
-    "remaining_scope": "Reconcile required product runtime targets and individual retained results before adding native work. Windows ARM64 runtime acceptance is not established by the reviewed Windows x86-64 records. Accepted release builds and native smokes remain carried forward.",
+    "remaining_scope": "Native Linux ARM64 selected CLI/app-server runtime coverage, final guards/cache and lifecycle disposition remain open. Other native selected product scopes have accepted named receipts or owner-approved equivalent historical passes. Preserve the four shell, Windows daemon-fixture and dependency-audit deferrals. Do not repeat accepted checks.",
     "current_windows_standard_user": {
       "evidence": "docs/evidence/windows-native-runtime-results.json",
       "x86_64_run": 40758471648,
@@ -1049,7 +1050,7 @@
       "runtime": "One selected daemon case fails on both: fixture CODEX_HOME directory absent. Owner explicitly defers this named fixture repair to checkpoint 4; failure remains recorded and does not block checkpoints 1\u20133.",
       "guards_cleanup_partial_save": "passed on both",
       "upstream": "Named case reports pass at 0.00s; hidden successful output cannot prove assertions ran. Local elevated control explicitly returns early.",
-      "broader_scope": "Additional CLI binaries compiling incrementally; full CLI/app-server runtime acceptance remains open."
+      "broader_scope": "Both native CLI and app-server scopes now have complete named passing receipts; see windows_cli_case_coverage and windows_app_server_case_coverage. Preserve the separate owner-deferred daemon-fixture failures."
     },
     "windows_cli_case_coverage": {
       "evidence": "docs/evidence/windows-cli-runtime-case-coverage.json",
@@ -1072,7 +1073,7 @@
           "owner_deferred_cases": 1
         }
       ],
-      "decision": "Selected CLI coverage accepted on both native Windows architectures. Retain failed setup/runtime attempts and focused environment corrections. Separate app-server scope and lifecycle remain open."
+      "decision": "Selected CLI coverage accepted on both native Windows architectures. Retain failed setup/runtime attempts and focused environment corrections. App-server coverage and terminal lifecycle are separately accepted in the named evidence records."
     },
     "linux_x64_new_cases": {
       "run": 40782505990,
@@ -1107,7 +1108,7 @@
           "workspace_version_updates": {}
         }
       },
-      "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 and Windows app-server work remain open.",
+      "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 runtime acceptance remains open.",
       "lifecycle": "SSH exits zero; complete hosted job and every post step succeed; owned private key removed."
     },
     "windows_app_server_case_coverage": {
@@ -1135,7 +1136,41 @@
           "final_source_status_empty": true
         }
       },
-      "arm64": "Active native controller; no accepted result claimed."
+      "arm64": {
+        "run": 40758476050,
+        "target": "aarch64-pc-windows-msvc",
+        "summary": {
+          "required_named_cases": 1970,
+          "passing_named_cases": 1970,
+          "missing_pass_receipts": 0,
+          "upstream_ignored": 11,
+          "failed": 0,
+          "slow": 5,
+          "leaky": 18,
+          "runtime_seconds": "2613.475"
+        },
+        "guards": {
+          "compile_exit": 0,
+          "pre_test_source_dependency_guard_exit": 0,
+          "save_exit": 0,
+          "selection_exit": 0,
+          "runtime_exit": 0,
+          "final_source_diff_guard_exit": 0,
+          "final_source_status_empty": true
+        }
+      },
+      "lifecycle_evidence": "docs/evidence/windows-runtime-session-lifecycle.json",
+      "decision": "Both native selected app-server sets accepted; original daemon-fixture failures remain deferred and recorded. Normal SSH exit and hosted Upterm/storage cleanup pass on both."
+    },
+    "linux_arm64": {
+      "target": "aarch64-unknown-linux-gnu",
+      "interrupted_run": 40782020085,
+      "interruption_evidence": "docs/evidence/linux-arm-runtime-interruption.json",
+      "replacement_run": 40788318198,
+      "replacement_job": 123166970911,
+      "source_state": "Exact selected source; environment-only diagnostic harness.",
+      "cache_restore": "Two-part private partial hit in 48 seconds, digest sha256:5b5191d67082ad5d778c491d970515d18c8bbf51f36e0ae417d0739adeb63d3b.",
+      "status": "Active connected native runtime controller; no terminal runtime acceptance claimed."
     }
   },
   "current_source_package_runtime": {
