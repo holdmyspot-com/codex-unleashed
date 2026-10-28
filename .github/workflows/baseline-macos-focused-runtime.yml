@@ -10,6 +10,11 @@ on:
         description: Public SSH key for the client that connects before testing
         required: true
         type: string
+      target:
+        description: Native macOS target from the existing free release matrix
+        type: choice
+        default: aarch64-apple-darwin
+        options: [aarch64-apple-darwin, x86_64-apple-darwin]
 
 permissions:
   contents: read
@@ -17,18 +22,18 @@ permissions:
 jobs:
   test:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: macos-15
+    runs-on: ${{ (inputs.target == 'x86_64-apple-darwin' && 'macos-15-intel') || 'macos-15' }}
     timeout-minutes: 360
     permissions:
       contents: read
       packages: write
     concurrency:
-      group: ${{ github.workflow }}-aarch64-apple-darwin
+      group: ${{ github.workflow }}-${{ inputs.target }}
       cancel-in-progress: false
       queue: max
     env:
-      TARGET: aarch64-apple-darwin
-      CODEX_CI_TARGET: aarch64-apple-darwin
+      TARGET: ${{ inputs.target }}
+      CODEX_CI_TARGET: ${{ inputs.target }}
       CODEX_CI_PROFILE: ci-test
       CARGO_INCREMENTAL: '0'
       CARGO_CACHE_PARTS: '1'
@@ -47,7 +52,7 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          node -e 'const m=require("./.github/release-matrix.json"); if (!m.some(x=>x.target===process.env.TARGET && x.runner==="macos-15")) throw Error("Target must use the existing free macOS ARM64 runner");'
+          node -e 'const m=require("./.github/release-matrix.json"); const runners={"aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}; if (!m.some(x=>x.target===process.env.TARGET && x.runner===runners[process.env.TARGET])) throw Error("Target must use an existing free native macOS runner");'
           printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
 
       - name: Retrieve pristine selected upstream
@@ -68,7 +73,7 @@ jobs:
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
           toolchain: '1.95.0'
-          targets: aarch64-apple-darwin
+          targets: ${{ env.TARGET }}
 
       - name: Install upstream's nextest version
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
@@ -83,7 +88,7 @@ jobs:
           cache-targets: false
           cache-bin: false
           add-rust-environment-hash-key: false
-          shared-key: aarch64-apple-darwin
+          shared-key: ${{ env.TARGET }}
 
       - name: Set up existing private cache transport
         uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d
@@ -141,7 +146,7 @@ jobs:
             cargo --version
             cargo nextest --version
             printf 'profile=ci-test\ntarget=%s\n' "$TARGET"
-            printf '%s\n' 'cargo nextest run --target aarch64-apple-darwin --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E test(=sandbox_blocks_terminal_input_injection)'
+            printf 'cargo nextest run --target %s --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E test(=sandbox_blocks_terminal_input_injection)\n' "$TARGET"
             printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
             env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET)='
             shasum -a 256 upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
@@ -175,7 +180,7 @@ jobs:
         working-directory: upstream/codex-rs
         run: |
           set -uo pipefail
-          cargo nextest run --target aarch64-apple-darwin --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E 'test(=sandbox_blocks_terminal_input_injection)' 2>&1 | tee "$FOCUSED_RUNTIME/evidence/test.log"
+          cargo nextest run --target "$TARGET" --cargo-profile ci-test -p codex-cli --test sandbox_tty --no-fail-fast --success-output immediate -E 'test(=sandbox_blocks_terminal_input_injection)' 2>&1 | tee "$FOCUSED_RUNTIME/evidence/test.log"
           result=${PIPESTATUS[0]}
           if [[ "$result" == 0 ]] && grep -Fq 'skipping terminal injection test: nested Seatbelt is unavailable' "$FOCUSED_RUNTIME/evidence/test.log"; then
             printf 'The test returned without exercising sandbox assertions; retain this as unaccepted.\n' >&2
@@ -231,7 +236,7 @@ jobs:
         if: always() && env.FOCUSED_RUNTIME != ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: macos-arm64-sandbox-tty-${{ github.run_attempt }}
+          name: macos-${{ inputs.target }}-sandbox-tty-${{ github.run_attempt }}
           path: ${{ env.FOCUSED_RUNTIME }}/evidence
           retention-days: 1
           if-no-files-found: error
