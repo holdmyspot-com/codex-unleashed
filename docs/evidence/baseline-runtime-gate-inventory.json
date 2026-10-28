@@ -1109,6 +1109,33 @@
       },
       "decision": "Closes only the three new CLI case gaps. Existing accepted Linux suites remain carried forward; native Linux ARM64 and Windows app-server work remain open.",
       "lifecycle": "SSH exits zero; complete hosted job and every post step succeed; owned private key removed."
+    },
+    "windows_app_server_case_coverage": {
+      "evidence": "docs/evidence/windows-app-server-runtime-case-coverage.json",
+      "x86_64": {
+        "run": 40758471648,
+        "target": "x86_64-pc-windows-msvc",
+        "summary": {
+          "required_named_cases": 1970,
+          "passing_named_cases": 1970,
+          "missing_pass_receipts": 0,
+          "upstream_ignored": 11,
+          "failed": 0,
+          "slow": 5,
+          "leaky": 21,
+          "runtime_seconds": "2662.398"
+        },
+        "guards": {
+          "compile_exit": 0,
+          "pre_test_source_dependency_guard_exit": 0,
+          "save_exit": 0,
+          "selection_exit": 0,
+          "runtime_exit": 0,
+          "final_source_diff_guard_exit": 0,
+          "final_source_status_empty": true
+        }
+      },
+      "arm64": "Active native controller; no accepted result claimed."
     }
   },
   "current_source_package_runtime": {
