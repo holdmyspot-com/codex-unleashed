@@ -2976,3 +2976,39 @@ Arbitrary argument/environment vectors through that script, actual allocation
 denial and recovery through the maintained owner, forced cleanup failures,
 production queue adapters, other platforms and Cargo/Bazel integration remain
 open. Checkpoint 3 is incomplete.
+
+
+### Allocation retry through the maintained runtime
+
+[The maintained-runtime allocation receipt](evidence/maintained-runtime-allocation-native.json)
+records real address-space-limited malloc failures through the production Linux
+attached gate and maintained Frida runtime. Two native fixtures register their
+failed 256 MiB allocations. Authenticated state queries confirm that both remain
+in their permission waits before and after a separate supervised job completes.
+Cancelling the first fixture returns actual exit 137. Closing its manager leaves
+the second able to receive permission, retry the allocation, verify its memory
+endpoints and restored allowance, and exit naturally with zero.
+
+Read-only review found that the initial diagnostic's final wait could time out
+and still return a successful pointer. Both native wait failures now abort, and
+state queries distinguish the permission wait from later stages. The composed
+case also replaces a potentially blocking FIFO writer with publication of a
+completed regular file by atomic rename; its reader has finite retries. The
+corrected case passes incrementally on the retained worker and once with a
+fresh native fixture and an empty Java class directory. The initial result and
+review findings remain recorded; its final-release claim is superseded.
+
+The archived files match the reviewed script, C fixture and four maintained
+Java source files byte for byte. All forty observed owned PIDs across the
+retained run are absent, and the cgroup has no child directories. The parent
+continues to own the worker and persistent SSH session for the production
+attempt adapter. Final hosted cleanup remains unobserved.
+
+This establishes one controlled main-thread malloc denial size and permission
+retry through the maintained runtime. The fixture restores its own address-space
+allowance; that operation is not production recovery. Simultaneous allocator
+waits, physical-memory pressure, descendants, queue admission and FIFO recovery,
+forced cleanup failures, other platforms and Cargo/Bazel remain open. The next
+implementation requires a per-installation wait identity and an acknowledged,
+at-most-once continuation protocol before the queue can safely aggregate more
+than one native allocation wait. Checkpoint 3 remains incomplete.
