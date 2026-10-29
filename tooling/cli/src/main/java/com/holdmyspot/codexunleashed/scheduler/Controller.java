@@ -2,7 +2,9 @@ package com.holdmyspot.codexunleashed.scheduler;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -11,7 +13,7 @@ import java.util.Objects;
  * Use an instance from one thread. The caller owns the queue and job states. After a control request, the caller
  * must record its actual outcome and reap terminated process trees before supplying the next snapshot. This also
  * applies when a control fails after partly changing process state. A failed memory reading issues no control,
- * preserves swap history and leaves the supplied jobs unchanged. The next cycle reads memory again.
+ * preserves memory-demand and swap history and leaves the supplied jobs unchanged. The next cycle reads memory again.
  */
 public final class Controller
 {
@@ -20,6 +22,77 @@ public final class Controller
 	private final Controls controls;
 	/** Swap-growth history from cycles with successful host readings and readings for every live job. */
 	private final SwapRecovery swapRecovery = new SwapRecovery();
+
+	/**
+	 * Complete observation history for this build, including actions omitted from later snapshots.
+	 */
+	private Map<Action, MemoryDemand> memoryDemands = Map.of();
+
+	/**
+	 * Identifies an action across process retries within this controller's build.
+	 *
+	 * @param name nonempty stable action identity
+	 * @param position nonnegative original submission ordinal, unchanged across retries
+	 */
+	public record Action(String name, long position)
+	{
+		/**
+		 * Creates a validated action identity.
+		 *
+		 * @param name nonempty stable action identity
+		 * @param position nonnegative original submission ordinal
+		 * @throws NullPointerException if {@code name} is null
+		 * @throws IllegalArgumentException if {@code name} is empty or {@code position} is negative
+		 */
+		public Action
+		{
+			Objects.requireNonNull(name, "name may not be null");
+			if (name.isEmpty())
+				throw new IllegalArgumentException("Action name must be nonempty");
+			if (position < 0)
+				throw new IllegalArgumentException("Action position must be nonnegative: " + position);
+		}
+	}
+
+	/**
+	 * Retains the largest supplied peak estimate and observed residency for an action during one build.
+	 * Residency alone provides a lower bound and does not establish a known peak.
+	 *
+	 * @param peakBytes nonnegative estimated peak bytes, at least the lower bound, or null if unknown
+	 * @param residentLowerBoundBytes nonnegative greatest observed resident bytes; zero does not assert a measurement
+	 */
+	public record MemoryDemand(Long peakBytes, long residentLowerBoundBytes)
+	{
+		/**
+		 * Creates validated retained memory demand.
+		 *
+		 * @param peakBytes nonnegative estimated peak bytes, at least the lower bound, or null if unknown
+		 * @param residentLowerBoundBytes nonnegative observed resident-byte lower bound
+		 * @throws IllegalArgumentException if the lower bound is negative or a known peak is below it
+		 */
+		public MemoryDemand
+		{
+			if (residentLowerBoundBytes < 0)
+				throw new IllegalArgumentException("Resident lower bound must be nonnegative: " + residentLowerBoundBytes);
+			if (peakBytes != null && peakBytes < residentLowerBoundBytes)
+				throw new IllegalArgumentException("Known peak must be at least the resident lower bound: peak=" +
+					peakBytes + ", lower bound=" + residentLowerBoundBytes);
+		}
+	}
+
+	/**
+	 * Returns immutable action demand retained from fully acquired observation cycles in this build.
+	 * <p>
+	 * Initially empty; includes completed actions and survives control failures. Earlier returned snapshots never
+	 * change. Keys exclude attempt sequences so retries share demand; different original positions remain separate.
+	 * Map iteration order does not determine scheduling order.
+	 *
+	 * @return the stable retained-demand snapshot
+	 */
+	public Map<Action, MemoryDemand> memoryDemands()
+	{
+		return memoryDemands;
+	}
 
 	/**
 	 * Represents host memory needed for admission and swap-growth recovery.
@@ -103,8 +176,10 @@ public final class Controller
 	/**
 	 * Reads host memory and every live job's resident bytes, then selects and applies at most one control.
 	 * <p>
-	 * Fresh resident-byte readings replace the supplied values for this decision. A failed reading leaves swap history
-	 * unchanged and issues no control. Successful readings advance swap history even if applying the selected control
+	 * Fresh resident-byte readings replace the supplied values for this decision. Fully acquired cycles retain the
+	 * greatest supplied peak estimate and live residency per action across retries. Known peaks are raised to that
+	 * residency lower bound; residency alone never makes an unknown peak known. A failed reading leaves demand and swap
+	 * history unchanged and issues no control. Successful readings advance both histories even if the selected control
 	 * then fails. The caller must establish the actual process state after a failed control before another cycle;
 	 * repeating the same snapshot could repeat a partially completed effect. The supplied list and job records stay
 	 * unchanged on success and failure.
@@ -147,10 +222,37 @@ public final class Controller
 				sampled.add(job);
 		}
 
+		Map<Action, MemoryDemand> candidateDemands = new HashMap<>(memoryDemands);
+		List<Policy.Job> enriched = new ArrayList<>(sampled.size());
+		for (Policy.Job job : sampled)
+		{
+			Action action = new Action(job.name(), job.position());
+			MemoryDemand previous = candidateDemands.get(action);
+			long lowerBound = previous == null ? 0 : previous.residentLowerBoundBytes();
+			boolean hasLiveProcess = switch (job.state())
+			{
+				case RUNNING, BLOCKED, STOPPING -> true;
+				case READY, RETRY -> false;
+			};
+			if (hasLiveProcess)
+				lowerBound = Math.max(lowerBound, job.residentBytes());
+			Long peak = job.peakBytes();
+			if (previous != null && previous.peakBytes() != null)
+				peak = peak == null ? previous.peakBytes() : Math.max(peak, previous.peakBytes());
+			if (peak != null)
+				peak = Math.max(peak, lowerBound);
+			candidateDemands.put(action, new MemoryDemand(peak, lowerBound));
+			enriched.add(new Policy.Job(job.name(), job.state(), job.position(), peak, job.residentBytes(),
+				job.startedAt(), job.blockedAt(), job.retryAfter()));
+		}
+		Map<Action, MemoryDemand> completeDemands = Map.copyOf(candidateDemands);
+		List<Policy.Job> completeJobs = List.copyOf(enriched);
+		memoryDemands = completeDemands;
+
 		boolean recovering = swapRecovery.observe(host.swapUsedBytes(), host.memoryPressure());
 		Policy.Observation observation = new Policy.Observation(host.availableBytes(), host.memoryPressure(),
 			recovering, completions);
-		Policy.Decision decision = Policy.chooseAction(budget, sampled, observation);
+		Policy.Decision decision = Policy.chooseAction(budget, completeJobs, observation);
 		if (decision.control() != Policy.Control.WAIT)
 			controls.apply(decision);
 		return decision;
