@@ -1,0 +1,411 @@
+{
+  "scope": "Bounded source-only preparation for target-native Java/FFM gates; no production dependency/licensing decision.",
+  "result": "source_recipes_verified_native_builds_unrun",
+  "checkpoint_3": "incomplete",
+  "report": {
+    "task_contract": "acknowledged",
+    "scope": "Bounded source-only preparation for target-native Java/FFM gates; no production dependency/licensing decision.",
+    "clone_identity": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-java-review-B5Z5lR/source",
+      "expected_commit": "cdc18821ac15a13c9aea76d3dc9f61cc0fe313bf",
+      "actual_HEAD": "cdc18821ac15a13c9aea76d3dc9f61cc0fe313bf",
+      "HEAD_checked_before_source_read": true,
+      "seven_read_source_files_match_pinned_git_blobs": true,
+      "details": "source-receipts.json"
+    },
+    "per_target_recipes": [
+      {
+        "target": "linux-x86_64",
+        "script": "frida-java-core/scripts/build-frida-linux.sh",
+        "entry_command": "./frida-java-core/scripts/build-frida-linux.sh",
+        "locations": "28-30,32-51,54-71,89-102,107-143",
+        "input": "frida-java-core/frida-devkit/linux-x86_64/libfrida-core.a",
+        "asset": "frida-core-devkit-17.24.3-linux-x86_64.tar.xz",
+        "output": "frida-java-core/frida-devkit/libfrida-core-x86_64.so",
+        "expanded_link_command": "gcc -shared -fPIC -O2 -DNDEBUG -Wl,--gc-sections -Wl,-s -o libfrida-core-x86_64.so -Wl,--whole-archive,linux-x86_64/libfrida-core.a -Wl,--no-whole-archive -Wl,-soname,libfrida-core.so -Wl,-z,noexecstack -ldl -lm -pthread -lrt",
+        "working_directory": "frida-java-core/frida-devkit",
+        "export_strategy": "Whole static archive inclusion; no explicit dynamic export list, visibility conversion or version script is supplied. Stripping local symbols is not a substitute for exported dynamic symbols.",
+        "supported_host": "Native Linux x86_64 toolchain selected by uname -m; no cross-compile switch, gcc hardcoded.",
+        "dependencies": [
+          "bash",
+          "curl",
+          "tar with xz support",
+          "gcc and compatible GNU-style linker",
+          "file",
+          "target libc/development linker inputs for dl,m,pthread,rt",
+          "PIC-compatible devkit archive"
+        ],
+        "verification_in_script": "file output only; does not load library or enumerate required exports"
+      },
+      {
+        "target": "linux-arm64",
+        "script": "frida-java-core/scripts/build-frida-linux.sh",
+        "entry_command": "./frida-java-core/scripts/build-frida-linux.sh",
+        "locations": "28-30,32-51,54-71,89-102,107-143",
+        "input": "frida-java-core/frida-devkit/linux-arm64/libfrida-core.a",
+        "asset": "frida-core-devkit-17.24.3-linux-arm64.tar.xz",
+        "output": "frida-java-core/frida-devkit/libfrida-core-arm64.so",
+        "expanded_link_command": "gcc -shared -fPIC -O2 -DNDEBUG -Wl,--gc-sections -Wl,-s -o libfrida-core-arm64.so -Wl,--whole-archive,linux-arm64/libfrida-core.a -Wl,--no-whole-archive -Wl,-soname,libfrida-core.so -Wl,-z,noexecstack -ldl -lm -pthread -lrt",
+        "working_directory": "frida-java-core/frida-devkit",
+        "export_strategy": "Whole static archive inclusion; no explicit dynamic export list, visibility conversion or version script is supplied. Stripping local symbols is not a substitute for exported dynamic symbols.",
+        "supported_host": "Native Linux arm64 toolchain selected by uname -m; no cross-compile switch, gcc hardcoded.",
+        "dependencies": [
+          "bash",
+          "curl",
+          "tar with xz support",
+          "gcc and compatible GNU-style linker",
+          "file",
+          "target libc/development linker inputs for dl,m,pthread,rt",
+          "PIC-compatible devkit archive"
+        ],
+        "verification_in_script": "file output only; does not load library or enumerate required exports"
+      },
+      {
+        "target": "macos-x86_64",
+        "script": "frida-java-core/scripts/build-frida-macos.sh",
+        "entry_command": "./frida-java-core/scripts/build-frida-macos.sh",
+        "locations": "28-30,32-60,77-85,92-157",
+        "input": "frida-java-core/frida-devkit/macos-x86_64/libfrida-core.a",
+        "asset": "frida-core-devkit-17.24.3-macos-x86_64.tar.xz",
+        "intermediate": "libfrida-core-x86_64.dylib",
+        "output": "frida-java-core/frida-devkit/libfrida-core.dylib",
+        "expanded_link_command": "clang -shared -arch x86_64 -O2 -DNDEBUG -Wl,-dead_strip -Wl,-x -o libfrida-core-x86_64.dylib -Wl,-install_name,@rpath/libfrida-core.dylib -Wl,-force_load,macos-x86_64/libfrida-core.a -Wl,-w -framework CoreFoundation -framework Foundation -framework AppKit -framework IOKit -framework Security -lbsm -ldl -lm -lresolv",
+        "merge_command": "lipo -create libfrida-core-arm64.dylib libfrida-core-x86_64.dylib -output libfrida-core.dylib",
+        "working_directory": "frida-java-core/frida-devkit",
+        "export_strategy": "Force-load all members of each static archive; no explicit exported-symbols list or visibility conversion. -dead_strip and -x remain enabled; -w additionally suppresses x86-64 linker warnings.",
+        "supported_host": "macOS Apple clang/SDK able to link both arm64 and x86_64. Script always acquires and links BOTH architectures, not just host.",
+        "dependencies": [
+          "bash",
+          "curl",
+          "tar with xz support",
+          "Apple clang/linker and macOS SDK",
+          "lipo",
+          "both architecture devkits",
+          "listed system frameworks and bsm,dl,m,resolv libraries"
+        ],
+        "verification_in_script": "lipo -info only; deletes architecture-specific dylibs after successful universal merge; no runtime/export/dependency test"
+      },
+      {
+        "target": "macos-arm64",
+        "script": "frida-java-core/scripts/build-frida-macos.sh",
+        "entry_command": "./frida-java-core/scripts/build-frida-macos.sh",
+        "locations": "28-30,32-60,77-85,92-157",
+        "input": "frida-java-core/frida-devkit/macos-arm64/libfrida-core.a",
+        "asset": "frida-core-devkit-17.24.3-macos-arm64.tar.xz",
+        "intermediate": "libfrida-core-arm64.dylib",
+        "output": "frida-java-core/frida-devkit/libfrida-core.dylib",
+        "expanded_link_command": "clang -shared -arch arm64 -O2 -DNDEBUG -Wl,-dead_strip -Wl,-x -o libfrida-core-arm64.dylib -Wl,-install_name,@rpath/libfrida-core.dylib -Wl,-force_load,macos-arm64/libfrida-core.a -framework CoreFoundation -framework Foundation -framework AppKit -framework IOKit -framework Security -lbsm -ldl -lm -lresolv",
+        "merge_command": "lipo -create libfrida-core-arm64.dylib libfrida-core-x86_64.dylib -output libfrida-core.dylib",
+        "working_directory": "frida-java-core/frida-devkit",
+        "export_strategy": "Force-load all members of each static archive; no explicit exported-symbols list or visibility conversion. -dead_strip and -x remain enabled; -w additionally suppresses x86-64 linker warnings.",
+        "supported_host": "macOS Apple clang/SDK able to link both arm64 and x86_64. Script always acquires and links BOTH architectures, not just host.",
+        "dependencies": [
+          "bash",
+          "curl",
+          "tar with xz support",
+          "Apple clang/linker and macOS SDK",
+          "lipo",
+          "both architecture devkits",
+          "listed system frameworks and bsm,dl,m,resolv libraries"
+        ],
+        "verification_in_script": "lipo -info only; deletes architecture-specific dylibs after successful universal merge; no runtime/export/dependency test"
+      },
+      {
+        "target": "windows-x86_64",
+        "script": "frida-java-core/scripts/build-frida-windows.ps1",
+        "entry_command": "./frida-java-core/scripts/build-frida-windows.ps1",
+        "locations": "28-56,63-94,105-178,181-214,218-354,361-419",
+        "input": "frida-java-core/frida-devkit/windows-x86_64/frida-core.lib",
+        "asset": "frida-core-devkit-17.24.3-windows-x86_64.tar.xz",
+        "output": "frida-java-core/frida-devkit/libfrida-core-x86_64.dll",
+        "working_directory": "frida-java-core/frida-devkit",
+        "stub_source": "void __frida_java_link_anchor(void) {}",
+        "compile_command": "cl.exe /nologo /c /O2 /Fofrida-core-link-stub-x86_64.obj frida-core-link-stub-x86_64.c",
+        "link_command": "link.exe /DLL /OUT:libfrida-core-x86_64.dll /MACHINE:X64 frida-core-link-stub-x86_64.obj windows-x86_64/frida-core.lib ws2_32.lib winmm.lib psapi.lib shlwapi.lib ole32.lib oleaut32.lib uuid.lib setupapi.lib advapi32.lib shell32.lib user32.lib kernel32.lib gdi32.lib dbghelp.lib version.lib winhttp.lib crypt32.lib wintrust.lib bcrypt.lib ncrypt.lib dnsapi.lib iphlpapi.lib wbemuuid.lib comctl32.lib msvcrt.lib /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:NO /INCREMENTAL:NO /OPT:REF /OPT:ICF /DEF:frida-core-x86_64.def",
+        "export_strategy": "dumpbin.exe /symbols frida-core.lib; parse External symbol lines matching identifier regex and prefix frida_, gum_, or g_; write ASCII EXPORTS .def; pass /DEF if any exports found. No /WHOLEARCHIVE. Export directives are intended to root archive entries despite /OPT:REF. If scanner finds none, script warns and omits /DEF, which does not prove an FFM-usable DLL.",
+        "supported_host": "Target selected only by PROCESSOR_ARCHITECTURE (AMD64=>x86_64, ARM64=>arm64); main script has no target parameter. Native ARM64 uses vcvarsarm64.bat, x64 uses vcvars64.bat. Helper contains vcvarsamd64_arm64.bat branch but main never independently selects ARM64 on an AMD64 host.",
+        "dependencies": [
+          "PowerShell",
+          "Invoke-WebRequest",
+          "Windows tar supporting xz",
+          "Visual Studio 2019+ installer/vswhere",
+          "VS C++ build tools",
+          "target MSVC compiler/linker/dumpbin and Windows SDK",
+          "ARM64 C++ build components for ARM64 target",
+          "ws2_32.lib",
+          "winmm.lib",
+          "psapi.lib",
+          "shlwapi.lib",
+          "ole32.lib",
+          "oleaut32.lib",
+          "uuid.lib",
+          "setupapi.lib",
+          "advapi32.lib",
+          "shell32.lib",
+          "user32.lib",
+          "kernel32.lib",
+          "gdi32.lib",
+          "dbghelp.lib",
+          "version.lib",
+          "winhttp.lib",
+          "crypt32.lib",
+          "wintrust.lib",
+          "bcrypt.lib",
+          "ncrypt.lib",
+          "dnsapi.lib",
+          "iphlpapi.lib",
+          "wbemuuid.lib",
+          "comctl32.lib",
+          "msvcrt.lib"
+        ],
+        "verification_in_script": "checks cl/link exit codes and DLL file existence/size; optional file.exe; no export/load/dependency/runtime validation",
+        "static_vs_dynamic": "frida-core.lib is the static archive INPUT. JVM SymbolLookup.libraryLookup needs the linked PE DLL OUTPUT; renaming/copying the .lib to a .dll does not perform the recipe."
+      },
+      {
+        "target": "windows-arm64",
+        "script": "frida-java-core/scripts/build-frida-windows.ps1",
+        "entry_command": "./frida-java-core/scripts/build-frida-windows.ps1",
+        "locations": "28-56,63-94,105-178,181-214,218-354,361-419",
+        "input": "frida-java-core/frida-devkit/windows-arm64/frida-core.lib",
+        "asset": "frida-core-devkit-17.24.3-windows-arm64.tar.xz",
+        "output": "frida-java-core/frida-devkit/libfrida-core-arm64.dll",
+        "working_directory": "frida-java-core/frida-devkit",
+        "stub_source": "void __frida_java_link_anchor(void) {}",
+        "compile_command": "cl.exe /nologo /c /O2 /Fofrida-core-link-stub-arm64.obj frida-core-link-stub-arm64.c",
+        "link_command": "link.exe /DLL /OUT:libfrida-core-arm64.dll /MACHINE:ARM64 frida-core-link-stub-arm64.obj windows-arm64/frida-core.lib ws2_32.lib winmm.lib psapi.lib shlwapi.lib ole32.lib oleaut32.lib uuid.lib setupapi.lib advapi32.lib shell32.lib user32.lib kernel32.lib gdi32.lib dbghelp.lib version.lib winhttp.lib crypt32.lib wintrust.lib bcrypt.lib ncrypt.lib dnsapi.lib iphlpapi.lib wbemuuid.lib comctl32.lib msvcrt.lib /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:NO /INCREMENTAL:NO /OPT:REF /OPT:ICF /DEF:frida-core-arm64.def",
+        "export_strategy": "dumpbin.exe /symbols frida-core.lib; parse External symbol lines matching identifier regex and prefix frida_, gum_, or g_; write ASCII EXPORTS .def; pass /DEF if any exports found. No /WHOLEARCHIVE. Export directives are intended to root archive entries despite /OPT:REF. If scanner finds none, script warns and omits /DEF, which does not prove an FFM-usable DLL.",
+        "supported_host": "Target selected only by PROCESSOR_ARCHITECTURE (AMD64=>x86_64, ARM64=>arm64); main script has no target parameter. Native ARM64 uses vcvarsarm64.bat, x64 uses vcvars64.bat. Helper contains vcvarsamd64_arm64.bat branch but main never independently selects ARM64 on an AMD64 host.",
+        "dependencies": [
+          "PowerShell",
+          "Invoke-WebRequest",
+          "Windows tar supporting xz",
+          "Visual Studio 2019+ installer/vswhere",
+          "VS C++ build tools",
+          "target MSVC compiler/linker/dumpbin and Windows SDK",
+          "ARM64 C++ build components for ARM64 target",
+          "ws2_32.lib",
+          "winmm.lib",
+          "psapi.lib",
+          "shlwapi.lib",
+          "ole32.lib",
+          "oleaut32.lib",
+          "uuid.lib",
+          "setupapi.lib",
+          "advapi32.lib",
+          "shell32.lib",
+          "user32.lib",
+          "kernel32.lib",
+          "gdi32.lib",
+          "dbghelp.lib",
+          "version.lib",
+          "winhttp.lib",
+          "crypt32.lib",
+          "wintrust.lib",
+          "bcrypt.lib",
+          "ncrypt.lib",
+          "dnsapi.lib",
+          "iphlpapi.lib",
+          "wbemuuid.lib",
+          "comctl32.lib",
+          "msvcrt.lib"
+        ],
+        "verification_in_script": "checks cl/link exit codes and DLL file existence/size; optional file.exe; no export/load/dependency/runtime validation",
+        "static_vs_dynamic": "frida-core.lib is the static archive INPUT. JVM SymbolLookup.libraryLookup needs the linked PE DLL OUTPUT; renaming/copying the .lib to a .dll does not perform the recipe."
+      }
+    ],
+    "pin_substitution": {
+      "current_metadata": "frida-java-core/scripts/build.properties:1 FRIDA_VERSION=17.22.2; line2 FRIDA_URL=https://github.com/frida/frida/releases/download",
+      "required_scratch_adaptation": "In a separately authorized scratch copy, set its build.properties FRIDA_VERSION to17.24.3 and retain official FRIDA_URL. No input edits or builds performed here. Shell environment assignment alone is insufficient: each script reads build.properties and overwrites FRIDA_VERSION/script variables.",
+      "cache_prerequisite": "Start a fresh scratch devkit/output tree. Download cache directories are keyed ONLY by platform/architecture, not Frida version, and are reused if present. macOS additionally reuses existing per-arch dylibs. Changing the version property with stale17.22.2 directories can silently build the old native input.",
+      "acquisition": "Use exact official17.24.3 assets named per target above and verify release digests/archive member provenance; scripts themselves do not pin hashes.",
+      "platform_input_contract": "Linux/macOS expect libfrida-core.a; Windows expects frida-core.lib. Linux script supports only current x86_64/arm64; macOS recipe requires both archives; Windows current process architecture determines selected archive.",
+      "export_preservation": "Retain whole-archive/force_load or Windows DEF strategy; using a small referenced-symbol/version shim is insufficient. Need final dynamic export inventory after optimization, before native initialization. No flag in these recipes can be assumed to convert a hidden/local symbol into a public export. If official17.24.3 archive lacks required externally visible definitions, an additional producer build/export correction is required; merely changing pin or filename cannot repair that."
+    },
+    "missing_producer_prerequisites": [
+      {
+        "id": "P1",
+        "fact": "No target-native17.24.3 loadable library is created by this source review. Existing static devkit headers/archives establish input availability, not JVM-loadable producer readiness.",
+        "required": "Authorized target-toolchain scratch execution of reviewed recipe with correct cached inputs, then artifact hashing/dependency/export/runtime checks."
+      },
+      {
+        "id": "P2",
+        "fact": "Windows DEF scanner selects External entries without excluding UNDEF records or deduplicating names; it filters prefixes only. No exports-found condition is fatal.",
+        "required": "Inspect generated DEF against definitions in the actual17.24.3 archive, verify link completion and exact resulting DLL exports. Investigate missing/undefined definitions rather than accepting file existence."
+      },
+      {
+        "id": "P3",
+        "fact": "VS discovery requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64, even for ARM64; this requirement does not prove ARM64 toolset/SDK availability.",
+        "required": "Verify target vcvars script, ARM64 compiler/linker and SDK libraries are installed in the selected VS instance; no installation authorized here."
+      },
+      {
+        "id": "P4",
+        "fact": "Recipes list concrete framework/system libraries, but compatibility with17.24.3 and runtime dependency closure is unexecuted. Windows explicitly adds msvcrt.lib while stub compile does not explicitly choose /MD or /MT.",
+        "required": "Validate actual17.24.3 link directives/CRT compatibility and target runtime dependencies; do not assert runtime deployment closure from flags alone."
+      }
+    ],
+    "supported_public_loader_staging": {
+      "source": "FridaLibraryLoader.java:44-97,104-154,163-179",
+      "route": "Copy/hash verified linked output to bins/<loader-filename> beneath owned JVM working directory before first Frida/loader initialization; bins precedes native resources/system lookup. Loader may fall back after bins failure, so version check alone is insufficient producer identity proof.",
+      "filenames": [
+        "libfrida-core-x86_64.so",
+        "libfrida-core-arm64.so",
+        "libfrida-core.dylib",
+        "libfrida-core-x86_64.dll",
+        "libfrida-core-arm64.dll"
+      ],
+      "lookup": "Exact name first; Linux _frida_ prefix fallback; macOS leading underscore fallback; Windows no fallback. Required symbols must actually be visible through that lookup.",
+      "native_version": "Require frida_version_string/getVersion17.24.3, in addition to producer hash and selected path."
+    },
+    "required_symbol_gate": {
+      "source": "docs/evidence/frida-java-evaluation.json native_version_and_loader plus accepted scratch ABI report",
+      "symbols": [
+        "frida_init",
+        "frida_version_string",
+        "frida_unref",
+        "frida_shutdown",
+        "frida_deinit",
+        "frida_device_manager_new",
+        "frida_device_manager_get_device_by_type_sync",
+        "frida_device_attach_sync",
+        "frida_script_options_new",
+        "frida_script_options_set_runtime",
+        "frida_session_create_script_sync",
+        "frida_script_load_sync",
+        "frida_script_post",
+        "frida_script_is_destroyed",
+        "frida_script_unload_sync",
+        "frida_session_is_detached",
+        "frida_session_detach_sync",
+        "frida_device_manager_close_sync",
+        "g_quark_to_string",
+        "g_error_free",
+        "g_main_loop_new",
+        "g_main_loop_run",
+        "g_main_loop_is_running",
+        "g_main_loop_quit",
+        "g_main_loop_unref",
+        "g_signal_connect_data",
+        "g_signal_handler_disconnect"
+      ],
+      "evidence_limit": "Evaluation records first override failing because frida_version_string was local, followed by successful exported producer availability. That Linux observation is not a proof of any fresh17.24.3 platform output. If context APIs are introduced, add their symbols to this list."
+    },
+    "workflow_mapping": {
+      "source": ".github/workflows/build-action.yml:12-97,99-146",
+      "linux_x64": "ubuntu-latest runs linux script",
+      "linux_arm64": "ubuntu-24.04-arm runs same native script",
+      "macos": "macos-latest runs universal script",
+      "windows_x64": "windows-latest runs PowerShell script",
+      "windows_arm64": "windows-11-arm runs PowerShell script",
+      "packaging": "Raw outputs uploaded then downloaded to frida-java-core/native; mvn --batch-mode --no-transfer-progress --projects frida-java-core --also-make clean package; POM classifier packaging preserves platform names. This packaging step is not required for bins-based scratch evaluation.",
+      "interpretation": "Pinned workflow source records intended tool hosts; no workflow run success inferred or executed."
+    },
+    "unknown_execution_gates": [
+      "Actual17.24.3 static archive compatibility with each script/linker and all target system libraries.",
+      "Dynamic export closure, including GLib/GObject and Frida init/version symbols, after strip/dead-strip/OPT:REF.",
+      "Correct output format, machine/slices, executable-stack properties, macOS install/dependency paths, Windows PE imports/CRT and native loader admission.",
+      "A usable target JDK native Linker/upcalls and native-access configuration; Windows LLP64 gulong descriptors still require reviewed changes independently of producer recipe.",
+      "Native initialization/version, typed GError, attach/script/callback/cleanup and fixture allocation behavior require later authorized target execution."
+    ],
+    "verification": {
+      "builds": 0,
+      "installations": 0,
+      "native_executions": 0,
+      "remote_runs": 0,
+      "source_or_project_edits": 0
+    },
+    "cleanup_handoff": {
+      "owner": "/root",
+      "owned_directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a187c9-4984-7993-b2b3-d7d970a2c351/temp/frida-producer-recipes-qwq3y_7n",
+      "instruction": "Retain evidence or remove this entire fresh directory after archival; no inputs or clone files modified."
+    },
+    "artifacts": [
+      {
+        "path": ".github__workflows__build-action.yml.txt",
+        "bytes": 7729,
+        "sha256": "e22997e427d06edcf92b3a57dc47e8dadfa7a8f518bb0990d9aa38b30244b4c1"
+      },
+      {
+        "path": "frida-java-core__pom.xml.txt",
+        "bytes": 21348,
+        "sha256": "57453eb038740db109299ef8b1c4bac9ffb86ed98aaafe24dc7f979d54c31c36"
+      },
+      {
+        "path": "frida-java-core__scripts__build-frida-linux.sh.txt",
+        "bytes": 4965,
+        "sha256": "215bf137acc8fca2cc0aee1801df225e39bd81cd5ac71ee5f0b911b6115e2d6f"
+      },
+      {
+        "path": "frida-java-core__scripts__build-frida-macos.sh.txt",
+        "bytes": 5502,
+        "sha256": "e895904014c2dc67f538a81ca2bf3bd3735a5e8da4b5d5b84d7f589cb533e290"
+      },
+      {
+        "path": "frida-java-core__scripts__build-frida-windows.ps1.txt",
+        "bytes": 15620,
+        "sha256": "4afe787fc6dbde360b23525f2e11440f0f94c36d76b6b9ede7588877e3b5aee8"
+      },
+      {
+        "path": "frida-java-core__scripts__build.properties.txt",
+        "bytes": 85,
+        "sha256": "25b60a02d443437166c9fd090eb877e216711c744321e9ba236bdabc1ea0251d"
+      },
+      {
+        "path": "frida-java-core__src__main__java__nl__axelkoolhaas__frida_java__FridaLibraryLoader.java.txt",
+        "bytes": 7316,
+        "sha256": "03e0f5529bf3900fde3acb0952dc82c73ea1aae8ad48b3c345d005611c1083ab"
+      },
+      {
+        "path": "source-receipts.json",
+        "bytes": 4923,
+        "sha256": "4489fb34b8a213d25caf9c57de7fde165d2712bbbf8b88e2fa0d31e1e7d327df"
+      }
+    ]
+  },
+  "next_execution_condition": "Use fresh version-specific scratch inputs and verified official 17.24.3 devkits. Verify each resulting dynamic library, required exports, actual selected loader path and native version before exercising Java callbacks and owned target lifetime. The reviewed scripts do not establish those outcomes by file existence.",
+  "archive": {
+    "format": "tar+gzip",
+    "encoding": "base64",
+    "sha256": "6eebee31eb3d6960c9013203ce6eba1b837c8f461a34c361ccf00b333469af7e",
+    "bytes": 23123,
+    "data": "H4sIAAAAAAACA+19+1fbWJLw/Oy/QmM4E0hjW29ZQNihCUnTA4EDpLtnO71eWZJBHdvyWHYIk+b727+qug9dyfIrML3Tu3Dm9MTS1X3UrfetW9W8SSa3026nc5eOP/b66V3W6XSnST9qBOEkSYfN+0G/Ofk8+dMj/nT4c22b/h/+Sv9veLpriGfsueF4pv4nTf/T7/A3zSbBGIb/0//NP2N3GAziXe1b3HPtzTiJgpq5W7N20+Fuzd7VtNE0u92tOfAvTeuOg2F4G2e7NZd+a1pDi+JPcT8d1Txq2+93xvE/pnE22a21S9/48ptBkAxrhr5bM4zdX9MuvDNMeMnwrodzaPST4fRzIxgPXBveWvTpeDrMGjAvbdqdDifThmk3dRvb1AybGqTTyWg6we4cPlYwniQ9wOTGKJjc7mqbX75o2SQeZc3pqJ8GfLAm/65ZaK09PNQMtk76BHr15AoY0I5u4/AjfKyN41GaJZN0fF8z2ryRpk0zWLbG6ChrhbzxXz95NcPfrZl6qTe2Bae4cC1La6YhO4KF72rNFoPMr8GnoBGm47iVheNkNMlaM3BrZrc1E3bRtEpDvKdVa+PgDh5Mkk+x1k2GAczatOfMmsNJQAYnbzqy7R0wDxjGlQ80PhDrvQEDiZ0MxuGta9dMT2nLNmV2Yew3YNbHZNLqJ132G18xjGgieNowsF+JNZ8RZyy9Emf6wQSQs2YZRYSxzKdBGMtSEcayV0AYy1kBYSwXevMWI4zVfhTCWICTtr4qwtjG6ghjmyWEsa3lCPO57XYAX2z7cfjCukGEsR0Y2C0hzCAIU9go2ysiCz0WuGK3i7hi+0+DK46u4opjrIArjrkCrjgW9GZX4sp0CEAeZ0EfV3h+pUX3AK2a43wN4hCMEHEcwE3HWxVxnPbqiOP4JcRx9UWIw3ZNrrHmGjO4U18HeZoEnnrNBVbqWiXMuUuGEWhLQkS5dhGDxGvDIAHlOkUcct2nwSHXU3HIba+AQ66/Ag55IJw9oxKH+Mq0qN+veTk+Zrdxv7+rjdI7AD7+u+ZZX4NWvPvmKDNqHgDWc1bFLM9dHbM8r4RZXnsRZsnN5lLM859CiiEE2wDotjEHt0iQtc1qzOLcqW0VMattPw1mtR0Vs9ruCpjV9lbArDbI7ba/FLN8fQFm+cZjMcsHkvZX1o78NbQjv6wd+e4qmMXFne89ibgjCAKg/bKChJ2AIqsz6A7jOILV/DxH8d6p1q12ZiXoznzWuDMPs3+BaRiLdDRDNwvat26ton7r9ir6t+5gh2Wkvoon2nSkff/6b/ByHjJn8WQ6IkD+9ZML7dql/TZ0lTnQrqE8SnCBL0znBRg9qhSLkmwyTrrTCWswiQfTcTLEVgbaR2Zpiq/TuyFhKVP7Di/PXFuSOrS35sw64t8VcNUw7PLkDWd1Xd4w3BWwlX3egtYe9t9evKDPxeX4ay3H1MvLMY2VNU3DNNdZDdhW8B973mqYfpWvxHTWW4k7sxJvHdXHMNtrLcZHI1uft5gfOWMuY5tlrLUoq2wHGJa1jtQ1LHudRVlI45a7bFFFjLO89ZY0Q/2Wvwa7N2x9nRXZyBLsMkv4IR4nvXsNBMEYhJVcSwZNSxpYP9Ma/YUDoLPFdiqlM8jCKBneZLRQ7Sz4FA+1YBjBrMOPwU2shf0gy5JeEo+17w8vcXS3OPrg01BrNLrBJLxtDNIohh/DtDEZB8OsF48bo3F6M44zmCL+89cYVqCVJgqvgn6WArZ/xPHiYChGh9GQu9jtatjwVhECJxbA8VcDziQY38QT9fHL5q/BuGY46MCaMdv4iN0gixEOWvw57E+jOCuoFEkME1CMOZrAb/BIpYdvD6+OO9DFq82tHsB+7tQ0gMfnKB7BrhhaY3I/irWe1sDZaPXyrOvaBxhFJSNN+7No/JIzRKWlM6+lQGSlrTuvLWNOvOVv2m0M1NcYasY2fKRytaSn/aw1/qnVN8XS69ove9rkNh5Cy3ah+zi8TbX6twLKw3Si9dLpMKpDS7/Y8nMy0YyaUbAdewk8MIpjw/S0Sa8w+m8aoORIaxxrL/6LE8kL7aAFqldrOO33xdxcc9HcsknS72thOpwEyXAGD2DCrlU9Ybs8YXU3CF1v1dlCA7DEDXeOKX41Hce9BIgIlStSmcZIBm4O16QH7K5/F9xnW7A1c+3ECqXX8GYkrzcreTM+g4Yc3FtF5HICLH8N7MqzCjuI7KSX9OOsQagAplIwht1BK9KYZ0YOkI9Bl8BMYLsE1UJ7d53VezOrnzUnCyMp6ngDB4UvZk1KYAhtvYAaa3CntlEkx5U+VRkAdGF+TRcFzgCdWF/TicIyoAvcwPZKG8iVSJKuJYkEXayzp+2ZPW2vsaf50CUls+2vjvEVO8PtOwKLj/LHN1YHC9ejZuDim2vAxbfKcPHtR8BF6na+8yjA8H44ZJAP+t4qkJFaYDXK+O11QFN2V5q6/lWgKWmJpm58JWyKHRFwTB0PhnRrHeDMQRxTX+fUSJ85NtLdR0FHHinp3iPBoyKPqePBku6vAh9m5OVO9TJ8FEN/OXwMowwfw/wq+JRtQdOwvhI+pZ4IPn96/vvf9FdCg05nlA6anx8f87F6/IcD9ohdiv+wTNd8jv/4feI/9v8DtlvjLspXdaOp17V4GKZo7L+qv79+02jX/+OgZu7uc7Ncg/bD7FX9djIZ7bZaxJKaAZjYt3EzHd+0Ls7PWnZTx36o5e7nLJGt7+7umncWtQPpaLR+Oju9gg8HQQNso0kwDON6TWFX8OluRu9P0zCY0AyXjqvNa/E5i9jDBrVrwu/6QY0JsX10SfR/YGA4oPf7rcKzmiPiXvZHwTgeTg5queDZvxmn09FJdDDsN4PPcf9jmvZvgyDbb4kXtVyV2BeMHx4rBMh63W8pb2u5SrHPt+jAxJmJHzUuY/ZbYk7kN2aSo3qc4gBcOOwzFwns+QFweexN/MTgGhFQs49S6ICihLTvqSt6IOJk9qOYHbzgzPB97jTqpWMWXaRF9/BNEmq43+PpAOZM+6pNAGIfE1i+2omIudmfjvsHuK0Z7CsLWWuG6aCV3aYBiNKPLXV52FbE4ez3kzAegvA9qCnOZPH0oGYWDSy2wLfv3muncZaBHH8bD+MxiPaLaRe+AUWavtM+WYBmsCQ8qhgLKJhFk6swZ8T7m+GU0FBMqdW/GfUb0FPzdjLo83mbRaNrXz0fOEDTFwCkPsqDfBAJ8nVxrG7l6+cu6H0esQUIdKCG7uTPD4pROvAqiQ4EpPdb8KNmtivAdgh4r/1NIj4HStEbsw+knPQPuAaT/VWlleYQgMDe1yx9PixnviHAWSXoj9M+rtoqwlO+OpDL3W/R75plzWmJ4Wrou1GaFj1o7DEO5ih7ocCTe6GVZ9iYo3YWDg7U4J39MB0OY9IUD+DdLqD77mqo37xB+lE+ryne6Hx/j2b7z7Jb1vtfVxmhqqea4spen1qVcKL9SXBz8N3x4ev9Fv5LRA/ttwhOtrUrYoJQHsEcJglC3lYgzzxszX7SzZpRMj7Y/MIlVxNdLfDkgXu891vlpjXFab3P5AdMfJT043GT4+yB6ey35rwSgUTAP9W5tWXQEGzCKB5GIF/pjaPA7M+NBvDU8GMGvPB1MAmQdRLb/P7q/J0GvCgJ+sk/iVcii1R/a43GQR5ApI5yf6DGDBUEFfLbDFR6GrGJyp8iq5wiLaiChH/RiPgci+Kk5FuWQstqmk1LEVslzzIQAcDrgAMU9xp/1hSfMmKdsiivCLir0zf299rhxQlBLCXhAVy7n96gDNO2hqnWhXnD9xrGpybjONpmUGvPgZpfDTXg382s37N/VYDl6nOBRU0bwSgpQsk1qqEEor1peAqYSp7lOWByrTlgosgkp4Rj74fJRPt+OkpAdBG4pvgAvcIIKgSK61YDxfXmA+VX7AX+S92qwGnPxyT8pCE/KQDIrwaQ0zTsgvrj6VUAwsVI6Cie6CJ0FO+zgkRXyWDUj7VTQB0OHxU0isu5ABrPXh1fPGcJvmQ0hSJEPHdFlPG85RBpz4OIv1t6SGxKBilxQB2N0yxrjED5AfAMWIAHHnD0kpvpOOdI3H+8T+8PaooneH/UnwJhYtcluFH3DL1Jw4Ruo1hj3ZXAxvo4qLXdWbmtgp8bAIxl84FVtdyb/VwBPLMXBKdvsO+LW9Nuz/aQ8z1AWEPZnrY/27gAugM19qmojHAps/mlWvw8gB4iBJFvzA7TKo9TYi4tAVEfhKxftTEYQqNNboOJOMVih86AJHhqlU20btzDc1racSSZyS07A8P98+fsn/+4/fNX2b94CPMK5+yfv3D/3KapbJ9fsX3x5zgkZRyNDH3O5slGBzLuqbIdaNcUqdTgUQOomjQIuEzzFlFRlR+PbnHzP4FiANIZGAj7rYROVXxzAzoZTdye20a2O+BwBPDjL4qjmvtBS/bszm9UQklD9xbPYjwlRVsNu5rflkn6N3gkeIwQPCgFZy34ls4RD0qxWit8A8RZ0ikfqoKK91vUmKK8nrZ/eUMiH8J86iFkUH0+hvWvWUbU7+dj2P+idRQGcVbDj5ZEEHe1DwZxlgU3NIS3+67MPWX8gpYMtYp5NylyjgLi3oBGcnTCWCzdnEIMvZwOide+TSbfTbvaITtn0MSlPm2ScimNjbLbAPRfZfReMs4mTYqWozA4HKKfhqBAc0sPvTS7FPOm5QFUMtBI643TgZZbWWDRPbT4UQfFyFH4W+OJ/yhIDiwxCVfTW84SWlU8wVzMS+AjznRMfwG3K3Mya44gaKmSwKoS0wV5Ys0T0hg8VwqJk/rT6H5WQAMKoCQex1k6BRaekUw2rDlCOQ+c+zqprAbSzRfLcjKVclmNrqsQzFZBryoG3lVJZnsFyWwvkcwAWVUwc5FsLxXJQBqwyowd08VZLpntFSSzvYpkpqlJeEoBba8ioO01BLS9RECzCwWvgcZCDMhWnS/IgJql97krpvyhEs03V77z1R4UovmWtj+g2L2VuHakrKPMlNERm0/WWU2Q7ydDFg94UAgAXPWzg0pdQrwsBRB+TZeK+qD0aj+2V0VjULp1nmayJL+Vbt0nmm25X29F1UDd4vZKMinHS393tbbYubsYiUkWXIxBgg9BuUj6k3hMvrBPIA+CLtjX2bSbTZIJ8b5tLe3x6y4aqTZMPLiLsXp/mA7fUM9xhCL1+PMkHmac37rL0Xvu9wcE+7lvZ2Im1+yckc2i7u1HdI9YvqhvZ8keLwSqu4YK4norqCBuNYoS9pwwTNZO316cavwkidAD1VTVtjdcf7lw9fTlwpUPwuI4uXj1jFXFqyL/hID1zOUC1rO+XsB69goC1nNWF7Ce+8QC9uz4+rBx8u5NlYj1vNVFrNdeS8R6/voiduacptlsFcVsW19bzLaN9eXB6cnR8burY5X9t8312X/bWo/9t+012H/bWYMVtN0VWEGVK7RojZRcnYo10sYrRCXPJXcWx8FE4RQlz2Rucfjm4ywO31rB4vg1qPYBGr69yNawC05Aw3eWOnENfw7EMdYQ9MgDJUK1yl0QDJNeTOapv0QNDqLoddwLpv3JCR4byIiK4+EEDb+DyXiKZwlLWhXCV5eMczWKw6SXhAuHqWxUCokt41q+anORj1Q0U3pdTJz7eIVp0vgWecw0i8dNjE0ABV4+ViJiF/QQNb6PPkIXdBLOsYH3wl4VQmIruykCv/H+8vSg6DjZb1U0KUTPzgebAo955C6xz9S95ScEZoWblYj6dTp8MdE4p9N4zCCG9CTwUygGk1QDFWYagqaZ/DMm6jf1JVa6aSy30k1jsZUeMQRsUCATRasscIGW6dZc4srcFxe6sOkKWiJvfsCvD718iRyVyxTTWKYKqoMt0QvynTVWcIQBndIVvtc82CodH/RAV2EUXH4DXS5zkSmjr+EkM80VnGSmaSxHCdNciBLq7QnhwMnRw7SWKpjsAqFUK03TXqpWmqazglpJs2C6pGm6y3VJc4GbcwaXl3k286jxAoRgn/IX0MsSwZArPKa1XD2TOhaniOWOAtMyVu9VaLutWRXOtJZIiZa6EmtVcrPsJyc3y1mZ3Kw1DELTWsEgNK32cnKz/BXIjV+rmKU3W1+b3hY5ZgVl2Oaa9LbI+SrpbYH3dYbebGdNeuMgKhGc7a5McLb3SIKr8PeZdvtp6M32V6e3JR5Zhd5W8LSuS2+OuTK9OdYa9DbHcVqktzlu0AK9LfBpIr0V73nNEtwC1+U8glvguZQEt8xbOUNwrr4CwS3wOc4Q3BIfo0pwRRiVKG6JO1GluFVcg6uIuKJ32XSdp6E5112d5lxvVZpz209Oc66/Ms0tchzO0Nwcb2GR5uZ4BQs0t8ArqNLcXCm3yDM4h+gW+QkFeSzzD84Q3QIfX050C5x7M0S3xLNXRXTVcm6JM0+lurbxJHKuRHQr+PRWIrolfr4C0S3z8eVo33aenOja7spE1/bWILp2ewWiay8/IzD9xWcEpRups0TnG2sTnb/8hMD0rTWJzl/hWMD0Vz8WMH13ZaIrAalEdL63MtH57ccR3cz5tOn7T0Jwlq6vTHCWbqxIcJZuPjXBWcvcii1ldHt1grPm+AMLBGdVeAGL/nyr5ATM/fkWXoO3St46cv1hqJm8McCOia2S00769K0KT906Pn2rwnE369OXmWGqHPtWhT9Pcew7TVtx7FsVHr0yJVpznHYwr5vTZBgfNF6Tf5jn42rihftX5UM6eaT1AACMh3gcL3hZEOJR5qvD09PG+3fvDs+OX+OCWNcwuDsvNpx1eQ2bck7HfNcpHh5zt/zc19CjN//8F/c6HfbvtSPkIO+CQXw+juIx9tLERRauR4ym41GaxQIl5kgEhTAXeQoFqb982ZoztsoO5roRldHmeRFzd/Y4nuLxdjr+SNFywac0ibS3p0mX5RqbjrQky6ZigXM8jvvUyxvsRDAG5Ql8Vs0Q9nHYo3Q6nBwY+638B3xgz583u7HST2+0PgZqatGUQjwUypzjg9zP7rNJPLhgt9Tuf+AhITRBd5f6nnv+LG60NNk1FXZRpsmd7vDrFKdykPZ6+60V27KZLtA3VuwnirvTm5VHhSHnaS0LoOMvPzWxypdXc65qGcBVyyGdtJOjdNLH7Hd03wWv1QQTeenIKjkjc/5a4XuU/DVMB8Bnej1s3Mx4/ypzrfAyFu4i8U8ajMtWMteqKNGCgJnncVTFlLXc1WBZq7ga6OKEUMEsewVng2Uba9+msOb4GYuyt8K3WJK9tj0PS9TLrC15VcqyxS1ifqHKwpyHFnfW4W1YHpNuKX438RjvJuszl7r5dSGmO1slx5q4t2VVeMfyC1zWHIdYjqPOoqOSNXSBBeGCFToBhUlUI+0iZ9q88GJrkQutsK1LQv4KmO+sog5HB8AKADQNGXpEu+WucNQisNxdMThVmDGUSQ9kkKSlVWL5JE0tc6YV6MRdpPUWAOvOU3klpmH+Q2te0Fveqv00+LjAgVUVd/IpiNKwGiEX+bdyhGwXLr5ai6LiCnDzzNUR0rPWQUi+KIGRnr06RnrOehgpMdFz18DEZeFtBUxc5AIrYuIcB5iCiXhj1prjs8oxsW0+DSYucD/NYuLN6KYaCxc4pgrX+NXLxtaiILQCzJZ5ntSdaHsrYWGW3AxlDjWBhO0VfBZcsFOm3lyst/3V0dfX10BfnKfEX99YA3/9FdhuWfn0rRWnNro5HN9QAh4aao0YfzBHQWcfgUU6nIzvKZkz2ajYjbNeN/00HWFmBvn9itfpWuXpr3L5awZU7TXYg++vyB7seVeAJXuwdQNrLZmL2YO98Nauwh7QZLgNpllzkP6aKnzBXuRRUlND9YGfA2eYr+fbi8LPBDMwmm5BQtlr3Pu1l937nY5QB79IB4pTo/gM+liynXydZwCugxRNIfUBfL5G4JK94F5wge/ZSy74qnzPNsyV+B6fNmN49gpXb5dGydvG6qLbNtYR3XKujP3Zxhri2zbWEN+20V4D0P46gG6Q+4eD29RXBTf/SoDYNFYHsWmuAWI+Dgewaa0BYNNeA8CmsyoDNN1lDNAEy9We537JW/mrMcAsHQaY974ZokDCE4+cBy6ISFN5IP+yMcI8b9ltMrxZxA4XBKRJdqg3DaPIDxeEnwF2yks+jLkpD+BLa3VOuiQcbT9f4VU8hsnli4f9mX0HHS4Jagqmk/SCfSiCwJUn8P0Sze8uSCbvh5Okf8CHj6P9Vv4QOljjJNKeF72W417VReHcy2LbZecdd4PYao6ylnSr2DI/We6AsW1rl36jx/+g9ofK/8orZ4kqwMUikV+XFXZJ/V/DsZ1S/lfPMa3n/K+/T/7XjT+3ptm41U2GrXj4CUsg3NbM3Q21IjAd87Ac8tMMndJvj44oX2d4i5V8LWwNn2kMd/DsJJJJIoYRzzzBejrC9ECyu5qNpYU3KGPBOLm5nWhbR9uaqZuuVkgmWXN3N2oeNLy+TTJ+ATHTRsCT8dqqkp6w1oaGPjTMn2HL3jiOtSztTe6Ccbyr3adTLQyGeDtBpNKEDic42RZMDewZMAwxs+oGPp0Oo3hMlxom8XiQ4YiUamNpktAApig4mta9x8ysG/TpG5zOFZ+O9gbzfhD72tHiBN6PRTZezRKD8S53tHSMyV03tK1ggssQue62Ye73LBup+LiJqV03MHtrGRr5oiNxj/M2HcUssRMs+A7rlXRjzFnem/Z3MPnrBmziRPvx5Pq78/fX2uG7v2s/Hl5eHr67/vseZSvHKmx40Zg6w0OXBPqG1Y2D4eQeFoEZYje0s+PLo+/go8NvT05Prv+OCVTfnFy/O7660t6cX2qH2sXh5fXJ0fvTw0vt4v3lxfnVcVPTrmK6UoKpYDdWgHqPdhDgGsWTIOlnTUwFu4HZXze0v8PGZzBZQMdbkO6AAGGcfMK6QBpe71x5azFt7IYW9FOgBSqHpKCgpp30MJ/LjpbBxPcXJoA9aGLSWMz5ukHF5+LxGGZ/C3jYp7MfVgsmHdLu0ssdQscemN6RJi5yZ4gW2ijBwj+w4ino95gVNsPSQPE0pTf4ApPCYhbYDe2cJ0jc1Y7p7FmjkzONqjJtTYdhOhjQpXE83QVNCse4TVM8j9rGlLEbGvX9GfPEYirYq6PLk4vrzuuTy1f1za0w0uC/UTJm9X82v3x7ePVd5+r8/eXR8c/6Lw/17br2l79oo7tou47pYcdxENEh88Xl+ffHR6KfL3mvdA8U/lfHtLCy+fXh5dtj2Vr5+GFhxcR6jQ7hzF3kTx1602FKxNa29kVkgWXpb9jzDjKc8ozYOX6e5rOOSWFFAlisZPQzlkDCckJKJ3XtF1HQSNGKWL2gY9zeXWCFaho9YnUyOdCuVuispihGvGgQ1356iVrO+e4Wezl5c/XqxasX2pjKL421j/E9YFB/Gmu//YazbQxhrvCQzTFK1ZysgJ0fk5HG8SIjrh4PRhOsOjYEbFNOxKAn7EV79f+0//r5591sFITx7i+/vNyAbnHbsQ4SsP5YLQL9M5V9os/KjQCmymnYhnYZD1JMawOLAGxsgdqaEKnAGicxDaamcIUeX21uMfiytf0GqBtpL7JWYXKt1l7WUh9stlovtmtKcD1BKu+Lfq7bW1upHY1rOf6MhYyI4whSVjPCxuw1m/grMabI8wo0ANylhF6Y7PVBFIC+iScdjC4itKbDM4bU+IxlVsV/IcVOiVIbA6BHOuYKsbgF4Du+f6iDjBBpUlno8rbEWfa7ru3tiYSpidV2f0vctrudN6H3/LiKwjB/4+Ggog09ZK3Y4l5uF2ljOvw4BI2CNUFci7MgxLSnDyLFaQ+4FqOYeBLe0ro7jN5p+RQVnS8fFm3UWTpTNsAb/ArxiGk5fOka66HZbNZZHtPBR2BrWmOk1dn1DQEilq80nI77rHodFbJrdANo2+jzxPXwT3b/Htj6B5G3tL755vLk9WHn/eVpi//zh+PLq5Pzdy0ldpVNo1FswAvfbOIMmqDDNj//E+uw8WOh37QJjv5Za3wPA8two5mJe4gwHiCMh3rCKapsBYsKk5XOMEpMRop5Rjd4Rkhgd7R20C0oi3+/H0eYZBSe/5mYBvKLxifW6C8HmiyghglHiRvySGC2GUfYLCQpjayvGzPu19QuWNkVPoZG7UDZJL9WHMEm8RMXzgzb5i4wwrZFRZE3MBUK5sjXJDAwo2i+o5tfcoECgGm7uyTICk+RVWLnmDQU035uaK/jCZZEgJVh9n1CrgSfgBDGVJ9H7y8vj99ddw5B8UFKEzQJlIblm3xjl4re1TfVhnXtz69y2iKGWN2E040QKXRawED4fphNR8g+qOZhPieQICq101kBh5ZvI7R8hyoW8xJ2Io0nKgJVS4TuCrPCZJyYTlNBDIa7oCuh3LlnaUJRYUE99y6B3RSmAqbWJGCA2IxyPFX7f1DqAZKTnU1T0GyhqRhYCk9AH4YnFCGVmyhE3Swl5wzvKEOdsm9iKT4dc6/pgFVP/EcZNTcQrVDF01iGV64K9IObjJJp/gsGRVpusLyAAAeesiEoZgq817aaWbpNuTehde/i5IiojanIE7wGniV0ZT0ZivzBE4pnorSbR29OD99evarzYVgHdcqwSWkwYdWwkR8x5zJbKdk5jR/7O43G3W3axxB+CpWlQUVmGuQDaZfKkrC0RZSLkLIc4v35UMydUlSK7oZpucerSTri19kRPcq9UvJJ/jU6GwdxwUeEqvtMYsV7KtlEGSX5l//cGaboJ4WZhR9ZB2fB+KOYLdBLgJkghw3mTCV9APNLnr4WoJsFxk4lnZTCsAOsz6k606vBQK3apVZsuTvFDrOU2vqltoUF1ik1JSWVpK1V8hDCnGGtN1gOc0IJJwFA/ajPenvN64NgI9gLyjqJ7wd8sDMsUC931aR9GU1ukb3samAynvyksV8ZpZ3ET8cT9u1lHPQbkwS4X+5dpTSSpyffInhhDjiQ7I8+rVNmScoSuaFaTmh4D0QCfo6yJhqZjfNZP+85axxTWkho8vrd6+Nv379V271OMsUUwzSBY55B0zIk5t6EjYwVXMgw6ydThqfDKaqh4gXljBTIWpzJFdj9Iy27H3TTfkYZJM8vrgVynZtyXrOj8e7qlHFy4+k5kCjWLPxOJVKaJ4Aoz+RNGIIcomVom2JBiKBkDTVSFCbqVaASsQA2UwFb8gtvcmLDB2Q+bSJu5KWXN3iBX8rcSNbZ8s5rf3j/L90o+Vf5f03Hc8v+X9t79v/+m/l/z1ixQ/L/HvUDUqIe5QGmDp89wM8e4GcP8LMH+NkD/OwBfvYAP7EHeIlTtOQTZk5RcgyXnKKsznGFU5S8xbkLjV08lr5Fchqv4xTlPuTHOEX5FEpOUe58nusULU3cNdCxbO6ih7nSKeraFU5RF+uDuoudoq63glPUbTOnKL9g8FinKHc1c/7gGejA8mBxnlXpFPXs+U5Rz1nkFJ31CgfjwRoOQOYxFg5AticlFydF3jOAMKSk9+v5+sjXXOHqY0OhDxm9xgCgtjU7H+mV5ROioHl1QryQ/HozcqpnxAdDXzROifucn9r2bvsLPY6+/vRD+obqb5zvbqT8Advo2C55D+uiRlXZa+hLbxsVKuogjL/KYahtsf3EeiHAd1EZAt2w5H3bRl85H48TYId7B4VPkJYgqZMUIlSqxtMhOaJwfujl8j3Rz13JZTMdjZBxwsSTmyEpZaBVD6moLuwRQxH0uXPHRefo/Ozs/B13FqqT2vnrGO+iV6VoqKPzXXRweHnm2iAMih2Wgbqj0GfZ3Vgn97z4/iea4qodsgXNODAZaJijnrzwsPFvxrCqO7qujby0P9/FqFtkYgKfYzd7YdPlp6IeJNhnzEIlx/6by8Oz4x/PL/+GOCdbUx+5tYZOomJkvNK01Myd0+xwNPob0PqHcukrpcnJuWjRntPiKgYpkkzu6+RpJ586wOeKrVXChbnZtUY3475UMNkB4cXH2lkaTfux4jEnN6Lwy5Yds2XPuvDPlhy0zHGOIef9T1g96N0VlaDpU7Cw0syRTliYnpa7Yvvs0zp5wsmLvdQLa7QrvbC5D5YswVkf7HwPLBl7hIIRCLEOGs+jGf8r3dyewzUUT+o2c4mz7j7vznhnmUImfbRgGS7y0ebz4R3WmcP86T20oo6T8AwBm+DMjexf5G6SlHLyIve6kKK9srOUJ2UiFpQf7VEmgJBcTMKt+0FWaSLWy8X+B1mSqej2ZQpPA7nAnNGoGVOjNwt8j14wzNnMeQA9tXhz8gdbdFo647YW0n8FuFjefLiIFHElwJBtNwMYHs/MAMMn8EGWOypAhht0M5BRx6N2ZhE0P+W9WlWw4VfZha/cIdjYSK82yrWzeHyDGirwZZmViMGIivz0k1GqNUKmBXzgtXwWbh3ZSIuXQEaSMC4qRB6V36GCOblLH0wmNpdk2EvnfIQb7pCWz3KCUF2Y8WDBfOfPs/ZH8f/zNG7NUWZ8xRHAYv+/5dq6XfT/mzrs8LP//3/E/z+6m+P//5HhAD8BOEvCcYr+9NIpwEV6F4+vbmPgeuucBfDOn08Dnk8Dnk8DyqcBrJSmBmZgLx7HwzBGmsowYgWeUhPy9m+S/5iV/rzI277S6hjdUq9RqITQcYU/DpaM6My9EtkohsVPR2Atf0o/xo0f4+4l6C5xhrUetKOTJh4ebF7wb0uDJKju9u+PuOe2jucEeD6A5Ixm6HCS4VHB5hXxhdfJGL66AsyYNC7QYoD/0vH+5tk9js78g80z6I9cZU1shIcFODya76yDS7IOYtZFPe/7Q7P5AV0roAtuXgegfvD236fJkDVW+6mXxOCHyuMC6U59G08axMCYqz4/MwAOFAy2fkZyGt78ssle02ivtC1l6BwE9ZlThO3t0jnCVgO9SFuY+Ix/nve7TQcWuW35IxhycYMQQasvOUjIe1lwjvCgHiPgunF7aZuUxf0GPGt8jBlBzpln5Yt6dLCJJwQAgM1O83qcDLa21cMCXB9r0CB/KE6QfjevQC5Psh+BmrZebLyghZZyKm0iw8+wZ9ZBhsikvXj1Ykcza6XsSjQOtW+exsMbxLf4H5pJvc7eb2TnF3yAn/Vf5MRnrzIyp3ze2Mgb4x3X2duIG8LfdRFkYOkdBUwycGkpjwEqcqfDCPjFhVg1TLJJBLT1ovNiu2oX5iRVh524wtp/iKVb+o6x3bxO348AAbe2tW+Kb+ndKQp1WFFF5vWHWkV2KD7Rvwkg5rNu/ApEoL14UavIGgUMryFSrWkNTPindgSvEM4c3I2rECUUoyM86qhVZIdiPBRgC3pNMk6Z8yw/Z5ndy5+P84a/7O7C18oDMbUthPsOn8hO4RvRhDEc6OGC3bjfrpWyRz3UlCxRD+Lc4wHPKR7w9AEPHza0N4LfAGeG/qoDoFyryJcOlZcY+M4tMzIOYTMAFLsXl+dHIGPPLylE6eT6+Oj6/eVxjedXykCAQdst+kTGzrO/+uHZa/R+fwGxAQMM8yjlh5qSd4kF/RcaUYu20hEa22ob7uh/qClplXjGPqWVvAjwII41HvBE4yE/0FCBVtA748+TMUhS7pnHY44ZuL1mfvcvNZ6dqMTOscm2OOXIue13KYjH/LBM6MnUXD0s4/mFNtkoTBzVRYJsal3H8w0RC1/J+eW3xA+VBEPv4rvGCXr76L/X90Acss6fVv5Ya7xBtytwjPPppPEOz5x4KqIHES5PMz1kXu734z5OdZNEHvxosX/9wPTKyjM55X2jsERxKFfjiYM2r+PBiI+Dg3xlZ7AnPGnQBNb7paZkAdrIK5ajLsc99zUl24+6jaItRb2P08GuCgUK2hdfzapIjffjpAC0BoAXc5MUV9l4n8XkeQWWmJHvHwheyfSDx8IMVZmphWeWW6CZJH3ijMA/BYoZesswtmtKxh91KbwXimdmQxMaKol+/sLPQ3ulCR4puCJuBCjiCx0foCTWlJw7zBPKMLDYF2FazRfaBM+iA9odEMcXHsZfobu8geWCKqoSMTwu0jDsTUeE7hd0F0MX2Iye/wdy6LPI+gJ76AEYtR+SbAr6/NVkGiWpOKdhp7zotJc84g00bvxwdaI0oPkzGIAlCngn+vyU3YHVFjfjz7F02m/yh0RJX4gNoxodUPKabAtY5PbDh9yqLkzrAx81Hn9Qulac/XP5BW9O3MJQUtEUYF0JArB1tpTBtgtHmcUj5+L3pm74uFdkfOLVCiWrjdgfnrPmgY4HyPnPgPiGduSqsA3MoDr65hvuOUB/Q0anARysXL/+CwZlsAnXtQaOjiQJinU0DUHzeImHEOSGzXLnRZNNnc28CZbGKMWcVs0fjkDrgWGasC3Nz65N/VAu2MLUyCTBIwkZNy83gc+Lwd1fBe5Vy1wZ6PLjCFPbpiN2TpiOP9IZMwvFL28CT0jzQGcMdGqAP7mk5fMnt/8D+f3Jk18koAzajkozUXQt8uRLAjoZJpMk6Cf/jIGMFKUJIcR9+yV5+8MVTgFUrKIARp+/dPJvaGcB2MHTcUEronNWOgf8FILCJ7Vrepx7/tlLpkQCBknN55BrPoaSsUVqOl+0OvvOtZvdYIKqiKHkZxG6D29kmXmjnPEKbecLnSCUrAMRPHEXv4CVAOTYwcQtMHU1bAJzVSMaZw3lzJ4OI2bsnvlKH1lBXBljK57NtcJXwlzauBh+EKGos1rcz2L63J/7+SBy7U7eCTOE8unH7CAeiQ22jWYkzzByTdlQ7MoHeU5R1BVnt8eW7AajyQxu8PHt5+xDsc4Z3gF9Hn04nH5O+kkwvv9A7tAPBZSp52cc8xmwHIPxYMUgLPCCEp4qZnp5xGq95VDqB4West06Py0R1iq9nfGFzF9ynR+l5Og0szpUR3FtJUuQvAW30AVpBfW88Qf2r5dsf2bN1sLCYM5bYJGiObhNm6lYjg90ZFPma9wSfKBzGjqeKQNLsiLUjeayL65+FTaAXRYE4w3+4+8KbQ1va0nAo60RBiNiQ1WGJ/AfHo62yU+nUHaFgwjFrNYKtfp/1xW0+W8KlQVOW9fMg7/A8tA8NHg+3h7oyQGxLPKAgGrI+6T9UPLwKm6WAale9f/a+vm/Xv3yzfarrebL7U1G/KVcvJsUrQJGI30So29jpnp97v4QjcxfZqrUr2hXU5DKmoa1WuP+QRazf6CC9LLivDjhYx7tsE+QTlC63mlSsZZ15pkFoRaO38SwPNomqQ+JXswDelmoIa+iWq7RHbVQPnNmN2bkTciSSMEYkbOam4KisvyDLB8vlWbPXaY0533Ox++mWIPkNohAF4fX3yGOezMeQVEA/oFquz9QLXaqrl5UCvg57uvjN8zliEt6fXrKg1kzKqQulQI0W1/HPTKSvsh66SU94DTplhQB+IRYKlVMl5XQVbiTjw3Jd948GCWj4SjKnm9o7zEacToYdRNaibA2eCzG/Kul3Nrc5N+e52TNnzDSFv3UxYrqOfqo5dM3+RShh79ubcuK6RXEXhiQSNg3F9A8WITxeBj0my8//PYh+2br56Dxz8PGf3Z+4f/QG37nl5fbH7KXnCGUcslushWUWUIpdSyq8X08eMJDIIHvjRt+SziS4GS4z6LyKJyfbP888qWUSpaWwycgmRgLwAV9H+mm/PJmOpj7qsMXWOHQFdD/5pX4bqZU+0OhKvuDrJ3+QPXNZfFypnxxfKN6HqRv6Ti0WrKcIe6PLKxPq79LBZLmZFlEuaaW4zegtDxx+zzqJ2EykTheL9Q1F6o9YZyoVP5AtcVlxXDpnRZ0IwuFb4KGJZz/gJh1Kg5+/NPF+eX1FdX13pRr5W7e+n+P/3tY36aa3vW/UtluWYr7SjlKkO6pHjsI4p5eZbzG8TBMySdzeHV0ciKLdM9QPKCXJHiyiTZLG7AtYFOX5bsFWPj4VJX7geptUyntIndjxhkCnZ+DX/1wROWxJUtj1eCxxRdZDLvCkahwM84Ntqkctix3vcmoGjt6NXPJlLxfUb9fl5WvNwUbLTrReMu4V5dlrjdBFHSvKANsqTFG9jUyeMs/C+uy0DV9xBW0xR+l3V/rVPta1rNWd0mmlFBAWHZ6qHKS2LRJt4y4kViBoSIILOIY9KogVxocvpoAtNYQqCaARoWrZZ3pJ4+dE4WnF4RZFyNYZfnpf8FU8AaYJRwumL5kPMAZDQJ0X8ca5lElWdlnYdXdAGMb8QKaeuogyk5v8s/I4VxhQasVp1UL+ifm61drTUvD+Sd2WqDWmJb2sjw4eChUkVaMP9GzLbwbWBZalnre4GHAfTVmXJR43tBagJUqo5eR6ZES+yrlvij3DN+dv78uRHKO4hD1Ta7gs6NXzAYhSjvDJ2eHYIa/OxafMdVWbkMR2tzC3ESCe0PogqpBoVBzHedeL9RcrtO0cj5SL1RZrssZqJtYL9RXritkXy+USc51GFkSeZvqHct6xhUByNqWxCZy6r/IMLYBSX4QZ+mQ1UbTRO6QEL7YlqWPN7S7zOxYJtZVY7MQXvCrNPwYg9AxZZ1jaJsMB4O8qWx7BliSDOIoCbTDixNZ5XhDG2XBKFE+4AYGqM3BZJrxxsLiy277d2pzFu90igFLdzGFLVF7V1gfaT9WJ65xPnrKA6mR9I8H3TiimwCi/jF9Fkwn+Zfnp8fa4XSSDpirRxQ/3tCm0yRSutfeiyBLUKrg3/8AaXqCyVioBKQsdrzB/HfKQq7In8fmLkgiiD5Bi3wSh/B7GMImCpBaJsaRx/wzR4IIQKIsWm4WgYq1FRs7zeJx1ca+x4Ab1lTsKxDtMFb6FU3/Rs95Y7GnN1FSAPvbcTC6TcIMuN6nBITfCSgX4x5eGBTFiDe0qHsDMxzJr15TLPh38IinMLmX5Yg3ZGSVaMwPqaBjVsAL/01T8owcLzEAaAYs311fX2iYcxnmlcnyxBtgTN2PFAwAhgS/8dhgdHvPu7byrifjaTZRQHONv3kzsZ9d6jKHSrnHXZCdnyciqQ/hmSc2dfgV34pNjoZFCsOLAEf9BLU7NkGxxcnotq8i5ckFgV+ggid2964bD1TElyQeDIObmFwueGwyphIRYjZim0H+hhMFjzDICDYL9c0xGh+iNPGGNsg+hWNlzZXayiW7zSPLFG+yayaAMYJTK6Ve6jkjq+/QCTBjVfhDsiH8obCZ+k6hyHBdchRsp/IJ/C2gQn0oJE6dqE5ohbTZeJJmqRtJlvhLpTzqKLfO6pLQsKFCQfhToRG+WkEA1IsSW6DgOm8p8Rl/54iLv4bKr0Kt4nqOaNhOxSbqVcEa/K0iAvWkSNR86+uyePE2lSiWdYbz62fsIkrGiB45eiau1XAlwxc03Xp7OhuV8yNeK2NRecGgcKtFFh+GL0+vj96Wv8XxWVIjuoByoxCfL/Waq/ffXv396vr4bPfHk3evz3+82pUah6CbbNplWCvrEqM+9Pd3h2cnR98eXklFRSQMOLw6vdS2DqOIwgiv8Kazdhrcox16CetPxfy3Ze1i6O/dT0fnZxeHBWUJj92gZVeYbK+DScCdqgjLizEGkvIFebn29O7kzfHV9e67c9nX65RcWcLTALrUMOnF2UQWMobvTt4dXR6fHb+7PjyVn4qYyASQihgHULW45ISacDZg56EZXh4SJYxR6bu43r08flPYEHklSMZGRpowDZmSH8HyZAFj3svJUbEXDmKA1evDa5hDnoWvMBdR2nhTxRdFP8SCxhu5vvf2tC48NNfnr8+pTChVKFbaIIbVZ9soXGMWl+qFcsR1FWnqhSLEdbn/9ULp4bq6nXWqPZy/Ku5YvVCUuC72oF6oQVwXQK3LCsTbspbwk5tUWGFYVg4WcfNo4PXBuBKWRsBrFcFvBCg/8Ub33MfDMe2Xotx/UxAg31TsLxUClrV7yc/EjV8KCFWyuOVDfPMK9wbwVTStyxK8D1RCV9bIZR5wtcLtBlEpmjGBNkmG9+IKbZaSQ5Qv8jYAFJ9gaoYMc5bE6kVboC6wQpqFArg8fp8K7Wba6bu/2bpuoI99KOlvNE4GYDuQdzAdFN1gYB80C/VxK5xKiq+D+5XqVNa3w+/uY8hvBwfrgFZ7m4638C3A8KE+43RSa+n+RfjOW8O0n96keG7TOjcBwG9S1WbiFhSbQZ2K6xb8maeHQEg/nVwfnb8+1hoAMfINlmvhTm7H6R3G87ItEMkDeszdT0yTfPQkAAp91gtFbh+ofm2hPm0xYIh47vBml8BP69vcyhGIB29qL7brVMk2B4Zs/lfRmKrcFgrXLlpvqWYJXy9KtjUXq5ymP1B12kIFWnWxV1Oqs92bopEUct+haitbeQS0VQxaUivLzjl/kW5CFqOklpkV8dW2iFESpWJ7yZAsti+F0rB5vFXu8FILxKq0z2Ko1QNawRQIyqXo5ULMluyBxWtZtnqsZil+htIJcI7dbAh//hAqKfJRFHfEQ6H+bMUojKJolNJB88wo3L6Wo1iFUYTfGwvKPlA1WKruipEk6GhnJ/CynhEVdC0EetIphdCaGLfnISRbuXFwLW5FIa04fqGHV+v+1anaK5VxrUxHguVZS3cSqAorVVetyvGBtVQrwxXkVQl+sYBhzCrBpfkli9ngUqzJ+kCFV6lqKrLpU5EAJv+Q6qBSXdPFaZWxoOnmEXtzyMKay4HPVMiUCpISeaiNKeBFhBHTIj319JBT8oL8yfODaeqyOqmgcY/W7eG6vSIOrJRaOZ92PS8p+lW5lbHU6JzA49Io1u4KgceiVqi6Ihn3rEJ7rTQoophoKRyb/l3olqqJPlCdUCr4yQMHi4fpxYNvKu8pwlxeVUVzUlHPuUFqDf6p6KJqUhjHiyU7hQ4I7J/Kccpzh0LITb4bymkKMzaxGGflLoiTItoDvwJvr4o5TNQ4IumvFTU2BZL6hKQ+IinYNvnx1ewSZ49SqNgl1bNUYixidigJyiCXq1TrcuF5ljIIO9bC4pclISC/p0s73CTZRIGI/jbOBZgQkE1l5cqlop/J6nyOW6D5iL75laFtrXsP9tB2nUpbypqVMvYXrWlSdekMJcmdgLI0JVOs1UqTNIYSMIA/SZOqK7qIDBNQy04SZ8u/JqCUik0WxJaY2K46Zr1QdPJBVpN8kCUhhdKjln3cyKc5IHc3z0glY2l2KNLmRaalH2XJxweq5yhDBUW9xgL6IuBpQ+hcjGlTjeIpisDouqziyPEYKzM+UJlFqp84w2ylSRZpmYIAf/63Ts/7P33/X7mY+HW5f5ff/6cMwOX8v7rjPN///33u/xfy570yvKZpNs2auStz8L0SV5ZvwPaadptAR+zOD//vOKbI9KwltY0/Pf/9cel/HHY6AzBcOsw30hn2O53gc9z/yHMvFDwnHTI5+MkYWibxuEm33lVmsST/t2ua5fwfnms/0//vRP+tl0Ds2svZnBtOKecGaAYvazY2XZp1w8GmLjZ9grwbHvbzlHk32tjh4/Nu+NjNSnk3dAQH6mYvH5t5g3bqsak3cCMfm3uD8OCrkm8QbhiEHE+WfsMgHHmS/Buolr5sYXoQTOoxCsKPwQ2onf2mygObOQvcExk7ANSYrJfGTNLmyfnx5zAmpNjD7Bzl1+gNv5qArjvYw8wc6mtM8NXEaN/kZth8uYc5N2ZeJ3T7tHkWw4ZH32G68HgPE26oDYcwDinqdMVwD3NxVL5G82oPU3NUvgWTEshiHCF/OBfr8Qttp5Ok3xQ5+fYw5wamzOAt5oOO/bNJImQPE2ys9YUCXgudPfbuiCFF2A+yTJsVTOQ5BIthNE4+4fEgP0s4H9F56fCGRytxZ8w5AIyC3ErNyUsrDn1PT9797fgSDDf2uzmEJp9i9mNre4+l1ajs4IoCi0/T9ON0pJ2eH74+ft05Pfn28vDy73uYe6NGPmf+yReRgKPYEMZFdUtdKQ5Kvma0hHZZwozWy5fMachYHnovhX8APSY8/FUEXkOXOKcmEgG5oUvTL0x8dvg8nwZfJ8W4amn2jt0lYUBugql8wW9UbtXTrInBcfXt5oSlmsCcGLQSd7YnnshgTj/4tqIfb7YfAAGfEvTBp48PDofRVQy7v8WmvEMDYh/t2T4I0yioinVzJH/PfA3shDu7Wy3hL6BbzXSs1U2GWe6ehUHG2URk22AjkgsEm3FHEv5fM+1t1fFZfUcsB4biznF0DxDdN5lbcEt8TM4j6RJnHgnlFhVHB3Wbm31BRvhLdrSjHQKhBM2bftoN+lvbOLbwETxwv8HWSb8f3wT9Q378KYlWo/MCJQcH39B4PAabMxlO+sOtctaMOo+Q39XygxaCYRGpqyC6VVczboi/byRERQqO4tv69q5WF8nDi69iRL0zEEogHWjprnC9PNRccbKDLngeSFe169+DaMXspngkkon0GwUEE2/5ptdbjMG06jADvuN7Ij8H7uSWIlZQv3jFQNMkRMUZX/IODzPWaEsdgTBD3qdCBIIu/vxKQ9cTvcohWJilLKaFDInNqpnJDDLiCUxhcgIq3Ofz3taL5guCmV/qkNYJaDDikewMgZmL7po/3ir6DgH35fjQpZdvFv8YxBasY0d2u6PNSrTm5fHF6eHRcef4p5Or65N3b7Gn3JcmPgW+QjPYbkYxepLOh8efMZf+nkg/sjoR5bOZISLPlpjEjyZyajovEZC8CVZFPp5KPusQDyLmlkxYoqK9ii41z9+tppi2vruUXtoiPptnWudE8gbvtnexFh7eL1fjh+9FWhKe4UOwmuWwrhewZQbePAZtRZYlQ83YIfUwvtPeDzHsKwO+H6HoJ1/mlpqCRFOPhiuA/iKf4AtSmetqehIBQiZS1BQkEuqtes03Zh5ToV/fnG3e1Oo135p9fvx5BPwSpnkWoAGhiDew8eJeEE52y8rZbq5p7+5zi+dgt5BlRHSfd1fznTmTcmefnwUfQfnA27Qs0oSBjMJGlJQodC2PocuIZFNRALD6OEyZJ1MrUFeH+A4GV73me4sx3m/PmXcFJZyDMU1MLWZlXeqFZCdz6UKkM3ngWUwe8mKjs7oY479FzaOgce2oahPdeNPzvHKsSRNLrWCe9C2sYFBn19Rl0JZIvMSSs8vsvfU9mfrkQaY4qeyT6lOKXn1FtlCJjrwd5Qeob2MxidIbfm2E5zDRy0yWV4rlrfaUNCcPSu6RqhFZEerKMdl9Ez6kNWdI0cEepTHJx3RW4xCFQ2ZWw7Z4AFznNIxYIQ9RDCXmawbY/FBXTLz9eHD7M2sXB8c5wGVukQeZVORRAFfizsqDKiCXcWQPlKRkfZCLA+v5QDdlJgEet7VO96mwKzlfYl2zLaPOPUbdJiYToBtsaKi95WUjRv1ggueHZKKpM2xkdLdIPeRFHCCfBcV1zeURVUbOEmZhGaswC5klRZrOoLqVzOrm2eHR+dWekiolp6XZchR7MlvKg8yQspS7yMwni6YBFvv7n/aUPCdfTxvK3bXKtYhU31lK6/F3C8lSHkEftr5kYJZlhY1rK9xQpkt5Ss5USK6yImeS8WuLtopHF+9RlpXHbpYSz7ZwszD4YE9J0/IEu+WvtFt8YEfhpTIe7mm5miOTo3EvwFNyNfIkPOR58omriSQsL/M4Hel1GpAHk1U8ZP7iQGNWroybb1LGFfxeZF15qf2VrlSzejrXt+x2pfAX90o53kTCFflVFLNTbhjsWm2fP6c0K+wTPtOzmXmqQ5F+SVlCkl4eoyDytCBvpkt33EPJWbPqvKWJiovmgi2zhCji6et81vlE1bwtwsdwi/WtMXEFqzaEziRtixW7URO50yWVdBAzCm+xwiU8+8K2TPQi3Lr7Z/EAFOmr+AaNogMtiCL0ehU9kk1cxdaQ44KLyTW4PwHmdqJAZkfrqYbe+VUu1gbB8KZPhb/dXK3E0ZpJdowVB7cYXUnnAZuJTPbC/sRNZMlg6BuvaCSFeG+RJILWOKhcSr0jMkx8o4lleeZsJyTd5ndS+LxoeImry/CtAHUzZsvckzlgOEvYk6lgHigJjMzSAtDFNGgASY5NhJ5A1TJpi6A3hOMgGG0FNFlyXzfx3D6E7WDfbgU7Kn5tU7YXMYVmOj4GfniNfW9tbWMnyDeKDvmt+qUoeFKiZDUgTcIE10kegwfKJvPwHD7wO/6N409JfNf8NUuH/7IxFp//O/ZM/Q/juf7H7/X3paZp9UmQfcQqlpTuqA6kCWx5mN714+gmjuo72CTDfNv46lukXoyhI69IgxL3jCjAnEftIeuhkO4GJ/7vg09B682bM+0Gc3LuAQ/QeFZOJnP5bf97fgyLgi8CWUBn52zwsJ8O405CV9gn9zALnDU8R08Pzql1C2KsdZP0kxbeCvncmA4xJOk2jlok9vBuYqsZBpNWFmfYb9bSjQAERug14iCKG55tGY2uZXkN3ehajts19a4ZtdBJq1YSZsTS+Nb5T6d/2WIQoBnCXGLuO+vghZWEoBhGodFum0YQGk5gWKEfxIHnRlYU+j3XCEO9F1uG1e2JLlguhM53x4evv+Zz/K4TYmw4zKIb4wFyh82xg/Hh0OVkPI154wxDBOi5aEPVEDuUIKkzSoZD6OQmmXS6/bSbFb/lZ/k4R44FdHA/mmTER+rQ6oH2DXTFDsMFGClMRjF+8zN1wnaQcA/fY18FP86OeM8EEb4vl3TmkYottVAR9dHMbvPvAWfG9x1+iwi7aba+riNRspbWbbYblr5jmQ3H2HHshmfstP2GoZs7hu41wCTKP6Nrb1XTV0tMtNS1z1RTlH1hSTqlLzVLNsbt2U2roXYk0mPL71kg7QqTqbZic5h+HgXIBNjFOQW2N2Eoynpqjd7FyZE2W7FOrYXHnmRzC5JlKf+mUHVzZxG0+AfDtPgNHykllbr4iRjknzvDFK/9gEAArTSvQDgCTYoqZvfHkxwGyFiAVXWki3kZWAvgA2MKq/YBQ7yhD9n1b24XiClTcjRkV8QzZXIvkYuGV4fGC6U72ifgl11ggJN7vBsk4pbSPISJ32tK8KL3iIKCmqzg4IhOw9Wigyw14gRDAvAUL5lgWFaP0m9zK1BMgX/QVMhVWIodzFeLS3vHpABzI/DydLJmlJbFfXbk0L3XpmSvNAa03LCQG5ap8zsaIhigV4RsPlKGVXPGSB5Db7qBQsQoS6bjvvobM6BTyNDnf2p88uprHJAyeuaX1N++e9/IJvd9ce1VbU41uIu9460AQLiwpaZm5hdmiTkwqyzq7wx2OKrtFOcAdNRQxhe3fhiW1Hm7XyQsPuE9jIQxq04y7CgcFEHJo+lRcGOR95jtNZ1KCY8ibvVwOmC36GXxQpk4jQyQncVsnHlA/k9y8eqSuOszceYXehIeLh2CvyMLF2Mu4OCVkHpm4P/ODJwVXn3m3/97+Xehzv1XMnDq4ykY+GxH1Qzc1Xc8r9F2dnyzYTjeuox7UenxtTi32tEM604w3xgln5vETFLOrfn7KHZf7mMur2elhCW3VwsIr1BpekkZ4XXqz39NLXhtfln26irss0XXZ2qsV5RU1+YVJJfgHWB1YxWshXrGX1MXeFHd4n+VAKNL+w1WLauPCRkHXRA8eKRCSaeLkq0oz4RUaQjxgxKNRFeVTGtqKipR0b/PwKTwyhFwLYznifY02N4gihLmD+/fE2fHPFPA7QBQDUBQzoHvWFTbYgnGjjZg0zF5CuJ86+r13zQKHcKALEwz0k0noqo4TonvhkjsEPTvgntMVskLyLBkrcOPmfbt+fV3hbO2bIf48a+YeQ/H/z2EnLoykW8IZsiWDUtV2yJyqr/5wpXaKQxZsuJHGcvcTQFWeRVzVtA3G+yQ9GOEkSfnWUe0KXW3uWSjCMtsTuwDkQK87OFFm/w6r1JenKiS8HTMkvO1GJq2cocjJbdaTRw+ypz5Y0rDx5sxSj9rykKFTf4PikLGDr5KEqp8/gkE4RxD6VkAPgvAZwH4LAD/pQKwFO/5lTKQ99IcZcajxWBlX2VJ6Lg7rtXw7R1Dd0AitXeMttEwDXvHNEBMOvaO5RoN2/DXFY5FcLRKqXvWEY/Fnp70sAaDyZ6CTWJZB34+iB+tmDlRfs69P0U5W5U2sfUmrawowZeTdn/VFr0PFTQoyXWZmRDT47M8/fMglqfk/wmY4LL5LMQDJVd9noo+zzGvJpDPk8MX8r3LnO6FJO2FbOxqjnUlh3ohR3qeA13NbK4mLldTkqvpxgv5xJWs4UoScCWndyFrdyE1dyHVtpJNuyIncSHdcJ4ruJDst5zBV2bhlYl0NcpxWrHDcW+h/K8s1VTc1j1MdpDFmqijJK/MJkNg1HR0jr7YRObaB7F+E38mIQHSu5d8Zh12djSsTURBgzedPe0OcxWxLKMar6ij4XxxvCyjBWEUHKYWKBQGamrvgIR+/O789Jjy0P1w3IS5kVOZETvIAhQg6ImexBS2AeJ+nKbS+6ghC8bKDFGcjXASApxNDNfLwmA4xDIZgOvoZhzGO8INjWoHk37pAGQlzXFHu7tNMOmbcEqOxpgLORhqb96cNaYsyTKQ4UJVhWelln5lCjDp3mtz6lduUUXyVwdsk3dY4chXB6TIbO9pAyWlI2anBWnIXboUCYrVTwCIzMHNymxOUcUqVbzcobKUyhv2uCkS04vAX62y1KUG2gBwSErbQPMZxp/IdywE8QT1O1pvxidBKcQ1WtrqOtQFXnmm+gqq5jJTplp9KUJBUb3iW4EIrIghrVymFsv7fpMXCW6JkrvqB1flOrYVLnUsnCSr/HClrSWKryFeyYoRRfWNASjvPxRFe5kbnr3m2ovymZpzX3ma597PHyo5+POHxVz8VXn4Cw+VfPz58zzvvNJvMT//nNz86jyUHP1K10qu/vxpKWd/Vb7+/GEhb3/+uJC/vwA5JY9/dQ7/Qmsll7+ie6tZ/OXTYeVTNa9//rSY318ZsZDnX5lgMd9/Za7/1ZV2irbKwPAgBM7zEjPOiBoHHdnQDXzMBd/CtO17PFcM0JRIoyfMSVTP0QJVdPQW1961T0E/YYa8qp+hUdr5lHX4gV5R42SSOVNrFgq+f/Lu4v11U/v+h7MFN2eBU8VRlmf4jrSLY1oVqFHw+Z6GV2kHwDFaeMuaUnpCUxoV5EygkVaVS4N4TDeasA0LB2uuans8yv32v870YN6gJ7A8njzC4H+L3cFWM9fsYK8fY3VIcOVGB5NcS6azCAWejY5/I6ODb/CzzfFsczzbHM82x7PN8WxzPNsc/042R41Duz5C6IowSVypvF7E7452gGUHWLVrqcGhZMveNbTKxMp7JLhN7euzK4vrPiKuD1GDLu3AHEes0CFO9IRS+rF7WTEwe+AOoCwDKkQa/4BybGJWTEw1mmnlFRTnD8Dl1oO4vo1SJe0BjiaAVHI5pB6QOaPFEXYL/JF6zsRewASQeTd5KdBYKbKAOWxu+D/xyhfiEXD9KY0CT3f5USyTrRhpWTFt0g+AfEjBKa2Cbxfg9ThBzUCemtZD6DjugMJEYM0SFpVwNcHktgHmrc1uJdy4AcSPqCfjGBbzmu+ORh3JxEMJ14U+xvew7vN3p39HvUIk92ipZ3vs2JQlhuIMcIdn/0DcnWLhXFDI8BQYQNHkh5uFQ2JqlTHSp+JZ8ZhFMrDTwqZ2dBsMbwTNiMBiDrt7dsCKMjbmyFpYBibqzYB3kOrA5Sz0kvblLV9W4Su/zcYAyfHxfSZupQukkfiEBmtGd4EjnLLQloIu0+Qi7ROrLMFJAWZ1AzpF1hJ8hR3VM81viMVp9ziKEBsZgJqDKmnEqgMCuaNWdqvsvdiODi2gcBFSvRrPbviVQhKCPak0sPdl/b3JA6c55nGNJ2M6pij8wg+RSH3b4zvL2JUI3820/Jz6E96iFKOKLka8YHHpJJuX985y5ZZ30VQuLqJZQng1/iT5xyWj8EIMfisPTNGURAJoKgirZo8XdQ9YpUItL4PIgyNaMp79NhmUCRy4R4wFEylvVilMPhliGUhM5sgOvdWaeDsau++YYyIv40JviSdhFU6eKCwTsoAhNRauyLLpgFkqLE4Dif42iUAattTIerRpUMjwPA5sZmS2zCA1x81+gMJaicFmVhzsPcWGUDh4j6abDjOkd4Wi+TXZmHNQfn4PMxyP2eULBJ/oeg8P/JHRh4LGEdPTMcl7CsxHwypFtjkKkjGlmG7mVzUHSYb71hFDFlhhxbXNhPwcF4oXrMdJ5l1avP8rIIJYQ9aYksJNFF/pYtYKvNnAyoPxS+lgV3JGxhUJHjl/i3d2x5L+gfLgPeX35pKHZ4ajwBvGVkHnaMgJSLCiBEHiUINnBDxxKYe5zORLUi4+cGEgC4VhpBCbeBwJ4iWOyveLSYaI3xnACinxEPPqJQg4Ykmo1ChKGNfNhC7G9L45LlO+HebsdhSIlNvWwvCTPgVhkcv84Z/D/pRqNL1/hx/C/NNxRMIcDPophj2xJDCIWMCMEqrOMsF4KeZziBmDI8rj7oMGuQ+Qvhh+Uz540Kr6c4B/MsyI34pyrhEtIbhBo3eiUo1I/8euT5cIcEcIjz4vJoglYESJXiaPgPFhVXhYDaqZfLZA1MAHAPtuqJIso44WXn2HcfECjTI+zO6WMtMj9YaUBAMLexW08MX7Zs3uGxi0UZKFqMnc50JAFphrMguZGcjNI2GQNn84amLpuawJIqX5Gb0TlAtemql7jNB4h6RqlVwn3JrFTuIJixNTyGnOZonaT0xyM5cEF3ncP1K2u2kDsHcZLcWdRszIl/nwpdwCgNBLku/DVLTkBZdzSiXlciG07VloX3J5QIF7gKLAmPDKlIjzahUykSYY44aeFXGph0X4IfEUdGROuEq8VdhPKZMl7MB0yDgHXuNSNAgKKER1PQJyUxyXd7d0jWoy7QpA5vumfBbepimIt9bZa6TV1tn1vP1ihl2ZaIhIcjde6+jyurRIXBjf5Zn1JcgKuJqFSt240Kaf3hO6CRhQplmqjc2U/RnDLPfTMXFLegdIJth2lG+5nZYfFMypRrJr2w3f2zF0u2E49o7hWg3D86UhBRyPvsZ8wC1kxIxnYN0EboIKVT+ltKKtfTaThhCtB6BDDGPMXQxWADRHC5effig5qLmKwvIx0UxbrJ+SurLHcpeOMKkCmvVcp5GZoiUy8kTtPLv9ILhXkioxHYk6wjpaZF9kqdT5SZhUG1m5eBQJN/BJ2pMKo1i16gqsL80ZsOxC6sJI3+VBbvNOo2qKW6XOIIZbfVzKj7XHtXR+xiQ95wBPBKfQyfukMNywUiRZSNspmwgqBt4kHjY1mQlJePcHGBfLqA7tqFjqgZivaXpzy2p/8L0VIGco0OG7xxgW9ct9+/xFh6XcbgF1/sCecMLeoZS3XLFENJZ7TOjOytVzPouh6YpimLsZaAGdGxawP0N6URpmLVB/IvI5KW6S+FPQnzI9HLODaMW1dGBsTthgFk8zLkAVL8Xhtyeos+YRv3UOShX9GBiQjhTeXgGa8luq015+mN1OJ+htKT+P4qoBQClNwCgaBMPgBrjTML5b0gLTofBH3fsOluQD2A7DOV8FkwnojZUtmHztMM9eVjVyqUWGiVgYR55pyRLjdJhGLj5cMCru2aL3ozSbzHmVZLA42I/0Po7mNJkO5/fPZ0q9TEinnteEvV8EXbEnKJTK23DT+cc0GH/sTNIZ5LnpUFLnDtYzUp9S3Syg3VFxM9QXAP/qF7AeeDcsjZO/BzKcVL8pIfFNB71oQR8dGUOg6Q75Lmdfs1SG4w6pmdSyyC0FMXf6CU9odCxJWVoETJqhlgpgjUnWIIPsxmEwzarZE1UGJat6B/TSfj+9YxagEsUu76lLPlXQQbVr5JGMY6dd6bbIr72TwEKDDI8vyXknNByZV5eJdLLd0eEDhrl2eHEiTy7ZuNEOck3UQ8FiFhx8kjIdGnVFhVGiwO/BYmBj6Ep+FZNsMidvS7QVwSUBy3N5P+jvGiaqKr7fMGxXMDzKltABbR77mHaBgqcNrDGVkYKFM8k9TMVvWOBM/hXAAJQgeMo+zFAAcv2i+DndO8rvv6mj5VcMip/w2AQxTxGqoH6aHxfO+VbOV3xtGPls537NErszmNcvgzu+uTDVEYmWiBnbwoPOHD1lTz4DA0j6T0Ot0eii7GkMsMY85aKYjINh1gOdD1DrBi/iwGP456+Kx092Ba+CfpY2Bpi5PqTq7Tz1/J52cX6mZp6XM9e4/w30PYmipGQ1WbW1vCHofiOB6dKvhPYdKnsw70yRnYrsFbCii3cj9N8LT98FJfvSBE7mThhG4coxftqnk2GWw022h70RtItFb4ETxOQelPZNTiO87nZHOk1Incglef2wYI6Uzo9mzS31PEC1K1EN5lZK2XKTgHhddC9ys2SHJe0gLe8tWBKtt7yYPHbLnPOoBOReTMYUdsRNHLzT1cLrXQ32TxHaIEY94s4gUdOWSgTvoHp5mwzjVoY58LIdDjv0VjVYNpP8gGOH66Lc/lWv86DqBu+FInpxrLGKWsyQwxVwWucKVxCRY0PBjkONh0xw6H0PBvpQ5v/A4/LpCFOFZkpvjYDtfaEmfa4On55egPV/M6XibHliUWA+k4QcxEyRla4z8l/GWSlWIe2pbjt2kMfn/K7K59uSRyioYEXaW8plDNtE6hQ/B2qFXE9vEZVO2W08UPzJeQ7vRJH6bnwbfErSsZwtq/AXlP2DuTeQkJ7ZsepRbi4U2KEY/NYlYeb+DPU515dlz+q7cTxIQVtD7qg85Qn9UnTiEofq0FEctpCUyBdMSkDa6+XzQgt2TEkVMWZHwJjs2mIk31cmXWx7od+w/bbd8HzfanTNrtWIvMj39MAMLcdQky6KHW9wd33jH3f/sO473rCuwGzMEkkqZxZCcdFowwbo1CKBjdYsmUx4mJfb5YxyGZMJ+ty3ROIDvqfUk+TLy1g9yqTA0IT/tsJDLpJTcpnf6Uihz2srK1Ify6XmGhpVGYdPPc/082P328B0XOwwNk3f92Lb9CLdjaOw5wMMA8eLQtuL21EQ9QIvaPcco93t6r6vR34QWO2upZu23bVDo9o3JqY7UxB2lA6an+dN0TQsu10xR8ezHSvu6lbbs/Woa+g+zDnutbtGaAPB+b1etw1z99tBEPRi045Cr+d7fuTYoWWElrvmHItFq0vJv6pnbvuuUzFx03C6PcPygKe1eyGgZKgHcWy0dSPqmaYTW343ahth5AShZ8Sx09O7vmF0XcNwYjNye08xcXHNv3rijqObVVjR9h1ft3XDDs0odL2eY7UDmGlgdntWN7I8ywkcRA+760ROt21H0KTth13HsmLT159i4kp0dPXcDcc19YrJ24AEXtvrhW7UjWLL1bum5ZhOz4wNw7b1nt7zATHcyHO7btePo9hz2u2258VW14HtaT9q8qUa57OzblciitN19UA3I9u2bMszXBewOtJ9Pe7ixEzD9Qwj9OCtacR+NzAttxsF3dCI4SPHiNad8pOVZa7gM5bhVqxQt2K95zimDwjk63oPNiYIgaM4gF9tM/SsODCCIG4HkQ3cJbRsJ9J1ByghNPS2FXQXr7Ayc2wFlZpWFb7Ybb/XtexuOwAOFJlOGPT8EFhg7ME0DdeJTM8wu90ucJx2OzZ7gR5ZRmzEXmQB2+wpruba/+1841Xb8Pvm/wYK96xS/m/Dc83n/N+/xx8qLTNuiv/JfNpfk9ez/vU5t0WKa/zW8w3TsJ2u7VpRFJqebTqBa0Q+CHjdcq3Yt1y/7fakW0ZccMEIMJY4O85E6mzep5pxW3Iv0IRALltdH7ibH0Rm4Hpd0OZ6RtALQVT3AGB+6MZOYOquo4c+/M+3e2bPhUXFXVv48nIm6ejSWJhiKFQcKZdnvlpZKnfWeVotiQTDHw/1SjmYngj1DMf2I9uIQzvyrS5oFX7YBsGqt7umaYewksDWYz/oPhb1vC7YDO1uGPYcM2zDjGzTNEHZAnw0ug5iogETgQn4ICfNCJR0v216lt0zorAL2zmDevD6sahXoe4uQL2n0HP/oKg3e/nwibDP1UHbbneddtDrhvBdEAD8eoCOXTMIQbcFLdwAzVV/LPbpkR54XcP3HBwGjEBAMx/gpJMGCZsYAqeIPE8HDc4123oE7LjbjrswcRf0f6eMfYYNiPBY9Ks2WhZg4FMYK380DFRspKdFPTP0w7jtumavpwdtr234IPtM3+95ptd2DV/3nMB39OCxqBfq7bAbOK5t9IBzdHXXBctB93ttN3L8LgwLBpujW0Y7jJ3Itlx4Z5vt0NG7VgAsMiqjXvvr8a7a3lwkbZ/A1Pw3RLjlh2FPzeUATp7R6xo9AKVr2rYLbAc/M4BI7bbZBeUvdh+NaoA7II70bmjHbdNCUWSA/enqICtBq3TcHqh9XhewvQsSCsbV/cjx2o5v2k7bCOxeGdVABDvzkW1N9+IiyfoEfsU/AF/j/synxS2gUIBNBJpG2wlgoqHn+hZYEgZwsdgE0eBYYFD0eo/FLcvvOV0PMCU2vNAN7KjrRV3H1UFYg1R1QPfu9uzQdoHwPV23QSPv9nSrazt27Lttz5qRoPDUXoOTzTqDFyDUUziB/wiCchy20DPXwketYb+luuVauVeuNccp97SYGAHjiQzQUGLQgl3HBFjrKPRMXQ/MyLEAwKisPFqX64HJAuOAyNZ1F0zBEAy/QPe90LDart2Ne74T+i5sdawDa/WtGKbt+7AA2OvQj2cEquutZ8Q+tT90AR4/hSP0EXi8amRdfWaPukbg9Fy9jSpq23b00AxsM+jBrgHjMGHCvuM5oDvA3PUQ8Krb86M4aPsgklww+doze9T2PUMePQZRh4ZlCPL0a+z1Bg1WRUJERDSCbjJnqX7XRbM1CnTHtyygnG5s2L1YD3ptJ+q1Y90NjEg3A9+IAkDWIIicELbKDC1QBcHiLS/V8T3dXbDU2i/PZSqf/57/nv+e/57/nv+e/57/nv+e/57/nv+e/57/nv+e/57/nv+e//69//4/QYccVgCQAQA="
+  },
+  "manifest": {
+    ".github__workflows__build-action.yml.txt": {
+      "bytes": 7729,
+      "sha256": "e22997e427d06edcf92b3a57dc47e8dadfa7a8f518bb0990d9aa38b30244b4c1"
+    },
+    "frida-java-core__pom.xml.txt": {
+      "bytes": 21348,
+      "sha256": "57453eb038740db109299ef8b1c4bac9ffb86ed98aaafe24dc7f979d54c31c36"
+    },
+    "frida-java-core__scripts__build-frida-linux.sh.txt": {
+      "bytes": 4965,
+      "sha256": "215bf137acc8fca2cc0aee1801df225e39bd81cd5ac71ee5f0b911b6115e2d6f"
+    },
+    "frida-java-core__scripts__build-frida-macos.sh.txt": {
+      "bytes": 5502,
+      "sha256": "e895904014c2dc67f538a81ca2bf3bd3735a5e8da4b5d5b84d7f589cb533e290"
+    },
+    "frida-java-core__scripts__build-frida-windows.ps1.txt": {
+      "bytes": 15620,
+      "sha256": "4afe787fc6dbde360b23525f2e11440f0f94c36d76b6b9ede7588877e3b5aee8"
+    },
+    "frida-java-core__scripts__build.properties.txt": {
+      "bytes": 85,
+      "sha256": "25b60a02d443437166c9fd090eb877e216711c744321e9ba236bdabc1ea0251d"
+    },
+    "frida-java-core__src__main__java__nl__axelkoolhaas__frida_java__FridaLibraryLoader.java.txt": {
+      "bytes": 7316,
+      "sha256": "03e0f5529bf3900fde3acb0952dc82c73ea1aae8ad48b3c345d005611c1083ab"
+    },
+    "review.json": {
+      "bytes": 22788,
+      "sha256": "5be703a21345c0c9413658f97312ab123e149321dd46881b1d4c182ac9866d34"
+    },
+    "source-receipts.json": {
+      "bytes": 4923,
+      "sha256": "4489fb34b8a213d25caf9c57de7fde165d2712bbbf8b88e2fa0d31e1e7d327df"
+    }
+  },
+  "retrieval": "Decode archive.data, verify archive.sha256, then verify every member against manifest. Read review.json and the numbered source receipts; original scratch paths are historical. No native execution is accepted by this artifact."
+}
