@@ -84,7 +84,7 @@
       }
     ],
     "keys_removed": true,
-    "local_directory": "Retained until durable archives are committed and verified."
+    "local_directory": "Removed after verifying committed raw archives at 6e9df6e4c2. Final consumer has independent ownership."
   },
   "archives": {
     "runtime-evidence.zip": {
