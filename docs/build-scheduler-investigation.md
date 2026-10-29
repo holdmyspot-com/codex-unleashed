@@ -2788,3 +2788,57 @@ compiler allocation-denial coverage, other platforms or Cargo/Bazel integration.
 The next implementation must preserve the existing `JobQueue.Attempt` lifecycle
 contract and establish focused behavioral failures before production edits.
 Checkpoint 3 remains incomplete.
+
+### Direct JDK FFM ownership of the Frida runtime
+
+The scheduler now has a maintained `FridaRuntime` owner for one native runtime
+and its separate local managers. Its constructor acquires nothing; a failed
+start retains partial resources until close. Each manager closes and unrefs its
+owned native references before releasing its registration. Global shutdown
+refuses remaining managers and latches a teardown failure rather than repeating
+uncertain native effects. Operations stay on the constructing thread.
+
+The selected Java access layer is JDK 27 FFM. The evaluated binding's low-level
+loader supplies no required operation beyond JDK library lookup and downcalls;
+its high-level wrappers retain references/callbacks and hide unload failures.
+The explicit boundary therefore removes the Java binding dependency while
+keeping the pinned Frida 17.24.3 native library. The caller must provide its
+verified producer path. Native packaging across the release matrix remains
+unaccepted.
+
+Frida's own initializer supplies its native dispatcher. This owner adds no
+second Java GLib loop. The pinned implementation permits initialization only
+once per JVM, even after deinitialization; the controller must use one loaded
+owner type and no other initializer. Exact GLib export names come from the
+devkit's prefixed ABI. A failed plain-name lookup is retained in the evidence.
+
+[Runtime ownership evidence](evidence/java-frida-runtime-ownership.json)
+records incremental and fresh Linux x86-64 checks through a separate caller.
+Two managers prevent global shutdown; closing the first permits another backend
+acquisition, and all managers then close before native shutdown returns. A
+second initialization is rejected. The actual Maven-built JAR passes that probe
+with native access granted only to `com.holdmyspot.codexunleashed.tooling` and
+other native access denied. Two maintained ownership tests and all 206 tooling
+tests pass from a fresh output directory; scoped Javadoc checks pass.
+
+This new external API could not provide a behavior-specific preimplementation
+failure before its type existed. Native boundary checks preceded production
+copying; maintained tests follow that evidence, without claiming a compilation
+failure as a behavioral red. The initial full tooling attempt records eleven
+missing-Rust setup errors. Those cases pass incrementally after selecting the
+installed pinned toolchain, followed by the fresh complete tooling verification.
+Maven acquisition also requires its explicit proxy settings in this local
+environment. Neither correction changes upstream source or tests. The native
+producer's known stack-guard warning remains visible.
+
+The binding's source-inspected cleanup findings are filed upstream as
+[retained native references](https://github.com/shoaloak/frida-java/issues/7),
+[retained callback registrations](https://github.com/shoaloak/frida-java/issues/8)
+and [hidden unload failures](https://github.com/shoaloak/frida-java/issues/9).
+These reports distinguish inspected paths from unexecuted regression cases.
+
+The owner does not yet implement `JobQueue.Attempt`. Actual script callbacks,
+compiler survival after peer cancellation in this native-dispatcher topology,
+forced cleanup failures, compiler allocation denial, other platforms and
+Cargo/Bazel remain unaccepted. The previous two-compiler diagnostic used a
+different loader/dispatcher arrangement and cannot close those gates.
