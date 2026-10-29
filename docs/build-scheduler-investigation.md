@@ -2751,3 +2751,40 @@ These in-memory checks establish requests and failure propagation. Native
 measurement/control composition, process-state reconciliation, estimate updates,
 allocation blocking and Cargo/Bazel scheduling remain open. This downstream
 tooling has no upstream test counterpart. Checkpoint 3 remains incomplete.
+
+### Concurrent compiler ownership in one Java runtime
+
+[The two-compiler native diagnostic](evidence/linux-concurrent-compiler-attempts.json)
+passes incrementally and with fresh Java/native builds on retained free Linux
+x86-64 run `40938403653`. One Java controller owns the Frida runtime and dispatcher;
+each compiler has a distinct DeviceManager and unchanged production supervisor.
+Both compilers are held after image replacement and hook installation. The
+controller terminates the first, closes only its manager and accepts the owner's
+actual exit 137. The second remains attached, pending and without metadata, and
+its script answers a new token/nonce message. Explicit resume then produces
+metadata and the owner's actual exit zero.
+
+Per-attempt native references close before shared runtime shutdown. The second
+attempt's callback arena remains alive until the first context stops the shared
+runtime, then closes. Both runs report zero callbacks in flight during teardown.
+All eight compiler/supervisor PIDs are absent, owned cgroups and scratch are
+removed, SSH exits zero and hosted cleanup passes. The workflow retains only its
+deliberate exit-17 failure.
+
+The first client sent multiline setup ahead of command completion; trailing input
+was lost at `sudo`. Its interrupted result and transcript remain recorded. A
+replacement connection verifies the same worker and retained setup before
+continuing with single-line commands. Collection separately failed by treating
+cgroup control files as child jobs; checking child directories and `cgroup.procs`
+corrects that predicate without rerunning the accepted compiler checks. Archive
+parsing also needed to remove actual terminal control sequences before matching
+its first marker. Complete member verification passes after that correction.
+
+The pinned Frida source review independently traces separate manager ownership
+trees and distinguishes per-manager close from global deinitialization. Together
+these results support separate runtime and attempt owners for production
+integration. They do not accept arbitrary concurrent error/teardown combinations,
+compiler allocation-denial coverage, other platforms or Cargo/Bazel integration.
+The next implementation must preserve the existing `JobQueue.Attempt` lifecycle
+contract and establish focused behavioral failures before production edits.
+Checkpoint 3 remains incomplete.
