@@ -2617,8 +2617,25 @@ retains only its deliberate exit-17 failure. The evidence separately preserves
 the initial fixture type error, the ARM client's wrong-run selection and expiry,
 and the terminal-parser correction; none is attributed to upstream Codex.
 
-Controller handling of unavailable observations remains unaccepted. Its next
-focused gate must show that a failed tree measurement issues neither START nor
-RESUME, preserves live work and queue order, exposes the failure, and permits
-reconsideration after a fresh successful measurement. Live sampling does not
-complete checkpoint 3 or establish allocation blocking and Cargo/Bazel scheduling.
+### Java memory-reading and admission cycle
+
+`Controller.cycle(jobs, completions)` now connects fresh host and owned-tree
+readings to the admission policy and issues at most one process-control request.
+It validates job identities and ordering before calling either external boundary.
+A failed reading propagates without issuing a control or advancing swap history;
+the next cycle reads again. The caller retains queue and process-state ownership,
+and must establish the actual outcome of a partially applied control before
+submitting another snapshot.
+
+[Controller-cycle evidence](evidence/java-scheduler-controller-cycle.json)
+records eight passing checks at the measurement/control-request boundaries.
+They establish fresh-residency admission, failed-reading refusal of starts and
+resumptions, fresh-reading FIFO recovery, preservation of the last complete swap
+baseline, invalid-input refusal and propagation of control failures without a
+retry within the cycle. A fresh complete tooling build passes all 138 tests.
+Javadoc checks pass after the class and method documentation review.
+
+These in-memory checks establish requests and failure propagation. Native
+measurement/control composition, process-state reconciliation, estimate updates,
+allocation blocking and Cargo/Bazel scheduling remain open. This downstream
+tooling has no upstream test counterpart. Checkpoint 3 remains incomplete.

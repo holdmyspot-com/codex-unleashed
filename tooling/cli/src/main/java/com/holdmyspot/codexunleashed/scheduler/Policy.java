@@ -10,9 +10,9 @@ import java.util.Set;
 /**
  * Chooses one admission or recovery control from an immutable scheduling snapshot.
  * <p>
- * This operation has no native effects. The controller must acknowledge each returned control, reap terminated
- * process trees and obtain fresh measurements before requesting another decision. Concurrent calls with independent
- * snapshots share no mutable state.
+ * The policy returns requests and does not control processes. Before another decision, the controller must record
+ * the actual outcome of the previous request, reap terminated trees and obtain fresh memory readings. Concurrent
+ * calls with independent snapshots share no mutable state.
  */
 public final class Policy
 {
@@ -36,7 +36,7 @@ public final class Policy
 		BLOCKED,
 		/** An attempt selected for termination whose tree has not yet been reaped. */
 		STOPPING,
-		/** An aborted action awaiting an eligible completion epoch and memory budget. */
+		/** An aborted action awaiting its required completion count and enough memory. */
 		RETRY
 	}
 
@@ -151,7 +151,7 @@ public final class Policy
 	}
 
 	/**
-	 * Reserves machine headroom and bounds live process attempts by the build tool's default concurrency.
+	 * Defines the physical memory reserved for other work and the maximum number of live process attempts.
 	 *
 	 * @param headroomBytes the nonnegative physical bytes reserved for the operating system and other work
 	 * @param jobs the positive maximum concurrent live attempts
@@ -216,8 +216,9 @@ public final class Policy
 	 * Otherwise the oldest blocked denial precedes retries in original submission order, which precede new work.
 	 * An ineligible or unaffordable older action is never bypassed. Resumption does not consume another process slot.
 	 * <p>
-	 * Admission reserves headroom and expected remaining growth of other running attempts. Unknown demand is measured
-	 * exclusively and requires at least one byte beyond headroom. Estimates do not guarantee sufficient future memory.
+	 * Admission reserves headroom and expected remaining growth of other running attempts. Work with an unknown peak
+	 * demand requires no other live attempts and at least one byte beyond headroom. Estimates do not guarantee enough
+	 * memory for the attempt to finish.
 	 *
 	 * @param budget the headroom and concurrency limits
 	 * @param jobs the unfinished actions with unique identities, positions, attempt sequences and denial sequences;
@@ -274,7 +275,7 @@ public final class Policy
 	 *
 	 * @param running the currently running attempts
 	 * @param live the running and blocked attempts
-	 * @param observation the current pressure and latched swap incident
+	 * @param observation the current pressure and active swap-growth incident
 	 * @return a termination request for the newest eligible attempt, or a waiting request
 	 */
 	private static Decision choosePressureControl(List<Job> running, List<Job> live, Observation observation)
@@ -345,7 +346,7 @@ public final class Policy
 	 * @param jobs the validated individual action records
 	 * @throws IllegalArgumentException if identities, positions, or present attempt or denial sequences repeat
 	 */
-	private static void validateSnapshot(List<Job> jobs)
+	static void validateSnapshot(List<Job> jobs)
 	{
 		Set<String> names = new HashSet<>();
 		Set<Long> positions = new HashSet<>();

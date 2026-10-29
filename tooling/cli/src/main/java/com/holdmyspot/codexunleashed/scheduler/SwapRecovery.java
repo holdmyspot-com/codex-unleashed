@@ -1,9 +1,10 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 /**
- * Tracks observed swap growth for one single-thread-confined controller.
+ * Tracks swap growth across successful memory readings for one controller.
  * <p>
- * Call only after a successful native sample. Fresh growth permits recovery even without a native pressure signal.
+ * Use an instance from one thread, and call only after a successful memory reading. Fresh growth permits recovery
+ * even without a native pressure signal.
  * A non-growing sample without pressure clears the incident; occupied swap need not decrease. This class performs
  * no process control.
  */
