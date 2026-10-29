@@ -1,3 +1,11 @@
+/**
+ * Create RUNNER_TEMP/codex-focused-runtime for one job and publish its build,
+ * Cargo, temporary, evidence, and upstream-source paths through GITHUB_ENV.
+ * Record the directory through GITHUB_STATE; post removes the STATE_storage path.
+ * Requires RUNNER_TEMP, GITHUB_WORKSPACE, GITHUB_STATE, and GITHUB_ENV.
+ * Reject an existing directory without changing it. A setup failure after
+ * creation removes the new directory and rethrows; publication may be partial.
+ */
 const fs = require('node:fs');
 const path = require('node:path');
 

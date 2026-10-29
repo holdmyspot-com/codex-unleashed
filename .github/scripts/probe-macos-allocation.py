@@ -28,8 +28,8 @@ def emit(event, **details):
 def run_worker():
     """Deny a 256 MiB mapping with RLIMIT_AS, await permission, restore and retry.
 
-    The soft allowance is measured virtual size plus 32 MiB. A null mapping is
-    exposed by Python as OSError(ENOMEM); another error fails the diagnostic.
+    The soft allowance is measured virtual size plus 32 MiB. Allocation failure
+    must raise OSError with ENOMEM; another result fails the diagnostic.
     Both attempts use the same size, protection and anonymous/private flags.
     """
     requested_bytes = 256 * 1024 * 1024

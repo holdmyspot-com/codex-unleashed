@@ -11,6 +11,17 @@ import time
 
 
 def main():
+    """Run the Java process diagnostic and retain its logs and JSON receipt.
+
+    Requires native Windows and absolute existing --java, --jcmd, --cmd, --git
+    and --source files; java and jcmd must share a JDK bin directory.
+    --owned-parent must be an existing absolute directory. Creates a retained
+    child directory there and prints its path; the workflow owner must upload
+    or inspect it, then remove it. Starts a thread dump after ten seconds
+    if Java is still running, requests termination near the 180-second deadline,
+    and records reaping results. Returns the Java status on ordinary completion,
+    124 on deadline, or 125 on launcher or cleanup failure. Argument and platform
+    errors raised before diagnostic setup do not produce a receipt."""
     if sys.platform != "win32":
         raise RuntimeError("This diagnostic launcher requires native Windows Python")
     parser = argparse.ArgumentParser()
@@ -35,6 +46,7 @@ def main():
     size_type = C.c_size_t
 
     class StartupInfo(C.Structure):
+        """Represent the Windows STARTUPINFOW layout and child standard-stream handles."""
         _fields_ = [("cb", W.DWORD), ("reserved", W.LPWSTR), ("desktop", W.LPWSTR),
                     ("title", W.LPWSTR), ("x", W.DWORD), ("y", W.DWORD),
                     ("xsize", W.DWORD), ("ysize", W.DWORD), ("xchars", W.DWORD),
@@ -43,25 +55,30 @@ def main():
                     ("stdin", W.HANDLE), ("stdout", W.HANDLE), ("stderr", W.HANDLE)]
 
     class ProcessInfo(C.Structure):
+        """Receive the Windows PROCESS_INFORMATION handles and process/thread IDs."""
         _fields_ = [("process", W.HANDLE), ("thread", W.HANDLE),
                     ("pid", W.DWORD), ("thread_id", W.DWORD)]
 
     class BasicLimits(C.Structure):
+        """Represent Windows JOBOBJECT_BASIC_LIMIT_INFORMATION for job limits."""
         _fields_ = [("process_time", C.c_longlong), ("job_time", C.c_longlong),
                     ("flags", W.DWORD), ("min_working_set", size_type),
                     ("max_working_set", size_type), ("active_limit", W.DWORD),
                     ("affinity", size_type), ("priority", W.DWORD), ("scheduling", W.DWORD)]
 
     class IoCounters(C.Structure):
+        """Represent Windows IO_COUNTERS embedded in the extended job limits."""
         _fields_ = [(name, C.c_ulonglong) for name in
                     ("read_ops", "write_ops", "other_ops", "read_bytes", "write_bytes", "other_bytes")]
 
     class ExtendedLimits(C.Structure):
+        """Represent Windows JOBOBJECT_EXTENDED_LIMIT_INFORMATION; memory limits use bytes."""
         _fields_ = [("basic", BasicLimits), ("io", IoCounters),
                     ("process_memory", size_type), ("job_memory", size_type),
                     ("peak_process_memory", size_type), ("peak_job_memory", size_type)]
 
     class Accounting(C.Structure):
+        """Represent Windows JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, including active processes."""
         _fields_ = [(name, C.c_longlong) for name in
                     ("user", "kernel", "period_user", "period_kernel")] + [
                     (name, W.DWORD) for name in
@@ -91,16 +108,22 @@ def main():
         function.restype = result
 
     def check(result):
+        """Return a successful native BOOL or handle; raise the last Windows error on a false result."""
         if not result:
             raise C.WinError(C.get_last_error())
         return result
 
-    def active_processes(job):
+    def count_active_processes(job):
+        """Return the number of active processes in job; raise the native query error on failure."""
         accounting = Accounting()
         check(kernel.QueryInformationJobObject(job, 1, C.byref(accounting), C.sizeof(accounting), None))
         return accounting.active
 
     def duplicate(file):
+        """Duplicate a file handle for child inheritance; the caller must close the returned handle.
+
+        The file must expose a Windows descriptor. Native duplication failure raises
+        the last Windows error without transferring a handle."""
         handle = W.HANDLE()
         current = kernel.GetCurrentProcess()
         original = W.HANDLE(msvcrt.get_osfhandle(file.fileno()))
@@ -132,6 +155,14 @@ def main():
         check(kernel.SetInformationJobObject(job, 9, C.byref(limits), C.sizeof(limits)))
 
         def spawn(command, output):
+            """Launch command in the owned job, forwarding both output streams to output.
+
+            command begins with the executable path. The child inherits the prepared
+            environment and uses work as its directory; output remains borrowed.
+            Returns PROCESS_INFORMATION after job assignment and resumption. Registers
+            the process for final reaping and releases temporary stream/thread handles.
+            Native creation, assignment or resumption errors propagate; assignment or
+            resumption failure also requests termination of the newly created process."""
             startup = StartupInfo()
             startup.cb = C.sizeof(startup)
             startup.flags = 0x100
@@ -203,9 +234,9 @@ def main():
         if job:
             try:
                 check(kernel.TerminateJobObject(job, 124))
-                while active_processes(job) > 0 and time.monotonic_ns() < deadline:
+                while count_active_processes(job) > 0 and time.monotonic_ns() < deadline:
                     time.sleep(0.02)
-                receipt["remaining_job_processes"] = active_processes(job)
+                receipt["remaining_job_processes"] = count_active_processes(job)
                 for process in processes:
                     remaining_ms = max(0, (deadline - time.monotonic_ns()) // 1_000_000)
                     wait = kernel.WaitForSingleObject(process.process, min(remaining_ms, 5000))

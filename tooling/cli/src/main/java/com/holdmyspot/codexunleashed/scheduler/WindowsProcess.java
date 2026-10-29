@@ -390,7 +390,7 @@ public final class WindowsProcess implements AutoCloseable
      * Encodes argv using the Microsoft CRT backslash-and-double-quote rules.
      *
      * @param command validated argv
-     * @return mutable CreateProcess command-line text without its terminating NUL
+     * @return CreateProcess command-line text without its terminating NUL
      */
     private static String commandLine(List<String> command)
     {

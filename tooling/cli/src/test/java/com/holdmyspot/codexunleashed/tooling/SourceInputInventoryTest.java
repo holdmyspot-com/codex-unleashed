@@ -65,7 +65,7 @@ public final class SourceInputInventoryTest
 	}
 
 	/**
-	 * Walks a checkout without Git using the retained directory exclusions and raw content hashes.
+	 * Inventories raw file hashes outside a Git repository while pruning cache and dependency directories.
 	 *
 	 * @throws IOException if fixture writing, inventory, or cleanup fails
 	 */
@@ -157,6 +157,11 @@ public final class SourceInputInventoryTest
 			return Map.of("GIT_CEILING_DIRECTORIES", base.toString());
 		}
 
+		/**
+		 * Deletes the fixture root and all files and directories it owns.
+		 *
+		 * @throws IOException if a fixture entry cannot be removed
+		 */
 		@Override
 		public void close() throws IOException
 		{

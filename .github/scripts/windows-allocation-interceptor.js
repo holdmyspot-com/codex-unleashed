@@ -9,11 +9,16 @@ const originalAllocate = new SystemFunction(allocationAddress, 'pointer', alloca
 let configuration = null;
 
 rpc.exports = {
+  /* Select VirtualAlloc calls by native thread ID and requested byte count.
+   * Return the stored configuration. Selection remains active until replaced
+   * by another arm() call or removeHook(); null results await a retry message. */
   arm(threadId, bytes) {
     configuration = { threadId, bytes };
     return configuration;
   },
-  // Capture native wait locations after the unchanged worker-exit check times out.
+  // Return each thread's ID, state and up to 16 backtrace frames with symbol,
+  // module and module-relative offset; module/offset are null outside a module.
+  // The controller uses this snapshot after the worker-exit check times out.
   inspectThreads() {
     return Process.enumerateThreads().map(thread => ({
       id: thread.id,
@@ -26,7 +31,8 @@ rpc.exports = {
       })
     }));
   },
-  // Isolate whether leaving this hook active prevents native process shutdown.
+  // Revert this script's VirtualAlloc replacement and return true. The controller
+  // retries its worker-exit wait afterward to diagnose a shutdown timeout.
   removeHook() {
     Interceptor.revert(allocationAddress);
     return true;

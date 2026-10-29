@@ -1,11 +1,15 @@
-/* Diagnostic control: forward VirtualAlloc through Frida's direct replacement,
- * using its returned trampoline to call the original implementation. The
- * controller keeps the script and native module alive until worker exit. */
+/* Forward VirtualAlloc through a native hook, with an optional one-request
+ * denial wait and retry configured by armNative(). Without arming, every request
+ * is forwarded unchanged. The controller keeps the script and native module
+ * alive until worker exit. */
 const allocationAddress = Process.getModuleByName('kernel32.dll').getExportByName('VirtualAlloc');
 
-/* Describe up to eight entry instructions and 32 raw bytes at address. Return
- * a relative ARM64 entry-branch target using Frida's exact Int64 immediate;
- * retain decoding failures without skipping the hook-installation check. */
+/* Read 32 bytes at a module-backed entry address and decode up to eight
+ * instructions, stopping at ret/br/b/jmp or a decode failure. Return the
+ * module/offset, bytes, instructions, decode error and first-instruction ARM64
+ * b target as an absolute hexadecimal address (null when absent). Instruction
+ * parse failures become decode_error; byte reads and module lookup are not
+ * caught here and can abort setup. */
 function describeEntry(address) {
   const module = Process.findModuleByAddress(address);
   const instructions = [];
@@ -81,7 +85,7 @@ const retryEvent = Memory.alloc(Process.pointerSize);
 const returnedPointer = Memory.alloc(Process.pointerSize);
 returnedPointer.writePointer(NULL);
 const kernel = Process.getModuleByName('kernel32.dll');
-const nativeForwarder = new CModule(`
+const nativeRetry = new CModule(`
 #include <stddef.h>
 
 typedef void * (* Allocate)(void *, size_t, unsigned int, unsigned int);
@@ -97,8 +101,13 @@ extern void set_last_error(unsigned int error);
 extern int signal_event(void * event);
 extern unsigned int wait_for_event(void * event, unsigned int milliseconds);
 
-/* Call the original trampoline without entering JavaScript or another hook. */
-void * forward_allocate(void * address, size_t bytes,
+/* Forward VirtualAlloc calls unchanged unless armed for this thread's request:
+ * NULL address, 268435456 bytes, type 0x3000 and protection 0x04. Disarm on the first match.
+ * After a null result, signal blocked_event and, only if signaling succeeds,
+ * wait up to the configured milliseconds for retry_event. Retry once only on
+ * a signaled wait. Return the last attempt's pointer and last-error; diagnostic
+ * calls and the timeout sentinel must not change that error. No block is freed. */
+void * retry_allocation(void * address, size_t bytes,
     unsigned int type, unsigned int protection)
 {
     const unsigned int incoming_error = get_last_error();
@@ -150,11 +159,17 @@ void * forward_allocate(void * address, size_t bytes,
   wait_for_event: kernel.getExportByName('WaitForSingleObject') });
 
 rpc.exports = {
-  /* Return the number of matching native calls observed before worker cleanup. */
+  /* Return hook entries since script load with 268435456 bytes, type 0x3000 and
+   * protection 0x04, across all threads and address hints. Retries through the
+   * original trampoline are excluded. Read before worker cleanup. */
   probeAllocationCount() {
     return probeAllocationCount.readU32();
   },
-  /* Configure the single request before the worker receives start permission. */
+  /* Arm the next matching request on threadId before starting the worker.
+   * blockedHandle and retryHandle are event handles duplicated into the worker;
+   * the hook signals blockedHandle on null and waits milliseconds on retryHandle.
+   * Return true after storing configuration. The controller arms once and keeps
+   * the handles and script alive until worker exit; this does not reset counts. */
   armNative(threadId, blockedHandle, retryHandle, milliseconds) {
     blockedEvent.writePointer(ptr(blockedHandle));
     retryEvent.writePointer(ptr(retryHandle));
@@ -164,7 +179,11 @@ rpc.exports = {
     retryState.add(4).writeU32(1);
     return true;
   },
-  /* Snapshot only at a published blocked event or after caller return. */
+  /* Return matching entries, original-call attempts, first/final last-error,
+   * wait result, signal result, deliberate error sentinel and returned pointer.
+   * Read after blocked-event publication or caller return. While blocked,
+   * wait_result remains 0xffffffff and final_error/pointer may still be pending.
+   * This read neither resumes the worker nor transfers pointer ownership. */
   nativeRetryState() {
     return { matching_calls: retryState.add(8).readU32(), attempts: retryState.add(12).readU32(),
       first_error: retryState.add(16).readU32(), final_error: retryState.add(20).readU32(),
@@ -173,5 +192,5 @@ rpc.exports = {
   }
 };
 
-originalAllocation.writePointer(Interceptor.replaceFast(replacementAddress, nativeForwarder.forward_allocate));
+originalAllocation.writePointer(Interceptor.replaceFast(replacementAddress, nativeRetry.retry_allocation));
 send({ event: 'hook_installed', pid: Process.id, address: replacementAddress.toString() });

@@ -6,6 +6,22 @@
 
 extern kern_return_t macx_triggers(int hi_water, int low_water, int flags, mach_port_t alert_port);
 
+/*
+ * Checks whether macOS can disable swap and restore its initially enabled state.
+ * Requires vm.swap_enabled to be 1 before the probe; otherwise exits with 2.
+ * After requesting disable, attempts to enable swap again before checking the
+ * request results. Restoration can fail and leave swap changed; inspect the
+ * restored_swap_enabled output before relying on the initial state.
+ *
+ * Writes initial/observed swap states and kernel request statuses as key=value
+ * lines to stdout, and failure diagnostics to stderr. On complete success, also
+ * writes verified_swap_disabled=true and verified_original_state_restored=true.
+ * Returns 0 when both transitions are verified. Returns 2 when the initial state
+ * cannot be read or is not enabled. After the initial check, failures take this
+ * priority: 3 for the disable request, 4 for the post-disable state read, 5 for
+ * the restore request or verification, then 1 when the post-disable state is
+ * nonzero despite a successful disable request.
+ */
 int main(void)
 {
     enum { SWAP_COMPACT_DISABLE = 0x10, SWAP_COMPACT_ENABLE = 0x20 };

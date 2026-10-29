@@ -8,7 +8,12 @@ import unittest
 
 
 class SignalObservationTest(unittest.TestCase):
+    """Check native runner diagnostics and command exit-status propagation."""
     def test_observes_command_signals_and_preserves_exit_status(self):
+        """Require signal, journal and memory evidence for successful, failed and SIGKILL commands.
+
+        Each invocation owns its temporary directory. Numeric command exits are
+        retained; SIGKILL is returned as shell status 137 while the receipt retains -9."""
         probe = Path(__file__).with_name("probe-runner-signals.py").resolve()
         for exit_code in (0, 17, 137):
             with self.subTest(exit_code=exit_code):

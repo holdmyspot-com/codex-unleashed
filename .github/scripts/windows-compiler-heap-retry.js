@@ -1,5 +1,6 @@
-/* Hold actual null heap allocation/reallocation results in an owned compiler while a controller
- * restores its job allowance. Known instrumentation threads bypass this hook. */
+/* Hold null heap allocation/reallocation results from non-excluded compiler
+ * threads while the controller raises its job allowance. Threads classified
+ * as instrumentation still call the original API but skip retry waits. */
 /* Trampoline for resizing an existing heap block; a null result retains it. */
 const originalHeapReallocation = Memory.alloc(Process.pointerSize);
 const originalHeapAllocation = Memory.alloc(Process.pointerSize);
@@ -30,7 +31,9 @@ extern void set_last_error(unsigned int);
 extern unsigned int wait_event(void *, unsigned int);
 extern int signal_event(void *);
 
-/* Select the original native operation without changing its arguments. */
+/* Invoke allocation for operation 1, otherwise reallocation, with unchanged
+ * native arguments. A null reallocation result leaves the old block owned by
+ * its caller; this dispatcher neither frees blocks nor changes error state. */
 void * call_original(void * heap, unsigned int flags, void * old, size_t bytes,
                      unsigned int operation)
 {
@@ -39,7 +42,14 @@ void * call_original(void * heap, unsigned int flags, void * old, size_t bytes,
     return original_heap_reallocation(heap, flags, old, bytes);
 }
 
-/* Both entry points share exclusion, first-denial reporting and native waits. */
+/* Call the original operation with unchanged arguments and incoming last-error.
+ * Null results from non-excluded threads without flag 4 wait up to 30000 ms
+ * for permission; a signaled permission event permits one retry. The first
+ * such denial selected by event 4 publishes diagnostics and signals event 0,
+ * then signals event 2 after its result is recorded and waits up to 30000 ms
+ * for release event 3. Other eligible denials also wait/retry but do not
+ * overwrite that record. Return the last attempt's pointer and last-error;
+ * no block is freed here, including an old block after failed reallocation. */
 void * retry_allocation(void * heap, unsigned int flags, void * old, size_t bytes,
                         unsigned int operation)
 {
@@ -87,12 +97,15 @@ void * retry_allocation(void * heap, unsigned int flags, void * old, size_t byte
     return result;
 }
 
-/* Preserve each export's native signature while sharing retry behavior. */
+/* Retry an RtlAllocateHeap request through the shared denial/wait path;
+ * preserve its native arguments, returned pointer and final last-error. */
 void * retry_heap(void * heap, unsigned int flags, size_t bytes)
 {
     return retry_allocation(heap, flags, NULL, bytes, 1);
 }
 
+/* Retry an RtlReAllocateHeap request through the shared denial/wait path.
+ * Preserve old on null failure; return the last attempt's pointer/last-error. */
 void * retry_reallocate(void * heap, unsigned int flags, void * old, size_t bytes)
 {
     return retry_allocation(heap, flags, old, bytes, 2);
@@ -112,7 +125,13 @@ rpc.exports = {
    * thread IDs; handles contains exactly five duplicated native event handles
    * in denied/permission/returned/release/first-denial order. Return the state
    * address, excluded thread IDs, target and native architecture. Refuse more
-   * than 64 instrumentation threads. This classification is diagnostic only. */
+   * than 64 instrumentation threads. This classification is diagnostic only.
+   * Install once before compiler stdin is admitted. Event 0 reports the selected
+   * denial; event 1 permits retry; event 2 publishes its final result; event 3
+   * releases that call; event 4 selects the first denial. The controller supplies
+   * the event states and keeps these worker-owned handles and the script alive
+   * while hooks can run. state_address is diagnostic memory, not an allocation
+   * returned to the compiler; installing hooks does not close the event handles. */
   install(initialThreads, handles) {
     const initial = new Set(initialThreads);
     const excluded = Process.enumerateThreads().filter(thread => initial.has(thread.id) === false)

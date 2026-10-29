@@ -10,7 +10,13 @@ import tempfile
 
 
 def inactive_xcodes(applications: Path, selected_developer: Path) -> list[Path]:
-    """Select versioned application directories while preserving active Xcode."""
+    """Find sorted, non-symlink Xcode_*.app directories excluding selected Xcode.
+
+    applications names the containing directory. selected_developer must
+    resolve to an existing Xcode*.app/Contents/Developer directory directly
+    inside it; otherwise raises ValueError, or a filesystem resolution error.
+    Returns an empty list when no candidate qualifies; changes no files.
+    """
     selected = selected_developer.resolve(strict=True)
     selected_app = selected.parent.parent
     selected_is_xcode = (
@@ -38,6 +44,9 @@ def inactive_xcodes(applications: Path, selected_developer: Path) -> list[Path]:
 
 
 def native_tools() -> dict[str, str]:
+    """Read the selected developer directory, SDK path and clang version.
+
+    Returns a string mapping; native command failures propagate."""
     return {
         "developer": subprocess.check_output(["xcode-select", "-p"], text=True).strip(),
         "sdk": subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip(),
@@ -45,12 +54,23 @@ def native_tools() -> dict[str, str]:
     }
 
 
-def free_bytes(path: Path) -> int:
+def available_filesystem_bytes(path: Path) -> int:
+    """Return filesystem bytes available to an unprivileged process at path.
+
+    Uses available blocks, excluding reserved free blocks; filesystem errors propagate."""
     filesystem = os.statvfs(path)
     return filesystem.f_bavail * filesystem.f_frsize
 
 
 def main() -> None:
+    """Remove inactive versioned Xcode directories on a disposable hosted macOS runner.
+
+    Requires --evidence-directory, native macOS, GITHUB_ACTIONS=true and
+    RUNNER_ENVIRONMENT=github-hosted. Writes a removal plan before sudo deletion,
+    then checks that selected tool identities are unchanged and a native C
+    compilation runs. Writes the result only after those checks pass. Platform,
+    selection, deletion, tool or smoke-check failures propagate; earlier successful
+    deletions are not rolled back."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-directory", type=Path, required=True)
     args = parser.parse_args()
@@ -72,7 +92,7 @@ def main() -> None:
     before = {
         "applications_base": "/Applications",
         "planned_removals": [app.name for app in candidates],
-        "free_bytes": free_bytes(applications),
+        "free_bytes": available_filesystem_bytes(applications),
         "selected_tools": before_tools,
     }
     (evidence / "xcode-cleanup-plan.json").write_text(
@@ -108,7 +128,7 @@ def main() -> None:
             )
 
     after = {
-        "free_bytes": free_bytes(applications),
+        "free_bytes": available_filesystem_bytes(applications),
         "selected_tools": after_tools,
         "compiler_smoke": "passed",
         "removed_applications": before["planned_removals"],

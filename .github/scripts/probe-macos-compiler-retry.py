@@ -3,7 +3,8 @@
 Supply an absolute rustc path, its expected host triple and an existing owned
 storage directory. Requires pinned Frida and the adjacent mapping hook. The
 compiler alone receives a temporary address-space limit. Missing pipe events
-fail after 30 seconds; compilation has a 90-second limit. Cleanup reaps the
+fail after 30 seconds; the reference compilation and instrumented compiler I/O
+each have a 90-second timeout. Cleanup reaps the
 owned compiler before detaching. This diagnostic does not prove physical
 pressure recovery, general thread classification or scheduler integration.
 """

@@ -21,9 +21,11 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Owns one Linux action tree in a dedicated supervisor JVM with no unrelated children.
- * The caller must provide elevated cgroup-management authority and native access.
- * Root observation does not imply descendant completion. Instances are single-thread confined.
+ * Owns one Linux action tree from a dedicated supervisor JVM that has no unrelated children.
+ * Use this class only in that dedicated JVM: it enables child-subreaper adoption, and its native waits collect
+ * statuses from any child after the workload root has been waited. The caller must provide elevated
+ * cgroup-management authority and native access. Root exit does not establish descendant completion.
+ * Instances are single-thread confined.
  */
 public final class LinuxProcessTree implements AutoCloseable {
     /**
@@ -127,7 +129,8 @@ public final class LinuxProcessTree implements AutoCloseable {
     /**
      * Creates an exclusive cgroup and a trusted Java helper; verifies placement before returning.
      * Workload execution remains gated until release and self-expires after 60 seconds without release.
-     * On failure, owned work is terminated/reaped and acquired storage is removed; cleanup errors are suppressed.
+     * On failure, cleanup attempts to terminate and reap owned work and remove acquired storage; cleanup failures
+     * are suppressed on the preparation failure and can leave work or storage behind.
      * @throws IOException if native authority, process creation, containment or readiness fails
      * @param launch immutable workload and containment inputs
      * @return the prepared owner with execution still gated
@@ -244,8 +247,9 @@ public final class LinuxProcessTree implements AutoCloseable {
 
     /**
      * Observes natural completion without termination, collecting at most one adopted status.
-     * Returns false while the root or descendants remain, and true only after Java root waiting,
-     * native ECHILD and populated0. Call again to advance pending adopted-status collection.
+     * Returns false while the root or descendants remain or collected child statuses still need to be drained.
+     * Returns true only after waiting for the root, establishing that no child remains to be waited for, and
+     * observing no live process in the cgroup subtree. Call again to advance pending adopted-status collection.
      * No signal or cgroup.kill write occurs. Observation failures leave cleanup with the caller.
      * @return true once root and descendant completion have been established
      * @throws IllegalStateException if closed
@@ -270,7 +274,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     }
 
     /**
-     * Indicates whether public termination was requested; this remains distinct from a successful root exit.
+     * Indicates whether explicit termination or cleanup requested termination; a successful root exit can still have this flag.
      * @return whether explicit or cleanup termination was requested
      */
     public boolean terminationRequested() { return terminationRequested; }
@@ -311,7 +315,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     }
 
     /**
-     * Reads the authoritative populated field without treating an absent field as an empty group.
+     * Indicates whether the kernel reports live processes in the action cgroup or a descendant cgroup.
      * @return whether the kernel reports live processes in the action cgroup subtree
      * @throws IOException if events cannot be decoded or population is absent or invalid
      */

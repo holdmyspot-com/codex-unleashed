@@ -60,13 +60,14 @@ public final class SourceCacheMetadata
 	}
 
 	/**
-	 * Retains the metadata target path or uses the environment/workspace fallback only when the field is absent.
+	 * Returns {@code target_directory} when present; otherwise returns {@code CARGO_TARGET_DIR} when set,
+	 * or {@code workspace/target}. Empty and relative path spellings are preserved.
 	 *
 	 * @param workspace the manifest workspace
 	 * @param environment the Cargo invocation environment
 	 * @return the target path without changing relative or empty spellings
 	 * @throws NullPointerException if either argument is null
-	 * @throws IOException if an explicit field is not a string or its path is invalid
+	 * @throws IOException if {@code target_directory} is present but is not a string, or the selected path is invalid
 	 */
 	public Path targetDirectory(Path workspace, Map<String, String> environment) throws IOException
 	{
@@ -136,7 +137,7 @@ public final class SourceCacheMetadata
 	}
 
 	/**
-	 * Limits cold cleanup to sorted workspace packages, retaining external dependencies.
+	 * Returns the names of packages listed in {@code workspace_members}, sorted lexicographically.
 	 *
 	 * @return workspace package names in cleanup order
 	 * @throws IOException if workspace membership or package fields are malformed

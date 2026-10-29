@@ -37,7 +37,12 @@ def main():
         raise RuntimeError("CODEX_BUILD_COMMIT already equals the diagnostic value")
 
     def build(label, commit):
-        """Build with the supplied commit or original absence and return newly compiled artifacts."""
+        """Build codex with the supplied compile-time commit value and return rebuilt artifact messages.
+
+        A None commit removes CODEX_BUILD_COMMIT. Retain Cargo JSON messages and
+        stderr under label in the evidence directory. Require exactly one codex
+        artifact and no rebuilt artifact outside the CLI package; raise RuntimeError
+        when either check fails. Nonzero Cargo status raises CalledProcessError."""
         build_environment = environment.copy()
         if commit is None:
             build_environment.pop("CODEX_BUILD_COMMIT", None)
@@ -63,7 +68,12 @@ def main():
         return rebuilt
 
     def doctor(label):
-        """Return the runtime provenance detail from a retained isolated doctor report."""
+        """Run the built CLI doctor command with an isolated temporary CODEX_HOME.
+
+        Retain JSON and stderr under label, remove the temporary home and return
+        the runtime.provenance commit prefixed with "commit: ". Accept doctor status
+        0 or 1; raise RuntimeError for another status. Report parsing, missing-field
+        and process-launch failures to the caller."""
         with tempfile.TemporaryDirectory(prefix="doctor-home-", dir=evidence) as home:
             doctor_environment = environment.copy()
             doctor_environment["CODEX_HOME"] = home

@@ -19,7 +19,9 @@ public final class SourceCacheTargets
 	}
 
 	/**
-	 * Validates target identity and preserves leading-dot filename semantics when removing a JSON suffix.
+	 * Returns the cache directory name for a target confined to one native filename.
+	 * Removes a final lowercase {@code .json} only when the filename contains other characters;
+	 * preserves case and leading dots, and rejects names whose resulting directory is {@code .} or {@code ..}.
 	 *
 	 * @param target the native triple or custom target filename
 	 * @return the cache directory name
@@ -45,7 +47,7 @@ public final class SourceCacheTargets
 	}
 
 	/**
-	 * Distinguishes the exact filename spelling from paths that normalize to that filename.
+	 * Indicates whether a nonempty path spelling is exactly one native filename.
 	 *
 	 * @param value the original path spelling
 	 * @return whether the spelling is one nonempty filename

@@ -5,7 +5,8 @@ Invoke push/pull with a repository, publication reference, previous reference,
 target directory and owned temporary directory. Push requires an idle existing
 Cargo output directory; it replaces the publication manifest only after every
 part is uploaded, reusing matching parts from verified and partial manifests. Pull
-overlays the complete referenced snapshot. All subprocess failures propagate;
+extracts every referenced archive over existing target contents; files absent
+from the snapshot remain in the target. All subprocess failures propagate;
 pull returns 3 for a missing reference and 4 for another artifact format.
 Only temporary children created here are removed. Publication/retention aliases
 and source/dependency acceptance belong to the calling shell workflow.
@@ -61,12 +62,19 @@ class BuildStep(StrEnum):
 
 
 def oras(command, *arguments):
-    """Run the installed authenticated ORAS CLI and return stdout, or raise on failure."""
+    """Run the supplied ORAS argument prefix with additional arguments and return text stdout.
+
+    Inherit stderr; raise CalledProcessError for a nonzero exit status and OSError
+    if the executable cannot be started."""
     return subprocess.check_output([*command, *arguments], text=True)
 
 
 def fetch_manifest(command, reference):
-    """Return the resolved manifest and digest, or (None, None) for a registry miss."""
+    """Fetch a registry reference with the supplied ORAS argument prefix.
+
+    Return the manifest content and resolved digest. Return (None, None) when
+    stderr identifies a missing reference; raise CalledProcessError for other
+    command failures. Invalid JSON or missing response fields propagate."""
     result = subprocess.run([*command, "manifest", "fetch", "--format", "json", reference], capture_output=True, text=True)
     if result.returncode == 0:
         resolved = json.loads(result.stdout)
@@ -78,7 +86,13 @@ def fetch_manifest(command, reference):
 
 
 def describe_output(target, path):
-    """Return a target-relative content/metadata entry and lstat; reject special files."""
+    """Describe one path beneath the Cargo target directory without following symlinks.
+
+    Return an entry containing the slash-separated target-relative path, mode,
+    modification time in nanoseconds, regular-file size in bytes (zero otherwise),
+    and file SHA-256, symlink target or directory marker, together with lstat data.
+    Raise ValueError for special files or paths outside target; filesystem errors
+    propagate."""
     relative = path.relative_to(target)
     status = path.lstat()
     if stat.S_ISREG(status.st_mode):
@@ -95,10 +109,12 @@ def describe_output(target, path):
 
 
 def collect_groups(target, step):
-    """Group idle outputs by their first saving step, retaining hardlinks and ownership.
+    """Return content/metadata entries grouped by cache owner for an idle target directory.
 
     New files belong to step; existing files retain their recorded owner even
-    when changed. Directories, .d dependency reports, timings and freshness
+    when changed, except that all regular files sharing an inode use the first
+    recorded owner found in traversal order, or their first path's owner when
+    none has a recorded owner. Directories, .d dependency reports, timings and freshness
     snapshots belong to the metadata group. The ownership record stores
     slash-separated paths relative to target, travels with the cache and is
     replaced atomically only if changed.
@@ -155,11 +171,19 @@ def collect_groups(target, step):
 
 
 def push(command, archive_tar, repository, reference, previous_reference, target, temporary, step, reuse_references):
-    """Publish the idle target's step groups, reusing matching verified/partial blobs.
+    """Publish an idle Cargo output directory as build-step archive layers.
 
-    The step owns new files; retained ownership keeps unchanged earlier output
-    archives reusable. Ownership is recorded locally before upload, while the
-    publication reference changes only after all required blobs are available.
+    command is the ORAS argument prefix; archive_tar is the tar executable.
+    repository receives blobs and reference selects the publication aliases.
+    previous_reference and reuse_references locate earlier manifests whose matching
+    groups can be reused. target must already exist and remain idle; step owns new
+    outputs. temporary is an existing directory for owned temporary children.
+    Record ownership in target before uploading. Replace the publication manifest
+    only after all required blobs exist; a failed upload may leave blobs and the
+    local ownership record without changing that manifest. Remove owned temporary
+    children on failure. Print the manifest-push output and part/upload-byte counts;
+    return None. Raise ValueError for a missing target or invalid stored owner;
+    subprocess, filesystem and manifest-parse errors propagate.
     """
     if target.is_dir() is False:
         raise ValueError(f"Cargo output directory does not exist: {target}")
@@ -177,7 +201,11 @@ def push(command, archive_tar, repository, reference, previous_reference, target
     groups = collect_groups(target, step)
 
     def upload_group(item):
-        """Return the reused or uploaded layer and newly uploaded archive byte count."""
+        """Return a group's layer descriptor and newly uploaded compressed archive bytes.
+
+        Accept a cache-group/entry-list pair. Reuse the matching layer when present
+        and report zero uploaded bytes; otherwise archive and upload that group.
+        Remove owned temporary files even on failure; subprocess failures propagate."""
         group, entries = item
         signature = hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
         previous_layer = reusable.get((group, signature))
@@ -219,11 +247,14 @@ def push(command, archive_tar, repository, reference, previous_reference, target
 
 
 def pull(command, archive_tar, repository, reference, target, temporary):
-    """Restore all referenced archives and adopt old outputs into bootstrap ownership.
+    """Extract each referenced cache archive into target and return a status code.
 
-    Accept multipart v2 and legacy single-archive v1 snapshots. Return 3 for a
-    missing reference or 4 for another artifact type; subprocess failures raise.
-    """
+    Accept multipart v2 and legacy single-archive v1 snapshots. Create target if
+    needed and overwrite colliding paths while retaining unrelated existing files.
+    If no ownership record is restored, record all outputs under bootstrap ownership.
+    Return 0 and print the resolved digest and part count after success, 3 for a
+    missing reference, or 4 for an unsupported artifact type. Files already extracted
+    remain if a later download or extraction fails; subprocess failures raise."""
     manifest, digest = fetch_manifest(command, reference)
     if manifest is None:
         return 3

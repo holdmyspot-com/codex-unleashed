@@ -1,4 +1,21 @@
-# Run from the pinned upstream checkout after setup-bazel-ci prepares MSVC.
+<#
+.SYNOPSIS
+Install pinned Windows voice build prerequisites and retain installation evidence.
+.DESCRIPTION
+Run with PowerShell on Windows from the pinned upstream checkout after setup-bazel-ci
+prepares MSVC. Requires SystemRoot, a host processor architecture, RUNNER_TEMP, and
+GITHUB_ENV. Reads .github/scripts/voice-cygwin-snapshot.json from that checkout,
+downloads its binary and source archives from the upstream openai/codex release,
+and rejects any archive whose byte count or SHA-256 digest differs from the manifest.
+Runs the checkout's setup-voice-windows.ps1 for x86_64-pc-windows-msvc, then exports
+VOICE_WINDOWS_SYSTEM_ROOT and VOICE_WINDOWS_HOST_ARCH through GITHUB_ENV.
+Copies the manifest to EvidenceDirectory and attempts to copy available tool evidence
+there even if installation raises a terminating error. Terminating download,
+verification, installation, and evidence-copy errors stop the script. Downloads remain
+under RUNNER_TEMP.
+.PARAMETER EvidenceDirectory
+Destination directory created if needed for the manifest and installed-tools evidence.
+#>
 param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$EvidenceDirectory
 )

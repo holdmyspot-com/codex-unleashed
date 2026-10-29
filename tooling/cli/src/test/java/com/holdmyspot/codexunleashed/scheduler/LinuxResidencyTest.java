@@ -18,7 +18,9 @@ import static org.testng.Assert.expectThrows;
  */
 public final class LinuxResidencyTest
 {
-	/** Creates owned process-memory sampling tests. */
+	/**
+	 * Creates owned process-memory sampling tests.
+	 */
 	public LinuxResidencyTest()
 	{
 	}

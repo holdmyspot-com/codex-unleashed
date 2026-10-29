@@ -21,7 +21,7 @@ public final class ArtifactJson
 	}
 
 	/**
-	 * Formats a supported JSON document with lowercase Unicode escapes and a final newline.
+	 * Formats a supported JSON document with sorted map keys, lowercase Unicode escapes, and a final newline.
 	 *
 	 * @param document the document's JSON-compatible maps, lists, and scalar values
 	 * @return the ASCII JSON document
@@ -48,7 +48,7 @@ public final class ArtifactJson
 	 * Formats a document with the selected key ordering.
 	 *
 	 * @param document the document's JSON-compatible values
-	 * @param sortKeys whether map keys are sorted
+	 * @param sortKeys true if map keys must be sorted
 	 * @return the formatted document
 	 */
 	private static String format(Object document, boolean sortKeys)

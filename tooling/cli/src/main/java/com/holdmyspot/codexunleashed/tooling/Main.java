@@ -9,7 +9,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Runs the build-cache commands currently migrated into the tooling CLI.
+ * Runs source-cache preparation and recording, retention previews, and V8 action-script extraction.
  */
 public final class Main
 {
@@ -36,13 +36,13 @@ public final class Main
 	}
 
 	/**
-	 * Runs a migrated command, preserving the tooling dispatch and failure statuses.
+	 * Runs a tooling command and writes its output and diagnostics to the supplied streams.
 	 *
 	 * @param arguments the command name followed by its arguments
-	 * @param in caller-owned inventory input for retention previews; unused by source-cache commands
+	 * @param in caller-owned inventory input for retention previews; remains open and is unused by the other commands
 	 * @param out progress output
 	 * @param err diagnostics
-	 * @return zero on success, one on operational failure or two on invalid command arguments
+	 * @return zero on success, one on operational failure or a rejected input document, or two on an unknown command or invalid command arguments
 	 * @throws NullPointerException if an argument is null
 	 */
 	public static int run(String[] arguments, InputStream in, PrintStream out, PrintStream err)

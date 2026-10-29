@@ -8,7 +8,7 @@ import java.nio.file.Path;
 public enum CargoCacheProfile
 {
 	/**
-	 * Default optimized artifacts and the existing release snapshot locations.
+	 * Default optimized artifacts and release freshness snapshots.
 	 */
 	RELEASE,
 	/**
@@ -50,10 +50,10 @@ public enum CargoCacheProfile
 	}
 
 	/**
-	 * Locates this profile's freshness records, preserving existing release-cache compatibility.
+	 * Locates this profile's freshness records.
 	 *
 	 * @param targetDirectory Cargo's compiled-output root
-	 * @return the legacy snapshot directory for release, or its ci-test child for runtime tests
+	 * @return {@code targetDirectory/.codex-source-inputs} for release, or its {@code ci-test} child for ci-test
 	 * @throws NullPointerException if {@code targetDirectory} is null
 	 */
 	public Path snapshotDirectory(Path targetDirectory)

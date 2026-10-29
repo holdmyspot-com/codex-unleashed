@@ -4,7 +4,7 @@
 Requires Python 3.11 or newer and its standard library. Arguments are the trusted
 upstream lockfile, the post-build lockfile and JSON from actual Cargo metadata
 --no-deps --format-version 1 for the unchanged workspace. Success prints JSON;
-invalid inputs or other changes exit 1. This command never writes its inputs.
+input file/format errors or other changes exit 1; invalid CLI arguments exit 2. This command never writes its inputs.
 """
 
 import argparse
@@ -15,7 +15,17 @@ import tomllib
 
 
 def verify(original, current, metadata):
-    """Compare typed lockfile contents after synchronizing original workspace versions."""
+    """Verify lockfile changes against workspace versions from Cargo metadata.
+
+    original and current are trusted upstream and post-build lockfile paths; metadata
+    is a JSON file from Cargo metadata --no-deps --format-version 1 for the unchanged
+    workspace. Accept only source-less workspace package version updates and their
+    version-qualified dependency references. Compare parsed contents, preserving
+    value types while ignoring comments, quoting and mapping-key order. Return a
+    verified receipt with per-package from/to updates, empty when no update is
+    required. Read inputs without changing them. Raise ValueError for invalid
+    workspace names/versions, incomplete workspace metadata or other drift; file,
+    parse and missing-field errors propagate."""
     expected = tomllib.loads(original.read_text(encoding="utf-8"))
     observed = tomllib.loads(current.read_text(encoding="utf-8"))
     cargo = json.loads(metadata.read_text(encoding="utf-8"))
@@ -58,7 +68,10 @@ def verify(original, current, metadata):
 
 
 def main():
-    """Validate paths, print the comparison receipt and preserve failure status."""
+    """Parse three input paths and print a sorted JSON verification receipt.
+
+    Return 0 on success. Report file, value, missing-field or type failures on stderr
+    and return 1; argparse reports invalid command arguments and exits 2."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("original", type=Path)
     parser.add_argument("current", type=Path)

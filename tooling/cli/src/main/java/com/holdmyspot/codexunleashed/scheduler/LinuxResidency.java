@@ -111,7 +111,7 @@ public final class LinuxResidency
 	}
 
 	/**
-	 * Enumerates process membership, preserving duplicate PIDs only within the same group.
+	 * Lists each distinct process ID and its group within the supplied subtree, accepting repeated IDs within one group.
 	 *
 	 * @param directory the owned subtree root
 	 * @return each distinct PID and its group

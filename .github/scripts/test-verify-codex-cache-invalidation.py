@@ -78,7 +78,7 @@ class CacheInvalidationCheckTest(unittest.TestCase):
         self.run_fixture(True)
 
     def test_rebuilt_cli_with_stale_runtime_value_is_rejected(self):
-        """Reject a CLI that recompiles but reports the old value after the input changes."""
+        """Reject a rebuilt fixture CLI that reports unknown instead of the diagnostic compile-time commit."""
         self.run_fixture(False)
 
 

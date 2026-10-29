@@ -9,7 +9,7 @@ import java.util.Optional;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Preserves content-checked timestamps for the verified V8 binding outside the source checkout.
+ * Preserves content-checked timestamps for the configured V8 binding outside the source checkout.
  */
 final class V8BindingCache
 {
@@ -31,7 +31,8 @@ final class V8BindingCache
 	}
 
 	/**
-	 * Records pending inputs and restores unchanged binding timestamps. The caller must clean V8
+	 * Records pending inputs and restores unchanged binding timestamps. An absent binding configuration
+	 * leaves the cache unchanged and returns false. The caller must clean V8
 	 * when neither successful nor completed-preparation state exists. Resumable state does not certify build success.
 	 *
 	 * @param request the target whose compiled outputs will be reused
