@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Run the focused Linux ARM64 workflow with periodic host/stage diagnostics, connect before execution, restore private partial state and continue only unresolved native CLI/app-server work. Investigate any resource-pressure or shutdown evidence before another retry; retain named outcomes and final guards/cache/lifecycle. Accepted other-platform tests must not be repeated.",
+  "next_action": "Continue original retained worker for run40793215263 at one Cargo build job, restoring private partial state. Retain named ARM64 CLI/app-server outcomes, exact source/dependency guards, private cache receipts and lifecycle disposition. Other native platform tests remain accepted and must not be repeated.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -1170,7 +1170,11 @@
       "replacement_job": 123166970911,
       "source_state": "Exact selected source; environment-only diagnostic harness.",
       "cache_restore": "Two-part private partial hit in 48 seconds, digest sha256:5b5191d67082ad5d778c491d970515d18c8bbf51f36e0ae417d0739adeb63d3b.",
-      "status": "Second runner shutdown confirmed; no terminal runtime acceptance. Preserve its partial cache and diagnose host pressure on the next instrumented retained worker."
+      "status": "Third runner shutdown follows observed concurrent-linker RAM/swap pressure. Runtime remains unaccepted. Native ARM64 environment now limits Cargo to one job; original signal initiator remains unproven.",
+      "instrumented_run": 40791100997,
+      "instrumented_job": 123176253320,
+      "continuation_run": 40793215263,
+      "concurrency": "CARGO_BUILD_JOBS=1 for focused native ARM64 only. Revisit conservative admission at checkpoint3 with the Java scheduler."
     }
   },
   "current_source_package_runtime": {
