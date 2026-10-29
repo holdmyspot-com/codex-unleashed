@@ -10,3 +10,5 @@ outputs:
     description: Owned directory for connection details
   key-file:
     description: Validated public authorized-key file
+  shell-startup:
+    description: Bash prompt initialization for the validated idle limit
