@@ -130,10 +130,10 @@
   },
   "cleanup": {
     "owner": "/root",
-    "retained_roots": [
+    "removed_roots": [
       "/home/gili/codex-unleashed/workspace/.cat/sessions/01a187c8-dc9c-7660-8049-b1e1ec9bebbb/temp/frida-ffm-attach-0FQQUH",
       "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/java-ptrace-reaper-JUEUBB"
     ],
-    "reason": "Retain exact adapter and supervised-target fixtures for the next allocation-control gate. No live process retained by the passing control; original failed-invocation kernel cleanup remains unverified."
+    "reason": "Removed after the allocation-control gate passed using its own copied adapter/fixtures, archive member hashes were verified, and no current executable, working directory or memory mapping referred to these obsolete roots. Exact small sources and logs remain in this receipt. Original failed-invocation kernel cleanup remains unverified."
   }
 }
