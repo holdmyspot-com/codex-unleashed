@@ -143,8 +143,8 @@ public final class JobQueueMemoryHistoryTest
 			requireThat(queue.cycle().control(), "exclusiveObservation").isEqualTo(Policy.Control.WAIT, "expected");
 			fixture.owners.get("unknown:0").outcome = new JobQueue.Outcome<>(137, true);
 
-			requireThat(queue.cycle().control(), "requiresNaturalCompletion").isEqualTo(Policy.Control.WAIT, "expected");
-			requireThat(queue.jobs().getFirst().state(), "retryState").isEqualTo(Policy.State.RETRY, "expected");
+			requireThat(queue.cycle().control(), "completionFreeRetry").isEqualTo(Policy.Control.START, "expected");
+			requireThat(queue.jobs().getFirst().state(), "retriedState").isEqualTo(Policy.State.RUNNING, "expected");
 			requireThat(queue.jobs().getFirst().peakBytes(), "unknownPeak").isNull();
 			requireThat(queue.completions(), "abortionIsNotCompletion").isEqualTo(0L, "expected");
 		}
