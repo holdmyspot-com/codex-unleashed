@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "Candidate transport for the planned Linux controller/supervisor startup handoff; platform API selection only. No production supervisor or completed integration proof.",
+  "project_candidate": "LinuxProcessTree.writeConfiguration already uses JDK Properties.storeToXML; reuse its format instead of custom recognition.",
+  "platform_candidate": {
+    "version": "JDK 27",
+    "write": "Properties.storeToXML(OutputStream, String, StandardCharsets.UTF_8)",
+    "read": "new Properties().loadFromXML(InputStream)",
+    "decisions": [
+      "containsKey for missing versus present-empty fields",
+      "getProperty for exact identity and argument/environment strings",
+      "InvalidPropertiesFormatException for incomplete input"
+    ]
+  },
+  "source": "import java.util.*;\nimport java.io.*;\nimport java.nio.charset.StandardCharsets;\npublic class PropertiesSelection {\n public static void main(String[] args) throws Exception {\n  for(boolean present:List.of(false,true)) {\n   Properties original=new Properties();\n   original.setProperty(\"attempt\", \"attempt-1\");\n   original.setProperty(\"argument.0\", \"line one\\nline two\\t<>&\\\"\u00e9\");\n   if(present) original.setProperty(\"environment.TOKEN\", \"\");\n   ByteArrayOutputStream output=new ByteArrayOutputStream();\n   original.storeToXML(output,\"Supervisor configuration\",StandardCharsets.UTF_8);\n   Properties received=new Properties();received.loadFromXML(new ByteArrayInputStream(output.toByteArray()));\n   if(received.containsKey(\"environment.TOKEN\")!=present || !original.equals(received)) throw new AssertionError(received);\n   System.out.println(\"present=\"+present+\" received_present=\"+received.containsKey(\"environment.TOKEN\")+\" value=\"+Objects.toString(received.getProperty(\"environment.TOKEN\"),\"<missing>\")+\" exact_roundtrip=\"+original.equals(received)+\" attempt=\"+received.getProperty(\"attempt\"));\n   byte[] truncated=Arrays.copyOf(output.toByteArray(),output.size()/2);\n   try {new Properties().loadFromXML(new ByteArrayInputStream(truncated));throw new AssertionError(\"Incomplete configuration accepted\");}\n   catch(InvalidPropertiesFormatException expected) {System.out.println(\"truncated_rejected=\"+expected.getClass().getSimpleName());}\n  }\n }\n}\n",
+  "source_sha256": "d9d48be2b2112663b2764a0a9ed44d5155a36b9bb7339449a99506f0e798c466",
+  "invocation": "java PropertiesSelection.java",
+  "exit": 0,
+  "stdout": "present=false received_present=false value=<missing> exact_roundtrip=true attempt=attempt-1\ntruncated_rejected=InvalidPropertiesFormatException\npresent=true received_present=true value= exact_roundtrip=true attempt=attempt-1\ntruncated_rejected=InvalidPropertiesFormatException\n",
+  "required_distinctions": [
+    "An absent environment field differs from an explicitly empty value",
+    "Newlines, tabs, XML-sensitive characters and Unicode survive the same serializer/parser pair",
+    "Truncated XML is rejected rather than treated as a complete launch configuration"
+  ],
+  "unaccepted": [
+    "Final LinuxSupervisor source and final declaration/resolution in an exclusively allocated empty folder",
+    "Public supervisor operation proof with native containment and startup/death cases",
+    "Atomic publication, attempt identity validation, deadlines and lifecycle behavior"
+  ]
+}
