@@ -11,22 +11,79 @@
     <tooling.build.directory>${project.basedir}/../../.cat/work/temp/build-caches/maven/source-cache</tooling.build.directory>
   </properties>
   <dependencies>
-    <dependency><groupId>tools.jackson.dataformat</groupId><artifactId>jackson-dataformat-yaml</artifactId><version>3.2.3</version></dependency>
-    <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>3.2.3</version></dependency>
-    <dependency><groupId>commons-io</groupId><artifactId>commons-io</artifactId><version>2.20.0</version></dependency>
-    <dependency><groupId>com.github.oshi</groupId><artifactId>oshi-core-ffm</artifactId><version>7.7.2</version></dependency>
-    <dependency><groupId>com.github.oshi</groupId><artifactId>oshi-common</artifactId><version>7.7.2</version></dependency>
-    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>2.0.20</version></dependency>
-    <dependency><groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId><version>1.6.6</version><scope>runtime</scope></dependency>
-    <dependency><groupId>org.testng</groupId><artifactId>testng</artifactId><version>7.12.0</version><scope>test</scope></dependency>
+    <dependency>
+      <groupId>tools.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+      <version>3.2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>3.2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>2.20.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.oshi</groupId>
+      <artifactId>oshi-core-ffm</artifactId>
+      <version>7.7.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.oshi</groupId>
+      <artifactId>oshi-common</artifactId>
+      <version>7.7.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>2.0.20</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.6.6</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
+      <version>7.12.0</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   <build>
     <directory>${tooling.build.directory}</directory>
     <plugins>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.16.0</version><configuration><showWarnings>true</showWarnings><failOnWarning>false</failOnWarning></configuration></plugin>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.6.0</version><configuration><argLine>"-Djava.io.tmpdir=${java.io.tmpdir}"</argLine></configuration></plugin>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
-      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><version>3.11.0</version></plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+        <configuration>
+          <showWarnings>true</showWarnings>
+          <failOnWarning>false</failOnWarning>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.6.0</version>
+        <configuration>
+          <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}"</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.5.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.11.0</version>
+      </plugin>
     </plugins>
   </build>
   <profiles>
@@ -38,40 +95,75 @@
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-clean-plugin</artifactId>
             <version>3.5.0</version>
-            <executions><execution><id>reset-runtime-staging</id><phase>initialize</phase><goals><goal>clean</goal></goals>
-              <configuration><excludeDefaultDirectories>true</excludeDefaultDirectories><filesets>
-                <fileset><directory>${project.build.directory}/modules</directory><followSymlinks>false</followSymlinks></fileset>
-                <fileset><directory>${project.build.directory}/runtime</directory><followSymlinks>false</followSymlinks></fileset>
-              </filesets></configuration>
-            </execution></executions>
+            <executions>
+              <execution>
+                <id>reset-runtime-staging</id>
+                <phase>initialize</phase>
+                <goals>
+                  <goal>clean</goal>
+                </goals>
+                <configuration>
+                  <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                  <filesets>
+                    <fileset>
+                      <directory>${project.build.directory}/modules</directory>
+                      <followSymlinks>false</followSymlinks>
+                    </fileset>
+                    <fileset>
+                      <directory>${project.build.directory}/runtime</directory>
+                      <followSymlinks>false</followSymlinks>
+                    </fileset>
+                  </filesets>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-dependency-plugin</artifactId>
-            <executions><execution><id>stage-runtime-dependencies</id><phase>prepare-package</phase><goals><goal>copy-dependencies</goal></goals>
-              <configuration><includeScope>runtime</includeScope><outputDirectory>${project.build.directory}/modules</outputDirectory></configuration>
-            </execution></executions>
+            <executions>
+              <execution>
+                <id>stage-runtime-dependencies</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>copy-dependencies</goal>
+                </goals>
+                <configuration>
+                  <includeScope>runtime</includeScope>
+                  <outputDirectory>${project.build.directory}/modules</outputDirectory>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-jar-plugin</artifactId>
-            <configuration><outputDirectory>${project.build.directory}/modules</outputDirectory></configuration>
+            <configuration>
+              <outputDirectory>${project.build.directory}/modules</outputDirectory>
+            </configuration>
           </plugin>
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>exec-maven-plugin</artifactId>
             <version>3.6.4</version>
-            <executions><execution><id>build-bundled-runtime</id><phase>package</phase><goals><goal>exec</goal></goals>
-              <configuration>
-                <executable>${java.home}/bin/java</executable>
-                <arguments>
-                  <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
-                  <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
-                  <argument>${project.build.directory}/modules</argument>
-                  <argument>${project.build.directory}/runtime</argument>
-                </arguments>
-              </configuration>
-            </execution></executions>
+            <executions>
+              <execution>
+                <id>build-bundled-runtime</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>${java.home}/bin/java</executable>
+                  <arguments>
+                    <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
+                    <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
+                    <argument>${project.build.directory}/modules</argument>
+                    <argument>${project.build.directory}/runtime</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>
