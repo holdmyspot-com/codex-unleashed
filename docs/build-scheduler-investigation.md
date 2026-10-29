@@ -2837,8 +2837,44 @@ The binding's source-inspected cleanup findings are filed upstream as
 and [hidden unload failures](https://github.com/shoaloak/frida-java/issues/9).
 These reports distinguish inspected paths from unexecuted regression cases.
 
-The owner does not yet implement `JobQueue.Attempt`. Actual script callbacks,
-compiler survival after peer cancellation in this native-dispatcher topology,
-forced cleanup failures, compiler allocation denial, other platforms and
-Cargo/Bazel remain unaccepted. The previous two-compiler diagnostic used a
-different loader/dispatcher arrangement and cannot close those gates.
+The owner does not yet implement `JobQueue.Attempt`. Compiler survival after
+peer cancellation in this native-dispatcher topology, forced cleanup failures,
+compiler allocation denial, other platforms and Cargo/Bazel remain unaccepted.
+The previous two-compiler diagnostic used a different loader/dispatcher
+arrangement and cannot close those gates.
+
+### Session and script ownership through the native dispatcher
+
+`FridaRuntime` now also owns attachments and QuickJS scripts. Each parent
+retains its children until their cleanup succeeds. Script cleanup stops Java
+delivery, disconnects its handler, unloads the script and releases its native
+references. Callback stubs remain alive until global native teardown; their
+static receivers do not retain the closed ownership tree. Callback failures
+remain available to the controller instead of escaping into native code.
+Message posting uses the existing Jackson JSON serializer, with no dependency
+change. Signal IDs use the platform's canonical C-long layout and carrier.
+
+[Session and script evidence](evidence/java-frida-script-ownership.json)
+records native Linux x86-64 attachment, typed missing-process and script-creation
+errors, cleanup after partial acquisition, and genuine messages from two
+scripts. Closing one script preserves the other's response to a fresh token
+containing NUL, quotes, a backslash, newline and non-ASCII text. A binary-message
+fixture checks callback-error reporting. Global cleanup leaves the borrowed
+target alive; its independent parent then records actual exit zero, and the
+target's kernel PID is absent after waiting. Independent source review reports
+no findings in the new ownership paths and native signatures.
+
+The first diagnostic incorrectly made the tracer JVM the target's Java parent.
+Its process reaper consumed a native trace-stop event: kernel seize and
+interrupt succeeded, but the Java process result contained raw stop status
+`0x80057f`. Moving only the diagnostic target ownership to an independent parent
+allows attachment and messaging to pass without changing permissions or the
+runtime. The original failed fixture's target reaping remains unproven; its
+terminal tool result is not accepted as cleanup evidence. The maintained probe
+is a fixed-child diagnostic, not production containment or compiler acceptance.
+
+The external-boundary checks precede production copying, followed by the
+maintained native caller and complete tooling verification. No missing-type
+compilation error is claimed as a behavioral red. Forced native cleanup errors,
+actual compiler attempts, allocation waiting, other platforms and Cargo/Bazel
+remain required; checkpoint 3 stays incomplete.
