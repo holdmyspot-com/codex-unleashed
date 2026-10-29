@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
@@ -745,6 +747,94 @@ public final class JobQueueTest
 	}
 
 	/**
+	 * Composes real native-wait batches with the real queue so a denial during resume gets a new global FIFO position.
+	 * The owner supplies only acknowledged-continuation input; no native execution is claimed.
+	 *
+	 * @throws IOException if valid composed queue decisions fail
+	 */
+	@Test(groups = "waits")
+	public void batchesNativeWaitsWithoutBypassingOlderQueueDenial() throws IOException
+	{
+		Fixture fixture = new Fixture(2);
+		var granted = new ArrayList<String>();
+		try (var queue = fixture.queue())
+		{
+			queue.submit("A", 10L);
+			queue.submit("B", 10L);
+			queue.cycle();
+			queue.cycle();
+			var actionA = fixture.latestAttempt("A");
+			var actionB = fixture.latestAttempt("B");
+			actionA.allocationWaits = new AllocationWaits();
+			actionB.allocationWaits = new AllocationWaits();
+			actionA.continuation = wait ->
+			{
+				granted.add("A:" + wait.sequence());
+				actionA.allocationWaits.blocked(new AllocationWaits.Wait(1, 3));
+			};
+			actionB.continuation = wait -> granted.add("B:" + wait.sequence());
+			actionA.allocationWaits.blocked(new AllocationWaits.Wait(1, 1));
+			requireThat(queue.allocationBlocked("A", actionA.sequence,
+				actionA.allocationWaits.poll().orElseThrow()), "acceptedWait").isTrue();
+			actionA.allocationWaits.blocked(new AllocationWaits.Wait(1, 2));
+			requireThat(actionA.allocationWaits.poll(), "queueWait").isEqualTo(java.util.OptionalLong.empty());
+			actionB.allocationWaits.blocked(new AllocationWaits.Wait(1, 1));
+			requireThat(queue.allocationBlocked("B", actionB.sequence,
+				actionB.allocationWaits.poll().orElseThrow()), "acceptedWait").isTrue();
+
+			requireThat(queue.cycle().jobName(), "selectedAction").isEqualTo("A", "expected");
+			requireThat(queue.jobs().getFirst().state(), "actionState").isEqualTo(Policy.State.RUNNING, "expected");
+			requireThat(granted, "granted").isEqualTo(List.of("A:1", "A:2"), "expected");
+			requireThat(queue.allocationBlocked("A", actionA.sequence,
+				actionA.allocationWaits.poll().orElseThrow()), "acceptedWait").isTrue();
+			requireThat(queue.cycle().jobName(), "selectedAction").isEqualTo("B", "expected");
+			requireThat(queue.cycle().jobName(), "selectedAction").isEqualTo("A", "expected");
+			requireThat(granted, "granted").isEqualTo(List.of("A:1", "A:2", "B:1", "A:3"), "expected");
+			requireThat(actionA.allocationWaits.poll(), "queueWait").isEqualTo(java.util.OptionalLong.empty());
+			requireThat(queue.completions(), "completions").isEqualTo(0, "expected");
+		}
+	}
+
+	/**
+	 * Retains queue ownership after the second native grant fails and issues no additional grant before final close.
+	 *
+	 * @throws IOException if preparing valid queue state fails
+	 */
+	@Test(groups = "failures")
+	public void nativeBatchFailureStopsQueueControlsWithoutLosingOwner() throws IOException
+	{
+		Fixture fixture = new Fixture(1);
+		var attempted = new ArrayList<Long>();
+		try (var queue = fixture.queue())
+		{
+			queue.submit("A", 10L);
+			queue.cycle();
+			var owner = fixture.latestAttempt("A");
+			owner.allocationWaits = new AllocationWaits();
+			owner.continuation = wait ->
+			{
+				attempted.add(wait.sequence());
+				if (wait.sequence() == 2)
+					throw new IOException("Second native grant acknowledgement lost");
+			};
+			for (long sequence : List.of(1L, 2L, 3L))
+				owner.allocationWaits.blocked(new AllocationWaits.Wait(1, sequence));
+			requireThat(queue.allocationBlocked("A", owner.sequence,
+				owner.allocationWaits.poll().orElseThrow()), "acceptedWait").isTrue();
+
+			requireException(IOException.class, queue::cycle);
+			requireException(IOException.class, queue::cycle);
+			requireThat(attempted, "attempted").isEqualTo(List.of(1L, 2L), "expected");
+			requireThat(owner.resumes, "resumeCalls").isEqualTo(1, "expected");
+			requireThat(owner.closes, "closeCalls").isEqualTo(0, "expected");
+			requireThat(queue.completions(), "completions").isEqualTo(0, "expected");
+			requireThat(queue.completedAttempts(), "completedAttempts").isEmpty();
+		}
+		requireThat(fixture.latestAttempt("A").closes, "closeCalls").isEqualTo(1, "expected");
+		requireThat(attempted, "attempted").isEqualTo(List.of(1L, 2L), "expected");
+	}
+
+	/**
 	 * Carries the original root status and additional statuses whose preservation the queue must prove.
 	 *
 	 * @param rootStatus scripted root status, including nonzero natural completion
@@ -876,6 +966,11 @@ public final class JobQueueTest
 		private JobQueue.Outcome<Result> outcome = null;
 		IOException startFailure = null, resumeFailure = null, terminateFailure = null, pollFailure = null, closeFailure = null;
 
+		/** Optional real wait collector for queue composition tests; null leaves native-wait composition unused. */
+		private AllocationWaits allocationWaits = null;
+		/** Borrowed acknowledgement input used only when this owner has an allocation-wait collector. */
+		private AllocationWaits.Continuation continuation = null;
+
 		/** Counts issued start, resume, terminate, poll and cleanup requests. */
 		private int starts = 0, resumes = 0, terminates = 0, polls = 0, closes = 0;
 
@@ -909,6 +1004,8 @@ public final class JobQueueTest
 			resumes++;
 			events.add("resume:" + name + ":" + waitSequence);
 			if (resumeFailure != null)throw resumeFailure;
+			if (allocationWaits != null)
+				allocationWaits.resume(waitSequence, continuation);
 		}
 
 		@Override
