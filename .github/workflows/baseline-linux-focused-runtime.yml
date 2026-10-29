@@ -54,7 +54,8 @@ jobs:
         run: |
           set -euo pipefail
           case "$TARGET" in
-            aarch64-unknown-linux-gnu | x86_64-unknown-linux-gnu) ;;
+            aarch64-unknown-linux-gnu) printf 'CARGO_BUILD_JOBS=1\n' >> "$GITHUB_ENV" ;;
+            x86_64-unknown-linux-gnu) ;;
             *) printf 'Unsupported native Linux target: %s\n' "$TARGET" >&2; exit 1 ;;
           esac
           printf 'commit=%s\n' "$(cat .github/upstream-commit)" >> "$GITHUB_OUTPUT"
