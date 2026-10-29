@@ -101,6 +101,18 @@ final class FridaRuntime implements AutoCloseable
 	private MethodHandle connect = null;
 	/** GLib signal disconnection using the same platform carrier. */
 	private MethodHandle disconnect = null;
+	/** Explicit resumption of a native-gated child. */
+	private MethodHandle resume = null;
+	/** Child gating enabled before a prepared target is released. */
+	private MethodHandle enableChildGating = null;
+	/** Reads the unsigned child PID while its borrowed notification remains valid. */
+	private MethodHandle childPid = null;
+	/** Reads the unsigned parent PID from a borrowed child notification. */
+	private MethodHandle childParent = null;
+	/** Reads the native fork, exec or spawn origin from a borrowed child notification. */
+	private MethodHandle childOrigin = null;
+	/** Reads the optional borrowed executable path, which the callback copies immediately. */
+	private MethodHandle childPath = null;
 	/** Native unsigned long layout; IDs use its exact bits, never signed ordering. */
 	private final ValueLayout signalIdLayout = (ValueLayout) Linker.nativeLinker().canonicalLayouts().get("long");
 
@@ -164,6 +176,13 @@ final class FridaRuntime implements AutoCloseable
 		connect = function("_frida_g_signal_connect_data", FunctionDescriptor.of(signalIdLayout, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ValueLayout.JAVA_INT));
 		disconnect = function("_frida_g_signal_handler_disconnect", FunctionDescriptor.ofVoid(ADDRESS, signalIdLayout));
 
+		resume = function("frida_device_resume_sync", FunctionDescriptor.ofVoid(ADDRESS, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
+		enableChildGating = function("frida_session_enable_child_gating_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+		childPid = function("frida_child_get_pid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		childParent = function("frida_child_get_parent_pid", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		childOrigin = function("frida_child_get_origin", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
+		childPath = function("frida_child_get_path", FunctionDescriptor.of(ADDRESS, ADDRESS));
+
 		synchronized (FridaRuntime.class)
 		{
 			if (initializationClaimed)
@@ -203,7 +222,7 @@ final class FridaRuntime implements AutoCloseable
 		if (closed)
 			return;
 		if (closeFailure != null)
-			throw closeFailure;
+			throw new IOException("Frida global teardown previously failed; native lifetime remains unresolved", closeFailure);
 		if (managers.isEmpty() == false)
 			throw new IOException("Frida runtime still owns " + managers.size() + " managers; close them before global shutdown");
 		if (initializing)
@@ -245,6 +264,10 @@ final class FridaRuntime implements AutoCloseable
 		private IOException closeFailure = null;
 		/** Sessions remain owned until their native references are released. */
 		private final Set<Session> sessions = new LinkedHashSet<>();
+		/** Native child-event receiver, retained independently of this manager's lifetime. */
+		private ChildReceiver children = null;
+		/** Device signal handler bits, zero until registration succeeds. */
+		private long childHandler = 0;
 		/** Indicates whether local-device acquisition finished without a native error. */
 		private boolean started = false;
 
@@ -278,6 +301,17 @@ final class FridaRuntime implements AutoCloseable
 				if (device.equals(MemorySegment.NULL))
 					throw new IOException("Frida local-device selection returned NULL without a native error");
 			}
+			children = new ChildReceiver(childPid, childParent, childOrigin, childPath);
+			try
+			{
+				MethodHandle callback = MethodHandles.lookup().findVirtual(ChildReceiver.class, "onChild",
+					MethodType.methodType(void.class, MemorySegment.class, MemorySegment.class, MemorySegment.class)).bindTo(children);
+				childHandler = registerSignal(device, "child-added", callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+			}
+			catch (ReflectiveOperationException failure)
+			{
+				throw new IOException("Cannot bind the native child-event receiver", failure);
+			}
 			started = true;
 		}
 
@@ -294,6 +328,40 @@ final class FridaRuntime implements AutoCloseable
 			Session session = new Session(pid);
 			sessions.add(session);
 			return session;
+		}
+
+		/**
+		 * Returns a copied native child-added event, retaining callback errors even after close.
+		 * An EXEC event alone does not verify credentials, image, containment or whole-job completion.
+		 * @return next event, or empty when none is queued
+		 * @throws IllegalStateException if called by another thread or before receiver acquisition
+		 * @throws IOException if copying any callback failed
+		 */
+		Optional<Child> pollChild() throws IOException
+		{
+			requireThread();
+			if (children == null)
+				throw new IllegalStateException("Frida child receiver has not been acquired");
+			return children.poll();
+		}
+
+		/**
+		 * Resumes a native-gated process whose ownership and identity the caller has separately established.
+		 * @param pid positive unsigned 32-bit process identity
+		 * @throws IllegalArgumentException if pid is outside 1 through 4294967295
+		 * @throws IllegalStateException if the manager is inactive or called by another thread
+		 * @throws IOException if native resumption fails, preserving domain and code
+		 */
+		void resume(long pid) throws IOException
+		{
+			requireManager();
+			requirePid(pid);
+			try (Arena arena = Arena.ofConfined())
+			{
+				MemorySegment error = arena.allocate(ADDRESS);
+				invoke(resume, device, (int) pid, MemorySegment.NULL, error);
+				throwNativeFailure("frida_device_resume_sync", error.get(ADDRESS, 0));
+			}
 		}
 
 		/**
@@ -320,11 +388,18 @@ final class FridaRuntime implements AutoCloseable
 			if (closed)
 				return;
 			if (closeFailure != null)
-				throw closeFailure;
+				throw new IOException("Frida manager cleanup previously failed; retain its runtime", closeFailure);
 			if (sessions.isEmpty() == false)
 				throw new IOException("Frida manager still owns sessions; close them first");
 			try
 			{
+				if (children != null)
+					children.stop();
+				if (childHandler != 0)
+				{
+					disconnectSignal(device, childHandler);
+					childHandler = 0;
+				}
 				if (handle.equals(MemorySegment.NULL) == false)
 				{
 					try (Arena arena = Arena.ofConfined())
@@ -369,6 +444,8 @@ final class FridaRuntime implements AutoCloseable
 			private final Set<Script> scripts = new LinkedHashSet<>();
 			/** Indicates whether the single attachment attempt has begun. */
 			private boolean startAttempted = false;
+			/** Indicates whether the one child-gating request has begun, including an uncertain failure. */
+			private boolean childGatingAttempted = false;
 			/** Indicates whether attachment returned successfully without a native error. */
 			private boolean started = false;
 			/** Indicates whether this owner has released its reference and registration. */
@@ -383,8 +460,7 @@ final class FridaRuntime implements AutoCloseable
 			 */
 			private Session(long pid)
 			{
-				if (pid < 1 || pid > 0xffff_ffffL)
-					throw new IllegalArgumentException("Frida target PID must be between 1 and 4294967295");
+				requirePid(pid);
 				this.pid = pid;
 			}
 
@@ -408,6 +484,21 @@ final class FridaRuntime implements AutoCloseable
 						throw new IOException("Frida attachment returned NULL without a native error");
 				}
 				started = true;
+			}
+
+			/**
+			 * Enables native child gating once before the caller releases its prepared target.
+			 * The caller must separately verify each event and explicitly resume or terminate its owned gated work.
+			 * @throws IllegalStateException if this attachment is inactive or the request was already attempted
+			 * @throws IOException if enabling fails, possibly after effects; session ownership remains retained
+			 */
+			void enableChildGating() throws IOException
+			{
+				requireSession();
+				if (childGatingAttempted)
+					throw new IllegalStateException("Child gating may be requested once per Frida session");
+				childGatingAttempted = true;
+				checkedVoid("frida_session_enable_child_gating_sync", enableChildGating, handle);
 			}
 
 			/**
@@ -450,7 +541,7 @@ final class FridaRuntime implements AutoCloseable
 				if (closed)
 					return;
 				if (closeFailure != null)
-					throw closeFailure;
+					throw new IOException("Frida session cleanup previously failed; retain its manager", closeFailure);
 				if (scripts.isEmpty() == false)
 					throw new IOException("Frida session still owns scripts; close them first");
 				try
@@ -548,14 +639,7 @@ final class FridaRuntime implements AutoCloseable
 						{
 							throw new IOException("Cannot bind the native script message receiver", failure);
 						}
-						MemorySegment stub = Linker.nativeLinker().upcallStub(callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS, ADDRESS), libraryArena);
-						Number nativeId = (Number) invoke(connect, handle, arena.allocateFrom("message"), stub, MemorySegment.NULL, MemorySegment.NULL, 0);
-						if (signalIdLayout.byteSize() == Integer.BYTES)
-							handler = Integer.toUnsignedLong(nativeId.intValue());
-						else
-							handler = nativeId.longValue();
-						if (handler == 0)
-							throw new IOException("Frida message signal registration returned zero");
+						handler = registerSignal(handle, "message", callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 					}
 					loadAttempted = true;
 					checkedVoid("frida_script_load_sync", loadScript, handle);
@@ -606,18 +690,13 @@ final class FridaRuntime implements AutoCloseable
 					if (closed)
 						return;
 					if (closeFailure != null)
-						throw closeFailure;
+						throw new IOException("Frida script cleanup previously failed; retain its session", closeFailure);
 					receiver.stop();
 					try
 					{
 						if (handler != 0)
 						{
-							Object nativeId;
-							if (signalIdLayout.byteSize() == Integer.BYTES)
-								nativeId = Integer.valueOf((int) handler);
-							else
-								nativeId = Long.valueOf(handler);
-							invoke(disconnect, handle, nativeId);
+							disconnectSignal(handle, handler);
 							handler = 0;
 						}
 						if (handle.equals(MemorySegment.NULL) == false)
@@ -648,6 +727,151 @@ final class FridaRuntime implements AutoCloseable
 				}
 			}
 		}
+	}
+
+	/**
+	 * Copies a native child event while its borrowed source remains valid.
+	 * @param pid unsigned native process identity
+	 * @param parentPid unsigned native parent identity
+	 * @param origin native FridaChildOrigin value: fork 0, exec 1, spawn 2
+	 * @param path copied executable path, or null when the native event provides none
+	 */
+	record Child(long pid, long parentPid, int origin, String path) {}
+
+	/** Copies child notifications without retaining the manager or borrowed native objects. */
+	private static final class ChildReceiver
+	{
+		/** Verified accessor for the unsigned child process identity. */
+		private final MethodHandle pid;
+		/** Verified accessor for the unsigned parent process identity. */
+		private final MethodHandle parent;
+		/** Verified accessor for the native event origin. */
+		private final MethodHandle origin;
+		/** Verified accessor for the optional borrowed executable path. */
+		private final MethodHandle path;
+		/** Copied events awaiting the constructing-thread controller. */
+		private final ConcurrentLinkedQueue<Child> events = new ConcurrentLinkedQueue<>();
+		/** First callback failure; retained after the receiver closes. */
+		private final AtomicReference<Throwable> failure = new AtomicReference<>();
+		/** Guarded by this receiver's monitor; false rejects borrowed arguments before access. */
+		private boolean accepting = true;
+
+		/**
+		 * Retains verified native accessors without borrowing the enclosing owner.
+		 * @param pid child process identity accessor
+		 * @param parent child parent identity accessor
+		 * @param origin event origin accessor
+		 * @param path optional native path accessor
+		 */
+		private ChildReceiver(MethodHandle pid, MethodHandle parent, MethodHandle origin, MethodHandle path)
+		{
+			this.pid = pid;
+			this.parent = parent;
+			this.origin = origin;
+			this.path = path;
+		}
+
+		/**
+		 * Copies all borrowed fields; Java failures never escape this native callback body.
+		 * @param device borrowed native device, unused
+		 * @param child borrowed native child valid only during this callback
+		 * @param userData unused callback data
+		 */
+		private void onChild(MemorySegment device, MemorySegment child, MemorySegment userData)
+		{
+			try
+			{
+				synchronized (this)
+				{
+					if (accepting == false)
+						return;
+					long actualPid = Integer.toUnsignedLong((int) invoke(pid, child));
+					long actualParent = Integer.toUnsignedLong((int) invoke(parent, child));
+					int actualOrigin = (int) invoke(origin, child);
+					MemorySegment actualPath = (MemorySegment) invoke(path, child);
+					String copiedPath = null;
+					if (actualPath.equals(MemorySegment.NULL) == false)
+						copiedPath = string(actualPath);
+					events.add(new Child(actualPid, actualParent, actualOrigin, copiedPath));
+				}
+			}
+			catch (Throwable cause)
+			{
+				failure.compareAndSet(null, cause);
+			}
+		}
+
+		/**
+		 * Returns a copied event after checking retained errors.
+		 * @return next event, or empty when none remains
+		 * @throws IOException if native event copying failed
+		 */
+		private Optional<Child> poll() throws IOException
+		{
+			Throwable cause = failure.get();
+			if (cause != null)
+				throw new IOException("Native Frida child-event delivery failed", cause);
+			return Optional.ofNullable(events.poll());
+		}
+
+		/** Waits for any active copy, rejects later callbacks and discards queued events. */
+		private synchronized void stop()
+		{
+			accepting = false;
+			events.clear();
+		}
+	}
+
+	/**
+	 * Retains a callback stub until global teardown and registers its native signal handler.
+	 * @param object borrowed native object receiving the registration
+	 * @param signal native signal name
+	 * @param callback bound Java callback with the exact descriptor carrier types
+	 * @param descriptor verified native callback signature
+	 * @return nonzero native gulong identity bits
+	 * @throws IOException if native registration returns zero
+	 */
+	private long registerSignal(MemorySegment object, String signal, MethodHandle callback, FunctionDescriptor descriptor) throws IOException
+	{
+		MemorySegment stub = Linker.nativeLinker().upcallStub(callback, descriptor, libraryArena);
+		try (Arena arena = Arena.ofConfined())
+		{
+			Number id = (Number) invoke(connect, object, arena.allocateFrom(signal), stub, MemorySegment.NULL, MemorySegment.NULL, 0);
+			long bits;
+			if (signalIdLayout.byteSize() == Integer.BYTES)
+				bits = Integer.toUnsignedLong(id.intValue());
+			else
+				bits = id.longValue();
+			if (bits == 0)
+				throw new IOException("Frida signal registration returned zero: " + signal);
+			return bits;
+		}
+	}
+
+	/**
+	 * Disconnects a known registration using its original platform carrier.
+	 * @param object native object which owns the handler
+	 * @param bits nonzero gulong identity bits returned by registration
+	 */
+	private void disconnectSignal(MemorySegment object, long bits)
+	{
+		Object id;
+		if (signalIdLayout.byteSize() == Integer.BYTES)
+			id = Integer.valueOf((int) bits);
+		else
+			id = Long.valueOf(bits);
+		invoke(disconnect, object, id);
+	}
+
+	/**
+	 * Requires a positive unsigned 32-bit process identity before native conversion.
+	 * @param pid native target identity
+	 * @throws IllegalArgumentException if pid is outside 1 through 4294967295
+	 */
+	private static void requirePid(long pid)
+	{
+		if (pid < 1 || pid > 0xffff_ffffL)
+			throw new IllegalArgumentException("Frida target PID must be between 1 and 4294967295");
 	}
 
 	/**
