@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "checkpoint": 2,
+  "status": "passed",
+  "scope": "Required baseline caching and incremental build recovery; optional D8 cache-provider/retention work and checkpoint-3 scheduler remain open.",
+  "gates": [
+    {
+      "claim": "Six-target grouped-cache reuse",
+      "status": "passed",
+      "evidence": "docs/release-build-checkpoints.md:525-526"
+    },
+    {
+      "claim": "Six-target cumulative clean builds",
+      "status": "passed",
+      "evidence": "docs/release-build-checkpoints.md:764-769"
+    },
+    {
+      "claim": "Representative hosted invalidation and subsequent unchanged reuse",
+      "status": "passed",
+      "evidence": "docs/release-build-checkpoints.md:565-590"
+    },
+    {
+      "claim": "Actual cross-runner partial build recovery with native smokes, guards, recording and verified save",
+      "status": "passed",
+      "evidence": "docs/source-cache-migration.md:167-177"
+    },
+    {
+      "claim": "Stable-path actual Codex producer and same-worker reuse",
+      "status": "passed",
+      "evidence": "docs/evidence/focused-runtime-cache-stable-producer.json"
+    },
+    {
+      "claim": "Separate-runner restored Codex reuse, producer-identical executable, named test and maintained workflow publication/cleanup",
+      "status": "passed",
+      "evidence": "docs/evidence/focused-runtime-cache-stable-consumer.json"
+    }
+  ],
+  "carry_forward": "Owner instructed accepted prior-version checks be treated as equivalent unless contradicted. No accepted release or broad runtime matrix was rerun solely for this cache path correction.",
+  "retained_failure": "docs/evidence/focused-runtime-cache-record-handoff.json preserves the duplicate-record diagnostic error and its same-worker recovery; final independent workflow succeeds.",
+  "source_policy": "No upstream source/test modifications and warnings remain nonfatal.",
+  "completion_tags": [
+    "checkpoint-2-caching",
+    "checkpoint-incremental-build-recovery"
+  ]
+}
