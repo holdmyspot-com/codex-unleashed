@@ -208,7 +208,7 @@
   },
   "gates": {
     "native_changed_storage_setup": "unrun",
-    "focused_codex_consumer": "running with the prior random path implementation; not evidence for this correction",
+    "focused_codex_consumer": "passed in producer run 40839489602 using prior random paths; see focused-runtime-cache-codex-consumer.json. This is same-worker reuse, not evidence for the stable-path correction.",
     "separate_runner_codex_warm_reuse": "unrun",
     "checkpoint_2": "incomplete"
   },
@@ -231,5 +231,6 @@
     "duration_ms": 90.924231,
     "raw_tap": "TAP version 13\n# Subtest: successive cleaned jobs export the same build-input directory\nok 1 - successive cleaned jobs export the same build-input directory\n  ---\n  duration_ms: 20.617754\n  type: 'test'\n  ...\n# Subtest: an existing owner is refused without changing or deleting its files\nok 2 - an existing owner is refused without changing or deleting its files\n  ---\n  duration_ms: 4.079098\n  type: 'test'\n  ...\n# Subtest: failed environment publication removes only newly owned storage\nok 3 - failed environment publication removes only newly owned storage\n  ---\n  duration_ms: 2.118503\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 90.924231\n",
     "raw_tap_sha256": "73527865999ad87552a6a5305392aa35ce2e2d7fe1957ead14e5eaf781e479ec"
-  }
+  },
+  "followup_codex_workflow_evidence": "focused-runtime-cache-codex-consumer.json"
 }
