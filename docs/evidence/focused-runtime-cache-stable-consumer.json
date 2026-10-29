@@ -91,7 +91,7 @@
       }
     ],
     "keys_removed": true,
-    "local_directory": "Retained until durable archives are committed and verified."
+    "local_directory": "Removed after verifying committed archives at 0097aae2cd732d05afd2a5bfe0797f05c9435ff8."
   },
   "archives": {
     "runtime-evidence.zip": {
