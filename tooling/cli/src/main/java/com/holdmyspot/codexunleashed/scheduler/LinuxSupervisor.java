@@ -52,6 +52,8 @@ public final class LinuxSupervisor implements AutoCloseable
 
 	/** Immutable workload context; its cgroup parent is used only to acquire the independent outer group. */
 	private final LinuxProcessTree.Launch launch;
+	/** Caller-owned workload endpoints; null selects legacy piped input and merged workload logging. */
+	private final LinuxProcessTree.StandardFiles files;
 	/** Startup, control acknowledgement and cleanup wait limit; this is not a build runtime limit. */
 	private final long timeoutNanos;
 	/** Identity generated before resource acquisition and checked in every published stage. */
@@ -134,11 +136,13 @@ public final class LinuxSupervisor implements AutoCloseable
 	/**
 	 * Validates immutable inputs before acquiring a cgroup, storage or process.
 	 * @param launch the explicit workload and trusted Java context
+	 * @param files caller-owned workload endpoints, or null for legacy standard streams
 	 * @param timeout the positive startup/control/cleanup timeout representable as signed nanoseconds
 	 */
-	private LinuxSupervisor(LinuxProcessTree.Launch launch, Duration timeout)
+	private LinuxSupervisor(LinuxProcessTree.Launch launch, LinuxProcessTree.StandardFiles files, Duration timeout)
 	{
 		this.launch = Objects.requireNonNull(launch, "launch may not be null");
+		this.files = files;
 		Objects.requireNonNull(timeout, "timeout may not be null");
 		if (timeout.isNegative() || timeout.isZero())
 			throw new IllegalArgumentException("Supervisor timeout must be positive: " + timeout);
@@ -169,7 +173,22 @@ public final class LinuxSupervisor implements AutoCloseable
 	 */
 	public static LinuxSupervisor prepare(LinuxProcessTree.Launch launch, Duration timeout) throws IOException
 	{
-		LinuxSupervisor owner = new LinuxSupervisor(launch, timeout);
+		return prepareOwned(launch, null, timeout);
+	}
+
+	/**
+	 * Acquires the existing supervisor lifecycle for legacy or explicit workload streams.
+	 * @param launch the explicit workload and trusted Java context
+	 * @param files caller-owned workload endpoints, or null for legacy standard streams
+	 * @param timeout the positive startup/control/cleanup wait limit
+	 * @return a prepared owner whose workload is still gated
+	 * @throws IOException if acquisition, containment or preparation fails
+	 * @throws PreparationFailure if preparation and its cleanup both fail
+	 */
+	private static LinuxSupervisor prepareOwned(LinuxProcessTree.Launch launch,
+		LinuxProcessTree.StandardFiles files, Duration timeout) throws IOException
+	{
+		LinuxSupervisor owner = new LinuxSupervisor(launch, files, timeout);
 		try
 		{
 			owner.outer = LinuxCgroup.create(launch.cgroupParent(), timeout);
@@ -220,6 +239,30 @@ public final class LinuxSupervisor implements AutoCloseable
 			}
 			throw failure;
 		}
+	}
+
+	/**
+	 * Prepares a gated workload with caller-owned standard-stream endpoints.
+	 * Containment, release, timeout and failed-acquisition ownership follow
+	 * {@link #prepare(LinuxProcessTree.Launch, Duration)}. Only the workload gate receives the redirects;
+	 * the supervisor retains its controller liveness pipe and diagnostic log. The caller must arrange FIFO
+	 * peers so redirected opens can complete. The gate opens endpoints before release; output truncation
+	 * may occur even if preparation later fails. The owner never deletes the endpoints.
+	 * @param launch the explicit workload and trusted Java context, with elevated cgroup-management authority
+	 * @param files nonnull standard-stream endpoints
+	 * @param timeout the positive startup/control/cleanup wait limit
+	 * @return a prepared owner whose workload is still gated
+	 * @throws NullPointerException if an input is null, before resource acquisition
+	 * @throws IllegalArgumentException if timeout is nonpositive or cannot be represented as signed nanoseconds
+	 * @throws UnsupportedOperationException if the cgroup parent is not on cgroup v2
+	 * @throws IOException if acquisition, containment or preparation fails
+	 * @throws PreparationFailure if preparation and its cleanup both fail; close that exception to retry cleanup
+	 */
+	public static LinuxSupervisor prepare(LinuxProcessTree.Launch launch,
+		LinuxProcessTree.StandardFiles files, Duration timeout) throws IOException
+	{
+		Objects.requireNonNull(files, "files may not be null");
+		return prepareOwned(launch, files, timeout);
 	}
 
 	/**
@@ -435,6 +478,8 @@ public final class LinuxSupervisor implements AutoCloseable
 			values.setProperty("command." + index, launch.command().get(index));
 		for (var entry : launch.environment().entrySet())
 			values.setProperty("environment." + entry.getKey(), entry.getValue());
+		if (files != null)
+			files.writeTo(values);
 		publish(scratch, Phase.LAUNCH, attempt, values);
 	}
 
@@ -662,7 +707,10 @@ public final class LinuxSupervisor implements AutoCloseable
 		});
 		Result result;
 		long rootPid;
-		try (LinuxProcessTree tree = LinuxProcessTree.prepare(readLaunch(scratch, configuration)))
+		LinuxProcessTree.Launch launch = readLaunch(scratch, configuration);
+		LinuxProcessTree.StandardFiles files = LinuxProcessTree.StandardFiles.readFrom(configuration);
+		try (LinuxProcessTree tree = files == null ? LinuxProcessTree.prepare(launch) :
+			LinuxProcessTree.prepare(launch, files))
 		{
 			rootPid = tree.rootPid();
 			Properties ready = new Properties();

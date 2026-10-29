@@ -40,6 +40,7 @@ public final class LinuxSupervisorTest
 	public void rejectsInvalidTimeoutBeforeAcquisition(Duration timeout)
 	{
 		expectThrows(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), timeout));
+		expectThrows(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), timeout));
 	}
 
 	/**
@@ -49,6 +50,7 @@ public final class LinuxSupervisorTest
 	public void rejectsNullLaunch()
 	{
 		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(null, Duration.ofSeconds(1)));
+		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(null, unresolvedFiles(), Duration.ofSeconds(1)));
 	}
 
 	/**
@@ -58,6 +60,15 @@ public final class LinuxSupervisorTest
 	public void rejectsNullTimeout()
 	{
 		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null));
+		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), unresolvedFiles(), null));
+	}
+
+	/** Rejects absent explicit endpoints before resolving the nonexistent cgroup parent. */
+	@Test
+	public void rejectsNullStandardFilesBeforeAcquisition()
+	{
+		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null, Duration.ofSeconds(1)));
+		expectThrows(NullPointerException.class, () -> LinuxProcessTree.prepare(unresolvedLaunch(), null));
 	}
 
 	/**
@@ -96,5 +107,15 @@ public final class LinuxSupervisorTest
 		Path parent = Path.of("unresolved-supervisor-parent").toAbsolutePath();
 		return new LinuxProcessTree.Launch(parent, parent, parent.resolve("java"), parent.resolve("classes"),
 			List.of(parent.resolve("workload").toString()), Map.of(), parent, 1001, 1001);
+	}
+
+	/**
+	 * Creates absolute endpoints that require no filesystem state during validation.
+	 * @return unresolved caller-owned standard-stream endpoints
+	 */
+	private LinuxProcessTree.StandardFiles unresolvedFiles()
+	{
+		Path parent = Path.of("unresolved-supervisor-parent").toAbsolutePath();
+		return new LinuxProcessTree.StandardFiles(parent.resolve("input"), parent.resolve("output"), parent.resolve("error"));
 	}
 }
