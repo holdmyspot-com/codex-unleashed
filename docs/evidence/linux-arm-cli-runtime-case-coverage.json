@@ -2459,7 +2459,7 @@
       "sha256": "5d41efb85706df775c6ddb6f0482d8e7452b9bc23987cd0676f3e96321025ed6"
     }
   },
-  "comparison": "Selected upstream Bazel explicitly optimizes BLAKE3 Rust/native code at level 3; matching this external Cargo profile override makes all four unchanged daemon cases pass. No native upstream ARM64 per-case CI execution receipt is claimed.",
+  "comparison": "All four timeout case names also report passing in the identical-source upstream macOS Bazel daemon target. Full log/hash and build-policy/control comparison: linux-arm-daemon-hashing-diagnosis.json. No upstream native Linux ARM64 execution is claimed.",
   "focused_passed_cases": [
     [
       "codex-cli::app_server_daemon",
