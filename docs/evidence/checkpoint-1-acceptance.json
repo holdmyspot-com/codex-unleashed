@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "checkpoint": 1,
+  "status": "accepted-with-owner-approved-deferrals",
+  "upstream_commit": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4",
+  "predecessor_commit": "f1c87fe802ebf06fc373666e7f6d5df3c7cef15a",
+  "recorded_by": "root goal orchestrator",
+  "completion_tag": "checkpoint-1-upstream-baseline",
+  "acceptance_scope": "Codex CLI/app-server selected release artifacts, required helpers and selected native runtime checks; unrelated workspace/SDK targets excluded by owner.",
+  "gates": [
+    {
+      "gate": "Six-target default-feature release compilation and native executable smokes",
+      "status": "passed",
+      "evidence": "docs/release-build-checkpoints.md#clean-verification-after-grouped-cache-acceptance",
+      "targets": [
+        "aarch64-unknown-linux-musl",
+        "x86_64-unknown-linux-musl",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-pc-windows-msvc",
+        "x86_64-pc-windows-msvc"
+      ],
+      "basis": "Historical exact-version receipts carried under explicit owner equivalence instruction; no claim these builds reran on selected main."
+    },
+    {
+      "gate": "Separate clean-start verification without restored compiled outputs",
+      "status": "passed",
+      "evidence": "docs/release-build-checkpoints.md#clean-verification-after-grouped-cache-acceptance",
+      "runs": [
+        40434744427,
+        40434750719,
+        40434748709,
+        40434746377,
+        40448755120,
+        40438957248
+      ],
+      "basis": "Owner-approved equivalence; original identities and configuration retained."
+    },
+    {
+      "gate": "Broader native CLI/app-server runtime acceptance",
+      "status": "passed",
+      "evidence": [
+        "docs/evidence/baseline-runtime-gate-inventory.json",
+        "docs/evidence/linux-x64-new-runtime-cases.json",
+        "docs/evidence/macos-arm-runtime-case-coverage.json",
+        "docs/evidence/macos-intel-runtime-case-coverage.json",
+        "docs/evidence/macos-intel-runtime-hostname-control.json",
+        "docs/evidence/windows-cli-runtime-case-coverage.json",
+        "docs/evidence/windows-app-server-runtime-case-coverage.json",
+        "docs/evidence/linux-arm-runtime-focused-completion.json"
+      ],
+      "basis": "Linux x86-64 carries accepted historical product suites plus selected-source package and new cases. Other platforms join named original and focused passing cases; approved deferred failures stay failed."
+    },
+    {
+      "gate": "Root cause and corresponding upstream outcome for other runtime failures",
+      "status": "passed",
+      "evidence": [
+        "docs/upstream-failure-comparison.md",
+        "docs/evidence/linux-arm-daemon-hashing-diagnosis.json"
+      ],
+      "basis": "Final ARM64 gap closed by hash-verified identical-source upstream macOS Bazel daemon log and paired downstream optimization control. Platform and successful-output visibility limitations remain explicit."
+    },
+    {
+      "gate": "Pristine upstream source/tests and locked dependencies through baseline; visible nonfatal warnings",
+      "status": "passed",
+      "evidence": [
+        ".github/workflows/baseline-release-builds.yml",
+        ".github/workflows/baseline-linux-focused-runtime.yml",
+        "docs/evidence/linux-arm-runtime-focused-completion.json",
+        "docs/evidence/windows-native-runtime-results.json",
+        "docs/evidence/macos-runtime-helper-controls.json"
+      ],
+      "basis": "Retained source/dependency guards; environment-only prerequisite, path, concurrency and profile controls. BLAKE3 package optimization matches selected upstream Bazel. No product patch or warning suppression introduced."
+    }
+  ],
+  "explicit_deferrals": [
+    {
+      "items": [
+        "remote pipe capture recovery",
+        "remote TTY capture recovery",
+        "remote sandbox profile replay",
+        "blocked-descriptor replay"
+      ],
+      "status": "failed; owner-excluded as blocker through checkpoints 1\u20133",
+      "repair_checkpoint": 4,
+      "evidence": "plan.md"
+    },
+    {
+      "items": [
+        "winget_package_starts_and_reselects_daemon"
+      ],
+      "status": "failed; owner-excluded as blocker through checkpoints 1\u20133",
+      "repair_checkpoint": 4,
+      "evidence": "docs/evidence/windows-native-runtime-results.json"
+    },
+    {
+      "items": [
+        "RUSTSEC-2026-0387",
+        "RUSTSEC-2026-0385"
+      ],
+      "status": "failed; owner-excluded as blocker before checkpoint 7",
+      "repair_checkpoint": 7,
+      "evidence": "plan.md"
+    }
+  ],
+  "limits": [
+    "Acceptance aggregates original and focused executions; it does not relabel failed or cancelled workflows as green.",
+    "Owner equivalence is an acceptance assumption, not a fresh execution claim.",
+    "Remote lifecycle limitations, including macOS ARM64 manual temporary-directory cleanup and the original ARM64 SSH observation handle, remain recorded separately.",
+    "This accepts checkpoint 1 only. Caching, incremental retry and scheduler checkpoints retain their own unpassed gates."
+  ],
+  "final_comparison": {
+    "evidence": "docs/evidence/upstream-macos-cli-comparison.json",
+    "receipt_index": 0,
+    "upstream_run": 40529953490,
+    "job": 122279717700,
+    "invocation": "639a5bd6-0a5d-4dc9-be73-308481048b1e",
+    "source_tree_identity": {
+      "selected_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+      "checked_out_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+      "verification": "Both complete root-tree identities returned by GitHub Git commits API match; merge checkout and selected source have the same complete source tree."
+    },
+    "raw_log_bytes": 1136,
+    "raw_log_sha256": "3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8",
+    "result": "13 passed; zero failed, ignored or filtered",
+    "matched_cases": [
+      {
+        "name": "explicit_restart_applies_feature_overrides_and_preserves_saved_settings",
+        "result": "reported-pass",
+        "line": 15
+      },
+      {
+        "name": "managed_identity_survives_locale_and_timezone_changes",
+        "result": "reported-pass",
+        "line": 9
+      },
+      {
+        "name": "managed_starts_ensure_one_updater_and_recover_a_missing_one",
+        "result": "reported-pass",
+        "line": 17
+      },
+      {
+        "name": "restart_applies_saved_updater_preference",
+        "result": "reported-pass",
+        "line": 18
+      }
+    ],
+    "decision": "Corresponding upstream outcomes established for all four Linux ARM64 daemon timeouts. Matching upstream BLAKE3 optimization also passes all four unchanged downstream cases.",
+    "limitations": [
+      "Upstream execution uses macOS Bazel darwin-sandbox; downstream control uses Linux ARM64 Cargo. This is not a native upstream Linux ARM64 execution receipt.",
+      "Successful libtest output does not expose assertion-by-assertion execution or child environment values."
+    ]
+  },
+  "next_action": "Complete checkpoint 2 profile-aware content-checked freshness handling for focused ci-test caches; preserve accepted results."
+}

@@ -34,5 +34,47 @@
     "source_status": "empty diff/status; dependency guards pass",
     "receipt": "linux-arm-runtime-focused-completion.json"
   },
-  "outcome": "Matching upstream BLAKE3 optimization in external Cargo config makes all four previously timed out cases pass without upstream source/test changes or timeout relaxation."
+  "outcome": "Matching upstream BLAKE3 optimization in external Cargo config makes all four previously timed out cases pass without upstream source/test changes or timeout relaxation.",
+  "upstream_execution_comparison": {
+    "evidence": "docs/evidence/upstream-macos-cli-comparison.json",
+    "receipt_index": 0,
+    "upstream_run": 40529953490,
+    "job": 122279717700,
+    "invocation": "639a5bd6-0a5d-4dc9-be73-308481048b1e",
+    "source_tree_identity": {
+      "selected_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+      "checked_out_commit_tree": "16b1c50831e79726bca339e0da0b51c682944959",
+      "verification": "Both complete root-tree identities returned by GitHub Git commits API match; merge checkout and selected source have the same complete source tree."
+    },
+    "raw_log_bytes": 1136,
+    "raw_log_sha256": "3151547b912e4d6b15146b29ee18f81d84f9a1506c040cd196efc33c7150a9b8",
+    "result": "13 passed; zero failed, ignored or filtered",
+    "matched_cases": [
+      {
+        "name": "explicit_restart_applies_feature_overrides_and_preserves_saved_settings",
+        "result": "reported-pass",
+        "line": 15
+      },
+      {
+        "name": "managed_identity_survives_locale_and_timezone_changes",
+        "result": "reported-pass",
+        "line": 9
+      },
+      {
+        "name": "managed_starts_ensure_one_updater_and_recover_a_missing_one",
+        "result": "reported-pass",
+        "line": 17
+      },
+      {
+        "name": "restart_applies_saved_updater_preference",
+        "result": "reported-pass",
+        "line": 18
+      }
+    ],
+    "decision": "Corresponding upstream outcomes established for all four Linux ARM64 daemon timeouts. Matching upstream BLAKE3 optimization also passes all four unchanged downstream cases.",
+    "limitations": [
+      "Upstream execution uses macOS Bazel darwin-sandbox; downstream control uses Linux ARM64 Cargo. This is not a native upstream Linux ARM64 execution receipt.",
+      "Successful libtest output does not expose assertion-by-assertion execution or child environment values."
+    ]
+  }
 }

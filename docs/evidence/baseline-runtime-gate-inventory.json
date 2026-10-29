@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Reconcile checkpoint 1 acceptance against the retained native case inventories, accepted historical build/smoke/clean evidence and explicit failure deferrals; resolve or explicitly disposition any remaining comparison gate. Do not repeat accepted tests.",
+  "next_action": "Checkpoint 1 accepted. Continue checkpoint 2 ci-test cache freshness/invalidation integration without repeating accepted release/runtime checks.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -1041,7 +1041,7 @@
       },
       "source_attribution_evidence": "docs/evidence/macos-runtime-source-attribution.json"
     },
-    "remaining_scope": "All selected native CLI/app-server scopes now have named passing receipts or owner-approved equivalent historical coverage. Final scope and upstream-failure comparison reconciliation remains required before checkpoint completion. Preserve original failures and approved deferrals.",
+    "remaining_scope": "Selected native CLI/app-server scopes and corresponding failure comparisons are accepted, with explicit owner-approved historical equivalence and failure deferrals. See checkpoint-1-acceptance.json for checkpoint closure.",
     "current_windows_standard_user": {
       "evidence": "docs/evidence/windows-native-runtime-results.json",
       "x86_64_run": 40758471648,
@@ -1170,11 +1170,12 @@
       "replacement_job": 123166970911,
       "source_state": "Exact selected source; environment-only diagnostic harness.",
       "cache_restore": "Two-part private partial hit in 48 seconds, digest sha256:5b5191d67082ad5d778c491d970515d18c8bbf51f36e0ae417d0739adeb63d3b.",
-      "status": "Third runner shutdown follows observed concurrent-linker RAM/swap pressure. Runtime remains unaccepted. Native ARM64 environment now limits Cargo to one job; original signal initiator remains unproven.",
+      "status": "Accepted: all 544 required CLI and 2,062 required app-server cases have named passing receipts across original runs and focused environment controls. Original failures and shutdown evidence remain retained.",
       "instrumented_run": 40791100997,
       "instrumented_job": 123176253320,
       "continuation_run": 40793215263,
-      "concurrency": "CARGO_BUILD_JOBS=1 for focused native ARM64 only. Revisit conservative admission at checkpoint3 with the Java scheduler."
+      "concurrency": "CARGO_BUILD_JOBS=1 for focused native ARM64 only. Revisit conservative admission at checkpoint3 with the Java scheduler.",
+      "completion_evidence": "docs/evidence/linux-arm-runtime-focused-completion.json"
     },
     "linux_arm64_focused_completion": {
       "run_id": 40793215263,
@@ -1192,7 +1193,8 @@
       },
       "guards": "Empty final source diff/status; locked dependency guards pass.",
       "lifecycle": "Recovery SSH exits zero; hosted Upterm/storage post success; owned executables empty; owned short TMPDIR and local keys removed. Original tool handle remains unresolved independently.",
-      "comparison_limit": "Native upstream ARM64 per-case CI execution not established; exact upstream BLAKE3 build policy and paired environment control retained."
+      "comparison_limit": "Native upstream ARM64 per-case CI execution not established; exact upstream BLAKE3 build policy and paired environment control retained.",
+      "comparison": "Identical-source upstream macOS Bazel daemon log reports all four original timeout cases passing; see linux-arm-daemon-hashing-diagnosis.json. No native upstream Linux ARM64 result is claimed."
     }
   },
   "current_source_package_runtime": {
@@ -1316,5 +1318,6 @@
     "decision": "Require broader Codex CLI/app-server runtime tests before checkpoint 1 completes.",
     "authority": "Explicit owner reply to the checkpoint-1 runtime-scope question.",
     "constraints": "Carry forward accepted results under the owner equivalence instruction; retain agreed failure deferrals. Build and test only the selected Codex products and their required dependencies/helpers."
-  }
+  },
+  "checkpoint_1_acceptance": "docs/evidence/checkpoint-1-acceptance.json"
 }
