@@ -137,6 +137,26 @@ between concurrent jobs remain required; closing a shared manager would not
 establish that isolation. All twenty owned PIDs, cgroups, remote storage, client
 keys, SSH and hosted cleanup are accounted for in the receipt.
 
+[The Java-managed launch diagnostic](evidence/linux-java-leader-exec-native.json)
+now avoids that thread mismatch without adding a separate compiler launcher.
+The scratch gate retains the existing Java supervisor and credential drop,
+then waits while QuickJS calls cooperative `execve` on the process leader through
+`Process.runOnThread`. Startup and held cancellation pass incrementally and in a
+fresh case on Linux x86-64 with JDK 27 and Rust 1.95.0. Failed exec separately
+preserves `ENOENT`, returns from the callback and permits explicit script unload;
+the owner then collects the requested termination. Fresh Java compilation passes.
+
+Successful exec never returns through the callback Promise. Use the host's EXEC
+event and supervisor result to observe it; waiting for that Promise during exec
+preparation would prevent progress. The failed-exec diagnostic also captures the
+waiting leader's native stack. Its `CallJavaMainInNewThread` return address matches
+the instruction immediately after `pthread_join` in the actual vendor launcher.
+This narrows the observed launch context; it does not establish arbitrary-process
+reentrancy or complete startup-allocation coverage. Production integration and
+independent concurrent cancellation remain required. All twelve owned PIDs are
+absent, remote storage/cgroup and client keys are removed, SSH exits zero and
+hosted cleanup passes. No maintained scheduler or upstream source changed.
+
 ## Existing project code
 
 Frozen old main is `545479059ac86394049b6efd3bf4297b1ca18d17`. Its
