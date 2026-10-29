@@ -1,0 +1,104 @@
+{
+  "recorded_at": "2026-10-29T15:25:19.042131+00:00",
+  "status": "availability passed; production binding remains unimplemented",
+  "claim": "JDK27 FFM loads a locally linked thin native wrapper around pinned Frida 17.24.3, reads its real version, creates/closes a real device manager, and shuts down/deinitializes the library before normal JVM exit.",
+  "scope": "Local Linux x86-64 controller availability only.",
+  "asset": {
+    "source": "https://api.github.com/repos/frida/frida/releases/tags/17.24.3",
+    "name": "frida-core-devkit-17.24.3-linux-x86_64.tar.xz",
+    "url": "https://github.com/frida/frida/releases/download/17.24.3/frida-core-devkit-17.24.3-linux-x86_64.tar.xz",
+    "sha256": "9a11abf474899a33af6dd9af8a064448b23947a29a3af747eb3c7851591ffec2",
+    "bytes": 78853964,
+    "size_and_digest_verified_before_extract": true
+  },
+  "runtime": {
+    "java": "openjdk version \"27.0.1\" 2026-10-20\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing)",
+    "javac": "javac 27.0.1",
+    "gcc": "13.3.0",
+    "machine": "x86_64"
+  },
+  "native_library": {
+    "sha256": "db8bc62de6896ce6758c0e22cb196296b2dd135cd2c4306dbfc5ceedd4c75c88",
+    "bytes": 159853672,
+    "committed": false,
+    "rebuild_inputs": "Exact wrapper source and literal compiler command are in the embedded archive. Devkit retrieved from the pinned asset and verified digest."
+  },
+  "result": [
+    {
+      "command": [
+        "gcc",
+        "-shared",
+        "-fPIC",
+        "-ffunction-sections",
+        "-fdata-sections",
+        "-Wl,--gc-sections",
+        "-Wl,--exclude-libs,ALL",
+        "-I/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/devkit",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/version_bridge.c",
+        "-o",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/libcodex-frida-version.so",
+        "-L/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/devkit",
+        "-lfrida-core",
+        "-lm",
+        "-ldl",
+        "-latomic",
+        "-lrt",
+        "-lresolv",
+        "-pthread"
+      ],
+      "exit": 0,
+      "output": "/usr/bin/ld: warning: generated-config_archs_linux-x86_64_asm_crypto_aes_aesni-xts-avx512.s.o: missing .note.GNU-stack section implies executable stack\n/usr/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker\n"
+    },
+    {
+      "command": [
+        "javac",
+        "-d",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/classes",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/VersionProbe.java"
+      ],
+      "exit": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "java",
+        "--enable-native-access=ALL-UNNAMED",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/classes",
+        "VersionProbe",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/libcodex-frida-version.so"
+      ],
+      "exit": 0,
+      "output": "OpenJDK 64-Bit Server VM warning: You have loaded library /home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp/libcodex-frida-version.so which might have disabled stack guard. The VM will try to fix the stack guard now.\nIt's highly recommended that you fix the library with 'execstack -c <libfile>', or link it with '-z noexecstack'.\nffm_library_load=passed; native_version=17.24.3; manager_lifecycle=passed\n"
+    }
+  ],
+  "warning": {
+    "status": "retained; not suppressed or repaired",
+    "linker": "Pinned third-party AES assembly object lacks .note.GNU-stack. Shared ELF consequently has GNU_STACK RWE; HotSpot reports possible stack-guard disablement.",
+    "evidence": [
+      "flagged-assembly-sections.log",
+      "shared-library-segments.log",
+      "lifecycle-availability.json"
+    ],
+    "next_gate": "Before accepting production packaging, establish the required stack permissions and verify the appropriate link configuration with actual attachment/script/control paths. No third-party source patch is authorized by this availability probe."
+  },
+  "evidence_archive": {
+    "encoding": "base64",
+    "bytes": 4578,
+    "sha256": "ae31fad25a1e62c13d30ec4516bb78358b1275acbb699ff5081ad4ad4211377e",
+    "data": "H4sIAF9l42oC/+1ce3fbNrLP3/oUWN3bDeXqRT0s2W66R7Hl1K1sZy072d7Eh0uREMWGIlk+bKvdfPedAUASpGRZ7Wmz3nOJc2yRwPCHwcxgMMMH7mgQ2p6rzQLbtGjTePEnlDaU/V6P/UIp/rYHveyY1atQui9I+8UXKHEY6QF0/+L/Z/kf2zWc2KSkOgcL0BuGF9DmolqpGJ4bRsRY6AHZMzyTPmiMQLvjBqPcebZZI7+SgEZx4JJcoxZGge1aSu2IfK5UbBdwJISl7uoWDTTHnlNjZTg0waoQKG/GQeBBn5T9vCIXN5PJEWvhV9uuHQEwqznFmhN6Zxv0nIOSPYEOV3J6kzWnnbr0Prl6Y7vheCHVwpVrKKKqzliok78yjsS1OKaAhrETQUeCVc4r+Rtpk0OiCro5UXjzX3hzjVgaqwBhUKrImJyf2A3oPOk71xIu4sj07t0i/7JEhDY4a0eVz5Wn9P+Oa+xt4M1o8yf9Tv/y878LDqA4/ztdtZz/X6LYS98LIoKabzq6azXn4ABsy22OAurqR5VH209j14jAck5oaAS2H3nBFuKJ7X6i2wjO6dILVlNqLakbbaGbrpYzz5l43qfY30L2TndiOtFXXlwAc22vObcd2nyrR4ujSqW1t0eOF9T4FJJoQYlvuy41iatH9h0ljj0L9GAFLYEXWwuikxC8mkPJ9yc/ENFVYy7kQAzdcZpkr1Xx45ljG2Ruu7pDDEcPQyLPMuHnsOeJp5u84zD2fceGrpM+ddcE58sYs6OQ6EYUAxpzeER4WdYZQokOwZAj+EFnSpa67SpT5oU/3BI9sMIaG8Z9SK7xR585CSNYIuhRYRoHWvz/irCzpjc/9lwYCTWVWk26AMsdLA0h00cI9LJmmmIU/ExBWQOSgmx8aN/W6rwT4bJkOJQhYHFzaXI18BOl1kTfhwTfgWxg0chdjEXwAvp1TaW6Yc2q1ppeMHZCykSg1OprEOtGjXxL1tQcnZxcjafTWoH5nP1mK4OSq69xG7HdO+8THT+ATpUCDNdYomAA4EhNMDU3ooEP7l3Z79WaFo04qdIuIOCCk9gH/RlsJlSq6qDZ6TW71RquUXOoorW1kTPjILA6klEY0gCFwBZipXrj0gefGhEaJ9gr/Aj8Q1IlXycnG5SZru9/gkbXYog/Qrffj96NtLOL66JycbHHyRWjnSs2KjLtd5s2URfiOlj927UtQr7gHicJXjLR8eu5qPlx0WRWYUSXTeTfB4uIHFepzudLTUxBDXX2ygcnRM0j4diS+fBK0h8cVY/ImljFlVWp088V/v/p2KIs/wXrPwSPtu40hBk0YJG0HX1mO3a0av4Ueu6fH//1VXVQiP96vW67jP++RPkAs5kv6+BflzD/zeoh+SAme9UyjGriSauNEJJB8AVZxfzt2bF8msRCjZCy31BuNPVI39Tw3qk3GpbxaBN9YAlqAxxaWB9NJlL7WWvhLWnLAmttsdWhEbsO1cMFNVv3XvAp9HWDtpqGHrVCGqJ9h622qquDtjFoUFjLGoNeV23Mut1Bo63Ouv39Wac965gt8Kh+iyfE4Etzk6Jx/O58+H9+C/LGT3aUMfMfZOWucA9HkpD3LBgE1fEuOVkSn4QSd43JM9Jlw8luhsi1S/nEdOQzPfKWtix5J8gBQiDnOXdSjQ/BALBdZRW3vL5KH4CNQ9IWp7Co+zFWVFtxGLRmtttyzENyrwcuxH6HxKIuDXSIzIBTiNItTQ+MRQirtxs/NB6G+9p+T9PDpWYEK4h3NJ2G+OfajYcoBEE89NVOM2x6h2Rph5jakKbrRbT55uKmAV7R+ETEnCSQQkF2EhL6QI04YskDI/jo5hi7uLweH0KCYYdkRhf6ne3FAYETk0LkaiCjLK+5tyHKh0QogOD4DupsF1KreRzFAU3DEW/O8iKHhYofXRTT5/pWX4X5nawA81mYPsv/aPgseFm717Oj8e0ofEn2DUjvwEgaPN5s6IYBY3kFzrtxc3ExOh+fSLQnLDGHvDxa+qYdvPrPCUhiyvCfp/XIKnzmrn0327r0qYu3U/Z7jdd2RKY0AAjy7jxzcj96MQFfQpPsM7lD8hwHTe4XtrEAd2otIs60aYc4E0zuL4kV64HZBBdJ2RjREeK9l8gjc/uB3wnK6Ijr3Tc/umfRy5AsANJZgcvEyUddFES00CMCiWt6aSKZeztakJfoqzlYwyDfQBve9/r2ZZ14AXOrBMTNKRu/QE8p+UvoctcEUtxZEP65clumhP9tJc30/5TMb8f8r68W8r9up1/e/y/zvzL/K/O/Mv8r878y/yvzvzL/K/O/Mv97nvnf4w8Oy8zwmZe5o1sWBBCoreXMWaVheNPxrC+T//W6g34x/+urvTL/+xIFPBFEXZDXkY6ahnsL9I9BWEdnFEQYGIKn8ebzkEak/WAM2+3DSmUqiL/jxIcwzz9cBLfkQl/S/JsX1ys/VzMyTQiHw6zicj5nrzLYvyDdeEpOHYtMPpEzd05GDgKT9i1ZL+x9S6m0C4UUfwQZ/2szYPWWNCP6EOWA315dvnl9dj3dCtzDn4PB/IABj/6RAHc7DLgDwAF19Bz61XgyeoLj2aw/xPqD/TZRh0Bzxn9UQoYMuAvAmEz/Vo4Pht0DWRTvR6koVAbcA+CZrBcm40sZ9vcB91EUXoHnnThmMm6rPaG8FFjdZ8D7tyJlsdy46QeeT4NoxdKQJ4R8cDDkSuwXkYWQByhkOostzKbob2D5wMQfdTYwivbGZTFMzEJG38EsjN6MmUV7MMyZxSDh+CDHMb6CvRvHs37PYPXDOWmDkZ1P8xyr7RTYdufe7qKY9c0Z51jdKApVzYuCo+8iin6Xm8UwN0PURHlqJ+VYn80Cerczx/tCFJ1HOO5mwIHuWjTcGXjAza1b9ELckNVeXhQJ+i7C2J+l0LIwuokw+inP3CR2F4bOpdw52GwXOPnoQpsHssPfBXhgco73hxvnnjpIhCGj7yQKKoDzothPgHHuhatlpM/kF+h+PL8evd7ukoddNvfUuZh7AHoAf/0EGOceSLcAfH31JLAuLLnT2WhwHZx74aIAvQOwMeCeE3pYB/6BsozjFEI/tmy/J8p9YEe0VgdVKLrjeAYc/oMo/HYP1p8TZUkDCw+n+FIjvnsawskZvg8599jrlhOisLzCCyAegLZLBIgCnVxOCfhmvAWAoURAf47tgJpA8YYoVuDFPhxeE+V6MmU4x0SBJMfHEIFRPRAldj9BLuTCiUcUgAt9athzG9kcYy/sDjG7+AQYndkuXucAPzrn2SeK4ACSn/TiMid58YLf02+IZA+if/am8h8Z/T8Z/3cG/e7a8x+1U8b/X6JUxs6c4J0BEmGUbofk5McLokyZWRBv9hNE+ay9Vhm7eKvC9/B16PZDu5KlDgc4vy3w1Fszh/1epfJW0ElJQyE7uOTEhLyzgwgzBTlkXKzCQtUpsAZ5A3sDn/2y3GHk2JaLLulydCKvGQ+Jg3xY95mbq7qDg2F2cMVAVGjcDN5bR9pS1ekOzYPs4Ap82RbwznANaVuVagy6w+zgCc57vYPOMI/U62+pUrtCLJ0uLIhX7yVwsJ/R+dlxDtzU15C2VanzdnbAwXGdLcT1jKLTHRZVt7Wq08sOuEx6gPzm4kYbf6edXo3Oxxy5OzzQC6LdWtXpGr3sII88vR4d//C7LTB/cPWeG4mAhqjo6vJ3a7G9b0oHwkQqFZKk9hAkJJ+0LHXfx9ux0G9SNU3uFDWbFRaFMDayfGwW247ZsE3CzhZ6uIBAdOVCAMZ/IRplLckjH/lEC5J4eOWKI9+JCOtH5f3gm+uE1eK/puVFIpHHz0VsTtrhpCL3TONJbQE+JIsuGWk3Q4XwO9BXHCc5RgDkA7AY9/rSNgjvFP5xNngnmEEzxB5HTIhZXf8xGbHWfd6aY5M1DFgDOxz+Xj43Rzv80Wcre97ZoA/60nf+yE/Bt6//qtrb3y+u/+1++f33FymtvQrZI8cQb2MMgM8DYIqzOsswyIZXOkjhTQ6yyXRIw9tQTxqTJpGfrcPJkuCTdJI8QCf43Jwkj8tJ8pScJK+C4JecDWHWgs93dgiOYBFFfnjY4oYMEwB9l0P1wCVL7EifeXHEP58EZ7XXqlQe/fA9bfgmjEyIi5uLb3N1mPpgXUX+3hI8lkkj3VhA0KSwbqb8oRMwKB4/1Ylcf8Kor6geevi5Nv4IguMAPeUeMfC3TiwWcNGAxCENNBR97ajY9RIwdYsmPbPP27BjdlAn/FN+i3/LTwQxZF+vVxENoQZBd+sohLBKd9g3cASPvYzEmnkeCNyFyM+DdGsjWkL75ly33YkHdHvEwZ/kM3/cK6CC367yLiB7M5KHnIJ7qLr7cFur4KNoK0aiCHO8SPNtE79R27QlQPJ0CtuT7QVIcX8B6cKJHaL4+M4AITZa2JEbL8VuARDf2oVr2EgM3REUaeuaGcAg5a0MCH40WOHfCuJw8UvBDvnXv4iSjQu4hNlhM4K7D+ptjX3I2a6lT+QtjX36B0MiSvUGtXtIvgrJN3Dttx/dap1LrX2b3ySAbVHwGTsXOrA0FL2GZ7hPAlH4xgfXVzdjzmSi/unZm7OL63pmEQxYar0eX53nm6H96Z0ZEmEIKT9GSUET7L2XRB1svwayZcMGS9PZB5fJZgxirwbem6w3ySAkdRcZccBAYGi/wIwTFKyXOSArNhC3j4iNipQgoObrrzON5S0n7Xu9FzCBtBOwOs5xqnFQ94e9W3Lqxa4pUA7Jx+pX4ccq03sOD63JxXhH4NUSMLS9NUqT5YMJKUrs9OrsZKSdjN+dHY+16x/fjrXJ5fFoknxLXBCjpfHkUQvoPIVJuRdtbLMLqZV/XZppK4f5F1lp0mYZeSVkKhMuhSQzryhfPUIXLGxH7qku+ZTEmNZMKtvZIzGmvHILXvio2HLp8+Vzj3j8KJUNnzMaeG0Xk28lXT+qyRIDmn2jgegnrzGxUKTFp1ZPZJRXrMDQ7FBap0RlLdEgRIleIqyUDAyNLnV8N8tZbTS+UcQJweAS/YoRpQLnItBEdTrTpa1N8gRhaqmipo5vkLAYovrUdUHsRnbuUm630+Ors7fX2tXNxfXZ+Vj7+/fThFsOkjErBGDAqgwuRnTBrSRRRfoxdPUM3a5B2efk3KCUc8+MIQgCAxqzeOX1Ch+JKm7sOHXy0vOp+xLU9Ct/NULAgMzcMUIpfK+GYithizgssHhjTvknyh2BlI/V//1VbKvQxEDpJpoPxc4Atc8fq7V/1o4KSJ9z558L7b95OGy/nD9kPAxJyYYTecBMtwPj2GUU1UwnqeI37NuzdSHAZgODRuGeiPJXgVV7fHKKGKsqwqr1qSkaspm5br/4ik1iYQLv9/Auz0rhfvg7U9LURJcgr/PgEGDG4JtW6AM9P3MGEhFQiNbNfUHE5+d6yY0udh8dn+Srcg6dU6Xjlju7cdfGlJ+33HEVJmy+v20+7nADN8JPbmLnhMrej69f1Anp5tjsVLfxXTBws3xyYZjGFmqm0ca3ia0kPWU7RRFpq6jPawugvHrJ6+Ojm1utBUupJnK48jZU+XEfI1SmBNlaUp4SexHxZhv3o5IzisouWVN+H4+nUqgN1Pl8Kk+wIUvhmYXINjgqPjgVA0lOWYCDcagWeWK3MxgBW2hYZDQdT6dnlxcQLV2Pjr/Trsaj6eVFXQAUxClJ4VBQvILonfH76iuf2UfWc503CAxuGllrog3bdCDAMXGRh8mZqndd/ttTx5y0NqeROZJ8SlnZRdTfA+dv9SBkiZrPDo5E9SX3wqAGz2MBVJ4DDFDZcPlVoBL8aknjZ1KQIdcyTzQPvCXjgCi8up4lxQ1VmgvYbwLreiYPjJO1QYbFekYsAEVozUJocb2IeJGS2wuIfjkDthW8EBYQJK6moSXQGEvIo7EWGmGVrBazvrw0gCJRpnCLUs3OTPj6CkVUXfN1wk9JmFvdHTdrQZl6ufyVlfVEQEhvk6Gu33rgM/VpU0/uTFQevTMhkDIX9nNsRxs82OloMh0flTvflKUsZSlLWcpSlrKUpSxlKUtZylKWspSlLGUpS1nKUpaylKUsZSlLWcpSlrKUpSxleRbl36ajDy0AeAAA"
+  },
+  "unrun": [
+    "Remote/platform load gates",
+    "Attachment and script load/post/message/detach flow",
+    "Callback context dispatch and quiescence",
+    "Allocation waiting or continuation through Java",
+    "Production scheduler integration"
+  ],
+  "cleanup": {
+    "owner": "/root",
+    "directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-ffm-availability-CVM8Zp",
+    "status": "Archive verified. Parent retains pinned devkit read-only for the next attachment/script-messaging gate delegated to /root/clarity_cache_scripts; parent owns removal after that consumer finishes."
+  }
+}
