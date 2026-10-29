@@ -115,6 +115,28 @@ zero. It uses the retained Linux x86-64 worker's Rust 1.99.1 and a diagnostic sh
 wrapper; it does not accept the production Java scheduler, pinned-toolchain
 integration or memory recovery. No Codex build is repeated.
 
+[Native compiler startup testing](evidence/linux-compiler-startup-native.json)
+rejects the assumption that the existing Linux Java gate can be instrumented
+across exec unchanged: its nonleader thread replaces the image, while the pinned
+Frida transition traces the process ID. A controlled native leader-thread gate
+passes startup with Rust 1.95.0 under the unchanged Java supervisor, both
+incrementally and from a fresh build. Java installs the diagnostic malloc listener
+and verifies the pending compiler before explicitly releasing it; compilation
+then produces metadata and the supervisor records exit zero. This proves startup
+readiness for that fixture, without establishing allocator-denial coverage or
+accepting its hardcoded native launcher for production.
+
+Cancellation while that compiler is held requires coordinating the owner with
+the tracing lifetime. Owner termination alone times out waiting for reaping;
+adding a PID-based tracing kill races with the owner's kill and fails while
+reading the dead process's auxiliary vector. The corrected diagnostic retains
+the owner termination task, verifies the compiler cannot execute, closes that
+attempt's DeviceManager and collects exit 137 with no compiler output. Incremental
+and fresh runs pass. Production launch integration and cancellation isolation
+between concurrent jobs remain required; closing a shared manager would not
+establish that isolation. All twenty owned PIDs, cgroups, remote storage, client
+keys, SSH and hosted cleanup are accounted for in the receipt.
+
 ## Existing project code
 
 Frozen old main is `545479059ac86394049b6efd3bf4297b1ca18d17`. Its
