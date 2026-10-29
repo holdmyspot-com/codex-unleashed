@@ -2878,3 +2878,55 @@ maintained native caller and complete tooling verification. No missing-type
 compilation error is claimed as a behavioral red. Forced native cleanup errors,
 actual compiler attempts, allocation waiting, other platforms and Cargo/Bazel
 remain required; checkpoint 3 stays incomplete.
+
+
+### Compiler isolation through the maintained Frida owner
+
+[Native compiler ownership evidence](evidence/java-frida-compiler-ownership.json)
+now exercises the maintained runtime's child notifications, session child gating
+and explicit device resume on Linux x86-64. Native signatures match the pinned
+Frida 17.24.3 header. Each callback copies the borrowed child PID, parent PID,
+origin and optional executable path before returning. The controller correlates
+the EXEC event with the supervised process, credentials, executable and cgroup
+before accepting that compiler's held state.
+
+Two compiler attempts share the native dispatcher and retain separate managers.
+The first is cancelled only after a kernel observation proves it cannot execute;
+its actual result is exit 137. Closing its instrumentation and manager preserves
+a fresh control-message response from the held second compiler. Explicit resume
+then produces Rust metadata with actual exit zero. The same retained worker
+passes an incremental retry and a fresh Java compilation after the diagnostic's
+failure-path corrections. All sixteen compiler/supervisor PIDs from the four
+pairs are absent. The owned cgroup and remote scratch are removed, the SSH
+client is reaped with exit zero, and all hosted cleanup steps pass. The workflow
+retains its intentional exit 17.
+
+Read-only review identified failure-path defects in the scratch diagnostic:
+independent cleanup could be skipped, a timeout could repeat a termination
+operation, and instrumentation could close without proving execution impossible.
+The corrected diagnostic aggregates failures, retains one termination worker,
+avoids simultaneous supervisor observation and withholds detachment until the
+kernel or whole-tree completion proves safety. Source review finds the scoped
+corrections complete; forced versions of these failures remain unrun.
+
+The review also found the maintained owners could rethrow the same latched
+IOException after an explicit failed close. Automatic try-with-resources closure
+would then attempt self-suppression. The four repeated-close guards now throw a
+fresh IOException whose cause is the original cleanup failure, before any native
+effect or ownership change. Native teardown failure cannot currently be forced
+deterministically through this API; source review verifies the correction, while
+forced native failure acceptance remains open.
+
+A complete tooling verification passes 206 tests and builds the actual JAR.
+That JAR passes native script messaging, partial-start cleanup and typed
+missing-PID resume errors with native access granted only to the tooling module.
+Scoped Javadoc validation passes after supplying six missing field comments.
+The known native executable-stack warning and existing UnixFileTimes warning
+remain recorded without suppression. The remote compiler run uses freshly
+compiled runtime classes; it is not presented as packaged-JAR compiler evidence.
+
+This accepts compiler isolation through the maintained native dispatcher. The
+leader-exec gate remains a scratch fixture, and its empty allocator entry hook
+establishes installation only. Production attempt integration, actual allocation
+denial and continuation through this owner, forced cleanup errors, other
+platforms and Cargo/Bazel integration remain open. Checkpoint 3 is incomplete.
