@@ -2510,7 +2510,25 @@ keys are removed after the connection is terminal.
 [linux-java-supervisor-integration.json](evidence/linux-java-supervisor-integration.json)
 retains native and packaged receipts, exact source/JAR identities, class-byte
 equivalence, local verification, raw remote files and the client transcript.
-ARM64 supervisor composition and controller-death behavior remain unaccepted.
+Native Linux ARM64 [run 40861498895](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40861498895)
+also passes the packaged supervisor public-operation gate with the same JAR,
+driver and fixture. The runner retrieves the prior committed evidence, verifies
+its checksum and recovers the tested JAR directly from its retained transfer
+commands. This replaces hundreds of interactive upload commands with a small
+bootstrap transfer. The pinned ARM64 JDK 27 archive and nine module dependencies
+are checksum-verified before use. No Codex build or accepted tooling suite is
+repeated.
+
+The ARM64 run verifies the same release, natural-completion, supervisor-death,
+cleanup-retry, termination and invalid-message outcomes. Its authenticated
+Upterm connection stays open through evidence collection and verified owned
+directory removal. SSH exits zero; every hosted post passes, leaving only the
+deliberate exit-17 failure. Client keys are removed after terminal cleanup.
+[linux-arm-java-supervisor-integration.json](evidence/linux-arm-java-supervisor-integration.json)
+retains the exact recovery inputs, native receipt, raw archives and cleanup
+record. Supervisor composition is now accepted on both Linux architectures.
+
+Controller-death behavior remains unaccepted.
 Process-memory telemetry, monitor/controller integration, allocation blocking,
 memory-pressure recovery and Cargo/Bazel integration also remain open. This
 completes the demonstrated Linux component, not checkpoint 3.
