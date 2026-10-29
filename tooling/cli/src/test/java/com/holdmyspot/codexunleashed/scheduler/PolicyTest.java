@@ -8,6 +8,7 @@ import com.holdmyspot.codexunleashed.scheduler.Policy.Decision;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Job;
 import com.holdmyspot.codexunleashed.scheduler.Policy.Observation;
 import com.holdmyspot.codexunleashed.scheduler.Policy.State;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.expectThrows;
@@ -95,7 +96,7 @@ public final class PolicyTest
 	}
 
 	/**
-	 * Retains retry submission order and requires an actual completion before the oldest retry becomes eligible.
+	 * Retains retry submission order and permits the oldest retry without a completion when no attempt remains live.
 	 */
 	@Test
 	public void preservesRetryOrderAndCompletionGate()
@@ -103,8 +104,9 @@ public final class PolicyTest
 		List<Job> jobs = List.of(new Job("new", State.READY, 3, 10L, 0, null, null, 0),
 			new Job("later-retry", State.RETRY, 2, 10L, 0, null, null, 1),
 			new Job("first-retry", State.RETRY, 1, 10L, 0, null, null, 2));
-		assertDecision(Policy.chooseAction(new Budget(100, 3), jobs, new Observation(1000, false, false, 1)),
-			Control.WAIT, null);
+		Decision completionFree = Policy.chooseAction(new Budget(100, 3), jobs, new Observation(1000, false, false, 1));
+		requireThat(completionFree.control(), "completionFreeControl").isEqualTo(Control.START, "expected");
+		requireThat(completionFree.jobName(), "oldestRetry").isEqualTo("first-retry", "expected");
 		assertDecision(Policy.chooseAction(new Budget(100, 3), jobs, new Observation(1000, false, false, 2)),
 			Control.START, "first-retry");
 		Job costly = new Job("retry", State.RETRY, 0, 101L, 0, null, null, 1);

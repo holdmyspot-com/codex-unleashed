@@ -214,7 +214,9 @@ public final class Policy
 	 * Stopping trees prevent further controls. Current pressure or an active swap-growth incident prevents admission;
 	 * the swap incident also permits terminating the newest live attempt while protecting the oldest running attempt.
 	 * Otherwise the oldest blocked denial precedes retries in original submission order, which precede new work.
-	 * An ineligible or unaffordable older action is never bypassed. Resumption does not consume another process slot.
+	 * An ineligible or unaffordable older action is never bypassed. An unmet retry completion count prevents admission
+	 * while any live attempt remains. With no live attempts, the retry proceeds through normal memory checks; its
+	 * owner must enforce the per-action completion-free recovery bound. Resumption does not consume another process slot.
 	 * <p>
 	 * Admission reserves headroom and expected remaining growth of other running attempts. Work with an unknown peak
 	 * demand requires no other live attempts and at least one byte beyond headroom. Estimates do not guarantee enough
@@ -255,8 +257,9 @@ public final class Policy
 				min(Comparator.comparingLong(Job::position)).orElse(null);
 			if (candidate != null)
 			{
-				if (observation.completions() < candidate.retryAfter())
-					return waitFor("The oldest retry awaits an actual job completion");
+				boolean awaitsLiveCompletion = observation.completions() < candidate.retryAfter() && !live.isEmpty();
+				if (awaitsLiveCompletion)
+					return waitFor("The oldest retry awaits an actual job completion while another attempt remains live");
 			}
 			else
 				candidate = snapshot.stream().filter(job -> job.state() == State.READY).

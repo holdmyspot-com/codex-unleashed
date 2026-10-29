@@ -46,6 +46,8 @@ final class JobQueue<R> implements AutoCloseable
 	private IllegalStateException fatalFailure = null;
 	/** Latched exact-arithmetic accounting failure, or null while accounting remains possible. */
 	private IOException accountingFailure = null;
+	/** Latched exhaustion of an action's one completion-free retry, or null before exhaustion. */
+	private IOException retryFailure = null;
 	/** First contextual explicit-close failure with later cleanup failures suppressed, or null. */
 	private IOException closeFailure = null;
 
@@ -99,12 +101,15 @@ final class JobQueue<R> implements AutoCloseable
 	 * Every accepted non-aborted outcome counts once, including a nonzero exit; aborted outcomes never count.
 	 * Selected termination retains its completion threshold at selection count plus one. An unexpected abort uses the
 	 * count after every natural completion in the successful observation batch, plus one. Neither threshold substitutes
-	 * for accepted whole-job completion and successful owner cleanup. WAIT issues no Attempt request.
+	 * for accepted whole-job completion and successful owner cleanup. With no live attempts, one retry per action may
+	 * precede its completion threshold, subject to fresh admission checks. A second such retry permanently stops automatic
+	 * scheduling before attempt acquisition. WAIT issues no Attempt request.
 	 *
 	 * @return the selected request, including WAIT when no control is eligible
 	 * @throws IllegalStateException if closing or a factory previously violated its contract
 	 * @throws ArithmeticException if another attempt sequence or selected retry threshold cannot be reserved
-	 * @throws IOException if observation, memory sampling, control, cleanup or exact completion accounting fails;
+	 * @throws IOException if observation, memory sampling, control, cleanup, exact completion accounting or bounded
+	 * completion-free recovery fails;
 	 * uncertain controls retain their original contextual failure until accepted completion and successful cleanup
 	 */
 	Policy.Decision cycle() throws IOException
@@ -112,6 +117,8 @@ final class JobQueue<R> implements AutoCloseable
 		requireOpen();
 		if (fatalFailure != null)
 			throw fatalFailure;
+		if (retryFailure != null)
+			throw new IOException("Automatic completion-free recovery is exhausted", retryFailure);
 		reconcile();
 		return controller.cycle(jobs(), completions);
 	}
@@ -260,7 +267,17 @@ final class JobQueue<R> implements AutoCloseable
 		{
 			case START ->
 			{
+				boolean retriesWithoutCompletion = entry.state == Policy.State.RETRY && completions < entry.retryAfter;
+				if (retriesWithoutCompletion && entry.retriedWithoutCompletion)
+				{
+					retryFailure = new IOException("Action " + entry.name + " at original position " + entry.position +
+						" has used its one completion-free retry; accepted completions=" + completions +
+						", required completions=" + entry.retryAfter + ". Automatic recovery has stopped");
+					throw new IOException("Automatic completion-free recovery is exhausted", retryFailure);
+				}
 				long successor = Math.incrementExact(nextAttempt);
+				if (retriesWithoutCompletion)
+					entry.retriedWithoutCompletion = true;
 				entry.sequence = nextAttempt;
 				nextAttempt = successor;
 				entry.waitSequence = -1;
@@ -439,6 +456,8 @@ final class JobQueue<R> implements AutoCloseable
 			throw fatalFailure;
 		if (accountingFailure != null)
 			throw new IllegalStateException("Completion accounting is unresolved", accountingFailure);
+		if (retryFailure != null)
+			throw new IllegalStateException("Automatic completion-free recovery is exhausted", retryFailure);
 		for (Entry entry : entries.values())
 		{
 			if (entry.cleanupFailure != null)
@@ -486,6 +505,8 @@ final class JobQueue<R> implements AutoCloseable
 		private long waitSequence = -1;
 		/** Completion eligibility threshold, initially zero and positive for RETRY. */
 		private long retryAfter = 0;
+		/** Indicates whether this stable action has used its one retry before its natural-completion threshold. */
+		private boolean retriedWithoutCompletion = false;
 		/** Threshold saved before termination selection, or null for an unexpected abort. */
 		private Long selectedRetryAfter = null;
 		/** Accepted whole-job outcome, or null before acceptance on this attempt. */
