@@ -109,8 +109,37 @@ public final class LinuxMemory
 	 */
 	private static Properties readCounters(Path source) throws IOException
 	{
-		Properties counters = new Properties();
 		try (Reader input = Files.newBufferedReader(source))
+		{
+			return readCounters(input, source);
+		}
+	}
+
+	/**
+	 * Reads one process's checked resident byte count from a borrowed status reader.
+	 *
+	 * @param input the borrowed process status reader, which remains open
+	 * @param source the status path for failure diagnostics
+	 * @return the nonnegative resident bytes, including a valid zero
+	 * @throws IOException if VmRSS is missing, invalid or overflows bytes, or reading fails
+	 */
+	static long readResidentBytes(Reader input, Path source) throws IOException
+	{
+		return readBytes(readCounters(input, source), source, "VmRSS");
+	}
+
+	/**
+	 * Reads counter records without closing the supplied reader.
+	 *
+	 * @param input the borrowed kernel counter reader
+	 * @param source the counter path for diagnostics
+	 * @return the named counter records
+	 * @throws IOException if reading fails or property escapes are invalid
+	 */
+	private static Properties readCounters(Reader input, Path source) throws IOException
+	{
+		Properties counters = new Properties();
+		try
 		{
 			counters.load(input);
 		}
