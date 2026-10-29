@@ -65,7 +65,7 @@
       "Post Retrieve restart inputs": "success"
     },
     "temporary_key_pair_removed": true,
-    "local_directory": "Retained until this durable evidence is committed and verified.",
+    "local_directory": "Removed after verifying the committed raw archives at a648d31d0b; the successor owns its independent retained directory.",
     "registry_outputs": "Production Codex cache retained; no temporary GHCR fixture versions created by the path probe."
   },
   "diagnostics": [
