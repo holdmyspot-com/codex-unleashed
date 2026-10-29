@@ -2602,8 +2602,23 @@ exception; only that classifier was corrected and retried. Full verification
 also exposed a missing Rust search path and a differing nightly compiler; using
 the pinned compiler restores the cache test without source or test changes.
 
-The caller must still establish that its mounted cgroup root matches the proc
-membership namespace on both native Linux architectures. Live owned-process
-sampling and controller handling of unavailable observations remain unaccepted.
-A failed sample must never increase admission. This component does not complete
-checkpoint 3 or establish allocation blocking and Cargo/Bazel scheduling.
+[Native owned-process evidence](evidence/linux-owned-residency-native.json)
+now accepts live sampling on Linux x86-64 and ARM64 with the same tested tooling
+JAR. Each diagnostic verifies that the mounted hierarchy and proc membership map
+the supervisor, workload root and detached child into the owned subtree. The
+sampler observes all three processes while their touched memory is held, then
+zero processes and bytes after the owner closes. The owned parent is removed.
+No descendant memory controller is enabled and no accepted tooling code is
+recompiled on the runners.
+
+Both clients remain connected through sampling and collection, exit zero after
+the idle-shell diagnostic, and pass every hosted cleanup post. Each workflow
+retains only its deliberate exit-17 failure. The evidence separately preserves
+the initial fixture type error, the ARM client's wrong-run selection and expiry,
+and the terminal-parser correction; none is attributed to upstream Codex.
+
+Controller handling of unavailable observations remains unaccepted. Its next
+focused gate must show that a failed tree measurement issues neither START nor
+RESUME, preserves live work and queue order, exposes the failure, and permits
+reconsideration after a fresh successful measurement. Live sampling does not
+complete checkpoint 3 or establish allocation blocking and Cargo/Bazel scheduling.
