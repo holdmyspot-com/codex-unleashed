@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "scope": "Local Java cache helper profile support; no Codex source or remote workflow changes.",
+  "status": "local-component-accepted; native-workflow-integration-pending",
+  "predecessor_commit": "edb143e9635eecef2b2091ac9337dc107d329a2e",
+  "jdk": "Zulu JDK 27 build 27+35",
+  "fixture_rust": "1.99.1 native Linux x86-64; dependency-free fixture, not a Codex baseline build",
+  "design": {
+    "missing_behavior": "Focused runtime ci-test caches lack content-checked preparation/recording; existing helper only selects release outputs.",
+    "supported_profiles": [
+      "release",
+      "ci-test"
+    ],
+    "release_compatibility": "Omitted profile keeps release paths and existing snapshots.",
+    "isolation": "ci-test checkout/V8 snapshots live under .codex-source-inputs/ci-test; cleanup and future-output checks select only ci-test host/target directories.",
+    "recording": "Explicit successful recording remains separate from resumable preparation. Failed builds retain partial state without certifying success.",
+    "next_integration": "Install/build helper outside pristine source; restore then prepare before any required Cargo work; record only after required checks and pristine-source/dependency guards. Publish failed state separately."
+  },
+  "red_regression": {
+    "command": "mvn -B -ntp -o -f tooling/cli/pom.xml -Dmaven.repo.local=<existing local Maven repository> -Djava.io.tmpdir=<owned CAT_TEMP child> -Dtest=SourceCacheCommandTest#selectsTestProfileBeforeWorkspace test",
+    "result": "1 test, 1 intended failure: --profile treated as workspace; exit 1 instead of target validation exit 2",
+    "tool_session": 16224
+  },
+  "verification": {
+    "command": "mvn -B -ntp -o -f tooling/cli/pom.xml -Dmaven.repo.local=<existing local Maven repository> -Djava.io.tmpdir=<owned CAT_TEMP child> verify",
+    "tests": 95,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "maven_seconds": "16.176",
+    "tool_session": 29547,
+    "suites": [
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.LinuxCgroupTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.058",
+        "xml_sha256": "432f9f4bde1710a9d401767460770dbd3fc6e8c98fc00604635fe77cd67b6b1d"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.LinuxMemoryTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.073",
+        "xml_sha256": "aa208812adeada5d71162aace01bf160b457457da3d0dc183a8803a5797171dd"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.MacMemoryTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.017",
+        "xml_sha256": "3774c4e20a1ee158d5eecedd828df7b2d7c552b1e6f91d79092970236c05ee4f"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.PolicyTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.032",
+        "xml_sha256": "c599213c2247f974129c2fb20d1daba8a91d13a9fd47586dd2cc31b7cbc9fa54"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.SwapRecoveryTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.009",
+        "xml_sha256": "b01dab09c1c9049e06b59367d6b1d4e5f66a1bf744e51474f6eac5dbe6dddf07"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.016",
+        "xml_sha256": "6bfb3c189680814f5582cccc1568a7eca35c4c6ae4044f51749158ccb1fb66ea"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.RetentionPreviewTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.019",
+        "xml_sha256": "26fb6b3d5558074253ae114d8caeb67020a584c832083b53b0b8d5398f4c3064"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceCacheCommandTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.013",
+        "xml_sha256": "2ee4a338518ea92adc1d632951721de7c2d7caa73d1b8ef2d3391f82966dd77d"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceCacheMetadataTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.015",
+        "xml_sha256": "99d9ca1614a38dc3ba7c16de9c80e2dec8fc29109da95a4e59fa14a0c9953034"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceCacheTargetsTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.004",
+        "xml_sha256": "4f1b00327b8301e8904d2bdcae0a30f14cc7d21643b245f04c17a059a6164512"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceInputCacheTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "10.122",
+        "xml_sha256": "815c2cbe8fbb607c859c8e0a9bff4c5aa855a64db0d102a1769f3e8b7b791e31"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceInputChangesTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.337",
+        "xml_sha256": "13d447c1a95b2bb18a3b9de457c5a79945bae95e8cad8eaa45cf7372a633c363"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceInputInventoryTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.564",
+        "xml_sha256": "bf570d73a992eb2819de434a774ea98fab4a945d725cba36b443dfddac0ac199"
+      },
+      {
+        "suite": "com.holdmyspot.codexunleashed.tooling.SourceInputSnapshotsTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": "0.048",
+        "xml_sha256": "5f3a95fdd657a2b27b2ce53488d0700a14296b9bd663403cae29d70d67f8d6d5"
+      }
+    ],
+    "behavior_checks": [
+      "CLI recognizes ci-test before target/workspace processing",
+      "Unsupported profile rejected with status 2",
+      "Actual ci-test library and executable unchanged-input freshness",
+      "Same-timestamp source-byte change rebuilds and emits changed executable output",
+      "Focused retry preserves completed ci-test library outputs after a controlled executable failure",
+      "ci-test preparation/recording preserve release executable digest and snapshot bytes"
+    ],
+    "quality": "javac succeeds; standalone helper POM does not configure Checkstyle or PMD. Existing nonfatal FFM, SLF4J and duplicate tmpdir warnings remain visible."
+  },
+  "packaged_runtime": {
+    "assembly": "mvn -B -ntp -o -f tooling/cli/pom.xml <same repository and temporary-directory settings> -Pruntime -DskipTests package",
+    "assembly_result": "passed; tests already accepted separately",
+    "packaged_probe": {
+      "status": "passed",
+      "checks": [
+        "packaged ci-test preparation and successful recording",
+        "unchanged executable fresh=true",
+        "same-timestamp changed bytes fresh=false and executable output=9",
+        "invalid profile exit=2 before workspace access"
+      ],
+      "fixture_cleanup": "removed"
+    },
+    "probe_tool_session": 44432,
+    "subsequent_help_only_edit": "Main usage now advertises the optional profile; runtime recompilation/assembly passes without repeating accepted tests. New packaged no-argument invocation returns 2 and includes profile syntax.",
+    "help_assembly_tool_session": 34867,
+    "jar_sha256": "99abd542b6c1d80886e3545b1dd8692f13b2d8093b8124cd41a4951d5930bf11"
+  },
+  "source_sha256": {
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/CargoCacheProfile.java": "7bff728470b8de8f2f5864f759cae0730304104b89685676056b6e9cefadfc3d",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java": "a85ee92725e68635b0c81a2de624930eb3cab5e89856b4876fe7e9320a46a083",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommand.java": "8ad6c88b3f61f65f2eff0320fa6f8bf29b211b80392c9c53eec9e7a29b0a7258",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputCache.java": "28a6da10f3e457e98277dab8877eeb63d641efee4f1de517020c7e6966353f3c",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/V8BindingCache.java": "83f35d86ec32c204cc1588f17378e368afc5b1bfbb5e0d0d48f3cc4e5905d649",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommandTest.java": "ed0b5e05d44970a8921688e439758aa11aea54d9a04d663d6655525fb7e25487",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputCacheTest.java": "8679b1cfcf8267ec3dcba28755bcf88130149ee725a9947bc1135a872cd1a441"
+  },
+  "limits": [
+    "These checks do not establish remote ci-test cache reuse or native macOS/Windows acceptance of the new profile.",
+    "No first-dirty trace establishes the cause of earlier restored-helper recompilation.",
+    "Existing raw ci-test caches without freshness snapshots require workspace-package invalidation at first preparation; preserving them does not promise zero rebuilds.",
+    "Checkpoint 2 and the separate incremental-retry item remain incomplete."
+  ]
+}

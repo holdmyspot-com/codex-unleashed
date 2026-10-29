@@ -39,6 +39,71 @@ public final class SourceInputCacheTest
 	}
 
 	/**
+	 * Reuses ci-test outputs across unchanged inputs and failed builds, invalidates changed bytes and preserves release state.
+	 *
+	 * @throws IOException if Cargo, fixture operations or cleanup fail
+	 */
+	@Test
+	public void reusesTestProfileWithoutCleaningRelease() throws IOException
+	{
+		try (Fixture fixture = Fixture.create())
+		{
+			fixture.initialize();
+			Path manifest = fixture.workspace.resolve("Cargo.toml");
+			Files.writeString(manifest, Files.readString(manifest) + "[profile.ci-test]\ninherits = \"dev\"\n");
+			fixture.prepare();
+			fixture.build();
+			fixture.record();
+			String releaseSnapshot = Files.readString(fixture.snapshot());
+			String releaseDigest = Sha256.digest(fixture.binary());
+			SourceInputCache.Request request = new SourceInputCache.Request(fixture.workspace, fixture.target,
+				Set.of("cache-demo"), CargoCacheProfile.CI_TEST);
+			List<String> build = List.of("cargo", "build", "--offline", "--profile", "ci-test", "--target",
+				fixture.target, "--message-format=json");
+
+			try (PrintStream output = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+				PrintStream errors = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+			{
+				SourceInputCache.prepare(request, fixture.context(), output, errors);
+				assertFalse(fixture.libraryFresh(fixture.command(build).stdout()));
+				SourceInputCache.record(request, fixture.context(), output, errors);
+
+				Path source = fixture.workspace.resolve("src/lib.rs");
+				FileTime before = Files.getLastModifiedTime(source);
+				Files.setLastModifiedTime(source, FileTime.from(before.toInstant().plusSeconds(100)));
+				SourceInputCache.prepare(request, fixture.context(), output, errors);
+				String unchanged = fixture.command(build).stdout();
+				assertTrue(fixture.libraryFresh(unchanged));
+				assertTrue(fixture.artifactFresh(unchanged, "cache-demo", "bin"));
+				SourceInputCache.record(request, fixture.context(), output, errors);
+
+				Files.writeString(source, "pub fn value() -> u8 { 9 }\n");
+				Files.setLastModifiedTime(source, before);
+				SourceInputCache.prepare(request, fixture.context(), output, errors);
+				assertFalse(fixture.libraryFresh(fixture.command(build).stdout()));
+				Path executable = fixture.base.resolve("target").resolve(fixture.target).resolve("ci-test").
+					resolve(fixture.binary().getFileName());
+				assertEquals(fixture.command(List.of(executable.toString())).stdout().strip(), "9");
+				SourceInputCache.record(request, fixture.context(), output, errors);
+
+				Path main = fixture.workspace.resolve("src/main.rs");
+				String validMain = Files.readString(main);
+				Files.writeString(main, "compile_error!(\"controlled ci-test failure\");\nfn main() {}\n");
+				SourceInputCache.prepare(request, fixture.context(), output, errors);
+				expectThrows(IOException.class, () -> fixture.command(build));
+				Files.writeString(main, validMain);
+				SourceInputCache.prepare(request, fixture.context(), output, errors);
+				assertTrue(fixture.libraryFresh(fixture.command(build).stdout()));
+				assertEquals(fixture.command(List.of(executable.toString())).stdout().strip(), "9");
+				SourceInputCache.record(request, fixture.context(), output, errors);
+			}
+
+			assertEquals(Files.readString(fixture.snapshot()), releaseSnapshot);
+			assertEquals(Sha256.digest(fixture.binary()), releaseDigest);
+		}
+	}
+
+	/**
 	 * Reuses identical libraries, rebuilds same-mtime content changes and refuses post-build changes when recording.
 	 *
 	 * @throws IOException if actual Cargo, fixture operations, or cleanup fail
@@ -380,7 +445,7 @@ public final class SourceInputCacheTest
 			fixture.initialize();
 			fixture.useCargoFixture("{\"packages\":[]}", 0);
 			IOException failure = expectThrows(IOException.class, fixture::prepare);
-			assertTrue(failure.getMessage().contains("Release binaries absent from Cargo metadata: cache-demo"));
+			assertTrue(failure.getMessage().contains("Binaries absent from Cargo metadata: cache-demo"));
 			assertEquals(Files.readAllLines(fixture.base.resolve("cargo-calls.jsonl")).size(), 1);
 			assertFalse(Files.exists(fixture.snapshot()));
 			assertTrue(Files.isRegularFile(SourceInputSnapshots.pending(fixture.snapshot())));

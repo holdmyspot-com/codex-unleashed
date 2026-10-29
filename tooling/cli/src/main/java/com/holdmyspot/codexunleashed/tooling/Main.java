@@ -73,7 +73,7 @@ public final class Main
 	private static int usage(PrintStream err)
 	{
 		err.println("Usage: codex-tooling " + SourceCacheCommand.NAME +
-			" [--record-source-inputs] <workspace> <target> [binary ...]");
+			" [--record-source-inputs] [--profile release|ci-test] <workspace> <target> [binary ...]");
 		err.println("       codex-tooling " + RetentionPreview.NAME + " < inventory.json");
 		return 2;
 	}

@@ -32,26 +32,43 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Supplies the workspace, original Cargo target argument and requested executable names.
+	 * Supplies the workspace, original Cargo target argument, requested executables and compiled-output profile.
 	 *
 	 * @param workspace the manifest workspace, relative to the context directory when not absolute
 	 * @param target the native triple or custom JSON target filename
 	 * @param binaries executable names, ignored by successful-build recording
+	 * @param profile compiled-output profile whose freshness is prepared or recorded
 	 */
-	public record Request(Path workspace, String target, Set<String> binaries)
+	public record Request(Path workspace, String target, Set<String> binaries, CargoCacheProfile profile)
 	{
+		/**
+		 * Selects the existing release-cache behavior for callers without an explicit profile.
+		 *
+		 * @param workspace the manifest workspace
+		 * @param target the native triple or custom JSON target filename
+		 * @param binaries requested executable names
+		 * @throws NullPointerException if an argument or binary name is null
+		 * @throws IllegalArgumentException if the target is not one confined filename
+		 */
+		public Request(Path workspace, String target, Set<String> binaries)
+		{
+			this(workspace, target, binaries, CargoCacheProfile.RELEASE);
+		}
+
 		/**
 		 * Validates target confinement before any filesystem or Cargo operation.
 		 *
 		 * @param workspace the workspace
 		 * @param target the original target argument
 		 * @param binaries requested executable names
+		 * @param profile the Cargo compiled-output profile
 		 * @throws NullPointerException if an argument or binary name is null
 		 * @throws IllegalArgumentException if the target is not one confined filename
 		 */
 		public Request
 		{
 			Objects.requireNonNull(workspace, "workspace");
+			Objects.requireNonNull(profile, "profile");
 			SourceCacheTargets.directoryName(target);
 			binaries = Set.copyOf(binaries);
 		}
@@ -117,7 +134,7 @@ public final class SourceInputCache
 		Objects.requireNonNull(out, "out");
 		Objects.requireNonNull(err, "err");
 		if (request.binaries().isEmpty())
-			throw new IllegalArgumentException("At least one release binary is required");
+			throw new IllegalArgumentException("At least one binary is required");
 		Inputs inputs = load(request, context, err);
 		Path pending = SourceInputSnapshots.pending(inputs.snapshot());
 		Optional<JsonNode> interrupted = read(pending);
@@ -131,14 +148,15 @@ public final class SourceInputCache
 		Set<String> missing = new TreeSet<>(request.binaries());
 		missing.removeAll(owners.keySet());
 		if (!missing.isEmpty())
-			throw new IOException("Release binaries absent from Cargo metadata: " + String.join(", ", missing));
+			throw new IOException("Binaries absent from Cargo metadata: " + String.join(", ", missing));
 		if (V8BindingCache.prepare(request, context, inputs.targetDirectory(), out))
 			clean(request, context, inputs.manifest(), List.of("v8"), out, err);
 		if (hasFutureOutputs(request, context, inputs))
 		{
-			out.println("Cached release output timestamps exceed the preparation clock; rebuilding release outputs " +
+			out.println("Cached " + request.profile().cargoName() +
+				" output timestamps exceed the preparation clock; rebuilding profile outputs " +
 				"without restoring source timestamps. Dependency downloads retained.");
-			for (Path release : releaseDirectories(request, inputs))
+			for (Path release : outputDirectories(request, inputs))
 			{
 				if (Files.exists(release))
 					PathUtils.deleteDirectory(release, new LinkOption[]{LinkOption.NOFOLLOW_LINKS},
@@ -166,19 +184,19 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Indicates whether cached target or host release outputs are newer than the preparation clock.
+	 * Indicates whether cached target or host outputs in the selected profile are newer than the preparation clock.
 	 * Changed source timestamps cannot invalidate those outputs reliably after a clock rollback.
 	 *
 	 * @param request the selected target
 	 * @param context the timestamp authority
 	 * @param inputs the compiled output location
-	 * @return true when a regular cached release output has a future modification time
+	 * @return true when a regular cached profile output has a future modification time
 	 * @throws IOException if cached output timestamps cannot be read
 	 */
 	private static boolean hasFutureOutputs(Request request, Context context, Inputs inputs) throws IOException
 	{
 		Instant now = context.clock().instant();
-		for (Path release : releaseDirectories(request, inputs))
+		for (Path release : outputDirectories(request, inputs))
 		{
 			if (Files.isDirectory(release))
 			{
@@ -198,16 +216,16 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Supplies the host and selected-target release output directories used by Cargo.
+	 * Supplies the host and selected-target output directories for the selected Cargo profile.
 	 *
 	 * @param request the selected target
 	 * @param inputs the compiled output root
-	 * @return the two owned release output paths
+	 * @return the two owned profile output paths
 	 */
-	private static List<Path> releaseDirectories(Request request, Inputs inputs)
+	private static List<Path> outputDirectories(Request request, Inputs inputs)
 	{
-		return List.of(inputs.targetDirectory().resolve("release"), inputs.targetDirectory().
-			resolve(SourceCacheTargets.directoryName(request.target())).resolve("release"));
+		return List.of(inputs.targetDirectory().resolve(request.profile().cargoName()), inputs.targetDirectory().
+			resolve(SourceCacheTargets.directoryName(request.target())).resolve(request.profile().cargoName()));
 	}
 
 	/**
@@ -267,7 +285,7 @@ public final class SourceInputCache
 			throw new IOException("Cargo metadata failed with status " + result.status() + ": " + result.stderr().strip());
 		SourceCacheMetadata metadata = SourceCacheMetadata.parse(result.stdout());
 		Path target = context.workingDirectory().resolve(metadata.targetDirectory(workspace, context.environment()));
-		Path snapshot = target.resolve(".codex-source-inputs").
+		Path snapshot = request.profile().snapshotDirectory(target).
 			resolve(SourceCacheTargets.directoryName(request.target()) + ".json");
 		SourceInputInventory.Snapshot current = inventory(workspace, target, context);
 		return new Inputs(manifest, metadata, target, snapshot, current);
@@ -322,7 +340,8 @@ public final class SourceInputCache
 	private static void clean(Request request, Context context, Path manifest, List<String> packages,
 		PrintStream out, PrintStream err) throws IOException
 	{
-		List<String> arguments = new ArrayList<>(List.of("clean", "--release", "--target", request.target(),
+		List<String> arguments = new ArrayList<>(List.of("clean", "--profile", request.profile().cargoName(),
+			"--target", request.target(),
 			"--manifest-path", manifest.toString()));
 		for (String name : packages)
 		{

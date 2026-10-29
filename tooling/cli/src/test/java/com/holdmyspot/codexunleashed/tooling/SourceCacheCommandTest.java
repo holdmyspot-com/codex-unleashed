@@ -37,6 +37,38 @@ public final class SourceCacheCommandTest
 	}
 
 	/**
+	 * Applies explicit ci-test selection before validating the target or touching the workspace.
+	 */
+	@Test
+	public void selectsTestProfileBeforeWorkspace()
+	{
+		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+		try (PrintStream err = new PrintStream(diagnostics, true, StandardCharsets.UTF_8))
+		{
+			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "ci-test",
+				"missing-workspace", "../outside", "codex"}, InputStream.nullInputStream(), err, err);
+			assertEquals(status, 2, diagnostics.toString(StandardCharsets.UTF_8));
+			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("Invalid Cargo target directory name"));
+		}
+	}
+
+	/**
+	 * Refuses unsupported profile names before opening a workspace or starting Cargo.
+	 */
+	@Test
+	public void refusesUnsupportedProfile()
+	{
+		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+		try (PrintStream err = new PrintStream(diagnostics, true, StandardCharsets.UTF_8))
+		{
+			int status = Main.run(new String[]{"clean-cached-release-binaries", "--profile", "../outside",
+				"missing-workspace", "native-target", "codex"}, InputStream.nullInputStream(), err, err);
+			assertEquals(status, 2, diagnostics.toString(StandardCharsets.UTF_8));
+			assertTrue(diagnostics.toString(StandardCharsets.UTF_8).contains("Unsupported Cargo cache profile"));
+		}
+	}
+
+	/**
 	 * Distinguishes operational workspace failures from malformed command arguments.
 	 */
 	@Test
