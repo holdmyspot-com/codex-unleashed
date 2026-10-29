@@ -29,6 +29,84 @@ import java.util.concurrent.TimeUnit;
  */
 public final class LinuxProcessTree implements AutoCloseable {
     /**
+     * Caller-owned filesystem endpoints for workload standard input, output and error.
+     * Paths must be nonnull and absolute; validation performs no filesystem access.
+     * Endpoints may be regular files or FIFOs, including aliases. The caller must arrange FIFO peer
+     * connections so the JDK's redirected opens do not block indefinitely; owner timeouts do not bound those opens.
+     * The JDK opens the endpoints when starting the trusted gate, before workload release. Output files are
+     * truncated then, even if preparation later fails. The descriptors survive the gate's native exec.
+     * The process owner never deletes these caller-owned endpoints.
+     * @param input absolute standard-input endpoint
+     * @param output absolute standard-output endpoint
+     * @param error absolute standard-error endpoint
+     */
+    public record StandardFiles(Path input, Path output, Path error) {
+        /** Supervisor launch property for the workload standard-input endpoint. */
+        private static final String INPUT = "standard.input";
+        /** Supervisor launch property for the workload standard-output endpoint. */
+        private static final String OUTPUT = "standard.output";
+        /** Supervisor launch property for the workload standard-error endpoint. */
+        private static final String ERROR = "standard.error";
+
+        /**
+         * Validates endpoint paths without opening or inspecting them.
+         * @param input absolute standard-input endpoint
+         * @param output absolute standard-output endpoint
+         * @param error absolute standard-error endpoint
+         * @throws NullPointerException if an endpoint is null
+         * @throws IllegalArgumentException if an endpoint is relative
+         */
+        public StandardFiles {
+            for (Path path : List.of(input, output, error)) {
+                if (path.isAbsolute() == false)
+                    throw new IllegalArgumentException("Standard-stream paths must be absolute: " + path);
+            }
+        }
+
+        /**
+         * Writes the three endpoint paths into supervisor launch properties.
+         * @param values supervisor launch properties to update
+         */
+        void writeTo(Properties values) {
+            values.setProperty(INPUT, input.toString());
+            values.setProperty(OUTPUT, output.toString());
+            values.setProperty(ERROR, error.toString());
+        }
+
+        /**
+         * Reads endpoint paths from supervisor launch properties.
+         * @param values decoded supervisor launch properties
+         * @return the endpoints, or null only when all three properties are absent
+         * @throws IOException if endpoint properties are incomplete or invalid
+         */
+        static StandardFiles readFrom(Properties values) throws IOException {
+            String input = values.getProperty(INPUT);
+            String output = values.getProperty(OUTPUT);
+            String error = values.getProperty(ERROR);
+            if (input == null && output == null && error == null) return null;
+            if (input == null || output == null || error == null)
+                throw new IOException("Supervisor launch requires all three standard-stream endpoint paths");
+            try {
+                return new StandardFiles(Path.of(input), Path.of(output), Path.of(error));
+            } catch (IllegalArgumentException failure) {
+                throw new IOException("Supervisor launch contains invalid standard-stream endpoint paths", failure);
+            }
+        }
+
+        /**
+         * Configures separate standard-stream redirects without opening the endpoints.
+         * The caller must arrange FIFO peers before starting the trusted gate.
+         * @param builder trusted gate process builder
+         */
+        void redirect(ProcessBuilder builder) {
+            builder.redirectErrorStream(false);
+            builder.redirectInput(input.toFile());
+            builder.redirectOutput(output.toFile());
+            builder.redirectError(error.toFile());
+        }
+    }
+
+    /**
      * Explicit launch context. Executable, Java runtime, class path, directory and parents must be absolute.
      * The workload's positive UID/GID are distinct from the privileged supervisor identity.
      * Command arguments and the complete workload environment are copied. No PATH search is performed.
@@ -136,6 +214,17 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @return the prepared owner with execution still gated
      */
     public static LinuxProcessTree prepare(Launch launch) throws IOException {
+        return prepareOwned(launch, null);
+    }
+
+    /**
+     * Acquires the existing gated lifecycle for legacy or explicit standard-stream endpoints.
+     * @param launch immutable workload and containment inputs
+     * @param files caller-owned endpoints, or null for legacy piped input and merged workload logging
+     * @return the prepared owner with execution still gated
+     * @throws IOException if native authority, process creation, containment or readiness fails
+     */
+    private static LinuxProcessTree prepareOwned(Launch launch, StandardFiles files) throws IOException {
         LinuxProcessTree tree = new LinuxProcessTree(launch);
         try {
             if (tree.nativeCalls.uid() != 0) throw new IOException("This candidate requires an elevated standalone supervisor");
@@ -149,8 +238,12 @@ public final class LinuxProcessTree implements AutoCloseable {
                 LinuxProcessTree.class.getName(), "--gate", tree.scratch.toString());
             builder.directory(launch.directory().toFile());
             builder.environment().clear();
-            builder.redirectErrorStream(true);
-            builder.redirectOutput(tree.scratch.resolve("workload.log").toFile());
+            if (files == null) {
+                builder.redirectErrorStream(true);
+                builder.redirectOutput(tree.scratch.resolve("workload.log").toFile());
+            } else {
+                files.redirect(builder);
+            }
             tree.root = builder.start();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             while (Files.exists(tree.scratch.resolve("ready")) == false) {
@@ -172,6 +265,23 @@ public final class LinuxProcessTree implements AutoCloseable {
             tree.closeAfterFailure(failure);
             throw failure;
         }
+    }
+
+    /**
+     * Prepares a gated workload with caller-owned standard-stream endpoints.
+     * Containment, release and failed-acquisition cleanup follow {@link #prepare(Launch)}.
+     * The trusted gate opens the endpoints before release and inherits them through exec.
+     * The caller must arrange FIFO peers so redirected opens can complete. Output truncation may occur
+     * even if preparation later fails; the owner never deletes the endpoints.
+     * @param launch immutable workload and containment inputs
+     * @param files nonnull standard-stream endpoints
+     * @return the prepared owner with execution still gated
+     * @throws NullPointerException if launch or files is null, before resource acquisition
+     * @throws IOException if native authority, process creation, containment or readiness fails
+     */
+    public static LinuxProcessTree prepare(Launch launch, StandardFiles files) throws IOException {
+        Objects.requireNonNull(files, "files may not be null");
+        return prepareOwned(launch, files);
     }
 
     /**
