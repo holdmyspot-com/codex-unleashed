@@ -9,6 +9,13 @@ import subprocess
 
 
 def main():
+    """Compare the pinned Windows status command with five Bazel status configurations.
+
+    Requires a clean checkout at the commit recorded in BASELINE_STATUS_EVIDENCE,
+    plus BASELINE_BASH and BAZEL_OUTPUT_BASE. Writes command logs, status files
+    and JSON checks into the evidence directory. Removes the temporary probe
+    package and checks that the tracked diff and checkout status are unchanged.
+    Missing inputs and command errors propagate; failed comparisons exit with 1."""
     evidence = Path(os.environ["BASELINE_STATUS_EVIDENCE"])
     evidence.mkdir(parents=True, exist_ok=True)
     expected = (evidence / "upstream-commit").read_text().strip()
@@ -24,6 +31,10 @@ def main():
     records = []
 
     def run(name, arguments):
+        """Run arguments, retain combined output in the named evidence log, and record its exit status.
+
+        Returns CompletedProcess even when the command exits nonzero. Failure to
+        start the command or write evidence propagates."""
         result = subprocess.run(
             arguments, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
@@ -37,6 +48,7 @@ def main():
         package.mkdir()
         (package / "status.bzl").write_text(
             "def _status_impl(ctx):\n"
+            "    \"\"\"Expose ctx.info_file as the target text output.\"\"\"\n"
             "    output = ctx.actions.declare_file(ctx.label.name + '.txt')\n"
             "    ctx.actions.symlink(output = output, target_file = ctx.info_file)\n"
             "    return [DefaultInfo(files = depset([output]))]\n"

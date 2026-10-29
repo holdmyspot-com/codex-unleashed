@@ -94,7 +94,7 @@ public final class UnixFileTimes
 	}
 
 	/**
-	 * Writes access and modification time without changing creation time or following a relative directory descriptor.
+	 * Sets access and modification time to the supplied instant, preserving creation time and following symbolic links.
 	 *
 	 * @param path the file or directory
 	 * @param instant the required timestamp

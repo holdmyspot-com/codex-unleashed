@@ -154,8 +154,8 @@ def run_probe():
 
     The fixed 256 MiB request is refused before allocation unless the last
     available-memory sample exceeds it plus 2 GiB and low-memory is false.
-    A working-set change below three quarters of the touched allocation fails
-    attribution rather than claiming a passed response. Closes every owned
+    A working-set increase or decrease of at most three quarters of the touched
+    allocation fails attribution. Closes every owned
     handle and query and frees the mapping even if observations fail.
     """
     assert platform.system() == 'Windows', 'Requires native Windows'

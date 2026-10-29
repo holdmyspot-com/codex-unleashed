@@ -22,6 +22,9 @@ import java.util.Set;
  */
 public final class SourceInputInventory
 {
+	/**
+	 * Directory basenames pruned at every depth during filesystem fallback inventory.
+	 */
 	private static final Set<String> OMITTED_DIRECTORIES = Set.of(".git", "target", "node_modules");
 
 	/**
@@ -57,7 +60,10 @@ public final class SourceInputInventory
 	}
 
 	/**
-	 * Uses Git's tracked and nonignored untracked names, or the retained filesystem fallback when not a repository.
+	 * Inventories regular files from the containing Git repository's tracked and nonignored untracked paths.
+	 * Compiled outputs are always excluded; Cargo-home paths are excluded only from untracked discovery.
+	 * If Git root discovery exits unsuccessfully, walks the workspace instead, without following directory links,
+	 * and prunes {@code .git}, {@code target}, {@code node_modules}, and the explicit cache directories.
 	 *
 	 * @param workspace the source workspace
 	 * @param targetDirectory compiled outputs to exclude
@@ -143,6 +149,14 @@ public final class SourceInputInventory
 		List<Path> paths = new ArrayList<>();
 		Files.walkFileTree(root, new SimpleFileVisitor<>()
 		{
+			/**
+			 * Skips non-root directories with omitted basenames or canonical paths in the excluded set.
+			 *
+			 * @param directory the directory being considered
+			 * @param attributes its file attributes
+			 * @return skip-subtree for an excluded directory, or continue otherwise
+			 * @throws IOException if canonical path lookup fails
+			 */
 			@Override
 			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 			{
@@ -198,7 +212,7 @@ public final class SourceInputInventory
 	}
 
 	/**
-	 * Uses slash paths and the retained dot spelling for the root itself.
+	 * Returns a slash-separated path relative to the source root, using {@code .} for the root itself.
 	 *
 	 * @param root the source root
 	 * @param path a source or ancestor

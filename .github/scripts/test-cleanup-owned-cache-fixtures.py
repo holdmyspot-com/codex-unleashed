@@ -50,7 +50,7 @@ class VersionIdentityTest(unittest.TestCase):
             self.verify_version(self.expected, dict(self.expected, tags=["fixture-partial"]))
 
     def test_only_present_owned_versions_are_approved(self):
-        """An authenticated registry listing permits only present, exact owned fixtures."""
+        """The supplied version listing yields only matching recorded fixture IDs, ignoring unrelated or absent IDs."""
         actual = dict(self.expected)
         actual["metadata"] = {"container": {"tags": actual.pop("tags")}}
         unrelated = {"id": 9, "name": "unrelated", "metadata": {"container": {"tags": []}}}
@@ -58,7 +58,7 @@ class VersionIdentityTest(unittest.TestCase):
         self.assertEqual(self.module.approved_versions([self.expected], [unrelated]), [])
 
     def test_mismatch_aborts_the_entire_approval(self):
-        """A changed owned manifest rejects the batch before any deletion is permitted."""
+        """A mismatched recorded manifest raises ValueError instead of returning approved fixture IDs."""
         actual = dict(self.expected, name="changed", metadata={"container": {"tags": self.expected["tags"]}})
         with self.assertRaises(ValueError):
             self.module.approved_versions([self.expected], [actual])

@@ -1,6 +1,7 @@
-/* Hold one denied owned-worker mmap in native code until permission or timeout.
- * The worker lowers its soft address limit after installation; this hook
- * restores the captured limit before retrying or returning the original error. */
+/* Hold a matching owned-worker mmap denial in native code until permission
+ * or timeout. The worker lowers its soft address limit after installation;
+ * this hook attempts to restore the captured limit before retrying or returning
+ * the original error. Keep the script loaded until worker exit. */
 const originalMapping = Memory.alloc(Process.pointerSize);
 const workerThread = Memory.alloc(8);
 /* Original soft/hard RLIMIT_AS, captured before the worker lowers its limit. */
@@ -30,7 +31,13 @@ extern long read_pipe(int, void *, size_t);
 extern int poll_pipe(struct PollDescriptor *, unsigned int, int);
 extern int restore_limit(int, const struct ResourceLimit *);
 
-/* Forward other requests; a matching ENOMEM waits without entering JavaScript. */
+/* Select the configured thread's mmap(NULL, 268435456, 3, 0x1002, -1, 0).
+ * Forward other requests unchanged. If the selected request returns
+ * MAP_FAILED/ENOMEM, write B to the notification pipe, poll permission for the
+ * configured milliseconds, then attempt to restore the captured address limit.
+ * Retry once only after reading R and restoring the limit successfully.
+ * Otherwise return the original failure with its errno restored; a retry
+ * returns its own pointer and errno. No allocation is freed by this hook. */
 void * retry_mapping(void * address, size_t bytes, int protection,
     int flags, int descriptor, long long offset)
 {
@@ -92,8 +99,13 @@ void * retry_mapping(void * address, size_t bytes, int protection,
   restore_limit: Module.getGlobalExportByName('setrlimit') });
 
 rpc.exports = {
-  /* Arm the owned thread and inherited pipe endpoints before its limit changes.
-   * The wait is 1000 ms for bounded denial and 30000 ms for permitted retry. */
+  /* Install once at the worker's mmap address before its limit changes.
+   * threadId identifies its pthread thread; addressResource is RLIMIT_AS.
+   * blockedDescriptor writes B and retryDescriptor reads R through inherited
+   * pipes. waitMilliseconds sets the permission poll timeout (the controller
+   * uses 1000 for timeout and 30000 for retry). Capture the original limits,
+   * reset diagnostics, and return target address/architecture. Throw if
+   * getrlimit fails. Keep descriptors open and script loaded until worker exit. */
   install(address, threadId, addressResource, blockedDescriptor, retryDescriptor, waitMilliseconds) {
     workerThread.writeU64(uint64(threadId));
     const getLimits = new NativeFunction(Module.getGlobalExportByName('getrlimit'), 'int', ['int', 'pointer']);
@@ -111,7 +123,11 @@ rpc.exports = {
     Interceptor.flush();
     return { address: target.toString(), architecture: Process.arch };
   },
-  /* Observe pending state after notification, or terminal state after return. */
+  /* Return matching entries/attempts, first errno, poll/read/write/restore
+   * results, the deliberate errno sentinel, and the last original mmap pointer.
+   * Read after B or caller return: poll_result and restore_result start at -2;
+   * byte counts and first_errno start at zero, and later fields may still be
+   * pending after B. Reading does not resume the worker or own the pointer. */
   state() {
     return { matching_calls: retryState.readS32(), attempts: retryState.add(4).readS32(),
       first_errno: retryState.add(8).readS32(), poll_result: retryState.add(12).readS32(),

@@ -10,6 +10,14 @@ import tempfile
 
 
 def main():
+    """Compare three nested sandbox fixtures and retain their output under --evidence.
+
+    Requires --helper, --outer-bwrap, --bundled-bwrap and --temporary-parent.
+    Copies tools into an owned temporary fixture and removes that fixture on exit.
+    Requires the helper-only missing-bubblewrap diagnostic, the bundled root-ID
+    UID-map diagnostic and successful bundled execution with default IDs.
+    Writes results.json and per-variant stdout/stderr; exits with a diagnostic
+    if an expected result is absent. Command and filesystem errors propagate."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--helper", type=Path, required=True)
     parser.add_argument("--outer-bwrap", type=Path, required=True)

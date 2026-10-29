@@ -8,6 +8,13 @@ import tempfile
 
 
 def verify_admission(bazel, temporary_directory):
+    """Check estimated-memory admission using the supplied Bazel 9.2.0 executable.
+
+    Creates and cleans a workspace under temporary_directory. Requires two
+    600-MB estimates to run serially within a 1000-MB budget, then requires a
+    1200-MB estimate to fail before producing output. Prints both successful
+    checks; assertions, command errors and filesystem errors propagate.
+    This checks declared resource estimates, without allocating those amounts."""
     version = subprocess.run(
         [str(bazel), "--version"], check=True, capture_output=True, text=True
     ).stdout.strip()
@@ -29,12 +36,18 @@ def verify_admission(bazel, temporary_directory):
         )
         (workspace / "probe.bzl").write_text('''
 def _resources(os, inputs):
+    """Return one CPU and a 600-MB memory estimate; os and inputs are unused."""
     return {"cpu": 1, "memory": 600}
 
 def _oversized_resources(os, inputs):
+    """Return one CPU and a 1200-MB memory estimate; os and inputs are unused."""
     return {"cpu": 1, "memory": 1200}
 
 def _impl(ctx):
+    """Create a timed worker action using the selected 600-MB or 1200-MB estimate.
+
+    ctx.attr.python names its executable; ctx.file.worker names its source.
+    Returns DefaultInfo containing the generated start/end timestamp file."""
     output = ctx.actions.declare_file(ctx.label.name + ".txt")
     resources = _resources
     if ctx.attr.oversized:
@@ -92,6 +105,7 @@ probe_action = rule(implementation = _impl, attrs = {
 
 
 def main():
+    """Parse --bazel and --temporary-directory, resolve the executable and check memory admission."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--bazel", type=Path, required=True)
     parser.add_argument("--temporary-directory", type=Path, required=True)

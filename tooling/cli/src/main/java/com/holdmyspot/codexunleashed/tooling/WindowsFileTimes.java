@@ -216,7 +216,8 @@ public final class WindowsFileTimes
 	 *
 	 * @param instant the requested timestamp
 	 * @return the unsigned ticks in a long bit pattern
-	 * @throws IOException if the value is outside FILETIME or denotes SetFileTime's preserve-time sentinel
+	 * @throws IOException if the rounded tick count is not between one and {@code 2^64 - 2}, inclusive;
+	 *     zero and the all-one-bits preserve-time sentinel are rejected
 	 */
 	static long encode(Instant instant) throws IOException
 	{

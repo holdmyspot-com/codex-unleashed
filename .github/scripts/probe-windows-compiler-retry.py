@@ -222,7 +222,7 @@ def run_probe(compiler, expected_host, storage):
 
 
 def main():
-    """Resolve the explicit native compiler identity and owned storage."""
+    """Validate --compiler and --storage, then run the expected-host heap-retry probe."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--expected-host', required=True)

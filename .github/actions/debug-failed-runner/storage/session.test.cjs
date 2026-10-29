@@ -5,6 +5,7 @@ const {execFileSync, spawnSync} = require('node:child_process');
 const test = require('node:test');
 const vm = require('node:vm');
 
+/** Create an SSH key and an isolated action environment in a directory removed by t.after. */
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(process.env.TMPDIR, 'debug-storage-test-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
@@ -21,9 +22,11 @@ function fixture(t) {
   return {
     root,
     environment,
+    /** Execute the action with environment overrides; propagate its failures. */
     run(overrides = {}) {
       vm.runInNewContext(source, {require, process: {env: {...environment, ...overrides}}});
     },
+    /** Read published step-output name/value pairs; fail if the file is absent. */
     output() {
       return Object.fromEntries(fs.readFileSync(environment.GITHUB_OUTPUT, 'utf8').trim()
         .split('\n').map(line => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));

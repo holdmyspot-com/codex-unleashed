@@ -108,6 +108,11 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         })
 
         def command(arguments, label, expected=0):
+            """Run arguments in the fixture workspace and environment, retaining stdout and stderr in label.log.
+
+            Assert the expected exit status (zero by default) and return the captured
+            process result. Replace any existing log with that label; launch and write
+            errors propagate."""
             result = subprocess.run(arguments, cwd=workspace, env=environment,
                                     capture_output=True, text=True)
             (evidence / (label + ".log")).write_text(
@@ -132,13 +137,23 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         command(cli + ["missing-workspace", "../outside", "codex"], "invalid-target", 2)
 
         def prepare(label):
+            """Run the packaged cleanup command for the selected fixture binary/profile and retain its log under label; require status zero."""
             command(cli + profile_arguments + [str(workspace), target, "cache-demo"], label)
 
         def record(label, expected=0):
+            """Run the packaged source-input recording command for the fixture target/profile.
+
+            Retain its log under label, assert expected status (zero by default),
+            and return the captured process result."""
             return command(cli + ["--record-source-inputs"] + profile_arguments
                            + [str(workspace), target], label, expected)
 
         def build(label, expected=0):
+            """Build the fixture target/profile with Cargo and retain its log under label.
+
+            Assert expected status (zero by default), parse compiler-artifact messages
+            and return two target-name-to-freshness mappings: libraries, then binaries.
+            Missing artifact kinds produce empty mappings; launch/JSON errors propagate."""
             result = command(["cargo", "build", "--profile", profile, "--target", target,
                               "--message-format=json"], label, expected)
             rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]

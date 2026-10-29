@@ -18,7 +18,7 @@ class CargoCacheKeysTest(unittest.TestCase):
     """Cache identities preserve exact inputs and isolate compatible compilation state."""
 
     def test_exact_tag_retains_input_order_and_bytes(self):
-        """Derivation hashes the same bytes as the original workflow."""
+        """The exact tag hashes upstream, wrapper, helper and compiler bytes in that order."""
         values = [b"commit\r\n", b"wrapper\n", b"helper\n", b"compiler\n"]
         result = cache_keys.derive_tags("x86_64-unknown-linux-musl", *values)
         expected = hashlib.sha256(b"".join(values)).hexdigest()
@@ -31,7 +31,7 @@ class CargoCacheKeysTest(unittest.TestCase):
                 cache_keys.derive_tags(target, b"source", b"wrapper", b"helper", b"compiler")
 
     def test_wrapper_repair_preserves_seed_but_changes_exact_tag(self):
-        """Wrapper-only repairs can locate compiled outputs from an earlier run."""
+        """Changing only wrapper bytes changes the exact tag and preserves the compatible seed tag."""
         before = cache_keys.derive_tags("target", b"source", b"wrapper-old", b"helper", b"compiler")
         after = cache_keys.derive_tags("target", b"source", b"wrapper-fixed", b"helper", b"compiler")
         self.assertNotEqual(before["tag"], after["tag"])

@@ -10,7 +10,13 @@ import tempfile
 
 
 def verify(verifier, evidence):
-    """Check permitted synchronization and rejected drift through the actual command."""
+    """Run the supplied verifier command against controlled lockfile and metadata files.
+
+    evidence is the directory for per-case process receipts and the aggregate
+    lock-verification.json receipt, also printed as JSON. Check permitted workspace
+    version synchronization, rejected drift and unchanged input bytes. Remove the
+    owned fixture on success or failure; retain evidence. Raise AssertionError for
+    unexpected status/results or changed inputs; filesystem/process errors propagate."""
     verifier = verifier.resolve()
     evidence = evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=True)

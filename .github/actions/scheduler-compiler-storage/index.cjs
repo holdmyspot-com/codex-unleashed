@@ -5,6 +5,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+/**
+ * Create a compiler-diagnostic directory under environment.RUNNER_TEMP, record
+ * its path in environment.GITHUB_STATE, and publish SCHEDULER_COMPILER through
+ * environment.GITHUB_ENV. Remove the new directory and rethrow on publication
+ * failure; state or environment publication may already have been appended.
+ */
 function createDiagnosticStorage(environment) {
   const storage = fs.mkdtempSync(path.join(environment.RUNNER_TEMP, 'scheduler-compiler-'));
   try {

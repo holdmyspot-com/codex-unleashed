@@ -80,7 +80,7 @@ def bind_kernel_api():
 
 
 def require_api_success(result):
-    """Raise the captured Windows error when a BOOL/handle API reports failure."""
+    """Return result, or raise the last Windows error when result is zero or None."""
     if result == 0 or result is None:
         raise ctypes.WinError(ctypes.get_last_error())
     return result

@@ -72,7 +72,7 @@ public final class SourceCacheCommandTest
 	 * Distinguishes operational workspace failures from malformed command arguments.
 	 */
 	@Test
-	public void recordIgnoresBinaryArguments()
+	public void recordReportsWorkspaceFailure()
 	{
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		try (PrintStream err = new PrintStream(diagnostics, true, StandardCharsets.UTF_8))

@@ -102,7 +102,8 @@ public final class SystemCommands
 
 	/**
 	 * Captures a command's streams and status in the selected working directory.
-	 * Disk-backed capture avoids blocking a child on an unread output pipe. Capture files are removed on every exit.
+	 * Capture avoids blocking the child on unread output pipes. Cleanup of capture files and their directory
+	 * is attempted on every exit; cleanup failures are reported.
 	 *
 	 * @param command the executable followed by its arguments
 	 * @param workingDirectory the child working directory
@@ -243,7 +244,8 @@ public final class SystemCommands
 	}
 
 	/**
-	 * Executes a command and reads its UTF-8 standard output without invoking a shell.
+	 * Executes a command without invoking a shell, inheriting standard input, standard error, the working directory,
+	 * and environment. Returns standard output decoded as UTF-8, rejecting malformed output.
 	 *
 	 * @param command the executable followed by its arguments
 	 * @return the command's standard output

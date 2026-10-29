@@ -85,12 +85,12 @@ public final class SourceInputChangesTest
 	}
 
 	/**
-	 * Retains schema equality and optional timestamp behavior from existing snapshots.
+	 * Accepts numeric schema values equal to one and boolean true without requiring a timestamp mapping.
 	 *
 	 * @throws IOException if fixture access or cleanup fails
 	 */
 	@Test
-	public void acceptsRetainedSchemaValues() throws IOException
+	public void acceptsNumericOneAndTrueSchemaValues() throws IOException
 	{
 		try (Fixture fixture = new Fixture())
 		{
@@ -281,6 +281,11 @@ public final class SourceInputChangesTest
 				add(BigInteger.valueOf(instant.getNano()));
 		}
 
+		/**
+		 * Deletes the fixture root and all files and directories it owns.
+		 *
+		 * @throws IOException if a fixture entry cannot be removed
+		 */
 		@Override
 		public void close() throws IOException
 		{

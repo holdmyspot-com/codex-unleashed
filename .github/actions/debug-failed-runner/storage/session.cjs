@@ -7,7 +7,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-/** Validate one authorized-key file and publish owned paths as step outputs. */
+/**
+ * Create SSH-key storage and publish storage, key-file, and Bash shell-startup outputs.
+ * environment supplies DEBUG_PUBLIC_KEY, DEBUG_IDLE_MINUTES, RUNNER_TEMP,
+ * GITHUB_STATE, and GITHUB_OUTPUT. The idle limit must convert to positive safe
+ * integer minutes and seconds. Reject a missing or blank key; ssh-keygen must
+ * accept the written key file. Record the directory for post cleanup.
+ * On a validation or publication failure after creation, remove the directory
+ * and rethrow. State or output publication may already have been appended.
+ */
 function prepare(environment) {
   const idleMinutes = Number(environment.DEBUG_IDLE_MINUTES);
   const idleSeconds = idleMinutes * 60;

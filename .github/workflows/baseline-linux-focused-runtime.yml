@@ -212,6 +212,21 @@ jobs:
           set -euo pipefail
           printf 'Source %s before starting the retained runtime controller.\n' "$FOCUSED_RUNTIME/evidence/runtime-environment.sh"
           printf '%s\n' "$TARGET" > "$FOCUSED_RUNTIME/evidence/environment-ready"
+          # Prints Linux resource diagnostics and retained native-runtime progress.
+          # Environment:
+          #   FOCUSED_RUNTIME: retained runtime directory whose filesystem usage,
+          #     native-runtime exit receipts and build logs are sampled.
+          # Output:
+          #   UTC sample time, memory/swap/load/disk/pressure/cgroup/process data,
+          #   available runtime exit receipts and build-log tails, and up to five
+          #   kernel warnings from the preceding 90 seconds.
+          # Errors:
+          #   Missing optional metrics and unavailable kernel warnings are reported
+          #   in the output. Other sampling commands can emit diagnostics and leave
+          #   partial output without determining the function's exit status.
+          # Exit status:
+          #   0 after the final kernel-warning attempt is handled; this status does
+          #   not prove that every earlier diagnostic command succeeded.
           report_progress() {
             printf '\nNative runtime progress at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/' /proc/meminfo

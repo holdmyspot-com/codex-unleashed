@@ -32,7 +32,7 @@ public final class SourceCacheTargetsTest
 	}
 
 	/**
-	 * Rejects absolute, nested, normalized, and traversal paths using the original target-directory diagnostic.
+	 * Rejects absolute, nested, normalized, and traversal paths with the target-directory diagnostic.
 	 */
 	@Test
 	public void rejectsEscapingAndAmbiguousTargets()

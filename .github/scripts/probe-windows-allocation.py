@@ -82,7 +82,7 @@ def bind_kernel_api():
 
 
 def require_api_success(result):
-    """Raise the captured Windows error when a BOOL/handle API reports failure."""
+    """Return result, or raise the last Windows error when result is zero or None."""
     if result == 0 or result is None:
         raise ctypes.WinError(ctypes.get_last_error())
     return result
@@ -97,8 +97,10 @@ def allocate_after_permission(kernel, requested_bytes):
     """Retry one denied VirtualAlloc after stdin permission, returning its pointer.
 
     The same size, address hint, protection and allocation flags are used twice.
-    An initial success or a failed retry raises AssertionError. The caller owns
-    VirtualFree after success. Permission other than 'retry' fails the probe.
+    An initial success is freed and then raises AssertionError; a failed free
+    raises the native error instead. A failed retry raises the last Windows
+    error as OSError. The caller owns VirtualFree after a successful retry.
+    Permission other than 'retry' raises AssertionError.
     """
     allocation_flags = 0x3000  # MEM_COMMIT | MEM_RESERVE, from the Windows SDK.
     read_write = 0x04  # PAGE_READWRITE, from the Windows SDK.

@@ -83,7 +83,11 @@ class Budget:
 
 @dataclass(frozen=True)
 class Decision:
-    """One control request; the controller must acknowledge it before deciding again."""
+    """One control request to acknowledge before deciding again.
+
+    kind selects the requested operation; job names its target, or is None
+    for WAIT. reason explains the choice. The request itself has no native effect.
+    """
     kind: Kind
     job: str | None
     reason: str
@@ -104,6 +108,9 @@ def choose_action(budget: Budget, jobs: tuple[Job, ...], observation: Observatio
     at a time; STOPPING blocks every further decision until the controller reaps
     that process tree and obtains a new observation. No native effect is implied
     by a returned request. The controller must acknowledge it before another call.
+
+    Raises ValueError for duplicate job names, positions or non-null start/block
+    ordinals. Jobs and measurements must satisfy their construction contracts.
     """
     _validate_snapshot(jobs)
     stopping = [job for job in jobs if job.state == State.STOPPING]
@@ -159,7 +166,11 @@ def choose_action(budget: Budget, jobs: tuple[Job, ...], observation: Observatio
 
 
 def _validate_snapshot(jobs):
-    """Reject invalid ordinals, units and state relationships before deciding."""
+    """Reject duplicate names, submission positions and non-null start/block ordinals.
+
+    Raises ValueError when a repeated value makes job identity or ordering
+    ambiguous. Per-job types, units and lifecycle checks occur at construction.
+    """
     for name, values in (("name", [job.name for job in jobs]),
                          ("position", [job.position for job in jobs]),
                          ("started_at", [job.started_at for job in jobs if job.started_at is not None]),
@@ -169,7 +180,10 @@ def _validate_snapshot(jobs):
 
 
 def _require_count(value, name, minimum=0):
-    """Require exact nonnegative integer bytes or ordinals, rejecting booleans."""
+    """Require an exact integer at least minimum; reject booleans with ValueError.
+
+    name identifies the invalid measurement or ordinal in the error.
+    """
     if type(value) is not int or value < minimum:
         raise ValueError(f"{name} must be an integer >= {minimum}; received {value!r}")
 

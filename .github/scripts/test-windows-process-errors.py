@@ -13,6 +13,7 @@ class CleanupFailure(Exception):
 class LaunchCleanupFailure(ProcessTree):
     """Inject one error at the real native handle release boundary."""
     def _close_handle(self, handle):
+        """Close the native handle, then inject CleanupFailure once per tree after successful release."""
         super()._close_handle(handle)
         if getattr(self, "_fault_delivered", False) is False:
             self._fault_delivered = True
@@ -22,6 +23,7 @@ class LaunchCleanupFailure(ProcessTree):
 class CloseFailure(ProcessTree):
     """Inject an error after the real whole-tree abort and wait operation."""
     def _terminate_and_wait(self):
+        """Complete the real tree cleanup, then raise CleanupFailure to test primary-error preservation."""
         super()._terminate_and_wait()
         raise CleanupFailure("injected close cleanup failure")
 

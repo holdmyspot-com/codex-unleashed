@@ -1,14 +1,19 @@
 /* Observe allocator entries during an owned compiler's stdin compilation.
- * Each export reports only its first call. This observer changes no results,
- * resource limits or allocation timing policy and does not accept blocking. */
+ * Each distinct hooked address reports its first call after arm(); aliases at
+ * that address share one report. The observer does not replace allocator results
+ * or change resource limits, and has no controller-controlled wait. */
 const allocationNames = new Set(['malloc', 'calloc', 'realloc', 'aligned_alloc',
   'posix_memalign', 'mmap', 'VirtualAlloc', 'HeapAlloc', 'RtlAllocateHeap']);
 /* Keep listeners alive until the owned compiler terminates. */
 const allocationListeners = [];
 
 rpc.exports = {
-  /* Install listeners on unique exported addresses; retain individual failures.
-   * Returns the installed entries and rejected entries for coverage assessment. */
+  /* Attach first-call listeners to distinct addresses exported under the names
+   * in allocationNames. Return installed/rejected name-module-address records
+   * and the architecture; rejected records include the attachment error.
+   * Calls emit compiler_allocation_observed; RtlAllocateHeap also reports the
+   * heap, flags, requested byte count and caller backtrace. Listeners remain
+   * active until the compiler exits; the controller calls arm() once. */
   arm() {
     const addresses = new Set();
     const installed = [];

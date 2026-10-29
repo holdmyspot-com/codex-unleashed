@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
+/** Create an isolated action environment in a directory removed by t.after. */
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(process.env.TMPDIR, 'focused-storage-test-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
@@ -18,9 +19,11 @@ function fixture(t) {
   return {
     root,
     environment,
+    /** Execute the action with environment overrides; propagate its failures. */
     run(overrides = {}) {
       vm.runInNewContext(source, {require, process: {env: {...environment, ...overrides}}});
     },
+    /** Read the published FOCUSED_RUNTIME path; fail if the file or entry is absent. */
     storage() {
       return fs.readFileSync(environment.GITHUB_ENV, 'utf8')
         .split('\n').find(line => line.startsWith('FOCUSED_RUNTIME=')).split('=')[1];
@@ -28,7 +31,7 @@ function fixture(t) {
   };
 }
 
-test('successive cleaned jobs export the same build-input directory', t => {
+test('successive jobs recreate storage at the same path after cleanup', t => {
   const owner = fixture(t);
   owner.run();
   const first = owner.storage();
@@ -45,7 +48,7 @@ test('successive cleaned jobs export the same build-input directory', t => {
   assert.equal(fs.existsSync(second), false);
 });
 
-test('an existing owner is refused without changing or deleting its files', t => {
+test('an existing storage directory is refused without changing or deleting its files', t => {
   const owner = fixture(t);
   owner.run();
   const storage = owner.storage();

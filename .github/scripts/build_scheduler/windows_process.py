@@ -37,16 +37,25 @@ class ProcessTree:
     arguments and output bytes retain their normal Windows meanings.
 
     This single-controller object is not thread-safe. It owns the job/process
-    handles and children; creation failure releases resources created here,
-    without closing output. poll returns the original root exit status only
-    after all descendants exit. terminate requests whole-job termination with
+    handles and children; creation failure attempts to release resources created
+    here without closing output, and retains cleanup errors. poll returns the
+    original root exit status only after all descendants exit. terminate requests
+    whole-job termination with
     status 125; the controller must record that it aborted the attempt rather
     than infer a successful attempt from an already-exited root's status.
-    close terminates unfinished work, waits up to ten seconds and closes native
-    handles. A failed wait remains an error; closing handles is not a success
+    close terminates unfinished work, waits with a ten-second polling deadline
+    and closes native handles. A failed wait remains an error; closing handles is not a success
     receipt. Owned job handles are never inherited by the child.
     """
     def __init__(self, command, directory, environment, output):
+        """Validate argv, paths and environment, then launch the owned Windows job.
+
+        Requires native 64-bit Windows, an existing absolute executable and working
+        directory, NUL-free string arguments and a string environment mapping.
+        The borrowed binary output file must expose a Windows handle. Invalid input
+        raises ValueError or TypeError; platform and native API failures raise OSError.
+        Cleanup of created resources is attempted on failure; cleanup errors are
+        retained. Output remains owned by the caller."""
         if sys.platform != "win32" or ctypes.sizeof(ctypes.c_void_p) != 8:
             raise OSError("ProcessTree requires native 64-bit Windows")
         if isinstance(command, (tuple, list)) is False or len(command) == 0:
@@ -123,7 +132,12 @@ class ProcessTree:
             owned.callback(self._terminate_and_wait)
 
     def poll(self):
-        """Return root exit status only when no process remains active; else None."""
+        """Return the root exit status after the whole job and root wait complete.
+
+        Returns None while the job is active or the root wait is pending.
+        Raises ValueError after close and OSError for failed native operations
+        or an unexpected wait status.
+        """
         self._require_open()
         accounting = api.Accounting()
         api.require_api_success(self._kernel.QueryInformationJobObject(self._job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None))
@@ -146,7 +160,14 @@ class ProcessTree:
         api.require_api_success(self._kernel.TerminateJobObject(self._job, 125))
 
     def wait(self, timeout_ms):
-        """Wait at most integer timeout_ms for whole-job exit; raise on timeout."""
+        """Poll for whole-job exit with a nonnegative integer millisecond timeout.
+
+        Returns the original root status when polling reports completion.
+        A pending tree at or after the deadline raises TimeoutError; polling
+        and scheduling may extend elapsed time past that deadline. Invalid
+        timeout values, including booleans, or a closed tree raise ValueError.
+        Native polling failures propagate as OSError.
+        """
         self._require_open()
         if type(timeout_ms) is not int or timeout_ms < 0:
             raise ValueError("timeout_ms must be a nonnegative integer")
@@ -164,7 +185,11 @@ class ProcessTree:
         self.__exit__(None, None, None)
 
     def _terminate_and_wait(self):
-        """Preserve a failed native termination/wait as a cleanup error."""
+        """Terminate a pending tree and wait with a ten-second polling deadline.
+
+        Leaves an already completed tree unchanged. Polling, termination and
+        wait errors propagate to the resource scope that called this cleanup.
+        """
         if self.poll() is None:
             self.terminate()
             self.wait(10_000)
@@ -179,6 +204,7 @@ class ProcessTree:
             raise ValueError("ProcessTree is closed")
 
     def __enter__(self):
+        """Return this open process tree; raise ValueError after it has closed."""
         self._require_open()
         return self
 

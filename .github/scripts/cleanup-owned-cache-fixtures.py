@@ -7,7 +7,11 @@ import sys
 
 
 def verify_version(expected, actual):
-    """Reject a version whose ID, manifest digest or complete tag list differs."""
+    """Validate an observed fixture version against its recorded identity.
+
+    Both mappings contain id, name (manifest digest) and tags (complete alias list).
+    Ignore tag order. Return None when all three match; raise ValueError on a
+    mismatch and KeyError for a missing required field. Change neither mapping."""
     if actual["id"] != expected["id"]:
         raise ValueError(f"Package version ID differs: {actual['id']}")
     if actual["name"] != expected["name"]:
@@ -17,7 +21,14 @@ def verify_version(expected, actual):
 
 
 def approved_versions(expected, actual):
-    """Return present owned IDs only after every matching GitHub version passes validation."""
+    """Return the IDs of recorded fixtures present in a GitHub package-version listing.
+
+    expected contains recorded id/name/tags mappings; actual contains GitHub
+    version records with metadata.container.tags. Ignore unrelated or absent IDs.
+    Preserve expected order and return an empty list when none is present. Validate
+    every present fixture's manifest digest and complete aliases before returning;
+    raise ValueError on a mismatch, returning no partial approval. Do not delete
+    registry versions or modify the inputs."""
     versions = {version["id"]: version for version in actual}
     approved = []
     for fixture in expected:

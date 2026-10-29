@@ -4,8 +4,9 @@ Requires pinned Frida, an absolute native rustc executable, its expected host
 triple and an owned scratch directory. A 256-function library is compiled to
 metadata after listeners are armed. Acceptance requires an observed allocator
 call, ordinary compiler exit and byte-identical output from the same command,
-source and working directory without instrumentation. Each compilation has a
-90-second deadline. Only owned temporary files/processes are created or removed.
+source and working directory without instrumentation. Instrumented compiler I/O
+has a 90-second timeout after attachment and setup; the reference compilation
+has its own 90-second timeout. Only owned temporary files/processes are created or removed.
 This check establishes observed export coverage, not allocation blocking.
 """
 
@@ -105,7 +106,7 @@ def run_probe(compiler, expected_host, storage):
 
 
 def main():
-    """Parse explicit native compiler identity and owned scratch storage."""
+    """Validate --compiler and --storage, then run the expected-host allocation probe."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--expected-host', required=True)

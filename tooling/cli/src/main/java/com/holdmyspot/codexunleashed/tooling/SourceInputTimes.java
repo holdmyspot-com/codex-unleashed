@@ -26,7 +26,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Preserves nanoseconds without signed-long epoch conversion overflow.
+	 * Converts an instant to exact nanoseconds since the Unix epoch without signed-long overflow.
 	 *
 	 * @param instant the source timestamp
 	 * @return exact epoch nanoseconds
@@ -38,7 +38,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Preserves access and modification timestamps through native JDK conversion defects.
+	 * Sets access and modification time to the supplied timestamp without changing creation time.
 	 *
 	 * @param path the file or directory
 	 * @param time the required timestamp
@@ -61,7 +61,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Reads exact modification time through native JDK overflow conversion defects.
+	 * Reads modification time while preserving native timestamp precision beyond signed-long epoch nanoseconds.
 	 *
 	 * @param path the source or ancestor directory
 	 * @return its precise native timestamp
@@ -83,7 +83,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Recognizes local Unix paths without applying native operations to another provider.
+	 * Indicates whether the path uses the file provider and a Unix path separator.
 	 *
 	 * @param path the filesystem path
 	 * @return whether the provider uses native Unix paths
@@ -95,7 +95,7 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Recognizes local Windows paths without applying native operations to another provider.
+	 * Indicates whether the path uses the file provider and a Windows path separator.
 	 *
 	 * @param path the filesystem path
 	 * @return whether the provider uses native Windows paths
@@ -107,7 +107,8 @@ final class SourceInputTimes
 	}
 
 	/**
-	 * Accepts stored integer nanoseconds, including retained boolean integer values.
+	 * Converts stored epoch nanoseconds to a filesystem time, accepting integer values and mapping
+	 * boolean {@code false} to zero nanoseconds and {@code true} to one nanosecond.
 	 *
 	 * @param value the stored timestamp
 	 * @return the precise filesystem time

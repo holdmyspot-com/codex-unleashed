@@ -85,7 +85,7 @@ public final class SourceInputCache
 	public record Context(Path workingDirectory, Path temporaryDirectory, Map<String, String> environment, Clock clock)
 	{
 		/**
-		 * Copies the environment and anchors relative paths to the caller directory.
+		 * Copies the environment, makes the working directory absolute, and resolves a relative temporary directory against it.
 		 *
 		 * @param workingDirectory the caller directory
 		 * @param temporaryDirectory capture storage
@@ -117,7 +117,11 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Writes pending inputs and restores unchanged sources so Cargo can reuse all unaffected units.
+	 * Prepares source timestamps and profile outputs for Cargo cache reuse, and writes pending input state.
+	 * Restores stored timestamps for unchanged sources when reusable state exists. Without reusable state,
+	 * cleans workspace packages. If cached profile outputs are newer than the clock, deletes host and target
+	 * profile outputs instead of restoring source timestamps. Preparation may change snapshots, timestamps,
+	 * or cached outputs before reporting a failure; Cargo decides which compilation units are reusable.
 	 *
 	 * @param request the workspace, target and binaries
 	 * @param context process and timestamp authorities
@@ -244,7 +248,9 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Records current inputs only when they match the prepared build, apart from Cargo-generated lockfiles.
+	 * Records current inputs only when they match the prepared build, excluding paths named {@code Cargo.lock} at any depth.
+	 * The caller must invoke this only after successful compilation; this method checks input consistency,
+	 * not the build result. Binding state may be recorded before a later checkout-recording failure.
 	 *
 	 * @param request the workspace and target; executable names do not affect recording
 	 * @param context process and storage authorities
@@ -310,10 +316,10 @@ public final class SourceInputCache
 	}
 
 	/**
-	 * Retains the original absent-or-null snapshot behavior without consuming malformed non-null documents early.
+	 * Reads a snapshot without validating its schema or source mappings.
 	 *
 	 * @param path the snapshot or pending filename
-	 * @return its non-null document when it is a regular file
+	 * @return the parsed non-null document, or empty if the path is not a regular file or contains JSON null
 	 * @throws IOException if reading or JSON parsing fails
 	 */
 	private static Optional<JsonNode> read(Path path) throws IOException

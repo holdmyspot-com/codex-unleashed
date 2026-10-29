@@ -10,10 +10,14 @@ import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.expectThrows;
 
-/** Verifies supervisor input rejection before resource acquisition and immutable accepted outcomes. */
+/**
+ * Verifies supervisor input rejection before resource acquisition and immutable accepted outcomes.
+ */
 public final class LinuxSupervisorTest
 {
-	/** Creates supervisor contract tests. */
+	/**
+	 * Creates supervisor contract tests.
+	 */
 	public LinuxSupervisorTest()
 	{
 	}
@@ -38,21 +42,27 @@ public final class LinuxSupervisorTest
 		expectThrows(IllegalArgumentException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), timeout));
 	}
 
-	/** Rejects a missing launch before acquiring resources. */
+	/**
+	 * Rejects a missing launch before acquiring resources.
+	 */
 	@Test
 	public void rejectsNullLaunch()
 	{
 		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(null, Duration.ofSeconds(1)));
 	}
 
-	/** Rejects a missing wait before resolving the cgroup parent. */
+	/**
+	 * Rejects a missing wait before resolving the cgroup parent.
+	 */
 	@Test
 	public void rejectsNullTimeout()
 	{
 		expectThrows(NullPointerException.class, () -> LinuxSupervisor.prepare(unresolvedLaunch(), null));
 	}
 
-	/** Keeps accepted child outcomes independent of later caller mutations and returned-map mutations. */
+	/**
+	 * Keeps accepted child outcomes independent of later caller mutations and returned-map mutations.
+	 */
 	@Test
 	public void copiesAcceptedChildOutcomes()
 	{
@@ -65,7 +75,9 @@ public final class LinuxSupervisorTest
 		expectThrows(UnsupportedOperationException.class, () -> result.adoptedExits().clear());
 	}
 
-	/** Refuses outcomes that cannot identify an ordinary root exit or a real adopted process. */
+	/**
+	 * Refuses outcomes that cannot identify an ordinary root exit or a real adopted process.
+	 */
 	@Test
 	public void rejectsInvalidProcessOutcomes()
 	{

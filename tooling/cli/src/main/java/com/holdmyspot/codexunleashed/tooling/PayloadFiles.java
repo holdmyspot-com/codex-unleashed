@@ -22,12 +22,13 @@ public final class PayloadFiles
 
 	/**
 	 * Overwrites the destination contents without replacing the destination filesystem entry.
-	 * The caller creates the destination parent before copying.
+	 * The caller creates the destination parent before copying. A missing destination is created.
+	 * An existing symbolic link is followed. A copy failure may leave the destination truncated or partially written.
 	 *
 	 * @param source the source file
 	 * @param destination the destination file
-	 * @throws IOException if the files are identical or opening, copying, or closing fails
 	 * @throws NullPointerException if either argument is null
+	 * @throws IOException if the files are identical or opening, copying, or closing fails
 	 */
 	public static void copy(Path source, Path destination) throws IOException
 	{
@@ -45,8 +46,8 @@ public final class PayloadFiles
 	 * Deletes a payload file or link if present, refusing to remove a directory.
 	 *
 	 * @param file the payload file or link
-	 * @throws IOException if the entry is a directory or deletion fails
 	 * @throws NullPointerException if {@code file} is null
+	 * @throws IOException if the entry is a directory or deletion fails
 	 */
 	public static void delete(Path file) throws IOException
 	{

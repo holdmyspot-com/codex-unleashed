@@ -89,7 +89,10 @@ public final class SourceInputSnapshots
 	}
 
 	/**
-	 * Replaces successful state only after comparing all prepared digests except lockfiles.
+	 * Replaces the successful snapshot only when current digests match the pending inputs, excluding
+	 * paths named {@code Cargo.lock} at any depth. Then deletes pending and completed-preparation state.
+	 * The caller must establish build success before invoking this method. If deletion fails after replacement,
+	 * the new successful snapshot remains written even though the method reports a failure.
 	 *
 	 * @param path the successful snapshot destination
 	 * @param current inputs collected after successful compilation
@@ -133,7 +136,7 @@ public final class SourceInputSnapshots
 	}
 
 	/**
-	 * Compares prepared content while retaining the existing generated-lockfile exception.
+	 * Compares current and pending source digests, ignoring paths whose basename is {@code Cargo.lock}.
 	 *
 	 * @param path the successful snapshot path
 	 * @param current content whose effective timestamps will be persisted
@@ -172,10 +175,10 @@ public final class SourceInputSnapshots
 	}
 
 	/**
-	 * Retains the prepared filename beside the successful snapshot.
+	 * Derives the pending-input filename beside the successful snapshot.
 	 *
 	 * @param snapshot the successful snapshot path
-	 * @return the path with its final extension replaced by pending
+	 * @return the sibling path with its final extension replaced by {@code .pending}, or {@code .pending} appended when no dot follows the first character
 	 * @throws NullPointerException if the snapshot is null
 	 */
 	public static Path pending(Path snapshot)
@@ -189,7 +192,7 @@ public final class SourceInputSnapshots
 	}
 
 	/**
-	 * Classifies lockfile basenames at every depth using the filesystem's path spelling.
+	 * Indicates whether the path basename is exactly {@code Cargo.lock}.
 	 *
 	 * @param name a source-relative name
 	 * @return whether recording ignores this lockfile's digest

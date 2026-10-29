@@ -75,7 +75,7 @@ public final class PolicyTest
 	}
 
 	/**
-	 * Measures unknown demand exclusively, requiring memory above reserved headroom.
+	 * Requires exclusive admission and memory above reserved headroom for work whose peak memory demand is unknown.
 	 */
 	@Test
 	public void measuresUnknownDemandAlone()
@@ -164,7 +164,7 @@ public final class PolicyTest
 	}
 
 	/**
-	 * Applies the tool's default concurrency to new processes while permitting an existing blocked process to resume.
+	 * Applies the supplied concurrency limit to new attempts while permitting an existing blocked attempt to resume.
 	 */
 	@Test
 	public void limitsNewProcessesWithoutBlockingResumption()

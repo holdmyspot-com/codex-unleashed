@@ -27,7 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class LinuxSupervisor implements AutoCloseable
 {
-	/** Published stages, each written once by its designated producer in the private attempt directory. */
+	/**
+	 * Published stages, each written once by its designated producer in the private attempt directory.
+	 */
 	private enum Phase
 	{
 		LAUNCH, READY, RELEASE, RELEASED, TERMINATE, RESULT
@@ -154,6 +156,8 @@ public final class LinuxSupervisor implements AutoCloseable
 	 * Prepares one gated workload in a dedicated supervisor contained before it may create helpers.
 	 * Failed acquisition terminates and reaps owned work; cleanup failures are suppressed on the original failure.
 	 * The launch classpath must contain this class and LinuxProcessTree, from the same class directory or tooling JAR.
+	 * The prepared workload gate expires 60 seconds after it signals readiness unless released. Release promptly;
+	 * later observation or release reports a supervisor failure if the gate has expired.
 	 * @param launch the explicit workload and trusted Java context, with elevated cgroup-management authority
 	 * @param timeout the positive startup/control/cleanup wait limit, not a build runtime limit
 	 * @return a prepared owner whose workload is still gated
@@ -296,7 +300,9 @@ public final class LinuxSupervisor implements AutoCloseable
 
 	/**
 	 * Requests whole-tree termination and waits for collected outcomes within the control timeout.
-	 * Natural completion racing with the request remains a natural result. A timeout leaves cleanup with this owner.
+	 * Completion already accepted before the request retains its recorded result. If the supervisor handles the
+	 * termination request before observing natural completion, it records termination even if the root has exited.
+	 * A timeout leaves cleanup with this owner.
 	 * @throws IllegalStateException if closed without previously accepted completion
 	 * @throws IOException if control, supervision or status collection fails or exceeds the timeout
 	 */
@@ -315,13 +321,29 @@ public final class LinuxSupervisor implements AutoCloseable
 		}
 	}
 
-	/** {@return the retained supervisor PID} */
+	/**
+	 * Returns the retained supervisor PID.
+	 *
+	 * @return the retained supervisor PID
+	 */
 	public long pid() { return supervisor.pid(); }
-	/** {@return the prepared gate and exec-replaced workload root PID} */
+	/**
+	 * Returns the prepared gate and exec-replaced workload root PID.
+	 *
+	 * @return the prepared gate and exec-replaced workload root PID
+	 */
 	public long rootPid() { return rootPid; }
-	/** {@return the controller-owned outer cgroup's original absolute path} */
+	/**
+	 * Returns the controller-owned outer cgroup's original absolute path.
+	 *
+	 * @return the controller-owned outer cgroup's original absolute path
+	 */
 	public Path directory() { return outer.directory(); }
-	/** {@return the controller-owned attempt directory's original absolute path} */
+	/**
+	 * Returns the controller-owned attempt directory's original absolute path.
+	 *
+	 * @return the controller-owned attempt directory's original absolute path
+	 */
 	public Path scratch() { return scratch; }
 
 	/**
@@ -394,7 +416,11 @@ public final class LinuxSupervisor implements AutoCloseable
 		}
 	}
 
-	/** Publishes immutable workload inputs before starting the supervisor. */
+	/**
+	 * Publishes this attempt's workload inputs before starting the supervisor.
+	 *
+	 * @throws IOException if the launch document cannot be written or atomically published
+	 */
 	private void writeLaunch() throws IOException
 	{
 		Properties values = new Properties();
@@ -412,7 +438,14 @@ public final class LinuxSupervisor implements AutoCloseable
 		publish(scratch, Phase.LAUNCH, attempt, values);
 	}
 
-	/** Waits for an identity-matching stage while preserving supervisor failure details. */
+	/**
+	 * Waits up to the configured control timeout for the requested stage of this attempt.
+	 *
+	 * @param phase the supervisor stage required before the caller can continue
+	 * @return the published properties after checking the stage and attempt identity
+	 * @throws IOException if the supervisor exits, the timeout expires, the stage cannot be read or validated,
+	 * or the waiting thread is interrupted
+	 */
 	private Properties awaitPhase(Phase phase) throws IOException
 	{
 		long started = System.nanoTime();
@@ -427,7 +460,12 @@ public final class LinuxSupervisor implements AutoCloseable
 		return read(scratch, phase, attempt);
 	}
 
-	/** Reports a dead supervisor without treating its exit code as a workload result. */
+	/**
+	 * Creates a failure identifying the exited supervisor and its available diagnostic output.
+	 *
+	 * @return the supervisor failure, with log output or a log-read failure attached as a suppressed exception
+	 * @throws IllegalThreadStateException if the supervisor has not exited
+	 */
 	private IOException supervisorFailure()
 	{
 		IOException failure = new IOException("Dedicated supervisor exited " + supervisor.exitValue() +
@@ -442,14 +480,24 @@ public final class LinuxSupervisor implements AutoCloseable
 		return failure;
 	}
 
-	/** Rejects controls after resources have been released. */
+	/**
+	 * Rejects lifecycle operations after this owner has closed successfully.
+	 *
+	 * @throws IllegalStateException if successful close already occurred
+	 */
 	private void requireOpen()
 	{
 		if (closed)
 			throw new IllegalStateException("Linux supervisor owner is closed");
 	}
 
-	/** Retains the first cleanup failure and attaches later failures. */
+	/**
+	 * Retains the first cleanup failure and attaches the next failure to it.
+	 *
+	 * @param first the earlier cleanup failure, or null if none has occurred
+	 * @param next the next cleanup failure
+	 * @return the next failure when the first is null, otherwise the first with the next suppressed
+	 */
 	private static IOException combine(IOException first, IOException next)
 	{
 		if (first == null)
@@ -458,13 +506,28 @@ public final class LinuxSupervisor implements AutoCloseable
 		return first;
 	}
 
-	/** Returns a stage location in the private attempt directory. */
+	/**
+	 * Returns the XML document path for one stage in the attempt directory.
+	 *
+	 * @param scratch the private attempt directory
+	 * @param phase the stage whose document is located
+	 * @return the stage document path
+	 */
 	private static Path file(Path scratch, Phase phase)
 	{
 		return scratch.resolve(phase.name().toLowerCase(java.util.Locale.ROOT) + ".xml");
 	}
 
-	/** Publishes one complete XML properties document from an exclusively created sibling staging file. */
+	/**
+	 * Adds the attempt and stage identities to the supplied properties and atomically publishes their XML document.
+	 * A failed publication can leave the exclusively created sibling staging file for owner cleanup.
+	 *
+	 * @param scratch the private attempt directory
+	 * @param phase the stage being published
+	 * @param attempt the attempt identity written into the document
+	 * @param values the stage properties, updated in place with the attempt and stage identities
+	 * @throws IOException if the staging file cannot be exclusively created, written or atomically moved
+	 */
 	private static void publish(Path scratch, Phase phase, String attempt, Properties values) throws IOException
 	{
 		values.setProperty(ATTEMPT, attempt);
@@ -478,7 +541,16 @@ public final class LinuxSupervisor implements AutoCloseable
 		Files.move(pending, destination, StandardCopyOption.ATOMIC_MOVE);
 	}
 
-	/** Reads the selected JDK format and checks stage and attempt identity before consuming values. */
+	/**
+	 * Reads a stage's XML properties and validates its stage and attempt identity.
+	 *
+	 * @param scratch the private attempt directory
+	 * @param phase the expected document stage
+	 * @param attempt the expected attempt identity, or null to accept any nonempty identity
+	 * @return the validated stage properties
+	 * @throws IOException if the document cannot be read or decoded, a required identity is absent,
+	 * or the stage or attempt identity is invalid
+	 */
 	private static Properties read(Path scratch, Phase phase, String attempt) throws IOException
 	{
 		Properties values = new Properties();
@@ -494,7 +566,14 @@ public final class LinuxSupervisor implements AutoCloseable
 		return values;
 	}
 
-	/** Rejects absent fields while preserving an explicitly empty string. */
+	/**
+	 * Returns a required property while preserving an explicitly empty value.
+	 *
+	 * @param values the stage properties to read
+	 * @param key the required property name
+	 * @return the property value, including an empty string
+	 * @throws IOException if the named property is absent
+	 */
 	private static String required(Properties values, String key) throws IOException
 	{
 		String value = values.getProperty(key);
@@ -503,7 +582,11 @@ public final class LinuxSupervisor implements AutoCloseable
 		return value;
 	}
 
-	/** Waits between observations without losing interruption. */
+	/**
+	 * Waits 10 milliseconds between observations while preserving the interrupt flag on interruption.
+	 *
+	 * @throws IOException if the waiting thread is interrupted
+	 */
 	private static void pause() throws IOException
 	{
 		try { Thread.sleep(POLL_INTERVAL); }
@@ -514,7 +597,15 @@ public final class LinuxSupervisor implements AutoCloseable
 		}
 	}
 
-	/** Reconstructs the already validated launch representation in the dedicated process. */
+	/**
+	 * Reconstructs and validates workload launch inputs from the published properties.
+	 *
+	 * @param scratch the private attempt directory used as the helper scratch parent
+	 * @param values the published launch properties
+	 * @return the copied and validated workload launch inputs
+	 * @throws IOException if a required field is absent, the command count is nonpositive,
+	 * or a launch value is malformed or violates the launch contract
+	 */
 	private static LinuxProcessTree.Launch readLaunch(Path scratch, Properties values) throws IOException
 	{
 		try
@@ -542,7 +633,9 @@ public final class LinuxSupervisor implements AutoCloseable
 
 	/**
 	 * Runs only in the dedicated privileged child JVM started by prepare.
-	 * It waits for controller-confirmed placement before creating a helper and observes controller pipe loss throughout.
+	 * It waits for controller-confirmed placement before creating a helper. A background reader records controller
+	 * input closure or unexpected input; after preparation, the control loop checks that result between operations
+	 * and closes the owned process tree when the connection is lost.
 	 * @param args exactly the absolute private attempt directory
 	 * @throws Exception if configuration, placement permission, process ownership or publication fails
 	 */

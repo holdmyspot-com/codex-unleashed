@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
-# Save completed build stages as unverified state after source/dependency guards.
+# Save a completed release binary's Cargo outputs under partial cache aliases.
+# Run from codex-rs with one supported release binary name; invalid arguments exit 2.
+# GITHUB_WORKSPACE names the pristine upstream checkout. RUNNER_TEMP must contain
+# verify-cargo-lock.py, ghcr-cargo-target-cache.sh and baseline-evidence records
+# upstream-commit, upstream-ref and upstream-Cargo.lock from the release workflow.
+# CARGO_CACHE_REPOSITORY, CACHE_TAG, CACHE_SEED_TAG and CARGO_TARGET_DIR select
+# the registry, exact/compatible aliases and idle Cargo outputs to save.
+# Require the recorded commit, unchanged tracked sources except Cargo.lock and
+# permitted workspace-version lockfile synchronization before uploading.
+# Write metadata, verification receipts, transfer logs and elapsed seconds under
+# baseline-evidence; propagate guard, Cargo, verifier and upload failures.
 set -euo pipefail
 
 if [[ $# != 1 ]]; then

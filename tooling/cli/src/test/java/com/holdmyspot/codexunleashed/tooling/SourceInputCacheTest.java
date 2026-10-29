@@ -503,7 +503,7 @@ public final class SourceInputCacheTest
 	}
 
 	/**
-	 * Owns a dependency-free Cargo workspace and all compiler, capture and dependency storage.
+	 * Owns a Cargo test workspace and all compiler, subprocess-capture, and dependency storage.
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
@@ -704,11 +704,11 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Reads Cargo's library freshness report rather than inferring reuse from file presence.
+		 * Indicates whether Cargo reports the {@code cache_demo} library artifact as fresh.
 		 *
 		 * @param output actual Cargo JSON output
 		 * @return the library's freshness flag
-		 * @throws IOException if no library artifact is reported
+		 * @throws IOException if the selected library artifact is absent or repeated
 		 */
 		private boolean libraryFresh(String output) throws IOException
 		{
@@ -716,7 +716,7 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Reads freshness for a selected library from Cargo's actual artifact stream.
+		 * Indicates whether Cargo reports the named library artifact as fresh.
 		 *
 		 * @param output actual Cargo output
 		 * @param name the library target name
@@ -729,7 +729,8 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Selects one Cargo artifact by exact target name and kind.
+		 * Indicates whether Cargo reports an artifact as fresh after selecting exactly one by target name
+		 * and its first target-kind entry.
 		 *
 		 * @param output actual Cargo output
 		 * @param name the target name
@@ -779,7 +780,7 @@ public final class SourceInputCacheTest
 		}
 
 		/**
-		 * Locates the host executable.
+		 * Locates the root package's release executable for the fixture's native target.
 		 *
 		 * @return its native filename
 		 */
@@ -791,6 +792,11 @@ public final class SourceInputCacheTest
 			return base.resolve("target").resolve(target).resolve("release").resolve(name);
 		}
 
+		/**
+		 * Deletes the fixture root and all files and directories it owns.
+		 *
+		 * @throws IOException if a fixture entry cannot be removed
+		 */
 		@Override
 		public void close() throws IOException
 		{

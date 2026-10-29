@@ -22,6 +22,7 @@ class CleanupFailure(Exception):
 class FailingCleanupTree(ProcessTree):
     """Inject one cleanup failure while still closing each requested handle."""
     def _close_handle(self, handle):
+        """Close the native handle, then inject CleanupFailure once per tree after successful release."""
         super()._close_handle(handle)
         if getattr(self, "_fault_delivered", False) is False:
             self._fault_delivered = True

@@ -28,7 +28,11 @@ public final class SourceInputChanges
 	}
 
 	/**
-	 * Compares reusable and interrupted inputs before applying confined timestamp updates.
+	 * Compares current source digests with reusable and interrupted inputs, then restores unchanged timestamps
+	 * and sets changed files and their existing ancestor directories to the clock time.
+	 * The reusable snapshot must have a numeric {@code schema_version} equal to one or boolean {@code true},
+	 * and both snapshots must contain object-valued {@code files} mappings. An absent {@code mtimes} mapping
+	 * skips restoration. Timestamp updates already made remain in place if a later update fails.
 	 *
 	 * @param current current raw-file inventory
 	 * @param previous successful or completed-preparation input snapshot
@@ -80,7 +84,7 @@ public final class SourceInputChanges
 	}
 
 	/**
-	 * Compares the union of keys with the retained absent-or-null lookup behavior.
+	 * Finds names whose values differ across the union of both mappings, treating absent and JSON-null values as equal.
 	 *
 	 * @param previous earlier source values
 	 * @param current current source values
@@ -100,7 +104,7 @@ public final class SourceInputChanges
 	}
 
 	/**
-	 * Retains the original mapping lookup's equality between absent and explicit null values.
+	 * Reads a named value, treating an absent entry and JSON null as Java null.
 	 *
 	 * @param files source values
 	 * @param name the source name

@@ -7,7 +7,17 @@ import sys
 import time
 
 
-def observe_command_signals(command):
+def observe_runner_signals(command):
+    """Observe runner-wide signal, OOM, journal and resource diagnostics while command runs.
+
+    command is an argv sequence, or empty to check diagnostic readiness only.
+    Requires Linux diagnostic tools and noninteractive sudo. Overwrites
+    signal-observer.log in the current directory and mirrors diagnostics to stdout.
+    A marker must establish signal, journal and memory telemetry within 20 seconds.
+    Returns a passed readiness receipt plus the raw subprocess return code when
+    a command was supplied; the command may itself fail. Startup, readiness,
+    diagnostic-process and cleanup failures propagate. Stops and reaps owned
+    observers and the marker on exit; events are not filtered to the supplied command."""
     program = r'''
 tracepoint:signal:signal_generate /args->sig != 17 && args->sig != 23/ {
     if (args->sig == 9) {
@@ -144,8 +154,14 @@ tracepoint:oom:mark_victim {
 
 
 def main():
+    """Observe the command from argv, write signal-probe.json and return its shell status.
+
+    Writes and prints a failed receipt and returns 1 on OS, runtime or subprocess
+    errors. A completed command retains its numeric exit code; a signal return
+    code is converted to 128 plus the signal number. With no command, successful
+    readiness returns 0. Diagnostic readiness alone determines receipt status."""
     try:
-        receipt = observe_command_signals(sys.argv[1:])
+        receipt = observe_runner_signals(sys.argv[1:])
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         receipt = {"status": "failed", "error": str(error)}
     Path("signal-probe.json").write_text(json.dumps(receipt, indent=2) + "\n")

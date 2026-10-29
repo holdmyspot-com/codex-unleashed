@@ -10,6 +10,17 @@ set -euo pipefail
 evidence="$RUNNER_TEMP/baseline-evidence"
 mkdir -p "$evidence"
 
+# Run the configured checkpoint command for a completed release binary.
+# Arguments:
+#   Completed release binary name, passed unchanged to the checkpoint command.
+# Environment:
+#   RELEASE_CHECKPOINT_COMMAND: optional executable path; empty or unset skips saving.
+# Side effects:
+#   Runs the configured command with the caller's environment and working directory.
+# Output:
+#   Forwards the command's standard output.
+# Exit status:
+#   Zero when no command is configured; otherwise the command's status.
 checkpoint() {
   if [[ -n "${RELEASE_CHECKPOINT_COMMAND:-}" ]]; then
     "$RELEASE_CHECKPOINT_COMMAND" "$1"

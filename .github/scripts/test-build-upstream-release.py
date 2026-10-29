@@ -12,7 +12,14 @@ import unittest
 
 
 class ReleaseStagesTest(unittest.TestCase):
+    """Check platform-specific release command ordering, checkpoint failures and reuse of real Cargo outputs."""
     def run_build(self, target, fail_binary="", fail_checkpoint=""):
+        """Run the release script with isolated Cargo and checkpoint fixture processes.
+
+        target selects platform-specific binaries. fail_binary and fail_checkpoint
+        select fixture operations that exit 37 and 43 respectively; empty strings
+        disable injected failures. Return the process result and ordered build/
+        checkpoint events, and remove the owned fixture after reading its events."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             programs = root / "bin"
@@ -61,6 +68,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
             return result, recorded
 
     def test_each_platform_checkpoints_each_executable_once(self):
+        """The release script builds each selected platform binary with default features and checkpoints it once, in order."""
         common = ["codex-responses-api-proxy", "codex-code-mode-host", "codex", "codex-app-server"]
         cases = {
             "x86_64-apple-darwin": common,
@@ -79,6 +87,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
                 self.assertEqual(events, expected)
 
     def test_compiler_failure_keeps_earlier_checkpoints_and_stops(self):
+        """A Cargo fixture failure preserves earlier checkpoint events, propagates status 37 and stops later release stages."""
         result, events = self.run_build("x86_64-apple-darwin", fail_binary="codex")
         self.assertEqual(result.returncode, 37)
         self.assertEqual([event[1] for event in events if event[0] == "checkpoint"],
@@ -86,11 +95,13 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
         self.assertEqual(len(events), 5)
 
     def test_checkpoint_failure_stops_before_next_build(self):
+        """A checkpoint fixture failure propagates status 43 before the next release build starts."""
         result, events = self.run_build("x86_64-apple-darwin", fail_checkpoint="codex-code-mode-host")
         self.assertEqual(result.returncode, 43)
         self.assertEqual(len(events), 4)
 
-    def test_real_cargo_preserves_shared_features_and_reuses_bundle_outputs(self):
+    def test_real_cargo_reuses_bundle_outputs_and_runs_each_binary(self):
+        """After bundled Cargo builds, the release script performs no further compilation and every fixture binary prints 7."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shared = root / "shared"
@@ -121,6 +132,7 @@ if sys.argv[1] == os.environ['FAIL_CHECKPOINT']:
             environment.pop("RELEASE_CHECKPOINT_COMMAND", None)
 
             def command(arguments):
+                """Run a command in the fixture workspace and environment, assert status zero, and return its captured text output."""
                 result = subprocess.run(arguments, cwd=root, env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 return result

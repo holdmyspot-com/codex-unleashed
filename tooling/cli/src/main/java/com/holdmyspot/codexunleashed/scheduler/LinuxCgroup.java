@@ -48,7 +48,7 @@ public final class LinuxCgroup implements AutoCloseable
 	private boolean closed;
 
 	/**
-	 * Validates the launch-independent context before acquiring the owned group.
+	 * Validates the parent and close timeout, then creates an exclusive empty cgroup-v2 subtree.
 	 *
 	 * @param parent the absolute existing cgroup-v2 parent in which the caller may create groups
 	 * @param timeout the positive maximum close wait, representable as signed nanoseconds

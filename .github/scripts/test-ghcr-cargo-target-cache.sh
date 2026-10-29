@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Check cache transfer through a real ORAS executable using an owned local OCI layout.
+# Cover missing references, partial/verified aliases, archive bytes, timestamps,
+# hardlinks, compatible seed aliases and transport failures; CARGO_CACHE_PARTS=1
+# also checks group reuse, changed contents, ownership and legacy imports.
+# CODEX_TEST_ORAS names the real ORAS executable and TMPDIR owns test storage.
+# Remove the owned fixture on exit; propagate a nonzero command or assertion status.
 set -euo pipefail
 
 : "CODEX_TEST_ORAS:?Set CODEX_TEST_ORAS to the real ORAS executable}"
@@ -115,6 +121,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const before = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const after = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+// Return the digest of the layer whose cache-group annotation equals name.
+// The fixture requires that group to exist; a missing group raises TypeError.
 const groupDigest = (manifest, name) => manifest.layers.find(layer => layer.annotations['io.holdmyspot.cargo.group'] === name).digest;
 assert.equal(groupDigest(after, 'bootstrap'), groupDigest(before, 'bootstrap'), 'dependency-report changes must reuse the compiled output archive');
 assert.notEqual(groupDigest(after, 'metadata'), groupDigest(before, 'metadata'), 'updated dependency reports must still be saved');
@@ -223,6 +231,7 @@ PY
   node - "$fixture/before-change.json" "$fixture/after-change.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+// Read a fixture manifest and return its layer descriptors; read/JSON errors propagate.
 const layers = path => JSON.parse(fs.readFileSync(path, 'utf8')).layers;
 const previous = new Map(layers(process.argv[2]).map(layer => [layer.annotations['io.holdmyspot.cargo.group'], layer.digest]));
 let changed = 0;
@@ -249,6 +258,7 @@ JS
   node - "$fixture/before-step.json" "$fixture/after-step.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+// Read a fixture manifest and return its layer descriptors; read/JSON errors propagate.
 const layers = path => JSON.parse(fs.readFileSync(path, 'utf8')).layers;
 const before = new Map(layers(process.argv[2]).map(layer => [layer.annotations['io.holdmyspot.cargo.group'], layer.digest]));
 const after = new Map(layers(process.argv[3]).map(layer => [layer.annotations['io.holdmyspot.cargo.group'], layer.digest]));

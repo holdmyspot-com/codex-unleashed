@@ -19,7 +19,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Previews old main's manifest-level GHCR retention policy without registry access or deletion.
+ * Previews which GHCR package versions to retain or consider obsolete, without registry access or deletion.
  */
 public final class RetentionPreview
 {
@@ -29,12 +29,12 @@ public final class RetentionPreview
 	public static final String NAME = "preview-ghcr-retention";
 
 	/**
-	 * Stable upstream release spelling accepted by old main's retention policy.
+	 * Upstream release tags eligible for stable-release retention: {@code rust-v<major>.<minor>.<patch>} with decimal components.
 	 */
 	private static final Pattern STABLE_TAG = Pattern.compile("rust-v[0-9]+\\.[0-9]+\\.[0-9]+");
 
 	/**
-	 * Parses exactly one inventory document using the existing tooling JSON dependency.
+	 * Parses exactly one inventory document and rejects trailing JSON values.
 	 */
 	private static final JsonMapper JSON = JsonMapper.builder().
 		enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
@@ -50,8 +50,10 @@ public final class RetentionPreview
 	 * Classifies a complete inventory from caller-owned input and writes one JSON preview.
 	 * The object must contain release records with tag_name/draft/prerelease fields,
 	 * protected_upstream_refs strings and package_versions with unique positive integer
-	 * IDs and metadata.container.tags string arrays. The two newest distinct numeric stable
-	 * releases and explicit stable or {@code main} references protect every alias of matching Cargo manifests.
+	 * IDs and metadata.container.tags string arrays. Up to two distinct published, non-draft, non-prerelease stable tags with the highest numeric
+	 * major, minor, and patch components are retained, followed by any additional explicit stable or {@code main}
+	 * references. A package version is retained when any tag starts with {@code cargo-} and ends with a retained
+	 * reference preceded by a hyphen; its other aliases do not change that decision.
 	 * Untagged and other Cargo versions are obsolete candidates; unrelated tagged versions
 	 * are unmanaged. IDs retain inventory order. This preview neither authorizes deletion
 	 * nor accounts for writers that change the registry after collection.
@@ -88,7 +90,7 @@ public final class RetentionPreview
 		if (document == null || !document.isObject())
 			throw new IOException("Retention inventory must be a JSON object");
 
-		List<String> retained = retainedReleases(document);
+		List<String> retained = selectRetainedReferences(document);
 		List<BigInteger> retainedIds = new ArrayList<>();
 		List<BigInteger> obsoleteIds = new ArrayList<>();
 		List<BigInteger> unmanagedIds = new ArrayList<>();
@@ -125,10 +127,10 @@ public final class RetentionPreview
 	 * Selects numeric stable releases and adds explicitly protected baseline references.
 	 *
 	 * @param document complete inventory
-	 * @return newest two tags followed by any additional protected references
+	 * @return up to two distinct stable tags in descending numeric version order, followed by additional protected references in inventory order
 	 * @throws IOException if fields are malformed or no stable published release exists
 	 */
-	private static List<String> retainedReleases(JsonNode document) throws IOException
+	private static List<String> selectRetainedReferences(JsonNode document) throws IOException
 	{
 		Set<String> stable = new LinkedHashSet<>();
 		for (JsonNode release : array(document, "releases"))
@@ -147,7 +149,7 @@ public final class RetentionPreview
 		if (stable.isEmpty())
 			throw new IOException("No published stable upstream release found; retention preview refused");
 		List<String> ordered = new ArrayList<>(stable);
-		ordered.sort(RetentionPreview::compareNewestFirst);
+		ordered.sort(RetentionPreview::compareVersionsDescending);
 		Set<String> retained = new LinkedHashSet<>(ordered.subList(0, Math.min(2, ordered.size())));
 		for (String reference : strings(array(document, "protected_upstream_refs")))
 		{
@@ -160,13 +162,13 @@ public final class RetentionPreview
 	}
 
 	/**
-	 * Compares validated stable tags using old main's exact numeric component ordering.
+	 * Compares validated stable tags by descending numeric major, minor, and patch components.
 	 *
 	 * @param left first tag
 	 * @param right second tag
 	 * @return descending version comparison
 	 */
-	private static int compareNewestFirst(String left, String right)
+	private static int compareVersionsDescending(String left, String right)
 	{
 		String[] leftParts = left.substring("rust-v".length()).split("\\.");
 		String[] rightParts = right.substring("rust-v".length()).split("\\.");

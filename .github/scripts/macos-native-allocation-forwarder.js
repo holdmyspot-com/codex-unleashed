@@ -14,6 +14,9 @@ extern unsigned int matching_calls;
 extern int read_thread_id(void *, unsigned long long *);
 extern int * errno_location(void);
 
+/* Count the configured worker thread's mmap(NULL, 268435456, 3, 0x1002, -1, 0)
+ * calls, preserving incoming errno during thread lookup. Forward every request
+ * with unchanged arguments and return the original pointer and errno. */
 void * forward_mapping(void * address, size_t bytes, int protection,
     int flags, int descriptor, long long offset)
 {
@@ -36,7 +39,10 @@ void * forward_mapping(void * address, size_t bytes, int protection,
   errno_location: Module.getGlobalExportByName('__error') });
 
 rpc.exports = {
-  /* The controller passes the worker's independently resolved native address. */
+  /* Install once at the worker-resolved mmap address; threadId is the worker's
+   * pthread thread ID. Return the installed address and architecture. Keep the
+   * script loaded until worker exit; the hook forwards all threads' calls and
+   * counts only the configured worker's matching request. */
   install(address, threadId) {
     workerThread.writeU64(uint64(threadId));
     const target = ptr(address);
@@ -44,7 +50,8 @@ rpc.exports = {
     Interceptor.flush();
     return { address: target.toString(), architecture: Process.arch };
   },
-  /* Read only after the worker has returned from its single allocation call. */
+  /* Return the configured worker thread's matching mmap entry count since
+   * script load. Read after its allocation returns, before worker cleanup. */
   matchingCalls() {
     return matchingCalls.readU32();
   }

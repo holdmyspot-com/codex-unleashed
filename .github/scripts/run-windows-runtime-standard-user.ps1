@@ -1,3 +1,20 @@
+<#
+.SYNOPSIS
+Run compiled Windows runtime tests under a temporary local standard-user account.
+.DESCRIPTION
+Run on Windows with permission to create local users and grant filesystem access.
+FOCUSED_RUNTIME/evidence must contain nextest binaries.json and cargo.json; cargo-nextest.exe
+must be on PATH, and CODEX_REPO_ROOT and CARGO_TARGET_DIR identify the source and build.
+Creates FOCUSED_RUNTIME/standard-user-runtime, copies metadata and nextest there, and
+passes selected environment settings to the child through runtime-env.json.
+Writes child output, launch details, test-exit, and cleanup evidence under evidence.
+Returns the child exit code, or 78 if the non-elevated assertions were bypassed or a
+successful result lacks the expected one-passed, zero-skipped report.
+After account creation, finally attempts to stop its processes and remove the account
+and profile. Setup, launch, evidence, or cleanup failures stop the script.
+.PARAMETER TestFilter
+Nextest filter expression selecting the already compiled test to run.
+#>
 param([Parameter(Mandatory = $true)][string]$TestFilter)
 
 $ErrorActionPreference = 'Stop'

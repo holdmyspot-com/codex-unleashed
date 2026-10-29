@@ -208,6 +208,11 @@ public final class SourceInputSnapshotsTest
 			return new SourceInputInventory.Snapshot(root, files, Map.of());
 		}
 
+		/**
+		 * Deletes the fixture root and all files and directories it owns.
+		 *
+		 * @throws IOException if a fixture entry cannot be removed
+		 */
 		@Override
 		public void close() throws IOException
 		{

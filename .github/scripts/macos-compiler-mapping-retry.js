@@ -39,7 +39,9 @@ void report(long long phase, unsigned long long thread, size_t bytes,
     write_pipe(retry_configuration[1], record, sizeof(record));
 }
 
-/* Wait at most 30 seconds for one permission byte; return its poll result. */
+/* Poll the inherited permission reader for up to 30000 ms. Return 1 only
+ * after reading expected, 0 on poll timeout, or -1 for a poll/read failure,
+ * unreadable result, or different byte. A readable result consumes one byte. */
 int await_permission(char expected)
 {
     struct PollDescriptor permission = { retry_configuration[2], 1, 0 };
@@ -53,6 +55,15 @@ int await_permission(char expected)
     return polled == 0 ? 0 : -1;
 }
 
+/* Forward non-main-thread mmap calls unchanged. On the first main-thread call,
+ * sample virtual size and try a soft RLIMIT_AS of that size plus 4096 bytes;
+ * inspection or limit-installation failure is reported and forwards the call.
+ * A main-thread MAP_FAILED/ENOMEM result reports phase 1, waits up to 30000 ms
+ * for R, and attempts to restore the original limit regardless of permission.
+ * Retry the unchanged request once only if permission and restoration succeed.
+ * Report phase 2, then wait up to 30000 ms for F before returning the final
+ * pointer with the last original mmap attempt's errno. Other results return
+ * immediately; a successfully applied reduced limit remains until a denial. */
 void * retry_mapping(void * address, size_t bytes, int protection,
                      int flags, int descriptor, long long offset)
 {
@@ -122,10 +133,13 @@ void * retry_mapping(void * address, size_t bytes, int protection,
   inspect_task: Module.getGlobalExportByName('task_info') });
 
 rpc.exports = {
-  /* Arm the mmap hook with a resource ID and two inherited pipe endpoints.
-   * Return original limits, target and architecture. The first main-thread
-   * mapping samples current virtual size and adds 4096 bytes for its limit.
-   * Only main-thread mappings change limits or wait. */
+  /* Install once before admitting compiler stdin. resource is RLIMIT_AS;
+   * notification is an inherited writable record-pipe descriptor and permission
+   * is an inherited readable command-pipe descriptor. Keep both open and keep
+   * the script loaded while calls can enter the hook. Return original soft/hard
+   * limits, mmap target, architecture and the 4096-byte allowance. Throw if the
+   * script runs on the main thread or getrlimit fails. Main-thread calls alone
+   * lower limits, report denials, wait for R, restore limits, retry, and wait for F. */
   install(resource, notification, permission) {
     const mainThread = new NativeFunction(Module.getGlobalExportByName('pthread_main_np'), 'int', []);
     if (mainThread() !== 0)
