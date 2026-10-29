@@ -3012,3 +3012,27 @@ forced cleanup failures, other platforms and Cargo/Bazel remain open. The next
 implementation requires a per-installation wait identity and an acknowledged,
 at-most-once continuation protocol before the queue can safely aggregate more
 than one native allocation wait. Checkpoint 3 remains incomplete.
+
+
+### Exact vectors through injected exec
+
+[The injected-vector receipt](evidence/injected-launch-vectors-native.json)
+checks the previously unproven route through the leader-thread exec script,
+production attached supervisor and maintained runtime. A pure-JDK target records
+its argument vector and complete environment, then echoes binary stdin to stdout
+and writes a separate stderr marker. Empty, spaced, quoted, multiline and Unicode
+values compare exactly. The supplied UTF-8 locale reaches the target without
+ambient environment entries. PID, supervisor parent, cgroup, all UID/GID slots
+and an empty supplementary-group list also match.
+
+The new diagnostic passes incrementally with retained classes and once after
+compiling all six selected Java sources into an empty directory. Both targets
+exit naturally with zero, release native owners and retain caller endpoints.
+All forty-four observed owned PIDs across the retained run are absent; cgroup
+child directories are empty. The parent retains the same worker and persistent
+SSH session for the next multiwait and production-adapter check.
+
+This accepts the exercised valid vectors through injected exec. It does not
+establish rejection of embedded NULs or invalid environment entries, arbitrary
+platform encodings, production queue integration or allocation behavior in this
+Java workload. Those gates remain separate.
