@@ -27,7 +27,8 @@ public final class SourceCacheCommand
 	}
 
 	/**
-	 * Preserves first-position recording selection and the original positional argument contract.
+	 * Prepares or records release inputs by default, with optional ci-test profile selection before the workspace.
+	 * Recording remains the first option when selected; positional binary arguments are ignored during recording.
 	 *
 	 * @param arguments command arguments without the command name
 	 * @param out progress output
@@ -43,24 +44,34 @@ public final class SourceCacheCommand
 		Objects.requireNonNull(err, "err");
 		boolean record = arguments.length != 0 && arguments[0].equals("--record-source-inputs");
 		int offset = 0;
-		int minimum = 3;
 		if (record)
-		{
 			offset = 1;
-			minimum = 2;
-		}
-		if (arguments.length - offset < minimum)
-		{
-			err.println("Usage: " + NAME + " [--record-source-inputs] <workspace> <target> [binary ...]");
-			return 2;
-		}
 		SourceInputCache.Request request;
 		try
 		{
+			CargoCacheProfile profile = CargoCacheProfile.RELEASE;
+			boolean hasProfileOption = arguments.length > offset && arguments[offset].equals("--profile");
+			if (hasProfileOption)
+			{
+				if (arguments.length <= offset + 1)
+					throw new IllegalArgumentException("--profile requires release or ci-test");
+				profile = CargoCacheProfile.parse(arguments[offset + 1]);
+				offset += 2;
+			}
+			int minimum = 3;
+			if (record)
+				minimum = 2;
+			if (arguments.length - offset < minimum)
+			{
+				err.println("Usage: " + NAME + " [--record-source-inputs] [--profile release|ci-test] " +
+					"<workspace> <target> [binary ...]");
+				return 2;
+			}
+
 			Set<String> binaries = Set.of();
 			if (!record)
 				binaries = new TreeSet<>(Arrays.asList(arguments).subList(offset + 2, arguments.length));
-			request = new SourceInputCache.Request(Path.of(arguments[offset]), arguments[offset + 1], binaries);
+			request = new SourceInputCache.Request(Path.of(arguments[offset]), arguments[offset + 1], binaries, profile);
 		}
 		catch (IllegalArgumentException failure)
 		{

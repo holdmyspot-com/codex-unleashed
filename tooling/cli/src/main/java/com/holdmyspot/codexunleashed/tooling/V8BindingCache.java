@@ -125,7 +125,7 @@ final class V8BindingCache
 			Map.of(name, Sha256.digest(binding)),
 			Map.of(name, SourceInputTimes.nanos(SourceInputTimes.lastModified(binding)),
 				".", SourceInputTimes.nanos(SourceInputTimes.lastModified(root))));
-		Path snapshot = targetDirectory.resolve(".codex-source-inputs").resolve("v8-binding-" +
+		Path snapshot = request.profile().snapshotDirectory(targetDirectory).resolve("v8-binding-" +
 			SourceCacheTargets.directoryName(request.target()) + ".json");
 		return new State(snapshot, current);
 	}
