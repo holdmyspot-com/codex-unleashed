@@ -2528,7 +2528,42 @@ deliberate exit-17 failure. Client keys are removed after terminal cleanup.
 retains the exact recovery inputs, native receipt, raw archives and cleanup
 record. Supervisor composition is now accepted on both Linux architectures.
 
-Controller-death behavior remains unaccepted.
+Controller-death workload shutdown now passes on native
+[x86-64 run 40863043968](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40863043968)
+and [ARM64 run 40863059195](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40863059195).
+Each diagnostic starts a real Java controller using the packaged owner, verifies
+that its gate or detached descendant remains held, then kills the controller
+without calling `close()`. The supervisor observes input EOF, terminates and
+reaps its workload, removes its inner cgroup and gate storage, and exits one.
+The independent observer adopts and reaps that supervisor and finds no remaining
+children or published workload result. Empty outer cgroups and attempt files
+remain for recovery; the observer/client removes them. This accepts workload
+shutdown, while production workflow recovery of the dead controller's resources
+remains open.
+
+Both persistent Upterm clients remain connected through testing, collection and
+retries. The single-run x86-64 launcher initially rejects the parallel dispatches
+as ambiguous; target-aware selection resumes its original run without dispatching
+a replacement. Unprivileged evidence collection initially cannot read the
+root-owned private attempt directories on either host. Retrying only collection
+under the test's existing privilege succeeds on those same workers. The native
+cases are not repeated. Both SSH children exit zero, all hosted posts pass, and
+only the deliberate exit-17 steps fail. Client keys are removed after terminal
+cleanup. [linux-controller-death.json](evidence/linux-controller-death.json)
+retains all four native cases, the original diagnostic failures, corrected
+clients, raw archives and cleanup records.
+
+A separate memory-readiness observation on the same hosts finds memory listed
+among the runner service's available controllers, but empty `subtree_control`.
+Fresh owned descendants therefore expose none of `memory.current`,
+`memory.peak`, `memory.max` or `memory.swap.current`. The probe removes its empty
+groups and changes no controller configuration or process membership. The next
+telemetry proof must preserve these unavailable observations rather than return
+zero. Checked summed process RSS within the owned cgroup subtree is the next
+candidate; safe process identity, sampling reconciliation and the final Java
+operation remain unproven. Moving work outside inherited limits is not a way to
+obtain counters.
+
 Process-memory telemetry, monitor/controller integration, allocation blocking,
 memory-pressure recovery and Cargo/Bazel integration also remain open. This
 completes the demonstrated Linux component, not checkpoint 3.
