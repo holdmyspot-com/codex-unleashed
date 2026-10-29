@@ -1,0 +1,58 @@
+{
+  "status": "candidate-local-probe-passed",
+  "claim": "On the current local Linux JDK 27 provider, an open process-directory SecureDirectoryStream reads live status and reports an IOException after that actual process exits, retaining failure rather than substituting a memory value.",
+  "boundary": {
+    "platform": "local Linux only",
+    "jdk": "Zulu27.28+101-CA (build 27+35)",
+    "release": 27,
+    "provider": "sun.nio.fs.UnixSecureDirectoryStream",
+    "production_changed": false
+  },
+  "required_behavior": "Sample the owned process tree without reading a replacement process after PID reuse. Preserve inaccessible, missing and exited-process observations separately from a valid zero memory observation.",
+  "local_project_observation": {
+    "LinuxMemory": "Existing host sampler reads named counters with JDK Properties and checked byte conversion; it does not sample owned process RSS.",
+    "LinuxProcessTree": "Existing members() reads the owned inner cgroup.procs list; it does not bind later proc reads to process identity.",
+    "LinuxSupervisor": "Existing directory() supplies the owned outer cgroup observation boundary."
+  },
+  "candidate": {
+    "api": "java.nio.file.SecureDirectoryStream",
+    "entry": "Files.newDirectoryStream(procRoot.resolve(pid)) followed by SecureDirectoryStream.newByteChannel(relativeStatus, READ)",
+    "decision_members": [
+      "provider supports SecureDirectoryStream",
+      "Properties.getProperty(\"VmRSS\") from the descriptor-relative status reader",
+      "IOException type and message for failed descriptor-relative access"
+    ],
+    "selection": "Not yet selected as a production sampler. This evaluates the platform candidate only."
+  },
+  "authoritative_contracts": [
+    {
+      "url": "https://docs.oracle.com/en/java/javase/27/docs/api/java.base/java/nio/file/SecureDirectoryStream.html",
+      "supports": "Relative operations use the already-open directory, including when that directory is moved or replaced; support depends on the provider."
+    },
+    {
+      "url": "https://docs.kernel.org/filesystems/proc.html",
+      "section": "1.1 Process-Specific Subdirectories",
+      "supports": "Operations through an open proc process-directory descriptor do not act on a replacement process after PID reuse; dead-process access normally fails with ESRCH."
+    }
+  ],
+  "probe": {
+    "file": "ProcDirectoryProbe.java",
+    "sha256": "38535c314f920f2a2ae44ba7d02a207573fc7aed43cfa3ec396e33a5f9a3de81",
+    "source": "import java.io.IOException;\nimport java.nio.channels.Channels;\nimport java.nio.charset.StandardCharsets;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.SecureDirectoryStream;\nimport java.nio.file.StandardOpenOption;\nimport java.util.Properties;\nimport java.util.Set;\n\npublic class ProcDirectoryProbe {\n    public static void main(String[] args) throws IOException, InterruptedException {\n        if (args[0].equals(\"child\")) {\n            System.out.println(\"READY\");\n            System.out.flush();\n            System.in.read();\n            return;\n        }\n\n        Path classes = Path.of(args[0]);\n        Path procRoot = Path.of(args[1]);\n        Path java = Path.of(System.getProperty(\"java.home\")).resolve(\"bin/java\");\n        Process child = new ProcessBuilder(java.toString(), \"-cp\", classes.toString(),\n            \"ProcDirectoryProbe\", \"child\").redirectError(ProcessBuilder.Redirect.INHERIT).start();\n        try {\n            try (var output = child.inputReader(StandardCharsets.UTF_8)) {\n                if (\"READY\".equals(output.readLine()) == false)\n                    throw new IOException(\"Child did not report READY\");\n\n                Path processDirectory = procRoot.resolve(Long.toString(child.pid()));\n                try (var directory = Files.newDirectoryStream(processDirectory)) {\n                    System.out.println(\"provider=\" + directory.getClass().getName());\n                    if (directory instanceof SecureDirectoryStream<Path> secure) {\n                        System.out.println(\"pid=\" + child.pid());\n                        System.out.println(\"startInstant=\" + child.info().startInstant());\n                        try (var status = secure.newByteChannel(Path.of(\"status\"), Set.of(StandardOpenOption.READ));\n                             var reader = Channels.newReader(status, StandardCharsets.UTF_8)) {\n                            Properties counters = new Properties();\n                            counters.load(reader);\n                            System.out.println(\"live.VmRSS=\" + counters.getProperty(\"VmRSS\"));\n                            System.out.println(\"live.Pid=\" + counters.getProperty(\"Pid\"));\n                        }\n\n                        try (var missing = secure.newByteChannel(Path.of(\"missing-counter-file\"),\n                            Set.of(StandardOpenOption.READ))) {\n                            throw new AssertionError(\"Missing file unexpectedly opened\");\n                        } catch (java.nio.file.NoSuchFileException expected) {\n                            System.out.println(\"missing=\" + expected.getClass().getName());\n                        }\n\n                        child.getOutputStream().close();\n                        System.out.println(\"child.exit=\" + child.waitFor());\n                        System.out.println(\"path.exists.after=\" + Files.exists(processDirectory));\n                        try (var stale = secure.newByteChannel(Path.of(\"status\"), Set.of(StandardOpenOption.READ))) {\n                            throw new AssertionError(\"Exited process status unexpectedly opened\");\n                        } catch (IOException expected) {\n                            System.out.println(\"stale=\" + expected.getClass().getName() + \": \" + expected.getMessage());\n                        }\n                    } else {\n                        throw new UnsupportedOperationException(\"Provider exposes no secure directory stream\");\n                    }\n                }\n            }\n        } finally {\n            child.destroyForcibly();\n            child.waitFor();\n        }\n    }\n}\n",
+    "compile": "javac --release 27 -d <owned-root> <owned-root>/ProcDirectoryProbe.java",
+    "compile_exit": 0,
+    "invocation": "java -Djava.io.tmpdir=<owned-root> -cp <owned-root> ProcDirectoryProbe <owned-root> /proc",
+    "exit": 0,
+    "output": "provider=sun.nio.fs.UnixSecureDirectoryStream\npid=87\nstartInstant=Optional[2026-10-29T11:23:40.360Z]\nlive.VmRSS=39980 kB\nlive.Pid=87\nmissing=java.nio.file.NoSuchFileException\nchild.exit=0\npath.exists.after=false\nstale=java.nio.file.FileSystemException: status: No such process\n",
+    "process_cleanup": "The real child JVM receives input EOF, exits zero and is reaped; finally also forcibly destroys/reaps it if an earlier operation fails. Readers, channels and directory stream use try-with-resources."
+  },
+  "limitations": [
+    "This is a direct platform-candidate evaluation, not a final caller-facing sampler recreation or a production behavior gate.",
+    "It does not force PID reuse. The non-retargeting guarantee comes from the documented kernel contract; the probe exercises the JDK provider and actual process-exit behavior.",
+    "Opening a process directory after enumerating a PID can already encounter a replacement. A final sampler must verify ownership using a descriptor-relative cgroup observation and reconcile changing membership before accepting the sample.",
+    "Summed RSS is approximate sampled residency: shared pages can be counted per process and short-lived peaks can be missed. It is not cgroup memory consumption or an exact lifetime peak.",
+    "Missing VmRSS, malformed or overflowing counters, inaccessible processes, unsupported providers and membership churn still need exact public-operation acceptance cases.",
+    "Native release-runner x86-64/ARM64 composition, memory admission/control and Cargo/Bazel integration remain unaccepted by this probe."
+  ],
+  "next_gate": "Finish candidate comparison and a bounded ownership/membership contract; exercise the exact caller-facing Java sampler and declared dependencies in a fresh empty folder before production edits."
+}
