@@ -4,7 +4,8 @@ const path = require('node:path');
 if (process.env.STATE_storage) {
   fs.rmSync(process.env.STATE_storage, {recursive: true, force: true});
 } else {
-  const storage = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'codex-runtime-'));
+  const storage = path.join(process.env.RUNNER_TEMP, 'codex-focused-runtime');
+  fs.mkdirSync(storage);
   try {
     fs.appendFileSync(process.env.GITHUB_STATE, `storage=${storage}\n`);
     for (const child of ['evidence', 'target', 'cargo-home', 'tmp'])
