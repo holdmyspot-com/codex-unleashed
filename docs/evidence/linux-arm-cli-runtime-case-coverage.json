@@ -2196,7 +2196,7 @@
       "doctor::filesystem_paths::tests::blocked_probe_fixture"
     ]
   ],
-  "outcome": "Partial acceptance only. Four daemon timeouts remain unresolved; no source/test patch or timeout relaxation. App-server continues independently on the same original worker.",
+  "outcome": "All 544 required cases have named passing receipts across 540 original passes and four focused environment controls. Original timeouts remain recorded; see linux-arm-runtime-focused-completion.json.",
   "guards": {
     "test": "failure",
     "guard": "success",
@@ -2459,5 +2459,24 @@
       "sha256": "5d41efb85706df775c6ddb6f0482d8e7452b9bc23987cd0676f3e96321025ed6"
     }
   },
-  "comparison": "Current-source default nextest configuration terminates these cases at60s with one retry. Four upstream CI shards use the same default profile; their partitioning differs. ARM64 upstream per-case execution comparison remains open; no upstream failure is inferred."
+  "comparison": "Selected upstream Bazel explicitly optimizes BLAKE3 Rust/native code at level 3; matching this external Cargo profile override makes all four unchanged daemon cases pass. No native upstream ARM64 per-case CI execution receipt is claimed.",
+  "focused_passed_cases": [
+    [
+      "codex-cli::app_server_daemon",
+      "managed_identity_survives_locale_and_timezone_changes"
+    ],
+    [
+      "codex-cli::app_server_daemon",
+      "managed_starts_ensure_one_updater_and_recover_a_missing_one"
+    ],
+    [
+      "codex-cli::app_server_daemon",
+      "explicit_restart_applies_feature_overrides_and_preserves_saved_settings"
+    ],
+    [
+      "codex-cli::app_server_daemon",
+      "restart_applies_saved_updater_preference"
+    ]
+  ],
+  "accepted_required_passed": 544
 }

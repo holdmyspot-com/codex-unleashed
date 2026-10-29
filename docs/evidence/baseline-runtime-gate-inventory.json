@@ -259,7 +259,7 @@
     "Current upstream archive execution stages native Linux/Windows test helpers and supplies their paths explicitly; reproductions must preserve that handoff.",
     "Historical whole-workspace Bazel and SDK test requirements must be reconciled with the selected source and authorized Codex-only scope before launching further expensive checks."
   ],
-  "next_action": "Continue original retained worker for run40793215263 at one Cargo build job, restoring private partial state. Retain named ARM64 CLI/app-server outcomes, exact source/dependency guards, private cache receipts and lifecycle disposition. Other native platform tests remain accepted and must not be repeated.",
+  "next_action": "Reconcile checkpoint 1 acceptance against the retained native case inventories, accepted historical build/smoke/clean evidence and explicit failure deferrals; resolve or explicitly disposition any remaining comparison gate. Do not repeat accepted tests.",
   "profile": {
     "upstream_name": "ci-test",
     "definition": {
@@ -1041,7 +1041,7 @@
       },
       "source_attribution_evidence": "docs/evidence/macos-runtime-source-attribution.json"
     },
-    "remaining_scope": "Native Linux ARM64 selected CLI/app-server runtime coverage, final guards/cache and lifecycle disposition remain open. Other native selected product scopes have accepted named receipts or owner-approved equivalent historical passes. Preserve the four shell, Windows daemon-fixture and dependency-audit deferrals. Do not repeat accepted checks.",
+    "remaining_scope": "All selected native CLI/app-server scopes now have named passing receipts or owner-approved equivalent historical coverage. Final scope and upstream-failure comparison reconciliation remains required before checkpoint completion. Preserve original failures and approved deferrals.",
     "current_windows_standard_user": {
       "evidence": "docs/evidence/windows-native-runtime-results.json",
       "x86_64_run": 40758471648,
@@ -1175,6 +1175,24 @@
       "instrumented_job": 123176253320,
       "continuation_run": 40793215263,
       "concurrency": "CARGO_BUILD_JOBS=1 for focused native ARM64 only. Revisit conservative admission at checkpoint3 with the Java scheduler."
+    },
+    "linux_arm64_focused_completion": {
+      "run_id": 40793215263,
+      "target": "aarch64-unknown-linux-gnu",
+      "evidence": "docs/evidence/linux-arm-runtime-focused-completion.json",
+      "cli": {
+        "required": 544,
+        "passed_named_cases": 544,
+        "ignored": 1
+      },
+      "app_server": {
+        "required": 2062,
+        "passed_named_cases": 2062,
+        "ignored": 2
+      },
+      "guards": "Empty final source diff/status; locked dependency guards pass.",
+      "lifecycle": "Recovery SSH exits zero; hosted Upterm/storage post success; owned executables empty; owned short TMPDIR and local keys removed. Original tool handle remains unresolved independently.",
+      "comparison_limit": "Native upstream ARM64 per-case CI execution not established; exact upstream BLAKE3 build policy and paired environment control retained."
     }
   },
   "current_source_package_runtime": {

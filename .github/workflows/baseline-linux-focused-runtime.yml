@@ -74,6 +74,12 @@ jobs:
       - name: Own build state through later remote-session cleanup
         uses: ./.github/actions/focused-runtime-storage
 
+      - name: Match upstream's daemon-test hashing optimization
+        run: |
+          set -euo pipefail
+          test ! -e "$CARGO_HOME/config.toml"
+          printf '[profile.ci-test.package.blake3]\nopt-level = 3\n' > "$CARGO_HOME/config.toml"
+
       - name: Set up matching Rust
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
@@ -159,6 +165,8 @@ jobs:
             printf '%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-}" "${ImageVersion:-}"
             env | LC_ALL=C sort | grep -E '^(RUSTFLAGS|RUSTDOCFLAGS|RUSTC|RUSTC_WRAPPER|CARGO_INCREMENTAL|CARGO_PROFILE_[A-Z0-9_]+|CARGO_BUILD_RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CC|CXX|AR|CFLAGS|CXXFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET)='
             shasum -a 256 upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
+            printf '\n'
+            cat "$CARGO_HOME/config.toml"
           } > "$evidence/compiler.txt"
           python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
 
