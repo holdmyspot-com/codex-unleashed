@@ -33,7 +33,7 @@
     },
     "workflow_configuration": "local actionlint passes with only its existing queue-key false positive excluded; shell and generated environment import syntax checked locally",
     "hosted_shared_setup_and_environment_handoff": "passed at the retained native Linux Bash-step/explicit-shell-import boundary; see focused-runtime-cache-native-setup.json; workflow successor-step GITHUB_ENV remains unrun",
-    "separate_runner_ci_test_prepare_after_restore": "unrun",
+    "separate_runner_ci_test_prepare_after_restore": "passed by maintained native fixture; see ci-test-cache-profile-cross-runner.json. Focused Codex workflow consumption remains unrun.",
     "checkpoint_2": "incomplete"
   },
   "reuse_selection": {
