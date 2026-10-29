@@ -24,7 +24,7 @@ import java.util.concurrent.TimeoutException;
 /**
  * Owns a direct Windows workload and its descendants through one kill-on-close Job Object.
  * The single controlling thread must close this owner. Root exit does not complete the tree.
- * Only duplicated stdin and output handles are inherited; the supplied output remains borrowed.
+ * Only duplicated standard handles are inherited; all supplied handles remain borrowed.
  */
 public final class WindowsProcess implements AutoCloseable
 {
@@ -92,6 +92,70 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
+     * Starts a direct command with separately borrowed standard handles.
+     * Launch arguments, platform requirements and ownership follow
+     * {@link #start(List, Path, Map, MemorySegment)}. Each standard handle is duplicated
+     * separately for inheritance; the caller retains ownership of all three originals.
+     *
+     * @param command nonempty argv whose first element is an absolute executable file
+     * @param directory an existing absolute working directory
+     * @param environment child names and values without NUL; names must be nonempty and may
+     * contain '=' only as their first character
+     * @param input a live native standard-input handle owned by the caller
+     * @param output a live native standard-output handle owned by the caller
+     * @param error a live native standard-error handle owned by the caller
+     * @return the owner, whose close terminates and drains any remaining descendants
+     * @throws NullPointerException if an input or command/environment member is null
+     * @throws IllegalArgumentException if an input violates its documented form
+     * @throws UnsupportedOperationException if the platform, width or required symbols are unsupported
+     * @throws IOException if native acquisition, launch or cleanup fails
+     */
+    public static WindowsProcess start(List<String> command, Path directory,
+        Map<String,String> environment, MemorySegment input, MemorySegment output,
+        MemorySegment error) throws IOException
+    {
+        validateStandardHandle(input, "Input");
+        validateStandardHandle(output, "Output");
+        validateStandardHandle(error, "Error");
+        var arguments = validate(command, directory, environment, output);
+        return launch(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel());
+    }
+
+    /**
+     * Launches with separate borrowed standard handles and supplied native access.
+     *
+     * @param command copied, validated direct argv
+     * @param directory validated absolute working directory
+     * @param environment copied, validated child environment
+     * @param input borrowed live standard-input handle
+     * @param output borrowed live standard-output handle
+     * @param error borrowed live standard-error handle
+     * @param kernel owned native access to release even after failed construction
+     * @return the completed process owner
+     * @throws NullPointerException if a standard handle is null
+     * @throws IllegalArgumentException if a standard handle is not live and native
+     * @throws IOException if native launch or cleanup fails
+     */
+    static WindowsProcess launch(List<String> command, Path directory,
+        Map<String,String> environment, MemorySegment input, MemorySegment output,
+        MemorySegment error, Kernel kernel) throws IOException
+    {
+        try
+        {
+            validateStandardHandle(input, "Input");
+            validateStandardHandle(output, "Output");
+            validateStandardHandle(error, "Error");
+            return new WindowsProcess(command, directory, environment, input, output, error, kernel);
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            try { kernel.close(); }
+            catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    /**
      * Launches using supplied native access, transferring ownership only after complete construction.
      *
      * @param command copied, validated direct argv
@@ -107,7 +171,7 @@ public final class WindowsProcess implements AutoCloseable
     {
         try
         {
-            return new WindowsProcess(command, directory, environment, output, kernel);
+            return new WindowsProcess(command, directory, environment, null, output, null, kernel);
         }
         catch (IOException | RuntimeException | Error failure)
         {
@@ -123,12 +187,15 @@ public final class WindowsProcess implements AutoCloseable
      * @param command validated direct argv
      * @param directory validated absolute working directory
      * @param environment copied child environment
+     * @param input borrowed input handle, or null for NUL input and merged output
      * @param output borrowed output handle
+     * @param error borrowed error handle, ignored when input is null
      * @param kernel native access owned after successful construction
      * @throws IOException if native acquisition, launch or cleanup fails
      */
     private WindowsProcess(List<String> command, Path directory,
-        Map<String,String> environment, MemorySegment output, Kernel kernel) throws IOException
+        Map<String,String> environment, MemorySegment input, MemorySegment output,
+        MemorySegment error, Kernel kernel) throws IOException
     {
         this.kernel = Objects.requireNonNull(kernel, "kernel may not be null");
         accounting = kernel.arena.allocate(48, 8);
@@ -141,7 +208,7 @@ public final class WindowsProcess implements AutoCloseable
             var limits = kernel.arena.allocate(144, 8);
             limits.set(ValueLayout.JAVA_INT, 16, 0x2000);
             kernel.require("SetInformationJobObject", kernel.call("SetInformationJobObject", job, 9, limits, 144));
-            create(command, directory, environment, output, owned);
+            create(command, directory, environment, input, output, error, owned);
             releases = owned.transfer();
         }
     }
@@ -152,24 +219,38 @@ public final class WindowsProcess implements AutoCloseable
      * @param command validated direct argv
      * @param directory validated absolute working directory
      * @param environment copied child environment
+     * @param input borrowed input handle, or null for NUL input and merged output
      * @param output borrowed output handle
+     * @param error borrowed error handle, ignored when input is null
      * @param owned receives all lifetime resources before subsequent fallible work
      * @throws IOException if native launch or release fails
      */
     private void create(List<String> command, Path directory, Map<String,String> environment,
-        MemorySegment output, Releases owned) throws IOException
+        MemorySegment input, MemorySegment output, MemorySegment error, Releases owned) throws IOException
     {
         try (var launch = new Releases())
         {
-            var nullInput = kernel.pointer("CreateFileW", kernel.wide("NUL"), 0x80000000, 3,
-                MemorySegment.NULL, 3, 0, MemorySegment.NULL);
-            kernel.requireHandle("CreateFileW(NUL)", nullInput);
-            launch.add(() -> kernel.closeHandle(nullInput));
+            var standardInput = input;
+            if (standardInput == null)
+            {
+                var nullInput = kernel.pointer("CreateFileW", kernel.wide("NUL"), 0x80000000, 3,
+                    MemorySegment.NULL, 3, 0, MemorySegment.NULL);
+                kernel.requireHandle("CreateFileW(NUL)", nullInput);
+                launch.add(() -> kernel.closeHandle(nullInput));
+                standardInput = nullInput;
+            }
             var current = kernel.pointer("GetCurrentProcess");
-            var inputCopy = kernel.duplicate(current, nullInput);
+            var inputCopy = kernel.duplicate(current, standardInput);
             launch.add(() -> kernel.closeHandle(inputCopy));
             var outputCopy = kernel.duplicate(current, output);
             launch.add(() -> kernel.closeHandle(outputCopy));
+            var errorCopy = outputCopy;
+            if (input != null)
+            {
+                var separateErrorCopy = kernel.duplicate(current, error);
+                launch.add(() -> kernel.closeHandle(separateErrorCopy));
+                errorCopy = separateErrorCopy;
+            }
             var size = kernel.arena.allocate(ValueLayout.JAVA_LONG);
             int query = kernel.integer("InitializeProcThreadAttributeList", MemorySegment.NULL, 2, 0, size);
             long queryError = kernel.lastError();
@@ -184,13 +265,16 @@ public final class WindowsProcess implements AutoCloseable
             launch.add(() -> kernel.call("DeleteProcThreadAttributeList", attributes));
             var jobs = kernel.arena.allocate(ValueLayout.ADDRESS);
             jobs.set(ValueLayout.ADDRESS, 0, job);
-            var inherited = kernel.arena.allocate(16, 8);
+            long inheritedBytes = input == null ? 16 : 24;
+            var inherited = kernel.arena.allocate(inheritedBytes, 8);
             inherited.set(ValueLayout.ADDRESS, 0, inputCopy);
             inherited.set(ValueLayout.ADDRESS, 8, outputCopy);
+            if (input != null)
+                inherited.set(ValueLayout.ADDRESS, 16, errorCopy);
             kernel.require("UpdateProcThreadAttribute(JOB_LIST)", kernel.call("UpdateProcThreadAttribute",
                 attributes, 0, 0x2000dL, jobs, 8L, MemorySegment.NULL, MemorySegment.NULL));
             kernel.require("UpdateProcThreadAttribute(HANDLE_LIST)", kernel.call("UpdateProcThreadAttribute",
-                attributes, 0, 0x20002L, inherited, 16L, MemorySegment.NULL, MemorySegment.NULL));
+                attributes, 0, 0x20002L, inherited, inheritedBytes, MemorySegment.NULL, MemorySegment.NULL));
 
             // STARTUPINFOEXW is 112 bytes on both native Windows 64-bit targets.
             var startup = kernel.arena.allocate(112, 8);
@@ -198,7 +282,7 @@ public final class WindowsProcess implements AutoCloseable
             startup.set(ValueLayout.JAVA_INT, 60, 0x100);
             startup.set(ValueLayout.ADDRESS, 80, inputCopy);
             startup.set(ValueLayout.ADDRESS, 88, outputCopy);
-            startup.set(ValueLayout.ADDRESS, 96, outputCopy);
+            startup.set(ValueLayout.ADDRESS, 96, errorCopy);
             startup.set(ValueLayout.ADDRESS, 104, attributes);
             var info = kernel.arena.allocate(24, 8);
             kernel.require("CreateProcessW", kernel.call("CreateProcessW", kernel.wide(command.getFirst()),
@@ -300,7 +384,7 @@ public final class WindowsProcess implements AutoCloseable
 
     /**
      * Terminates unfinished work, waits up to ten seconds and closes every owned native handle.
-     * Release failures are preserved, with subsequent failures suppressed; borrowed output stays open.
+     * Release failures are preserved, with subsequent failures suppressed; borrowed handles stay open.
      * Calling close again has no effect. A failed drain never becomes a successful completion receipt.
      *
      * @throws IOException if termination, drain or handle release fails
@@ -344,6 +428,21 @@ public final class WindowsProcess implements AutoCloseable
     {
         if (closed)
             throw new IllegalStateException("Windows process owner is closed");
+    }
+
+    /**
+     * Rejects invalid borrowed standard handles before any native acquisition.
+     *
+     * @param handle caller-owned standard handle
+     * @param name standard stream named in a validation failure
+     * @throws NullPointerException if handle is null
+     * @throws IllegalArgumentException if its segment is closed, nonnative, NULL or INVALID_HANDLE_VALUE
+     */
+    private static void validateStandardHandle(MemorySegment handle, String name)
+    {
+        Objects.requireNonNull(handle, name + " may not be null");
+        if (!handle.scope().isAlive() || !handle.isNative() || handle.address() == 0 || handle.address() == -1)
+            throw new IllegalArgumentException(name + " must be a live native Windows handle");
     }
 
     /**
@@ -540,6 +639,18 @@ public final class WindowsProcess implements AutoCloseable
                 catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
                 throw failure;
             }
+        }
+
+        /**
+         * Supplies scoped storage for a native-access fixture without binding Windows symbols.
+         *
+         * @param arena owned storage released by close
+         */
+        Kernel(Arena arena)
+        {
+            this.arena = Objects.requireNonNull(arena, "arena may not be null");
+            errors = arena.allocate(ValueLayout.JAVA_INT);
+            errorOffset = 0;
         }
 
         /**
