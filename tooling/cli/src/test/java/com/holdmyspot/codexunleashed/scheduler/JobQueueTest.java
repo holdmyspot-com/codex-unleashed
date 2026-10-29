@@ -545,7 +545,7 @@ public final class JobQueueTest
 		assertEquals(actionA.closes, 1);
 		assertEquals(actionB.closes, 1);
 		actionB.closeFailure = null;
-		assertSame(expectThrows(IOException.class, queue::close), closeFailure);
+		assertSame(expectThrows(IOException.class, queue::close).getCause(), closeFailure);
 		assertEquals(actionB.closes, 1);
 		assertEquals(queue.completions(), 0);
 	}
@@ -584,8 +584,41 @@ public final class JobQueueTest
 		expectThrows(IllegalStateException.class, queue::jobs);
 		expectThrows(IllegalStateException.class, () -> queue.submit("D", 1L));
 		expectThrows(IllegalStateException.class, () -> queue.allocationBlocked("A", 0, 0));
-		assertSame(expectThrows(IOException.class, queue::close), failure);
+		assertSame(expectThrows(IOException.class, queue::close).getCause(), failure);
 		assertEquals(List.of(actionA.closes, actionB.closes, actionC.closes), List.of(1, 1, 1));
+	}
+
+	/**
+	 * Reports an explicit cleanup failure through automatic closure without retrying the owner or suppressing itself.
+	 * The in-process owner supplies only the documented failed-close input; the real queue owns error reporting.
+	 *
+	 * @throws IOException if starting the controlled action fails
+	 */
+	@Test(groups = "failures")
+	public void explicitFailedCloseInsideTryWithResourcesPreservesCleanupFailure() throws IOException
+	{
+		Fixture fixture = new Fixture(1);
+		var queue = fixture.queue();
+		queue.submit("A", 10L);
+		queue.cycle();
+		var owner = fixture.latestAttempt("A");
+		owner.closeFailure = new IOException("owner cleanup incomplete");
+
+		var failure = expectThrows(IOException.class, () ->
+		{
+			try (queue)
+			{
+				queue.close();
+			}
+		});
+
+		assertSame(failure.getCause(), owner.closeFailure);
+		assertTrue(failure.getMessage().contains("A attempt 0"));
+		assertEquals(failure.getSuppressed().length, 1);
+		assertSame(failure.getSuppressed()[0].getCause(), failure);
+		assertEquals(owner.closes, 1);
+		assertEquals(queue.completions(), 0);
+		assertTrue(queue.completedAttempts().isEmpty());
 	}
 
 	/**
