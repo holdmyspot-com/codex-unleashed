@@ -1573,10 +1573,10 @@ completion epoch; an ineligible older retry cannot be bypassed by new work.
 Resumption applies the same memory check while retaining its existing process
 slot. These checks distinguish a one-byte budget shortfall from an exact fit.
 
-During an observed swap incident with current native pressure, the policy selects
-the newest eligible attempt while protecting the oldest running action. A
+During fresh swap growth, or a growth incident retained while native pressure
+persists, the policy selects the newest eligible attempt while protecting the oldest running action. A
 STOPPING entry prevents additional decisions until its process tree is reaped.
-Pressure relief stops further termination even if swap occupancy remains high.
+A non-growing sample without pressure stops further termination even if swap occupancy remains high.
 The controller must obtain valid native observations, apply and acknowledge each
 request, retain retry positions, and advance completion epochs only for
 non-aborted action completions. Returned requests do not prove those effects.
@@ -1592,6 +1592,38 @@ needed for these in-process policy checks.
 The Java [SwapRecovery](../tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SwapRecovery.java) now supplies the policy’s swap-incident state from successive successful occupancy measurements. An occupied first sample establishes a baseline. Later growth latches recovery; current pressure retains it, and a non-growing sample without pressure clears it even if swap occupancy remains high. Invalid negative samples leave history unchanged. Each controller owns its own history and skips failed native reads.
 
 Six focused checks pass, including the actual policy handoff: growth with pressure selects the newest attempt, pressure relief stops recovery, and the retry still awaits a non-aborted completion. Complete tooling verification passes all 85 tests, and a consumer of the Maven-built JAR reproduces the standalone JDK 27 decisions. [The receipt](evidence/java-swap-recovery.json) retains the initial behavioral failure, exact source identities, driver, results and limitations. This accepts history updates only; native measurement, controller effects and Cargo/Bazel integration remain open.
+
+The subsequent Windows review identified that occupied pagefile growth and the
+native low-memory flag are independent. A focused in-process test now feeds
+`SwapRecovery.observe` a zero baseline followed by growth with pressure false,
+then passes the returned incident to `Policy.chooseAction`. With two running
+actions and ample estimated headroom, the policy originally selected START for
+new work instead of TERMINATE for the newest attempt. The test also requires
+WAIT when only the oldest attempt remains, and permits START after a subsequent
+non-growing observation without pressure at the same occupied-swap value.
+
+Before the production correction,
+`mvn -B -ntp -f tooling/cli/pom.xml -Dmaven.repo.local="$PWD/.cat/work/temp/build-caches/maven/repository" -Dtest=PolicyTest test`
+reported 13 tests with one failure: `expected [TERMINATE] but found [START]` in
+`terminatesNewestOnSwapGrowthWithoutNativePressure`. The policy now enters
+recovery for native pressure **or** an active swap-growth incident. The existing
+history operation clears the incident at the first non-growing sample without
+pressure; high stable occupancy alone therefore cannot cause repeated kills.
+The pressure-relief test now obtains its incident state from that operation
+instead of supplying a stale true value manually.
+
+The focused `-Dtest=PolicyTest,SwapRecoveryTest test` invocation passes all 19
+tests. Complete tooling `verify` passes all 112 tests with JDK 27 and the installed
+Rust/Cargo 1.95.0 directory on PATH. Both commands use the workspace Maven
+repository above. The initial Maven attempt used the default repository and
+failed dependency resolution because its network was unreachable; selecting the
+existing repository resolves that setup failure. The first full verification
+then reported 11 setup errors because `rustc` was absent from PATH; adding the
+installed toolchain resolves them without source changes. The successful full
+invocation also sets `TMPDIR` and `MAVEN_OPTS=-Djava.io.tmpdir=...` to this
+session's owned CAT temporary directory. Existing warnings remain visible.
+These results accept policy decisions only; they do not establish native
+swap recovery, process termination, or Cargo/Bazel scheduler integration.
 
 ### Native Windows process-tree ownership
 

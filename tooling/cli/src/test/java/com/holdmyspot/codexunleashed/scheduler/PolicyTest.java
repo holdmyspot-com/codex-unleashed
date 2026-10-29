@@ -118,10 +118,34 @@ public final class PolicyTest
 	@Test
 	public void admitsAfterPressureRelief()
 	{
+		SwapRecovery history = new SwapRecovery();
+		history.observe(0, false);
+		history.observe(1024, true);
 		List<Job> jobs = List.of(new Job("oldest", State.RUNNING, 0, 100L, 100, 0L, null, 0),
 			new Job("next", State.READY, 1, 100L, 0, null, null, 0));
-		assertDecision(Policy.chooseAction(new Budget(100, 2), jobs, new Observation(200, false, true, 0)),
+		assertDecision(Policy.chooseAction(new Budget(100, 2), jobs,
+			new Observation(200, false, history.observe(1024, false), 0)),
 			Control.START, "next");
+	}
+
+	/**
+	 * Responds to fresh swap growth even when the native low-memory signal remains clear.
+	 */
+	@Test
+	public void terminatesNewestOnSwapGrowthWithoutNativePressure()
+	{
+		SwapRecovery history = new SwapRecovery();
+		history.observe(0, false);
+		Observation growth = new Observation(2000, false, history.observe(1024, false), 0);
+		List<Job> jobs = List.of(new Job("oldest", State.RUNNING, 0, 100L, 100, 0L, null, 0),
+			new Job("newest", State.RUNNING, 1, 100L, 100, 1L, null, 0),
+			new Job("next", State.READY, 2, 100L, 0, null, null, 0));
+		Budget budget = new Budget(100, 4);
+		assertDecision(Policy.chooseAction(budget, jobs, growth), Control.TERMINATE, "newest");
+		assertDecision(Policy.chooseAction(budget, List.of(jobs.getFirst(), jobs.getLast()), growth),
+			Control.WAIT, null);
+		Observation stable = new Observation(2000, false, history.observe(1024, false), 0);
+		assertDecision(Policy.chooseAction(budget, jobs, stable), Control.START, "next");
 	}
 
 	/**

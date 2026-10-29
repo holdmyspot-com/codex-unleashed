@@ -129,7 +129,7 @@ public final class Policy
 	 *
 	 * @param availableBytes the nonnegative available physical bytes, already excluding current resident use
 	 * @param memoryPressure indicates whether native measurements currently show memory pressure
-	 * @param swapRecovery indicates whether the monitor has latched an observed swap-growth incident
+	 * @param swapRecovery indicates fresh swap growth or an incident retained while native pressure persists
 	 * @param completions the nonnegative count of non-aborted action completions; reaping a termination does not count
 	 */
 	public record Observation(long availableBytes, boolean memoryPressure, boolean swapRecovery, long completions)
@@ -139,7 +139,7 @@ public final class Policy
 		 *
 		 * @param availableBytes the nonnegative available physical bytes
 		 * @param memoryPressure indicates whether current native pressure is present
-		 * @param swapRecovery indicates whether an observed swap-growth incident remains latched
+		 * @param swapRecovery indicates fresh swap growth or an incident retained while native pressure persists
 		 * @param completions the nonnegative non-aborted completion count
 		 * @throws IllegalArgumentException if {@code availableBytes} or {@code completions} is negative
 		 */
@@ -211,10 +211,10 @@ public final class Policy
 	/**
 	 * Selects one control without mutating the supplied snapshot.
 	 * <p>
-	 * Stopping trees prevent further controls. Current pressure prevents admission; a latched swap incident also
-	 * permits terminating the newest live attempt while protecting the oldest running attempt. Otherwise the oldest
-	 * blocked denial precedes retries in original submission order, which precede new work. An ineligible or
-	 * unaffordable older action is never bypassed. Resumption does not consume another process slot.
+	 * Stopping trees prevent further controls. Current pressure or an active swap-growth incident prevents admission;
+	 * the swap incident also permits terminating the newest live attempt while protecting the oldest running attempt.
+	 * Otherwise the oldest blocked denial precedes retries in original submission order, which precede new work.
+	 * An ineligible or unaffordable older action is never bypassed. Resumption does not consume another process slot.
 	 * <p>
 	 * Admission reserves headroom and expected remaining growth of other running attempts. Unknown demand is measured
 	 * exclusively and requires at least one byte beyond headroom. Estimates do not guarantee sufficient future memory.
@@ -243,7 +243,7 @@ public final class Policy
 			case RUNNING, BLOCKED -> true;
 			default -> false;
 		}).toList();
-		if (observation.memoryPressure())
+		if (observation.memoryPressure() || observation.swapRecovery())
 			return choosePressureControl(running, live, observation);
 
 		Job candidate = blocked.stream().min(Comparator.comparingLong(Job::blockedAt)).orElse(null);
@@ -288,7 +288,7 @@ public final class Policy
 				return new Decision(Control.TERMINATE, newest.name(),
 					"Relieve observed swap pressure; retain the oldest running job");
 		}
-		return waitFor("Native memory pressure prevents admission");
+		return waitFor("Memory pressure or active swap growth prevents admission");
 	}
 
 	/**
