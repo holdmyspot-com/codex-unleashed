@@ -2930,3 +2930,49 @@ leader-exec gate remains a scratch fixture, and its empty allocator entry hook
 establishes installation only. Production attempt integration, actual allocation
 denial and continuation through this owner, forced cleanup errors, other
 platforms and Cargo/Bazel integration remain open. Checkpoint 3 is incomplete.
+
+### Production Linux launch modes
+
+[Native production-launch evidence](evidence/linux-attached-launch-native.json)
+now exercises the maintained supervisor and gate with an explicit execution
+mode. Existing callers and configuration without a mode retain direct exec.
+Unknown or empty modes fail. Attached mode keeps the credential-dropped gate
+alive for controller-driven leader-thread replacement, then fails if replacement
+does not arrive. It writes no readiness marker to workload streams and never
+falls back to direct exec. The controller must attach and prepare child gating
+before release, observe credentials afterward and verify the resulting compiler
+image and containment; a release acknowledgement establishes none of those.
+
+The direct native regression preserves empty, spaced, quoted, escaped, multiline
+and Unicode arguments, the exact supplied environment, and separate binary
+streams. Its initial Unicode failure also occurs when Python launches the same
+Java target directly with the same environment. Adding only `LANG=C.UTF-8` makes
+that control preserve the text. Only the diagnostic environment changes; the
+failed step then passes on the same worker without rebuilding native producers.
+The compiler pair subsequently passes, followed by one fresh Java-class build
+and execution of both cases.
+
+Both compilers use the maintained attached-launch mode, runtime and supervisor.
+The first cancellation returns actual exit 137; closing its manager preserves a
+fresh response from its held peer, whose explicit resume produces metadata with
+exit zero. Separate native checks cancel before release and after observing all
+four UID/GID slots. A missing-dispatch case exits naturally with the expected
+expiry diagnostic after about 30 seconds and never creates the selected workload
+marker or stdout. That elapsed observation includes release and readiness checks;
+it does not precisely measure the interval after credential drop. Supplementary
+group clearance is not asserted by this diagnostic.
+
+The focused dispatch regression first fails on the direct-exec decision, then
+43 focused tests pass. Full tooling verification passes 217 tests and builds the
+JAR; final scoped Javadoc validation passes. The exact maintained source bytes
+match the remotely executed recreation. All 22 observed owned PIDs are absent,
+and the owned cgroup has no child directories. The authenticated SSH session and
+native producers remain on the retained worker for the next attempt-adapter
+check; final worker cleanup is not yet claimed.
+
+This accepts production Linux launch-mode behavior for the exercised cases.
+The controller orchestration and injected exec script remain diagnostics.
+Arbitrary argument/environment vectors through that script, actual allocation
+denial and recovery through the maintained owner, forced cleanup failures,
+production queue adapters, other platforms and Cargo/Bazel integration remain
+open. Checkpoint 3 is incomplete.

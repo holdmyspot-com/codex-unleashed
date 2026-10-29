@@ -28,6 +28,92 @@ import java.util.concurrent.TimeUnit;
  * Instances are single-thread confined.
  */
 public final class LinuxProcessTree implements AutoCloseable {
+    /** Selects whether release executes directly or waits for controller-driven leader-thread exec. */
+    public enum ExecutionMode {
+        /** Executes the launch command in the credential-dropped gate. */
+        DIRECT_EXEC,
+        /** Waits for the controller to replace the credential-dropped gate on its process leader thread. */
+        ATTACHED_LEADER_EXEC;
+
+        /** XML property carried through the supervisor and trusted gate configuration. */
+        private static final String PROPERTY = "execution.mode";
+
+        /**
+         * Stores this mode for the next launch consumer.
+         * @param values launch properties receiving the mode
+         */
+        void writeTo(Properties values) {
+            values.setProperty(PROPERTY, name());
+        }
+
+        /**
+         * Reads a launch mode, preserving direct exec for legacy configuration without the property.
+         * @param values launch properties
+         * @return the explicit mode, or DIRECT_EXEC when absent
+         * @throws IOException if the property does not name a supported mode
+         */
+        static ExecutionMode readFrom(Properties values) throws IOException {
+            String value = values.getProperty(PROPERTY);
+            if (value == null) return DIRECT_EXEC;
+            try {
+                return valueOf(value);
+            } catch (IllegalArgumentException failure) {
+                throw new IOException("Unknown workload execution mode: " + value, failure);
+            }
+        }
+    }
+
+    /** Monotonic preparation interval after credential drop for controller-driven process replacement. */
+    private static final long EXTERNAL_EXEC_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
+
+    /** Native workload replacement, which returns only on failure. */
+    @FunctionalInterface
+    private interface WorkloadExecution {
+        /**
+         * Replaces the gate with the workload.
+         * @throws IOException if replacement fails or returns unexpectedly
+         */
+        void execute() throws IOException;
+    }
+
+    /** Typed access to the private gate dispatch boundary for focused behavioral tests. */
+    static final class SharedSecrets {
+        /** Prevents construction of this access facade. */
+        private SharedSecrets() { }
+
+        /**
+         * Dispatches using a local action representing the native exec boundary.
+         * @param mode release execution mode
+         * @param execution action observing whether direct exec is selected
+         * @param replacementDeadline absolute monotonic deadline for external replacement
+         * @throws IOException if external replacement expires
+         * @throws InterruptedException if the replacement wait is interrupted
+         */
+        static void executeAfterRelease(ExecutionMode mode, Runnable execution, long replacementDeadline)
+                throws IOException, InterruptedException {
+            LinuxProcessTree.executeAfterRelease(mode, execution::run, replacementDeadline);
+        }
+    }
+
+    /**
+     * Dispatches workload replacement after release and successful credential drop.
+     * @param mode release execution mode
+     * @param execution native workload replacement operation
+     * @param replacementDeadline absolute monotonic deadline for external replacement
+     * @throws IOException if replacement fails
+     * @throws InterruptedException if the replacement wait is interrupted
+     */
+    private static void executeAfterRelease(ExecutionMode mode, WorkloadExecution execution,
+            long replacementDeadline) throws IOException, InterruptedException {
+        switch (mode) {
+            case DIRECT_EXEC -> execution.execute();
+            case ATTACHED_LEADER_EXEC -> {
+                while (System.nanoTime() - replacementDeadline < 0) Thread.sleep(10);
+                throw new IOException("Attached workload gate reached its external-exec deadline without replacement");
+            }
+        }
+    }
+
     /**
      * Caller-owned filesystem endpoints for workload standard input, output and error.
      * Paths must be nonnull and absolute; validation performs no filesystem access.
@@ -110,6 +196,11 @@ public final class LinuxProcessTree implements AutoCloseable {
      * Explicit launch context. Executable, Java runtime, class path, directory and parents must be absolute.
      * The workload's positive UID/GID are distinct from the privileged supervisor identity.
      * Command arguments and the complete workload environment are copied. No PATH search is performed.
+     * DIRECT_EXEC replaces the gate after release and credential drop. ATTACHED_LEADER_EXEC instead waits
+     * 30 seconds after successful credential drop for the controller to exec the exact command and environment
+     * on the process leader thread. The controller must attach and prepare child gating before release;
+     * release acknowledgement does not establish credential readiness or successful process replacement.
+     * Missing external replacement fails without direct-exec fallback. Workload streams receive no readiness marker.
      * @param cgroupParent absolute delegated cgroup-v2 parent
      * @param scratchParent absolute parent for exclusive gate state
      * @param javaExecutable absolute Java executable for the trusted gate
@@ -119,11 +210,13 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @param directory absolute workload working directory
      * @param uid positive unprivileged workload user identity
      * @param gid positive unprivileged workload group identity
+     * @param executionMode whether release executes directly or waits for attached leader-thread exec
      */
     public record Launch(Path cgroupParent, Path scratchParent, Path javaExecutable, Path classPath,
-                         List<String> command, Map<String,String> environment, Path directory, int uid, int gid) {
+                         List<String> command, Map<String,String> environment, Path directory, int uid, int gid,
+                         ExecutionMode executionMode) {
         /**
-         * Copies launch collections and rejects relative paths, missing command or privileged workload identities.
+         * Creates a legacy launch whose released gate executes the workload directly.
          * @param cgroupParent absolute delegated cgroup-v2 parent
          * @param scratchParent absolute parent for exclusive gate state
          * @param javaExecutable absolute Java executable for the trusted gate
@@ -136,7 +229,29 @@ public final class LinuxProcessTree implements AutoCloseable {
          * @throws NullPointerException if any required input or collection element is null
          * @throws IllegalArgumentException if a path or executable is relative, command is empty or identity is nonpositive
          */
+        public Launch(Path cgroupParent, Path scratchParent, Path javaExecutable, Path classPath,
+                      List<String> command, Map<String,String> environment, Path directory, int uid, int gid) {
+            this(cgroupParent, scratchParent, javaExecutable, classPath, command, environment, directory, uid, gid,
+                ExecutionMode.DIRECT_EXEC);
+        }
+
+        /**
+         * Copies launch collections and rejects relative paths, missing command or privileged workload identities.
+         * @param cgroupParent absolute delegated cgroup-v2 parent
+         * @param scratchParent absolute parent for exclusive gate state
+         * @param javaExecutable absolute Java executable for the trusted gate
+         * @param classPath absolute class directory or JAR containing this owner and its trusted gate
+         * @param command workload command beginning with an absolute executable
+         * @param environment complete workload environment, copied without ambient inheritance
+         * @param directory absolute workload working directory
+         * @param uid positive unprivileged workload user identity
+         * @param gid positive unprivileged workload group identity
+         * @param executionMode whether release executes directly or waits for attached leader-thread exec
+         * @throws NullPointerException if any required input or collection element is null
+         * @throws IllegalArgumentException if a path or executable is relative, command is empty or identity is nonpositive
+         */
         public Launch {
+            Objects.requireNonNull(executionMode, "executionMode may not be null");
             for (Path path : List.of(cgroupParent, scratchParent, javaExecutable, classPath, directory)) {
                 if (path.isAbsolute() == false) throw new IllegalArgumentException("Launch paths must be absolute: " + path);
             }
@@ -292,6 +407,7 @@ public final class LinuxProcessTree implements AutoCloseable {
         Properties values = new Properties();
         values.setProperty("uid", Integer.toString(launch.uid()));
         values.setProperty("gid", Integer.toString(launch.gid()));
+        launch.executionMode().writeTo(values);
         values.setProperty("command.count", Integer.toString(launch.command().size()));
         for (int index = 0; index < launch.command().size(); index++)
             values.setProperty("command." + index, launch.command().get(index));
@@ -526,7 +642,8 @@ public final class LinuxProcessTree implements AutoCloseable {
     }
 
     /**
-     * Runs only the trusted helper. Configuration is data; arbitrary workload execution follows release and identity drop.
+     * Runs only the trusted helper. Workload execution follows release and identity drop, either directly or
+     * through controller-driven leader-thread exec within the attached mode's 30-second replacement interval.
      * @param args the gate selector and absolute owned scratch directory
      * @throws Exception if configuration, release, credential drop or native execution fails
      */
@@ -536,6 +653,7 @@ public final class LinuxProcessTree implements AutoCloseable {
         Path scratch = Path.of(args[1]);
         Properties values = new Properties();
         try (InputStream input = Files.newInputStream(scratch.resolve("launch.xml"))) { values.loadFromXML(input); }
+        ExecutionMode mode = ExecutionMode.readFrom(values);
         Files.writeString(scratch.resolve("ready"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
         while (Files.exists(scratch.resolve("release")) == false) {
@@ -551,7 +669,8 @@ public final class LinuxProcessTree implements AutoCloseable {
         }
         NativeCalls calls = new NativeCalls();
         calls.dropIdentity(Integer.parseInt(values.getProperty("uid")), Integer.parseInt(values.getProperty("gid")));
-        calls.exec(command, environment);
+        executeAfterRelease(mode, () -> calls.exec(command, environment),
+            System.nanoTime() + EXTERNAL_EXEC_WAIT_NANOS);
     }
 
     /**
@@ -602,6 +721,9 @@ public final class LinuxProcessTree implements AutoCloseable {
          */
         private final MethodHandle execve = bind("execve", FunctionDescriptor.of(ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);
+
+        /** Resolves the required libc bindings without starting processes or changing native state. */
+        private NativeCalls() { }
 
         /**
          * Binds a libc symbol with captured errno; prctl's trailing arguments are C varargs.
