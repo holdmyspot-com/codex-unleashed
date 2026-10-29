@@ -4,6 +4,9 @@ inputs:
   public-key:
     description: Public SSH key whose private key remains with the debugging client
     required: true
+  idle-timeout-minutes:
+    description: Positive whole minutes allowed before joining or while waiting at an idle shell prompt
+    default: '30'
 outputs:
   ssh-command:
     description: SSH command for the owned live debug session
@@ -16,15 +19,19 @@ runs:
       uses: ./.github/actions/debug-failed-runner/storage
       env:
         DEBUG_PUBLIC_KEY: ${{ inputs.public-key }}
+        DEBUG_IDLE_MINUTES: ${{ inputs.idle-timeout-minutes }}
 
     - name: Open restricted debug session
       id: upterm
       uses: owenthereal/action-upterm@b9dfa526f890bbd5162d781f8d9c69b97731d73d
       env:
         UPTERM_AUTHORIZED_KEYS: ${{ steps.key.outputs.key-file }}
+        SHELL: /bin/bash
+        PROMPT_COMMAND: ${{ steps.key.outputs.shell-startup }}
       with:
         upterm-version: v0.40.0
         detached: true
+        wait-timeout-minutes: ${{ inputs.idle-timeout-minutes }}
 
     - name: Record live connection details
       shell: bash

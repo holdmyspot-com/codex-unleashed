@@ -10,6 +10,10 @@ on:
         description: Public SSH key for the debugging client
         type: string
         required: true
+      idle_timeout_minutes:
+        description: Positive whole minutes before an unjoined or idle shell ends
+        type: string
+        default: '30'
       target:
         description: Native target to verify; all exercises the release matrix
         type: choice
@@ -74,3 +78,4 @@ jobs:
         uses: ./.github/actions/debug-failed-runner
         with:
           public-key: ${{ inputs.public_key }}
+          idle-timeout-minutes: ${{ inputs.idle_timeout_minutes }}
