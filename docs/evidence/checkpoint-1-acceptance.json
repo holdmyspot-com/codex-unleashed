@@ -151,5 +151,6 @@
       "Successful libtest output does not expose assertion-by-assertion execution or child environment values."
     ]
   },
-  "next_action": "Complete checkpoint 2 profile-aware content-checked freshness handling for focused ci-test caches; preserve accepted results."
+  "next_action": "Complete checkpoint 2 profile-aware content-checked freshness handling for focused ci-test caches; preserve accepted results.",
+  "completion_commit": "63fc192f549dd4e516e0357d7f66d5ea2be1417e"
 }
