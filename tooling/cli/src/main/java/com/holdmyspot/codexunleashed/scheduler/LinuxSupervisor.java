@@ -32,7 +32,18 @@ public final class LinuxSupervisor implements AutoCloseable
 	 */
 	private enum Phase
 	{
-		LAUNCH, READY, RELEASE, RELEASED, TERMINATE, RESULT
+		/** Controller-published workload inputs before supervisor startup. */
+		LAUNCH,
+		/** Supervisor-published identity and containment of the prepared gate. */
+		READY,
+		/** Controller request to release the prepared gate once. */
+		RELEASE,
+		/** Supervisor acknowledgement of the release request. */
+		RELEASED,
+		/** Controller request to terminate the owned workload tree. */
+		TERMINATE,
+		/** Supervisor-published whole-tree outcome after cleanup. */
+		RESULT
 	}
 
 	/** XML property identifying the exclusive attempt across every stage. */
@@ -162,6 +173,8 @@ public final class LinuxSupervisor implements AutoCloseable
 	 * The launch classpath must contain this class and LinuxProcessTree, from the same class directory or tooling JAR.
 	 * The prepared workload gate expires 60 seconds after it signals readiness unless released. Release promptly;
 	 * later observation or release reports a supervisor failure if the gate has expired.
+	 * ATTACHED_LEADER_EXEC retains the released gate for at most 30 seconds after credential drop; the controller
+	 * must arrange leader-thread replacement within that interval. See {@link LinuxProcessTree.Launch}.
 	 * @param launch the explicit workload and trusted Java context, with elevated cgroup-management authority
 	 * @param timeout the positive startup/control/cleanup wait limit, not a build runtime limit
 	 * @return a prepared owner whose workload is still gated
@@ -268,6 +281,8 @@ public final class LinuxSupervisor implements AutoCloseable
 	/**
 	 * Requests one release and waits for the supervisor's acknowledgement.
 	 * A failed acknowledgement leaves a published request owned by this instance; close remains available.
+	 * Acknowledgement does not establish completed credential drop or exec. Attached-mode callers must verify
+	 * credentials before dispatching their leader-thread exec and verify the resulting process separately.
 	 * @throws IllegalStateException if closed or release was already requested
 	 * @throws IOException if publication, acknowledgement or supervisor execution fails
 	 */
@@ -473,6 +488,7 @@ public final class LinuxSupervisor implements AutoCloseable
 		values.setProperty("directory", launch.directory().toString());
 		values.setProperty("uid", Integer.toString(launch.uid()));
 		values.setProperty("gid", Integer.toString(launch.gid()));
+		launch.executionMode().writeTo(values);
 		values.setProperty("command.count", Integer.toString(launch.command().size()));
 		for (int index = 0; index < launch.command().size(); index++)
 			values.setProperty("command." + index, launch.command().get(index));
@@ -668,7 +684,7 @@ public final class LinuxSupervisor implements AutoCloseable
 			return new LinuxProcessTree.Launch(Path.of(required(values, "cgroup.parent")), scratch,
 				Path.of(required(values, "java")), Path.of(required(values, "class.path")), command,
 				environment, Path.of(required(values, "directory")), Integer.parseInt(required(values, "uid")),
-				Integer.parseInt(required(values, "gid")));
+				Integer.parseInt(required(values, "gid")), LinuxProcessTree.ExecutionMode.readFrom(values));
 		}
 		catch (IllegalArgumentException failure)
 		{
