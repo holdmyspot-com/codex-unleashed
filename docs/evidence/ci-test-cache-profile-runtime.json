@@ -1,0 +1,605 @@
+{
+  "status": "passed-component-probe",
+  "scope": "Linux x86-64 native GNU tiny Cargo fixture; not an actual Codex runtime workflow or a six-platform acceptance",
+  "implementation": "The cache helper is Java; the Python file drives the external acceptance probe only.",
+  "helper_source_commit": "cba5d68497a47d9a44b5ce548dad7a5ca1d94eac",
+  "fixture": {
+    "path": ".github/scripts/test-source-cache-runtime.py",
+    "sha256": "3c807bdda02d2dd153ded9a22f6a75aac43d0d9acafe8e47d29128e0b06cf1c0",
+    "profile": "ci-test"
+  },
+  "local": {
+    "release": {
+      "target": "x86_64-unknown-linux-gnu",
+      "runtime": "/home/gili/codex-unleashed/workspace/.cat/work/temp/build-caches/maven/source-cache/runtime",
+      "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+      "profile": "release",
+      "cold_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "partial_retry_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "warm_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "partial_retry_binary_fresh": {
+        "cache-demo": false
+      },
+      "warm_binary_fresh": {
+        "cache-demo": true
+      },
+      "changed_binary_fresh": {
+        "cache-demo": false
+      },
+      "changed_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "changed_executable_output": "9",
+      "partial_cache_reference": null,
+      "fixture_directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/native-cache-profile-C2uSsj/release/runtime-fixture-c28_ggns",
+      "prepared_binding_mtime_ns": 1793255572746365544,
+      "resumed_from_partial_reference": null,
+      "invalid_target_exit": 2,
+      "content_drift_record_exit": 1,
+      "fixture_removed": true
+    },
+    "ci-test": {
+      "target": "x86_64-unknown-linux-gnu",
+      "runtime": "/home/gili/codex-unleashed/workspace/.cat/work/temp/build-caches/maven/source-cache/runtime",
+      "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+      "profile": "ci-test",
+      "cold_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "partial_retry_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "warm_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "partial_retry_binary_fresh": {
+        "cache-demo": false
+      },
+      "warm_binary_fresh": {
+        "cache-demo": true
+      },
+      "changed_binary_fresh": {
+        "cache-demo": false
+      },
+      "changed_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "changed_executable_output": "9",
+      "partial_cache_reference": null,
+      "fixture_directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/native-cache-profile-C2uSsj/ci-test/runtime-fixture-n30a82iz",
+      "prepared_binding_mtime_ns": 1793255544502118405,
+      "resumed_from_partial_reference": null,
+      "invalid_target_exit": 2,
+      "content_drift_record_exit": 1,
+      "fixture_removed": true
+    }
+  },
+  "local_profile_refusal": {
+    "exit": 1,
+    "evidence_directory_created": false,
+    "diagnostic": "ValueError: Resuming requires the producer's same Cargo profile."
+  },
+  "remote": {
+    "run": 40830074030,
+    "job": 123302059449,
+    "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40830074030/job/123302059449",
+    "workflow": ".github/workflows/runner-debug-smoke.yml",
+    "workflow_target_selector": "x86_64-unknown-linux-musl",
+    "fixture_target": "x86_64-unknown-linux-gnu",
+    "jdk": "Zulu 27.0.1.0.3+1",
+    "rust": "1.95.0",
+    "transport": "ORAS 1.3.1, CARGO_CACHE_PARTS=1, CARGO_CACHE_STAGE=codex",
+    "helper_build": "mvn -B -ntp -f tooling/cli/pom.xml -Pruntime -DskipTests with owned build, Maven repository and temporary paths",
+    "helper_package_seconds": 14.599,
+    "helper_test_policy": "The unchanged 95 passing helper tests remain accepted; this run assembles the packaged runtime without repeating them.",
+    "receipt": {
+      "target": "x86_64-unknown-linux-gnu",
+      "runtime": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/build/runtime",
+      "rust": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+      "profile": "ci-test",
+      "cold_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "partial_retry_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "warm_library_fresh": {
+        "v8": true,
+        "cache_demo": true
+      },
+      "partial_retry_binary_fresh": {
+        "cache-demo": false
+      },
+      "warm_binary_fresh": {
+        "cache-demo": true
+      },
+      "changed_binary_fresh": {
+        "cache-demo": false
+      },
+      "changed_library_fresh": {
+        "v8": false,
+        "cache_demo": false
+      },
+      "changed_executable_output": "9",
+      "partial_cache_reference": "ghcr.io/holdmyspot-com/cargo-cache-main-new:cargo-v3-x86_64-unknown-linux-gnu-6a4f4dd1f310a742676c0cbeb7c3f2ab16833b0efd26b6018227090a94e0bca3-partial",
+      "fixture_directory": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/evidence/runtime-fixture-fj2odzcp",
+      "prepared_binding_mtime_ns": 1793256115850226521,
+      "resumed_from_partial_reference": null,
+      "invalid_target_exit": 2,
+      "content_drift_record_exit": 1,
+      "fixture_removed": true
+    },
+    "grouped_transport": {
+      "parts": 2,
+      "uploaded_archive_bytes": 24080,
+      "save_seconds": 4,
+      "restore_seconds": 1,
+      "digest": "sha256:2ff7de43f40976f81f36476acc7a981b7a63c02c65dfef857eb0e976dde9bcf4",
+      "verified_reference_result": "miss",
+      "partial_reference_result": "hit"
+    },
+    "source_status": "empty",
+    "session": {
+      "persistent_connections": 1,
+      "acknowledged_commands": 60,
+      "ssh_exit": 0,
+      "normal_shell_exit": true,
+      "client_keys_removed": true
+    },
+    "job_conclusion": "failure",
+    "job_steps": [
+      {
+        "name": "Set up job",
+        "conclusion": "success"
+      },
+      {
+        "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "conclusion": "success"
+      },
+      {
+        "name": "Create owned partial build state",
+        "conclusion": "success"
+      },
+      {
+        "name": "Record the deliberate build failure",
+        "conclusion": "failure"
+      },
+      {
+        "name": "Debug the original failed workspace",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Debug the original failed workspace",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Create owned partial build state",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "conclusion": "success"
+      },
+      {
+        "name": "Complete job",
+        "conclusion": "success"
+      }
+    ],
+    "cleanup": [
+      {
+        "id": 1465639271,
+        "name": "sha256:2ff7de43f40976f81f36476acc7a981b7a63c02c65dfef857eb0e976dde9bcf4",
+        "tags": [
+          "cargo-v3-x86_64-unknown-linux-gnu-6a4f4dd1f310a742676c0cbeb7c3f2ab16833b0efd26b6018227090a94e0bca3-parts-v2-partial",
+          "cargo-release-05efbf09f5d276d9823b2d4d7fcae25c9165646d550b5d14c184e1d8ef3db5c1-rust-v0.164.0"
+        ],
+        "deleted": true,
+        "subsequent_get_status": 404
+      },
+      {
+        "id": 1465627559,
+        "name": "sha256:1ca5b0f20747723514a3d3d18e10cbeff689fa96164c4002f3387c3b203c9e30",
+        "tags": [
+          "cargo-v3-x86_64-unknown-linux-gnu-cb712a08fd9a8e808ce16e726a8dd4df1911873a80bdaeadd46c040f8a66947a-partial",
+          "cargo-release-28ca8565e7056e7e4ae2aee7756ea28d6bf03b7182efc62f00415a5df2eeea93-rust-v0.164.0"
+        ],
+        "deleted": true,
+        "subsequent_get_status": 404
+      },
+      {
+        "id": 1465627060,
+        "name": "sha256:655972739fdba72b56b233f314aa9f0ac8165b54ee29b9c67e9d9f4d61c0ed4f",
+        "tags": [
+          "cargo-v3-x86_64-unknown-linux-gnu-3f116c9332017758ae2a3d2fa2c2f1b60d88a9d5402584fae3b14421a72dbc52-partial",
+          "cargo-release-590e683397741991cbdb2507ac1ef6ba03737309c616b129923b1c911bf555d6-rust-v0.164.0"
+        ],
+        "deleted": true,
+        "subsequent_get_status": 404
+      }
+    ],
+    "fixture_retention_association": "rust-v0.164.0 is the existing fixture-only retention label; no Codex source was compiled."
+  },
+  "retained_probe_history": {
+    "initial_legacy_receipts": [
+      {
+        "target": "x86_64-unknown-linux-gnu",
+        "runtime": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/build/runtime",
+        "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+        "profile": "ci-test",
+        "cold_library_fresh": {
+          "v8": false,
+          "cache_demo": false
+        },
+        "partial_retry_library_fresh": {
+          "v8": true,
+          "cache_demo": true
+        },
+        "warm_library_fresh": {
+          "v8": true,
+          "cache_demo": true
+        },
+        "partial_retry_binary_fresh": {
+          "cache-demo": false
+        },
+        "warm_binary_fresh": {
+          "cache-demo": true
+        },
+        "changed_binary_fresh": {
+          "cache-demo": false
+        },
+        "changed_library_fresh": {
+          "v8": false,
+          "cache_demo": false
+        },
+        "changed_executable_output": "9",
+        "partial_cache_reference": "ghcr.io/holdmyspot-com/cargo-cache-main-new:cargo-v3-x86_64-unknown-linux-gnu-3f116c9332017758ae2a3d2fa2c2f1b60d88a9d5402584fae3b14421a72dbc52-partial",
+        "fixture_directory": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/evidence/runtime-fixture-wj0yh782",
+        "prepared_binding_mtime_ns": 1793255889546359783,
+        "resumed_from_partial_reference": null,
+        "invalid_target_exit": 2,
+        "content_drift_record_exit": 1,
+        "fixture_removed": true
+      },
+      {
+        "target": "x86_64-unknown-linux-gnu",
+        "runtime": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/build/runtime",
+        "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+        "profile": "ci-test",
+        "cold_library_fresh": {
+          "v8": false,
+          "cache_demo": false
+        },
+        "partial_retry_library_fresh": {
+          "v8": true,
+          "cache_demo": true
+        },
+        "warm_library_fresh": {
+          "v8": true,
+          "cache_demo": true
+        },
+        "partial_retry_binary_fresh": {
+          "cache-demo": false
+        },
+        "warm_binary_fresh": {
+          "cache-demo": true
+        },
+        "changed_binary_fresh": {
+          "cache-demo": false
+        },
+        "changed_library_fresh": {
+          "v8": false,
+          "cache_demo": false
+        },
+        "changed_executable_output": "9",
+        "partial_cache_reference": "ghcr.io/holdmyspot-com/cargo-cache-main-new:cargo-v3-x86_64-unknown-linux-gnu-cb712a08fd9a8e808ce16e726a8dd4df1911873a80bdaeadd46c040f8a66947a-partial",
+        "fixture_directory": "/home/runner/work/_temp/runner-debug-smoke-HfMRu5/profile-probe/evidence/runtime-fixture-r8p16a0l",
+        "prepared_binding_mtime_ns": 1793255903075536958,
+        "resumed_from_partial_reference": null,
+        "invalid_target_exit": 2,
+        "content_drift_record_exit": 1,
+        "fixture_removed": true
+      }
+    ],
+    "duplicate_legacy_execution": "Inserting a command into a queue already consumed by the live client shifted its index, skipping the inserted setup and repeating the final legacy fixture. Queue updates were then append-only. The original first-run receipt survives in the transcript; the raw logs were overwritten by the second invocation.",
+    "grouped_setup_failure": "The probe supplied unsupported CARGO_CACHE_STAGE=ci-test-fixture. The transport refused it before upload. Retrying only the tiny probe with the supported codex stage passes on the same worker without rebuilding the Java helper.",
+    "local_package_api_failure": "The local gh token lacks read:packages (HTTP 403). The connected workflow token reads and deletes only the three identified fixture versions, then confirms HTTP 404 for each.",
+    "upstream_attribution": "These are downstream probe setup/credential outcomes, with no upstream Codex source or test execution involved."
+  },
+  "raw_evidence": {
+    "format": "tar.gz/base64",
+    "bytes": 12682,
+    "sha256": "6180ba07e4770daa796aa145c225406575aee0fc38618f8dcf10f70c98cc46c7",
+    "files": {
+      "evidence/changed-prepare.log": {
+        "bytes": 165,
+        "sha256": "45bbc983c8bb4c935e24893104a346c26dc0f285f669758ec7578b4707acdc50"
+      },
+      "evidence/warm-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "evidence/cold-prepare.log": {
+        "bytes": 190,
+        "sha256": "1e2b51628035ef401adf82e958b772c206a80a1710e61a7584e47bd7ddbcacd0"
+      },
+      "evidence/partial-cache-download.log": {
+        "bytes": 520,
+        "sha256": "ccea31e482f57c8cb5bc9d1a7575ca31e2b24d4d231fed0ff782c10001aa54b1"
+      },
+      "evidence/changed-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "evidence/cold-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "evidence/bash-identity.log": {
+        "bytes": 308,
+        "sha256": "2863f49cc4f8660ba23be8f2a4d3468281ba704a263409e4e5179033c9a770f0"
+      },
+      "evidence/changed-output.log": {
+        "bytes": 2,
+        "sha256": "2e6d31a5983a91251bfae5aefa1c0a19d8ba3cf601d0e8a706b4cfa9661a6b8a"
+      },
+      "evidence/drift-build.log": {
+        "bytes": 3292,
+        "sha256": "1cfa1f04fbe20726d5ece12032ac1cf91ede7006db2cf1812cccb59adfdeb7f0"
+      },
+      "evidence/partial-retry-build.log": {
+        "bytes": 3434,
+        "sha256": "01df1314a6baf2b642ed96fa930c535d012f7926d3128e74918a2defbc75497b"
+      },
+      "evidence/warm-prepare.log": {
+        "bytes": 165,
+        "sha256": "ff8709173f7f96e44bdba8ae54b3f7d97a0c5b04916997f1b407598e75ef9ce5"
+      },
+      "evidence/drift-prepare.log": {
+        "bytes": 165,
+        "sha256": "ff8709173f7f96e44bdba8ae54b3f7d97a0c5b04916997f1b407598e75ef9ce5"
+      },
+      "evidence/cold-failed-build.log": {
+        "bytes": 3792,
+        "sha256": "1241e0ffb75b074a60556f79639f7658fcc8c2eb2614de8eaacc24fc43111c40"
+      },
+      "evidence/runtime-verification.json": {
+        "bytes": 1373,
+        "sha256": "2fbb3e2cee242a065afce4581cda13d8ce2690f9f4280ffd1c91ea59085388a5"
+      },
+      "evidence/drift-record.log": {
+        "bytes": 132,
+        "sha256": "744dde5433721d2c9684b06ed2ad77b1c291d20ebe822c23ac1b330ebc279bc8"
+      },
+      "evidence/partial-retry-prepare.log": {
+        "bytes": 165,
+        "sha256": "79086e6c5797a92e349b114141b444f9d1612d2c122c8125b985c7f5232cb8f6"
+      },
+      "evidence/verified-cache-absent.log": {
+        "bytes": 396,
+        "sha256": "7ba2ea3b6ebcea18597ca015a9f576bad7f5385babc20bf942e4d64a6a6b3cbf"
+      },
+      "evidence/git-add.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "evidence/git-init.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "evidence/warm-build.log": {
+        "bytes": 3292,
+        "sha256": "1cfa1f04fbe20726d5ece12032ac1cf91ede7006db2cf1812cccb59adfdeb7f0"
+      },
+      "evidence/partial-cache-reference.txt": {
+        "bytes": 151,
+        "sha256": "25409998b991b3ed6f760240937bdd6fe5062068cba65f854ab156b33f7f4c89"
+      },
+      "evidence/partial-cache-upload.log": {
+        "bytes": 1267,
+        "sha256": "01808d4a517c7c30c5bbf364108a97f3f82d3d32e9c8a16596dac9bba96605e2"
+      },
+      "evidence/changed-build.log": {
+        "bytes": 3572,
+        "sha256": "91ec2576d7421452977ce76e0ce3d4a4e3bbe30357a08ed13e09811c5e49b5a3"
+      },
+      "evidence/invalid-target.log": {
+        "bytes": 55,
+        "sha256": "af3729dfdb4206c8ec3d9b0ae3efd056953ee084a70e925e2d17d3372a2e8ca3"
+      },
+      "evidence/rust-identity.log": {
+        "bytes": 196,
+        "sha256": "4fdff2578428e9c5c08ddd7a0d3079c1a106b1cdaa46e73e46f7cd32b0fb9cad"
+      },
+      "legacy-evidence/changed-prepare.log": {
+        "bytes": 165,
+        "sha256": "45bbc983c8bb4c935e24893104a346c26dc0f285f669758ec7578b4707acdc50"
+      },
+      "legacy-evidence/warm-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "legacy-evidence/cold-prepare.log": {
+        "bytes": 190,
+        "sha256": "1e2b51628035ef401adf82e958b772c206a80a1710e61a7584e47bd7ddbcacd0"
+      },
+      "legacy-evidence/partial-cache-download.log": {
+        "bytes": 1336,
+        "sha256": "ecf7a62b6572764d46a1e6e034a36fbe2fd835e99bb59f3b2510d50f55096c20"
+      },
+      "legacy-evidence/changed-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "legacy-evidence/cold-record.log": {
+        "bytes": 61,
+        "sha256": "957abc6b68687c49bc16ec2115bfff1605ea941833527f7a6dc3b72f975c4102"
+      },
+      "legacy-evidence/bash-identity.log": {
+        "bytes": 308,
+        "sha256": "2863f49cc4f8660ba23be8f2a4d3468281ba704a263409e4e5179033c9a770f0"
+      },
+      "legacy-evidence/changed-output.log": {
+        "bytes": 2,
+        "sha256": "2e6d31a5983a91251bfae5aefa1c0a19d8ba3cf601d0e8a706b4cfa9661a6b8a"
+      },
+      "legacy-evidence/drift-build.log": {
+        "bytes": 3292,
+        "sha256": "d6c61dbeced1e98fd4c36d34503b09cd8740e3f9cd615e82259eb3fec48980ec"
+      },
+      "legacy-evidence/partial-retry-build.log": {
+        "bytes": 3434,
+        "sha256": "e2c5c4eb23ad1d7ba2a9fde9eb013e4bb8e57cdc9fd4b24094c13b793e508a42"
+      },
+      "legacy-evidence/warm-prepare.log": {
+        "bytes": 165,
+        "sha256": "ff8709173f7f96e44bdba8ae54b3f7d97a0c5b04916997f1b407598e75ef9ce5"
+      },
+      "legacy-evidence/drift-prepare.log": {
+        "bytes": 165,
+        "sha256": "ff8709173f7f96e44bdba8ae54b3f7d97a0c5b04916997f1b407598e75ef9ce5"
+      },
+      "legacy-evidence/cold-failed-build.log": {
+        "bytes": 3792,
+        "sha256": "646a75cd00783f18deb699050bb5ceee780bb90436c6a5d7a4d8d63fab22fd8b"
+      },
+      "legacy-evidence/runtime-verification.json": {
+        "bytes": 1373,
+        "sha256": "8b69253859f8de3583a2c00b1560c5a14ad7389123b628d5a2884fb3b8c8c614"
+      },
+      "legacy-evidence/drift-record.log": {
+        "bytes": 132,
+        "sha256": "744dde5433721d2c9684b06ed2ad77b1c291d20ebe822c23ac1b330ebc279bc8"
+      },
+      "legacy-evidence/partial-retry-prepare.log": {
+        "bytes": 165,
+        "sha256": "79086e6c5797a92e349b114141b444f9d1612d2c122c8125b985c7f5232cb8f6"
+      },
+      "legacy-evidence/verified-cache-absent.log": {
+        "bytes": 597,
+        "sha256": "079032ab95af52ab78bd3656cbe373b3e0356908c00f1f6f2e4be801cdaef30d"
+      },
+      "legacy-evidence/git-add.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "legacy-evidence/git-init.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "legacy-evidence/warm-build.log": {
+        "bytes": 3292,
+        "sha256": "d6c61dbeced1e98fd4c36d34503b09cd8740e3f9cd615e82259eb3fec48980ec"
+      },
+      "legacy-evidence/partial-cache-reference.txt": {
+        "bytes": 151,
+        "sha256": "270fcc6e8db45f7aea51e24bc9b55b486b751a4f95ba87cf54fdedf0c441d677"
+      },
+      "legacy-evidence/partial-cache-upload.log": {
+        "bytes": 1577,
+        "sha256": "3529567e6ccbbbdcbb990cda040fff779695a0e4ab8cd1e48cff0800b7451a36"
+      },
+      "legacy-evidence/changed-build.log": {
+        "bytes": 3572,
+        "sha256": "44e4225f50c23b9934633f9b84a9ee03b1b51a711c8561835e05f66b91ae3268"
+      },
+      "legacy-evidence/invalid-target.log": {
+        "bytes": 55,
+        "sha256": "af3729dfdb4206c8ec3d9b0ae3efd056953ee084a70e925e2d17d3372a2e8ca3"
+      },
+      "legacy-evidence/rust-identity.log": {
+        "bytes": 196,
+        "sha256": "f22d5e4e9ced367e774ce5bc140d9e6b1235c1882fec80d011044851f3ae6369"
+      },
+      "failed-grouped-evidence/cold-prepare.log": {
+        "bytes": 190,
+        "sha256": "1e2b51628035ef401adf82e958b772c206a80a1710e61a7584e47bd7ddbcacd0"
+      },
+      "failed-grouped-evidence/bash-identity.log": {
+        "bytes": 308,
+        "sha256": "2863f49cc4f8660ba23be8f2a4d3468281ba704a263409e4e5179033c9a770f0"
+      },
+      "failed-grouped-evidence/cold-failed-build.log": {
+        "bytes": 3792,
+        "sha256": "dfadc572f1ef23265b6e39b05a2841b98067336ed1272c140398257d7f0124a9"
+      },
+      "failed-grouped-evidence/git-add.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "failed-grouped-evidence/git-init.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "failed-grouped-evidence/partial-cache-reference.txt": {
+        "bytes": 151,
+        "sha256": "9e8ff4fb386ca91624505bb16921b54cfb5b3c5d0ac01317bb9b38af2862be1e"
+      },
+      "failed-grouped-evidence/partial-cache-upload.log": {
+        "bytes": 996,
+        "sha256": "e1f3ac2b29d9fbe0dbfbd4aeaee28dad025797d6114c67d869ee9534dd963ac3"
+      },
+      "failed-grouped-evidence/invalid-target.log": {
+        "bytes": 55,
+        "sha256": "af3729dfdb4206c8ec3d9b0ae3efd056953ee084a70e925e2d17d3372a2e8ca3"
+      },
+      "failed-grouped-evidence/rust-identity.log": {
+        "bytes": 196,
+        "sha256": "4fdff2578428e9c5c08ddd7a0d3079c1a106b1cdaa46e73e46f7cd32b0fb9cad"
+      },
+      "package.log": {
+        "bytes": 2609,
+        "sha256": "ddff8ed19fe87d7703d491a7c9b9aef68e60f76b7da3ea788750c712664b8637"
+      },
+      "fixture.log": {
+        "bytes": 1373,
+        "sha256": "8b69253859f8de3583a2c00b1560c5a14ad7389123b628d5a2884fb3b8c8c614"
+      },
+      "grouped-fixture.log": {
+        "bytes": 1760,
+        "sha256": "99d64ba77e643a0f46befc0d8e803e3d176915dd3c6b26107f262f7e536eb1d1"
+      },
+      "grouped-retry.log": {
+        "bytes": 1373,
+        "sha256": "2fbb3e2cee242a065afce4581cda13d8ce2690f9f4280ffd1c91ea59085388a5"
+      },
+      "fixture.py": {
+        "bytes": 13652,
+        "sha256": "3c807bdda02d2dd153ded9a22f6a75aac43d0d9acafe8e47d29128e0b06cf1c0"
+      },
+      "source-status.txt": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "java-version.txt": {
+        "bytes": 190,
+        "sha256": "3334a40079d43c9ab155f21f553942e2265265ea7473a71d2435a3627f25615c"
+      },
+      "fixture.sha256": {
+        "bytes": 141,
+        "sha256": "321c294e2b2e9b11a2304cbab0a9c67f2d3eb0fd4f69cb9b820a01ac230bdbb6"
+      }
+    },
+    "data": "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"
+  },
+  "limitations": [
+    "This round trip restores on the same retained worker after removing its target outputs; it does not claim a separate-runner ci-test comparison.",
+    "Focused Codex workflows still need their V8 setup and prepare/record integration.",
+    "Checkpoint 2 remains incomplete. Existing accepted release and runtime tests are preserved."
+  ]
+}
