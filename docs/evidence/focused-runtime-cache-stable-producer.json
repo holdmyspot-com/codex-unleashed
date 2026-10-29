@@ -87,7 +87,7 @@
       }
     ],
     "temporary_key_pair_removed": true,
-    "local_directory": "Retained until this durable archive is committed and verified."
+    "local_directory": "Removed after verifying committed archives at 24943e0b07; the separate consumer owns independent storage and keys."
   },
   "archives": {
     "runtime-evidence.zip": {
