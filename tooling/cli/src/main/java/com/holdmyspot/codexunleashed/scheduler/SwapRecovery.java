@@ -3,8 +3,9 @@ package com.holdmyspot.codexunleashed.scheduler;
 /**
  * Tracks observed swap growth for one single-thread-confined controller.
  * <p>
- * Call only after a successful native sample. A returned incident permits recovery only when the policy also sees
- * current memory pressure; this class performs no process control and does not require swap occupancy to decrease.
+ * Call only after a successful native sample. Fresh growth permits recovery even without a native pressure signal.
+ * A non-growing sample without pressure clears the incident; occupied swap need not decrease. This class performs
+ * no process control.
  */
 public final class SwapRecovery
 {
