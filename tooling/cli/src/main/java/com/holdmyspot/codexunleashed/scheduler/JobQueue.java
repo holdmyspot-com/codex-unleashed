@@ -197,7 +197,8 @@ final class JobQueue<R> implements AutoCloseable
 	 * Permanently closes the queue before attempting cleanup of every retained owner. Each owner is closed at most once,
 	 * including owners whose cleanup failed. Successful ownership release is recorded; failed owners and their original
 	 * contextual failures remain retained. Later failures are suppressed on the first failure. Repeated close after
-	 * success is a no-op; after failure it reports the retained failure without retrying native close or promising recovery.
+	 * success is a no-op; after failure it reports the retained failure as the cause of a fresh exception, without
+	 * retrying native close or promising recovery. Fresh reporting avoids self-suppression during automatic closure.
 	 * No completion or abortion is inferred from cleanup.
 	 *
 	 * @throws IOException if any retained owner's cleanup failed, including a failure from earlier reconciliation
@@ -207,7 +208,7 @@ final class JobQueue<R> implements AutoCloseable
 	{
 		closing = true;
 		if (closeFailure != null)
-			throw closeFailure;
+			throw new IOException("Queue cleanup previously failed; retained owners remain unresolved", closeFailure);
 		for (Entry entry : entries.values())
 		{
 			closeOwner(entry);
