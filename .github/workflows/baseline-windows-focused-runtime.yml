@@ -150,6 +150,9 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free |
             Out-File -Append "$env:FOCUSED_RUNTIME/evidence/capacity.txt"
 
+      - name: Prepare verified V8 and bundled freshness tooling
+        uses: ./.github/actions/focused-runtime-cache-setup
+
       - name: Identify profile-specific compiled state
         id: cache
         run: |
@@ -160,7 +163,9 @@ jobs:
           git -C upstream diff --exit-code HEAD
           test -z "$(git -C upstream status --porcelain)"
           sha256sum .github/workflows/baseline-windows-focused-runtime.yml .github/scripts/run-windows-runtime-standard-user.ps1 > "$evidence/wrappers.txt"
-          sha256sum .github/scripts/ghcr-cargo-target-cache.sh .github/scripts/cargo-cache-parts.py .github/scripts/verify-cargo-lock.py > "$evidence/helpers.txt"
+          sha256sum .github/scripts/ghcr-cargo-target-cache.sh .github/scripts/cargo-cache-parts.py .github/scripts/verify-cargo-lock.py > "$evidence/helpers-transport-only.txt"
+          cp "$evidence/helpers-transport-only.txt" "$evidence/helpers.txt"
+          git ls-files -z -- tooling/cli/pom.xml tooling/cli/src/main tooling/cli/src/build .github/actions/focused-runtime-cache-setup | LC_ALL=C sort -z | xargs -0 sha256sum >> "$evidence/helpers.txt"
           {
             rustc -vV
             cargo --version
@@ -172,15 +177,17 @@ jobs:
             sha256sum upstream/codex-rs/Cargo.lock upstream/codex-rs/rust-toolchain.toml upstream/codex-rs/Cargo.toml
           } > "$evidence/compiler.txt"
           python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers.txt" "$evidence/compiler.txt" | tee "$evidence/keys.txt" >> "$GITHUB_OUTPUT"
+          python3 .github/scripts/cargo-cache-keys.py "$TARGET" "$evidence/upstream-commit" "$evidence/wrappers.txt" "$evidence/helpers-transport-only.txt" "$evidence/compiler.txt" | sed -n 's/^seed_tag=/legacy_seed_tag=/p' >> "$GITHUB_OUTPUT"
 
       - name: Restore verified or partial compiled state
         id: restore
         env:
           CACHE_TAG: ${{ steps.cache.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
+          LEGACY_CACHE_SEED_TAG: ${{ steps.cache.outputs.legacy_seed_tag }}
         run: |
           set -euo pipefail
-          for tag in "$CACHE_TAG" "$CACHE_SEED_TAG"; do
+          for tag in "$CACHE_TAG" "$CACHE_SEED_TAG" "$LEGACY_CACHE_SEED_TAG"; do
             for operation in pull pull-partial; do
               set +e
               bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$tag" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" 2>&1 | tee -a "$FOCUSED_RUNTIME/evidence/restore.log"
@@ -194,6 +201,13 @@ jobs:
             done
           done
           printf 'No profile-compatible state exists; this focused build starts cold.\n'
+
+      - name: Prepare restored test-profile inputs
+        id: prepare
+        run: |
+          set -euo pipefail
+          bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --profile ci-test \
+            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" codex codex-app-server 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-prepare.log"
 
       - name: Compile only the unaccepted Windows case and record reusable metadata
         working-directory: upstream/codex-rs
@@ -223,31 +237,43 @@ jobs:
           (cd upstream/codex-rs && cargo metadata --no-deps --format-version 1) > "$evidence/workspace.json"
           python3 .github/scripts/verify-cargo-lock.py "$evidence/upstream-Cargo.lock" upstream/codex-rs/Cargo.lock "$evidence/workspace.json" | tee "$evidence/dependencies.json"
 
+      - name: Record successful test-profile inputs
+        id: record
+        if: steps.test.outcome == 'success' && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
+        run: |
+          set -euo pipefail
+          bash "$CODEX_SOURCE_CACHE_TOOL" clean-cached-release-binaries --record-source-inputs --profile ci-test \
+            "$CODEX_REPO_ROOT/codex-rs" "$TARGET" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/cache-record.log"
+
       - name: Save compiled outputs without changing the test result
         id: save
-        if: always() && steps.guard.outcome == 'success'
+        if: always() && steps.guard.outcome == 'success' && steps.prepare.outcome == 'success'
         env:
           TEST_OUTCOME: ${{ steps.test.outcome }}
+          RECORD_OUTCOME: ${{ steps.record.outcome }}
           CACHE_TAG: ${{ steps.cache.outputs.tag }}
           CACHE_SEED_TAG: ${{ steps.cache.outputs.seed_tag }}
           CARGO_CACHE_STAGE: codex
         run: |
           set -euo pipefail
           operation=push-partial
-          if [[ "$TEST_OUTCOME" == success ]]; then operation=push; fi
+          if [[ "$TEST_OUTCOME" == success && "$RECORD_OUTCOME" == success ]]; then operation=push; fi
           bash .github/scripts/ghcr-cargo-target-cache.sh "$operation" "$CARGO_CACHE_REPOSITORY" "$CACHE_TAG" "$CARGO_TARGET_DIR" "$(cat .github/upstream-ref)" "$CACHE_SEED_TAG" 2>&1 | tee "$FOCUSED_RUNTIME/evidence/save.log"
 
       - name: Publish test and cache outcomes to the live client
         if: always() && env.FOCUSED_RUNTIME != ''
         env:
           TEST_OUTCOME: ${{ steps.test.outcome }}
+          PREPARE_OUTCOME: ${{ steps.prepare.outcome }}
+          RECORD_OUTCOME: ${{ steps.record.outcome }}
           GUARD_OUTCOME: ${{ steps.guard.outcome }}
           SAVE_OUTCOME: ${{ steps.save.outcome }}
         run: |
           node - <<'JS'
           const fs=require('node:fs'), path=require('node:path');
           const output=path.join(process.env.FOCUSED_RUNTIME,'evidence','runtime-outcome.json');
-          fs.writeFileSync(`${output}.pending`, JSON.stringify({test:process.env.TEST_OUTCOME,
+          fs.writeFileSync(`${output}.pending`, JSON.stringify({test:process.env.TEST_OUTCOME,prepare:process.env.PREPARE_OUTCOME,
+            record:process.env.RECORD_OUTCOME,
             guard:process.env.GUARD_OUTCOME,save:process.env.SAVE_OUTCOME})+'\n');
           fs.renameSync(`${output}.pending`,output);
           JS

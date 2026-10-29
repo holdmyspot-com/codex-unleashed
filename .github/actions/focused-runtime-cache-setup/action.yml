@@ -1,0 +1,48 @@
+name: Prepare focused runtime cache inputs
+description: Build the bundled freshness helper and run upstream V8 verification against the nested checkout
+runs:
+  using: composite
+  steps:
+    - name: Select the helper's native JDK
+      uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+      with:
+        distribution: zulu
+        java-version: 27.0.1
+
+    - name: Build the accepted helper and verify upstream V8 inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        evidence="$FOCUSED_RUNTIME/evidence"
+        helper="$FOCUSED_RUNTIME/source-cache-helper"
+        mkdir -p "$FOCUSED_RUNTIME/v8-setup"
+        java -version 2> "$evidence/cache-helper-java-version.txt"
+        mvn -version > "$evidence/cache-helper-maven-version.txt"
+        mvn -B -ntp -f "$GITHUB_WORKSPACE/tooling/cli/pom.xml" -Pruntime -DskipTests \
+          "-Dtooling.build.directory=$helper" \
+          "-Dmaven.repo.local=$FOCUSED_RUNTIME/source-cache-maven" \
+          "-Djava.io.tmpdir=$TMPDIR" package 2>&1 | tee "$evidence/cache-helper-build.log"
+        tool="$helper/runtime/bin/codex-tooling"
+        bash "$tool" upstream-v8-script "$CODEX_REPO_ROOT/.github/actions/setup-rusty-v8/action.yml" \
+          > "$FOCUSED_RUNTIME/v8-setup/setup.sh"
+        GITHUB_WORKSPACE="$CODEX_REPO_ROOT" RUNNER_TEMP="$FOCUSED_RUNTIME/v8-setup" \
+          GITHUB_ENV="$FOCUSED_RUNTIME/v8-setup/environment" \
+          bash "$FOCUSED_RUNTIME/v8-setup/setup.sh" 2>&1 | tee "$evidence/v8-setup.log"
+        {
+          printf 'export CODEX_SOURCE_CACHE_TOOL=%q\n' "$tool"
+          while IFS='=' read -r name value; do
+            case "$name" in
+              RUSTY_V8_ARCHIVE | RUSTY_V8_SRC_BINDING_PATH)
+                printf 'export %s=%q\n' "$name" "$value"
+                ;;
+              *) printf 'Unexpected V8 environment assignment: %s\n' "$name" >&2; exit 1 ;;
+            esac
+          done < "$FOCUSED_RUNTIME/v8-setup/environment"
+        } > "$evidence/runtime-environment.sh.pending"
+        source "$evidence/runtime-environment.sh.pending"
+        test -f "$RUSTY_V8_ARCHIVE"
+        test -f "$RUSTY_V8_SRC_BINDING_PATH"
+        mv "$evidence/runtime-environment.sh.pending" "$evidence/runtime-environment.sh"
+        cat "$FOCUSED_RUNTIME/v8-setup/environment" >> "$GITHUB_ENV"
+        printf 'CODEX_SOURCE_CACHE_TOOL=%s\n' "$tool" >> "$GITHUB_ENV"
+        printf 'Retained clients must source %s before Cargo or cache-helper commands.\n' "$evidence/runtime-environment.sh"

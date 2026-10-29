@@ -3,6 +3,8 @@ package com.holdmyspot.codexunleashed.tooling;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -11,6 +13,11 @@ import java.util.Objects;
  */
 public final class Main
 {
+	/**
+	 * Names the upstream V8 action script extraction command.
+	 */
+	private static final String V8_SCRIPT_COMMAND = "upstream-v8-script";
+
 	/**
 	 * Prevents construction.
 	 */
@@ -50,6 +57,7 @@ public final class Main
 		{
 			return switch (arguments[0])
 			{
+				case V8_SCRIPT_COMMAND -> writeV8Script(arguments, out, err);
 				case RetentionPreview.NAME -> RetentionPreview.run(Arrays.copyOfRange(arguments, 1,
 					arguments.length), in, out, err);
 				case SourceCacheCommand.NAME -> SourceCacheCommand.run(Arrays.copyOfRange(arguments, 1,
@@ -65,6 +73,23 @@ public final class Main
 	}
 
 	/**
+	 * Writes an upstream V8 action's decoded script for execution in a caller-owned child environment.
+	 *
+	 * @param arguments the command name and action document path
+	 * @param out the unchanged decoded script
+	 * @param err usage diagnostics
+	 * @return zero on success or two when the action path argument is missing or extra arguments are supplied
+	 * @throws IOException if the action document cannot be read
+	 */
+	private static int writeV8Script(String[] arguments, PrintStream out, PrintStream err) throws IOException
+	{
+		if (arguments.length != 2)
+			return usage(err);
+		out.print(UpstreamV8Script.extract(Files.readString(Path.of(arguments[1]))));
+		return 0;
+	}
+
+	/**
 	 * Reports the supported commands.
 	 *
 	 * @param err diagnostics
@@ -75,6 +100,7 @@ public final class Main
 		err.println("Usage: codex-tooling " + SourceCacheCommand.NAME +
 			" [--record-source-inputs] [--profile release|ci-test] <workspace> <target> [binary ...]");
 		err.println("       codex-tooling " + RetentionPreview.NAME + " < inventory.json");
+		err.println("       codex-tooling " + V8_SCRIPT_COMMAND + " <upstream-action.yml>");
 		return 2;
 	}
 }
