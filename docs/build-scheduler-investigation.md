@@ -2464,3 +2464,53 @@ environment field versus an explicitly empty value, round-trips special
 characters, and rejects truncated documents. It selects a reusable transport
 candidate only; final supervisor source, standalone public-operation proof,
 atomic publication, identity validation and native lifecycle gates remain open.
+
+### Java Linux supervisor composition
+
+`LinuxSupervisor` now connects the controller-owned `LinuxCgroup` with the
+dedicated `LinuxProcessTree` owner. The controller creates its outer cgroup
+before starting the supervisor, verifies that supervisor's membership, and only
+then grants startup permission through the retained input pipe. The supervisor
+cannot create a workload helper before receiving that permission. XML properties
+documents carry the attempt identity, readiness, release acknowledgement and
+collected outcomes. The workload stays gated until an explicit release.
+
+The controller remains outside its owned cgroup. If the supervisor dies, the
+controller rejects completion without inventing workload statuses, kills the
+independent outer subtree, reaps its direct child and removes owned state.
+Cleanup retains successful phases so that a later storage-removal failure can
+be retried. If preparation and its cleanup both fail, `PreparationFailure`
+retains the original failure and exposes cleanup-only retry through `close()`;
+the partially prepared workload cannot be released through that exception.
+
+Native Linux x86-64 [run 40858844574](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40858844574)
+first reproduces the helper escaping a cgroup when its supervisor is placed too
+late. The fresh standalone public operation then passes gated startup, natural
+completion after a held detached child, supervisor death before and after
+release, and both cleanup-retry cases. The actual named tooling-module JAR
+passes those cases and additionally verifies requested termination with actual
+root/child statuses, wrong-attempt and incomplete release rejection, and exact
+empty/Unicode environment values. Its worker and trusted helper run from that
+same JAR. Test drivers and Python fixtures are diagnostic only; production
+implementation is Java and adds no dependency.
+
+Seven maintained supervisor contract checks pass, and complete Maven verification
+passes all 119 tooling tests. Javadoc initially reports four missing main
+descriptions. Replacing their block return tags with the JDK's inline return
+tags removes those findings without changing source line positions. A rebuilt
+JAR has all 75 class files byte-identical to the native-tested JAR, so no native
+behavior check is repeated for that documentation-only correction.
+
+One authenticated Upterm connection remains open through transfer, execution,
+collection and verified removal of the owned remote directory. The client
+updates the smoke fixture before exiting; SSH exits zero and every hosted post
+check passes. The job remains failed only for its intentional exit 17. Client
+keys are removed after the connection is terminal.
+
+[linux-java-supervisor-integration.json](evidence/linux-java-supervisor-integration.json)
+retains native and packaged receipts, exact source/JAR identities, class-byte
+equivalence, local verification, raw remote files and the client transcript.
+ARM64 supervisor composition and controller-death behavior remain unaccepted.
+Process-memory telemetry, monitor/controller integration, allocation blocking,
+memory-pressure recovery and Cargo/Bazel integration also remain open. This
+completes the demonstrated Linux component, not checkpoint 3.
