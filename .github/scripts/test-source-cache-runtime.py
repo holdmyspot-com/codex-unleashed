@@ -5,6 +5,9 @@ Arguments are an assembled runtime directory, a retained evidence directory and
 the explicit Bash executable used to launch the packaged script.
 Each invocation owns and removes its Cargo fixture; command logs and the JSON
 receipt remain in the evidence directory for the caller to collect.
+Select --profile ci-test to exercise runtime-test outputs instead of the default
+release profile. Resuming requires the producer's same profile; older receipts
+without a profile describe release outputs.
 Optional cache transport and repository arguments also round-trip partial outputs
 before retrying. The caller owns removal of the resulting registry artifact;
 partial-cache-reference.txt records its reference before upload.
@@ -27,11 +30,12 @@ import subprocess
 import tempfile
 
 
-def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_receipt):
+def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_receipt, profile):
     """Verify CLI reuse and invalidation, optionally continuing a prior partial fixture.
 
     A resume receipt supplies the original fixture directory, binding timestamp,
-    Rust identity and private-cache reference. Invalid receipt locations or cache
+    Rust identity and private-cache reference. The profile selects release or
+    ci-test outputs. Invalid receipt locations, mismatched profiles or cache
     namespaces raise ValueError before creating the fixture. Each invocation owns
     and removes its fixture; the caller retains logs and owns registry cleanup.
     """
@@ -47,6 +51,8 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         if cache_transport is None:
             raise ValueError("A resume receipt requires the cache transport and repository.")
         producer = json.loads(resume_receipt.read_text(encoding="utf-8"))
+        if producer.get("profile", "release") != profile:
+            raise ValueError("Resuming requires the producer's same Cargo profile.")
         fixture_path = Path(producer["fixture_directory"])
         if fixture_path.parent != evidence:
             raise ValueError("The producer fixture must be an immediate child of the current evidence directory.")
@@ -72,7 +78,8 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         (workspace / "src").mkdir(parents=True)
         (workspace / "Cargo.toml").write_text(
             '[package]\nname="cache-demo"\nversion="0.1.0"\nedition="2021"\n'
-            '[workspace]\n[dependencies]\nv8={path="v8"}\n', encoding="utf-8")
+            '[workspace]\n[dependencies]\nv8={path="v8"}\n'
+            '[profile.ci-test]\ninherits="dev"\ndebug=0\n', encoding="utf-8")
         (workspace / "src/lib.rs").write_text(
             "pub fn value()->u8 {v8::value()}\n", encoding="utf-8")
         (workspace / "src/main.rs").write_text(
@@ -117,17 +124,22 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
             assert producer["rust"] == rust, (producer["rust"], rust)
             assert producer["target"] == target, (producer["target"], target)
         cli = [str(bash), launcher.as_posix(), "clean-cached-release-binaries"]
+        profile_arguments = ["--profile", profile]
+        snapshots = fixture / "target/.codex-source-inputs"
+        if profile == "ci-test":
+            snapshots = snapshots / profile
         command([str(bash), "--version"], "bash-identity")
         command(cli + ["missing-workspace", "../outside", "codex"], "invalid-target", 2)
 
         def prepare(label):
-            command(cli + [str(workspace), target, "cache-demo"], label)
+            command(cli + profile_arguments + [str(workspace), target, "cache-demo"], label)
 
         def record(label, expected=0):
-            return command(cli + ["--record-source-inputs", str(workspace), target], label, expected)
+            return command(cli + ["--record-source-inputs"] + profile_arguments
+                           + [str(workspace), target], label, expected)
 
         def build(label, expected=0):
-            result = command(["cargo", "build", "--release", "--target", target,
+            result = command(["cargo", "build", "--profile", profile, "--target", target,
                               "--message-format=json"], label, expected)
             rows = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
             libraries = {row["target"]["name"]: row["fresh"] for row in rows
@@ -175,7 +187,7 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         assert partial == {"v8": True, "cache_demo": True}, partial
         assert partial_binaries == {"cache-demo": False}, partial_binaries
         assert binding.stat().st_mtime_ns == before_retry
-        assert not (fixture / "target/.codex-source-inputs" / (target + ".json")).exists()
+        assert not (snapshots / (target + ".json")).exists()
         record("cold-record")
         original = binding.stat().st_mtime_ns
         for file in [binding, workspace / "src/lib.rs"]:
@@ -195,7 +207,7 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         assert changed == {"v8": False, "cache_demo": False}, changed
         assert changed_binaries == {"cache-demo": False}, changed_binaries
         executable = "cache-demo.exe" if os.name == "nt" else "cache-demo"
-        output = command([str(fixture / "target" / target / "release" / executable)],
+        output = command([str(fixture / "target" / target / profile / executable)],
                          "changed-output").stdout.strip()
         assert output == "9", output
         record("changed-record")
@@ -205,7 +217,7 @@ def verify(runtime, evidence, bash, cache_transport, cache_repository, resume_re
         failure = record("drift-record", 1)
         assert "refusing cache snapshot" in failure.stderr
 
-        receipt = {"target": target, "runtime": str(runtime), "rust": rust,
+        receipt = {"target": target, "runtime": str(runtime), "rust": rust, "profile": profile,
                    "cold_library_fresh": cold, "partial_retry_library_fresh": partial,
                    "warm_library_fresh": warm,
                    "partial_retry_binary_fresh": partial_binaries,
@@ -231,11 +243,13 @@ def main():
     parser.add_argument("--cache-transport", type=Path)
     parser.add_argument("--cache-repository")
     parser.add_argument("--resume-receipt", type=Path)
+    parser.add_argument("--profile", choices=["release", "ci-test"], default="release")
     arguments = parser.parse_args()
     if (arguments.cache_transport is None) != (arguments.cache_repository is None):
         parser.error("--cache-transport and --cache-repository must be supplied together")
     verify(arguments.runtime, arguments.evidence, arguments.bash,
-           arguments.cache_transport, arguments.cache_repository, arguments.resume_receipt)
+           arguments.cache_transport, arguments.cache_repository, arguments.resume_receipt,
+           arguments.profile)
 
 
 if __name__ == "__main__":
