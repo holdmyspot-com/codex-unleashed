@@ -2567,3 +2567,43 @@ obtain counters.
 Process-memory telemetry, monitor/controller integration, allocation blocking,
 memory-pressure recovery and Cargo/Bazel integration also remain open. This
 completes the demonstrated Linux component, not checkpoint 3.
+
+
+### Java Linux owned-process memory reader
+
+The Java `LinuxResidency.read(cgroupRoot, procRoot, directory)` operation now
+samples the owned subtree, including descendants. It retains each proc directory
+while reading memory, checks its exact unified membership record around that
+read, and rejects a changed final PID-to-group map. Missing counters, missing
+processes, invalid observations and overflow remain failures; a genuine zero
+remains valid. Summed RSS is a sequential estimate that can count shared pages
+repeatedly and miss short-lived peaks.
+
+The isolated final operation passes eighteen controlled cases. Two FIFO-backed
+cases change membership while the status read is blocked; moving the process or
+adding another member rejects the sample without returning memory. Eleven
+maintained tests pass after a recorded behavior-specific red test. The shared
+counter-reader refactor preserves all fourteen host-memory tests. Production
+sources match the isolated sources byte-for-byte, Javadoc checks pass, and a
+fresh complete tooling build passes all 130 tests with pinned Rust 1.95.0.
+
+At the user's request, Logback 1.6.6 supplies the runtime logging provider.
+Separate main and test configurations retain warnings on stderr. Direct Java
+checks establish that both resource sets load Logback, emit WARN, and keep INFO
+out of the configured output. The SLF4J no-provider warning is gone. An absolute
+Maven output directory also avoids duplicate discovery through relative and
+canonical aliases of the same test configuration. The FFM native-access warning
+remains recorded for later repair.
+
+[linux-owned-residency-candidate.json](evidence/linux-owned-residency-candidate.json)
+retains exact sources, dependencies, diagnostic drivers, original failures and
+focused recoveries. A diagnostic initially misclassified the missing-file
+exception; only that classifier was corrected and retried. Full verification
+also exposed a missing Rust search path and a differing nightly compiler; using
+the pinned compiler restores the cache test without source or test changes.
+
+The caller must still establish that its mounted cgroup root matches the proc
+membership namespace on both native Linux architectures. Live owned-process
+sampling and controller handling of unavailable observations remain unaccepted.
+A failed sample must never increase admission. This component does not complete
+checkpoint 3 or establish allocation blocking and Cargo/Bazel scheduling.
