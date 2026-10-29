@@ -21,7 +21,23 @@ The Java command now accepts `clean-cached-release-binaries [--record-source-inp
 
 When `RUSTY_V8_SRC_BINDING_PATH` is configured, the helper also inventories that regular file and its parent in a separate target-specific snapshot. The upstream setup action must verify and materialize it before preparation. The helper hashes the declared bytes; it does not replace upstream's checksum verification. An unchanged binding regains its recorded timestamps. Changed content receives current timestamps so Cargo invalidates affected work. Missing binding metadata causes explicit cleanup of the cached `v8` package. Recording refuses binding content drift during compilation. Checkout confinement remains unchanged; this separate inventory is confined to the configured binding's actual parent, without persisting an absolute runner path.
 
-Only the cache command is exposed by the reduced dispatcher. Its statuses remain zero for success, one for operational failure and two for invalid command arguments. Cargo and Git remain runtime prerequisites. The `runtime` Maven profile bundles Java 27 and the helper behind `runtime/bin/codex-tooling`; consumers do not need a system Java installation. Native platform verification and hosted integration remain required before supporting checkpoint D1 is complete.
+The reduced dispatcher exposes source-cache preparation/recording, retention previews and `upstream-v8-script <upstream-action.yml>`. The V8 command prints the unchanged decoded Bash script from upstream’s single-step composite action; it rejects unsupported execution semantics and does not execute the script. Jackson YAML 3.2.3 supplies parsing alongside the existing Jackson 3.2.3 dependencies. Command statuses remain zero for success, one for operational failure and two for invalid command arguments. Cargo and Git remain runtime prerequisites. The `runtime` Maven profile bundles Java 27 and the helper behind `runtime/bin/codex-tooling`; consumers do not need a system Java installation. Native platform verification and hosted integration remain required before supporting checkpoint D1 is complete.
+
+## Focused runtime workflow handoff
+
+The Linux, macOS and Windows focused runtime workflows now use a shared [setup action](../.github/actions/focused-runtime-cache-setup/action.yml). It builds the bundled helper, extracts the pinned upstream V8 action’s script, and runs that script in a child process with `GITHUB_WORKSPACE` set to the nested upstream checkout. Upstream’s manifest and artifact checksum verification remains unchanged. The owned focused-runtime storage contains the helper, Maven repository and verified V8 files and removes them after remote debugging ends.
+
+The action supplies the V8 assignments to later workflow steps through `GITHUB_ENV`. An already-running SSH shell cannot inherit those later assignments. After the workflow publishes `evidence/environment-ready`, the retained Linux client must import the generated Bash environment before starting its controller:
+
+```bash
+source "$FOCUSED_RUNTIME/evidence/runtime-environment.sh"
+```
+
+That file exports `CODEX_SOURCE_CACHE_TOOL`, `RUSTY_V8_ARCHIVE` and `RUSTY_V8_SRC_BINDING_PATH`. Use those same values for Cargo and every preparation/recording call. The action shell-quotes its generated assignments and publishes the file only after checking both V8 paths. The workflow prepares restored `ci-test` outputs before testing and records inputs only after successful tests and source/dependency guards. A recording failure permits partial publication but cannot promote outputs to a verified cache. The final client receipt reports preparation and recording separately from test, guard and upload outcomes.
+
+Cache identity includes the helper’s production/build sources, Maven declaration and setup action. Restoration also tries the former transport-only compatible reference as a migration source; new snapshots are saved only under the new identity. Preparation validates that restored state and may rebuild workspace packages once when old freshness records are missing, while retaining external dependencies. An old archive hit does not prove executable reuse.
+
+[Setup evidence](evidence/focused-runtime-cache-setup.json) records 111 passing local tooling tests, including 16 extraction cases, and an actual bundled consumer matching the selected upstream action’s 2,172 decoded script bytes. Workflow lint and local shell checks establish configuration only. Hosted V8 environment transfer, same-worker retry and separate-runner cache preparation remain pending; accepted Codex runtime suites are not repeated for this change.
 
 ## Dependency and source selection
 
