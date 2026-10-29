@@ -332,3 +332,13 @@ The earlier evidence in [build-baseline.md](build-baseline.md) also contains the
 | Windows GNU linking, doctor `PATHEXT`, WSL/no-distribution and compact-log directory setup | Separate historical outcomes require their own command, source, platform and upstream results; do not combine them with pristine Opus validation or infer a shared cause. |
 
 No source/test repair, retry-policy relaxation, skip or diagnostic suppression is authorized by this ledger. A comparison is complete only when its outcome and relevant execution boundary are supported directly; preserve unknowns until the required evidence is available.
+
+## Native Linux ARM64 daemon hashing and import controls
+
+Run `40793215263` uses pristine selected upstream source at `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`. Its original CLI run passes 540 cases and times out on four daemon cases; its original app-server run passes 2,061 cases and fails one session-import case. Original failed attempts remain retained.
+
+The selected upstream `MODULE.bazel` explicitly optimizes both BLAKE3 backends and Rust code at level 3 because daemon tests repeatedly hash large CLI executables. Our Cargo `ci-test` profile leaves that package unoptimized. Native profiling places 95.93% of sampled CPU in `blake3_hash4_neon` while the daemon repeatedly reads its approximately 1 GB executable. Adding only an external Cargo-home package-profile override matching upstream's optimization makes all four unchanged cases pass in 6.697 seconds after an 18m 41s incremental rebuild, with unchanged timeout/retry settings and clean source/dependency guards. This establishes the relevant build difference and passing environment control; it does not establish an independently executed native upstream ARM64 CI result.
+
+The app-server import case passes unchanged in 0.318 seconds after only the owned temporary basename changes to one without a hyphen. The selected-source decoder attribution and equivalent macOS control are retained separately. Its original failure, full named passing receipt and source guards are preserved.
+
+[Focused completion evidence](evidence/linux-arm-runtime-focused-completion.json) embeds both hash-verified raw archives, case joins, cache publication and remote lifecycle results. All 544 required CLI cases and 2,062 required app-server cases now have passing receipts across original runs and focused controls. Keep upstream-execution limitations separate from those observed downstream passes; checkpoint completion requires final reconciliation.

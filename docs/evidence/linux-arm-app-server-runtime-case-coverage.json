@@ -8273,12 +8273,12 @@
   ],
   "source_state": "Post-app source/dependency guard exits0; source diff/status empty. No source/test patches.",
   "path_control": {
-    "status": "Unchanged selected case reports1pass/0failure with hyphenfree ownedTMPDIR; retain its full named raw log before final acceptance.",
+    "status": "Full named passing control and exit zero retained in linux-arm-runtime-focused-completion.json; unchanged case passes in 0.318 seconds.",
     "tmpdir": "/home/runner/work/_temp/codexruntime.yr1Vbm",
     "source_attribution": "docs/evidence/macos-runtime-source-attribution.json",
     "source_supported_cause": "The decoder cannot combine the codex-runtime ancestor merge with the my-project leaf merge. Only the temporary-directory basename changes in the control."
   },
-  "acceptance": "Partial record until focused control raw evidence and final lifecycle are retained. Do not rerun2061acceptedcases.",
+  "acceptance": "All 2,062 required cases have named passing receipts across 2,061 original passes and one focused owned-TMPDIR control. Original failure retained; lifecycle/cache records in linux-arm-runtime-focused-completion.json.",
   "compile_seconds": 1694,
   "runtime_seconds": 2061.282,
   "private_partial_cache": {
@@ -8627,5 +8627,12 @@
       "bytes": 119,
       "sha256": "5d41efb85706df775c6ddb6f0482d8e7452b9bc23987cd0676f3e96321025ed6"
     }
-  }
+  },
+  "focused_passed_cases": [
+    [
+      "codex-app-server::all",
+      "suite::v2::external_agent_config::external_agent_config_secondary_source_imports_session_and_plugin_end_to_end"
+    ]
+  ],
+  "accepted_required_passed": 2062
 }
