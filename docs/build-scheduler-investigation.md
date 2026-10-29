@@ -2431,3 +2431,36 @@ and cleanup outcomes. This component requires a dedicated privileged supervisor;
 its production startup protocol and controller integration remain unfinished.
 ARM64 composition, other-platform integration, memory admission, and Cargo/Bazel
 integration also remain open. Checkpoint 3 is incomplete.
+
+Native Linux ARM64 [run 40854889145](https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40854889145)
+now passes the natural-completion gate through the actual tooling named-module
+JAR and the trusted classpath helper from that same JAR. The test verifies no
+workload execution before release, containment, incomplete status after root
+exit while a detached child remains, collection of the child's actual status,
+and natural cleanup without requesting termination. The accepted x86-64 and
+earlier ARM64 platform-facility checks are carried forward without reruns.
+No production source or workflow changes were needed.
+
+One authenticated Upterm connection spans transfer, execution, collection and
+verified removal of the diagnostic's remote directory; SSH exits zero. The
+workflow remains failed for its deliberate exit 17 **and** a client omission:
+the client did not append the smoke fixture's required `incremental-retry`
+marker before exiting, so its post check fails. That action's existing `finally`
+performs fixture cleanup. A corrected client finish script passes a local check
+that executes the actual action main, client mutation and action post against
+isolated filesystem state. This does not repair the original hosted outcome or
+repeat the accepted native test.
+
+[The ARM64 receipt](evidence/linux-arm64-packaged-process-owner.json) preserves
+the exact JAR/dependency identities, native driver and results, both hosted
+failures, corrected client finish script, raw archives and cleanup evidence.
+This closes ARM64 packaging/natural-completion coverage for `LinuxProcessTree`;
+the controller-owned cgroup composition and production supervisor startup/death
+handoff remain open.
+
+A separate [JDK transport probe](evidence/linux-supervisor-exchange-selection.json)
+confirms that the existing XML properties serializer/parser preserves an absent
+environment field versus an explicitly empty value, round-trips special
+characters, and rejects truncated documents. It selects a reusable transport
+candidate only; final supervisor source, standalone public-operation proof,
+atomic publication, identity validation and native lifecycle gates remain open.
