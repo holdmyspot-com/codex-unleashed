@@ -12,20 +12,33 @@ architectures of each OS. The owner specifies:
    to estimated-memory admission in both swap modes. Refuse admission when the
    expected demand exceeds the remaining memory budget, including headroom and
    expected growth of running jobs. Measure unknown work conservatively first.
-3. Block a job's unsatisfied memory allocation and queue that job for continuation.
-4. When a job completes, resume paused jobs from oldest to newest before admitting
-   new work. Apply the memory admission check to resumed and retried jobs too.
+3. Use injection to observe a denied allocation, hold it and notify the Java
+   scheduler. Keep the action queued until the scheduler permits recovery.
+4. When a job completes, continue eligible held allocations from oldest to newest
+   in allocation-wait order before admitting new work. Recovery may instead
+   collect the failed attempt's process tree and retry the action in a new
+   process; such retries retain their original action positions and take priority
+   over new work. Apply the memory admission check to either path.
 5. Preserve completed build outputs and accurate failure reporting.
 
 The owner replaces deliberate oversubscription with estimated-memory admission
 even when swap can be disabled. Estimates are best-effort; observed demand must
 inform later admission, and an underestimate still requires safe recovery.
-The owner selects investigation of exact allocation blocking as that fallback
-before choosing an implementation. Proactive pressure-based suspension is not
-an approved substitute.
-The owner separately permits terminating and retrying a selected unfinished job
-when retained memory prevents progress. This fallback does not establish that an
-allocation can be blocked or that a killed process can resume.
+The owner retains injection as the selected allocation-control approach and
+explicitly permits new-process retry: the original process need not retry its
+failed allocation. Use supported Cargo/Bazel action hooks for ordinary admission.
+Proactive pressure-based suspension alone is not a substitute for detecting and
+holding an actual failed allocation. The owner also permits terminating and
+retrying a selected unfinished job when retained memory prevents progress.
+
+Keep the controller outside the action's memory-failure boundary. Classify memory
+failures from native evidence and retained diagnostics; an exit code alone must
+not turn an ordinary compiler failure into a memory retry. Preserve original queue
+positions, allocation-wait order, completed valid outputs and failure evidence. Isolate or invalidate
+partial outputs from a failed attempt before retrying, update its memory estimate
+conservatively, and report insufficient capacity when an action cannot progress
+alone instead of retrying indefinitely. Native Cargo/Bazel integration must prove
+these outcomes on both architectures of Linux, macOS and Windows.
 
 When machine swap cannot be disabled, the owner permits monitoring swap usage
 and terminating the newest unfinished build jobs when usage increases. Aborted
@@ -47,9 +60,60 @@ integration remain unverified.
 
 The pure admission/retry policy below is implemented, but no complete scheduler
 integration is accepted by this document. Linux swap-control checks pass below;
-allocation-blocking, FIFO continuation and build-tool integration acceptance remain open. Existing two-job Linux limits
+injected failed-allocation control, memory-failure classification, ordered recovery and build-tool integration
+acceptance remain open. Existing two-job Linux limits
 remain until replacement acceptance; the active baseline build is not changed by
 this investigation.
+
+## Selected approach and alternatives
+
+The owner selects injection for failed-allocation detection and control. Its
+purpose is to observe an allocator's actual denial and hold that call while the
+Java scheduler records the affected action and decides recovery. The scheduler
+may terminate/reap that attempt and retry in a new process; preserving the
+original process for retry is optional. This selection does not make Frida's
+final Java bindings or production packaging accepted.
+
+Choose the recovery path from the intercepted API's verified retry semantics and
+the memory that can become available. Prefer retrying the denied call in the same
+process when it is safe and avoids repeating useful compiler work; wait for the
+memory budget before permitting it. Use a new process when continuation is unsafe
+or retained memory prevents progress. Reap the old process tree before retrying,
+isolate its incomplete outputs, and preserve the action's original queue position.
+Neither path may repeatedly retry an action that cannot fit alone.
+
+| Approach | Available capability | Decision and limitation |
+| --- | --- | --- |
+| Inject allocator hooks into owned compiler processes | Observe a denied call at an instrumented allocator boundary and communicate with the controller before returning failure to its caller. Controlled native fixtures already demonstrate this on all three OS families. | Selected for allocation control. Actual compiler/child coverage, startup timing, hook safety and production Java ownership still require acceptance; a fixture pass does not establish them. |
+| Cargo compiler wrappers and Bazel action interfaces | Hold a command before starting it, collect its result and run another attempt. Bazel action resource estimates also govern ordinary admission. | Retain for normal scheduling and build-tool integration. These interfaces do not themselves expose individual allocator returns inside the compiler, so they cannot alone implement the selected failed-call hold. |
+| OS memory accounting, limits and OOM notifications | Provide available-memory readings, usage/peak counters, limit violations or OOM events, depending on platform and enabled facilities. | Retain for estimates, diagnosis and recovery. Availability and accounting semantics vary; an allocation can fail without an OOM kill. Combine evidence rather than treating any killed exit as proof of OOM. |
+| Historical peaks and estimated-memory admission | Avoid starting work expected to exceed the remaining memory budget, including running-job growth and headroom. | Retain as the first line of admission control. A failed attempt's observed peak does not establish the memory needed to finish; sampling can miss peaks and estimates can be wrong. |
+| OS process suspension/resumption | Stop an already running process and later let it execute again. | Does not identify a denied allocation or necessarily release memory. The Linux suspension observation below retains the same resident usage while stopped, so suspension alone cannot supply the requested recovery. |
+| Terminate after an attributed memory failure and retry without injection | Free the failed attempt's resources and retry its action with fewer competitors or a revised budget, preserving completed valid work. | A viable simpler alternative when post-failure retry is sufficient. The owner retains injection to observe and hold the actual denied call; new-process retry remains an allowed recovery after that observation. |
+
+The selection favors direct failed-call evidence and explicit controller ownership
+of that waiting point over relying solely on post-exit classification. It costs
+additional native integration, permissions, instrumentation overhead and lifecycle
+testing; its performance cost remains unmeasured. It does not predict whether a
+task will finish alone, free memory retained by a held process, or cover an OS
+kill that bypasses an intercepted allocator return. Keep native OOM diagnostics,
+targeted process termination and terminal insufficient-capacity reporting.
+
+Contracts and retained evidence: [Cargo compiler wrapper](https://doc.rust-lang.org/cargo/reference/config.html#buildrustc-wrapper),
+[Bazel action resource estimates](https://bazel.build/rules/lib/builtins/actions#run),
+[Linux memory peaks and OOM events](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html),
+[Windows job memory accounting](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_extended_limit_information),
+and the native interception and compiler results below. Linux cgroup memory
+counters were unavailable in the previously tested hosted descendant groups;
+do not assume those facilities exist on a worker without checking. The accepted
+owned-process RSS reader supplies sampled residency with its documented limits.
+
+[The Cargo wrapper capability probe](evidence/cargo-wrapper-admission.json) holds
+two real compiler commands before execution, then permits one library to finish
+while the other remains unstarted. Both complete after permission with Cargo exit
+zero. It uses the retained Linux x86-64 worker's Rust 1.99.1 and a diagnostic shell
+wrapper; it does not accept the production Java scheduler, pinned-toolchain
+integration or memory recovery. No Codex build is repeated.
 
 ## Existing project code
 
@@ -85,6 +149,12 @@ reaped afterward. This establishes that ordinary suspension need not release its
 resident memory; it does not exercise allocation exhaustion or prove the scheduler.
 
 ## Allocation interception and reuse candidates
+
+The native interception results below retain their original scopes and limitations.
+Their same-process retry demonstrations remain useful evidence, but a production
+recovery may instead retry in a new process under the current contract above.
+Actual compiler/child coverage and Java-controlled instrumentation lifetime remain
+required; the existing production Java tooling has no Frida dependency yet.
 
 Intercepting one allocator API cannot yet be treated as coverage of all build
 memory. Rust 1.95.0's [compiler entry point](https://github.com/rust-lang/rust/blob/1.95.0/compiler/rustc/src/main.rs)
@@ -134,18 +204,18 @@ termination down to the last job when low available memory persists; this is a
 source finding, not an observed machine-pressure failure. The pinned source file
 has SHA-256 `684022d1fe8bc01b0ef8eb98e8940f9c4d00ef2c535a647f1d4c794e3da73736`.
 
-None of these candidates is selected as the complete scheduler. Their partial
-capabilities do not close the allocation-blocking or cross-platform recovery
-gates. The existing Frida/compiler experiment below remains evidence for one
-Linux allocation path; native macOS/Windows blocking and recovery are still
-required before selecting that integration.
+None of these candidates is selected as the complete scheduler. Process-level
+retry is now permitted, but a candidate must still provide the selected injected
+failed-allocation control, native memory evidence, ordered recovery and real
+Cargo/Bazel integration. Earlier rejections based only on requiring retry inside
+the same process must not be reused to reject a new-process recovery path.
 
-The investigation must next establish a native blocking boundary for each OS and
-whether swap/pagefiles can actually be disabled on the selected free hosted
-runners. A candidate must demonstrate an unsatisfied allocation waiting while
-independent work completes, followed by successful continuation of that same
-allocation. Then establish FIFO resumption, memory-budgeted startup and admission,
-and the approved targeted-retry escape from retained-memory deadlock.
+The investigation must establish a native failed-allocation control boundary for
+each OS and whether swap/pagefiles can actually be disabled on the selected free
+hosted runners. A candidate must demonstrate a denied allocation held under Java
+control while independent work completes, followed by permitted recovery: either
+continuation or a new-process retry. Establish FIFO continuation and original-position retries,
+memory-budgeted startup/admission and the targeted-retry escape from retained-memory deadlock.
 Only after those premises hold can Cargo and Bazel integration be accepted. Keep
 unresolved paths unknown rather than substituting pressure prediction or claiming
 cross-platform support from a Linux-only result.

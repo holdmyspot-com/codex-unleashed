@@ -1,0 +1,257 @@
+{
+  "scope": "Cargo RUSTC_WRAPPER pre-start admission capability on one native hosted Linux x86-64 worker; diagnostic shell wrapper only.",
+  "result": "passed_scoped_admission_capability",
+  "checkpoint_3": "incomplete",
+  "run": 40919649890,
+  "job": 123609177101,
+  "head": "58019241aece74423d09c9726b4ea271fc728f9a",
+  "toolchain": [
+    "cargo 1.99.1 (5f94df478 2026-08-27)",
+    "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  ],
+  "observations": [
+    "both_compilers_waiting_no_library_artifacts",
+    "a_compiled_while_b_remained_unstarted",
+    "b_compiled_after_permission_cargo_exit_zero"
+  ],
+  "cargo_result": 0,
+  "cargo_build_seconds": 0.54,
+  "jobserver": {
+    "a": "-j --jobserver-fds=3,5 --jobserver-auth=3,5",
+    "b": "-j --jobserver-fds=3,5 --jobserver-auth=3,5",
+    "scope": "Inherited flags retained; token acquisition/return and compiler-internal parallelism were not exercised as scheduler acceptance."
+  },
+  "limitations": [
+    "Not the pinned Rust 1.95.0 toolchain; no pinned-toolchain integration acceptance.",
+    "No production Java queue/controller, injection, memory failure, retry or cross-platform acceptance.",
+    "No Codex build repeated; fixture has two independent dependency-free libraries."
+  ],
+  "cleanup": {
+    "compiler_processes": "compiler_processes_absent",
+    "remote_storage": {
+      "exit": 0,
+      "output": "sudo -n rmdir \"$COMPILER_GROUP\" && test ! -e \"$COMPILER_GROUP\" && test \"$COMPILER_ROOT\" = /home/runner/work/_temp/compiler-startup-r2L5Ly && rm -rf -- \"$COMPILER_ROOT\" && test ! -e \"$COMPILER_ROOT\" && printf \"OWNED_CGROUP_AND_REMOTE_SCRATCH_REMOVED\\n\"; __cat_status=$?; printf \"\\n__CAT_DONE_0713:%s__\\n\" \"$__cat_status\"\r\n\u001b[?2004l\rOWNED_CGROUP_AND_REMOTE_SCRATCH_REMOVED\r\n\r\n__CAT_DONE_0713:0__\r\n\u001b[?2004h\u001b]0;runner@runnervm48cm3: ~/work/codex-unleashed/codex-unleashed\u0007\u001b[01;32mrunner@runnervm48cm3\u001b[00m:\u001b[01;34m~/work/codex-unleashed/codex-unleashed\u001b[00m$ "
+    },
+    "ssh": {
+      "exit": 0,
+      "pid": 30
+    },
+    "keys_removed": true,
+    "hosted_terminal": {
+      "conclusion": "failure",
+      "headSha": "58019241aece74423d09c9726b4ea271fc728f9a",
+      "jobs": [
+        {
+          "completedAt": "2026-10-29T17:16:04Z",
+          "conclusion": "success",
+          "databaseId": 123609096497,
+          "name": "select",
+          "startedAt": "2026-10-29T17:15:58Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 6,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 7,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40919649890/job/123609096497"
+        },
+        {
+          "completedAt": "2026-10-29T17:30:50Z",
+          "conclusion": "failure",
+          "databaseId": 123609177101,
+          "name": "Debug - x86_64-unknown-linux-musl",
+          "startedAt": "2026-10-29T17:16:07Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure",
+              "number": 4,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace",
+              "number": 5,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace",
+              "number": 8,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state",
+              "number": 9,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 10,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40919649890/job/123609177101"
+        }
+      ],
+      "status": "completed"
+    }
+  },
+  "diagnostic_workflow_errors": [
+    {
+      "operation": "local archive extraction from terminal output",
+      "result": "Initial regex failed because terminal control sequences and prompts separated the base64 markers.",
+      "recovery": "Decoded base64-only lines after removing ANSI sequences; remote SHA and all 19 members verified without repeating the Cargo gate."
+    },
+    {
+      "operation": "remote cleanup command batch 0712",
+      "result": "The batch did not reach its terminal marker after cgroup.events was printed. Subsequent commands were echoed without observed execution; transport cause not isolated.",
+      "recovery": "Same-worker authenticated recovery connection explicitly aborted the incomplete batch with status 125, then disconnected with SSH 255. Original persistent client completed single-line guarded cleanup with status zero and exited SSH zero.",
+      "receipt": {
+        "pid": 31,
+        "marker_observed": true,
+        "ssh_exit": 255
+      }
+    }
+  ],
+  "unrun_probe": "Prepared compiler startup/injection probe was not executed on this worker. Its acceptance remains open.",
+  "archive": {
+    "encoding": "base64+tar.gz",
+    "sha256": "56092135eceff3ac4884e3e813acbc489a518274f5bacd4f131d519ce708e8d4",
+    "bytes": 1932,
+    "data": "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"
+  },
+  "manifest": {
+    "cargo-hook-probe.sh": {
+      "bytes": 2862,
+      "sha256": "04c05b362605c291a218784f319fc69f2e4e6b01f7e120be6acd7b1f91b9fd82"
+    },
+    "wrapper.sh": {
+      "bytes": 488,
+      "sha256": "fb6853fcf1fc052a1c55b91b94d56f42ffec902e2e2d5898202c0dfa464c7bc2"
+    },
+    "versions.txt": {
+      "bytes": 72,
+      "sha256": "763a6aa87d4cad40a993525ac6f4687c82acdaa31915389ea7fb9b2d00c51468"
+    },
+    "assertions.txt": {
+      "bytes": 126,
+      "sha256": "86fab164b8265d8eef05537518da8b0282af73850a26fe4ee30dd787ebb4b4c4"
+    },
+    "cargo-exit.txt": {
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "jobserver_a": {
+      "bytes": 44,
+      "sha256": "b2beaafea58e975db5e469e3659d96509865f696ae098c9a5f7925c54fefa290"
+    },
+    "jobserver_b": {
+      "bytes": 44,
+      "sha256": "b2beaafea58e975db5e469e3659d96509865f696ae098c9a5f7925c54fefa290"
+    },
+    "waiting_a": {
+      "bytes": 5,
+      "sha256": "456259708fc8786bc10bab0b88400fb094dcfa9a41384d93ccd794f292e9bfbd"
+    },
+    "waiting_b": {
+      "bytes": 5,
+      "sha256": "93acd367386ad3b42a26b3815a580aae055ca2f18ea40258ccaa29f7e6921380"
+    },
+    "started_a": {
+      "bytes": 5,
+      "sha256": "456259708fc8786bc10bab0b88400fb094dcfa9a41384d93ccd794f292e9bfbd"
+    },
+    "started_b": {
+      "bytes": 5,
+      "sha256": "93acd367386ad3b42a26b3815a580aae055ca2f18ea40258ccaa29f7e6921380"
+    },
+    "cleanup.txt": {
+      "bytes": 26,
+      "sha256": "119aa19445dcf370dd0f11676f19e9d73c76a5d2f6c274c7ab0535b327c37edd"
+    },
+    "cargo.log": {
+      "bytes": 258,
+      "sha256": "4f87de9ed0e27156bb4a59eadd168a75ac34449bd38d4738f28c237bd91bb5b7"
+    },
+    "project/Cargo.toml": {
+      "bytes": 48,
+      "sha256": "82f3bebd82dd0383344f3eed0a46a439dcdc3db2b3f67da4418933b277beed07"
+    },
+    "project/Cargo.lock": {
+      "bytes": 187,
+      "sha256": "e68eb3855fe7c99357bf242b2600874c6ee9b6923017b4d9082489e7a02b4d33"
+    },
+    "project/a/Cargo.toml": {
+      "bytes": 56,
+      "sha256": "ba3f8f3295a64f73d76850444e304092cea8754f7bcdf41aeb6202d2d1cb2c9b"
+    },
+    "project/a/src/lib.rs": {
+      "bytes": 28,
+      "sha256": "ad40248192936865d97a6018a2c21e70ede304fe650314736a3354ef73cc5c6f"
+    },
+    "project/b/Cargo.toml": {
+      "bytes": 56,
+      "sha256": "2e6ac2a0d9b9c18cca2ebbf1926624de48cdbd3dd865a6eff233e2dfbceb466f"
+    },
+    "project/b/src/lib.rs": {
+      "bytes": 28,
+      "sha256": "ad40248192936865d97a6018a2c21e70ede304fe650314736a3354ef73cc5c6f"
+    }
+  },
+  "retrieval": "Decode archive.data, verify archive.sha256 and bytes, and verify every tar member against manifest. Read cargo-hook-probe.sh, wrapper.sh, assertions.txt and cargo.log together. This receipt establishes only the scoped Cargo hook capability, not scheduler acceptance."
+}
