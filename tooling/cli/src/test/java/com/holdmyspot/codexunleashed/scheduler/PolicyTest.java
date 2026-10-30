@@ -40,7 +40,7 @@ public final class PolicyTest
 	}
 
 	/**
-	 * Resumes the oldest allocation denial before new work, without bypassing an unaffordable older job.
+	 * Reclaims a blocked peer when the oldest denial cannot fit, and resumes that denial once its estimate fits.
 	 */
 	@Test
 	public void resumesBlockedJobsInDenialOrder()
@@ -48,8 +48,9 @@ public final class PolicyTest
 		List<Job> jobs = List.of(new Job("new", State.READY, 0, 10L, 0, null, null, 0),
 			new Job("older", State.BLOCKED, 2, 500L, 100, 2L, 4L, 0),
 			new Job("younger", State.BLOCKED, 1, 200L, 100, 1L, 5L, 0));
-		assertDecision(Policy.chooseAction(new Budget(100, 3), jobs, new Observation(499, false, false, 0)),
-			Control.WAIT, null);
+		Decision recovery = Policy.chooseAction(new Budget(100, 3), jobs, new Observation(499, false, false, 0));
+		requireThat(recovery.control(), "recoveryControl").isEqualTo(Control.TERMINATE, "expected");
+		requireThat(recovery.jobName(), "reclaimedPeer").isEqualTo("younger", "expected");
 		assertDecision(Policy.chooseAction(new Budget(100, 3), jobs, new Observation(500, false, false, 0)),
 			Control.RESUME, "older");
 	}
