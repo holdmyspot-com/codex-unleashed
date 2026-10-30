@@ -1,0 +1,446 @@
+{
+  "scope": "Native Linux x86-64 maintained descriptor owner and typed multi-leaf observation recovery; checkpoint 3 remains incomplete.",
+  "completion": {
+    "task_contract": "acknowledged",
+    "status": "SCOPED_NATIVE_GATES_PASSED_WITH_RECORDED_PROVIDER_SMOKE_VALIDATION_FAILURE",
+    "run": 41079138474,
+    "descriptor_report": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/descriptor-final.json",
+      "sha256": "4b9ee787618782f2fd7cb3d6bf90596f1a096ee671c9a4a22914defaa69a6edc"
+    },
+    "multileaf_report": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/multileaf-report.json",
+      "sha256": "2a91212eadc80c743b5bbeb387809387da2da5815158489f97cb301e79b1b3fa"
+    },
+    "cleanup": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/cleanup-final.json",
+      "sha256": "abc57f1009a997007520baef84186da5d243c1047be0614a726f5d68a3360f73"
+    },
+    "immutable_addendum": "descriptor-final.json supersedes only pending cleanup/status in corrected-descriptor-report.json; all original sealed reports/archives remain unchanged.",
+    "owned_local_scratch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y",
+    "remaining_live_resources": [],
+    "commits_pushes_issues_remote_workflow_edits": false,
+    "archive": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/completion-evidence.tar.gz",
+      "sha256": "cf58735ff8cef1e6be3647725431fdb8efe32cd1f3bb791e083edfc1b8fb49ac",
+      "bytes": 1585560
+    }
+  },
+  "descriptor": {
+    "task_contract": "acknowledged",
+    "status": "SCOPED_MAINTAINED_NATIVE_PASS",
+    "source_base": "984879cb67580a272ce3aafae6669e7020112363",
+    "parent_corrected_source_sha256": "40078f068c4534bc244e857e914b884796edff4ef7dbbc8b429edc5563f00fbb",
+    "corrected_package_sha256": "f1755e7174a7aa37ffed1ae92abef742048643676ed0f7717d8fa450187e0c1b",
+    "original_failed_package_sha256": "78fb6022d599edc590ebe919d10731991118b08055f7fafae980fe81d17641de",
+    "run": 41079138474,
+    "job": 124143377350,
+    "trusted_registration_scope": "Scratch caller checks independently observed wrapper PID/UID/GID and exact immutable Launch; root creates capability and publishes diagnostic authorization. No production authenticated registration IPC or Cargo admission is claimed.",
+    "execution_scope": "DIRECT_EXEC diagnostic through actual packaged supervisor/root trusted gate/credential drop. Selected allocation injection and ATTACHED_LEADER_EXEC integration remain separate gates.",
+    "native_owner_proof": {
+      "pre_READY": "Supervisor preparation returned only after dedicated gate imported actual borrowed descriptors. Independent /proc gate observations matched wrapper OFD targets/positions/session/group before target release; target absent before release.",
+      "separate_binary": "Shared input offset1, stdout prefix PRE, stderr prefix SE; exact binary suffixes, cwd/argv/env and authentic target exit7 preserved.",
+      "alias": "Stdout/stderr refer to same original OFD; shared prefix PRESE and exact combined binary suffix preserved.",
+      "PTY": "Same PTY/session/group and binary bytes preserved; production context validation compares device/session/foreground/semantic termios. No session assumptions narrowed.",
+      "terminal_rejection": "Controller creates distinct session. Actual native tcgetsid rejects imported foreign controlling terminal with errno25 before READY. Independent session inequality, no target execution, owner/cgroup/socket cleanup verified.",
+      "unreleased_cancellation": "After READY/import, request termination without release; target never executes; actual population zero precedes finishInstrumentation, authentic collected termination and cleanup.",
+      "fresh": "Probe compiled into absent fresh class directory, byte-compared to incremental final fixture; fresh ordinary and incompatible-session cases pass with same corrected immutable owner JAR."
+    },
+    "cases": {
+      "regular-corrected": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/regular-corrected/receipt.json",
+        "sha256": "0bf2e6187b20bb1493dbf71b5ffa148de3475c52ddc28e5b87f3a0ae11b730bf",
+        "rootExit": "7",
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "alias-corrected": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/alias-corrected/receipt.json",
+        "sha256": "0b31c834fe4812e683ba0721a52135e8d95dca7abccae1c90a1f28f91140d344",
+        "rootExit": "7",
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "pty-corrected2": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/pty-corrected2/receipt.json",
+        "sha256": "d3fb7526c9bef0f596de561f8f052300a8be53f5ad9537524f908bb907bfffd7",
+        "rootExit": "7",
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "cancel-corrected": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/cancel-corrected/receipt.json",
+        "sha256": "e17ce0c18311d9baf4b8af194f3eb2231ef17883b045dbdf9531e0393b001dc9",
+        "rootExit": "137",
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "reject-corrected5": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/reject-corrected5/receipt.json",
+        "sha256": "3fe30c1254b08f02340729477b500d9b8d1582ddac300a49e6af046642999cb3",
+        "rootExit": null,
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "regular-fresh": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/regular-fresh/receipt.json",
+        "sha256": "fcc313980ed64ebb601f604fcaa5f500592b52123b7b7cfc5b22664ffa785b2f",
+        "rootExit": "7",
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      },
+      "reject-fresh": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence/reject-fresh/receipt.json",
+        "sha256": "10947f2eb4ac480380e06cc7306850e31052dddc2d77b21dd7f000aa51203815",
+        "rootExit": null,
+        "cleanup": {
+          "allChildrenReaped": true,
+          "groupAbsent": true,
+          "socketAbsent": true
+        }
+      }
+    },
+    "production_root_cause_and_fix": {
+      "initial": "Unprivileged wrapper tried to read root gate PID namespace link; AccessDenied closes socket and gate exits125. Independent uid drop proves exact Linux boundary.",
+      "parent_fix": "Native.peer verifies socket credentials against two equal stable birth/credential captures; privileged receive still verifies registered wrapper live PID namespace before authorization. Wrapper checks root socket UID and exact action/attempt/capability. No root wrapper or namespace authorization bypass."
+    },
+    "preserved_fixture_failures": [
+      {
+        "case": "pty-corrected,reject-corrected",
+        "cause": "sudo launcher was process-group leader and setsid returned EPERM before native gate; restored accepted child-before-setsid fixture sequence."
+      },
+      {
+        "case": "reject-corrected2",
+        "cause": "Expected ordinary IOException from cleaned preparation was not caught by scratch diagnostic, which handled only PreparationFailure; native terminal rejection correctly occurred."
+      },
+      {
+        "case": "reject-corrected3",
+        "cause": "Fixture expected a later terminal-context equality error; actual foreign-session tcgetsid fails closed earlier with ENOTTY. Check now requires exact native error plus independent session inequality."
+      },
+      {
+        "case": "reject-corrected4",
+        "cause": "Connect ENOENT after endpoint disappeared. Static fixture publication exposed root-owned0600 authorization before chown to wrapper, allowing a permission race. Fixed ownership on pending file before atomic publication. This causal explanation is strongly supported by source ordering; exact wrapper exception was lost in this early PTY attempt, so not claimed conclusively reproduced."
+      }
+    ],
+    "executed_class_identities": {
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$ExecutionMode.class": "f032b2993e8072e09c8fe1bf64c050dcd805260b0b39f0dd93275ffe1525fec9",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Binding.class": "8f7fcf0799b0485cfa980135a5697cbf5e9a61cb5fdfbda8957fc16dcba8d3f6",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Installation.class": "06017a3af95a2ea56db6890e7dd6bf9b150ac3953163e8ae5b342b7735cb67f2",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Result.class": "677659e986e765c996a70d20e3d2641d9d4181efb963a0b1b7ad7adddcf2d7ec",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Peer.class": "6ef45cc420a171821e5b1018f1be6b1a4f59f95476c9d2e8ce5168f06cfcd11e",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Control.class": "577f74801aab7867c3679d929b1dbcf4c82d99d0c1efa63446f79e7ae8203d4e",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$PreparationFailure.class": "9c6484dd1c423b219ca57d679e55ad2f249c67b5f42726738a59d5781b572230",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Listener.class": "f10469b41451aed1a968b352894a23c624ab9890a0ed0c1d29194c9ce2344cac",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Pending.class": "499865ad83504eafe29b58a6a7037e7f717eef937f074a1772695744d579423c",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Received.class": "4d7b01fc16031f44ed12ca79031916c9aef2881ac9fefe251170df4765e89119",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CleanupFailure.class": "f097105008ca8541a8e66e4f357b772dd0a66604d095703f71168046727f6dff",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StreamInstallation.class": "31ad3f55f02687c6db2ec61573f70a09a73f92fd3840cad84d0eeb8e118257fc",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$NativeCalls.class": "b010b6fb56c89c0891d01cbf7ad7416e942baa9ccb1ca9d26d2eb731f4db4736",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$CloseOperation.class": "e51e260883dcc3dfa50f411d9bfc4dac33c19e01361d4435e15eb9b1a5cd5a42",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Phase.class": "4b850f5e46fa002f918ccb6089e03bc5fb73edf66066d8af9adc4c9f511b8b62",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Outcome.class": "dc44e1be8baf998164b78223313da8ad7de8c4e301be48dcda1754ac59a669c3",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native.class": "b574d9bd9cede47d0c25034be165a43a892e0629014cd244a3f1713a1a89b652",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Descriptors.class": "378bb8cbfc476a0ce25aaadb837d816ab70fabc57858ee14f21da2294e307e4f",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CloseDescriptor.class": "39d383a32f9438f83576b560c0abbc6402817cfb6e7479413c248bf522e47612",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$TerminalContext.class": "165b16a8f789b590b77717bd905cb35bc530765976d764a0023196efcacffb7e",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.class": "03f1b3eddb0879d634be6752e8d1f024f577e1efe76d23f79374fb97a397cec4",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Listener.class": "25226bffb28cc7393ffae4035e5e2bb2dcb3952953681da7d05dfb2fd7114d69",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StandardFiles.class": "f7a45d9becd358c0d232f03c35f6b0c594e5ff46429632c64fce948caf8748c6",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$SharedSecrets.class": "082a9794eb3942332ede3f600a4d3d6f9fc6a65896508d284022e949f0934416",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$KillRequest.class": "a52ad3b8bc65dc1784fd445864ad7e355130fb204e09f6a33fa1ad42daad052d",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.class": "0dad056b218b91b3a30fb99585471087368578e98c52d3ec64fd1712937869a6",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$WorkloadExecution.class": "6f8d3831bf40a8e12d0252f0e8e7c07dfd8a3302eeb8e05876e786c5382845b7",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Terminal.class": "1154fff81301a2ef28a01a1f668ec1786a8c2b91d24c5f7a5cc0479a2e432a81",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$1.class": "1e3de92fe25563eaef175bd5706cd3395860ab23438a8efa7a0ec17935ff7f50",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$Launch.class": "e52c89a0e8676d0a3d2dcbaf5e53a7a2c924ca23b30e97db5314e910ded6b5a7",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.class": "418e0a816fc73725b6f5f9d7994c6ebe6df0261726a2c5944b364dfa7368bf7b",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Transfer.class": "b78623c3739525c25453c72e4111c7c28b1f0c6977f11116137d0df881505305"
+    },
+    "fixture_current_classes": {
+      "com/holdmyspot/codexunleashed/scheduler/BorrowedNativeProbe.class": "8e6c4c710f11b12c0b16d6bf7bf8989677e20f629358a90e6182408d3f3b08cc"
+    },
+    "archive": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/maintained-native-evidence.tar.gz",
+      "sha256": "3ccb94cab903849d9348e294330c087a41732a60506291b93f20394d1264326f"
+    },
+    "remaining_gaps": [
+      "Production wrapper/controller registration IPC and authenticated caller adoption",
+      "Real Cargo compiler admission/token lease and retry through maintained borrowed owner",
+      "ATTACHED_LEADER_EXEC allocation-injection composition with borrowed streams",
+      "Linux ARM64 ABI/native acceptance",
+      "Native forced partial recv/dup/close failure injection"
+    ],
+    "cleanup": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/cleanup-final.json",
+      "sha256": "abc57f1009a997007520baef84186da5d243c1047be0614a726f5d68a3360f73",
+      "native_resources_and_access": "closed",
+      "provider_smoke_marker_validation": "failed_retained"
+    }
+  },
+  "multiLeaf": {
+    "task_contract": "acknowledged",
+    "status": "SCOPED_NATIVE_INCREMENTAL_AND_FRESH_PASS",
+    "run": 41079138474,
+    "owner": "cargo_fifo_owner_design",
+    "maintained_changes": [],
+    "accepted_package_sha256": "78fb6022d599edc590ebe919d10731991118b08055f7fafae980fe81d17641de",
+    "source_snapshot": "984879cb67580a272ce3aafae6669e7020112363",
+    "reviewed_preparer_fixture_archive_sha256": "150222128f6ff4a25a31d2d933e6594c1144244ef3625e1cfe71ebede96d4689",
+    "fixture_correction": {
+      "patch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/multileaf-fixture.diff",
+      "sha256": "8f6d33fe1911adce4fcc3c03280114c04a146ee5549222534fa2a5a5a7f6b887",
+      "source_sha256": "cce0c92d7f0048d6ac4a02695b5c9af6bdbbf5ca2c973f8d11b769f41577e3a4",
+      "root_cause": "Original fixture waited for outer supervisor cgroup zero before owner.poll published COLLECT. The dedicated supervisor is itself in that outer cgroup, so the condition cannot complete. Original run timed out and cleanup reaped all owners.",
+      "correction": "Wait for workload inner action leaf zero first, call real retained owner.poll once, then await natural inner-leaf removal and outer zero. Keep both measurement registrations and preserve actual owner outcomes. No production scheduler/measurement/timeout/retry limit change.",
+      "independent_native_evidence": "Corrected events show actual inner populated0 while outer remains populated1 and lists its supervisor member before genuine owner polling, confirming the mistaken original wait target.",
+      "production_retry_bound": 32
+    },
+    "verification": {
+      "incremental": {
+        "passed": true,
+        "typedTwoLeafRejection": 22,
+        "trustRejection": 21,
+        "freshAcceptance": 25,
+        "fourthStart": 26,
+        "nativeOutcomes": 4,
+        "noFallback": true,
+        "parentAbsent": true
+      },
+      "fresh": {
+        "passed": true,
+        "typedTwoLeafRejection": 22,
+        "trustRejection": 21,
+        "freshAcceptance": 25,
+        "fourthStart": 26,
+        "nativeOutcomes": 4,
+        "noFallback": true,
+        "parentAbsent": true
+      }
+    },
+    "class_identities": {
+      "incremental": {
+        "result_sha256": "cebe10d437b07e60d1e955e22b21aa50300e93f6c01546532b7bb05c03fd1b78",
+        "observer_sha256": "59c370aa5b9be07d16c74b21a1cc9929e5176364b2663444325be097ebd339d5",
+        "classes": {
+          "com/holdmyspot/codexunleashed/scheduler/LinuxMultiLeafRecoveryProbe$Readings.class": "2817fcdedf50e1ead3b74229af71fd2ba3aaed2ec92e55390a72518822e644ad",
+          "com/holdmyspot/codexunleashed/scheduler/LinuxMultiLeafRecoveryProbe.class": "75f41ea7a1a1f85086fcdff57a8d3ee2d1d4b3086b865a7acf4e9e2f1b953dae"
+        }
+      },
+      "fresh": {
+        "result_sha256": "7466c8d7d2fae6065fb4739174cea902177ae38dcee166bcaddbc3455b08f5c8",
+        "observer_sha256": "7912791cf63ec90452b3465994784e6192eb5523e22cbd250405b6d69eb8db92",
+        "classes": {
+          "com/holdmyspot/codexunleashed/scheduler/LinuxMultiLeafRecoveryProbe$Readings.class": "2817fcdedf50e1ead3b74229af71fd2ba3aaed2ec92e55390a72518822e644ad",
+          "com/holdmyspot/codexunleashed/scheduler/LinuxMultiLeafRecoveryProbe.class": "75f41ea7a1a1f85086fcdff57a8d3ee2d1d4b3086b865a7acf4e9e2f1b953dae"
+        }
+      }
+    },
+    "coverage": [
+      "Unknown live sentinel topology causes ordinary IOException, never typed retry authority",
+      "Both genuine naturally completed leaf registrations produce one typed HOST COMPLETED_LEAVES rejection with exact first0/second1 identities",
+      "Rejected reads do not commit accepted readings, outcomes or fourth admission",
+      "Real queue reconciliation collects both native outcomes then obtains fresh accepted complete measurements before fourth START",
+      "All four native roots finish0 without abortion/termination or adopted children",
+      "Actual population0 and no owned children before fallback; no timeout/fallback, unique parent removed",
+      "Incremental/fresh probe class families are byte-identical"
+    ],
+    "archive": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/multileaf-native-evidence.tar.gz",
+      "sha256": "5fba7d9e6a191611b097c09f6d3064f8c742db31096c28db00173f602a755875",
+      "bytes": 83658
+    },
+    "commands": {
+      "incremental": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/request-049.json",
+      "fresh": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/request-050.json",
+      "original_failure": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/request-042.result.json",
+      "same_retained_worker": true,
+      "persistent_client": 17429
+    },
+    "warnings": [
+      "Pinned accepted libfrida-core.so emits existing executable-stack warning; retained without native library patch."
+    ],
+    "unrun": [
+      "Native SchedulerCoordinator top-level driver",
+      "Allocation-denial resume and swap-pressure behavior",
+      "Cargo/Bazel action producer integration",
+      "All negative namespace/mount authority fault injections"
+    ],
+    "cleanup_receipt": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/cleanup-final.json",
+      "sha256": "abc57f1009a997007520baef84186da5d243c1047be0614a726f5d68a3360f73"
+    },
+    "cleanup_limit": "Native resources and access lifecycle closed; provider smoke marker validation failed because agent omitted incremental-retry. Raw failure retained, no false overall workflow success."
+  },
+  "cleanup": {
+    "task_contract": "acknowledged",
+    "status": "owned_native_and_access_cleanup_complete_provider_smoke_validation_failed",
+    "run": 41079138474,
+    "remote_root_receipt": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/request-054.result.json",
+      "sha256": "1eb6446e8e4cd2f07082b6e2beeec365943bcffc8793293c1dc2b119efcea7dc",
+      "root_absent": true,
+      "remaining_owned_native_processes": [],
+      "remaining_owned_cgroups": []
+    },
+    "final_ssh": {
+      "managed_session": 17429,
+      "managed_exit": 0,
+      "ssh_exit": 0,
+      "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/managed-client-terminal.json",
+      "sha256": "9fe8679719ac3b7b6ffa3732d791dbc1d49723a4349b1fae9891e19e441e7b82"
+    },
+    "original_client_failure": {
+      "managed_session": 79533,
+      "managed_exit": 1,
+      "ssh_exit": 255,
+      "cause": "RPC heredoc terminator combined with status suffix; pending shell input, timeout, then same-worker reconnect and Ctrl-C recovery. No replacement worker."
+    },
+    "keys": [
+      {
+        "name": "key",
+        "existed_before_removal": true,
+        "absent_after_removal": true
+      },
+      {
+        "name": "key.pub",
+        "existed_before_removal": true,
+        "absent_after_removal": true
+      }
+    ],
+    "provider": {
+      "status": "completed",
+      "conclusion": "failure",
+      "headSha": "984879cb67580a272ce3aafae6669e7020112363",
+      "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41079138474",
+      "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/provider-observed.json",
+      "sha256": "9afa17c32d64f2313613fb6c7bcc277609f37790cbf2053685eda231bf59cfe4",
+      "restricted_access_post": "success",
+      "smoke_validation_post": "failure",
+      "smoke_failure_reason": "Agent omitted incremental-retry marker; observed retained build-progress was completed-part newline only. This is a fixture usage error, not a native gate failure. No replacement/native repeat was run.",
+      "storage_cleanup_limit": "Smoke post executes fs.rmSync in finally; logs retain original marker-validation error and no removal error. Restricted-access storage post succeeded. Provider is terminal; no independent post-teardown filesystem access exists."
+    },
+    "retained_local_ownership": "Keep reports, archives, scratch sources and dependency provenance until parent acceptance; no live remote/session/key obligations remain."
+  },
+  "independentReview": {
+    "task_contract": "acknowledged",
+    "input_completion_report_sha256": "e3bdbfd685b187af7821e559508c74612d7a6ca54fdf0d1a0837a7e46096a5b2",
+    "archives": {
+      "completion-evidence.tar.gz": {
+        "sha256": "cf58735ff8cef1e6be3647725431fdb8efe32cd1f3bb791e083edfc1b8fb49ac",
+        "bytes": 1585560,
+        "members": 154,
+        "regular": 154,
+        "directories": 0,
+        "all_member_bytes_equal_retained": true,
+        "safe_unique_names_no_links": true
+      },
+      "maintained-native-evidence.tar.gz": {
+        "sha256": "3ccb94cab903849d9348e294330c087a41732a60506291b93f20394d1264326f",
+        "bytes": 65561,
+        "members": 201,
+        "regular": 163,
+        "directories": 38,
+        "all_member_bytes_equal_retained": true,
+        "safe_unique_names_no_links": true
+      },
+      "multileaf-native-evidence.tar.gz": {
+        "sha256": "5fba7d9e6a191611b097c09f6d3064f8c742db31096c28db00173f602a755875",
+        "bytes": 83658,
+        "members": 122,
+        "regular": 98,
+        "directories": 24,
+        "all_member_bytes_equal_retained": true,
+        "safe_unique_names_no_links": true
+      }
+    },
+    "findings": [],
+    "completion_manifest_payload_count": 153,
+    "descriptor_case_receipts_verified": [
+      "regular-corrected",
+      "alias-corrected",
+      "pty-corrected2",
+      "cancel-corrected",
+      "reject-corrected5",
+      "regular-fresh",
+      "reject-fresh"
+    ],
+    "all_native_manifest_case_receipts_verified": 14,
+    "corrected_package_classes_verified": 32,
+    "source_sha256": "40078f068c4534bc244e857e914b884796edff4ef7dbbc8b429edc5563f00fbb",
+    "corrected_package_sha256": "f1755e7174a7aa37ffed1ae92abef742048643676ed0f7717d8fa450187e0c1b",
+    "original_package_sha256": "78fb6022d599edc590ebe919d10731991118b08055f7fafae980fe81d17641de",
+    "changed_package_entries": [
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Received.class",
+      "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native.class"
+    ],
+    "multileaf": {
+      "incremental": {
+        "events": 55,
+        "trust_rejection": 21,
+        "typed_two_leaf_rejection": 22,
+        "fresh_acceptance": 25,
+        "fourth_start": 26,
+        "native_outcomes": 4,
+        "no_timeout_or_fallback": true,
+        "parent_absent": true,
+        "probe_classes_verified": 2
+      },
+      "fresh": {
+        "events": 54,
+        "trust_rejection": 21,
+        "typed_two_leaf_rejection": 22,
+        "fresh_acceptance": 25,
+        "fourth_start": 26,
+        "native_outcomes": 4,
+        "no_timeout_or_fallback": true,
+        "parent_absent": true,
+        "probe_classes_verified": 2
+      }
+    },
+    "limitations": [
+      "DIRECT_EXEC diagnostic registration; production authenticated wrapper/controller IPC and actual Cargo admission/token retry remain unrun.",
+      "Borrowed-stream ATTACHED_LEADER_EXEC allocation-injection composition remains unrun; separate multileaf fixture uses legacy StandardFiles.",
+      "Linux ARM64, forced partial native failures, physical memory/swap denial, and top-level SchedulerCoordinator native drive remain unrun.",
+      "Provider completed/failure: missing incremental-retry smoke marker is retained; storage cleanup finally path has no independent post-teardown filesystem observation.",
+      "Source/package identity is checked against retained source digest, executed class digests and exact JAR bytes; no recompilation performed."
+    ],
+    "conclusion": "No concrete evidence contradiction found within the explicitly scoped passes; provider workflow success is not claimed.",
+    "verified_member_manifest": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ae-0f34-7d33-bac0-ef20bab69ad9/temp/linux-native-acceptance-s1ytef17/verified-members.json",
+      "sha256": "784cd76637f335c08b680c3c0a09232063a3dbd93355fca68bef750ca850b8b1",
+      "regular_members": 415
+    }
+  },
+  "parentVerification": {
+    "source": "Corrected maintained source matches the native candidate identity.",
+    "classes": "All 32 recorded executed owner classes match the exact corrected JAR.",
+    "receipts": "Full regular-file, PTY, foreign-session rejection, unreleased cancellation and final cleanup receipts inspected; scratch multi-leaf correction reviewed.",
+    "combinedCompile": "Fresh combined package exit0; 244 classes match exact union of the independent candidates. Prior passing Java checks were reused.",
+    "limitations": "DIRECT_EXEC diagnostic registration only. Real producer authentication, borrowed stream/injection composition, ARM64 acceptance, forced native failure injection and native top-level coordinator remain open. Provider smoke marker validation failed and remains failed."
+  }
+}
