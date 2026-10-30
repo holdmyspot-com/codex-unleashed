@@ -1,0 +1,431 @@
+{
+  "task_contract": "acknowledged",
+  "scope": "Targeted native x64 observation recovery, then remaining native composition; root-authorized narrow Frida teardown repair in isolated two-file worktree. No ARM64 repeat.",
+  "predecessor": "984879cb67580a272ce3aafae6669e7020112363",
+  "worktree": "/home/gili/codex-unleashed/worktrees/cp3-frida-destroy-race",
+  "changedMaintainedPaths": [
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeTest.java"
+  ],
+  "sources": {
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java": {
+      "path": "/home/gili/codex-unleashed/worktrees/cp3-frida-destroy-race/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java",
+      "sha256": "f1d4425ec4c032dc49910023cb28b1e6596f7c8a2339d21c4f9352fb5c61d4fb",
+      "size": 49574
+    },
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeTest.java": {
+      "path": "/home/gili/codex-unleashed/worktrees/cp3-frida-destroy-race/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeTest.java",
+      "sha256": "a8861fbe71add7672cfc39f58e015fd98ad072c31a5c3c8ae47852e877a357c5",
+      "size": 8680
+    }
+  },
+  "patch": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/repair.patch",
+    "sha256": "2736f912b290a91416bb657d1908fe45ad77172f522205615a6ce931f8ad6749",
+    "size": 9133
+  },
+  "originalPackage": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/bundle/modules/tooling-cli-1.0-SNAPSHOT.jar",
+    "sha256": "78fb6022d599edc590ebe919d10731991118b08055f7fafae980fe81d17641de",
+    "size": 521634
+  },
+  "candidateFreshPackage": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/repair-fresh/tooling-cli-1.0-SNAPSHOT.jar",
+    "sha256": "073b35e0a3c8ee589cbfecb992d240294f9acd2e6a6d8368b91a77634234c36f",
+    "size": 521841
+  },
+  "nativeCandidateOverlay": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/bundle/reconciled-tooling-cli.jar",
+    "sha256": "f9c35ee38ce9b806539249fa88c005fec16894b67b39f9746adb38261bc6c29f",
+    "size": 1137769
+  },
+  "overlayProof": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/repair-overlay-identity.json",
+    "sha256": "572667a16e7aa8160ef3f57af77a560707f121249bf8941aff65f06bd8db7643",
+    "size": 633
+  },
+  "productionClassDelta": [
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$NativeFailure.class",
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$ChildReceiver.class",
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Receiver.class",
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Child.class",
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager$Session$Script.class",
+    "com/holdmyspot/codexunleashed/scheduler/FridaRuntime.class"
+  ],
+  "javaTests": {
+    "behavioralRed": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/repair-red-xml/TEST-com.holdmyspot.codexunleashed.scheduler.FridaRuntimeTest.xml",
+      "sha256": "2a98d327dd25a87e4306a842bc767458acdfe405c172bca7d071916a22fe7933",
+      "size": 13362
+    },
+    "redLog": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/repair-red.log",
+      "sha256": "d690f2d92d1ecbbfafa2f6c0143fe1cccb6712abe1d7a9df248009a372ac1662",
+      "size": 6767
+    },
+    "incremental": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/incremental-receipt.json",
+      "sha256": "b4704a8114f0ec36f08dd92dfefd40eb1d6b7b24931f1ac4838f0789d3dc6fe5",
+      "size": 115447
+    },
+    "fresh": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/fresh-receipt.json",
+      "sha256": "9b17ff60aa761146d9c16f594a1f4e76424068ee66457e25cdcbfc5891ce3ec4",
+      "size": 58980
+    },
+    "redClassLimitation": "The initial red XML/log were copied before incremental recompilation; the initial red compiled test class itself was not retained. Green/fresh actual class bytes and package correspondence remain retained."
+  },
+  "native": {
+    "run": 41079765361,
+    "job": 124145570258,
+    "runtime": "Zulu27.0.1+9 named module and canonical jlink runtime",
+    "nativeAccess": "--illegal-native-access=deny; only tooling and com.github.oshi.ffm enabled",
+    "persistentSshSession": 30630,
+    "allExecutableClassIdentitiesPerRuntime": 243,
+    "cases": {
+      "denial-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/denial-named/receipt.json",
+          "sha256": "2be0be0d3af32119757f5c0cb18ed948c8bd8a01cbbf71c84b266d09bcbc03bc",
+          "size": 2653
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/denial-named.log",
+          "sha256": "84b445c30cea65ccf00039087cf622a415f9b1f3966b91637a5aace0d8ff6827",
+          "size": 7913
+        },
+        "outcome": "failed",
+        "eventCount": 32,
+        "rejections": null,
+        "failure": "java.io.IOException: Whole-Job observation failed for A/0"
+      },
+      "forced-linked": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/forced-linked/receipt.json",
+          "sha256": "b06c1f777202960553b3213aa859d685fa0738ac4f936ae5acace8ac5b5f4a2d",
+          "size": 3559
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/forced-linked.log",
+          "sha256": "6f69c5472ba2abb557dcd5e6dfa0b939814e3d829e327b1d5c43a0b80bfd7de8",
+          "size": 3444
+        },
+        "outcome": "passed",
+        "eventCount": 29,
+        "rejections": 1,
+        "failure": null,
+        "orderingVerified": {
+          "actualWait0BeforeQueryCleanupBeforeTypedRejection": true,
+          "reconciledOwnerAbsentBeforeFreshSample": true,
+          "freshCompleteSampleBeforeNextStart": true,
+          "authenticOutcomesExactlyOnce": 2
+        }
+      },
+      "forced-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/forced-named/receipt.json",
+          "sha256": "1ad779d2d18a0fabce6c1238b3ce9db35809672368531f9fc5fa721e917602e0",
+          "size": 4398
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/forced-named.log",
+          "sha256": "784de038ba72042d839c498b685dda73f4388f0ddd20bbcb4a043ffad181d95c",
+          "size": 4291
+        },
+        "outcome": "passed",
+        "eventCount": 37,
+        "rejections": 1,
+        "failure": null,
+        "orderingVerified": {
+          "actualWait0BeforeQueryCleanupBeforeTypedRejection": true,
+          "reconciledOwnerAbsentBeforeFreshSample": true,
+          "freshCompleteSampleBeforeNextStart": true,
+          "authenticOutcomesExactlyOnce": 2
+        }
+      },
+      "fresh-denial-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-denial-named/receipt.json",
+          "sha256": "a052abafcc26ad1c08d66257c4cfb0e8162da12421db561e869f80b274369a26",
+          "size": 2983
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-denial-named.log",
+          "sha256": "54c79bb391ab6d297519b9e905d7c47d8645ab7ad13e3c4ddffe34796ed6d483",
+          "size": 2886
+        },
+        "outcome": "passed",
+        "eventCount": 40,
+        "rejections": null,
+        "failure": null,
+        "actualNativeBoundariesVerified": true
+      },
+      "fresh-forced-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-forced-named/receipt.json",
+          "sha256": "ec480b2d28e134e704d37fb04f5f23748e6e818f8ee4dc5bc81f68a043347bf8",
+          "size": 3979
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-forced-named.log",
+          "sha256": "b27a67a6f20fda9fbd2528f0cfc5bb1b517e83f916fa78fdaa77e8eec6f4a1f5",
+          "size": 3868
+        },
+        "outcome": "passed",
+        "eventCount": 33,
+        "rejections": 1,
+        "failure": null,
+        "orderingVerified": {
+          "actualWait0BeforeQueryCleanupBeforeTypedRejection": true,
+          "reconciledOwnerAbsentBeforeFreshSample": true,
+          "freshCompleteSampleBeforeNextStart": true,
+          "authenticOutcomesExactlyOnce": 2
+        }
+      },
+      "fresh-natural-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-natural-named/receipt.json",
+          "sha256": "ca960b924456a69f1626edb7b12fba8f922ea6859abe8f69629f184a78ed8bd2",
+          "size": 3044
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh-natural-named.log",
+          "sha256": "1caff6f8116a22a8eae2cfbee5411a85bc5538e7d43d4c68ab847f65d4e85854",
+          "size": 2925
+        },
+        "outcome": "passed",
+        "eventCount": 26,
+        "rejections": 0,
+        "failure": null
+      },
+      "fresh2-denial-linked": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh2-denial-linked/receipt.json",
+          "sha256": "0720d2b6da0f58715e30fdfcff71e718d3ce3a0253d4ab88e49cbd0e8274a64b",
+          "size": 2983
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fresh2-denial-linked.log",
+          "sha256": "aa4142b49df47e24444187494b312f27ccb0a87a0d2b8b98ffa0f55b85ea7062",
+          "size": 2886
+        },
+        "outcome": "passed",
+        "eventCount": 40,
+        "rejections": null,
+        "failure": null,
+        "actualNativeBoundariesVerified": true
+      },
+      "natural-linked": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/natural-linked/receipt.json",
+          "sha256": "06819fb350c9a2d772e42c3e1a2ededab973dd5195f1a0df23d05d0289c35a94",
+          "size": 3464
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/natural-linked.log",
+          "sha256": "d07b221efcce6112a94f5fb1210e71444a414b834b7876de7804a2dd8abb69da",
+          "size": 3349
+        },
+        "outcome": "passed",
+        "eventCount": 30,
+        "rejections": 0,
+        "failure": null
+      },
+      "natural-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/natural-named/receipt.json",
+          "sha256": "605a45d3b9a799ac8912ad0ab3f2ae33de3a19605d957ac9d1c85ed89516fe74",
+          "size": 3044
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/natural-named.log",
+          "sha256": "b2e21cdf52e88ec70eb240ba2ebeba1a27c6fe956a0b8deb0a9cde86b1a6cbfb",
+          "size": 2925
+        },
+        "outcome": "passed",
+        "eventCount": 26,
+        "rejections": 0,
+        "failure": null
+      },
+      "retry-denial-linked": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry-denial-linked/receipt.json",
+          "sha256": "f5189f18a987d841151dd8f283fbdf62e0685febad4f1953f5e9b37538b181fb",
+          "size": 2552
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry-denial-linked.log",
+          "sha256": "ea6ab3197b74833f5c03340fc176dd2b4a40256d705977c9ca3349f124daed1f",
+          "size": 3348
+        },
+        "outcome": "failed",
+        "eventCount": 33,
+        "rejections": null,
+        "failure": "com.holdmyspot.codexunleashed.scheduler.ObservationRejected: Memory observation rejected: MEMBERSHIP_CHANGED"
+      },
+      "retry-denial-named": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry-denial-named/receipt.json",
+          "sha256": "9b6cf136d27d464295f77d936a4649f713047f2568d003f04218a174030303a4",
+          "size": 2983
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry-denial-named.log",
+          "sha256": "1e3f677b224b75ec2c3cd4a867c98c8ed9af820f391b8a0b59f779a5fcddc327",
+          "size": 2886
+        },
+        "outcome": "passed",
+        "eventCount": 40,
+        "rejections": null,
+        "failure": null,
+        "actualNativeBoundariesVerified": true
+      },
+      "retry2-denial-linked": {
+        "receipt": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry2-denial-linked/receipt.json",
+          "sha256": "60891a4569ba8cbf7daa01d7f70f790aaef6f892c61ffb8d8b1766fc4b86b484",
+          "size": 2983
+        },
+        "log": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/retry2-denial-linked.log",
+          "sha256": "8fa75623b0ebc1d7faefc52e6eed19ed2805bd44fdd3f2b328a1d532bc752c23",
+          "size": 2886
+        },
+        "outcome": "passed",
+        "eventCount": 40,
+        "rejections": null,
+        "failure": null,
+        "actualNativeBoundariesVerified": true
+      }
+    },
+    "producer": {
+      "librarySha256": "1204d9360b3909a7ad18163810edce8c43c53df999886c15133e8814474627f4",
+      "dllSha256": "cd63660d5ffe17599b481af5e0699804a636a87211100f4351c9ff670f5194af",
+      "archiveSha256": "42af54ded8be200b461d6e75066bc2c781878a6afd249c940dd8888158a9bf3a",
+      "url": "https://github.com/frida/frida/releases/download/17.24.3/frida-core-devkit-17.24.3-windows-x86_64.tar.xz",
+      "architecture": "x64",
+      "completed": "2026-10-30T15:30:45.4990588Z",
+      "exportCount": 29,
+      "workloadSha256": "807a30fb855b713a4949c2aa71a60507fd24bc43f40db7b948a4bb2a1e8f6b21"
+    },
+    "artifactIds": [
+      12990492635,
+      12990602668
+    ],
+    "exactInputs": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/exact-artifact/native-exact-inputs.tar.gz",
+      "sha256": "8d9f3ec5f62e27661b08448daf9a5bc394bc5b79346e64c0286fd932954b6a3d",
+      "size": 36695061
+    },
+    "receipts": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/exact-inputs/native-receipts.tar.gz",
+      "sha256": "070142a276404a16db3852f429ecc82a99778914c0c62224ed84de6e2766287e",
+      "size": 973675
+    },
+    "headerSupplement": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/header-artifact/native-header.tar.gz",
+      "sha256": "c97091b504b28ca0f8b559bcfc9ac539821d5a530d69a2e4a981f26d9d39ff2f",
+      "size": 394647
+    },
+    "header": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/header-inputs/devkit/frida-core.h",
+      "sha256": "3909d3e19748fab6144e6c41143e4be02b99dae21ddf0b39c1f5f16db1e6d93a",
+      "size": 2810482
+    }
+  },
+  "rootCause": {
+    "originalNativeRed": "denial-named: unload returned frida-error-quark/code6 Script is destroyed after precheck. Whole Job zero was already observed. Native cleanup correctly remained terminal/sticky.",
+    "pinnedSource": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/frida-17.24.3.vala",
+      "sha256": "ecba7afb953439e7e9501b55c7c9d3f8027947040138997e2b509455249fde40",
+      "size": 164985
+    },
+    "sourceUrl": "https://raw.githubusercontent.com/frida/frida-core/17.24.3/src/frida.vala",
+    "sourceLines": {
+      "is_destroyed": 5228,
+      "unload_check_open": 5282,
+      "check_open": 5471,
+      "close_request_assignment": 5486
+    },
+    "headerEnum": "FRIDA_ERROR_INVALID_OPERATION is zero-based6 (header64109); selected only with frida-error-quark.",
+    "repair": "Catch only unload NativeFailure matching exact domain/code; require authoritative post-failure destroyed state, then retire owned references. Post-observation errors preserve original native failure and remain sticky. No retry of uncertain native effects; no change to whole-Job barrier.",
+    "independentReview": "allocation_batch_review confirmed exact pinned semantics and header; parent reviewed full patch before native use.",
+    "nativeBranchLimit": "Passing native retries establish combined lifecycle; the race branch has no added production trace counter. Exact forced stale-precheck classification is exercised by the controlled Script.close behavioral test, not claimed counted in each passing native run."
+  },
+  "fixtureCorrection": {
+    "nativeRed": "retry-denial-linked propagated actual typed MembershipChanged because old handwritten probe omitted outer-loop observation retry. All native cleanup succeeded.",
+    "scope": "Scratch WindowsCompositionProbe only: bounded32 typed catch/re-pump/fresh queue.cycle. Ordinary errors still terminal. Production SchedulerCoordinator already passed recovery named+linked.",
+    "originalSource": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/original-inputs/WindowsCompositionProbe.java",
+      "sha256": "bbe852232fc07d913df9766733162eb056fa5414402c67530d33068f34a9575f",
+      "size": 16145
+    },
+    "updatedSource": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/WindowsCompositionProbe.java",
+      "sha256": "8a233372574376585af7c25a67689d83d2252362894ce01b3cb7bb3a9d5b28df",
+      "size": 16496
+    },
+    "updatedClassesManifest": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/native-receipts/fixture-updated-identities.sha256",
+      "sha256": "461bcc9e605b61cc4abca015542266d03d9496af5b32141b273b88c2a30a3f70",
+      "size": 1228
+    }
+  },
+  "controlledBoundary": "TracingKernel forwards all real native results; it releases a real worker after K32 RSS read, waits actual retained handle status0, and observes successful native query close before actual typed rejection. No native status, RSS, retry permit or completion fabricated. Forced A exits without child; B exercises held descendant.",
+  "claimsExcluded": [
+    "physical-pressure threshold correctness",
+    "successful denied allocation recovery",
+    "automatic aborted-completion retry acceptance (denial probe direct-polls actual aborted result then closes queue)",
+    "vanished-before-OpenProcess support",
+    "generic native access/identity/cleanup error recovery",
+    "real Cargo/Bazel discovery or command producers",
+    "fresh clean Codex build; fresh native proofs mean new JVM/Job/manager/script/marker directory with unchanged built inputs"
+  ],
+  "reusedPremises": [
+    "accepted W2 held-child routing/CRT semantics",
+    "Windows prepared owner/residency native evidence",
+    "168 accepted Java observation/stream tests; not repeated",
+    "ARM64 existing passing native cases; not repeated"
+  ],
+  "cleanup": {
+    "run": 41079765361,
+    "job": 124145570258,
+    "remoteProcesses": "zero executable consumers under owned root",
+    "ownedRoot": "removed and absence checked before explicit SSH exit",
+    "sshExit": 0,
+    "providerJob": "completed/failure deliberate smoke17",
+    "allProviderPostSteps": "success",
+    "keysRemoved": [
+      ".cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/client-key",
+      ".cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/x64/client-key.pub"
+    ],
+    "remoteOwnershipRemaining": false,
+    "localScratch": "retained for parent acceptance"
+  },
+  "remainingGates": [
+    "Native Linux descriptor correction acceptance.",
+    "Native macOS scheduler transport and ownership.",
+    "Actual Cargo/Bazel producers, physical pressure and complete scheduler acceptance.",
+    "Checkpoint 3 uncached per-platform scheduler comparison after scheduler completion."
+  ],
+  "retainedOwnership": "Owned local scratch and isolated worktree retained for parent acceptance; no live remote/client/key ownership.",
+  "upstreamReport": {
+    "path": ".cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/report.json",
+    "sha256": "5202cacffb2fb34ad496c4c2948a2fddda597f693399991423e7f0ba924ba2fa"
+  },
+  "parentAcceptance": {
+    "status": "accepted narrow cleanup repair and bounded native x86-64 results; checkpoint 3 remains incomplete",
+    "sourceReview": "Full two-file patch and pinned Frida source reviewed. Only the exact unload failure with frida-error-quark/code6 and authoritative destroyed state is reconciled; uncertain cleanup remains terminal.",
+    "retainedEvidence": "All 32 safe outer archive members match their retained source bytes; all 145 nested native payloads and five native header payloads match retained bytes.",
+    "javaEvidence": "Behavior-specific failing XML retained; eight focused tests pass incrementally and from fresh output. All 368 after-output identities in each transaction receipt independently checked.",
+    "nativeEvidence": "Forced membership-change probe uses actual kernel calls and process exit; full fresh denial trace reviewed. Named and linked runtime case receipts retain original failures and passing corrected cases separately.",
+    "linkedIdentityLimit": "All 243 packaged class hashes checked against the fresh tested JAR. Runtime-extracted stripped bytes are attested by the retained verification log, but were not independently rehashed by the parent.",
+    "combinedCompile": {
+      "jarSha256": "772505bcd74192b8de9f40ce85a27f5a0de3d18e4c98edeb6232fa56dee956d4",
+      "exitCode": 0,
+      "classEntries": 244,
+      "correspondence": "Exact union of accepted original classes, two corrected Linux descriptor classes and six corrected Frida classes. Compilation only; no claim of combined native acceptance."
+    },
+    "cleanup": "Raw process, remote-removal, SSH-terminal and provider-post receipts reviewed. No retained remote ownership."
+  }
+}

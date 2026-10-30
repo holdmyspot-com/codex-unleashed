@@ -750,7 +750,30 @@ final class FridaRuntime implements AutoCloseable
 						if (handle.equals(MemorySegment.NULL) == false)
 						{
 							if (loadAttempted && (int) invoke(isDestroyed, handle) == 0)
-								checkedVoid("frida_script_unload_sync", unloadScript, handle);
+							{
+								try
+								{
+									checkedVoid("frida_script_unload_sync", unloadScript, handle);
+								}
+								catch (NativeFailure failure)
+								{
+									// Target exit may destroy the script after the precheck. Pinned Frida's
+									// INVALID_OPERATION then means unload never began. Destruction alone is
+									// not a process-lifetime barrier; the caller still owns that obligation.
+									if (failure.domain().equals("frida-error-quark") == false || failure.code() != 6)
+										throw failure;
+									try
+									{
+										if ((int) invoke(isDestroyed, handle) == 0)
+											throw failure;
+									}
+									catch (RuntimeException | Error observationFailure)
+									{
+										failure.addSuppressed(observationFailure);
+										throw failure;
+									}
+								}
+							}
 							invoke(unref, handle);
 							handle = MemorySegment.NULL;
 						}
