@@ -1,0 +1,1403 @@
+{
+  "scope": "Owner-requested fresh six-target release compilation and native smoke; broader runtime acceptance remains in checkpoint-1-acceptance.json.",
+  "configuration": {
+    "cache": false,
+    "upstreamSource": "pristine selected pin; source guards run in each baseline job"
+  },
+  "provider": {
+    "conclusion": "success",
+    "databaseId": 40969300870,
+    "headSha": "6e9e0f8402a0b08a923dd5139aaa05c9a04795ed",
+    "status": "completed",
+    "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40969300870",
+    "workflowName": "Stable upstream release builds"
+  },
+  "jobs": [
+    {
+      "id": 123781712144,
+      "name": "select",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run if [[ \"$CACHE_HIT_REQUIRED\" == true && \"$CACHE_ENABLED\" == false ]]; then",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787195,
+      "name": "Baseline - aarch64-pc-windows-msvc",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787233,
+      "name": "Baseline - aarch64-unknown-linux-musl",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787284,
+      "name": "Baseline - x86_64-unknown-linux-musl",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787396,
+      "name": "Baseline - x86_64-apple-darwin",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787443,
+      "name": "Baseline - x86_64-pc-windows-msvc",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 123781787638,
+      "name": "Baseline - aarch64-apple-darwin",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve restart inputs outside the source checkout",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Preserve the cache helper before upstream checkout",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pristine upstream source identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Linux runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Record macOS runner capacity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record Windows runner capacity",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Linux bwrap prerequisites",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the upstream Rust toolchain",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cache Cargo dependency downloads",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's Zig prerequisite",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Exclude generated Zig cache from checkout source inventory",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install upstream's musl build inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's musl entropy configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify and configure upstream V8 artifacts",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Expose the matching MSVC environment",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select upstream's Windows SQLite configuration",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select noninteractive Git input on Windows",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the cache helper's native JDK",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build and verify the bundled cache helper",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Select the declared Node version for cache transport checks",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Set up the GHCR cache transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native cache archive transport",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Log in to the GHCR cache",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Identify exact and compatible compiled-cache inputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Restore compiled Cargo outputs from GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Prepare content-checked cached source freshness",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Build the upstream release binaries with default features",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Controlled failure for partial-cache verification",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Smoke-test both native executable variants",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upstream source and tests remain unmodified",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify dependency identity before accepting build outputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record verified source inputs for cached build outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save verified compiled Cargo outputs to GHCR",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Save unverified partial compilation state for retry",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify changed CLI input without publishing diagnostic outputs",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Preserve cache input comparison evidence",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Retain baseline evidence for one day",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve the exact stable upstream source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Retrieve restart inputs",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "acceptance": "passed",
+  "limitations": [
+    "Previously approved runtime and audit deferrals remain unchanged.",
+    "This run does not verify the checkpoint 3 scheduler."
+  ]
+}
