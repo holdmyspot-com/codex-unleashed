@@ -272,7 +272,11 @@ public final class Controller
 			recovering, completions);
 		Policy.Decision decision = Policy.chooseAction(budget, completeJobs, observation);
 		if (decision.control() != Policy.Control.WAIT)
-			controls.apply(decision);
+			try { controls.apply(decision); }
+			catch (ObservationRejected failure)
+			{
+				throw new IOException("Control failed after the memory batch was accepted", failure);
+			}
 		return decision;
 	}
 }

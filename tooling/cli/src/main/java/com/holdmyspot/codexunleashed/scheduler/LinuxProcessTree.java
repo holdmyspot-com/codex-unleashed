@@ -289,6 +289,8 @@ public final class LinuxProcessTree implements AutoCloseable {
      * Immutable workload inputs used by the trusted gate and supervisor.
      */
     private final Launch launch;
+    /** Authenticated borrowed-stream receipt, absent for existing launch modes. */
+    private LinuxBorrowedStreams.Binding borrowedStreams;
     /**
      * Linux libc access used only by this dedicated supervisor and its trusted gate.
      */
@@ -399,7 +401,33 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @throws IOException if native authority, process creation, containment or readiness fails
      */
     private static LinuxProcessTree prepareOwned(Launch launch, StandardFiles files) throws IOException {
+        return prepareOwned(launch, files, null);
+    }
+
+    /**
+     * Prepares an authenticated borrowed descriptor path without changing legacy redirects.
+     * @param launch launch whose execution fields must match authorization
+     * @param streams complete stream binding or descriptor context
+     * @return the validated operation result
+     * @throws java.io.IOException if validation, native access or owned cleanup fails
+     */
+    static LinuxProcessTree prepareBorrowed(Launch launch, LinuxBorrowedStreams.Binding streams) throws IOException {
+        Objects.requireNonNull(streams, "streams may not be null").requireExecution(launch);
+        return prepareOwned(launch, null, streams);
+    }
+
+    /**
+     * Retains the state required by this owned native operation.
+     * @param launch immutable approved execution inputs
+     * @param files legacy redirect endpoints, or absent for other modes
+     * @param streams authenticated borrowed-stream receipt, or absent for legacy modes
+     * @return the validated result retained by this operation
+     * @throws java.io.IOException if validation, native access or owned cleanup fails
+     */
+    private static LinuxProcessTree prepareOwned(Launch launch, StandardFiles files,
+        LinuxBorrowedStreams.Binding streams) throws IOException {
         LinuxProcessTree tree = new LinuxProcessTree(launch);
+        tree.borrowedStreams = streams;
         try {
             if (tree.nativeCalls.uid() != 0) throw new IOException("This candidate requires an elevated standalone supervisor");
             tree.nativeCalls.setSubreaper();
@@ -419,6 +447,12 @@ public final class LinuxProcessTree implements AutoCloseable {
                 files.redirect(builder);
             }
             tree.root = builder.start();
+            if (streams != null) {
+                Files.writeString(tree.group.resolve("cgroup.procs"), Long.toString(tree.root.pid()), StandardOpenOption.WRITE);
+                if (!tree.members().contains(tree.root.pid()))
+                    throw new IOException("Borrowed-stream gate is absent from its owned cgroup");
+                Files.writeString(tree.scratch.resolve("streams-contained"), "contained", StandardOpenOption.CREATE_NEW);
+            }
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             while (Files.exists(tree.scratch.resolve("ready")) == false) {
                 if (tree.root.isAlive() == false) throw new IOException("Trusted gate exited before readiness: " + tree.root.waitFor());
@@ -471,6 +505,13 @@ public final class LinuxProcessTree implements AutoCloseable {
         for (int index = 0; index < launch.command().size(); index++)
             values.setProperty("command." + index, launch.command().get(index));
         for (var entry : launch.environment().entrySet()) values.setProperty("environment." + entry.getKey(), entry.getValue());
+        LinuxBorrowedStreams.writeTo(values, borrowedStreams);
+        if (borrowedStreams != null) {
+            values.setProperty("borrowed.actual.java", launch.javaExecutable().toString());
+            values.setProperty("borrowed.actual.classpath", launch.classPath().toString());
+            Files.createFile(scratch.resolve("launch.xml"),
+                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+        }
         try (OutputStream output = Files.newOutputStream(scratch.resolve("launch.xml"))) {
             values.storeToXML(output, "Trusted helper workload inputs");
         }
@@ -728,8 +769,73 @@ public final class LinuxProcessTree implements AutoCloseable {
         Path scratch = Path.of(args[1]);
         Properties values = new Properties();
         try (InputStream input = Files.newInputStream(scratch.resolve("launch.xml"))) { values.loadFromXML(input); }
-        ExecutionMode mode = ExecutionMode.readFrom(values);
+        LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(values);
+        if (streams == null) {
+            runConfiguredGate(scratch, values, null);
+            return;
+        }
+        try { runConfiguredGate(scratch, values, streams); }
+        catch (Throwable failure) {
+            try { Files.writeString(scratch.resolve("streams-failure.txt"), String.valueOf(failure), StandardOpenOption.CREATE_NEW); }
+            catch (Throwable diagnosticFailure) { /* The controller still owns terminal collection. */ }
+            Runtime.getRuntime().halt(125);
+        }
+    }
+
+    /** Installation boundary used by the trusted gate before publishing readiness. */
+    @FunctionalInterface
+    /** Installs the pending descriptors in the dedicated gate. */
+    interface StreamInstallation {
+        /**
+         * Installs the complete borrowed descriptor triple before readiness.
+         * @throws IOException if installation fails and workload execution must remain impossible
+         */
+        void install() throws IOException;
+    }
+
+    /**
+     * Publishes readiness only after the complete borrowed-stream installation succeeds.
+     * @param scratch private trusted-gate state directory
+     * @param installation descriptor installation completed before readiness
+     * @throws java.io.IOException if validation, native access or owned cleanup fails
+     */
+    static void publishBorrowedReady(Path scratch, StreamInstallation installation) throws IOException {
+        installation.install();
         Files.writeString(scratch.resolve("ready"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);
+    }
+
+    /**
+     * Installs borrowed descriptors before readiness, then uses the existing release/exec protocol.
+     * @param scratch private trusted-gate state directory
+     * @param values protected configuration properties
+     * @param streams complete stream binding or descriptor context
+     * @throws java.lang.Exception if validation, native access or owned cleanup fails
+     */
+    private static void runConfiguredGate(Path scratch, Properties values, LinuxBorrowedStreams.Binding streams)
+        throws Exception {
+        ExecutionMode mode = ExecutionMode.readFrom(values);
+        if (streams != null) {
+            long containedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (!Files.exists(scratch.resolve("streams-contained"))) {
+                if (System.nanoTime() >= containedDeadline) throw new IOException("Borrowed gate containment was not established");
+                Thread.sleep(10);
+            }
+            List<String> approvedCommand = new ArrayList<>();
+            int approvedCount = Integer.parseInt(values.getProperty("command.count"));
+            for (int index = 0; index < approvedCount; index++) approvedCommand.add(values.getProperty("command." + index));
+            Map<String, String> approvedEnvironment = new LinkedHashMap<>();
+            for (String key : values.stringPropertyNames())
+                if (key.startsWith("environment.")) approvedEnvironment.put(key.substring("environment.".length()), values.getProperty(key));
+            Launch approved = streams.approvedLaunch();
+            Launch actual = new Launch(approved.cgroupParent(), approved.scratchParent(),
+                Path.of(values.getProperty("borrowed.actual.java")), Path.of(values.getProperty("borrowed.actual.classpath")),
+                approvedCommand, approvedEnvironment, Path.of("").toAbsolutePath(),
+                Integer.parseInt(values.getProperty("uid")), Integer.parseInt(values.getProperty("gid")), mode);
+            streams.requireExecution(actual);
+            publishBorrowedReady(scratch, () -> LinuxBorrowedStreams.installBeforeReady(streams, java.time.Duration.ofSeconds(10)));
+        } else {
+            Files.writeString(scratch.resolve("ready"), Long.toString(ProcessHandle.current().pid()), StandardOpenOption.CREATE_NEW);
+        }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
         while (Files.exists(scratch.resolve("release")) == false) {
             if (System.nanoTime() >= deadline) throw new IOException("Unreleased trusted gate self-expired after 60 seconds");

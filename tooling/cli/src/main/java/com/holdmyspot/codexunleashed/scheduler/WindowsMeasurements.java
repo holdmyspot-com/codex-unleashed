@@ -3,6 +3,7 @@ package com.holdmyspot.codexunleashed.scheduler;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -136,6 +137,12 @@ public final class WindowsMeasurements implements Controller.Measurements
         try
         {
             return registration.process.readResidentBytes();
+        }
+        catch (WindowsProcess.MembershipChanged changed)
+        {
+            throw new ObservationRejected(ObservationRejected.Operation.RESIDENT,
+                ObservationRejected.Reason.MEMBERSHIP_CHANGED,
+                List.of(new ObservationRejected.Attempt(attempt.action().name(), attempt.startedAt())), changed);
         }
         catch (IllegalStateException failure)
         {

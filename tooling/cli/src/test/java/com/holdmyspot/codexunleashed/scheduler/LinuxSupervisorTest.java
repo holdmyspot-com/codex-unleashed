@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
@@ -118,4 +121,10 @@ public final class LinuxSupervisorTest
 		Path parent = Path.of("unresolved-supervisor-parent").toAbsolutePath();
 		return new LinuxProcessTree.StandardFiles(parent.resolve("input"), parent.resolve("output"), parent.resolve("error"));
 	}
+
+    /** A missing registration receipt is rejected before process or cgroup acquisition. */
+    @Test
+    public void borrowedPreparationRejectsMissingReceiptBeforeAcquisition() {
+        requireException(NullPointerException.class, () -> LinuxSupervisor.prepareInstrumentedBorrowed(null, Duration.ofSeconds(1)));
+    }
 }

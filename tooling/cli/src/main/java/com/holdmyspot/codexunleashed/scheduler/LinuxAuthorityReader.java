@@ -224,9 +224,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 				}
 				catch (IOException | RuntimeException failure)
 				{
-					result = new Properties();
-					result.setProperty("status", "unavailable");
-					result.setProperty("error", failure.toString());
+					result = rejection(failure);
 					failure.printStackTrace(System.err);
 				}
 				LinuxAuthority.publish(directory.resolve("response-" + sequence + ".properties"), result);
@@ -245,12 +243,64 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	}
 
 	/**
+	 * Serializes a rejection only after its complete reader-side trust checks have finished.
+	 * @param failure rejected request diagnostic
+	 * @return unavailable reply, including exact removed-leaf metadata only for verified candidates
+	 */
+	private static Properties rejection(Throwable failure)
+	{
+		var result = new Properties();
+		result.setProperty("status", "unavailable");
+		result.setProperty("error", failure.toString());
+		if (failure instanceof RemovedLeaf removed)
+		{
+			result.setProperty("reason", LinuxAuthority.MISSING_LEAF);
+			result.setProperty("count", Integer.toString(removed.attempts.size()));
+			for (int index = 0; index < removed.attempts.size(); index++)
+			{
+				var attempt = removed.attempts.get(index);
+				result.setProperty("name." + index, attempt.name());
+				result.setProperty("attempt." + index, Long.toString(attempt.sequence()));
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * Executes one request against this retained namespace and registry.
 	 * @param request ordinal-bound protocol document
 	 * @return response fields, without status until execution succeeds
 	 * @throws IOException if a required observation or exact mapping is unavailable
 	 */
 	private Properties execute(Properties request) throws IOException
+	{
+		try
+		{
+			return executeChecked(request);
+		}
+		catch (NativeFailure failure)
+		{
+			if (failure.errno == 2 && failure.getSuppressed().length == 0 &&
+				isObservation(request.getProperty("operation", "")))
+			{
+				try { verifyObservation(); }
+				catch (RemovedLeaf removed)
+				{
+					removed.addSuppressed(failure);
+					throw removed;
+				}
+			}
+			throw failure;
+		}
+	}
+
+	/**
+	 * Executes one request between complete authority checks.
+	 * @param request ordinal-bound request
+	 * @return fields of a complete successful response
+	 * @throws IOException if observation or request execution fails
+	 */
+	private Properties executeChecked(Properties request) throws IOException
 	{
 		Properties result = new Properties();
 		String operation = request.getProperty("operation", "");
@@ -267,7 +317,7 @@ public final class LinuxAuthorityReader implements AutoCloseable
 				workloads.remove(attempt);
 				return result;
 			}
-			default -> verify();
+			default -> verifyForOperation(operation);
 		}
 		switch (operation)
 		{
@@ -305,8 +355,103 @@ public final class LinuxAuthorityReader implements AutoCloseable
 			case "verify" -> { }
 			default -> throw new IOException("Unsupported authority request: " + request.getProperty("operation"));
 		}
-		verify();
+		verifyForOperation(operation);
 		return result;
+	}
+
+	/**
+	 * Indicates whether an operation only observes memory authority.
+	 * @param operation request discriminator
+	 * @return true for host, residency and complete-batch verification
+	 */
+	private static boolean isObservation(String operation)
+	{
+		return switch (operation)
+		{
+			case "host", "resident", "verify" -> true;
+			default -> false;
+		};
+	}
+
+	/**
+	 * Applies strict mutation verification or observation-transition verification.
+	 * @param operation request discriminator
+	 * @throws IOException if authority is unavailable
+	 */
+	private void verifyForOperation(String operation) throws IOException
+	{
+		if (isObservation(operation)) verifyObservation();
+		else verify();
+	}
+
+	/**
+	 * Verifies all authority before reporting a supported removed-leaf observation.
+	 * @throws IOException if any trust check fails or a registered leaf was removed
+	 */
+	private void verifyObservation() throws IOException
+	{
+		ArrayList<Check> checks = new ArrayList<>();
+		for (var entry : workloads.entrySet())
+			checks.add(() -> verifyWorkloadTransition(entry.getKey(), entry.getValue()));
+		verifyObservation(() -> { verifyContext(); verifyHostFiles(); }, checks);
+	}
+
+	/**
+	 * Checks global authority before and after all workloads, including a deferred missing-leaf candidate.
+	 * @param context global namespace, mapping and admission check
+	 * @param checks complete registered-workload checks
+	 * @throws IOException if a required trust check fails or a supported leaf was removed
+	 */
+	private static void verifyObservation(Check context, List<Check> checks) throws IOException
+	{
+		context.verify();
+		RemovedLeaf removed = null;
+		try { verifyWorkloads(checks); }
+		catch (RemovedLeaf candidate) { removed = candidate; }
+		context.verify();
+		if (removed != null) throw removed;
+	}
+
+	/**
+	 * Verifies a workload, permitting only nomination of its exact absent immediate leaf.
+	 * @param attempt registered action and ordinal
+	 * @param workload retained native ownership
+	 * @throws IOException if trust changed or the verified immediate leaf was removed
+	 */
+	private void verifyWorkloadTransition(LinuxMeasurements.Attempt attempt, Workload workload) throws IOException
+	{
+		boolean immediateLeaf = workload.directory().equals(workload.leaf().getParent());
+		if (immediateLeaf && isLeafAbsent(workload.leaf()))
+		{
+			Held leaf = workload.chain().groups().getFirst();
+			if (!leaf.path().equals(workload.leaf()) || !leaf.identity().equals(calls.identity(leaf.descriptor())))
+				throw new IOException("Retained workload leaf identity changed: " + workload.leaf());
+			Chain chain = workload.chain();
+			verifyChain(new Chain(chain.groups().subList(1, chain.groups().size()),
+				chain.ancestors().subList(1, chain.ancestors().size())));
+			verifyTopology(workload, true);
+			throw new RemovedLeaf(attempt);
+		}
+		verifyChain(workload.chain());
+		verifyTopology(workload);
+	}
+
+	/**
+	 * Indicates whether opening the exact registered leaf reports ENOENT.
+	 * @param leaf exact immediate workload leaf in the retained clean mount
+	 * @return true only for failed path acquisition with native ENOENT
+	 * @throws IOException if acquisition fails differently or an acquired descriptor cannot close
+	 */
+	private boolean isLeafAbsent(Path leaf) throws IOException
+	{
+		Descriptor current;
+		try { current = calls.openBelow(root, cgroupRoot.relativize(leaf), true); }
+		catch (NativeFailure absent)
+		{
+			if (absent.errno == 2) return true;
+			throw absent;
+		}
+		try (current) { return false; }
 	}
 
 	/**
@@ -408,6 +553,41 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 */
 	static final class SharedSecrets
 	{
+		/**
+		 * Exercises the production all-workload verification decision.
+		 * @param checks controlled workload observations
+		 * @throws IOException if any required observation fails
+		 */
+		static void verifyWorkloads(List<Check> checks) throws IOException
+		{
+			LinuxAuthorityReader.verifyWorkloads(checks);
+		}
+		/**
+		 * Exercises global checks around the complete workload observation decision.
+		 * @param context global authority check
+		 * @param checks complete controlled workload observations
+		 * @throws IOException if authority or a registered observation is unavailable
+		 */
+		static void verifyObservation(Check context, List<Check> checks) throws IOException
+		{
+			LinuxAuthorityReader.verifyObservation(context, checks);
+		}
+		/**
+		 * Models the already-verified missing-leaf outcome, not native absence detection.
+		 * @param attempt registered action identity
+		 * @return modeled reader outcome
+		 */
+		static IOException removedLeaf(LinuxMeasurements.Attempt attempt)
+		{
+			return new RemovedLeaf(attempt);
+		}
+		/**
+		 * Exercises the actual rejection serializer after controlled workload checks.
+		 * @param failure observation result to serialize
+		 * @return structured failed reply
+		 */
+		static Properties rejection(IOException failure) { return LinuxAuthorityReader.rejection(failure); }
+
 		/**
 		 * Prevents construction of the resource-free test facade.
 		 */
@@ -536,6 +716,19 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 */
 	private void verify() throws IOException
 	{
+		verifyContext();
+		ArrayList<Check> checks = new ArrayList<>();
+		for (Workload workload : workloads.values())
+			checks.add(() -> { verifyChain(workload.chain()); verifyTopology(workload); });
+		verifyWorkloads(checks);
+	}
+
+	/**
+	 * Verifies the reader context independently of individual workload lifetimes.
+	 * @throws IOException if global authority changed
+	 */
+	private void verifyContext() throws IOException
+	{
 		calls.requireUnfiltered();
 		if (!mountNamespace.equals(namespace(procRoot, "mnt")) || !cgroupNamespace.equals(namespace(procRoot, "cgroup")) ||
 			!pidNamespace.equals(namespace(procRoot, "pid")))
@@ -547,11 +740,64 @@ public final class LinuxAuthorityReader implements AutoCloseable
 		if (!membership(ProcessHandle.current().pid()).equals(helperGroup))
 			throw new IOException("Memory reader left its contained mapped group");
 		verifyChain(admission);
-		for (Workload workload : workloads.values())
+	}
+
+	/**
+	 * One complete authority or workload observation.
+	 */
+	@FunctionalInterface
+	interface Check
+	{
+		/**
+		 * Verifies one observation.
+		 * @throws IOException if it cannot establish its required authority
+		 */
+		void verify() throws IOException;
+	}
+
+	/**
+	 * A verified missing registered leaf, awaiting all other authority checks.
+	 */
+	private static final class RemovedLeaf extends IOException
+	{
+		/**
+		 * Registered action whose immediate leaf is absent.
+		 */
+		private final List<LinuxMeasurements.Attempt> attempts;
+		/**
+		 * Retains the exact action identity without implying completion.
+		 * @param attempt registered action and process-attempt ordinal
+		 */
+		private RemovedLeaf(LinuxMeasurements.Attempt attempt)
 		{
-			verifyChain(workload.chain());
-			verifyTopology(workload);
+			this(List.of(attempt));
 		}
+
+		/**
+		 * Retains every verified candidate after checking the complete registry.
+		 * @param attempts exact distinct candidates, without supplying completion authority
+		 */
+		private RemovedLeaf(List<LinuxMeasurements.Attempt> attempts)
+		{
+			super("Registered workload leaves were removed: " + attempts);
+			this.attempts = List.copyOf(attempts);
+		}
+	}
+
+	/**
+	 * Verifies every workload before granting any observation-transition classification.
+	 * @param checks checks in the current complete registry
+	 * @throws IOException if a required observation fails
+	 */
+	private static void verifyWorkloads(List<Check> checks) throws IOException
+	{
+		var attempts = new ArrayList<LinuxMeasurements.Attempt>();
+		for (Check check : checks)
+		{
+			try { check.verify(); }
+			catch (RemovedLeaf candidate) { attempts.addAll(candidate.attempts); }
+		}
+		if (!attempts.isEmpty()) throw new RemovedLeaf(attempts);
 	}
 
 	/**
@@ -592,9 +838,20 @@ public final class LinuxAuthorityReader implements AutoCloseable
 	 */
 	private void verifyTopology(Workload workload) throws IOException
 	{
+		verifyTopology(workload, false);
+	}
+
+	/**
+	 * Verifies exact topology after a separately confirmed immediate-leaf removal.
+	 * @param workload retained registered ownership
+	 * @param leafRemoved indicates whether the immediate registered leaf was confirmed absent
+	 * @throws IOException if any other topology changed
+	 */
+	private void verifyTopology(Workload workload, boolean leafRemoved) throws IOException
+	{
 		Set<Path> allowed = new HashSet<>();
 		for (Path current = workload.leaf(); current.startsWith(workload.directory()); current = current.getParent())
-			allowed.add(current);
+			if (!(leafRemoved && current.equals(workload.leaf()))) allowed.add(current);
 		Set<Path> observed = new HashSet<>();
 		ArrayList<Path> pending = new ArrayList<>();
 		pending.add(workload.directory());
