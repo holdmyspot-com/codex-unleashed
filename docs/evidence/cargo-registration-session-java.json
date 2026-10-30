@@ -1,0 +1,357 @@
+{
+  "scope": "Java Cargo registration/session integration only; real producer authentication and native activation remain unrun.",
+  "candidate": {
+    "task_contract": "acknowledged",
+    "scope": "Independent Java Cargo request/registration/session slice only",
+    "base": "33e8fc41784bc0f4e918e9eaf239c11b3d88d1e8",
+    "worktree": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/worktree",
+    "write_allowlist": [
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequest.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoSession.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequestTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoSessionTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptsTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java"
+    ],
+    "actual_write_set": [
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptsTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequest.java",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoSession.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequestTest.java",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoSessionTest.java"
+    ],
+    "scope_passed": true,
+    "patch": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/change.patch",
+      "sha256": "2dad557492b4b41dfbc9446ded2bbf9c77e61e9caaa3960f0f05289721010403"
+    },
+    "sources": [
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequest.java",
+        "sha256": "743cc0918e67a8df5d96e410a7d94c11ee6b76be4098921ca365901b66b6c833",
+        "bytes": 3871,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoSession.java",
+        "sha256": "c822193236b7fa24aefd4a4510c37a110b069b512bc19360d91342610bbc1c11",
+        "bytes": 16691,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.java",
+        "sha256": "8236d3128b260b93a23c45c7b6bde21904e7c3571a512d43a3edd2cc9aa87e74",
+        "bytes": 10328,
+        "base_sha256": "eb97dad64cb892b5492ea93da2c9853ccaa2daa47fb641f0627466f0679d9e78"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java",
+        "sha256": "61e02466946727f273ee50f553209f6c0097b18f80f0c7ca6ca307bc3834ad68",
+        "bytes": 12689,
+        "base_sha256": "6a1c38028cd633193168e0eb16311c22e3f36e852769a7485891b18b30c74519"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequestTest.java",
+        "sha256": "6e215f0cca00347fd527010fe9a2584a0d67691d1c15c93ceb06eef3db422b8c",
+        "bytes": 3895,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoSessionTest.java",
+        "sha256": "6e607b0ff2c75f761ab80e2998fba343a194c0614488cfb37d21b7c851a5695c",
+        "bytes": 13816,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptsTest.java",
+        "sha256": "5a614e5b4fb960e33b758fa4daf94965094f2c825e99bfe8eef3766153bbd0f1",
+        "bytes": 7078,
+        "base_sha256": "8f7cac9cd813a044c8e40e994d8c4b77cedfbabc09d07a48f9cd8bf21fcbf052"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java",
+        "sha256": "3e7e0e06a6a22f4c3bd8a6485e486d713070ff4606008bf0b3200767b66c55c6",
+        "bytes": 10467,
+        "base_sha256": "7bedcb8e3ceddd25868bc282d4704f3405076a540195c01a1cc26eaeac458f04"
+      }
+    ],
+    "input_files": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/input-files.json",
+      "sha256": "a0c19b140606e0b819b78ababfaafb8b2fe9a9fd032382f65f06434fe69a7b86",
+      "count": 126
+    },
+    "java": "openjdk version \"27.0.1\" 2026-10-20\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing)\n",
+    "implementation": [
+      "CargoCompilerRequest defensively copies exact executable/argv/env/cwd and stable action/wrapper/parent birth identities; unknown demand remains distinct from zero. Construction makes no native authentication claim, acquires no streams or jobserver capacity, and introduces no format/parser/dependency.",
+      "LinuxAttempts and WindowsAttempts accept owner-thread append-only registration before queue submission; duplicate names remain reserved after cleanup, and Windows original positions remain reserved. Existing preconfigured map construction remains supported.",
+      "CargoSession composes the existing shared platform factory, Coordinator Session and real queue/controller/policy. Registration callbacks populate platform commands before discovery is published; reentrant registration cannot invert positions.",
+      "One invocation owner retains wrapper/endpoints/streams and one Cargo lease across every action/retry. Session records independent queue-global and positive per-action attempt ordinals without replacing original submission positions.",
+      "Aborted native outcomes are retained without final wrapper responses. Real non-aborted payloads pass unchanged; response delivery is one-shot, including failure after possible publication. Unknown/stale/mismatched attempt outcomes are rejected against the retained issued-attempt ledger.",
+      "Authenticated disconnect and uncertain registration/delivery fail the entire session. Existing coordinator stops input and cleans queue-owned attempts; no targeted cancellation authority or native result is invented. Retained attempt ownership blocks outer dependency disposal.",
+      "Linux native attempt borrowed-stream routing, authenticated ingress, wrapper executable, native producers, CLI dispatch and workflows remain unchanged/unavailable."
+    ],
+    "behavioral_red": {
+      "command": "mvn -o -f <isolated>/tooling/cli/pom.xml -Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository -Dtooling.build.directory=<owned>/incremental -Dtest=WindowsAttemptsTest#rejectsUnlaunchableEnvironmentBeforeRegistration package",
+      "xml": {
+        "path": "behavioral-red.xml",
+        "sha256": "1299df67cd544baedc942882ba1462606ad7e5d45ae2eeb8afd62bbe34db08fc"
+      },
+      "actual": "Existing WindowsAttempts.Command accepted NUL in environment; Requirements requireException reported NullPointerException: exception may not be null. Maven reported BUILD FAILURE, one executed test/one error. No missing-owner compile or unsupported stub was used.",
+      "shell_limit": "The first shell printed Maven output with cat, so its final shell exit was zero; Maven failure is established by the retained actual Surefire XML and log, not that shell exit."
+    },
+    "additional_red": {
+      "selector": "CargoSessionTest#rejectsReentrantRegistrationBeforePublishingEitherSubmission",
+      "actual": "Actual newly composed registration accepted reentry and could enqueue B before already reserved A. The focused Requirements test failed before the registering guard; unchanged focused case passes with the guard.",
+      "receipt": "reentrant-red-transaction.json"
+    },
+    "verification": {
+      "incremental": {
+        "exit": 0,
+        "tests": 23,
+        "xml_directory": "final-incremental-xml"
+      },
+      "fresh_empty_output": {
+        "exit": 0,
+        "tests": 23,
+        "output": "fresh-final",
+        "xml_directory": "final-fresh-xml"
+      },
+      "tested_packaged_class_identities": 17,
+      "class_proof": "packaged-class-proof.json",
+      "quality": "Changed eight-source javac -Xlint:all and four-production-source private doclint: exit zero, empty diagnostics. git diff --check passed. No Checkstyle/PMD task was invented.",
+      "details": "verification.json"
+    },
+    "initial_failures_preserved": [
+      {
+        "label": "first",
+        "cause": "Test-only Requirements isReferenceEqualTo requires the expected-value label argument; corrected calls only."
+      },
+      {
+        "label": "second",
+        "cause": "The two-concurrent-action model initially supplied unknown estimates. Existing policy correctly allowed only one unknown action, so the fixture tried to complete nonexistent B. Fixed fixture to supply explicit known ten-byte estimates; production admission policy unchanged."
+      },
+      {
+        "label": "quality-first",
+        "cause": "Manual compiler classpath omitted existing Jackson modules, and new generic declarations lacked type-parameter docs. Corrected manual command from actual Surefire module path and added docs; no dependency or POM edit."
+      }
+    ],
+    "self_review": {
+      "status": "completed",
+      "checked": [
+        "Actual tracked diff and eight-path inventory; exact original/final hashes.",
+        "Immutable launch/birth fields and absent-versus-zero demand.",
+        "Registration before submission; position/ordinal distinction and reentry.",
+        "Abort receipt before retry; authentic final payload and one-shot uncertain response.",
+        "Wrong-thread access before mutation; duplicate reservation lifetime.",
+        "Whole-session disconnect cleanup; retained owner blocks lease/runtime closure.",
+        "Native source and CLI stay unchanged; no new auth claims or format/framework."
+      ],
+      "test_scope_limit": "Modeled authenticated producer and native owners; actual Frida/platform components and Cargo leases were not executed by these tests."
+    },
+    "native_gates_unrun": [
+      "Accepted Linux descriptor-import composition must supply authentic registration receipt and per-attempt borrowed Binding routing into LinuxAttempt before real Cargo launch.",
+      "Windows authenticated wrapper handle import and existing native recovery integration remain separate owners. No numeric remote HANDLE reuse is accepted.",
+      "Real stable wrapper executable and native parent/birth/stream/actual exit roundtrip on each architecture; invalid UTF8/native argument fidelity is not established by Java String tests.",
+      "Actual Cargo fixture, internal jobserver token accounting, arbitrary token-consuming abort safety, linker image coverage, build-script execution adoption and nested Cargo delegation remain unrun.",
+      "No Bazel interception, macOS producer, six-platform workflow activation or scheduler benchmarking is claimed."
+    ],
+    "cleanup": {
+      "worktree": "Retained isolated dirty worktree and owned build/evidence outputs for parent review/integration; no commit or integration performed.",
+      "shared_workspace": "No maintained root workspace file changed; root LinuxBorrowedStreams work was untouched.",
+      "remote": "No remote dispatch, SSH/Upterm session, provider, key or native process was created. All local Maven/quality commands are terminal.",
+      "transactions": "Retained under own CAT_TEMP; final receipts and before manifests included in evidence. Snapshot CAS directories remain available outside archive for conditional recovery.",
+      "retention": "Parent owns later integration and eventual removal of this worktree/evidence and transaction directories."
+    },
+    "archive": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/evidence.tar.gz",
+      "manifest": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/evidence-manifest.json",
+      "seal": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/seal.json"
+    }
+  },
+  "independentReview": {
+    "task_contract": "acknowledged",
+    "mode": "independent read-only code review; scratch report only",
+    "candidate_base": "33e8fc41784bc0f4e918e9eaf239c11b3d88d1e8",
+    "reviewed_current_HEAD": "f9644cfc4747f3b238819666c8fdb61fed2b9bd7",
+    "candidate_report_sha256": "5c819072abff1df1b9dacd733b63d820f1febc2320ea522bd451a84edf603d5c",
+    "candidate_patch_sha256": "2dad557492b4b41dfbc9446ded2bbf9c77e61e9caaa3960f0f05289721010403",
+    "inspected_sources": [
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequest.java",
+        "sha256": "743cc0918e67a8df5d96e410a7d94c11ee6b76be4098921ca365901b66b6c833",
+        "bytes": 3871,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoSession.java",
+        "sha256": "c822193236b7fa24aefd4a4510c37a110b069b512bc19360d91342610bbc1c11",
+        "bytes": 16691,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.java",
+        "sha256": "8236d3128b260b93a23c45c7b6bde21904e7c3571a512d43a3edd2cc9aa87e74",
+        "bytes": 10328,
+        "base_sha256": "eb97dad64cb892b5492ea93da2c9853ccaa2daa47fb641f0627466f0679d9e78"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java",
+        "sha256": "61e02466946727f273ee50f553209f6c0097b18f80f0c7ca6ca307bc3834ad68",
+        "bytes": 12689,
+        "base_sha256": "6a1c38028cd633193168e0eb16311c22e3f36e852769a7485891b18b30c74519"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequestTest.java",
+        "sha256": "6e215f0cca00347fd527010fe9a2584a0d67691d1c15c93ceb06eef3db422b8c",
+        "bytes": 3895,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoSessionTest.java",
+        "sha256": "6e607b0ff2c75f761ab80e2998fba343a194c0614488cfb37d21b7c851a5695c",
+        "bytes": 13816,
+        "base_sha256": null
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptsTest.java",
+        "sha256": "5a614e5b4fb960e33b758fa4daf94965094f2c825e99bfe8eef3766153bbd0f1",
+        "bytes": 7078,
+        "base_sha256": "8f7cac9cd813a044c8e40e994d8c4b77cedfbabc09d07a48f9cd8bf21fcbf052"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java",
+        "sha256": "3e7e0e06a6a22f4c3bd8a6485e486d713070ff4606008bf0b3200767b66c55c6",
+        "bytes": 10467,
+        "base_sha256": "7bedcb8e3ceddd25868bc282d4704f3405076a540195c01a1cc26eaeac458f04"
+      }
+    ],
+    "identity_verification": "All eight actual worktree files, supplied report and patch match sealed identities. Current JobQueue/Coordinator/Controller/Policy exactly match candidate worktree contracts.",
+    "blocking_findings": [],
+    "conclusion": "No concrete integration blocker found in this Java-only slice under its documented trusted-producer/coordinator contract. Native activation remains blocked by the explicitly unrun native producer and borrowed stream gates; this is not end-to-end scheduler approval.",
+    "contract_review": [
+      {
+        "topic": "FIFO and reentry",
+        "locations": [
+          "CargoSession.java:84",
+          "CargoSession.java:87",
+          "CargoSession.java:91",
+          "CargoSession.java:96",
+          "CargoSession.java:99",
+          "SchedulerCoordinator.java:81"
+        ],
+        "finding": "Position and immutable Pending are reserved before fallible registration; submission is appended only after successful registration. Reentrant registration fails before consuming another position, and an escaping collaborator failure latches terminal session fault. Producer admission drains submissions FIFO before queue cycle. Java test covers uncaught reentry and sticky failure; collaborators remain trusted not to drive the queue."
+      },
+      {
+        "topic": "Independent ordinal domains",
+        "locations": [
+          "CargoSession.java:123",
+          "CargoSession.java:130",
+          "CargoSession.java:133",
+          "JobQueue.java:278"
+        ],
+        "finding": "Queue-global strictly increasing ordinal and action-local positive counter are recorded separately before factory use. Aborted retry retains request name/discovery position, increments only its action-local counter, and uses a fresh global ordinal. Resource-free factory exceptions are terminal through actual queue/coordinator, with issued identity retained for diagnosis."
+      },
+      {
+        "topic": "Results and abort retry",
+        "locations": [
+          "CargoSession.java:171",
+          "CargoSession.java:175",
+          "CargoSession.java:180",
+          "CargoSession.java:182",
+          "SchedulerCoordinator.java:103",
+          "JobQueue.java:342"
+        ],
+        "finding": "Only issued matching unconsumed global identities are accepted. Actual coordinator supplies native queue outcomes, including older aborted outcome records even if its next attempt was created in the same successful cycle. Aborted outcome is retained without final response; non-aborted payload passes by reference without exit-code conversion. Session itself supplies correlation, not independent native result authority."
+      },
+      {
+        "topic": "Uncertain response",
+        "locations": [
+          "CargoSession.java:183",
+          "CargoSession.java:184",
+          "CargoSession.java:230",
+          "SchedulerCoordinator.java:103"
+        ],
+        "finding": "The final response flag and consumed outcome are committed before fallible publication. Send failure is sticky and stops the whole invocation; later operations cannot resend. Coordinator cleanup closes actual queue owners before invocation lifetime cleanup. No automatic response resend exists."
+      },
+      {
+        "topic": "Thread and teardown",
+        "locations": [
+          "CargoSession.java:239",
+          "CargoSession.java:247",
+          "CargoSession.java:201",
+          "CargoSession.java:211",
+          "WindowsAttempts.java:98",
+          "LinuxAttempts.java:66"
+        ],
+        "finding": "Mutating and observational session/platform methods check constructing-thread affinity before touching collaborators or registries. Names/original Windows positions remain reserved after cleanup. Current coordinator independently checks hasOpenAttempts before outer close, and session repeats that check. Expected happy-path one-shot cleanup is idempotent after success; uncertain cleanup intentionally remains terminal rather than automatically replaying arbitrary invocation code."
+      }
+    ],
+    "optional_improvements": [
+      {
+        "priority": "P2",
+        "location": "CargoSession.java:211-220",
+        "title": "Make recovery ownership after outer cleanup failure explicit before native activation",
+        "observation": "After invocation.close throws, closeAttempted permanently prevents another CargoSession.close call from reaching the retained invocation. That safely avoids blind replay but provides no session-mediated reconciliation. The native producer does not exist yet, so this is a lifecycle requirement to resolve for that owner rather than a demonstrated native leak in this slice.",
+        "recommendation": "State who retains/reconciles the invocation after partial close, and add a focused one-shot-failure/retained-owner check when the concrete invocation owner is supplied. Do not blindly retry uncertain response publication."
+      },
+      {
+        "priority": "P2",
+        "location": "CargoSession.java:107-111",
+        "title": "Define expected wrapper exit after a final response",
+        "observation": "wrapperDisconnected unconditionally fails the session for any registered request, including responseAttempted requests. A native ingress must therefore distinguish normal post-response wrapper exit from unexpected pre-response loss before invoking it; no such ingress is supplied or claimed here.",
+        "recommendation": "Document that caller precondition or make the distinction explicit in the native producer, and exercise normal final-response -> wrapper reap alongside pre-response disconnect before enabling Cargo integration."
+      },
+      {
+        "priority": "P3",
+        "location": "CargoSessionTest.java:45-60; CargoSession.java:175-179",
+        "title": "Direct invalid-outcome checks would substantiate the ledger rejection claim",
+        "observation": "Code rejects missing identity, wrong action and already-consumed identity, but the focused session tests do not directly exercise those three branches. Existing end-to-end modeled happy retry verifies the intended ordinals.",
+        "recommendation": "Add only narrow invalid-ledger behavior checks when this boundary next changes; do not rerun passing broad suites for this review."
+      }
+    ],
+    "verification_limits": {
+      "tests": "Reviewed claimed focused test sources; did not rerun tests or independently certify XML/class package proof. Parent owns evidence verification.",
+      "native": "No native execution, remote command, worker dispatch, CLI activation or transport authentication verified.",
+      "writes": "Only this new isolated CAT_TEMP report; no maintained edits, commits or issues."
+    }
+  },
+  "parentVerification": {
+    "archive": "All 116 safe data members and exact embedded manifest verified.",
+    "inputs": "126 final compilation inputs verified: eight candidate files and 118 unchanged base files.",
+    "tests": "Actual XML records 23 passing cases incrementally and from fresh output; actual one-test behavioral red retained.",
+    "classes": "All 17 actual tested/packaged class identities independently verified in each candidate build.",
+    "integrationCompile": {
+      "command": [
+        "/home/gili/.sdkman/candidates/maven/current/bin/mvn",
+        "-o",
+        "-f",
+        "tooling/cli/pom.xml",
+        "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+        "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/cargo-integration-szHi5Z/build",
+        "-DskipTests",
+        "package"
+      ],
+      "exitCode": 0,
+      "tests": "Previously verified unchanged focused results reused; no tests executed by this compilation.",
+      "jarSha256": "76a24016057ebe1575c3d8483fc1591828e35a4ffa5be19c688b69e6e1c551b1"
+    },
+    "integrationCorrespondence": {
+      "classEntries": 253,
+      "cargoCandidateClasses": 17,
+      "allOtherClasses": "Exact accepted combined Linux/Windows correction package bytes",
+      "jarSha256": "76a24016057ebe1575c3d8483fc1591828e35a4ffa5be19c688b69e6e1c551b1",
+      "testsRepeated": false
+    },
+    "review": "Full Cargo request and session production code inspected; independent review found no blocker in the Java-only contract.",
+    "requiredBeforeNativeActivation": [
+      "Define who retains and reconciles invocation ownership after partial outer-close failure; do not blindly replay uncertain cleanup.",
+      "Distinguish normal post-response wrapper exit from unexpected disconnection.",
+      "Verify real parent/birth/stream/exit authority, token accounting, build-script execution and platform coverage."
+    ]
+  }
+}

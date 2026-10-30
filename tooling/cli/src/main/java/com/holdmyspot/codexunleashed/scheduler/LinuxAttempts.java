@@ -25,7 +25,7 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 	/** Borrowed opened measurement authority. */
 	private final LinuxAuthority authority;
 	/** Validated immutable action inputs. */
-	private final Map<String, Command> commands;
+	private final Commands commands = new Commands();
 	/** Positive native control deadline. */
 	private final Duration timeout;
 	/** Borrowed owners in creation order, retained after failed cleanup. */
@@ -51,12 +51,22 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 		this.build = Objects.requireNonNull(build, "build");
 		this.runtime = Objects.requireNonNull(runtime, "runtime");
 		this.authority = Objects.requireNonNull(authority, "authority");
-		this.commands = Map.copyOf(commands);
-		for (String name : this.commands.keySet())
-			if (name.isBlank())
-				throw new IllegalArgumentException("Action name must contain text");
+		Map.copyOf(commands).forEach(this::register);
 		this.timeout = checkedTimeout(timeout);
 	}
+
+    /**
+     * Appends an immutable action before queue submission, without acquiring resources.
+     * Names remain reserved after all attempts finish; replacement is never permitted.
+     * @param name stable action name
+     * @param command validated immutable launch inputs
+     * @throws IllegalArgumentException if the name is blank or already reserved
+     */
+    void register(String name, Command command)
+    {
+        requireOwner();
+        commands.register(name, command);
+    }
 
 	/** Returns a fresh resource-free owner for one configured action and unused ordinal.
 	 * @param name configured stable action name
@@ -210,4 +220,40 @@ final class LinuxAttempts implements JobQueue.AttemptFactory<LinuxSupervisor.Res
 		 */
 		Optional<Blocked> poll() { return Optional.ofNullable(pending.pollFirst()); }
 	}
+    /** Retains immutable launch inputs independently of native runtime acquisition. */
+    static final class Commands
+    {
+        /** Only thread allowed to append or retrieve commands. */
+        private final Thread owner = Thread.currentThread();
+        /** Names stay reserved for the whole invocation. */
+        private final Map<String, Command> values = new LinkedHashMap<>();
+        /** Creates an empty resource-free registry. */
+        Commands() {}
+        /**
+         * Appends one command atomically without filesystem access.
+         * @param name nonblank unused identity
+         * @param command immutable validated input
+         */
+        void register(String name, Command command)
+        {
+            requireOwner();
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(command, "command");
+            if (name.isBlank() || values.containsKey(name))
+                throw new IllegalArgumentException("Action name is blank or already reserved: " + name);
+            values.put(name, command);
+        }
+        /**
+         * Retrieves exact configured inputs without transferring native ownership.
+         * @param name action identity
+         * @return configured command, or null for unknown identity
+         */
+        Command get(String name) { requireOwner(); return values.get(name); }
+        /** Rejects cross-thread registry access before observing inputs. */
+        private void requireOwner()
+        {
+            if (Thread.currentThread() != owner) throw new IllegalStateException("Linux commands require their owner thread");
+        }
+    }
+
 }

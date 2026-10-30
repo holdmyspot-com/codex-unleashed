@@ -131,4 +131,50 @@ public final class WindowsAttemptsTest
         requireThat(command.arguments(), "copiedArguments").isEqualTo(java.util.List.of("compiler.exe"));
         requireThat(command.environment(), "borrowedInvocationFlagsPreserved").isEqualTo(Map.of("CARGO_MAKEFLAGS", "borrowed"));
     }
+    /** Invalid native text must fail before immutable dynamic registration accepts the command. */
+    @Test
+    public void rejectsUnlaunchableEnvironmentBeforeRegistration()
+    {
+        requireException(IllegalArgumentException.class, () -> new WindowsAttempts.Command(
+            new Controller.Action("compile", 0), java.util.List.of("compiler.exe"), Path.of("not-opened"),
+            Map.of("CARGO_MAKEFLAGS", "borrowed\0truncated"), MemorySegment.NULL, MemorySegment.NULL, MemorySegment.NULL));
+    }
+    /** Later actions append atomically; finished actions keep their original name and position.
+     * @throws Exception if the modeled attempt lifecycle fails */
+    @Test public void appendsCommandsAndRetainsReservationsAfterCleanup() throws Exception
+    {
+        var resource = new WindowsAttemptTest.Resources();
+        var factory = new WindowsAttempts(UUID.randomUUID(), Map.of(), Duration.ofSeconds(1),
+            (command, sequence, identity, timeout) -> resource);
+        factory.register("a", command("a", 0));
+        requireException(IllegalArgumentException.class, () -> factory.register("wrong", command("b", 1)));
+        requireException(IllegalArgumentException.class, () -> factory.register("b", command("b", 0)));
+        factory.register("b", command("b", 1));
+        var attempt = factory.create("a", 0);
+        attempt.start();
+        resource.result = new WindowsProcess.Result(0, false);
+        attempt.poll(); attempt.close();
+        requireException(IllegalArgumentException.class, () -> factory.register("a", command("a", 2)));
+        requireException(IllegalArgumentException.class, () -> factory.register("c", command("c", 0)));
+        factory.register("c", command("c", 2));
+        requireThat(factory.hasOpenAttempts(), "registrationAcquiresNoOwner").isFalse();
+    }
+
+    /** A caller on another thread cannot consume a name or original position.
+     * @throws InterruptedException if joining the caller fails */
+    @Test public void rejectsCrossThreadAppendBeforeMutation() throws InterruptedException
+    {
+        var factory = new WindowsAttempts(UUID.randomUUID(), Map.of(), Duration.ofSeconds(1),
+            (command, sequence, identity, timeout) -> new WindowsAttemptTest.Resources());
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread thread = Thread.ofPlatform().start(() ->
+        {
+            try { factory.register("a", command("a", 0)); }
+            catch (Throwable caught) { failure.set(caught); }
+        });
+        thread.join();
+        requireThat(failure.get() instanceof IllegalStateException, "wrongThreadRejected").isTrue();
+        factory.register("a", command("a", 0));
+        requireThat(factory.hasOpenAttempts(), "noNativeAcquisition").isFalse();
+    }
 }

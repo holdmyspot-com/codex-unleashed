@@ -96,4 +96,40 @@ public final class LinuxAttemptsTest
 		var events = new LinuxAttempts.Notifications();
 		requireThat(events.poll().isEmpty(), "initiallyEmpty").isEqualTo(true, "expected");
 	}
+    /** Dynamic inputs remain immutable and reserved without creating runtime or authority owners. */
+    @Test public void appendsCommandsWithoutNativeAcquisition()
+    {
+        var commands = new LinuxAttempts.Commands();
+        var launch = AllocationHooksTest.launch(List.of("/missing-compiler", "", "λ"), java.util.Map.of("CARGO_MAKEFLAGS", "borrowed"));
+        var files = new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/missing-in"),
+            java.nio.file.Path.of("/missing-out"), java.nio.file.Path.of("/missing-err"));
+        var command = new LinuxAttempts.Command(launch, files);
+        commands.register("first", command);
+        requireException(IllegalArgumentException.class, () -> commands.register("first", command));
+        requireException(IllegalArgumentException.class, () -> commands.register(" ", command));
+        requireException(NullPointerException.class, () -> commands.register("second", null));
+        commands.register("second", command);
+        requireThat(commands.get("second"), "exactLaunchAndBorrowedEndpoints").isReferenceEqualTo(command, "expected");
+        requireThat(commands.get("first").launch().environment(), "jobserverUnchanged").isEqualTo(launch.environment());
+        requireThat(commands.get("unknown"), "unknownRemainsUnavailable").isNull();
+    }
+
+    /** Rejected cross-thread registration does not reserve the name.
+     * @throws InterruptedException if joining the modeled caller fails */
+    @Test public void rejectsCrossThreadRegistrationBeforeMutation() throws InterruptedException
+    {
+        var commands = new LinuxAttempts.Commands();
+        var command = new LinuxAttempts.Command(AllocationHooksTest.launch(List.of("/missing"), java.util.Map.of()),
+            new LinuxProcessTree.StandardFiles(java.nio.file.Path.of("/in"), java.nio.file.Path.of("/out"), java.nio.file.Path.of("/err")));
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread thread = Thread.ofPlatform().start(() ->
+        {
+            try { commands.register("compile", command); }
+            catch (Throwable caught) { failure.set(caught); }
+        });
+        thread.join();
+        requireThat(failure.get() instanceof IllegalStateException, "wrongThreadRejected").isTrue();
+        commands.register("compile", command);
+        requireThat(commands.get("compile"), "nameNotReservedByRejectedCaller").isReferenceEqualTo(command, "expected");
+    }
 }
