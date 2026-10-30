@@ -833,7 +833,7 @@ public final class WindowsProcessTest
 	{
 		return new Object[][] {
 			{"accounting"}, {"list"}, {"truncated"}, {"length"}, {"duplicate"}, {"zeroPid"},
-			{"widePid"}, {"open"}, {"membershipCall"}, {"membershipFalse"}, {"exited"}, {"wait"},
+			{"widePid"}, {"open"}, {"membershipCall"}, {"membershipFalse"}, {"exited"}, {"wait"}, {"waitUnknown"},
 			{"memory"}, {"unsignedMemory"}, {"sumOverflow"}, {"changedSet"}, {"changedBirths"},
 			{"changedActive"}, {"recheckExit"}, {"recheckMembership"}, {"resizeExhausted"}, {"oversize"}
 		};
@@ -949,6 +949,64 @@ public final class WindowsProcessTest
 	}
 
 	/**
+	 * Trusted native churn is retryable only after every query handle releases successfully.
+	 * @throws IOException if a modeled owner cannot launch or close
+	 */
+	@Test
+	public void distinguishesTrustedChurnFromUncertainty() throws IOException
+	{
+		var retryable = Set.of("exited", "recheckExit", "changedSet", "changedBirths", "changedActive");
+		for (Object[] row : residencyFaults())
+		{
+			String fault = (String) row[0];
+			var kernel = new ResidencyKernel();
+			kernel.fault = fault;
+			try (var process = launchSeparate(kernel))
+			{
+				kernel.sampling = true;
+				try
+				{
+					var failure = requireException(IOException.class, process::readResidentBytes);
+					requireThat(failure instanceof WindowsProcess.MembershipChanged, "onlyTrustedChurn:" + fault)
+						.isEqualTo(retryable.contains(fault));
+				}
+				finally { kernel.sampling = false; }
+			}
+		}
+	}
+
+	/**
+	 * Failed query cleanup defeats a primary trusted-churn marker and remains sticky.
+	 * @throws IOException if a modeled owner cannot launch
+	 */
+	@Test
+	public void cleanupFailureDefeatsTrustedChurn() throws IOException
+	{
+		var kernel = new ResidencyKernel();
+		kernel.fault = "recheckExit";
+		kernel.failedClose.add(1042L);
+		var process = launchSeparate(kernel);
+		kernel.sampling = true;
+		try
+		{
+			var failure = requireException(IOException.class, process::readResidentBytes);
+			requireThat(failure instanceof WindowsProcess.MembershipChanged, "cleanupDeniesRetry").isFalse();
+			requireThat(failure.getCause(), "retainedChurnDiagnostic").isInstanceOf(WindowsProcess.MembershipChanged.class);
+			requireThat(failure.getCause().getSuppressed().length, "retainedCleanupDiagnostic").isEqualTo(1);
+			int requests = kernel.calls.size();
+			var later = requireException(IOException.class, process::readResidentBytes);
+			requireThat(later instanceof WindowsProcess.MembershipChanged, "stickyFailureDeniesRetry").isFalse();
+			requireThat(kernel.calls.size(), "noFurtherAcquisition").isEqualTo(requests);
+		}
+		finally
+		{
+			kernel.sampling = false;
+			requireException(IOException.class, process::close);
+			kernel.close();
+		}
+	}
+
+	/**
 	 * Models job-list/accounting, membership and memory replies documented by Microsoft Win32 APIs.
 	 * Process handles are local identity tokens; the fixture does not establish native handle behavior or layout validity.
 	 */
@@ -1015,6 +1073,7 @@ public final class WindowsProcessTest
 					{
 						case "exited" -> 0;
 						case "wait" -> -1;
+						case "waitUnknown" -> 128;
 						case "recheckExit" -> waits > members.size() ? 0 : 258;
 						default -> 258;
 					};

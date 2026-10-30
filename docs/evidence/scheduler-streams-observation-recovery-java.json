@@ -1,0 +1,2322 @@
+{
+  "schema": 1,
+  "scope": "Checkpoint 3 Java borrowed-stream owner and trusted complete-memory-batch recovery; native production acceptance remains unrun.",
+  "source_sha256": {
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.java": "db5a7bfe5d949e85c6061bb4d580a36bff2dc5c5b11f34ecb537557d94f2fd41",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java": "e218bc23060dda908bf4d945e6eb3d01b260bac3e7086129f5e95cec05e8ed4d",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java": "5a02d046228d0a134846764efa710e05e6224694dd7988158eb18f2074d4fa4f",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreamsTest.java": "bee57ce9e7a1cb4c8fee0969404db28939d1c3e8d845d0550732aa8647db4e94",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java": "ba28e569b45ec83ac1ba2445cce48a35750e01877a9898b8f83d883f67a3f8c0",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java": "a0a233c5626c30b38b37d02929988805f07982a4539f90484ac362434f372a22",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java": "ab096ff79adefa36bed0f8741f44971511b81ec61d6d59029098c69ae2d4077f",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthority.java": "a2e32442cfdc4b28cab53272a58c533bfdfdbbe79254fbfc8b08f2e8c1db958e",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.java": "cf0fe402e0afaf68bf439b0746b4aa9b04bb64c75cbd05a0c9e4c2953795dc89",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/ObservationRejected.java": "aa51d911750900e80973381fd309dff50295eb2620bfc3a1c438c9a730ba4d8c",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator.java": "5420e8c6a05ed02b0b574ead3da5ce48d9fe491e1e27d22d8d846a1ac029fe15",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements.java": "574858b688715cb315d8dc7305aca524511cacd404598857871ea38d648dce17",
+    "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java": "4cf3954d14f6f4dd671bc678918b832bf68324f15ab8407cefdf32b0d92f9f03",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerSampleAcceptanceTest.java": "b4e97e991652a37edb9a4607a0fd23dab341fcbb84e1ed19dfb3fcfb1110244b",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityObservationTest.java": "f9c1834c7930b9ead0ed803e87358754c60e643fafcb8139a30fddeb1fffd7d5",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinatorTest.java": "e57e5e2ad1df8d89b0a98aa7e8bb563f9fd8c1a2943689ab1aa13c9f8179673f",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurementsTest.java": "2d2b7de12141422b75f700635eba3edcdd2e4c7c625b2ab8206f1c68dbf0ffb3",
+    "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java": "87081991ed07e0f59e2b6373908b2d27b75e2217f73f6704427bdd2fdc5b6de8"
+  },
+  "borrowed_stream_candidate": {
+    "report_sha256": "ccb967067bce9252f87217ccb3a6f98014c8a9606a331e1d6b9428567cb3556a",
+    "patch_sha256": "18189e3d327537a3a7c8c04ea7fee30600d57c30594c8a0d1051f2aca894b5c4",
+    "archive_sha256": "9d03028a181823f4c8bb8a3518b7f1366f82be1d8c6d82823f33c917b50d728c",
+    "archive_payloads_verified": 85,
+    "producer_report": {
+      "task_contract": "acknowledged",
+      "owner": "cargo_fifo_owner_design",
+      "base": "2398651b996b5387c4445a7bb222b6800a32da22",
+      "worktree": "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k",
+      "scratch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k",
+      "write_allowlist": [
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreamsTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java"
+      ],
+      "actual_write_set": [
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreamsTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java",
+        "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java"
+      ],
+      "allowlist_status": "PASS",
+      "implementation": {
+        "binding": "Retains approved immutable LinuxProcessTree.Launch directly; exact argv/env/cwd/java/classpath/uid/gid/execution-mode equality. Only controller-owned cgroup/scratch parent derivation allowed.",
+        "authority": "Binding construction does not authenticate registration. Listener requires explicit authorization and root credential plus per-attempt capability/action/sequence. Actual wrapper/controller authenticated registration remains an unmet prerequisite.",
+        "handoff": "Import and irreversible descriptor installation precede trusted-gate READY. Dedicated gate only; controller standard streams unchanged.",
+        "ownership": "Preallocated descriptor ownership; Linux descriptor numbers consumed before once-only close; partial failures aggregate cleanup diagnostics; retained CleanupFailure owner permits endpoint cleanup retry. Endpoint removal checks captured file identity.",
+        "retry": "One-shot authorization and install consumed on failures. Wrapper originals remain borrowed and open; no jobserver token acquisition/reseed added.",
+        "terminal": "Full wrapper session/group/tty device/foreground/semantic termios compatibility required; rejects mismatch.",
+        "cancellation": "Bounded poll slices inspect interruption; preserves interrupted flag. Native cancellation integration not executed in this cluster.",
+        "platform": "Linux x64 glibc LP64 only; fails closed elsewhere, including ARM64 pending separate ABI/native acceptance."
+      },
+      "sources": [
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.java",
+          "base_sha256": null,
+          "sha256": "db5a7bfe5d949e85c6061bb4d580a36bff2dc5c5b11f34ecb537557d94f2fd41",
+          "bytes": 65738
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+          "base_sha256": "c45e56a25aa0e8a1b37627b383a8a3ef678fa27e0e199a7f4e8434ec4fe8497f",
+          "sha256": "e218bc23060dda908bf4d945e6eb3d01b260bac3e7086129f5e95cec05e8ed4d",
+          "bytes": 54616
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java",
+          "base_sha256": "acc5f7a7bc76c2524e321031de2489cdeaaa0b52336f2c5f25cca148f3460c7a",
+          "sha256": "5a02d046228d0a134846764efa710e05e6224694dd7988158eb18f2074d4fa4f",
+          "bytes": 52882
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreamsTest.java",
+          "base_sha256": null,
+          "sha256": "bee57ce9e7a1cb4c8fee0969404db28939d1c3e8d845d0550732aa8647db4e94",
+          "bytes": 12803
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java",
+          "base_sha256": "d4dce806684f59bf381ae3b5748e7224127fb4909c32ff94f871cff1fbe30cd0",
+          "sha256": "ba28e569b45ec83ac1ba2445cce48a35750e01877a9898b8f83d883f67a3f8c0",
+          "bytes": 9024
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java",
+          "base_sha256": "1b42ee98c869bbbee5bc0ead91409748df3c86d054927de7f2db42c984d81e6e",
+          "sha256": "a0a233c5626c30b38b37d02929988805f07982a4539f90484ac362434f372a22",
+          "bytes": 4925
+        }
+      ],
+      "patch": {
+        "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/implementation.patch",
+        "sha256": "18189e3d327537a3a7c8c04ea7fee30600d57c30594c8a0d1051f2aca894b5c4",
+        "reverse_apply_check": "PASS"
+      },
+      "java": "openjdk version \"27.0.1\" 2026-10-20\nOpenJDK Runtime Environment Zulu27.30+107-CA (build 27.0.1+9)\nOpenJDK 64-Bit Server VM Zulu27.30+107-CA (build 27.0.1+9, mixed mode, sharing)\n",
+      "commands": [
+        {
+          "name": "incremental",
+          "argv": [
+            "mvn",
+            "-o",
+            "-q",
+            "-f",
+            "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k/tooling/cli/pom.xml",
+            "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/build",
+            "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/tmp",
+            "-Dtest=LinuxBorrowedStreamsTest,LinuxProcessTreeTest,LinuxSupervisorTest,LinuxSupervisorControlTest",
+            "test"
+          ],
+          "status": 0,
+          "log": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-incremental.log"
+        },
+        {
+          "name": "fresh",
+          "argv": [
+            "mvn",
+            "-o",
+            "-q",
+            "-f",
+            "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k/tooling/cli/pom.xml",
+            "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build",
+            "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/tmp",
+            "-Dtest=LinuxBorrowedStreamsTest,LinuxProcessTreeTest,LinuxSupervisorTest,LinuxSupervisorControlTest",
+            "package"
+          ],
+          "status": 0,
+          "log": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-package.log",
+          "output_absent_before_invocation": true
+        },
+        {
+          "name": "doclint",
+          "argv": [
+            "javac",
+            "--release",
+            "27",
+            "-Xmaxwarns",
+            "1000",
+            "-Xdoclint:all",
+            "-cp",
+            "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/classes",
+            "-d",
+            "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/doclint-classes",
+            "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.java",
+            "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+            "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java"
+          ],
+          "status": 0,
+          "log": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-doclint.log",
+          "warnings": 0
+        }
+      ],
+      "tests": {
+        "incremental": {
+          "status": "PASS",
+          "tests": 42,
+          "classes": [
+            {
+              "tests": "10",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxBorrowedStreamsTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreamsTest.xml",
+              "sha256": "44a1b60eacb085f13405e5aa054ef94bec5b52fa55cf32d3d3e0fde435940282"
+            },
+            {
+              "tests": "12",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxProcessTreeTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxProcessTreeTest.xml",
+              "sha256": "b01ca8c1cc66765b668c71ba8689c6e95e78d3a807a2e490f4309d49471e8bef"
+            },
+            {
+              "tests": "9",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxSupervisorTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorTest.xml",
+              "sha256": "753270a34418b245c79e8a5e9f7ee41198948cc579910b7966386ad89fff03a7"
+            },
+            {
+              "tests": "11",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxSupervisorControlTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorControlTest.xml",
+              "sha256": "4485178801cc2f92e8fd70fe70dd09d09dc018d7002844d3f127dddfedda781b"
+            }
+          ]
+        },
+        "fresh": {
+          "status": "PASS",
+          "tests": 42,
+          "classes": [
+            {
+              "tests": "10",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxBorrowedStreamsTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreamsTest.xml",
+              "sha256": "67fc9e34d52c3f35860f5c44f0586921ff60b31eaff94880d755095a2cecc718"
+            },
+            {
+              "tests": "12",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxProcessTreeTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxProcessTreeTest.xml",
+              "sha256": "6fbac54cb13836ceb9a325400606232a2e87ab61a371120913bbfe0cd03323f7"
+            },
+            {
+              "tests": "9",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxSupervisorTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorTest.xml",
+              "sha256": "6180d126f53153fa5098e239df28037c01b55c88bd0414777b7eb42285442fff"
+            },
+            {
+              "tests": "11",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0",
+              "class": "LinuxSupervisorControlTest",
+              "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/surefire-reports/TEST-com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorControlTest.xml",
+              "sha256": "c2c71c7c7f49e3713dbf57c5d494bffdadd96f02ffd032f9f678b652be9d15d9"
+            }
+          ]
+        }
+      },
+      "behavioral_red_green": {
+        "status": "PASS",
+        "receipt": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/requirements-regression/receipt.json",
+        "sha256": "ab545241b2d18619c355570f6c0c8144e507ab00298d4065fd199c3e541e2805",
+        "scope": "Actual maintained Requirements partialInstallCannotBeRetried test called unchanged against scratch late-transition mutant (red), then exact final production owner (green). Model installation callback, not native dup2 fault injection.",
+        "initial_prototype": "Earlier manual AssertionError red/green preserved separately; not represented as Requirements API checks."
+      },
+      "selection_recreation": {
+        "selection": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/selection.json",
+        "recreation": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/recreation.json",
+        "scope": "Completed before maintained edits. No accepted native producer suite repeated."
+      },
+      "packaging": {
+        "jar": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/seal-fresh-build/tooling-cli-1.0-SNAPSHOT.jar",
+        "sha256": "9eb336d6d703c93437d59f2ada13625ddcfba7bd6eea8a303594a62fb90aa391",
+        "tested_class_bytes_equal_packaged_entries": true,
+        "class_count": 32,
+        "classes": [
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$1.class",
+            "sha256": "1e3de92fe25563eaef175bd5706cd3395860ab23438a8efa7a0ec17935ff7f50"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Binding.class",
+            "sha256": "8f7fcf0799b0485cfa980135a5697cbf5e9a61cb5fdfbda8957fc16dcba8d3f6"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CleanupFailure.class",
+            "sha256": "f097105008ca8541a8e66e4f357b772dd0a66604d095703f71168046727f6dff"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CloseDescriptor.class",
+            "sha256": "39d383a32f9438f83576b560c0abbc6402817cfb6e7479413c248bf522e47612"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Descriptors.class",
+            "sha256": "378bb8cbfc476a0ce25aaadb837d816ab70fabc57858ee14f21da2294e307e4f"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Installation.class",
+            "sha256": "06017a3af95a2ea56db6890e7dd6bf9b150ac3953163e8ae5b342b7735cb67f2"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Listener.class",
+            "sha256": "f10469b41451aed1a968b352894a23c624ab9890a0ed0c1d29194c9ce2344cac"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$CloseOperation.class",
+            "sha256": "e51e260883dcc3dfa50f411d9bfc4dac33c19e01361d4435e15eb9b1a5cd5a42"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Listener.class",
+            "sha256": "25226bffb28cc7393ffae4035e5e2bb2dcb3952953681da7d05dfb2fd7114d69"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Outcome.class",
+            "sha256": "dc44e1be8baf998164b78223313da8ad7de8c4e301be48dcda1754ac59a669c3"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Received.class",
+            "sha256": "4cfb7408cebc26b41f47c77d395a44ec4a1e5410d2dacf96cac407f62c636858"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native.class",
+            "sha256": "332cd18d809fc76b44109a61107c72a9c5759668c5640d2fc23bff9346a976ca"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Peer.class",
+            "sha256": "6ef45cc420a171821e5b1018f1be6b1a4f59f95476c9d2e8ce5168f06cfcd11e"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Pending.class",
+            "sha256": "499865ad83504eafe29b58a6a7037e7f717eef937f074a1772695744d579423c"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Terminal.class",
+            "sha256": "1154fff81301a2ef28a01a1f668ec1786a8c2b91d24c5f7a5cc0479a2e432a81"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$TerminalContext.class",
+            "sha256": "165b16a8f789b590b77717bd905cb35bc530765976d764a0023196efcacffb7e"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Transfer.class",
+            "sha256": "b78623c3739525c25453c72e4111c7c28b1f0c6977f11116137d0df881505305"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.class",
+            "sha256": "0dad056b218b91b3a30fb99585471087368578e98c52d3ec64fd1712937869a6"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$ExecutionMode.class",
+            "sha256": "f032b2993e8072e09c8fe1bf64c050dcd805260b0b39f0dd93275ffe1525fec9"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$KillRequest.class",
+            "sha256": "a52ad3b8bc65dc1784fd445864ad7e355130fb204e09f6a33fa1ad42daad052d"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$Launch.class",
+            "sha256": "e52c89a0e8676d0a3d2dcbaf5e53a7a2c924ca23b30e97db5314e910ded6b5a7"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$NativeCalls.class",
+            "sha256": "b010b6fb56c89c0891d01cbf7ad7416e942baa9ccb1ca9d26d2eb731f4db4736"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$SharedSecrets.class",
+            "sha256": "082a9794eb3942332ede3f600a4d3d6f9fc6a65896508d284022e949f0934416"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StandardFiles.class",
+            "sha256": "f7a45d9becd358c0d232f03c35f6b0c594e5ff46429632c64fce948caf8748c6"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StreamInstallation.class",
+            "sha256": "31ad3f55f02687c6db2ec61573f70a09a73f92fd3840cad84d0eeb8e118257fc"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$WorkloadExecution.class",
+            "sha256": "6f8d3831bf40a8e12d0252f0e8e7c07dfd8a3302eeb8e05876e786c5382845b7"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.class",
+            "sha256": "418e0a816fc73725b6f5f9d7994c6ebe6df0261726a2c5944b364dfa7368bf7b"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Control.class",
+            "sha256": "577f74801aab7867c3679d929b1dbcf4c82d99d0c1efa63446f79e7ae8203d4e"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Phase.class",
+            "sha256": "4b850f5e46fa002f918ccb6089e03bc5fb73edf66066d8af9adc4c9f511b8b62"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$PreparationFailure.class",
+            "sha256": "9c6484dd1c423b219ca57d679e55ad2f249c67b5f42726738a59d5781b572230"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Result.class",
+            "sha256": "677659e986e765c996a70d20e3d2641d9d4181efb963a0b1b7ad7adddcf2d7ec"
+          },
+          {
+            "entry": "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.class",
+            "sha256": "03f1b3eddb0879d634be6752e8d1f024f577e1efe76d23f79374fb97a397cec4"
+          }
+        ]
+      },
+      "initial_failures_preserved": [
+        "affected-incremental.log: missing static Requirements imports in newly added tests, fixed only those imports.",
+        "doclint logs: missing documentation corrected; final scoped -Xdoclint:all zero. Earlier -Xlint:all reports restricted FFM calls and existing serialization warnings; no claim that all lint categories are zero.",
+        "requirements-regression initial driver compilation/runtime classpath omissions preserved; corrected standalone fixture classpath, no maintained dependency changes."
+      ],
+      "unrun_gates": [
+        {
+          "gate": "Production native authenticated descriptor import through packaged supervisor and credential/session chain",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "Authenticated wrapper/controller registration IPC and caller adoption",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "Native forced recvmsg/dup2/close failures with production owner",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "In-flight native interruption/cancellation and owned endpoint replacement fault injection",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "Linux ARM64 ABI and native acceptance",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "Cargo compiler retry with maintained descriptor owner and jobserver lease",
+          "status": "UNRUN"
+        },
+        {
+          "gate": "Bazel action adoption, full memory scheduling and token-loss recovery",
+          "status": "UNRUN"
+        }
+      ],
+      "reused_evidence": {
+        "path": "docs/evidence/linux-descriptor-transfer-native.json",
+        "scope": "Previously accepted scratch primitive five-case native evidence only; no assertion that it verifies new maintained owner.",
+        "approved_launch_design_sha256": "2182fb38083624b212c744ace1be3e763e2c6706bc897f71c989bdb4cdd162a9"
+      },
+      "cleanup": {
+        "live_native_processes_or_remote_sessions_acquired": false,
+        "owned_paths": [
+          "/home/gili/codex-unleashed/worktrees/linux-borrowed-owner-ltqa73_k",
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k"
+        ],
+        "policy": "Retain isolated worktree and sealed evidence for parent review; parent authorizes removal after acceptance. No commit/push/root edits/native dispatch."
+      },
+      "archive": {
+        "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/linux-borrowed-owner-ltqa73_k/evidence.tar.gz",
+        "sha256": "9d03028a181823f4c8bb8a3518b7f1366f82be1d8c6d82823f33c917b50d728c",
+        "bytes": 628859
+      }
+    },
+    "independent_review": "No concrete defect found in the frozen three-file production candidate. Partial installation is one-shot before staging; no OOM-safe cleanup claim."
+  },
+  "observation_recovery_candidate": {
+    "report_sha256": "2a42d0bbb59bc8e83a42dab1b7501391c94f73b8497e1f6236302f9bd53efebd",
+    "patch_sha256": "05fb2536df0444b317b3b492b6ebb306fbb84efc8046f3d72db587b517e3f6a2",
+    "archive_sha256": "b93100523c518a62c4143a013abf56264ca2bb00493d10f458eabe71111d2ce7",
+    "archive_payloads_verified": 1252,
+    "implementation": {
+      "shared_type": "ObservationRejected: immutable operation/reason/exact-attempt list; no successful sample or outcome",
+      "linux": "Every missing immediate leaf validates retained descriptor, remaining ancestors and exact topology; all workloads/global authority are checked before structured list serialization. Exact registered retained zero is required for every candidate. No generic ENOENT or mutation retry.",
+      "windows": "Exact retained in-Job WAIT_OBJECT_0 and successful complete membership differences reject only after query cleanup succeeds. Registration supplies exact identity. Acquisition, identity, access, unknown wait and cleanup errors remain ordinary.",
+      "driver": "Narrow queue.cycle catch; bounded idle then outer loop and genuine owner reconciliation before fresh complete sample. No control or outcome publication from rejected batch; delivered index and accepted payloads retained.",
+      "bound": "32 consecutive rejections; terminal ordinary IO at bound; only complete successful controller cycle resets. Interruption preserved.",
+      "controls": "Controller converts mistakenly typed control failure to ordinary IO after accepted measurements. No JobQueue edits."
+    },
+    "governing_input_manifest": {
+      "tooling/cli/pom.xml": "f42aad6371b6a16dfa2be198016b5d3e948ee42459613147a778ff7e07f4cccd",
+      "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "c0c9413ea618f6efd9d5eda15d8ccc4064d1d77f8a48c20a03019fb12ee6e299",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationHook.java": "0d84be0c7b31259d3f1287538bd7070fc7023ce2adcac1196a1dfb0c0b7ff827",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationHooks.java": "68ceb214a02953feb5e5a04d7eafdc2cfa0ce0d89ebec84028cda33626685ea6",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationMessages.java": "448b7b891c5adfb9722680dea88a6dccd0fd5e82e052d5413998fa84c6c449bb",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationPermissions.java": "59068f725b1255ae0e9caf58a3826d72a136b49296141417f82241d80583be81",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaits.java": "b8f01955ed0cf776dd9e0e690abae12bc7059dcfb875b9361862bcee6df5e505",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CgroupBudget.java": "50c788313011b7e6800b7834838b10e1f40cdec32338e6cbe0b46fe05232f98a",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java": "ab096ff79adefa36bed0f8741f44971511b81ec61d6d59029098c69ae2d4077f",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java": "c4d3eba82a3d2e14ed1bb8c8ddaf11baa9018b8fdf1bc6929c8f4765bec30d0b",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java": "ed16a3004471292f43dcfee78acb7d432b57813d37d40827ea1c5fdb9de47a1d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Libcgroup.java": "28ae0d35f80c65b86a02883db30af731c03aec1ff1c31aa62dc90e0e3ba62477",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempt.java": "7bfe45bc763fcd39a6be03bf60667f9ad212fde1b43b7d8223c9540dd07442e4",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.java": "eb97dad64cb892b5492ea93da2c9853ccaa2daa47fb641f0627466f0679d9e78",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthority.java": "a2e32442cfdc4b28cab53272a58c533bfdfdbbe79254fbfc8b08f2e8c1db958e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.java": "cf0fe402e0afaf68bf439b0746b4aa9b04bb64c75cbd05a0c9e4c2953795dc89",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver.java": "ec217d2fc7783586bca63838003566cd48c3a96b9e39f15fc161ef692a8044b4",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCgroup.java": "31b51fb06258e9c469989a24b29a96f363b5ae041aeb88f8fdc86148bf825899",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements.java": "5dbc308d35fa04d714a13e34839822ea5df4d1b2fbe4930df7c1128ae8e5992d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMemory.java": "8d2d125e29326c7eb58fa5452789c39fb56948b2fcb33ef0ef8dbddf739656b1",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java": "c45e56a25aa0e8a1b37627b383a8a3ef678fa27e0e199a7f4e8434ec4fe8497f",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxResidency.java": "d652ea698b27aa1d97e0d6ebf21fe4073d2566057189edc43f2a758ffdc302f7",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java": "acc5f7a7bc76c2524e321031de2489cdeaaa0b52336f2c5f25cca148f3460c7a",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl.java": "65204d9b8ddad4db2bdb49a0c0a4df61e6e5fd7a9e07c2aaf29a1d4059529f7a",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacMemory.java": "49992e84241e58cf0c87c63841b4fea34b299478992cb8455ef9b9c9ccc72712",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java": "ea51a5f66cc0d2daf59d31e25fbac97d3344dd3467b8fe3f9dc154c6cff56dac",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Scheduler.java": "fd313e7c7f7b53d4c51d90fde25f948901587d43116f5be9284567b736c31840",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator.java": "5420e8c6a05ed02b0b574ead3da5ce48d9fe491e1e27d22d8d846a1ac029fe15",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SwapRecovery.java": "fda95b4aec0f8f6cec168cc956b0ca8928826096f0c09b9cfc165b1ca5139f19",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.java": "150e6c5075a9e2ab0eac10a29c17d3037b6c53ce0ca01da876bf3e25aa106332",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.java": "04fe0dfef5e07ae596c5266d771b21032df8c8502089167ffdd301190c3ac31b",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java": "6a1c38028cd633193168e0eb16311c22e3f36e852769a7485891b18b30c74519",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver.java": "a67dc8c2e937b20f05a2e245b3dcb733a047ac801c9b59bf6170fb39447fb73a",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements.java": "574858b688715cb315d8dc7305aca524511cacd404598857871ea38d648dce17",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMemory.java": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java": "4cf3954d14f6f4dd671bc678918b832bf68324f15ab8407cefdf32b0d92f9f03",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/ArtifactJson.java": "832afff114ae41213044d01c9bfb518b0fed1929439da03af5a7b78efed4c911",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/CargoCacheProfile.java": "0cc389e10bd0b8bc945e231e4273e04e77e8f0514e65e85cd42f540e2315e05f",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java": "c98e65622769c5b1a944281e6e2f2fbaf5cd06562186f16b29979ae07856d90a",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/PayloadFiles.java": "8dd374889ed34b861743e830d484c5eb9e2463888580fe7cf2791b3acd46d802",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/RetentionPreview.java": "b3e861ea66c0809fe70737d2a1238887e87b3ff2967451a438f01cc4624638ed",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Sha256.java": "f361fe970419c522d892693eb506444983434ad335d9c0621d7c466202e14d7e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommand.java": "8ad6c88b3f61f65f2eff0320fa6f8bf29b211b80392c9c53eec9e7a29b0a7258",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheMetadata.java": "f5104369cbaeba21ca1ff3b4bce83dfa95702215881cb1ab8bfb7d85511d7d23",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheTargets.java": "230c21ca121d62ce55ee9cc1cd457e5cef81d37683c7b02eb19806c5cbc73ac3",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputCache.java": "2f5482edd27454df8ba6324e6fe12884703ecce6f42ff4e9fcf39e3bc1e3e3f1",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputChanges.java": "78de823440a8d237c2f0d89dc3fe5d885a12b007e601fa1a50d2a0bb70d717b3",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputInventory.java": "f3396905820224151c53b67f4ffb4dd2fef35b52186763e9cfef2e32b09afd41",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputPaths.java": "5472ef58ffbe84c167c2dba73f4077fe9fc6c7edc146f586e69e602cd291a287",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputSnapshots.java": "09ad0ccd8d245818720b60d9beacace796b95ae5fed8445c63a9e2ab5e0c86cd",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputTimes.java": "702305e4ea9b4a02822614e029886d67a5ebd760066d4f3e4da060e8bfdbebcd",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SystemCommands.java": "8bbeb04a225432232aff80f71952bd88b7a43fbc608f89732d7aec64014f4a44",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UnixFileMetadata.java": "726cc24d656fc8a4306e92e5ed5e4ee23658f32d6b3b7cef0c863a2c1c53f1fb",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UnixFileTimes.java": "8b50709374207336dce7e6f5c73dc005e373f5829f51d972093b1f6af3ce715e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UpstreamV8Script.java": "6351484d06217b2e7dd1d3f2bf940eaf5c353a3a51f5767ed439c25939ce671d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/V8BindingCache.java": "8c4edbf8a6d661ee22ffe308c8eadf48ef2e15cd5eb35607b337c200393803e7",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/WindowsArguments.java": "8f2ac8631f28754f7df0d00d1bc53df714276dd5220c023ed661a2c4d11f14d9",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/WindowsFileTimes.java": "0d536c6b25c537cc9e61441c6ab4766f3f8444f00afac9fb25402c2f0b37e805",
+      "tooling/cli/src/main/java/module-info.java": "3859d555f1aebf823125e342be08469a0f32c23db10721fded4b64068e382ca4",
+      "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/linux-allocation-hook.js": "68b5e85e211ffc94f81ef4f033743981933c0cbad672180f615d4ae6a06c7c5e",
+      "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/linux-leader.js": "57e190cea1e1fa9bc6e7478d7f8e13dbf7c7b35394d0a8f1be83168d1a35b62f",
+      "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/windows-allocation-hook.js": "f83361f072c9a95cb86285bc854742ee417509abffe2611cac6c36aa8aaab5c3",
+      "tooling/cli/src/main/resources/logback.xml": "92c6f14c42bf7592d6e2696b86dc6748133cafc44566796beb21d0d56d5c1456",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationHookTest.java": "fd4f20c305038273d950c9b2e445d4675b454a9b83aed50301bc0b31278db3bc",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationHooksTest.java": "e2a34d800f5de82717e9765a6629da0422f92294c150747b7711adfd79406a24",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationMessagesTest.java": "e8585e8a9e36889e412d9d495a4506a5bed219f60e932409432e23d675259b8b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationPermissionsTest.java": "09412047b82ca1448309cda2a1cc7ab38503b3967701286072d14d9162b23895",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaitsTest.java": "401594ba228c3e871ce8c17cf8a44a69f3572010ddb5c0c492a525f8ca923be5",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerMemoryHistoryTest.java": "0f8a34a02edcdd86cf86c4b7c6cdceb41805671a6aaac265ecafaa04e1e8b618",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerSampleAcceptanceTest.java": "b4e97e991652a37edb9a4607a0fd23dab341fcbb84e1ed19dfb3fcfb1110244b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerTest.java": "14ca5805264fa6d9cba4e5f7835382de9e9cbc0271da67f6c79c2226ec8509de",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeProbe.java": "bc332e146cf2d06915311725b7e0ee2770fc5a9c4f2892d8f233122c6b02efdf",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeTest.java": "b7d97d79df5e4b53fdcae9e25082c6cb395342d75beeee09bb7ffed5178574cb",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaScriptProbe.java": "42060901b195f6e7ec8576bde90ba04ec7d953fcd555a6574b8051802c907e1a",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueBlockedRecoveryTest.java": "a051545d96b16dbe2f79dd28a28adf3fb1b68c06870f8442f0b0934674b3a2e3",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueCompletionFreeRetryTest.java": "67e036765d8fef1c69ddf0597ed1aee61ca2bb0f4bab5a6c3485387479027092",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueMemoryHistoryTest.java": "845afe5ff50265496b1cf1775de11665c0f252d39ae4027e3def9f9d45691af0",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueTest.java": "dcec3f137c3044fc42413dbf284ea230f963e5c858686ac47d039b1b1ef37e1b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptProbe.java": "fb55d81b934abfc8e9c12b7e187035b6f7ca123d46529a4837abc19e33e8a1e9",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptTest.java": "a27c8fc242bf8c871837263ba0fe0c983108f3dc3d9c220df59ee56fb9464693",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAttemptsTest.java": "8f7cac9cd813a044c8e40e994d8c4b77cedfbabc09d07a48f9cd8bf21fcbf052",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityClassifierProbe.java": "3077f73b40caf54c973e9c19f80c0c2564b2183fc77ff49b11c821091f3c7ae0",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserverNativeTest.java": "6991b27b7ac839f33b8401e996be19af8890ba865aa050b64d40144c5912b6d7",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserverTest.java": "acd342db4b0620046649307f29bc6fcb6d1c67a48b5436e2eb099ca3ec8da90b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCgroupTest.java": "730595ea8d6efdf283bdba5ad2a3e29984a29eae401367edec6cda615a4e98be",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxMeasurementsTest.java": "f16159222d5bd32da9fa802a1b63d20f28d2a4f6ab1b26703715b48fb020809b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxMemoryTest.java": "6a353e2edec33bcec6c01465018c79e75716859192f27a3242456324ff29fd24",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java": "d4dce806684f59bf381ae3b5748e7224127fb4909c32ff94f871cff1fbe30cd0",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxResidencyTest.java": "dc17a15f8c6b28fa1af51277ba9c258575673ea21e7b93dcd9ac9835b151bf08",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxStandardFilesTest.java": "ca91aecfc295d05bca5ede1fdca46ebedacbfa66dc96b40689aaf3186f295c8e",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorControlTest.java": "f3e3796698453c89c4efe8e7f230e91b5716c385dcb6d926822771d80944e049",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java": "1b42ee98c869bbbee5bc0ead91409748df3c86d054927de7f2db42c984d81e6e",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSwapControlTest.java": "01bbccd7628d537661ff0af52fa65755e0a530d6b82cae005204d79ce23d1ffa",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacMemoryTest.java": "9e6f7d4e2e89cfb14ef212509b80322865cae73fe446ac29c98798adeca3c014",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyBlockedRecoveryTest.java": "644491b4963ea13760ab03330c0914a2dd230637560d02b7ed3321f9b2011745",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyCompletionFreeRetryTest.java": "3d1ca98c1482d251db32152465031d91a553de20cf6dd29e1abb2e771f04abce",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyTest.java": "eefb618af37cd02e590ec577d29da332780dd269a1b1b4effcf7329bbecad718",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinatorTest.java": "e57e5e2ad1df8d89b0a98aa7e8bb563f9fd8c1a2943689ab1aa13c9f8179673f",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerTest.java": "5cdb88bb11b30d940f9b38dc130f64b609347d11c0ff25e26b9cf967759e46a7",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SwapRecoveryTest.java": "9a8e34c58903b818a7f8a938827fb5110ff1016e85c93aaa62508d576d3465c5",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/TestRequirements.java": "8b39d2d8782be2977a3ef5865b5712942fcd3dad366de812867a051df91b6c1f",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooksTest.java": "739a05ae19bd9cce93c08e9461b82cfac48e7cc91bb14f8cd2b949f22b8209eb",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptTest.java": "970fb6294d0f1364bb9296ff66e3bddf38aced331413a1dea5085d6953993a46",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java": "7bedcb8e3ceddd25868bc282d4704f3405076a540195c01a1cc26eaeac458f04",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserverTest.java": "166d48792aef99899cd6560512e87953aeaddeaa31b24573696fcccfa21658c5",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurementsTest.java": "2d2b7de12141422b75f700635eba3edcdd2e4c7c625b2ab8206f1c68dbf0ffb3",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java": "87081991ed07e0f59e2b6373908b2d27b75e2217f73f6704427bdd2fdc5b6de8",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/NativeTimestampRange.java": "58f62c018bc9658819f632b7515a6fbe7eba15f845eb3d4c7895b320cbbae1ec",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/RetentionPreviewTest.java": "a1bd59f5b3c799923302035bc143c0cecfb209b9b0aeb55613c20424c98de2c7",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommandTest.java": "1bfbb22379dcc8d681ddd50c20205f35f83ef24a3faed3abf218986549be57ac",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheMetadataTest.java": "969a563881720f4fc874bab666a257711890b9434d27c2a1368da1ae2088eb48",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheTargetsTest.java": "c5817abab1887dd58d5672eab8ee6ddb216f2c1a47f2cbd7721fb9b64f24b218",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputCacheTest.java": "7191bef0fd4e6ccca8399e133a8cf75dd5994f8259926a1cb0de5a3ba9ef048a",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputChangesTest.java": "0cc87d56f5364d6e6d9501eccc35fcc36e53a4617d50c44f38085cf8d97bd3d2",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputInventoryTest.java": "ed1c0fa05a107ce0b6af6df6c3d62fd5d9b0a67c58f468288247bd8f33d8f916",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputSnapshotsTest.java": "ad6379b0c3ea5cafa0af4e7c8c4cefd440c7ab2f28dc21436397d737744c9ec4",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/UpstreamV8ScriptTest.java": "54e4df87d74d6d51a515220b5861f2d2ff9dbebeffefd95ad9ddc2b221ee5f54",
+      "tooling/cli/src/test/resources/logback-test.xml": "92c6f14c42bf7592d6e2696b86dc6748133cafc44566796beb21d0d56d5c1456",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/ObservationRejected.java": "aa51d911750900e80973381fd309dff50295eb2620bfc3a1c438c9a730ba4d8c",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityObservationTest.java": "d8e7da407e85be8c376c49af1ee810b420483b0aacee234ff1f74beb78ece5e3"
+    },
+    "verification": {
+      "accepted-incremental": {
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "LinuxAuthorityObservationTest": {
+              "tests": "8",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "WindowsProcessTest": {
+              "tests": "87",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "WindowsMeasurementsTest": {
+              "tests": "9",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "ControllerSampleAcceptanceTest": {
+              "tests": "5",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "SchedulerCoordinatorTest": {
+              "tests": "17",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          }
+        },
+        "jar": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a6c-32bc-7890-8f37-640ae72aae89/temp/observation-recovery-Fm8zuq/build/output/tooling-cli-1.0-SNAPSHOT.jar",
+          "sha256": "41189a72465d3010775df35b316b0428f8b9e999ab864c5a8e13516c5d47b20c"
+        },
+        "actual_xml_cases": {
+          "com.holdmyspot.codexunleashed.scheduler.ControllerSampleAcceptanceTest": [
+            {
+              "name": "acceptsBaselineOnlyAfterEveryTreeRead",
+              "result": "passed"
+            },
+            {
+              "name": "acceptsReadingsBeforeApplyingControl",
+              "result": "passed"
+            },
+            {
+              "name": "controlRejectionRemainsTerminal",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsProviderAcceptanceFailure",
+              "result": "passed"
+            },
+            {
+              "name": "trustedRejectionPreservesCompleteBatchState",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityObservationTest": [
+            {
+              "name": "acknowledgesMultipleCompletedLeaves",
+              "result": "passed"
+            },
+            {
+              "name": "acknowledgesOnlyExactZeroAttempt",
+              "result": "passed"
+            },
+            {
+              "name": "checksContextAfterCandidate",
+              "result": "passed"
+            },
+            {
+              "name": "checksEveryWorkloadBeforeClassifying",
+              "result": "passed"
+            },
+            {
+              "name": "preservesSuccessfulZero",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOtherOperationsAndMetadata",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnprovenZero",
+              "result": "passed"
+            },
+            {
+              "name": "retainsEveryVerifiedCandidate",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.SchedulerCoordinatorTest": [
+            {
+              "name": "acceptedOutcomeWaitsForSuccessfulCycle",
+              "result": "passed"
+            },
+            {
+              "name": "boundsRepeatedRejections",
+              "result": "passed"
+            },
+            {
+              "name": "completedOwnersDoNotResetRejectedBatchBound",
+              "result": "passed"
+            },
+            {
+              "name": "defersBlockedDeliveryAndPreservesRetryOrder",
+              "result": "passed"
+            },
+            {
+              "name": "failedLaterReadingStopsControlsAndCleansOwners",
+              "result": "passed"
+            },
+            {
+              "name": "interruptionStopsObservationRecovery",
+              "result": "passed"
+            },
+            {
+              "name": "partialSamplesDoNotResetRejectedBatchBound",
+              "result": "passed"
+            },
+            {
+              "name": "preservesPrimaryAndSuppressedFailures",
+              "result": "passed"
+            },
+            {
+              "name": "preservesUnknownEstimates",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesAfterTrustedRejection",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesMultipleCompletedOwners",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsRetryOutsideMeasurements",
+              "result": "passed"
+            },
+            {
+              "name": "resetsBoundOnlyAfterCompleteBatch",
+              "result": "passed"
+            },
+            {
+              "name": "retainsActionsAfterRootExit",
+              "result": "passed"
+            },
+            {
+              "name": "retainsDependenciesAfterFailedCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "uncertainDeliveryIsNotResent",
+              "result": "passed"
+            },
+            {
+              "name": "waitsForDiscoveryAndRejectsReuse",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.WindowsMeasurementsTest": [
+            {
+              "name": "doesNotSubtractCurrentResidencyFromAvailableBytes",
+              "result": "passed"
+            },
+            {
+              "name": "incompleteTreeBatchPreservesHistoriesAndIssuesNoControl",
+              "result": "passed"
+            },
+            {
+              "name": "mapsInstantaneousHostSample",
+              "result": "passed"
+            },
+            {
+              "name": "preservesSuccessfulZeroAndFalse",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsClosedBorrowedOwner",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsTrustedMembershipChurn",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnavailableHostBeforeControl",
+              "result": "passed"
+            },
+            {
+              "name": "retiresRegistrationWithoutClosingBorrowedOwner",
+              "result": "passed"
+            },
+            {
+              "name": "routesCurrentAttemptsAndRetainsStopping",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest": [
+            {
+              "name": "acceptsOnlyObservedZeroResidency",
+              "result": "passed"
+            },
+            {
+              "name": "cleanupFailureDefeatsTrustedChurn",
+              "result": "passed"
+            },
+            {
+              "name": "distinguishesTrustedChurnFromUncertainty",
+              "result": "passed"
+            },
+            {
+              "name": "duplicatesSeparateStandardHandles",
+              "result": "passed"
+            },
+            {
+              "name": "preparesRootWithoutReleasingIt",
+              "result": "passed"
+            },
+            {
+              "name": "preservesMemberVerificationAndCleanupFailures",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rechecksAndClosesRetainedMember",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesDrainWithoutRepeatingTermination",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[6]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[7]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[8]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[9]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[10]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[11]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[12]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[13]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[14]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[15]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[16]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[17]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[18]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[19]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[20]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[21]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[22]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[6]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[7]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[8]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[9]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[10]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[11]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[12]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[13]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[14]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOutOfRangeStatus(long)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOutOfRangeStatus(long)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsReleaseWithoutAuthority",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedRootOnlyOnce",
+              "result": "passed"
+            },
+            {
+              "name": "resizesAndReleasesEverySample",
+              "result": "passed"
+            },
+            {
+              "name": "retainsAmbiguousMemberCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsAmbiguousRootRelease",
+              "result": "passed"
+            },
+            {
+              "name": "retainsCombinedOutputLaunch",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedDrainOwnership",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedMemberCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedPreparationOwnership",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedQueryCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedTemporaryLaunchRelease",
+              "result": "passed"
+            },
+            {
+              "name": "retainsUncertainLifetimeRelease(boolean)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsUncertainLifetimeRelease(boolean)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsVerifiedMemberIdentity",
+              "result": "passed"
+            },
+            {
+              "name": "sumsCompleteOwnedJobResidency",
+              "result": "passed"
+            },
+            {
+              "name": "validatesMemberIdsBeforeAcquisition",
+              "result": "passed"
+            }
+          ]
+        }
+      },
+      "accepted-fresh": {
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "LinuxAuthorityObservationTest": {
+              "tests": "8",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "WindowsProcessTest": {
+              "tests": "87",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "WindowsMeasurementsTest": {
+              "tests": "9",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "ControllerSampleAcceptanceTest": {
+              "tests": "5",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            },
+            "SchedulerCoordinatorTest": {
+              "tests": "17",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          }
+        },
+        "jar": {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a6c-32bc-7890-8f37-640ae72aae89/temp/observation-recovery-Fm8zuq/final-fresh-build/output/tooling-cli-1.0-SNAPSHOT.jar",
+          "sha256": "89043bacfadcd5e6bc54327f250c0140a599f618c9e754c11d07d9d5deb2f3a3"
+        },
+        "actual_xml_cases": {
+          "com.holdmyspot.codexunleashed.scheduler.ControllerSampleAcceptanceTest": [
+            {
+              "name": "acceptsBaselineOnlyAfterEveryTreeRead",
+              "result": "passed"
+            },
+            {
+              "name": "acceptsReadingsBeforeApplyingControl",
+              "result": "passed"
+            },
+            {
+              "name": "controlRejectionRemainsTerminal",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsProviderAcceptanceFailure",
+              "result": "passed"
+            },
+            {
+              "name": "trustedRejectionPreservesCompleteBatchState",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityObservationTest": [
+            {
+              "name": "acknowledgesMultipleCompletedLeaves",
+              "result": "passed"
+            },
+            {
+              "name": "acknowledgesOnlyExactZeroAttempt",
+              "result": "passed"
+            },
+            {
+              "name": "checksContextAfterCandidate",
+              "result": "passed"
+            },
+            {
+              "name": "checksEveryWorkloadBeforeClassifying",
+              "result": "passed"
+            },
+            {
+              "name": "preservesSuccessfulZero",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOtherOperationsAndMetadata",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnprovenZero",
+              "result": "passed"
+            },
+            {
+              "name": "retainsEveryVerifiedCandidate",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.SchedulerCoordinatorTest": [
+            {
+              "name": "acceptedOutcomeWaitsForSuccessfulCycle",
+              "result": "passed"
+            },
+            {
+              "name": "boundsRepeatedRejections",
+              "result": "passed"
+            },
+            {
+              "name": "completedOwnersDoNotResetRejectedBatchBound",
+              "result": "passed"
+            },
+            {
+              "name": "defersBlockedDeliveryAndPreservesRetryOrder",
+              "result": "passed"
+            },
+            {
+              "name": "failedLaterReadingStopsControlsAndCleansOwners",
+              "result": "passed"
+            },
+            {
+              "name": "interruptionStopsObservationRecovery",
+              "result": "passed"
+            },
+            {
+              "name": "partialSamplesDoNotResetRejectedBatchBound",
+              "result": "passed"
+            },
+            {
+              "name": "preservesPrimaryAndSuppressedFailures",
+              "result": "passed"
+            },
+            {
+              "name": "preservesUnknownEstimates",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesAfterTrustedRejection",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesMultipleCompletedOwners",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsRetryOutsideMeasurements",
+              "result": "passed"
+            },
+            {
+              "name": "resetsBoundOnlyAfterCompleteBatch",
+              "result": "passed"
+            },
+            {
+              "name": "retainsActionsAfterRootExit",
+              "result": "passed"
+            },
+            {
+              "name": "retainsDependenciesAfterFailedCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "uncertainDeliveryIsNotResent",
+              "result": "passed"
+            },
+            {
+              "name": "waitsForDiscoveryAndRejectsReuse",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.WindowsMeasurementsTest": [
+            {
+              "name": "doesNotSubtractCurrentResidencyFromAvailableBytes",
+              "result": "passed"
+            },
+            {
+              "name": "incompleteTreeBatchPreservesHistoriesAndIssuesNoControl",
+              "result": "passed"
+            },
+            {
+              "name": "mapsInstantaneousHostSample",
+              "result": "passed"
+            },
+            {
+              "name": "preservesSuccessfulZeroAndFalse",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsClosedBorrowedOwner",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsTrustedMembershipChurn",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnavailableHostBeforeControl",
+              "result": "passed"
+            },
+            {
+              "name": "retiresRegistrationWithoutClosingBorrowedOwner",
+              "result": "passed"
+            },
+            {
+              "name": "routesCurrentAttemptsAndRetainsStopping",
+              "result": "passed"
+            }
+          ],
+          "com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest": [
+            {
+              "name": "acceptsOnlyObservedZeroResidency",
+              "result": "passed"
+            },
+            {
+              "name": "cleanupFailureDefeatsTrustedChurn",
+              "result": "passed"
+            },
+            {
+              "name": "distinguishesTrustedChurnFromUncertainty",
+              "result": "passed"
+            },
+            {
+              "name": "duplicatesSeparateStandardHandles",
+              "result": "passed"
+            },
+            {
+              "name": "preparesRootWithoutReleasingIt",
+              "result": "passed"
+            },
+            {
+              "name": "preservesMemberVerificationAndCleanupFailures",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "preservesNativeOutcomes(long, boolean)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rechecksAndClosesRetainedMember",
+              "result": "passed"
+            },
+            {
+              "name": "reconcilesDrainWithoutRepeatingTermination",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[6]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[7]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[8]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[9]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[10]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[11]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[12]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[13]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[14]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[15]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[16]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[17]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[18]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[19]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[20]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[21]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsIncompleteResidency(java.lang.String)[22]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[6]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[7]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[8]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[9]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[10]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[11]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[12]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[13]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[14]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOutOfRangeStatus(long)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsOutOfRangeStatus(long)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsReleaseWithoutAuthority",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[4]",
+              "result": "passed"
+            },
+            {
+              "name": "rejectsUnverifiedMemberIdentity(java.lang.String)[5]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedLaunchFailure(int, boolean, java.util.List)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "releasesPreparedRootOnlyOnce",
+              "result": "passed"
+            },
+            {
+              "name": "resizesAndReleasesEverySample",
+              "result": "passed"
+            },
+            {
+              "name": "retainsAmbiguousMemberCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsAmbiguousRootRelease",
+              "result": "passed"
+            },
+            {
+              "name": "retainsCombinedOutputLaunch",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedDrainOwnership",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedMemberCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedPreparationOwnership",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedQueryCleanup",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[2]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedRootRelease(int)[3]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsFailedTemporaryLaunchRelease",
+              "result": "passed"
+            },
+            {
+              "name": "retainsUncertainLifetimeRelease(boolean)[0]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsUncertainLifetimeRelease(boolean)[1]",
+              "result": "passed"
+            },
+            {
+              "name": "retainsVerifiedMemberIdentity",
+              "result": "passed"
+            },
+            {
+              "name": "sumsCompleteOwnedJobResidency",
+              "result": "passed"
+            },
+            {
+              "name": "validatesMemberIdsBeforeAcquisition",
+              "result": "passed"
+            }
+          ]
+        }
+      }
+    },
+    "behavioral_red": [
+      {
+        "case": "reconcilesAfterTrustedRejection",
+        "type": "com.holdmyspot.codexunleashed.scheduler.ObservationRejected",
+        "message": "Memory observation rejected: COMPLETED_LEAVES"
+      },
+      {
+        "case": "rejectsTrustedMembershipChurn",
+        "type": "java.lang.IllegalArgumentException",
+        "message": "\"trustedBatchRejected\" must be true.\ntrustedBatchRejected: false"
+      },
+      {
+        "case": "controlRejectionRemainsTerminal",
+        "type": "java.lang.IllegalArgumentException",
+        "message": "\"noRetryOfControl\" must be false.\nnoRetryOfControl: true"
+      },
+      {
+        "case": "acknowledgesMultipleCompletedLeaves",
+        "type": "java.lang.IllegalArgumentException",
+        "message": "\"allCompletedLeavesRejectedTogether\" must be true.\nallCompletedLeavesRejectedTogether: false"
+      }
+    ],
+    "warnings": {
+      "total": 107,
+      "new_declarations": [
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.java",
+          "line": 761,
+          "message": "[serial] serializable class RemovedLeaf has no definition of serialVersionUID",
+          "source": "private static final class RemovedLeaf extends IOException",
+          "source_declaration_present_in_base": false
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.java",
+          "line": 766,
+          "message": "[serial] non-transient instance field of a serializable class declared with a non-serializable type",
+          "source": "private final List<LinuxMeasurements.Attempt> attempts;",
+          "source_declaration_present_in_base": false
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/ObservationRejected.java",
+          "line": 13,
+          "message": "[serial] serializable class ObservationRejected has no definition of serialVersionUID",
+          "source": "public final class ObservationRejected extends IOException",
+          "source_declaration_present_in_base": false
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/ObservationRejected.java",
+          "line": 20,
+          "message": "[serial] non-transient instance field of a serializable class declared with a non-serializable type",
+          "source": "private final List<Attempt> attempts;",
+          "source_declaration_present_in_base": false
+        },
+        {
+          "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java",
+          "line": 775,
+          "message": "[serial] serializable class MembershipChanged has no definition of serialVersionUID",
+          "source": "static final class MembershipChanged extends IOException",
+          "source_declaration_present_in_base": false
+        },
+        {
+          "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurementsTest.java",
+          "line": 30,
+          "message": "[try] auto-closeable resource registration is never referenced in body of corresponding try statement",
+          "source": "var registration = measurements.register(new Controller.Action(\"A\", 0), 2, process))",
+          "source_declaration_present_in_base": false
+        }
+      ],
+      "policy": "Warnings retained; warnings-as-errors remains disabled. Exception payload serialization is unsupported; no serialization success claim."
+    },
+    "module_descriptor": {
+      "evidence": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a6c-32bc-7890-8f37-640ae72aae89/temp/observation-recovery-Fm8zuq/module-descriptor.json",
+      "sha256": "00198f7aef05e5f2149bcb77e4b9722ed4f03a2cbf1e65589f895e3a5e7155dd",
+      "explanation": "Packaging adds ModulePackages. Module declaration/requirements/exports/opens/uses/provides unchanged; descriptor is not byte-identical to tested output."
+    },
+    "limits": [
+      "Focused tests prove Java decisions using controlled native replies; no native dispatch or full Codex/scheduler acceptance ran.",
+      "Vanished-before-OpenProcess remains unimplemented pending exact native error and independent membership proof; generic OpenProcess failures remain terminal.",
+      "Native gates remain: Linux multiple actual removed leaves with each genuine retained zero; Windows x64 natural-named recovery, root-only exit/live descendant, cleanup/trust negatives; Windows ARM64 changed-path parity.",
+      "A finite streak bound can intentionally stop continuously churning Windows Jobs; it does not prove eventual native stability.",
+      "Java serialization of runtime-only exception payloads is not implemented; exact-path lint retains corresponding diagnostics."
+    ]
+  },
+  "parent_acceptance": {
+    "candidate_base": "2398651b996b5387c4445a7bb222b6800a32da22",
+    "governing_inputs_before_integration": "No tooling/cli changes between both candidate bases and parent HEAD be591aec24. Exact candidate hashes preserved; only these 18 source paths applied.",
+    "archive_validation": "Every payload hash/local original checked; safe relative members only. Cargo archive intentionally flattens sure-fire receipt paths.",
+    "fresh_combined_package": {
+      "exit": 0,
+      "output_directory_absent_before_invocation": true,
+      "tests": 168,
+      "receipts": [
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.ControllerSampleAcceptanceTest",
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "6af78833e1b293211a6f8a2e5d770d543ba7e196db4e66143af510aead62ebeb",
+          "cases": [
+            "acceptsBaselineOnlyAfterEveryTreeRead",
+            "acceptsReadingsBeforeApplyingControl",
+            "controlRejectionRemainsTerminal",
+            "rejectsProviderAcceptanceFailure",
+            "trustedRejectionPreservesCompleteBatchState"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityObservationTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "a8c1594da05ce64793ac675e1c9c03df80de7582f8abed5aab3f72b6acc0d766",
+          "cases": [
+            "acknowledgesMultipleCompletedLeaves",
+            "acknowledgesOnlyExactZeroAttempt",
+            "checksContextAfterCandidate",
+            "checksEveryWorkloadBeforeClassifying",
+            "preservesSuccessfulZero",
+            "rejectsOtherOperationsAndMetadata",
+            "rejectsUnprovenZero",
+            "retainsEveryVerifiedCandidate"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.LinuxBorrowedStreamsTest",
+          "tests": 10,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "39e2e740e93f0056b58d74ba43aac1dfef640a9f9718742ab8d36c6f6678ce45",
+          "cases": [
+            "authenticatesActionSequenceAndCapabilityInAdditionToRootPeer",
+            "authorizesExecutionButRejectsAnotherCommandOrEnvironment",
+            "configurationRoundTripPreservesApprovedLaunchAndRejectsMissingFields",
+            "interruptionPreventsTransferAndRetainsInterruptFlag",
+            "listenerRequiresExplicitAuthorizationAndRejectsReplay",
+            "nativeCloseFailuresRetainDiagnosticsWithoutRetryingNumbers",
+            "partialInstallCannotBeRetried",
+            "rejectsChangesToExecutionIdentityAndPaths",
+            "terminalMismatchWithdrawsInstallation",
+            "treeRejectsMismatchedBindingBeforeAcquisition"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.LinuxProcessTreeTest",
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "b19c45964a97a55d1f4e4bec202400356ba725f38e7f5d92406931b17cf79fc5",
+          "cases": [
+            "absentXmlModeExecutesDirectly",
+            "borrowedInstallationCompletesBeforeReadiness",
+            "borrowedInstallationFailurePreventsReadiness",
+            "executesDirectWorkloadWithoutWaitingForReplacement",
+            "expiresAttachedGateWithoutExecutingWorkload",
+            "interruptsAttachedWaitWithoutExecutingWorkload",
+            "legacyConstructorExecutesDirectly",
+            "rejectsEmptyXmlMode",
+            "rejectsNullExecutionMode",
+            "rejectsUnknownXmlMode",
+            "retainsExecutionDecisionThroughXml(com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree$ExecutionMode)[0]",
+            "retainsExecutionDecisionThroughXml(com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree$ExecutionMode)[1]"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorControlTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "dfb307ab78f0fce70284335e0c173ac3ec02bfbebb6fdf3b298fa8c4dc662461",
+          "cases": [
+            "automaticOwnersCollectWithoutInstrumentationAcknowledgement",
+            "cancellationDoesNotAuthorizeCollection",
+            "collectionModePreservesLegacyDocuments",
+            "instrumentedOwnersRetainCollectionWithoutAcknowledgement",
+            "missingGroupOrRootExitCannotProveZero",
+            "rejectsChangedRequestUnderRetainedIdentity",
+            "rejectsIncompleteCollectionAcknowledgement",
+            "reportsCleanupFailureWithoutEarlierFailure",
+            "retriesFailedKernelKillOperation",
+            "retriesUncertainPublication",
+            "suppressesCleanupFailureOnPrimaryFailure"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.LinuxSupervisorTest",
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "34fb0faf13db3b13a32d1f84a4364dd94bd93824fbb92fe474de6cc7befca1b7",
+          "cases": [
+            "borrowedPreparationRejectsMissingReceiptBeforeAcquisition",
+            "copiesAcceptedChildOutcomes",
+            "rejectsInvalidProcessOutcomes",
+            "rejectsInvalidTimeoutBeforeAcquisition(java.time.Duration)[0]",
+            "rejectsInvalidTimeoutBeforeAcquisition(java.time.Duration)[1]",
+            "rejectsInvalidTimeoutBeforeAcquisition(java.time.Duration)[2]",
+            "rejectsNullLaunch",
+            "rejectsNullStandardFilesBeforeAcquisition",
+            "rejectsNullTimeout"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.SchedulerCoordinatorTest",
+          "tests": 17,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "1596d6119f844f245f0d938e4c50cec2c38ed06ad66a8b02efa02f48872703a7",
+          "cases": [
+            "acceptedOutcomeWaitsForSuccessfulCycle",
+            "boundsRepeatedRejections",
+            "completedOwnersDoNotResetRejectedBatchBound",
+            "defersBlockedDeliveryAndPreservesRetryOrder",
+            "failedLaterReadingStopsControlsAndCleansOwners",
+            "interruptionStopsObservationRecovery",
+            "partialSamplesDoNotResetRejectedBatchBound",
+            "preservesPrimaryAndSuppressedFailures",
+            "preservesUnknownEstimates",
+            "reconcilesAfterTrustedRejection",
+            "reconcilesMultipleCompletedOwners",
+            "rejectsRetryOutsideMeasurements",
+            "resetsBoundOnlyAfterCompleteBatch",
+            "retainsActionsAfterRootExit",
+            "retainsDependenciesAfterFailedCleanup",
+            "uncertainDeliveryIsNotResent",
+            "waitsForDiscoveryAndRejectsReuse"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.WindowsMeasurementsTest",
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "47980df29a5d47bdc0b188f4743f6a45ffc8e352cde7d39caef34a5ff1d5c5e5",
+          "cases": [
+            "doesNotSubtractCurrentResidencyFromAvailableBytes",
+            "incompleteTreeBatchPreservesHistoriesAndIssuesNoControl",
+            "mapsInstantaneousHostSample",
+            "preservesSuccessfulZeroAndFalse",
+            "rejectsClosedBorrowedOwner",
+            "rejectsTrustedMembershipChurn",
+            "rejectsUnavailableHostBeforeControl",
+            "retiresRegistrationWithoutClosingBorrowedOwner",
+            "routesCurrentAttemptsAndRetainsStopping"
+          ]
+        },
+        {
+          "class": "com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest",
+          "tests": 87,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "receipt_sha256": "26a99a22faaa336fbc66b53fec3886bd9c8651b777a2cc05714b25bc62961f1c",
+          "cases": [
+            "acceptsOnlyObservedZeroResidency",
+            "cleanupFailureDefeatsTrustedChurn",
+            "distinguishesTrustedChurnFromUncertainty",
+            "duplicatesSeparateStandardHandles",
+            "preparesRootWithoutReleasingIt",
+            "preservesMemberVerificationAndCleanupFailures",
+            "preservesNativeOutcomes(long, boolean)[0]",
+            "preservesNativeOutcomes(long, boolean)[1]",
+            "preservesNativeOutcomes(long, boolean)[2]",
+            "preservesNativeOutcomes(long, boolean)[3]",
+            "preservesNativeOutcomes(long, boolean)[4]",
+            "rechecksAndClosesRetainedMember",
+            "reconcilesDrainWithoutRepeatingTermination",
+            "rejectsIncompleteResidency(java.lang.String)[0]",
+            "rejectsIncompleteResidency(java.lang.String)[1]",
+            "rejectsIncompleteResidency(java.lang.String)[2]",
+            "rejectsIncompleteResidency(java.lang.String)[3]",
+            "rejectsIncompleteResidency(java.lang.String)[4]",
+            "rejectsIncompleteResidency(java.lang.String)[5]",
+            "rejectsIncompleteResidency(java.lang.String)[6]",
+            "rejectsIncompleteResidency(java.lang.String)[7]",
+            "rejectsIncompleteResidency(java.lang.String)[8]",
+            "rejectsIncompleteResidency(java.lang.String)[9]",
+            "rejectsIncompleteResidency(java.lang.String)[10]",
+            "rejectsIncompleteResidency(java.lang.String)[11]",
+            "rejectsIncompleteResidency(java.lang.String)[12]",
+            "rejectsIncompleteResidency(java.lang.String)[13]",
+            "rejectsIncompleteResidency(java.lang.String)[14]",
+            "rejectsIncompleteResidency(java.lang.String)[15]",
+            "rejectsIncompleteResidency(java.lang.String)[16]",
+            "rejectsIncompleteResidency(java.lang.String)[17]",
+            "rejectsIncompleteResidency(java.lang.String)[18]",
+            "rejectsIncompleteResidency(java.lang.String)[19]",
+            "rejectsIncompleteResidency(java.lang.String)[20]",
+            "rejectsIncompleteResidency(java.lang.String)[21]",
+            "rejectsIncompleteResidency(java.lang.String)[22]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[0]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[1]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[2]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[3]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[4]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[5]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[6]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[7]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[8]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[9]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[10]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[11]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[12]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[13]",
+            "rejectsInvalidStandardHandlesBeforeAcquisition(int, java.lang.foreign.MemorySegment)[14]",
+            "rejectsOutOfRangeStatus(long)[0]",
+            "rejectsOutOfRangeStatus(long)[1]",
+            "rejectsReleaseWithoutAuthority",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[0]",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[1]",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[2]",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[3]",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[4]",
+            "rejectsUnverifiedMemberIdentity(java.lang.String)[5]",
+            "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[0]",
+            "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[1]",
+            "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[2]",
+            "releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[3]",
+            "releasesPreparedLaunchFailure(int, boolean, java.util.List)[0]",
+            "releasesPreparedLaunchFailure(int, boolean, java.util.List)[1]",
+            "releasesPreparedLaunchFailure(int, boolean, java.util.List)[2]",
+            "releasesPreparedLaunchFailure(int, boolean, java.util.List)[3]",
+            "releasesPreparedRootOnlyOnce",
+            "resizesAndReleasesEverySample",
+            "retainsAmbiguousMemberCleanup",
+            "retainsAmbiguousRootRelease",
+            "retainsCombinedOutputLaunch",
+            "retainsFailedDrainOwnership",
+            "retainsFailedMemberCleanup",
+            "retainsFailedPreparationOwnership",
+            "retainsFailedQueryCleanup",
+            "retainsFailedRootRelease(int)[0]",
+            "retainsFailedRootRelease(int)[1]",
+            "retainsFailedRootRelease(int)[2]",
+            "retainsFailedRootRelease(int)[3]",
+            "retainsFailedTemporaryLaunchRelease",
+            "retainsUncertainLifetimeRelease(boolean)[0]",
+            "retainsUncertainLifetimeRelease(boolean)[1]",
+            "retainsVerifiedMemberIdentity",
+            "sumsCompleteOwnedJobResidency",
+            "validatesMemberIdsBeforeAcquisition"
+          ]
+        }
+      ],
+      "jar_sha256": "78fb6022d599edc590ebe919d10731991118b08055f7fafae980fe81d17641de",
+      "executable_class_count": 243,
+      "tested_packaged_executable_sha256": {
+        "com/holdmyspot/codexunleashed/tooling/SourceInputInventory$Snapshot.class": "db319f68912e024fa5f8e37acc78cba808c226e33d863a847675787f34658156",
+        "com/holdmyspot/codexunleashed/tooling/PayloadFiles.class": "f044957b1b00fe6f5b6196c9e7ca95517d9a7a03d6a953f0e069c825a325dbce",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata$LinuxReader.class": "277c9717337e66895b67402e9924c703d143bb9a9151facb555df46c2febbd40",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes$Opener.class": "846794df173a7b73fdedbef6c0ba88d2174c5c21725afe92aa89162426a507c9",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputCache$Context.class": "a4ba8b93c57fe0f1636ec91b2b1b21eb8e43915565140d666e0e5bcbc2f4b3b8",
+        "com/holdmyspot/codexunleashed/tooling/V8BindingCache$State.class": "250435476c7a9b5c197131d26dd182268b467405716b3dde84d043c8c04aadbb",
+        "com/holdmyspot/codexunleashed/tooling/SystemCommands$DigestResult.class": "003d55be16fe723f1c1db1eb58d4e8362cb906c5f8a43818b0308bf709d2bdd0",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputPaths.class": "a805321af178ee0a642446b350e1699d74d2d7660de969c88a0d0954194700e1",
+        "com/holdmyspot/codexunleashed/tooling/UpstreamV8Script.class": "8775e49523e42ee6936c1386b7aefd0729f6f40611b84b853719c829dc02f7bc",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputInventory$1.class": "8eeccc4f65031d49fed6f5dd9faf56eeb75cd01e96d683b1d9eaaf034f0af878",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputCache$Request.class": "8e90eb28af98409f98739d07c17433dc57461ffe4c202eb673b408c4e4406efb",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes$Handle.class": "7364ff1893f99fdf2693edaee36db01a5fb08798dc9619f3320313695225be90",
+        "com/holdmyspot/codexunleashed/tooling/CargoCacheProfile.class": "abb3b65dbcc66fb64cbd1a718869db64c3e950aff6e3577e89a7a4da56a9f5d3",
+        "com/holdmyspot/codexunleashed/tooling/SourceCacheCommand.class": "d0b65910cd4bf7a130f64c73564460cccc27cff69e71a0731c88b00883f633cb",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputTimes.class": "ec1911ce24ac2787e2ec924bcb0723faf29f489516e49d21a569f0ba1241f8a5",
+        "com/holdmyspot/codexunleashed/tooling/SystemCommands$CaptureReader.class": "88818ddc3e77b30d2579b89ce7aac84862e2f6c3b0c1404c47169b29a7eb5f7b",
+        "com/holdmyspot/codexunleashed/tooling/WindowsArguments.class": "7deee1bfd010a2a661cc8a502130d942db0158bac127bc52f585eb5414b88b85",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata$DarwinReader.class": "826086819c34fe5038e1bbddaa19b99b4bdf9d727690a5f755495c0850c04cd5",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileTimes$Setter.class": "fe4002ba11b97e00d1ac643632482634945f15e46c5a0b0a2fd74760a9e984ae",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileTimes.class": "49bf67b8ac0078a51f493c1bcb82634daa77ffb7e284fcfd2d91b2449b3e3bb4",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileTimes$Binding.class": "fc58ab6a8f6e6f87f3e4ad50ac6d7be229f73f9a6e06d8db47df10992184d952",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputSnapshots.class": "4ad5b7def658f8d5ec2792c0864bede05caddbd681ec74d4767c55c8262f7b0f",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputChanges.class": "deabb9b860826e356241c8ef2b861c41ed1c3f45490e3c45cfb9f57464999e5d",
+        "com/holdmyspot/codexunleashed/tooling/SystemCommands$Result.class": "4ab7edfc4cc944438b78e6113c50a482ad327ce6591b6af2e1d22c197071baf7",
+        "com/holdmyspot/codexunleashed/tooling/SourceCacheMetadata.class": "752de4e5060fbbb04cb53258f79a76feca9b39e7fc34e41ce59b3fdd654bcba3",
+        "com/holdmyspot/codexunleashed/tooling/V8BindingCache.class": "415540f607624005e4a274f3198c064ee196757fbb7b4e54d71523581c691874",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes.class": "d89e9661ad4492ad7a1ce1864e3dced0b6aa6c30875a060065f4d8520cf58749",
+        "com/holdmyspot/codexunleashed/tooling/RetentionPreview.class": "343b9743d0dc4094d0555e103f528f02ccfe21a2256e9ab3ce3e5a5721ef3bd7",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes$Closer.class": "c956e5f99e0e57ba00f84a7deb116c6a1587a16c3e7c11baa3d2ff5013619376",
+        "com/holdmyspot/codexunleashed/tooling/Main.class": "8af8975db9f5cee5a9c21aaaf4c9dd0d63ac9fc2ce42af49fb42f89034147977",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes$Binding.class": "f2830059886510d258f0f1d59e67e28e5aa2e7961553c6af1822fcba727b635a",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata$Binding.class": "424d255361feebd48fe1d5b0d1328a4f81ff77295ba67f3b210da7360593da6c",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata$Linux.class": "7259db72f8d3333afa914746e537e72ce6d80c883c50eecd63c9f9f5abddef33",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata.class": "510de0e36b370d1ba862198bc2449d063e54146103fab3b09f8fff83d3d65a4d",
+        "com/holdmyspot/codexunleashed/tooling/SystemCommands.class": "e89fc3543731d5d7d460a60c37d18026b87b2eee4af7b17e80fad63465e827eb",
+        "com/holdmyspot/codexunleashed/tooling/WindowsFileTimes$TimesCall.class": "bd3f613f3871f93e505dd2223745cda2a848b5191cca5920b8a560e6b6ec690e",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputCache$Inputs.class": "b28b46118f3b568646efba8ef93db1074be859b8d98643655ee5c6eb30efeabd",
+        "com/holdmyspot/codexunleashed/tooling/SourceCacheTargets.class": "ec5b0bdd71544ed0e17e4361bcd80fb3126d9c8e78bcdc8e49cb1a6c92524859",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputInventory.class": "418fbec50cd677bd35e59999f0530d092a597fbe6f5fbee9098c9a4e128037b1",
+        "com/holdmyspot/codexunleashed/tooling/ArtifactJson.class": "781af0eb5ace5d5fb6eca4097dfe0244f81385a413a46fbffe81c107ce4911f8",
+        "com/holdmyspot/codexunleashed/tooling/SourceInputCache.class": "c53e9fec6acc2fd0aaed989cf44ee39cdd47a637b6325aa8ffa56c1f80a6c2c0",
+        "com/holdmyspot/codexunleashed/tooling/UnixFileMetadata$Darwin.class": "eb1547ee537838e80f0c658cc27f7fc3985e60d8dd342813361160c0fa9e8042",
+        "com/holdmyspot/codexunleashed/tooling/SystemCommands$CaptureFiles.class": "63c75c12e081eeb00821521c3a6b02017c94c0858c466e7edd926bf728586cf9",
+        "com/holdmyspot/codexunleashed/tooling/Sha256.class": "6ebe089f9446cf9c28813cafca693d0c88810ce95b2918a53ff1656c38c7c497",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Process.class": "eca9b0ddb5bbe50c5b8d09ec400a6910758d1f1ce0573a20491db64fd7ef1682",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$ExecutionMode.class": "f032b2993e8072e09c8fe1bf64c050dcd805260b0b39f0dd93275ffe1525fec9",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager.class": "bbd3b809f12db2f1b66b4d0ba149fdf0d85bd6c172431f3effbc338541f4ff47",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Status.class": "8c9b734bce6d198af7cb423c4fd9bd11bb200ad06dd8187d6d7e64b7af7bd31f",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget.class": "da89c242cbaec7846cc661d337916b3393afc26ba0dd2cc8ae57ef9ad7725546",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements.class": "0ca1b0140167a939d84e35269a54a0714981e532a134e968e34cc2eccf6cc849",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempts$Blocked.class": "f6e02c495975f4daf314f798cc87c47faf2239c3bbb7cf6d941b18c33179fda7",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$Completion.class": "d363d001f66cb3bad3fc8ceb20be8c9bf8325adddcc34dac08b677343d916c54",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages$Blocked.class": "d7c3346dd59ca35c0a1bcef507145c13061b6c0ef79e3e9b68e7b9a1e0dc8625",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempts$Notifications.class": "31d86c9550dde1c841f51c4bca71bd5a431f8460392415d5725733ad46e42c54",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Binding.class": "8f7fcf0799b0485cfa980135a5697cbf5e9a61cb5fdfbda8957fc16dcba8d3f6",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Installation.class": "06017a3af95a2ea56db6890e7dd6bf9b150ac3953163e8ae5b342b7735cb67f2",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeMember.class": "0f4038555ae65f3f472059d90d52b985090d23b2211abcfe15f2c9293d84609b",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHook$ExecutionBarrier.class": "4552bc1efd6c170bd30ffe41e27e1d55a98cb9a9ea5ab075dddd55f1d52c68d8",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationWaits$Wait.class": "6627ae24d6a796ede2832957464e230af259d1d917d161e13349042f5cc6152a",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Result.class": "677659e986e765c996a70d20e3d2641d9d4181efb963a0b1b7ad7adddcf2d7ec",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Chain.class": "4572c0530e51c4d1f8debf3b22d47a951288c42abcb92f8fd11aa15101c8914b",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Peer.class": "6ef45cc420a171821e5b1018f1be6b1a4f59f95476c9d2e8ce5168f06cfcd11e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Check.class": "656a7c4df0420a97c2d34b710c234b05ffb53d5a9c930cfcf33659ee751ad898",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler.class": "fe18e555341a5d0864843aff2f16cb93eb99ef016da660ab7abdc8cb7f616ef7",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$NativeFailure.class": "70e10ef1c57811b05de0a6537a667a29891182b34e1d46feaee58624e16a1308",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Reading.class": "6d82481aa71de654f072362811a91f915c7cb5b7cf68b145486d5e69d62a43f2",
+        "com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator$Session.class": "0eca7046878d1a3b4318fc80d8be9d358392642f38be5590e0e90f875f75195e",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$Action.class": "f7a350844bb5d0ffdfba5259c3d3f8d94f98e9dcf14c27369f23742f229ac822",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$HostPort.class": "81a8b71db1a8ce30df8efff5dae6e69f09d1703e6d56e5c01fc14c7f6093ff98",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$CargoLease.class": "49da237fc660b3636c95c7702bfbf203a73def43741ddcc2af516d20fb154a7a",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Resources.class": "b4a318e9e81ca23b52073ab2bf87d615db759bdbb6ab7e8e8087bf2983c3eedf",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver.class": "2e91ca2d364929b6dd882600cbc67dadb62bba2bf187be5a3b0095b898ec152b",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$SystemCalls.class": "b228685abb6e56e91acb8afe5dd78c9075e589334bffbe4d76ed959547c66b2c",
+        "com/holdmyspot/codexunleashed/scheduler/Libcgroup.class": "c124c30899f9486e695adcc52496f2b54a59dfbbb31714076eab47cee2bb7ee0",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Hook.class": "1ac2a6dfa3786d05412905b69ce1b5c3ceca5d65167207e6007312b1fff92ffd",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$Settings.class": "48e9086b8b4712fe9570c2264f19660ebb524a39759aa55166507df67f7c4e54",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationPermissions$Poster.class": "29458ee49b30a9c52522c66d1cff5c512546ae33fed4a04b9a42ebd3f710874d",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempts.class": "68df1261a3d79c4faa22cca5d5d4261bac95eb2f8a1db9cbc777b4ad7d39b7e0",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Sample.class": "26d6d888e9ea933b61d9f7f7e779b4f3c810114f5e6848a14b8f397068fc2d62",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$1.class": "dec6d3ea1a805d2deb89d6165983f75fcce30720cd0a9e80051a59193556a16f",
+        "com/holdmyspot/codexunleashed/scheduler/Libcgroup$Value.class": "8d79ff7dc3e63e681af803d36c61ab6845f7a59a5563b2713866fea567f40634",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages$Event.class": "a1426fb97050912e4df4b5a44fba5a16b4ae6a8d207d040971ffd98f1d8102e9",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Workload.class": "e900d2d6e80486ba33d2bc7f0470a14fb489fc6e1876a1a0c4885eef00868377",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempts$Command.class": "08baf186133cd5a02841ba4b4de1c01791d59dafcc5c99acf38bb53bd2e8567e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$NativeCalls.class": "c4f79d0cb79468e085424a5d1939d6b539de7483932773bd4df838a5265c9741",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority.class": "b8e62217640bfab3cee0dab38978a211650c56f5cb9a0ee4df70ce1735eec087",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Raw.class": "fc0010ecf45273ee5f8994f9482a79848057746287a71e452020280594be827f",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxResidency.class": "b432768f0a4e0e1217227525ec5756de30745eb1350974f3eb7b137af9a3740d",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements$Attempt.class": "176515adbed74bd7f5de5e25062ef89e1deeb2656871aeaf99ee947453a148da",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$RemovedLeaf.class": "a82d032f28fbf0d14a6e3bbd7e046d7c23ee1dee6e39b89e4fda10ab263154aa",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Control.class": "577f74801aab7867c3679d929b1dbcf4c82d99d0c1efa63446f79e7ae8203d4e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements$Observation.class": "b6451073eb67c0eab9c0695615b5be5d7377d665a6216240069852c2b8c04d44",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$ResourcesFactory.class": "700e0ada798d2b2a3f5c9a880f6f68191169baa7c0398ded75dd74152925526a",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$PreparationFailure.class": "9c6484dd1c423b219ca57d679e55ad2f249c67b5f42726738a59d5781b572230",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeBackend.class": "f4a80a5854116cef3ee210320347da79cf5c62395e0e47ba4af609986d2e2f7c",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "4de78bdd02ef8d3fca0e98c5c3b477009d9050896baa953e10b719147b2e633f",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHook.class": "6d6f2378a40664402bb664936e0732bd8ecd6d5a7900030ed5356a4b9c26e7b2",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages$GrantStatus.class": "d7febb229367b4002ebefaed9b277c9593e0b7464bf9940975b94c979865d6c1",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Hooks.class": "37700016c35ac779ee9118fa156fa2fa0a247f4f4374c031996823ebd91d43dc",
+        "com/holdmyspot/codexunleashed/scheduler/Policy.class": "958e037d14f6fdaa5814c5f22116bc44a4ea736838abdd419bda0b9028016a1c",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl.class": "2a208dc02c61e99d47ba9a9fa5821173581f3e7f11a444b1e7c9f7d990c54324",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationPermissions.class": "a98276d83006dc42f1c8446d525647e06998fadfe235868512264075b5351d7e",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$State.class": "54bb5d16025c37cec51b4d3530819c6984a67fe2d5c368eb00c19def5e9bfdae",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Member.class": "9c1db28ed04dd4692dac4f109a8ea458670c748e5646f15b485282d21e2caac7",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$PreparationFailure.class": "67cd9bf22ac7d3b59f3948e5bffe4a842683e0c934d6fd11a57421a32feb9e62",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.class": "df8ea5512f3ed2e4b15fe5f3a74d4641df7c5c744b02353cfafb401ed419f30e",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages$Granted.class": "92a1be999d9bc972bece84f2887462399bddb61220376e5205aa309d4a324365",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "beb100e7443cf9c6cfbcc9322841b2a7dddf9d03bda5ef06ca347fb291869251",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHook$NativeConnection.class": "51eb4f7406097715b65c9734b45859e35efbbd29d2afb0151c96f4f56649e32d",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempt$Close.class": "bc0f57ea0d971c990047c9e475db7613c1964197ffdbdf7f69163bb8536f772b",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority$Registration.class": "e5b3668169cc8485c9fd31dba6566ade3b1ab75e1a7fbdb97b377fb933284789",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Command.class": "1b52b9e82b119fcf5688d299ad7466b104925c0f596fcd9ff013ef28ec195ccf",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements$Host.class": "d7b3986b45f4e1cadd21566e63e59758231182e746c66d2a5e1cf9243c3ba6ff",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$Entry.class": "170fd2ec31f79a0a75b5dd95029bff4092e916bac4f6918f5e613053ed70481c",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "7a3f2204969975fc83972691e6c30783381c295357bdd6a945a85c3772b02c0b",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$PreparationFailure.class": "b6978860a8bbdd78e4fb606f7c45ed566c7be134a6f80e8134a8f41ef2aa1faa",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$SharedSecrets.class": "cd7a83c4c2d4a87b3b3a1a5b53b40314d727b799c686b4e785219cfb25099f02",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue.class": "9e40247a6ce82b13552dd46b7af87e467ed2bae01921445a6cce9f010f353af9",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Listener.class": "f10469b41451aed1a968b352894a23c624ab9890a0ed0c1d29194c9ce2344cac",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements$Registration.class": "06b08eb6c513dc21416bc1a0a47e849fd72228363ec0aa8a23a69f2c551ef76d",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Requirement.class": "26cfecd43e2563728e2049caa6fba125b870e2ab26990d4bcfef5a6dd6d794a5",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$CargoLease.class": "fe596c161c4d9d4c870347f0182ef0e84cdea569dafda507626cc072795f79a0",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$SharedSecrets.class": "8f4976a8d9a0ea44cef56c5fc5edfec86ce0d976e1de8a6100b5449ad23bcfc2",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$Budget.class": "344ff7a015b08a548d75d41b39ac710e47c056aa78f827cba17c1e7bcb8a9f2e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Pending.class": "499865ad83504eafe29b58a6a7037e7f717eef937f074a1772695744d579423c",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl$Mode.class": "84643e6f415e172627a886896ce45ed937b89ac4281d8d5165809edcf984b745",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$1.class": "5242968f8a12e1ff6c85d9c2412bbc4b08b1ef2d608feb23041c35dee7795a6f",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$AttemptFactory.class": "ef2aad43dda14e70108d3addee4d4bd5eb58d554f60862b30764988f2cfad567",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "29011805a803821f21459c57858eef58713542a63549f5c0bb04e039055fcbe4",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Visibility.class": "19f426d7608bf94da9e131bd7af3bea95e1668ee620ec2bb4999d23d1bc1c1c1",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$NativeCalls.class": "5ebd7d0a33f993266bb4a29a081434731dd3ad5a70db6db6310d1691eee0c1e3",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipChanged.class": "5a35b8210edd4ee0ac914865a6a00b5a88420216b4c34130a1b18deb0f8e069a",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$CapacityMismatch.class": "6a7f643890e971f75c673e3732303c4ac7a3cb27dfb072205137be6a42818f19",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Received.class": "4cfb7408cebc26b41f47c77d395a44ec4a1e5410d2dacf96cac407f62c636858",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages.class": "ea3aabdc28ad98a7d8e1ad908d1c7afa53653bf9f20bba23ffc2877d1b3743d3",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements$Attempt.class": "abce097173ea1a260f773c6eadac09c03214c9388129da0f2d6ac6975a68cefc",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager$Session.class": "d6006c34a91c80c973eee3b695c641d29f61d049974d538a1aa204653923d349",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$Measurements.class": "60fb74f315f92a2d8c2d3e606a23113477c63695324d85de5992066a0be1dc59",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl$Result.class": "9e307341d1d82767caa387d580ea671c436b562a05779c3ec287917231fee364",
+        "com/holdmyspot/codexunleashed/scheduler/Controller.class": "824751628fa9a88e71ef3923c9035c669ec1b41711625301b954c9eab8cb00a1",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CleanupFailure.class": "f097105008ca8541a8e66e4f357b772dd0a66604d095703f71168046727f6dff",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority$SharedSecrets.class": "4b4ccf63f560bfa13e3ff362abb9a1dba4821d545f31d6a55e04cb824cef2a3d",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Descriptor.class": "6b5ee560de83cde58341b331204b30ce6fabdb3e30102778ec96d3d08886eb9d",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.class": "668800c5b18d1bafde0766ac60da68104ed61c088b0e56cf42901502b3c23130",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.class": "c500968b81807b28a70d9bed2de9c89eabfb6d516107f3470e94dd334eed0f3a",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeHook.class": "676ed11572e58ea3e554639c7df32b2c09e3e5185a8fce3acf1cc54102d924fa",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$Memory.class": "a26a08e5cd1291819a6246421e90aec07e6ddd1e394594505eed080160674bf0",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StreamInstallation.class": "31ad3f55f02687c6db2ec61573f70a09a73f92fd3840cad84d0eeb8e118257fc",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl$Commands.class": "5d80f04367c55826c46c29c667f7aaeba5c8950efed0544381a17fcabf5b77fd",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$Pressure.class": "8f5271515f2054117c48a3ff16134067446ef67abced4120b99d9373f0a34bd2",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$NativeCalls.class": "b010b6fb56c89c0891d01cbf7ad7416e942baa9ccb1ca9d26d2eb731f4db4736",
+        "com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator.class": "0e6f41af9964493592c4cbe282213e943336c99d6b15f768fab56cab2376b577",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$CloseOperation.class": "e51e260883dcc3dfa50f411d9bfc4dac33c19e01361d4435e15eb9b1a5cd5a42",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority$AcquisitionFailure.class": "0d7b3df7b0556c65fc7df08c866dcc149694683b6264790b1a71a8ba36d30c44",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$ChildReceiver.class": "99d51ac1bfee3e1769f1322a2d67eaf8fe98beac97cacf57fda38db3c15b028d",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor$Phase.class": "4b850f5e46fa002f918ccb6089e03bc5fb73edf66066d8af9adc4c9f511b8b62",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Outcome.class": "dc44e1be8baf998164b78223313da8ad7de8c4e301be48dcda1754ac59a669c3",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Identity.class": "648cbeaa76fe531fb959868709eb1a9a56105957d546931e44b3d57cbf76f064",
+        "com/holdmyspot/codexunleashed/scheduler/ObservationRejected.class": "684e2114385f8d3d9f46d362f2a647909fe3a38d386a5106df61b53f4166c4f5",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native.class": "332cd18d809fc76b44109a61107c72a9c5759668c5640d2fc23bff9346a976ca",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements.class": "5f599f531cded3f49bd47a13e935c2f41925074294cce2a4aa47104e246d4617",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationMessages$Ready.class": "567c58dc5070a5fd399575d459add80294d39b8555032a6029b7f4441ce50b1f",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Descriptors.class": "378bb8cbfc476a0ce25aaadb837d816ab70fabc57858ee14f21da2294e307e4f",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority$ZeroBarrier.class": "e9f6c4a4f53d93707b35bb0944857358db284d9d4cbdc74a35cd97cd2fd1d570",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$1.class": "460fac786c724c38ccce95be378d8a0cf382d1660b2683beb8926b1f0f08022f",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$Calls.class": "33a4e657d83660971c223dcb572bbfae186c5bbb1219d907896bc3b7a47aa189",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$CloseDescriptor.class": "39d383a32f9438f83576b560c0abbc6402817cfb6e7479413c248bf522e47612",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$TerminalContext.class": "165b16a8f789b590b77717bd905cb35bc530765976d764a0023196efcacffb7e",
+        "com/holdmyspot/codexunleashed/scheduler/SwapRecovery.class": "3f39cef4b755cf44d667c2d4e18acf7f0725aa33fb75434a1d0868ac4471a65e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.class": "03f1b3eddb0879d634be6752e8d1f024f577e1efe76d23f79374fb97a397cec4",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationWaits.class": "7e476d49ca9aae0d3288f1522bb75f38ef134f65de4762a3d4d056e111d039dc",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Kind.class": "6a59ea89e4c84521cc1ad0070b7060a57ba5d04e4f8da0c8e1fc2169a172c3ba",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCgroup.class": "f5c27ccc84a49ddd1ae557d48086cb6980a1026cd53e7486d419b5ed6995c1f5",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$NativeResult.class": "b1fbed7b4311342d01d538eba23b22d82413663fa260ec6130fee87312b9d606",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$Decision.class": "c2998b2b9f2b4d3281b92528a08326cf563b77f6e0a4c45fc8e682645edd52a9",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Native$Listener.class": "25226bffb28cc7393ffae4035e5e2bb2dcb3952953681da7d05dfb2fd7114d69",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Backend.class": "79edfa3864c0a56ae03fc9ac193e3ae40c5b6c1c5e493b1248ff74a374eb1e2b",
+        "com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator$Blocked.class": "669fed59ff3165fedf101ba0cecba029b3ad6d5214df94fe5634667158ddc304",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Blocked.class": "4f8dcafc0f6f3a8e2600802aecef9470d86342480cd5f31faa25fcac38aff405",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$SharedSecrets.class": "2290d9550d81bc9acc808380775fba73ae43fba5a82996d78ac186feab4f6883",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHook$Connection.class": "24f62cd138c065a718b06b3f4b83efa95af5f323ff043c648ae7d05133eb723e",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$StandardFiles.class": "f7a45d9becd358c0d232f03c35f6b0c594e5ff46429632c64fce948caf8748c6",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$Controls.class": "65af2f2356e9c09a3f0d2f79cdbbec64a303974e053fc86bf18bde3e6535cb8f",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$SharedSecrets.class": "d730f11b27482201809b02cdd418580e6c5dbe2e9a8d76f6147f6633020f9de7",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthority$Settings.class": "e43f0f17f553e48156f69627eda20bd3239f9f0541bc7f24054551b0245bc37e",
+        "com/holdmyspot/codexunleashed/scheduler/ObservationRejected$Operation.class": "cbdf2548710514fb8df2460e6eadd1bd37fa046832ae08c72236728b03e63326",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Receiver.class": "9e69d791e4b266ee93287597d94bb62336498814a13ef12667887b5cda13390a",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$SharedSecrets.class": "082a9794eb3942332ede3f600a4d3d6f9fc6a65896508d284022e949f0934416",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationPermissions$Delivery.class": "c69d03c7132fbe8c17841afe46ddf5cbc413a17d7b9f340b44122c4259075f8c",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "a75b061710b7b6d8ca8539f7b673584e844c9fbf183de4eff01fb8d241b20009",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeManager.class": "164dd42f653ed3843dbe994a73add2ecb3effaf48a3fed064b1a770cdba1b2df",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$NativeCalls.class": "936f2eee075325368f5a5851e945dcc661768879515452128daf67ae7fdbbf94",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.class": "91835e93d15f6f4fbde7e1708d883f2552895e2c8e7d12a404c007d7df72c621",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$KillRequest.class": "a52ad3b8bc65dc1784fd445864ad7e355130fb204e09f6a33fa1ad42daad052d",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMemory$Sample.class": "9ea61e7b8db362b80867771e7b464a5f23620c925185d1771a1263bfade8ca17",
+        "com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator$Idle.class": "e65868bbc311c3a3aed7a7a9e2db8019f3498cb06142cf9fd6d288ff7fc7e132",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver.class": "3344d635dd5ea703e02cea464828ba8c0f557685f8e87740148cc3dc783fe36f",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$PreparationFailure.class": "e04e047303b086d7e7e99ac650d686d92ffd5c5bfc4906e90229f23cd9f5a0c3",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAttempt.class": "e2137804ed2e4c6c44f27c73aa5bdb0505daf36fe95d5fbc4fed1e88d6a169ef",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxResidency$1.class": "9aa9a30b58c98a951efc6f257586866e938179748869f4c69988fe53b808f202",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$Control.class": "a42651f6ef07014cdace25a3a8f62591d4bc322bdf6843cde527039156804e40",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$OwnedHandle.class": "6ae60f384eceda027689c186fd2a92d8fe0a6a73d06cbaeb0a36b1aa736dce14",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeProcess.class": "71fef22bfa2bbea386ba81192a79cefe4ed7a4d0047e171e52add42252406a8b",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMemory$Sample.class": "3b405e9e6df2df923e84ce48322bb2f7ac735be977335ddc9a24dcc7ac1bde37",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationWaits$Continuation.class": "c59f7c2024c861b4cd4c336a19b95a05a51bae01ab1cc8a75abe4aef1c1ae3e0",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams.class": "0dad056b218b91b3a30fb99585471087368578e98c52d3ec64fd1712937869a6",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Close.class": "4080979e8092e799dcc75179fe1797f9aa3bddb0f022d54f88f58f27ed2d7897",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$Outcome.class": "c903ac91c0e4cc234a50e9a448a7da11c0f7938c05a4e538baade371591f8f74",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Child.class": "0fc17d48794510db64f70b7b71d240ca691679dcaff59e3bafb8993a10d67666",
+        "com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator$Submission.class": "ea902d71fa749843db8b46c519f641513433c1c4a0ccf5c12e9afd02bcb4adb7",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements$Source.class": "795377def7ca045d3566e4937dcef2bb744a3cde2056bb187b01fefa852566dc",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$WorkloadExecution.class": "6f8d3831bf40a8e12d0252f0e8e7c07dfd8a3302eeb8e05876e786c5382845b7",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager$Session$Script.class": "4031d72b11e1eba729d8408e1bfc89abc12eb752361865c4687d013025a33311",
+        "com/holdmyspot/codexunleashed/scheduler/CgroupBudget$Ancestor.class": "c1b8c8f765799251291dee3168173b9cba2da2075ba4e85773760fa1cb58fa04",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeResources.class": "d99684f88aa41c64c3714c2fd3cefc3d5154d7916c103c4e5c2a4592ebdf9aaa",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxResidency$Sample.class": "5106b97dbeccab5664e2eb61f3e1011dd92aee96221d6c841d516d93158667d7",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHook$Pump.class": "6f97086c254e43b62998dc281216f4aa72a4beb7feaebb3535e6c42277b75848",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMemory.class": "3575c39fe31522070bc38cc597476c0e079d1774e62467f897a4229e2dd611aa",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Terminal.class": "1154fff81301a2ef28a01a1f668ec1786a8c2b91d24c5f7a5cc0479a2e432a81",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$NativeFailure.class": "38cfaa1ade759b603e2a220f991e9774284012cd43cd149b56f65017ee45fb73",
+        "com/holdmyspot/codexunleashed/scheduler/ObservationRejected$Reason.class": "b87e42a23bce20f57bda7f57bf18b5645e753fedc317aa9a7685eb552df8e5a2",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsCargoJobserver$NativeCalls.class": "dffaadb20a9c4ce8cb47b8c81e8d590d49e812884ba15b1ebfb9292e0f0ea4b2",
+        "com/holdmyspot/codexunleashed/scheduler/ObservationRejected$Attempt.class": "832c12e65c44f1505bdaff2253222ebed725cdae99afa1a9a16fe2371a973319",
+        "com/holdmyspot/codexunleashed/scheduler/FridaRuntime.class": "5aa9a3acfb4e8ddb60750bc7653905f8aa773d3b7fbab95343f839ceabca251f",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "85d81c4442804cb875ee62b613a0f9712db387f8708d856e62003b60aead6460",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHooks.class": "88d0ce6b73c5ca293f29c703c43d82963b088ec50895d29dc53cacd7019df003",
+        "com/holdmyspot/codexunleashed/scheduler/AllocationHooks$Image.class": "9149794022d071e0beb0dfdbb5f35f16ce7bdc866e9101a6f2ce45390e022413",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver$Calls.class": "8b03ac70034bb26654835e8cb675ff34c405d9d17d8123e5ae921e66d63bc701",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader$Held.class": "6f90cd2d9c9f60a8cdef2d5541c69d7792bedec2cbce92478888a8796beb1516",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$1.class": "1e3de92fe25563eaef175bd5706cd3395860ab23438a8efa7a0ec17935ff7f50",
+        "com/holdmyspot/codexunleashed/scheduler/Controller$MemoryDemand.class": "df3996292422802fea920e76f8adc2e71ab99eea36004ca74bc0066a22e9e246",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory$Sample.class": "cb74155f17bf79a515640718d2f6c5ea4e95812b6f6a4eec64b3e5711d1a7007",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Manager.class": "2dd198af2f54ec3db80cb2a438c88c9ec60e881107f9955982428e332c8ab412",
+        "com/holdmyspot/codexunleashed/scheduler/JobQueue$Attempt.class": "2f9f7f85bd7e57479630c8a39270410ebafc7069f38e37e0513d3aa3b397d1b0",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree$Launch.class": "e52c89a0e8676d0a3d2dcbaf5e53a7a2c924ca23b30e97db5314e910ded6b5a7",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$Job.class": "6f11a43622ca62a9985c26f71aaa519711f96a824a91dc8543ca6c5ef92812b2",
+        "com/holdmyspot/codexunleashed/scheduler/MacMemory.class": "f7468edd129e35dd1fce9e59b14a0dc609aed348513eb0083dfcb78934cfdfad",
+        "com/holdmyspot/codexunleashed/scheduler/Policy$Observation.class": "533fa81574d0cf912752ed3a0b6035cf8397345de5234213f6dabc4f3ec8c333",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.class": "418e0a816fc73725b6f5f9d7994c6ebe6df0261726a2c5944b364dfa7368bf7b",
+        "com/holdmyspot/codexunleashed/scheduler/WindowsMemory$Notification.class": "fdf9703b65108a9d5b65528bbd2778f18f9cebbf06795d6854bec8530b809e25",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxMemory.class": "35b0285a0672c816632737590e8fd6f8b9ccd11c2d4686f32f821f211cb0820d",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBorrowedStreams$Transfer.class": "b78623c3739525c25453c72e4111c7c28b1f0c6977f11116137d0df881505305"
+      },
+      "module_descriptor": "Excluded from executable byte-equality claim; Maven packaging adds ModulePackages."
+    },
+    "repeated_native_tests": false,
+    "formatting_correction": {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityObservationTest.java",
+      "line": 23,
+      "reason": "Staged diff check includes new files and found a whitespace-only line that unstaged diff check omitted.",
+      "before_sha256": "d8e7da407e85be8c376c49af1ee810b420483b0aacee234ff1f74beb78ece5e3",
+      "after_sha256": "f9c1834c7930b9ead0ed803e87358754c60e643fafcb8139a30fddeb1fffd7d5",
+      "semantic_change": false,
+      "verification": "Only two tabs on an otherwise empty line removed; line count and Java tokens preserved. No passing tests repeated."
+    }
+  },
+  "remaining_gates": [
+    "Authenticated Cargo wrapper/controller registration and native maintained descriptor import",
+    "Linux ARM64 descriptor ABI and native acceptance",
+    "Native Linux multi-leaf and Windows churn recovery with no invented completions",
+    "Actual Cargo/Bazel producer integration, physical pressure/swap recovery and retry acceptance",
+    "macOS normal child-gating transport diagnosis and production platform integration",
+    "Six-platform uncached scheduler-on/off benchmarks after checkpoint 3 completes"
+  ]
+}

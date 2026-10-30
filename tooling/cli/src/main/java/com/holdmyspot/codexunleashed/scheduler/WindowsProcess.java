@@ -725,7 +725,7 @@ public final class WindowsProcess implements AutoCloseable
             var before = readMembershipAccounting(scope);
             var members = readMembers(scope);
             if (before.active() != members.size())
-                throw new IOException("Job active count differs from its complete process list");
+                throw new MembershipChanged("Job active count differs from its complete process list");
             var handles = new ArrayList<MemorySegment>();
             var counters = scope.allocate(MEMORY_COUNTER_BYTES, 8);
             var inJob = scope.allocate(ValueLayout.JAVA_INT);
@@ -756,9 +756,29 @@ public final class WindowsProcess implements AutoCloseable
             var afterMembers = readMembers(scope);
             var after = readMembershipAccounting(scope);
             if (!members.equals(afterMembers) || before.total() != after.total() || after.active() != members.size())
-                throw new IOException("Job membership changed while working-set bytes were sampled");
+                throw new MembershipChanged("Job membership changed while working-set bytes were sampled");
             return total;
         }
+        catch (MembershipChanged changed)
+        {
+            // A primary churn marker must not hide an uncertain query-handle or arena release.
+            if (residencyCleanupFailure != null || changed.getSuppressed().length != 0)
+                throw new IOException("Job observation cleanup failed after membership changed", changed);
+            throw changed;
+        }
+    }
+
+    /**
+     * A complete observation found trusted membership churn and released every invocation-owned query.
+     * The measurement registration supplies action identity; this marker conveys no whole-Job completion.
+     */
+    static final class MembershipChanged extends IOException
+    {
+        /**
+         * Retains a native observation diagnostic without supplying a memory value.
+         * @param diagnostic exact successful observation which invalidated this batch
+         */
+        private MembershipChanged(String diagnostic) { super(diagnostic); }
     }
 
     /**
@@ -840,6 +860,8 @@ public final class WindowsProcess implements AutoCloseable
         int status = kernel.integer("WaitForSingleObject", handle, 0);
         if (status == -1)
             throw kernel.failure("WaitForSingleObject(job residency)");
+        if (status == 0)
+            throw new MembershipChanged("Retained in-Job member became signaled during residency observation");
         if (status != 258)
             throw new IOException("Retained job member is not unsignaled; wait status=" + Integer.toUnsignedLong(status));
     }

@@ -15,6 +15,8 @@ import java.util.OptionalInt;
  */
 final class SchedulerCoordinator<R>
 {
+    /** Maximum consecutive rejected batches before recovery reports ordinary failure. */
+    static final int MAX_CONSECUTIVE_REJECTED_OBSERVATIONS = 32;
     /** Thread allowed to invoke collaborators. */
     private final Thread owner = Thread.currentThread();
     /** Retained outer owners and build-tool protocol. */
@@ -62,6 +64,7 @@ final class SchedulerCoordinator<R>
         {
             queue = new JobQueue<>(budget, session.measurements(), session.attempts());
             int delivered = 0;
+            int rejectedObservations = 0;
             while (true)
             {
                 if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Scheduler interrupted");
@@ -80,7 +83,16 @@ final class SchedulerCoordinator<R>
                     queue.submit(submission.name(), submission.peakBytes());
                     input = session.pollSubmission();
                 }
-                Policy.Decision decision = queue.cycle();
+                Policy.Decision decision;
+                try { decision = queue.cycle(); }
+                catch (ObservationRejected rejected)
+                {
+                    if (++rejectedObservations >= MAX_CONSECUTIVE_REJECTED_OBSERVATIONS)
+                        throw new IOException("Consecutive rejected memory observations exhausted recovery", rejected);
+                    idle.await();
+                    continue;
+                }
+                rejectedObservations = 0;
                 var outcomes = queue.completedAttempts();
                 while (delivered < outcomes.size())
                 {
@@ -188,7 +200,7 @@ final class SchedulerCoordinator<R>
         }
     }
 
-    /** Bounded cooperative wait used only when policy selects WAIT. */
+    /** Bounded cooperative wait after policy WAIT or a rejected memory observation. */
     @FunctionalInterface
     interface Idle
     {

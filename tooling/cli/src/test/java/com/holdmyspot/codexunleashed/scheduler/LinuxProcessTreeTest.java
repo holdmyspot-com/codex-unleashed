@@ -1,5 +1,8 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -151,4 +154,30 @@ public final class LinuxProcessTreeTest {
         return decoded;
     }
 
+
+    /** An installation failure never publishes a runnable gate receipt. */
+    @Test
+    public void borrowedInstallationFailurePreventsReadiness() throws IOException {
+        Path scratch = java.nio.file.Files.createTempDirectory("borrowed-ready-");
+        try {
+            requireException(IOException.class, () -> LinuxProcessTree.publishBorrowedReady(scratch,
+                () -> { throw new IOException("controlled failed descriptor install"); }));
+            requireThat(java.nio.file.Files.exists(scratch.resolve("ready")), "readyAfterFailure").isFalse();
+        } finally { java.nio.file.Files.delete(scratch); }
+    }
+
+    /** The same gate publication boundary installs descriptors before making readiness observable. */
+    @Test
+    public void borrowedInstallationCompletesBeforeReadiness() throws IOException {
+        Path scratch = java.nio.file.Files.createTempDirectory("borrowed-ready-");
+        try {
+            LinuxProcessTree.publishBorrowedReady(scratch, () ->
+                requireThat(java.nio.file.Files.exists(scratch.resolve("ready")), "readyDuringInstallation").isFalse());
+            requireThat(java.nio.file.Files.readString(scratch.resolve("ready")), "readyPid").
+                isEqualTo(Long.toString(ProcessHandle.current().pid()), "expected");
+        } finally {
+            java.nio.file.Files.deleteIfExists(scratch.resolve("ready"));
+            java.nio.file.Files.delete(scratch);
+        }
+    }
 }

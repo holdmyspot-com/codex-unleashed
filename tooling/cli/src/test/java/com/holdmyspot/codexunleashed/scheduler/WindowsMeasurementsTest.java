@@ -18,6 +18,32 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class WindowsMeasurementsTest
 {
     /**
+     * A signaled retained in-Job member rejects a batch without claiming whole-Job completion.
+     * @throws IOException if a complete modeled sample or native-owner cleanup fails
+     */
+    @Test
+    public void rejectsTrustedMembershipChurn() throws IOException
+    {
+        var kernel = new Kernel(40);
+        var measurements = new WindowsMeasurements(() -> new WindowsMemory.Sample(1000, 500, 0, false));
+        try (var process = launch(kernel);
+             var registration = measurements.register(new Controller.Action("A", 0), 2, process))
+        {
+            kernel.signaledMember = true;
+            var failure = requireException(IOException.class,
+                () -> measurements.readResidentBytes(live("A", 0, 2, Policy.State.RUNNING)));
+            requireThat(failure instanceof ObservationRejected, "trustedBatchRejected").isTrue();
+            var rejected = (ObservationRejected) failure;
+            requireThat(rejected.attempts(), "exactRegisteredAttempt")
+                .isEqualTo(List.of(new ObservationRejected.Attempt("A", 2)));
+            requireThat(process.poll().isEmpty(), "noInventedWholeJobCompletion").isTrue();
+            kernel.signaledMember = false;
+            requireThat(measurements.readResidentBytes(live("A", 0, 2, Policy.State.RUNNING)), "freshCompleteSample")
+                .isEqualTo(40L);
+            kernel.empty = true;
+        }
+    }
+    /**
      * Creates adapter composition checks.
      */
     public WindowsMeasurementsTest()
@@ -299,6 +325,8 @@ public final class WindowsMeasurementsTest
         private boolean empty = false;
         /** Indicates whether the modeled job accounting call is unavailable. */
         private boolean unavailable = false;
+        /** Retained member has exited while the modeled Job remains active. */
+        private boolean signaledMember;
         /** Native termination calls made by the Java process owner. */
         private int terminations = 0;
         /** Number of standard-handle duplicates allocated for this launch. */
@@ -345,7 +373,7 @@ public final class WindowsMeasurementsTest
                     ((MemorySegment) arguments[2]).set(ValueLayout.JAVA_INT, 0, 1);
                     yield 1;
                 }
-                case "WaitForSingleObject" -> ((MemorySegment) arguments[0]).address() == 1042 ? 258 : 0;
+                case "WaitForSingleObject" -> ((MemorySegment) arguments[0]).address() == 1042 && !signaledMember ? 258 : 0;
                 case "K32GetProcessMemoryInfo" -> {
                     ((MemorySegment) arguments[1]).set(ValueLayout.JAVA_LONG, 16, bytes);
                     yield 1;

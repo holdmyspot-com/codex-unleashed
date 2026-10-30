@@ -289,6 +289,8 @@ public final class LinuxSupervisor implements AutoCloseable
 	 * Caller-owned workload endpoints; null selects legacy piped input and merged workload logging.
 	 */
 	private final LinuxProcessTree.StandardFiles files;
+	/** Approved borrowed descriptors, absent for existing stream modes. */
+	private LinuxBorrowedStreams.Binding borrowedStreams;
 	/**
 	 * Startup, control acknowledgement and cleanup wait limit; this is not a build runtime limit.
 	 */
@@ -472,7 +474,40 @@ public final class LinuxSupervisor implements AutoCloseable
 	private static LinuxSupervisor prepareOwned(LinuxProcessTree.Launch launch,
 		LinuxProcessTree.StandardFiles files, Duration timeout, boolean instrumentationManaged) throws IOException
 	{
+		return prepareOwned(launch, files, timeout, instrumentationManaged, null);
+	}
+
+	/**
+	 * Prepares the approved launch with authenticated borrowed streams and retained instrumentation collection.
+	 * @param streams complete stream binding or descriptor context
+	 * @param timeout positive bounded handoff deadline
+	 * @return the validated operation result
+	 * @throws java.io.IOException if validation, native access or owned cleanup fails
+	 */
+	public static LinuxSupervisor prepareInstrumentedBorrowed(LinuxBorrowedStreams.Binding streams, Duration timeout)
+		throws IOException
+	{
+		Objects.requireNonNull(streams, "streams may not be null");
+		return prepareOwned(streams.approvedLaunch(), null, timeout, true, streams);
+	}
+
+	/**
+	 * Retains the state required by this owned native operation.
+	 * @param launch immutable approved execution inputs
+	 * @param files legacy redirect endpoints, or absent for other modes
+	 * @param timeout positive bounded control timeout
+	 * @param instrumentationManaged whether hook ownership retains collection authority
+	 * @param streams authenticated borrowed-stream receipt, or absent for legacy modes
+	 * @return the validated result retained by this operation
+	 * @throws java.io.IOException if validation, native access or owned cleanup fails
+	 */
+	private static LinuxSupervisor prepareOwned(LinuxProcessTree.Launch launch,
+		LinuxProcessTree.StandardFiles files, Duration timeout, boolean instrumentationManaged,
+		LinuxBorrowedStreams.Binding streams) throws IOException
+	{
+		if (streams != null) streams.requireExecution(launch);
 		LinuxSupervisor owner = new LinuxSupervisor(launch, files, timeout);
+		owner.borrowedStreams = streams;
 		owner.instrumentationManaged = instrumentationManaged;
 		try
 		{
@@ -908,6 +943,7 @@ public final class LinuxSupervisor implements AutoCloseable
 			values.setProperty("environment." + entry.getKey(), entry.getValue());
 		if (files != null)
 			files.writeTo(values);
+		LinuxBorrowedStreams.writeTo(values, borrowedStreams);
 		publish(scratch, Phase.LAUNCH, attempt, values);
 	}
 
@@ -1007,7 +1043,12 @@ public final class LinuxSupervisor implements AutoCloseable
 		values.setProperty(PHASE, phase.name());
 		Path destination = file(scratch, phase);
 		Path pending = destination.resolveSibling(destination.getFileName() + ".pending");
-		try (OutputStream output = Files.newOutputStream(pending, StandardOpenOption.CREATE_NEW))
+		boolean hasBorrowedCapability = values.containsKey("borrowed.capability");
+		if (hasBorrowedCapability)
+			Files.createFile(pending, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+				java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+		try (OutputStream output = hasBorrowedCapability ? Files.newOutputStream(pending, StandardOpenOption.WRITE) :
+			Files.newOutputStream(pending, StandardOpenOption.CREATE_NEW))
 		{
 			values.storeToXML(output, "Dedicated supervisor handoff", StandardCharsets.UTF_8);
 		}
@@ -1154,8 +1195,10 @@ public final class LinuxSupervisor implements AutoCloseable
 		boolean managed = readInstrumentationMode(configuration);
 		LinuxProcessTree.Launch launch = readLaunch(scratch, configuration);
 		LinuxProcessTree.StandardFiles files = LinuxProcessTree.StandardFiles.readFrom(configuration);
-		LinuxProcessTree tree = files == null ? LinuxProcessTree.prepare(launch) :
-			LinuxProcessTree.prepare(launch, files);
+		LinuxBorrowedStreams.Binding streams = LinuxBorrowedStreams.readFrom(configuration);
+		if (streams != null && files != null) throw new IOException("Borrowed streams conflict with path redirects");
+		LinuxProcessTree tree = streams != null ? LinuxProcessTree.prepareBorrowed(launch, streams) :
+			(files == null ? LinuxProcessTree.prepare(launch) : LinuxProcessTree.prepare(launch, files));
 		boolean collectionAuthorized = false;
 		Throwable supervisionFailure = null;
 		try

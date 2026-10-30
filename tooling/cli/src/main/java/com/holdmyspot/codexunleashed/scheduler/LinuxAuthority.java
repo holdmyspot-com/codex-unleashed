@@ -9,6 +9,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -36,6 +37,24 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	 * Maximum delay between bounded protocol observations.
 	 */
 	static final Duration POLL_INTERVAL = Duration.ofMillis(10);
+	/**
+	 * Reader rejection reason for verified missing immediate workload leaves.
+	 */
+	static final String MISSING_LEAF = "registered-leaf-removed";
+
+	/**
+	 * Reads the owning supervisor's genuine retained execution-impossible barrier.
+	 */
+	@FunctionalInterface
+	interface ZeroBarrier
+	{
+		/**
+		 * Observes actual zero or its retained earlier observation.
+		 * @return true only after genuine zero was observed
+		 * @throws IOException if that barrier cannot be established
+		 */
+		boolean observed() throws IOException;
+	}
 
 	/**
 	 * Immutable launch and filesystem boundaries for one native reader.
@@ -386,7 +405,19 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 			throw failure;
 		}
 		// A complete rejection leaves authority retained for a new batch. Only an unacknowledged exchange poisons it.
-		requireSuccess(result);
+		Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers = new HashMap<>();
+		for (Registration registration : registrations.values())
+			barriers.put(registration.attempt, registration.supervisor::observeExecutionImpossible);
+		try
+		{
+			requireSuccess(result, values.getProperty("operation", ""), barriers);
+		}
+		catch (IOException failure)
+		{
+			if (!Set.of("ok", "unavailable").contains(result.getProperty("status", "")))
+				broken = true;
+			throw failure;
+		}
 		return result;
 	}
 
@@ -420,13 +451,103 @@ public final class LinuxAuthority implements LinuxMeasurements.Source, AutoClose
 	{
 		switch (response.getProperty("status", ""))
 		{
+			case "ok", "unavailable" -> { }
+			default -> broken = true;
+		}
+		requireSuccess(response, "", Map.of());
+	}
+
+	/**
+	 * Validates a complete reader reply without interpreting diagnostics as protocol metadata.
+	 * @param response acknowledged reader reply
+	 * @param operation request operation
+	 * @param barriers exact registered owners' zero observations
+	 * @throws IOException if the reply is rejected or malformed
+	 */
+	private static void requireSuccess(Properties response, String operation,
+		Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers) throws IOException
+	{
+		switch (response.getProperty("status", ""))
+		{
 			case "ok" -> { }
-			case "unavailable" -> throw new IOException("Memory authority observation unavailable: " + response.getProperty("error"));
+			case "unavailable" ->
+			{
+				String diagnostic = "Memory authority observation unavailable: " + response.getProperty("error");
+				if (!MISSING_LEAF.equals(response.getProperty("reason")))
+					throw new IOException(diagnostic);
+				ObservationRejected.Operation observation = switch (operation)
+				{
+					case "host" -> ObservationRejected.Operation.HOST;
+					case "resident" -> ObservationRejected.Operation.RESIDENT;
+					case "verify" -> ObservationRejected.Operation.ACCEPT;
+					default -> throw new IOException("Missing-leaf rejection is invalid for operation " + operation);
+				};
+				var attempts = new ArrayList<LinuxMeasurements.Attempt>();
+				try
+				{
+					long count = number(response, "count");
+					if (count < 1 || count > barriers.size())
+						throw new IllegalArgumentException("Missing-leaf count exceeds current registrations");
+					var expected = new HashSet<String>(Set.of("status", "reason", "error", "count"));
+					for (long index = 0; index < count; index++)
+					{
+						String name = "name." + index;
+						String ordinal = "attempt." + index;
+						expected.add(name);
+						expected.add(ordinal);
+						attempts.add(new LinuxMeasurements.Attempt(response.getProperty(name), number(response, ordinal)));
+					}
+					if (!response.stringPropertyNames().equals(expected) || new HashSet<>(attempts).size() != attempts.size())
+						throw new IllegalArgumentException("Missing-leaf fields or attempt identities differ from the declared list");
+				}
+				catch (IllegalArgumentException | NullPointerException failure)
+				{
+					throw new IOException("Missing-leaf rejection has invalid attempt metadata", failure);
+				}
+				for (var attempt : attempts)
+					if (!barriers.containsKey(attempt))
+						throw new IOException("Missing-leaf rejection names an unregistered attempt: " + attempt);
+				for (var attempt : attempts)
+				{
+					boolean observed;
+					try { observed = barriers.get(attempt).observed(); }
+					catch (IOException failure)
+					{
+						throw new IOException("Missing-leaf zero observation failed: " + attempt, failure);
+					}
+					if (!observed) throw new IOException("Missing-leaf rejection lacks retained zero authority: " + attempt);
+				}
+				throw new ObservationRejected(observation, ObservationRejected.Reason.COMPLETED_LEAVES,
+					attempts.stream().map(attempt -> new ObservationRejected.Attempt(attempt.name(), attempt.sequence())).toList(),
+					new IOException(diagnostic));
+			}
 			default ->
 			{
-				broken = true;
 				throw new IOException("Memory reader returned an invalid response status: " + response.getProperty("status"));
 			}
+		}
+	}
+
+	/**
+	 * Narrow typed access to the production reply decision for focused checks.
+	 */
+	static final class SharedSecrets
+	{
+		/**
+		 * Prevents construction.
+		 */
+		private SharedSecrets() { }
+		/**
+		 * Exercises the actual reply decision with controlled retained-owner observations.
+		 * @param response acknowledged reply
+		 * @param operation request operation
+		 * @param barriers registered retained-zero suppliers
+		 * @throws IOException if the reply is rejected
+		 */
+		static void requireSuccess(Properties response, String operation,
+			Map<LinuxMeasurements.Attempt, ZeroBarrier> barriers) throws IOException
+		{
+			LinuxAuthority.requireSuccess(response, operation, barriers);
 		}
 	}
 
