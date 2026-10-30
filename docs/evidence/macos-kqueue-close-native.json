@@ -1,0 +1,458 @@
+{
+  "status": "bounded_native_close_to_selected_poll_gate_passed; normal_fixture_timeout_retained; preobserver_birth_and_exhaustive_lifetimes_unproven",
+  "scope": "Diagnostic on one retained macOS ARM64 worker using Frida 17.24.3. The fixture, dependencies, normal descriptor closure and original 4-second/12-second deadlines are unchanged. No dependency repair or production scheduling acceptance.",
+  "source_report_sha256": "ef07d3568d4c8265d8138c5aa15ef8efd942348f5a6a12a4617285f081e81108",
+  "archive": {
+    "path": ".cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/macos-kqueue-close-h5ve4taw/evidence.tar.gz",
+    "sha256": "e3118139be932341fa28fb47c8b7a02e2976a708d63c835af121084aceb5fcbf",
+    "bytes": 3213161,
+    "manifest_sha256": "cc9d4598a4a7dec17d2ae562b6af2b8c812e63661a7963d5306bc128391297d9"
+  },
+  "parent_verification": {
+    "safe_regular_members": 1718,
+    "data_members": 1717,
+    "exact_member_set_lengths_sha256_local_bytes": true,
+    "four_closes_and_full_selected_poll_equal_raw_events": true,
+    "raw_pid_path_and_removal_cleanup_receipts_read": true
+  },
+  "operation": {
+    "run": 41078785995,
+    "job": 124142165967,
+    "runner": "GitHub Actions 1000010099",
+    "head": "984879cb67580a272ce3aafae6669e7020112363",
+    "ssh_owner_session": 78448,
+    "terminal_ssh_exit": 0,
+    "remote_root": "/Users/runner/work/_temp/kqueue-close-1igj6L",
+    "provider_terminal": true
+  },
+  "binary_identity": {
+    "agent_sha256": "d9755c99bb032ade5e98606dadc1d246f9b5d1ddee9d4ecb32c7f6ee5ba6bdf2",
+    "agent_uuid": "c09c9fa50a85351d8e020bfa371919cb",
+    "binding_sha256": "a6e39d2f4989d189a8ecf05d475b75ec6489d8851ec46f86a789ab7f7d90f6d3",
+    "binding_uuid": "455494b1478231c9b1891329d2e289c5",
+    "wheel_sha256": "767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac",
+    "gum_commit": "3f82ef6a5b2413867835a45fe341913455473303",
+    "core_commit": "57161b0ddd2311adf18e84f4680f9cb935ce8376",
+    "glib_declared_revision": "ae4ec44f4484bf22ff387e712c5e9902af07c0c7",
+    "declared_glib_not_independent_build_attestation": true
+  },
+  "supported_conclusion": "CPython enters the Frida close guard for the selected context kqueue. Gum reports that descriptor as uncloaked; syscall 6 closes it successfully. The same context subsequently calls kevent on its stored descriptor and receives EBADF. Actual kernel results distinguish this close from a simulated successful return.",
+  "source_level_interpretation": {
+    "observed": "The selected kqueue is uncloaked when Python closes it; the guard permits the kernel close.",
+    "supported_source_lead": "Pinned Gum registers GLib descriptor audit callbacks for cloaking. Retained gmain kqueue creation and fork recovery paths lack corresponding callbacks. The exact binary call and store mapping is retained.",
+    "not_established": "Native observation begins after queue creation. The path from queue creation to its missing cloak remains a source-based inference. No dependency repair is implemented."
+  },
+  "limits": [
+    "Queue closure during the observation window is established. Earlier queue creation and all intervening descriptor allocation, duplication and reuse are not exhaustively observed.",
+    "PROC_PIDFDKQUEUEINFO returning EBADF does not prove an empty descriptor slot: reuse for a different descriptor type may also reject the query. The actual kernel close entry and return independently prove closure.",
+    "Some stack frame pointers are unavailable (UINT64_MAX). The exact Gum caller address, module UUID and CPython function frame are retained.",
+    "No claim of complete event capture, all interpreter queue ownership, successful normal exec or production allocation coverage. The required captured causal boundaries match.",
+    "Already conclusive normal failure checks were not repeated. Final source bytes match the remote manifest and archive; incremental attempts on the same worker remain recorded.",
+    "The observer does not execute target functions, change registers or descriptors, repair source or dependencies, change lifecycle behavior, or extend fixture deadlines."
+  ],
+  "original_failures_and_corrections": [
+    {
+      "receipt": "capability-initial-failure.json",
+      "failure": "LLDB lacks SBLaunchInfo.SetStandardOutputPath before target launch. Its zero exit was not accepted as test success.",
+      "correction": "Use the previously verified AddOpenFileAction on the same worker; retain the original source and log."
+    },
+    {
+      "receipt": "initial-arming-failure.json",
+      "failure": "Initial attachment and initialization exceed the unchanged four-second arming deadline; the child is not resumed.",
+      "correction": "Retry unchanged source on the same worker and retain the original failure."
+    },
+    {
+      "receipt": "guard-range-harness-correction.json",
+      "failure": "The diagnostic assumed that the guard range begins at the agent Mach-O header. The original attempt did not log the actual range.",
+      "correction": "Capture the compiled comparison registers at 0x1131ac. The later actual range contains the code but begins before the header; earlier missing values remain unknown."
+    },
+    {
+      "receipt": "partial-poll-harness-correction.json",
+      "failure": "Version 2 reaches a poll translation phase whose entry was not observed, after capturing four actual closes.",
+      "correction": "Retain that partial phase without inventing entry or return evidence; wait for a complete subsequent poll."
+    },
+    {
+      "receipt": "partial-inflight-gate-correction.json",
+      "failure": "Version 3 captures an actual partial poll return and errno, but does not satisfy the full-entry gate.",
+      "correction": "Retain the partial observation as unaccepted. Version 4 waits for the next full entry and passes the original requirement."
+    }
+  ],
+  "next_smallest_gate": {
+    "offline_first": "Review supported stable remedies against the observed uncloaked close. If queue creation provenance is needed, establish an earlier supported observation boundary before fork recovery; do not infer it from descriptor number 35.",
+    "parent_decides_production_or_upstream_action": true,
+    "no_additional_native_dispatch_authorized_by_report": true
+  },
+  "gate_states": {
+    "persistent_upterm_and_exact_integration": "passed",
+    "native_inspection_and_typed_query_control": "passed",
+    "exact_live_agent_sites": "passed",
+    "original_arming_deadline": "passed_final",
+    "existing_kernel_backed_context_baseline": "passed",
+    "actual_close_caller_cloak_and_kernel_result": "passed",
+    "actual_selected_socket_task_context_identity": "passed",
+    "close_to_full_selected_poll": "passed",
+    "observer_detach": "passed",
+    "application_progress": "failed_expected_reproduction",
+    "initial_interpreter_birth_fork_recovery_and_exhaustive_reuse": "unproven",
+    "allocation_coverage": "unproven",
+    "cleanup": "passed"
+  },
+  "captured_closes": [
+    {
+      "sequence": 1,
+      "fd": 32,
+      "context": "0x100541ca0",
+      "caller": "0x10045b228",
+      "caller_module": "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-darwin.so",
+      "prequery_result": 168,
+      "cloaked": false,
+      "actual_syscall": {
+        "event": "close_actual_syscall_enter",
+        "monotonic_ns": 3422238666,
+        "wall_ns": 1793374090969356000,
+        "tid": 64753,
+        "sequence": 1,
+        "requested_fd": 32,
+        "actual_fd": 32,
+        "syscall": 6,
+        "pc": "0x10065903c"
+      },
+      "kernel_return": {
+        "event": "close_actual_syscall_return",
+        "monotonic_ns": 3452429833,
+        "wall_ns": 1793374090999547000,
+        "tid": 64753,
+        "sequence": 1,
+        "requested_fd": 32,
+        "actual_fd": 32,
+        "kernel_x0": 0,
+        "kernel_carry": false,
+        "external_post_info": {
+          "pid": 24280,
+          "fd": 32,
+          "result": 0,
+          "errno": 9,
+          "expected_bytes": 168,
+          "bytes_hex": ""
+        },
+        "all_target_threads_stopped": true
+      },
+      "guard_original_result": 0
+    },
+    {
+      "sequence": 2,
+      "fd": 33,
+      "context": "0x100563ea0",
+      "caller": "0x10045b228",
+      "caller_module": "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-darwin.so",
+      "prequery_result": 168,
+      "cloaked": false,
+      "actual_syscall": {
+        "event": "close_actual_syscall_enter",
+        "monotonic_ns": 3591362500,
+        "wall_ns": 1793374091138480000,
+        "tid": 64753,
+        "sequence": 2,
+        "requested_fd": 33,
+        "actual_fd": 33,
+        "syscall": 6,
+        "pc": "0x10065903c"
+      },
+      "kernel_return": {
+        "event": "close_actual_syscall_return",
+        "monotonic_ns": 3619356291,
+        "wall_ns": 1793374091166473000,
+        "tid": 64753,
+        "sequence": 2,
+        "requested_fd": 33,
+        "actual_fd": 33,
+        "kernel_x0": 0,
+        "kernel_carry": false,
+        "external_post_info": {
+          "pid": 24280,
+          "fd": 33,
+          "result": 0,
+          "errno": 9,
+          "expected_bytes": 168,
+          "bytes_hex": ""
+        },
+        "all_target_threads_stopped": true
+      },
+      "guard_original_result": 0
+    },
+    {
+      "sequence": 3,
+      "fd": 35,
+      "context": "0x1005ffaf0",
+      "caller": "0x10045b228",
+      "caller_module": "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-darwin.so",
+      "prequery_result": 168,
+      "cloaked": false,
+      "actual_syscall": {
+        "event": "close_actual_syscall_enter",
+        "monotonic_ns": 3761487458,
+        "wall_ns": 1793374091308605000,
+        "tid": 64753,
+        "sequence": 3,
+        "requested_fd": 35,
+        "actual_fd": 35,
+        "syscall": 6,
+        "pc": "0x10065903c"
+      },
+      "kernel_return": {
+        "event": "close_actual_syscall_return",
+        "monotonic_ns": 3793937125,
+        "wall_ns": 1793374091341055000,
+        "tid": 64753,
+        "sequence": 3,
+        "requested_fd": 35,
+        "actual_fd": 35,
+        "kernel_x0": 0,
+        "kernel_carry": false,
+        "external_post_info": {
+          "pid": 24280,
+          "fd": 35,
+          "result": 0,
+          "errno": 9,
+          "expected_bytes": 168,
+          "bytes_hex": ""
+        },
+        "all_target_threads_stopped": true
+      },
+      "guard_original_result": 0
+    },
+    {
+      "sequence": 4,
+      "fd": 36,
+      "context": "0x100625cb0",
+      "caller": "0x10045b228",
+      "caller_module": "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-darwin.so",
+      "prequery_result": 168,
+      "cloaked": false,
+      "actual_syscall": {
+        "event": "close_actual_syscall_enter",
+        "monotonic_ns": 3937739208,
+        "wall_ns": 1793374091484857000,
+        "tid": 64753,
+        "sequence": 4,
+        "requested_fd": 36,
+        "actual_fd": 36,
+        "syscall": 6,
+        "pc": "0x10065903c"
+      },
+      "kernel_return": {
+        "event": "close_actual_syscall_return",
+        "monotonic_ns": 3966514875,
+        "wall_ns": 1793374091513632000,
+        "tid": 64753,
+        "sequence": 4,
+        "requested_fd": 36,
+        "actual_fd": 36,
+        "kernel_x0": 0,
+        "kernel_carry": false,
+        "external_post_info": {
+          "pid": 24280,
+          "fd": 36,
+          "result": 0,
+          "errno": 9,
+          "expected_bytes": 168,
+          "bytes_hex": ""
+        },
+        "all_target_threads_stopped": true
+      },
+      "guard_original_result": 0
+    }
+  ],
+  "selected_context": {
+    "event": "selected_socket_source",
+    "monotonic_ns": 4372795125,
+    "wall_ns": 1793374091919912000,
+    "contexts": [
+      "0x100541ca0",
+      "0x100563ea0",
+      "0x1005ffaf0",
+      "0x100625cb0"
+    ],
+    "source": "0x100622a70",
+    "context": "0x1005ffaf0",
+    "tag": "0x100564170",
+    "R": "0x10064daa0",
+    "socket": "0x10064ade0",
+    "worker": "0x100655dd0",
+    "fd": 39,
+    "read_data": "0x100682860",
+    "buffer": "0x10067d800",
+    "cur": 0,
+    "wanted": 16,
+    "events": 57,
+    "revents": 0,
+    "source_flags": 1,
+    "source_id": 67,
+    "source_ref_count": 1,
+    "kq": 35,
+    "poll_func": "0x101a42c20",
+    "poll_records": 2,
+    "n_poll_records": 2,
+    "identity": "source/callback/task/socket/worker/context/tag correlated; creation preobserver"
+  },
+  "full_selected_poll": [
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4667942666,
+      "wall_ns": 1793374092215061000,
+      "kind": "poll_entry",
+      "tid": 64760,
+      "context": "0x1005ffaf0",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005d9d90",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4741811458,
+      "wall_ns": 1793374092288929000,
+      "kind": "kevent_before",
+      "tid": 64760,
+      "context": "0x1005ffaf0",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4819115000,
+      "wall_ns": 1793374092366232000,
+      "kind": "kevent_return",
+      "tid": 64760,
+      "context": "0x1005ffaf0",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4891148625,
+      "wall_ns": 1793374092438266000,
+      "kind": "kevent_errno",
+      "tid": 64760,
+      "context": "0x1005ffaf0",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    }
+  ],
+  "partial_cycle_accepted": false,
+  "cleanup": {
+    "status": "passed",
+    "observed_pids": {
+      "fields": [
+        "agent_observer_pid",
+        "child_pid",
+        "controller_pid",
+        "grandchild_pid",
+        "host_lldb_pid",
+        "observer_pid",
+        "pid",
+        "target_pid"
+      ],
+      "pids": [
+        2646,
+        2737,
+        8907,
+        8908,
+        8947,
+        9160,
+        9189,
+        9193,
+        10136,
+        10137,
+        10162,
+        10394,
+        10429,
+        10430,
+        16334,
+        16335,
+        16470,
+        16737,
+        16748,
+        16749,
+        20624,
+        20627,
+        20672,
+        20680,
+        20715,
+        20721,
+        23911,
+        23912,
+        24032,
+        24234,
+        24280,
+        24334
+      ],
+      "short_lived_external_query_helpers": "Each subprocess.run waited for exit0; those helper PIDs were not separately emitted; path audit covers unexpected survivors"
+    },
+    "pid_audit": "audit-pids-response.json",
+    "owned_path_processes": "audit-processes-response.json",
+    "remote_root_removed": "remove-remote-response.json",
+    "ssh": {
+      "exit": 0,
+      "pid": 36
+    },
+    "credentials": {
+      "removed_after_ssh_and_provider_cleanup": true,
+      "removed": [
+        {
+          "name": "client-key",
+          "bytes": 399
+        },
+        {
+          "name": "client-key.pub",
+          "bytes": 94
+        }
+      ],
+      "all_absent": true,
+      "time_ns": 1793374218951609244
+    },
+    "provider_expected_deliberate_failure": "failure",
+    "provider_steps": [
+      {
+        "name": "Set up job",
+        "conclusion": "success"
+      },
+      {
+        "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "conclusion": "success"
+      },
+      {
+        "name": "Create owned partial build state",
+        "conclusion": "success"
+      },
+      {
+        "name": "Record the deliberate build failure",
+        "conclusion": "failure"
+      },
+      {
+        "name": "Debug the original failed workspace",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Debug the original failed workspace",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Create owned partial build state",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "conclusion": "success"
+      },
+      {
+        "name": "Complete job",
+        "conclusion": "success"
+      }
+    ]
+  }
+}
