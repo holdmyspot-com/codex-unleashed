@@ -1,0 +1,234 @@
+{
+  "scope": "Read-only Linux scheduler construction and linked-runtime inventory.",
+  "parent_review": {
+    "source_inputs": "All 17 governing source hashes match the current worktree; no source edits or builds performed.",
+    "conclusion": "Existing APIs permit a diagnostic linked-image authority plus explicit classpath supervisor JAR. No production command currently constructs a scheduler session.",
+    "next_gate": "Verify actual module resolution, explicit per-child native grants, registration before release, complete measurement acceptance and terminal cleanup from the linked image.",
+    "remaining": "Production build-tool submission, final native library/helper provisioning, named supervisor launch and end-to-end scheduling remain incomplete."
+  },
+  "report_sha256": "6cc7dc30cb6e19aa364e4b821c939689987ea1be423626a2a55d74ba866cbaf8",
+  "report": {
+    "task_contract": "acknowledged",
+    "scope": "Read-only production construction and named-module/linked-runtime inventory; no builds, native dispatch, maintained writes or Frida owner integration.",
+    "checked_commit": "a935dc4099dc73952c016d39430a835d368e3b20",
+    "checked_sources": [
+      {
+        "path": "tooling/cli/pom.xml",
+        "git_blob": "0c9af04ecd76066bc6e4d6e7d55b39d7657adcca",
+        "sha256": "f42aad6371b6a16dfa2be198016b5d3e948ee42459613147a778ff7e07f4cccd"
+      },
+      {
+        "path": "tooling/cli/src/main/java/module-info.java",
+        "git_blob": "62ea17df69f43fa2076fecd48f8cb963673cefff",
+        "sha256": "3859d555f1aebf823125e342be08469a0f32c23db10721fded4b64068e382ca4"
+      },
+      {
+        "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
+        "git_blob": "bb500531dc605c69ad9a6286e60921a519011f87",
+        "sha256": "c0c9413ea618f6efd9d5eda15d8ccc4064d1d77f8a48c20a03019fb12ee6e299"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java",
+        "git_blob": "d19894fe5301ee1cdc313ba5364a0e58fb799f3d",
+        "sha256": "5cf8f3fb5a97f7d40638d4b842c240b02d138a2c60d3b22e26051101deca0787"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSwapControl.java",
+        "git_blob": "749005c0f5c89ea3270f7de47a9d64e45852e705",
+        "sha256": "65204d9b8ddad4db2bdb49a0c0a4df61e6e5fd7a9e07c2aaf29a1d4059529f7a"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java",
+        "git_blob": "b8397bef64226a249276bf43ff8d3361966a2b68",
+        "sha256": "ec33d58a60efacb22c2abb783a80b18543c08f40522c820f31cff761aac67779"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+        "git_blob": "387a522c75c5ac6f2ed30e47e97473d3dbb722f2",
+        "sha256": "7904d98ca900a0e5ca107d34de11db58dbfc2f051aaf95dea26c316c3af15c6b"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthority.java",
+        "git_blob": "e7b637db4906a98059094d2b36fca1ef78ae0057",
+        "sha256": "b043fedf0a0e35c1c0423b8d61356c99c02cca31a5f3b68205c655bd1f9f6ea6"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthorityReader.java",
+        "git_blob": "d11a5606a8b937ea467c44396024a11d983d5108",
+        "sha256": "ae779c3c1a62ea697768f5a4cda5eeb98407d61e8c6cd68b99bfcccac4547df6"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements.java",
+        "git_blob": "d6c2a2383c02424a42cf654b380df42977175858",
+        "sha256": "5dbc308d35fa04d714a13e34839822ea5df4d1b2fbe4930df7c1128ae8e5992d"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMemory.java",
+        "git_blob": "43dc1310211f11fe331267721f66aae21974b864",
+        "sha256": "8d2d125e29326c7eb58fa5452789c39fb56948b2fcb33ef0ef8dbddf739656b1"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxResidency.java",
+        "git_blob": "976ce66bbf06fe9fe95ce8dcf06469fe375ac57c",
+        "sha256": "d652ea698b27aa1d97e0d6ebf21fe4073d2566057189edc43f2a758ffdc302f7"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Libcgroup.java",
+        "git_blob": "97788357ab87f359ccf926ba490616e4e140ae6c",
+        "sha256": "28ae0d35f80c65b86a02883db30af731c03aec1ff1c31aa62dc90e0e3ba62477"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CgroupBudget.java",
+        "git_blob": "0f47cffe4676d1a3c1f6abec05b6a31e3535eeed",
+        "sha256": "50c788313011b7e6800b7834838b10e1f40cdec32338e6cbe0b46fe05232f98a"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java",
+        "git_blob": "6adda81e32cc5b77a0dfb907cd1d91705015e571",
+        "sha256": "2f4aefd76d0c1c7fef0430a716c40bb2d10a724d7f474456d8d9833b0bb91566"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java",
+        "git_blob": "7b029974ed41c77d58d078d5e4ce525af6dc06ac",
+        "sha256": "ea51a5f66cc0d2daf59d31e25fbac97d3344dd3467b8fe3f9dc154c6cff56dac"
+      },
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java",
+        "git_blob": "4e7bd09169e0a247ce83a922f7d2a8ff70af02d5",
+        "sha256": "ed16a3004471292f43dcfee78acb7d432b57813d37d40827ea1c5fdb9de47a1d"
+      }
+    ],
+    "gate_states": {
+      "source_inventory": "passed",
+      "authority_classpath_native_component": "accepted_prior_x64_and_arm64",
+      "linked_image_named_module_authority": "unrun",
+      "production_queue_composition": "unrun",
+      "swap_preparation_composition": "unrun"
+    },
+    "finding": "The current public authority and measurements APIs are sufficient for an explicitly provisioned Linux session. No main-source caller constructs them. Main exposes cache/retention/V8 commands only. JobQueue has a borrowed resource-free AttemptFactory, not a production platform factory. The main unresolved packaging boundary is that Authority supports a named module but both supervisor and gate always launch a classpath helper.",
+    "supported_construction_sequence": [
+      "External runner setup chooses a disposable native Linux x64/ARM64 host and supplies explicit trusted cgroup2/proc mountpoints, delegated workload/helper parents, JDK27 java, util-linux unshare, exact architecture libcgroup-v3 SO, existing scratch, positive timeout and positive unprivileged workload UID/GID. Setup grants real process privileges before invoking Java; Settings grants none.",
+      "On one owning thread construct LinuxSwapControl(absoluteWorkingDirectory, absoluteTemporaryDirectory), then prepare() once before admission. Preserve its Result command and verification evidence. VERIFIED_DISABLED establishes only active swap configuration. MONITORING_REQUIRED or UNKNOWN never substitutes for fresh complete monitoring. No automatic swap restoration exists or is promised.",
+      "LinuxAuthority.open(new LinuxAuthority.Settings(java, unshare, library, scratch, cgroupRoot, procRoot, admissionParent, helperParent, timeout)) launches and contains a retained reader before releasing its setup gate. Retain AcquisitionFailure.owner() if acquisition cleanup fails. The helper independently clones the mount nonrecursively in a private nonpropagating namespace, validates actual root, exact selected library mount, proc mapping and held ancestry; paths alone are not an authority certificate.",
+      "LinuxMeasurements.open(authority) primes a complete accepted reading before new JobQueue<>(budget, measurements, factory). LinuxMeasurements borrows authority and has no independent close. Keep authority alive beyond queue, attempts and registrations.",
+      "Factory.create(name, sequence) must allocate only an inert attempt object. Its start() calls LinuxSupervisor.prepare(explicitLaunch, optionalStandardFiles, timeout), retains the returned owner immediately (or retains PreparationFailure for cleanup), then retains authority.register(name, sequence, supervisor) while root is gated, before release. The allocation attachment/release details belong to the separate Frida owner integration.",
+      "Poll complete supervisor results without treating root-only exit as completion. Once all work has stopped, close Registration before the next measurement batch, even if natural supervisor cleanup already removed the inner leaf. Then release supervisor ownership; preserve original typed result/abort classification and original queue position. Never callback into JobQueue while its collaborator is executing.",
+      "Controller.cycle already stages readHost and exact-attempt RSS for all live jobs, then calls acceptReadings before committing history or issuing controls. Keep that order; no second RSS subtraction and no zero substitution for unavailable values.",
+      "Close queue/attempt registrations and supervisor owners before authority. Retain retryable native cleanup owners at session level even though JobQueue invokes Attempt.close only once and permanently stops scheduling on failure. Close authority reaps its helper/group/mount lifetime and IPC. SwapControl owns no restorable resource."
+    ],
+    "native_authority_handoff": {
+      "inputs": [
+        "cgroupRoot is a canonical cgroup-v2 mountpoint exposing the actual root, not merely a namespace-visible root",
+        "procRoot is a canonical matching procfs with required memory/PSI/process files readable",
+        "admissionParent and helperParent are real delegated descendants under that root; supervisor launch cgroupParent must equal the session admissionParent",
+        "root/equivalent cgroup and mount management privileges and credential-drop capability already granted by external setup; current LinuxProcessTree explicitly requires UID0",
+        "unfiltered reader (PR_GET_SECCOMP == 0), stable trusted mount/topology and exclusive owned subtree mutation; no hostile ptrace/syscall interception or concurrent migration/rename"
+      ],
+      "mechanism": "Pass immutable absolute normalized paths and binaries to Settings and Launch; reader verifies retained kernel identities and actual membership after final namespace selection. It keeps private mount and directory FDs alive for the entire session. No PID1 equality, VM label, or unlimited visible root authorizes a scalar budget.",
+      "proc_boundary": "The current authority retains the proc root and checks namespace consistency, but LinuxMemory and process readers still use proc pathnames. A trusted caller must preserve that proc view and forbid concurrent mount replacement/filtering. Supporting adversarial mutable proc mounts is outside the accepted adapter contract.",
+      "failure": "Acquisition/read/verification failure means unavailable and prohibits admission; acknowledged read rejection permits a fresh batch on the same helper. Lost protocol acknowledgement poisons the helper owner. Numeric zero is retained only from a successful supported observation."
+    },
+    "module_and_image_inventory": {
+      "module": "com.holdmyspot.codexunleashed.tooling",
+      "descriptor": "Requires Jackson databind/YAML, Commons IO, com.github.oshi.ffm; no exports or opens. Same-module construction needs no new exports. FFM API is in implicitly required java.base; libcgroup is an OS shared object, not a Java module.",
+      "image": "DistributionMain jlinks tooling plus ch.qos.logback.classic and transitive requires, then rewrites bin/codex-tooling. Current launcher grants tooling and com.github.oshi.ffm. It does not copy a classpath helper JAR or native libcgroup SO into the image.",
+      "authority_current_named_command": [
+        "<absolute image>/bin/java",
+        "-Djava.io.tmpdir=<exclusive IPC>",
+        "--enable-native-access=com.holdmyspot.codexunleashed.tooling",
+        "[--module-path <parent jdk.module.path> only when present]",
+        "--module",
+        "com.holdmyspot.codexunleashed.tooling/com.holdmyspot.codexunleashed.scheduler.LinuxAuthorityReader",
+        "<seven explicit IPC/root/proc/parent/library/group/PID arguments>"
+      ],
+      "authority_named_requirement": "For linked execution choose Settings.java from the actual image java.home/bin/java, so the same tooling module is a system module of the child image. A blank jdk.module.path is valid in that case. Supplying unrelated stock JDK java with no module path does not carry the application module into the child. For exploded/modular-JAR execution preserve an absolute module path and identical module bytes through helper lifetime.",
+      "supervisor_current_command": [
+        "<Launch.javaExecutable>",
+        "--enable-native-access=ALL-UNNAMED",
+        "-cp",
+        "<Launch.classPath absolute one class directory or JAR>",
+        "com.holdmyspot.codexunleashed.scheduler.LinuxSupervisor",
+        "<scratch>"
+      ],
+      "nested_gate_current_command": [
+        "<Launch.javaExecutable>",
+        "--enable-native-access=ALL-UNNAMED",
+        "-cp",
+        "<Launch.classPath>",
+        "com.holdmyspot.codexunleashed.scheduler.LinuxProcessTree",
+        "--gate",
+        "<scratch>"
+      ],
+      "classpath_limitation": "Launch.classPath is an actual directory/JAR, not a jrt URI, image lib/modules file or implied image classpath. Linked modules do not manufacture that required helper JAR. The supervisor serializes the same path into launch.properties and reconstructs it for the nested gate.",
+      "grant_requirements": "Each JVM needs its own explicit native grant. Named authority/libcgroup/direct libc calls require only tooling; they do not use OSHI. The current unnamed supervisor/gate need ALL-UNNAMED. After a named-module helper launch is established, grant tooling specifically in both children; retain existing com.github.oshi.ffm only for processes actually invoking OSHI. A grant in bin/codex-tooling is not inherited by ProcessBuilder children. Child environments are cleared, so JAVA_TOOL_OPTIONS or LD_LIBRARY_PATH is not an implicit handoff.",
+      "native_library": "Settings.library supplies an absolute architecture-matched SO. Reuse accepted libcgroup producer; ensure dynamic loader dependencies resolve without ambient environment. Current Maven/Jlink packaging does not provision this OS library or util-linux unshare. No new Maven dependency or module requires is needed for the authority itself."
+    },
+    "smallest_next_operation": {
+      "selected": "Run the existing public LinuxAuthority.open -> LinuxMeasurements.open -> prepare/register direct tiny workload -> sample/accept -> completion/unregister -> close sequence from an exact named-module linked image in owned scratch. First retain an explicit helper JAR beside the image and supply it to the existing Launch.classPath. This is the smallest supported current API sequence and isolates the new authority module/image boundary without changing Supervisor or Frida ownership.",
+      "reason": "The classpath+named hybrid is a currently supported construction candidate, not yet a proven linked-image result. It avoids introducing a Java launch abstraction before the actual current API is exercised. It still needs ALL-UNNAMED for the two legacy helpers, which must be explicit in the receipt.",
+      "input_delivery": "Build with the existing runtime profile into owned scratch, preserve exact image modules and helper JAR identities, package accepted libcgroup SO beside it, supply absolute paths through explicit fixture arguments, and use the image bin/java for parent and all children. Invoke fixture in tooling module using a scratch-only patched module/test fixture; do not add a production command just to launch a test.",
+      "acceptance": [
+        "Actual parent and authority helper report named tooling module and image java identity; jdk.module.path may be absent; all source/class/image/library identities retained",
+        "Under --illegal-native-access=deny, authority helper succeeds with tooling-only native grant; supervisor/gate succeed with their documented explicit legacy grant; no suppressed native warnings",
+        "Exact supervisor gated root registers under admissionParent before release; finite ancestor constrains read, exact RSS batch commits, natural completion unregisters before next batch",
+        "Withhold required library/module/authority input: explicit failure before admission, no scalar fallback and successful cleanup",
+        "Terminal reader/supervisor PID, owned groups, private mount lifetime and scratch cleanup receipts; repeat once from a fresh output directory after any same-worker incremental correction"
+      ],
+      "not_required": "Do not repeat accepted kernel/classifier/libcgroup arithmetic matrices or full Codex builds. This gate targets module resolution, launch inputs and owner composition only.",
+      "strict_native_access_delivery": "Current child builders do not propagate arbitrary JVM flags. For this diagnostic only, supply an owned absolute launcher wrapper through Settings.java and Launch.javaExecutable that execs the exact image bin/java with --illegal-native-access=deny followed by literal caller arguments; retain wrapper bytes and actual /proc/<pid>/exe/image/module identities. Never rely on JAVA_TOOL_OPTIONS because children clear their environment. This wrapper changes only native-access enforcement, not cgroup/proc observations."
+    },
+    "conditional_production_write_allowlist": {
+      "construction": [
+        "new tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxScheduler.java (session construction/cleanup facade in same package as JobQueue)",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java (one explicit command dispatch only when a build-tool caller contract is defined)",
+        "new focused construction/linked-runtime fixture test"
+      ],
+      "packaging_if_hybrid_selected": [
+        "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java (copy the exact packaged helper JAR beside image, explicit discoverable relative location)",
+        "tooling/cli/pom.xml (pass exact packaged JAR if DistributionMain cannot obtain it from existing modules input; no dependency changes)"
+      ],
+      "named_helper_followup_if_needed": [
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java (named helper launch and launch.properties contract)",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java (Launch Java location contract and nested named gate launch)",
+        "one package-private shared Java launch descriptor/helper only if needed to keep parent/supervisor/gate selection identical",
+        "focused named-module launch tests"
+      ],
+      "unchanged": [
+        "LinuxAuthority",
+        "LinuxAuthorityReader",
+        "LinuxMeasurements",
+        "CgroupBudget",
+        "Libcgroup",
+        "Controller",
+        "Policy",
+        "JobQueue",
+        "LinuxSwapControl",
+        "module-info.java"
+      ],
+      "coordination": "This inventory authorizes no implementation. Supervisor/ProcessTree changes intersect the separate Frida retained-owner worker and must be assigned only after handoff. Prefer named helpers for final restricted grants; do not add a Java abstraction until the current sequence and desired replacement boundary have concrete gate evidence."
+    },
+    "unresolved_facts": [
+      "No actual named-module/linked-image authority or hybrid supervisor invocation was run in this read-only task.",
+      "The production scheduler CLI/build-tool submission and result contract is not yet present in Main; its option names and upstream Cargo/Bazel handoff must be chosen by the owning integration task.",
+      "Final native library distribution/provisioning location and support policy beyond accepted Debian/glibc free Linux runners are not established.",
+      "Automatic privilege acquisition, arbitrary containers, filtered namespaces and mutable hostile proc/mount environments are not supported by the current adapter.",
+      "Named supervisor/gate API evolution depends on the separate retained-owner integration; no source change is prescribed before the existing public linked sequence is tested."
+    ],
+    "primary_references": [
+      {
+        "url": "https://docs.oracle.com/en/java/javase/27/docs/specs/man/java.html",
+        "supports": "Module main launch syntax, classpath directory/JAR semantics, per-module native-access grant and deny verification."
+      },
+      {
+        "url": "https://docs.oracle.com/en/java/javase/27/docs/specs/man/jlink.html",
+        "supports": "Image includes selected modules and transitive dependencies; launcher selects module/main. No external libcgroup or util-linux provisioning."
+      }
+    ],
+    "writes": [
+      "This owned report.json only."
+    ],
+    "remote_dispatches": 0,
+    "builds": 0,
+    "production_edits": 0
+  }
+}
