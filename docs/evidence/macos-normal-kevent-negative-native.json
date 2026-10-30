@@ -1,0 +1,4648 @@
+{
+  "schema": 1,
+  "scope": "Negative normal-descriptor transport observation; does not accept production scheduler behavior or identify the descriptor lifetime cause.",
+  "source_artifacts": {
+    "report.json": {
+      "bytes": 24168,
+      "sha256": "47f127b50c1a6d8e1a4728f6d0be58c5ffabe38fef927d897aa38f82c013ba64"
+    },
+    "manifest.json": {
+      "bytes": 60434,
+      "sha256": "f247b7ac9ed180e617a78a85474535e7985369cb9ff240fbfba36cbcf61c5e6c"
+    },
+    "evidence.tar.gz": {
+      "bytes": 751387,
+      "sha256": "281f5eeec66c1011d4a10ce49884a898ac153352f24bed03c6ebd050c3e5e589"
+    }
+  },
+  "parent_checks": {
+    "manifest_payloads_matching_local_and_archive": 428,
+    "archive_members": 429,
+    "embedded_manifest_matches": true,
+    "actual_kevent_cycles_checked": 20,
+    "actual_host_reply_bytes": 32,
+    "native_tests_repeated": 0
+  },
+  "producer_report": {
+    "task_contract": "acknowledged",
+    "scope": "One unchanged normal close_fds=True case, accepted inherited readiness reused; same-worker unchanged retry after pre-resume harness arming failure; no normal/fresh repetition after conclusive bounded negative",
+    "status": "partial_native_negative_observed; observation_gate_failed_at_capture_budget; fixture_failed",
+    "ownership": {
+      "scratch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/macos-normal-kevent-lygpv1bo",
+      "remote_root": "/Users/runner/work/_temp/normal-kevent-qKrfWk",
+      "borrowed_inputs_unchanged": true,
+      "maintained_edits": false,
+      "production_or_dependency_changes": false
+    },
+    "operation": {
+      "run": 41018519414,
+      "job": 123940313326,
+      "runner": "GitHub Actions 1000010052",
+      "head": "2398651b996b5387c4445a7bb222b6800a32da22",
+      "ssh_owner_session": 28594,
+      "ssh_terminal_exit": 0,
+      "provider_terminal": true
+    },
+    "accepted_input": {
+      "report": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/macos-partial-kevent-t2e0hjz6/report.json",
+      "report_sha256": "3f1720ac2c9aac886f2ee1c69b567de25dd48538b4fa179d91fc21ddd949fc38",
+      "archive_sha256": "2031a9e0c0839e663dd8da7179607e98ad7b7638be646349200e8b1d1b5e2381",
+      "repeated_inherit_controls": false
+    },
+    "source_identity": {
+      "observe.py": {
+        "bytes": 2472,
+        "sha256": "87cbab2e5b595774c2d1eeb308bfd4774a5a9cdb5206dfd5f1d456c6cf2f8337",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "source-manifest.json": {
+        "bytes": 1267,
+        "sha256": "6a2b557988c7ef4eb189fad7a334a8f68dfe05f1d456c34c1f4e762b662edae6",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "failfast_control.py": {
+        "bytes": 2589,
+        "sha256": "40251c88b5a8ad049f2e183309f55bc9aaab76dd4e2cfbd1ed8fbf4678c50571",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "run_case.py": {
+        "bytes": 1839,
+        "sha256": "3b26674f3ecf98d4b6a12d15570c7cf713920dc5b8f9b5408659ad9e49199439",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "requirements.txt": {
+        "bytes": 306,
+        "sha256": "1576c7484e3087ff8b134dc6a08d52e5b8633b3cefc8ef02e0584ad46f4d3700",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "fixture.py": {
+        "bytes": 2199,
+        "sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "fingerprints.json": {
+        "bytes": 33193,
+        "sha256": "0bd59b86f4e3aa49134ebb44f87077d45fc26890c4795625a9157c00ddddcdc6",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "lldb_boundary.py": {
+        "bytes": 36096,
+        "sha256": "baec3b549a2918e71e005cbd3b9c8bb9b8044e18a37f260fb16ea2b271c42be9",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "probe.py": {
+        "bytes": 8267,
+        "sha256": "131fd03912447f9de67c389dd6f87e8d560dc54d56b538853dee77fcde05ab66",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "host_observer.py": {
+        "bytes": 21132,
+        "sha256": "40747636440a95114640cf14f2dd5099cb96334c518d45457978e22fabe4826b",
+        "equal_remote_and_accepted_candidate": true
+      },
+      "failfast.c": {
+        "bytes": 247,
+        "sha256": "fae1c498c10d0f221b8e35c6df831742158698de04cbd07e65dddc2ffffa2bc9",
+        "equal_remote_and_accepted_candidate": true
+      }
+    },
+    "binary_identity": {
+      "frida": "17.24.3",
+      "binding_sha256": "a6e39d2f4989d189a8ecf05d475b75ec6489d8851ec46f86a789ab7f7d90f6d3",
+      "agent_sha256": "d9755c99bb032ade5e98606dadc1d246f9b5d1ddee9d4ecb32c7f6ee5ba6bdf2",
+      "agent_uuid": "c09c9fa50a85351d8e020bfa371919cb",
+      "binding_uuid": "455494b1478231c9b1891329d2e289c5",
+      "wheel_sha256": "767ebb154a896683b75e011e1134a08e8ec31ff6e8968dea8d15a18b37a25cac",
+      "core_commit": "57161b0ddd2311adf18e84f4680f9cb935ce8376",
+      "glib_declared_commit": "ae4ec44f4484bf22ff387e712c5e9902af07c0c7",
+      "declared_source_is_not_independent_wheel_build_attestation": true
+    },
+    "gates": {
+      "persistent_authenticated_upterm_before_commands": {
+        "status": "passed",
+        "original_pre_prompt_ssh_failure_retained": true,
+        "reconnected_same_worker": true
+      },
+      "exact_sources_and_live_fingerprints": {
+        "status": "passed",
+        "agent_verified_sites": 74,
+        "host_verified_sites": 38
+      },
+      "original_four_second_arming": {
+        "first_attempt": "failed_before_child_resume",
+        "same_worker_exact_retry": "passed",
+        "controller_gate_to_resume_seconds": 3.406411334,
+        "deadline_unchanged": true
+      },
+      "actual_selected_identity": {
+        "status": "passed",
+        "socket_source": {
+          "event": "selected_socket_source",
+          "monotonic_ns": 4271776416,
+          "wall_ns": 1793344588650009000,
+          "contexts": [
+            "0x100541cb0",
+            "0x100542c40",
+            "0x1005b9e80",
+            "0x1005bee30"
+          ],
+          "source": "0x1005bba70",
+          "context": "0x1005b9e80",
+          "tag": "0x10066c0d0",
+          "R": "0x10064d8e0",
+          "socket": "0x10064b330",
+          "worker": "0x1005b95f0",
+          "fd": 39,
+          "read_data": "0x1006628c0",
+          "buffer": "0x100662f00",
+          "cur": 0,
+          "wanted": 16,
+          "events": 57,
+          "revents": 0,
+          "source_flags": 1,
+          "source_id": 66,
+          "source_ref_count": 1,
+          "kq": 35,
+          "poll_func": "0x101a42c20",
+          "poll_records": 2,
+          "n_poll_records": 2,
+          "identity": "source/callback/task/socket/worker/context/tag correlated; creation preobserver"
+        },
+        "worker": {
+          "event": "selected_agent_worker",
+          "monotonic_ns": 4268874375,
+          "wall_ns": 1793344588647108000,
+          "connection": "0x10064b4a0",
+          "worker": "0x1005b95f0",
+          "socket": "0x10064b330",
+          "stream": "0x1000b8470",
+          "read_state": 1,
+          "buffer": "0x100662f00",
+          "allocated": 4096,
+          "cur": 0,
+          "wanted": 16,
+          "snapshot_only": true
+        }
+      },
+      "actual_selected_context_syscall": {
+        "status": "passed_bounded",
+        "cycles": [
+          {
+            "first_event": 86,
+            "last_event": 94,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 95,
+            "last_event": 102,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 103,
+            "last_event": 108,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 109,
+            "last_event": 114,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 115,
+            "last_event": 120,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 121,
+            "last_event": 126,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 127,
+            "last_event": 132,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 133,
+            "last_event": 138,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 139,
+            "last_event": 144,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 145,
+            "last_event": 150,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 151,
+            "last_event": 156,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 157,
+            "last_event": 162,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 163,
+            "last_event": 168,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 169,
+            "last_event": 174,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 175,
+            "last_event": 180,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 181,
+            "last_event": 186,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 187,
+            "last_event": 192,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 193,
+            "last_event": 198,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 199,
+            "last_event": 204,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          },
+          {
+            "first_event": 205,
+            "last_event": 210,
+            "tid": 28843,
+            "context": "0x1005b9e80",
+            "kq": 35,
+            "result": -1,
+            "errno": 9,
+            "selected_fd": 39,
+            "selected_poll_revents": 0
+          }
+        ],
+        "no_preobserver_entry_invented": true,
+        "preobserver_frame_or_return_not_needed_in_this_case": true,
+        "syscall_return_observed_before_output_read": true,
+        "negative_return_has_no_output_bytes": true
+      },
+      "selected_reply_actual_host_write": {
+        "status": "passed",
+        "request_serial": 8,
+        "agent_request": {
+          "event": "boundary",
+          "monotonic_ns": 4697947250,
+          "wall_ns": 1793344589076180000,
+          "kind": "request_queued_result",
+          "pid": 9184,
+          "tid": 28849,
+          "pc": "0x1019e5cec",
+          "sp": "0x1701428d0",
+          "connection": "0x10064b4a0",
+          "message": "0x1005bbc00",
+          "S": "0x10066f310",
+          "accepted": 1,
+          "serial": 8,
+          "proves": "queue acceptance only"
+        },
+        "host_handler": {
+          "event": "host_boundary",
+          "wall_ns": 1793344589228215000,
+          "monotonic_ns": 15376485916,
+          "kind": "handler_begin",
+          "pid": 8951,
+          "tid": 28394,
+          "pc": "0x131076928",
+          "source": "0x600000a4d590",
+          "D": "0x600001068780",
+          "invocation": "0x600001868150",
+          "connection": "0x600000f4eb00",
+          "message": "0x60000106d630",
+          "serial": 8,
+          "payload": {
+            "pid": 9184,
+            "parent_pid": 9184,
+            "origin": 1,
+            "identifier": "",
+            "path": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+          },
+          "callback": "0x13121fd14",
+          "cancellable": 0
+        },
+        "effective_blob": {
+          "event": "host_transport",
+          "wall_ns": 1793344589553554000,
+          "monotonic_ns": 15701826625,
+          "kind": "host_write_async_entry",
+          "pid": 8951,
+          "tid": 28820,
+          "pc": "0x131e17398",
+          "data": "0x600003d01440",
+          "worker": "0x600000f44300",
+          "connection": "0x600000f4eb00",
+          "message": "0x60000106de00",
+          "blob": "0x600001d70000",
+          "blob_size": 32,
+          "total_written": 0,
+          "data_task": "0x0",
+          "socket": "0x10ee12170",
+          "stream": "0x60000185c120",
+          "epoch": 1,
+          "effective_blob_hex": "6c02010100000000050000001000000008016700000000000501750008000000"
+        },
+        "write_result": {
+          "event": "host_transport",
+          "wall_ns": 1793344589617150000,
+          "monotonic_ns": 15765420791,
+          "kind": "host_socket_write_return",
+          "pid": 8951,
+          "tid": 28820,
+          "pc": "0x131e177c4",
+          "data": "0x600003d01440",
+          "worker": "0x600000f44300",
+          "connection": "0x600000f4eb00",
+          "message": "0x60000106de00",
+          "blob": "0x600001d70000",
+          "blob_size": 32,
+          "total_written": 0,
+          "data_task": "0x60000064db00",
+          "socket": "0x10ee12170",
+          "stream": "0x60000185c120",
+          "epoch": 1,
+          "result": 32,
+          "error_pointer": "0x0",
+          "error": null,
+          "path": "socket"
+        },
+        "final_completion": {
+          "event": "host_transport",
+          "wall_ns": 1793344589721925000,
+          "monotonic_ns": 15870196416,
+          "kind": "host_write_final_result",
+          "pid": 8951,
+          "tid": 28820,
+          "pc": "0x131e17448",
+          "data": "0x600003d01440",
+          "worker": "0x600000f44300",
+          "connection": "0x600000f4eb00",
+          "message": "0x60000106de00",
+          "blob": "0x600001d70000",
+          "blob_size": 32,
+          "total_written": 32,
+          "data_task": "0x0",
+          "socket": "0x10ee12170",
+          "stream": "0x60000185c120",
+          "epoch": 1,
+          "W": "0x60000064db00",
+          "finish": 1,
+          "error_pointer": "0x0",
+          "error": null
+        },
+        "blob_bytes": 32
+      },
+      "selected_readiness_read_decode_dispatch": {
+        "status": "unproven",
+        "reason": "No selected kernel READ, socket dispatch or agent read/decode/reply dispatch was captured before observer capture-budget failure. Absence is not promoted to cause."
+      },
+      "full_observer_capture": {
+        "status": "failed",
+        "failure": {
+          "event": "callback_failure",
+          "monotonic_ns": 9506624750,
+          "wall_ns": 1793344593884859000,
+          "type": "RuntimeError",
+          "message": "Selected source observation capture budget exceeded",
+          "kind": "source__poll_entry"
+        },
+        "source_boundaries_captured": 100,
+        "full_kevent_cycles_captured": 20,
+        "observation_after_failure": false,
+        "detach_success": true,
+        "event_drop_or_full_deadline_coverage_claim": false
+      },
+      "normal_fixture_progress": {
+        "status": "failed",
+        "failure": {
+          "event": "probe_failure",
+          "monotonic_ns": 444584045375,
+          "error_type": "TimeoutError",
+          "error": "root failed to exit"
+        },
+        "result": {
+          "event": "probe_result",
+          "monotonic_ns": 445234577125,
+          "passed": false,
+          "mode": "close"
+        },
+        "original_limits_retained": true
+      },
+      "initial_interpreter_queues": {
+        "status": "unproven",
+        "reason": "Selected source creation is preobserver; no arbitrary initial interpreter queue ownership claim."
+      },
+      "fork_only_allocation_coverage": {
+        "status": "unproven"
+      },
+      "complete_native_ssh_provider_cleanup": {
+        "status": "passed",
+        "all_observed_pids": {
+          "observed_pid_fields": [
+            "agent_observer_pid",
+            "child_pid",
+            "controller_pid",
+            "grandchild_pid",
+            "host_lldb_pid",
+            "observer_pid",
+            "pid",
+            "target_pid"
+          ],
+          "pids": [
+            4562,
+            4563,
+            4588,
+            4754,
+            4763,
+            4766,
+            8920,
+            8921,
+            8951,
+            9104,
+            9184,
+            9185
+          ]
+        },
+        "pid_audit_response": "audit-pids-response.json",
+        "path_audit_response": "audit-processes-response.json",
+        "remote_root_removed_response": "remove-remote-response.json",
+        "ssh_terminal": {
+          "exit": 0,
+          "pid": 31
+        },
+        "provider_conclusion": "failure",
+        "provider_steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Create owned partial build state",
+            "conclusion": "success"
+          },
+          {
+            "name": "Record the deliberate build failure",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Debug the original failed workspace",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Create owned partial build state",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ],
+        "credentials": {
+          "removed_after_verified_ssh_and_provider_terminal": true,
+          "removed": [
+            {
+              "name": "client-key",
+              "bytes": 399
+            },
+            {
+              "name": "client-key.pub",
+              "bytes": 94
+            }
+          ],
+          "all_absent": true,
+          "time_ns": 1793344690837071606
+        }
+      }
+    },
+    "failures_and_corrections": [
+      {
+        "original": "Initial SSH exit255 before prompt; no remote command sent",
+        "correction": "Same published session/key/relay/workflow reconnect; verbose SSH logs; request client detects terminal SSH receipt instead of hanging",
+        "retained": "initial-ssh-failure.json and client/initial-failed-connection"
+      },
+      {
+        "original": "Collector local command supplied relative path from wrong cwd; request script failed before queueing, empty response overwritten by subsequent success; exact tool outcome reconstructed explicitly in local-collector-path-failure.json",
+        "correction": "Absolute owned command path; no native diagnostic rerun"
+      },
+      {
+        "original": "Verbose SSH stderr interleaved one diagnostic line into each base64 collector payload, strict decode rejected first payload",
+        "correction": "Remove only exact diagnostic lines; strict base64 decode plus complete safe archive/member/size/hash verification; original response bytes retained",
+        "details": [
+          {
+            "snapshot": "normal",
+            "removed_exact_ssh_diagnostic_lines": [
+              "debug2: channel 0: window 998428 sent adjust 50148\r\n"
+            ],
+            "raw_response_sha256": "1eccc944192647a8326d092d7df9c214a815f29565f02f1de8a46c4e33962309",
+            "archive_verification": {
+              "sha256": "3175b9683fd87bf71b10afe278d0251fd8052822ba5970767cdba3c10e7c57ce",
+              "members": 28,
+              "manifest_entries": 27,
+              "all_sizes_hashes_and_member_set_verified": true
+            }
+          },
+          {
+            "snapshot": "retry",
+            "removed_exact_ssh_diagnostic_lines": [
+              "debug2: channel 0: window 998993 sent adjust 49583\r\n"
+            ],
+            "raw_response_sha256": "355613a542dee1ad0524f64ad0851f35c34c9acd7c3825c5ea7a5b669a164ec0",
+            "archive_verification": {
+              "sha256": "93f65267254416498ae0eaeb6a12c8000167f9f70d5d29722707c1744bf5e6a1",
+              "members": 41,
+              "manifest_entries": 40,
+              "all_sizes_hashes_and_member_set_verified": true
+            }
+          }
+        ]
+      },
+      {
+        "original": "First native case missed original4s arming gate, child never resumed",
+        "correction": "Preserve entire original snapshot, same-worker unchanged retry with distinct case name; original source/limits preserved",
+        "details": {
+          "status": "failed_before_normal_resume",
+          "original_gate_seconds": 4,
+          "retry": "unchanged exact sources on same retained worker with distinct case directory",
+          "no_deadline_or_lifecycle_changes": true,
+          "observer_module_elapsed_at_armed_seconds": 4.975358041,
+          "controller_gate_wait_until_failure_seconds": 4.067898792,
+          "observer_process_launch_to_armed_wall_seconds": 5.376571,
+          "timing_limit": "separate processes monotonic origins are not equated"
+        }
+      },
+      {
+        "original": "Retry hit original100 source-boundary capture budget",
+        "correction": "None. Explicit failed gate and successful detach retained; no weakened predicate/increased budget or repeated negative."
+      }
+    ],
+    "supported_conclusions": [
+      "The correlated selected GMainContext invoked kevent with kq35, received -1 and actual errno9 in20 complete observed cycles; selected socket FD39 poll revents remained0 in those cycles.",
+      "Host produced and completed the exact32-byte serial8 reply write in the same normal diagnostic.",
+      "This removes the prior ambiguity about whether the observed EBADF belonged to the selected socket/context; it does not identify why the kqueue descriptor was invalid."
+    ],
+    "limits": [
+      "Observer stops after bounded capture-budget failure before entire original progress window; no claim of complete negative event coverage.",
+      "Actual numeric kq35 is not a lifetime identity. No close/dup/reuse/creation provenance in this slice establishes which operation invalidated it.",
+      "Selected socket source epoch creation predates observer, initial interpreter queues remain unproven.",
+      "No successful normal-mode exec or production allocation coverage established.",
+      "LLDB observation alters scheduling; unchanged fixture deadlines do not imply timing equivalence to uninstrumented execution."
+    ],
+    "next_smallest_gate": {
+      "type": "offline mapping before any new worker",
+      "objective": "Map pinned selected GMainContext kqueue creation, ownership, close/dup/reuse and close_fds path; propose exact lifetime observation that can prove or falsify invalidation of selected kq35 without relying on integer coincidence.",
+      "not_authorized_by_this_report": "No production fix, lifecycle workaround, descriptor policy change, deadline extension or automatic new native probe."
+    },
+    "cleanup_handoff": {
+      "remote_resources_live": false,
+      "credentials_deleted": true,
+      "local_scratch_retained_for_parent_archival": true,
+      "parent_owns_integration_after_acceptance": true
+    }
+  },
+  "agent_events": [
+    {
+      "event": "mapping_scan_begin",
+      "monotonic_ns": 2774178750,
+      "wall_ns": 1793344587152413000,
+      "pid": 9184
+    },
+    {
+      "event": "mapping_candidates",
+      "monotonic_ns": 3195393125,
+      "wall_ns": 1793344587573628000,
+      "count": 1,
+      "bases": [
+        "0x101880000"
+      ]
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3196561875,
+      "wall_ns": 1793344587574795000,
+      "kind": "exec_state",
+      "offset": "0xbe3c",
+      "bytes16": "ff8301d1f65703a9f44f04a9fd7b05a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3201927541,
+      "wall_ns": 1793344587580160000,
+      "kind": "controller_begin",
+      "offset": "0xe1edc",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3202677916,
+      "wall_ns": 1793344587580911000,
+      "kind": "proxy_call_entry",
+      "offset": "0x16f710",
+      "bytes16": "ffc302d1fc6f05a9fa6706a9f85f07a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3204316916,
+      "wall_ns": 1793344587582549000,
+      "kind": "proxy_task_created",
+      "offset": "0x16f764",
+      "bytes16": "f50300aa0100009021401c910813ff97"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3204797708,
+      "wall_ns": 1793344587583030000,
+      "kind": "connection_call_entry",
+      "offset": "0x166aec",
+      "bytes16": "ff8302d1fc6f04a9fa6705a9f85f06a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3205277333,
+      "wall_ns": 1793344587583510000,
+      "kind": "connection_task_created",
+      "offset": "0x166bc4",
+      "bytes16": "f60300aa0100009021b02b91f035ff97"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3205786666,
+      "wall_ns": 1793344587584019000,
+      "kind": "send_with_reply_entry",
+      "offset": "0x165c04",
+      "bytes16": "e8031eaa7f160094fe0308aafd7b06a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3206085125,
+      "wall_ns": 1793344587584317000,
+      "kind": "send_task_created",
+      "offset": "0x165c7c",
+      "bytes16": "f50300aa0100009021103091c239ff97"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3206430166,
+      "wall_ns": 1793344587584662000,
+      "kind": "request_serial_before_queue",
+      "offset": "0x165b74",
+      "bytes16": "802640f9e30740f9e10313aae20316aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3206688083,
+      "wall_ns": 1793344587584920000,
+      "kind": "request_queued_result",
+      "offset": "0x165cec",
+      "bytes16": "20040034880240b9c80200b9770100b4"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3206968166,
+      "wall_ns": 1793344587585200000,
+      "kind": "matched_reply_delivery",
+      "offset": "0x167f38",
+      "bytes16": "e00316aa5732ff97e00316aa21008052"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3207255791,
+      "wall_ns": 1793344587585488000,
+      "kind": "connection_reply_callback",
+      "offset": "0x16ac80",
+      "bytes16": "ff0301d1f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3207538166,
+      "wall_ns": 1793344587585770000,
+      "kind": "proxy_reply_callback",
+      "offset": "0x171530",
+      "bytes16": "ffc300d1f44f01a9fd7b02a9fd830091"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3207808500,
+      "wall_ns": 1793344587586041000,
+      "kind": "tracked_task_error",
+      "offset": "0x1343d4",
+      "bytes16": "015400f921008052be000014ff0301d1"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3208254000,
+      "wall_ns": 1793344587586486000,
+      "kind": "all_complete",
+      "offset": "0x110820",
+      "bytes16": "f44fbea9fd7b01a9fd430091f30301aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3208577500,
+      "wall_ns": 1793344587586810000,
+      "kind": "transport__agent_read_arm_socket",
+      "offset": "0x173668",
+      "bytes16": "66010094fd7b42a91702001445020094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3208792291,
+      "wall_ns": 1793344587587024000,
+      "kind": "transport__agent_read_arm_generic",
+      "offset": "0x1736a4",
+      "bytes16": "fd7b42a9f44f41a9ffc3009177c4fe17"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3209066458,
+      "wall_ns": 1793344587587299000,
+      "kind": "transport__agent_socket_read_task_created",
+      "offset": "0x173c64",
+      "bytes16": "f50300aa0100009021003091c801ff97"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3209294375,
+      "wall_ns": 1793344587587527000,
+      "kind": "transport__agent_socket_read_ready",
+      "offset": "0x173d44",
+      "bytes16": "ff4301d1f65702a9f44f03a9fd7b04a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3209543458,
+      "wall_ns": 1793344587587776000,
+      "kind": "transport__agent_socket_read_data",
+      "offset": "0x173d68",
+      "bytes16": "ff0f00f9082440a9e8a700a9155841a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3209792416,
+      "wall_ns": 1793344587588025000,
+      "kind": "transport__agent_socket_read_attempt",
+      "offset": "0x173da8",
+      "bytes16": "4658ff97f40300aaf50f40f938c7fe97"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3210074458,
+      "wall_ns": 1793344587588307000,
+      "kind": "transport__agent_socket_read_return",
+      "offset": "0x173dac",
+      "bytes16": "f40300aaf50f40f938c7fe97e10300aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3210375000,
+      "wall_ns": 1793344587588607000,
+      "kind": "transport__agent_socket_read_would_block",
+      "offset": "0x173dc8",
+      "bytes16": "a0000034e00f40f93af1009420008052"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3210610250,
+      "wall_ns": 1793344587588842000,
+      "kind": "transport__agent_read_callback_entry",
+      "offset": "0x1736b4",
+      "bytes16": "ff4302d1fa6704a9f85f05a9f65706a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3210904125,
+      "wall_ns": 1793344587589136000,
+      "kind": "transport__agent_read_stopped_guard",
+      "offset": "0x1736e8",
+      "bytes16": "68000034eb010094ee000014ff1f00f9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3211169625,
+      "wall_ns": 1793344587589402000,
+      "kind": "transport__agent_read_finish",
+      "offset": "0x173720",
+      "bytes16": "f40300aa68ba40b91f0500716b080054"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3212064791,
+      "wall_ns": 1793344587590297000,
+      "kind": "transport__agent_decode_return",
+      "offset": "0x1739d8",
+      "bytes16": "000400b4f40300aa615640f9c10000b4"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3212450666,
+      "wall_ns": 1793344587590683000,
+      "kind": "transport__agent_frozen_branch",
+      "offset": "0x173a08",
+      "bytes16": "88000035601240f9e2400194e0060034"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3212700500,
+      "wall_ns": 1793344587590933000,
+      "kind": "transport__agent_pending_receive_branch",
+      "offset": "0x173a14",
+      "bytes16": "e0060034601240f9e10314aae0400194"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3213044458,
+      "wall_ns": 1793344587591277000,
+      "kind": "transport__agent_emit_received",
+      "offset": "0x172b50",
+      "bytes16": "0840009108fddf8848000034c0035fd6"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3213294625,
+      "wall_ns": 1793344587591527000,
+      "kind": "transport__agent_emit_dispatch",
+      "offset": "0x172b68",
+      "bytes16": "60001fd6f44fbea9fd7b01a9fd430091"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3213650750,
+      "wall_ns": 1793344587591883000,
+      "kind": "transport__agent_connection_receive",
+      "offset": "0x167e3c",
+      "bytes16": "ff0303d1fc6f06a9fa6707a9f85f08a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3213999708,
+      "wall_ns": 1793344587592232000,
+      "kind": "transport__agent_alive_check",
+      "offset": "0x167e70",
+      "bytes16": "a0090034910c0094260c00941f0d0094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3214328083,
+      "wall_ns": 1793344587592561000,
+      "kind": "transport__agent_incoming_filter_return",
+      "offset": "0x167eb8",
+      "bytes16": "f40300aaa00000b4e00314aaae170094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3215184791,
+      "wall_ns": 1793344587593417000,
+      "kind": "transport__agent_after_filters",
+      "offset": "0x167ee0",
+      "bytes16": "d42a00b4e00314aad60e009408781f12"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3215981875,
+      "wall_ns": 1793344587594215000,
+      "kind": "transport__agent_message_type",
+      "offset": "0x167eec",
+      "bytes16": "08781f121f090071a1060054e00314aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3217273666,
+      "wall_ns": 1793344587595507000,
+      "kind": "transport__agent_reply_serial",
+      "offset": "0x167f00",
+      "bytes16": "f50300aa580c0094604640f9f503152a"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3218374875,
+      "wall_ns": 1793344587596608000,
+      "kind": "transport__agent_reply_task_lookup",
+      "offset": "0x167f14",
+      "bytes16": "c00100b4f60300aa9531ff97082040b9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3218962458,
+      "wall_ns": 1793344587597195000,
+      "kind": "transport__agent_reply_delivered_guard",
+      "offset": "0x167f24",
+      "bytes16": "48010035f40c0094e10300aa02010090"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3219395375,
+      "wall_ns": 1793344587597628000,
+      "kind": "source__poll_entry",
+      "offset": "0x1b9efc",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3219839916,
+      "wall_ns": 1793344587598072000,
+      "kind": "source__kevent_before",
+      "offset": "0x1ba030",
+      "bytes16": "f3a94f94f70300aa7aa84f94b2010094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3220253291,
+      "wall_ns": 1793344587598486000,
+      "kind": "source__kevent_return",
+      "offset": "0x1ba034",
+      "bytes16": "f70300aa7aa84f94b2010094a87eb50a"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3220887708,
+      "wall_ns": 1793344587599126000,
+      "kind": "source__kevent_errno",
+      "offset": "0x1ba03c",
+      "bytes16": "b2010094a87eb50a891a0091ea0308aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3221928750,
+      "wall_ns": 1793344587600162000,
+      "kind": "source__socket_dispatch",
+      "offset": "0x14b9a4",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3222895208,
+      "wall_ns": 1793344587601128000,
+      "kind": "source__translated",
+      "offset": "0x1b9f34",
+      "bytes16": "a8835cf83d010094c1130054bfc300d1"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3223537791,
+      "wall_ns": 1793344587601770000,
+      "kind": "serial_getter",
+      "offset": "0x16b85c",
+      "bytes16": "002c40b9c0035fd6e100805228070014"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3223674416,
+      "wall_ns": 1793344587601907000,
+      "kind": "message_type_getter",
+      "offset": "0x16ba40",
+      "bytes16": "001840b9c0035fd6001c40b9c0035fd6"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3223772708,
+      "wall_ns": 1793344587602005000,
+      "kind": "reply_serial_value_reader",
+      "offset": "0x16d48c",
+      "bytes16": "f44fbea9fd7b01a9fd4300919b040094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3223825166,
+      "wall_ns": 1793344587602057000,
+      "kind": "reply_serial_getter_selector",
+      "offset": "0x16d484",
+      "bytes16": "a100805201000014f44fbea9fd7b01a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224066541,
+      "wall_ns": 1793344587602299000,
+      "kind": "reply_hash_task_lookup_helper",
+      "offset": "0x16b298",
+      "bytes16": "e10315aae81d0114e10300aae00313aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224335250,
+      "wall_ns": 1793344587602568000,
+      "kind": "proxy_call_argument_helper",
+      "offset": "0xf3b74",
+      "bytes16": "e00316aa0300805204008012e50315aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224501166,
+      "wall_ns": 1793344587602733000,
+      "kind": "proxy_saved_arguments",
+      "offset": "0xf42b8",
+      "bytes16": "f30304aaf40303aaf50302aac0035fd6"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224620500,
+      "wall_ns": 1793344587602853000,
+      "kind": "send_entry_outlined_prologue",
+      "offset": "0x16b604",
+      "bytes16": "ffc301d1fc6f01a9fa6702a9f85f03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224844958,
+      "wall_ns": 1793344587603077000,
+      "kind": "info_pid_parent",
+      "offset": "0xef060",
+      "bytes16": "e00240b9819a03948e140094e00640b9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224895791,
+      "wall_ns": 1793344587603128000,
+      "kind": "info_origin_identifier",
+      "offset": "0xef078",
+      "bytes16": "e00a40b96b9a039488140094e00a40f9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3224976708,
+      "wall_ns": 1793344587603209000,
+      "kind": "info_path",
+      "offset": "0xef090",
+      "bytes16": "e00e40f9d59c039482140094e02240b9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3225430583,
+      "wall_ns": 1793344587603663000,
+      "kind": "transport__agent_matched_reply_dispatch",
+      "offset": "0x167f38",
+      "bytes16": "e00316aa5732ff97e00316aa21008052"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3225623791,
+      "wall_ns": 1793344587603856000,
+      "kind": "source_validate__socket_fd_load",
+      "offset": "0x14a370",
+      "bytes16": "880e40f9010d40b9e00313aae20315aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3225695416,
+      "wall_ns": 1793344587603928000,
+      "kind": "source_validate__socket_source_tag_store",
+      "offset": "0x14a384",
+      "bytes16": "603200f9880e40f9081540b928020034"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3225817583,
+      "wall_ns": 1793344587604050000,
+      "kind": "source_validate__read_source_task_attach",
+      "offset": "0x134880",
+      "bytes16": "812240f9e00313aafd7b42a9f44f41a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3225927208,
+      "wall_ns": 1793344587604159000,
+      "kind": "source_validate__source_context_store",
+      "offset": "0x1b81cc",
+      "bytes16": "d31200f9e80f40b9f50316aaa80e03b8"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226041166,
+      "wall_ns": 1793344587604273000,
+      "kind": "source_validate__context_list_global",
+      "offset": "0x1b7ed4",
+      "bytes16": "d4d1009094621d9180220091084a0094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226173333,
+      "wall_ns": 1793344587604405000,
+      "kind": "source_validate__context_source_lists",
+      "offset": "0x1b9d10",
+      "bytes16": "13600191e80313aa160140f9160100b4"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226218125,
+      "wall_ns": 1793344587604450000,
+      "kind": "source_validate__source_list_links",
+      "offset": "0x1b9cb0",
+      "bytes16": "682e40f90b0540f9690101910a800091"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226283000,
+      "wall_ns": 1793344587604515000,
+      "kind": "source_validate__socket_source_dispatch",
+      "offset": "0x14b9a4",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226386791,
+      "wall_ns": 1793344587604619000,
+      "kind": "source_validate__socket_source_callback",
+      "offset": "0x14ba4c",
+      "bytes16": "a0023fd6f50300aa880e40f9081540b9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226448333,
+      "wall_ns": 1793344587604680000,
+      "kind": "source_validate__context_poll_entry",
+      "offset": "0x1b9efc",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226571000,
+      "wall_ns": 1793344587604803000,
+      "kind": "source_validate__context_kevent_before",
+      "offset": "0x1ba030",
+      "bytes16": "f3a94f94f70300aa7aa84f94b2010094"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226747666,
+      "wall_ns": 1793344587604980000,
+      "kind": "source_validate__context_kevent_return",
+      "offset": "0x1ba034",
+      "bytes16": "f70300aa7aa84f94b2010094a87eb50a"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226852958,
+      "wall_ns": 1793344587605085000,
+      "kind": "source_validate__context_kevent_errno_pointer",
+      "offset": "0x1ba03c",
+      "bytes16": "b2010094a87eb50a891a0091ea0308aa"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3226983458,
+      "wall_ns": 1793344587605216000,
+      "kind": "source_validate__poll_register_before",
+      "offset": "0x1b7a0c",
+      "bytes16": "dc0a0094880240b91fa9003181000054"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3227040666,
+      "wall_ns": 1793344587605273000,
+      "kind": "source_validate__poll_register_return",
+      "offset": "0x1b7a10",
+      "bytes16": "880240b91fa9003181000054800640f9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3227184833,
+      "wall_ns": 1793344587605417000,
+      "kind": "source_validate__read_ready_existing",
+      "offset": "0x173d44",
+      "bytes16": "ff4301d1f65702a9f44f03a9fd7b04a9"
+    },
+    {
+      "event": "site_verified",
+      "monotonic_ns": 3227298791,
+      "wall_ns": 1793344587605531000,
+      "kind": "source_validate__socket_task_new",
+      "offset": "0x1342c8",
+      "bytes16": "600e00f9960000b4e00316aafb4d0194"
+    },
+    {
+      "event": "armed",
+      "monotonic_ns": 3227510000,
+      "wall_ns": 1793344587605742000,
+      "pid": 9184,
+      "base": "0x101880000",
+      "breakpoints": {
+        "1": "exec_state",
+        "2": "controller_begin",
+        "3": "proxy_call_entry",
+        "4": "proxy_task_created",
+        "5": "connection_call_entry",
+        "6": "connection_task_created",
+        "7": "send_with_reply_entry",
+        "8": "send_task_created",
+        "9": "request_serial_before_queue",
+        "10": "request_queued_result",
+        "11": "matched_reply_delivery",
+        "12": "connection_reply_callback",
+        "13": "proxy_reply_callback",
+        "14": "tracked_task_error",
+        "15": "all_complete",
+        "16": "transport__agent_read_arm_socket",
+        "17": "transport__agent_read_arm_generic",
+        "18": "transport__agent_socket_read_task_created",
+        "19": "transport__agent_socket_read_ready",
+        "20": "transport__agent_socket_read_data",
+        "21": "transport__agent_socket_read_attempt",
+        "22": "transport__agent_socket_read_return",
+        "23": "transport__agent_socket_read_would_block",
+        "24": "transport__agent_read_callback_entry",
+        "25": "transport__agent_read_stopped_guard",
+        "26": "transport__agent_read_finish",
+        "27": "transport__agent_decode_return",
+        "28": "transport__agent_frozen_branch",
+        "29": "transport__agent_pending_receive_branch",
+        "30": "transport__agent_emit_received",
+        "31": "transport__agent_emit_dispatch",
+        "32": "transport__agent_connection_receive",
+        "33": "transport__agent_alive_check",
+        "34": "transport__agent_incoming_filter_return",
+        "35": "transport__agent_after_filters",
+        "36": "transport__agent_message_type",
+        "37": "transport__agent_reply_serial",
+        "38": "transport__agent_reply_task_lookup",
+        "39": "transport__agent_reply_delivered_guard",
+        "40": "source__poll_entry",
+        "41": "source__kevent_before",
+        "42": "source__kevent_return",
+        "43": "source__kevent_errno",
+        "44": "source__socket_dispatch",
+        "45": "source__translated"
+      }
+    },
+    {
+      "event": "debugger_continue",
+      "monotonic_ns": 3228879166,
+      "wall_ns": 1793344587607111000,
+      "state": 5
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4090860625,
+      "wall_ns": 1793344588469094000,
+      "kind": "exec_state",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x10188be3c",
+      "sp": "0x170142e50",
+      "context": "0x10066c4a0",
+      "state": 0
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4146888041,
+      "wall_ns": 1793344588525121000,
+      "kind": "exec_state",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x10188be3c",
+      "sp": "0x170142d50",
+      "context": "0x10066c4a0",
+      "state": 1
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4182203958,
+      "wall_ns": 1793344588560437000,
+      "kind": "controller_begin",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x101961edc",
+      "sp": "0x170142d50",
+      "controller": "0x100541f80",
+      "info": "0x10066c4e0",
+      "payload": {
+        "pid": 9184,
+        "parent_pid": 9184,
+        "origin": 1,
+        "identifier": "",
+        "path": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+      },
+      "context": "0x10066c4a0",
+      "callback": "0x10188bf64",
+      "cancellable": 0
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4211613916,
+      "wall_ns": 1793344588589847000,
+      "kind": "proxy_call_entry",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019ef710",
+      "sp": "0x170142ae0",
+      "proxy": "0x100541f80",
+      "method": "PrepareToExec",
+      "context": "0x10066c4a0",
+      "callback": "0x10188bf64"
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4238753500,
+      "wall_ns": 1793344588616986000,
+      "kind": "proxy_task_created",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019ef764",
+      "sp": "0x170142a30",
+      "role": "P",
+      "task": "0x10064f130",
+      "creation_event": "proxy_task_created"
+    },
+    {
+      "event": "selected_agent_worker",
+      "monotonic_ns": 4268874375,
+      "wall_ns": 1793344588647108000,
+      "connection": "0x10064b4a0",
+      "worker": "0x1005b95f0",
+      "socket": "0x10064b330",
+      "stream": "0x1000b8470",
+      "read_state": 1,
+      "buffer": "0x100662f00",
+      "allocated": 4096,
+      "cur": 0,
+      "wanted": 16,
+      "snapshot_only": true
+    },
+    {
+      "event": "selected_socket_source",
+      "monotonic_ns": 4271776416,
+      "wall_ns": 1793344588650009000,
+      "contexts": [
+        "0x100541cb0",
+        "0x100542c40",
+        "0x1005b9e80",
+        "0x1005bee30"
+      ],
+      "source": "0x1005bba70",
+      "context": "0x1005b9e80",
+      "tag": "0x10066c0d0",
+      "R": "0x10064d8e0",
+      "socket": "0x10064b330",
+      "worker": "0x1005b95f0",
+      "fd": 39,
+      "read_data": "0x1006628c0",
+      "buffer": "0x100662f00",
+      "cur": 0,
+      "wanted": 16,
+      "events": 57,
+      "revents": 0,
+      "source_flags": 1,
+      "source_id": 66,
+      "source_ref_count": 1,
+      "kq": 35,
+      "poll_func": "0x101a42c20",
+      "poll_records": 2,
+      "n_poll_records": 2,
+      "identity": "source/callback/task/socket/worker/context/tag correlated; creation preobserver"
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4310874916,
+      "wall_ns": 1793344588689108000,
+      "kind": "connection_call_entry",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e6aec",
+      "sp": "0x170142a30",
+      "connection": "0x10064b4a0",
+      "P": "0x10064f130",
+      "callback": "0x1019f1530",
+      "path": "/re/frida/AgentController",
+      "interface": "re.frida.AgentController17",
+      "method": "PrepareToExec"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4331955916,
+      "wall_ns": 1793344588710190000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4333739791,
+      "wall_ns": 1793344588711973000,
+      "kind": "connection_task_created",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e6bc4",
+      "sp": "0x170142990",
+      "role": "C",
+      "task": "0x1005bbc80",
+      "creation_event": "connection_task_created"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4394772833,
+      "wall_ns": 1793344588773006000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4395140000,
+      "wall_ns": 1793344588773372000,
+      "kind": "send_with_reply_entry",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e5c04",
+      "sp": "0x170142940",
+      "connection": "0x10064b4a0",
+      "message": "0x1005bbc00",
+      "C": "0x1005bbc80",
+      "callback": "0x1019eac80",
+      "serial_pointer": "0x1701429cc"
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 4450722916,
+      "wall_ns": 1793344588828956000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4450912916,
+      "wall_ns": 1793344588829145000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4502426500,
+      "wall_ns": 1793344588880659000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4502774458,
+      "wall_ns": 1793344588881007000,
+      "kind": "send_task_created",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e5c7c",
+      "sp": "0x1701428d0",
+      "role": "S",
+      "task": "0x10066f310",
+      "creation_event": "send_task_created"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4561478958,
+      "wall_ns": 1793344588939712000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4611891666,
+      "wall_ns": 1793344588990125000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4653327666,
+      "wall_ns": 1793344589031560000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4653898166,
+      "wall_ns": 1793344589032130000,
+      "kind": "request_serial_before_queue",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e5b74",
+      "sp": "0x170142880",
+      "connection": "0x10064b4a0",
+      "message": "0x1005bbc00",
+      "serial": 8
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 4696978250,
+      "wall_ns": 1793344589075211000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4697440416,
+      "wall_ns": 1793344589075674000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "boundary",
+      "monotonic_ns": 4697947250,
+      "wall_ns": 1793344589076180000,
+      "kind": "request_queued_result",
+      "pid": 9184,
+      "tid": 28849,
+      "pc": "0x1019e5cec",
+      "sp": "0x1701428d0",
+      "connection": "0x10064b4a0",
+      "message": "0x1005bbc00",
+      "S": "0x10066f310",
+      "accepted": 1,
+      "serial": 8,
+      "proves": "queue acceptance only"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4747702375,
+      "wall_ns": 1793344589125935000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4789534708,
+      "wall_ns": 1793344589167768000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4886964083,
+      "wall_ns": 1793344589265199000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 1,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4945803041,
+      "wall_ns": 1793344589324037000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 4996515666,
+      "wall_ns": 1793344589374750000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 4996922500,
+      "wall_ns": 1793344589375155000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5034296333,
+      "wall_ns": 1793344589412529000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5063845666,
+      "wall_ns": 1793344589442079000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5110140333,
+      "wall_ns": 1793344589488373000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5168351666,
+      "wall_ns": 1793344589546585000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 5222688416,
+      "wall_ns": 1793344589600923000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5223108916,
+      "wall_ns": 1793344589601342000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5278122833,
+      "wall_ns": 1793344589656357000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5327074583,
+      "wall_ns": 1793344589705308000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5376778958,
+      "wall_ns": 1793344589755012000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5433836833,
+      "wall_ns": 1793344589812070000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 5495222500,
+      "wall_ns": 1793344589873455000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5495489750,
+      "wall_ns": 1793344589873722000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5567516583,
+      "wall_ns": 1793344589945749000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5628858916,
+      "wall_ns": 1793344590007092000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5712583500,
+      "wall_ns": 1793344590090816000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5754631541,
+      "wall_ns": 1793344590132864000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 5808380625,
+      "wall_ns": 1793344590186614000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5808582750,
+      "wall_ns": 1793344590186815000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5868236375,
+      "wall_ns": 1793344590246470000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5922387208,
+      "wall_ns": 1793344590300620000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 5981410916,
+      "wall_ns": 1793344590359644000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6033846250,
+      "wall_ns": 1793344590412080000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 6097629708,
+      "wall_ns": 1793344590475863000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6097796833,
+      "wall_ns": 1793344590476029000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6151187125,
+      "wall_ns": 1793344590529421000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6207970750,
+      "wall_ns": 1793344590586204000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6267505250,
+      "wall_ns": 1793344590645739000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6319793625,
+      "wall_ns": 1793344590698027000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 6379704833,
+      "wall_ns": 1793344590757938000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6379864833,
+      "wall_ns": 1793344590758097000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6432092458,
+      "wall_ns": 1793344590810326000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6485944541,
+      "wall_ns": 1793344590864177000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6543064958,
+      "wall_ns": 1793344590921299000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6604253250,
+      "wall_ns": 1793344590982486000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 6667673541,
+      "wall_ns": 1793344591045907000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6667843125,
+      "wall_ns": 1793344591046075000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6712212666,
+      "wall_ns": 1793344591090446000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6761773000,
+      "wall_ns": 1793344591140006000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6825330666,
+      "wall_ns": 1793344591203564000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6888851708,
+      "wall_ns": 1793344591267085000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 6943810958,
+      "wall_ns": 1793344591322045000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 6944155291,
+      "wall_ns": 1793344591322388000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7005800250,
+      "wall_ns": 1793344591384034000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7063193291,
+      "wall_ns": 1793344591441426000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7119084416,
+      "wall_ns": 1793344591497317000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7170457166,
+      "wall_ns": 1793344591548691000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 7232191625,
+      "wall_ns": 1793344591610426000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7232552333,
+      "wall_ns": 1793344591610785000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7288794125,
+      "wall_ns": 1793344591667027000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7341663500,
+      "wall_ns": 1793344591719896000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7397078416,
+      "wall_ns": 1793344591775311000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7449378375,
+      "wall_ns": 1793344591827613000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 7512891000,
+      "wall_ns": 1793344591891124000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7513088625,
+      "wall_ns": 1793344591891321000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7563584875,
+      "wall_ns": 1793344591941818000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7612096583,
+      "wall_ns": 1793344591990330000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7681129583,
+      "wall_ns": 1793344592059363000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7726837166,
+      "wall_ns": 1793344592105071000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 7770413833,
+      "wall_ns": 1793344592148647000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7770595750,
+      "wall_ns": 1793344592148828000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7803814333,
+      "wall_ns": 1793344592182048000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7842724208,
+      "wall_ns": 1793344592220957000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7878972125,
+      "wall_ns": 1793344592257205000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7916339000,
+      "wall_ns": 1793344592294572000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 7955392416,
+      "wall_ns": 1793344592333625000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7955538958,
+      "wall_ns": 1793344592333771000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 7998914250,
+      "wall_ns": 1793344592377147000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8047109416,
+      "wall_ns": 1793344592425342000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8082263958,
+      "wall_ns": 1793344592460497000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8110007083,
+      "wall_ns": 1793344592488240000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 8145678000,
+      "wall_ns": 1793344592523911000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8145845833,
+      "wall_ns": 1793344592524078000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8196241125,
+      "wall_ns": 1793344592574474000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8244761625,
+      "wall_ns": 1793344592622995000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8284764333,
+      "wall_ns": 1793344592662998000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8331332416,
+      "wall_ns": 1793344592709565000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 8365148375,
+      "wall_ns": 1793344592743382000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8365473750,
+      "wall_ns": 1793344592743706000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8409178041,
+      "wall_ns": 1793344592787412000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8461829875,
+      "wall_ns": 1793344592840062000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8498143541,
+      "wall_ns": 1793344592876377000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8551097541,
+      "wall_ns": 1793344592929330000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 8579150666,
+      "wall_ns": 1793344592957384000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8579534875,
+      "wall_ns": 1793344592957767000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8635974583,
+      "wall_ns": 1793344593014207000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8682135125,
+      "wall_ns": 1793344593060368000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8723386083,
+      "wall_ns": 1793344593101620000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8758082125,
+      "wall_ns": 1793344593136316000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 8794142708,
+      "wall_ns": 1793344593172376000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8794326916,
+      "wall_ns": 1793344593172559000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8839164291,
+      "wall_ns": 1793344593217397000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8899330541,
+      "wall_ns": 1793344593277563000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 8949770125,
+      "wall_ns": 1793344593328003000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9002632041,
+      "wall_ns": 1793344593380866000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 9065385208,
+      "wall_ns": 1793344593443618000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9066080666,
+      "wall_ns": 1793344593444314000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9130451083,
+      "wall_ns": 1793344593508685000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9189036666,
+      "wall_ns": 1793344593567270000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9244742500,
+      "wall_ns": 1793344593622976000,
+      "kind": "poll_entry",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "has_timeout": 0,
+      "timeout_ns": 0,
+      "array": "0x1005be4e0",
+      "count": 2
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9306055416,
+      "wall_ns": 1793344593684288000,
+      "kind": "kevent_before",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "kq": 35,
+      "events": "0x16ff9ee70",
+      "maxevents": 2
+    },
+    {
+      "event": "kevent_result_before_output_read",
+      "monotonic_ns": 9352355333,
+      "wall_ns": 1793344593730588000,
+      "tid": 28843,
+      "result": -1,
+      "maxevents": 2,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9352537166,
+      "wall_ns": 1793344593730769000,
+      "kind": "kevent_return",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "event_bytes": "",
+      "event_count": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9403295708,
+      "wall_ns": 1793344593781529000,
+      "kind": "kevent_errno",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "errno": 9,
+      "errno_pointer": "0x16ff9f0ac"
+    },
+    {
+      "event": "source_boundary",
+      "monotonic_ns": 9456991291,
+      "wall_ns": 1793344593835225000,
+      "kind": "translated",
+      "tid": 28843,
+      "context": "0x1005b9e80",
+      "result": -1,
+      "tag": "0x10066c0d0",
+      "fd": 39,
+      "events": 57,
+      "revents": 0,
+      "poll_array_bytes": "d6ffffff0100000090af65000100000027000000010000000000000000000000",
+      "selected_poll_record": "27000000010000000000000000000000",
+      "selected_poll_revents": 0,
+      "entry_observed": true
+    },
+    {
+      "event": "callback_failure",
+      "monotonic_ns": 9506624750,
+      "wall_ns": 1793344593884859000,
+      "type": "RuntimeError",
+      "message": "Selected source observation capture budget exceeded",
+      "kind": "source__poll_entry"
+    },
+    {
+      "event": "debugger_detach_after_failure",
+      "monotonic_ns": 9545760833,
+      "wall_ns": 1793344593923995000,
+      "success": true,
+      "error": "success"
+    },
+    {
+      "event": "ignored_unrelated_boundaries",
+      "monotonic_ns": 9545973083,
+      "wall_ns": 1793344593924205000,
+      "counts": {
+        "matched_reply_delivery": 1,
+        "connection_reply_callback": 1,
+        "proxy_reply_callback": 1,
+        "request_serial_before_queue": 1
+      }
+    },
+    {
+      "event": "debugger_terminal",
+      "monotonic_ns": 9549420083,
+      "wall_ns": 1793344593927653000,
+      "state": 9,
+      "exit_status": -1
+    }
+  ],
+  "host_events": [
+    {
+      "event": "pending_initializer",
+      "wall_ns": 1793344576951506000,
+      "monotonic_ns": 3099777833,
+      "locations": 0
+    },
+    {
+      "event": "host_launch",
+      "wall_ns": 1793344577922553000,
+      "monotonic_ns": 4070825541,
+      "success": true,
+      "error": "success",
+      "pid": 8951,
+      "state": 5
+    },
+    {
+      "event": "launch_stop_details",
+      "wall_ns": 1793344577924907000,
+      "monotonic_ns": 4073179458,
+      "threads": [
+        {
+          "tid": 28315,
+          "reason": 7,
+          "description": "exec",
+          "pc": "0x1000187c0"
+        }
+      ]
+    },
+    {
+      "event": "continue_initial_exec_stop",
+      "wall_ns": 1793344580057339000,
+      "monotonic_ns": 6205611875,
+      "success": true,
+      "error": "success",
+      "state": 5,
+      "threads": [
+        {
+          "tid": 28315,
+          "reason": 3,
+          "description": "breakpoint 1.1",
+          "pc": "0x131004000"
+        },
+        {
+          "tid": 28391,
+          "reason": 1,
+          "description": "",
+          "pc": "0x1312ce220"
+        }
+      ]
+    },
+    {
+      "event": "host_image_verified",
+      "wall_ns": 1793344580067189000,
+      "monotonic_ns": 6215459916,
+      "pid": 8951,
+      "base": "0x131000000",
+      "pc": "0x131004000",
+      "uuid": "455494b1478231c9b1891329d2e289c5"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580067339000,
+      "monotonic_ns": 6215609541,
+      "kind": "binding_initializer",
+      "offset": "0x4000",
+      "bytes16": "ff0301d1f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580071374000,
+      "monotonic_ns": 6219646208,
+      "kind": "handler_begin",
+      "offset": "0x76928",
+      "bytes16": "ff4303d1f85f09a9f6570aa9f44f0ba9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580072842000,
+      "monotonic_ns": 6221113500,
+      "kind": "handler_state",
+      "offset": "0x78460",
+      "bytes16": "ff8301d1f65703a9f44f04a9fd7b05a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580073188000,
+      "monotonic_ns": 6221459291,
+      "kind": "entry_future_branch",
+      "offset": "0x78564",
+      "bytes16": "200100b4607e00f9f5090094613a40f9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580077542000,
+      "monotonic_ns": 6225813083,
+      "kind": "handler_success_complete",
+      "offset": "0x78618",
+      "bytes16": "0e080094680240b98800003505000014"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580078645000,
+      "monotonic_ns": 6226915833,
+      "kind": "handler_error_complete",
+      "offset": "0xdd7a04",
+      "bytes16": "015400f921008052be000014ff0301d1"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580079907000,
+      "monotonic_ns": 6228179166,
+      "kind": "generated_reply_callback",
+      "offset": "0x21fd14",
+      "bytes16": "ff0303d1f65709a9f44f0aa9fd7b0ba9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580080277000,
+      "monotonic_ns": 6228547791,
+      "kind": "handler_finish_result",
+      "offset": "0x21fd30",
+      "bytes16": "a1835df8610000b4f22300940f000014"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580080807000,
+      "monotonic_ns": 6229078500,
+      "kind": "reply_created",
+      "offset": "0x21fd50",
+      "bytes16": "a71f0094f723009418210094eb230094"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580081379000,
+      "monotonic_ns": 6229650625,
+      "kind": "reply_send_begin",
+      "offset": "0x21fd60",
+      "bytes16": "931f0094e1230094e00315aa02000014"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580084272000,
+      "monotonic_ns": 6232544291,
+      "kind": "reply_queued",
+      "offset": "0xe0a2bc",
+      "bytes16": "20008052fd7b44a98e150014fa67bba9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580085056000,
+      "monotonic_ns": 6233326708,
+      "kind": "transport__host_worker_enqueue_entry",
+      "offset": "0xe164b4",
+      "bytes16": "f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580085165000,
+      "monotonic_ns": 6233436125,
+      "kind": "transport__host_data_before_publication",
+      "offset": "0xe16520",
+      "bytes16": "dd070094c0020391fd7b43a9f44f42a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580086145000,
+      "monotonic_ns": 6234416166,
+      "kind": "transport__host_worker_pop",
+      "offset": "0xe1710c",
+      "bytes16": "f50300aa170080d2400000b478be00b9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580086491000,
+      "monotonic_ns": 6234762625,
+      "kind": "transport__host_outgoing_filter_return",
+      "offset": "0xe1714c",
+      "bytes16": "a00600f91f0016eb40060054000300b5"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580086984000,
+      "monotonic_ns": 6235254791,
+      "kind": "transport__host_write_async_entry",
+      "offset": "0xe17398",
+      "bytes16": "f44fbea9fd7b01a9fd430091f30301aa"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580087397000,
+      "monotonic_ns": 6235667625,
+      "kind": "transport__host_write_task_created",
+      "offset": "0xe173b4",
+      "bytes16": "f40300aa601600f90100009021600e91"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580091444000,
+      "monotonic_ns": 6239715833,
+      "kind": "transport__host_write_continue",
+      "offset": "0xe1761c",
+      "bytes16": "ff8301d1f65703a9f44f04a9fd7b05a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580091591000,
+      "monotonic_ns": 6239861750,
+      "kind": "transport__host_generic_write_submit",
+      "offset": "0xe17704",
+      "bytes16": "fd7b45a9f44f44a9f65743a9ff830191"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580094878000,
+      "monotonic_ns": 6243149041,
+      "kind": "transport__host_socket_write_return",
+      "offset": "0xe177c4",
+      "bytes16": "f40300aae00f40f9400000b4d63afe97"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580096193000,
+      "monotonic_ns": 6244464250,
+      "kind": "transport__host_socket_would_block",
+      "offset": "0xe17820",
+      "bytes16": "00030034680240f9003140f9021d40f9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580099160000,
+      "monotonic_ns": 6247449333,
+      "kind": "transport__host_socket_ready",
+      "offset": "0xe178b0",
+      "bytes16": "fd7bbfa9fd030091e00302aa58ffff97"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580099515000,
+      "monotonic_ns": 6247785750,
+      "kind": "transport__host_generic_write_finish",
+      "offset": "0xe1797c",
+      "bytes16": "1f0400b180010054f40300aae10313aa"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580100077000,
+      "monotonic_ns": 6248348041,
+      "kind": "transport__host_write_task_success",
+      "offset": "0xe183b0",
+      "bytes16": "741640f97f1600f9e00314aa21008052"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580100503000,
+      "monotonic_ns": 6248774666,
+      "kind": "transport__host_write_callback_entry",
+      "offset": "0xe17408",
+      "bytes16": "ff0301d1f65701a9f44f02a9fd7b03a9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580100775000,
+      "monotonic_ns": 6249046000,
+      "kind": "transport__host_write_final_result",
+      "offset": "0xe17448",
+      "bytes16": "20010035c3030094600240f9e20740f9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580101249000,
+      "monotonic_ns": 6249519833,
+      "kind": "transport__host_data_free",
+      "offset": "0xe16fbc",
+      "bytes16": "f44fbea9fd7b01a9fd430091f30300aa"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580101612000,
+      "monotonic_ns": 6249883166,
+      "kind": "serial_getter",
+      "offset": "0xe0ff90",
+      "bytes16": "002c40b9c0035fd6e100805228070014"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580102202000,
+      "monotonic_ns": 6250473250,
+      "kind": "invocation_get_connection",
+      "offset": "0xe1a6b4",
+      "bytes16": "002440f9c0035fd6002840f9c0035fd6"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580102503000,
+      "monotonic_ns": 6250774458,
+      "kind": "invocation_get_message",
+      "offset": "0xe1a6bc",
+      "bytes16": "002840f9c0035fd6002c40f9c0035fd6"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580102739000,
+      "monotonic_ns": 6251009958,
+      "kind": "new_method_reply",
+      "offset": "0xe0ff34",
+      "bytes16": "f44fbea9fd7b01a9fd430091f40300aa"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580102928000,
+      "monotonic_ns": 6251198583,
+      "kind": "new_method_reply_reads_serial",
+      "offset": "0xe0ff60",
+      "bytes16": "812e40b908000094e00314aa0b000094"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580103352000,
+      "monotonic_ns": 6251623166,
+      "kind": "generated_context_invocation_store",
+      "offset": "0x22839c",
+      "bytes16": "160000f9e00316aac6c82f14740640f9"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580103662000,
+      "monotonic_ns": 6251932458,
+      "kind": "handler_state_helper",
+      "offset": "0x7ad34",
+      "bytes16": "f30300aa080040b9c0035fd628008052"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580103893000,
+      "monotonic_ns": 6252164208,
+      "kind": "host_context_task_store",
+      "offset": "0x7b14c",
+      "bytes16": "f60300aa600e00f9c0035fd641018052"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580104028000,
+      "monotonic_ns": 6252298500,
+      "kind": "host_success_task_completion_helper",
+      "offset": "0x7a650",
+      "bytes16": "600e40f9e10313aa020080d21b763514"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580104375000,
+      "monotonic_ns": 6252646916,
+      "kind": "info_copy",
+      "offset": "0x7ad90",
+      "bytes16": "020980522d3a4314e10300aae20300aa"
+    },
+    {
+      "event": "host_site_verified",
+      "wall_ns": 1793344580104805000,
+      "monotonic_ns": 6253076458,
+      "kind": "transport__host_written_counter",
+      "offset": "0xe17478",
+      "bytes16": "a86a40f908050091a86a00f9b5030094"
+    },
+    {
+      "event": "host_armed",
+      "wall_ns": 1793344580134611000,
+      "monotonic_ns": 6282882333,
+      "base": "0x131000000",
+      "sites": {
+        "2": "handler_begin",
+        "3": "handler_state",
+        "4": "entry_future_branch",
+        "5": "handler_success_complete",
+        "6": "handler_error_complete",
+        "7": "generated_reply_callback",
+        "8": "handler_finish_result",
+        "9": "reply_created",
+        "10": "reply_send_begin",
+        "11": "reply_queued",
+        "12": "transport__host_worker_enqueue_entry",
+        "13": "transport__host_data_before_publication",
+        "14": "transport__host_worker_pop",
+        "15": "transport__host_outgoing_filter_return",
+        "16": "transport__host_write_async_entry",
+        "17": "transport__host_write_task_created",
+        "18": "transport__host_write_continue",
+        "19": "transport__host_generic_write_submit",
+        "20": "transport__host_socket_write_return",
+        "21": "transport__host_socket_would_block",
+        "22": "transport__host_socket_ready",
+        "23": "transport__host_generic_write_finish",
+        "24": "transport__host_write_task_success",
+        "25": "transport__host_write_callback_entry",
+        "26": "transport__host_write_final_result",
+        "27": "transport__host_data_free"
+      }
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589228215000,
+      "monotonic_ns": 15376485916,
+      "kind": "handler_begin",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131076928",
+      "source": "0x600000a4d590",
+      "D": "0x600001068780",
+      "invocation": "0x600001868150",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106d630",
+      "serial": 8,
+      "payload": {
+        "pid": 9184,
+        "parent_pid": 9184,
+        "origin": 1,
+        "identifier": "",
+        "path": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+      },
+      "callback": "0x13121fd14",
+      "cancellable": 0
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589246499000,
+      "monotonic_ns": 15394770375,
+      "kind": "handler_state",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131078460",
+      "context": "0x12ef8c2c0",
+      "state": 0,
+      "H": "0x60000064dd40",
+      "D": "0x600001068780"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589276953000,
+      "monotonic_ns": 15425224833,
+      "kind": "entry_future_branch",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131078564",
+      "context": "0x12ef8c2c0",
+      "future": "0x600001753160",
+      "H": "0x60000064dd40"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589305424000,
+      "monotonic_ns": 15453695000,
+      "kind": "handler_state",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131078460",
+      "context": "0x12ef8c2c0",
+      "state": 1,
+      "H": "0x60000064dd40",
+      "D": "0x600001068780"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589328513000,
+      "monotonic_ns": 15476784666,
+      "kind": "handler_state",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131078460",
+      "context": "0x12ef8c2c0",
+      "state": 2,
+      "H": "0x60000064dd40",
+      "D": "0x600001068780"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589349320000,
+      "monotonic_ns": 15497591458,
+      "kind": "handler_success_complete",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131078618",
+      "context": "0x12ef8c2c0",
+      "H": "0x60000064dd40",
+      "error_pointer": 0
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589376467000,
+      "monotonic_ns": 15524738208,
+      "kind": "generated_reply_callback",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x13121fd14",
+      "source": "0x600000a4d590",
+      "H": "0x60000064dd40",
+      "D": "0x600001068780",
+      "invocation": "0x600001868150",
+      "retired": "H"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589390868000,
+      "monotonic_ns": 15539139833,
+      "kind": "handler_finish_result",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x13121fd30",
+      "D": "0x600001068780",
+      "invocation": "0x600001868150",
+      "error_pointer": "0x0",
+      "error": null
+    },
+    {
+      "event": "host_transport_activated_before_queue",
+      "wall_ns": 1793344589414278000,
+      "monotonic_ns": 15562549291,
+      "reply": "0x60000106de00"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589414518000,
+      "monotonic_ns": 15562788916,
+      "kind": "reply_created",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x13121fd50",
+      "reply": "0x60000106de00",
+      "request_message": "0x60000106d630",
+      "expected_reply_to": 8,
+      "invocation": "0x600001868150",
+      "D": "0x600001068780"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589440624000,
+      "monotonic_ns": 15588895583,
+      "kind": "reply_send_begin",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x13121fd60",
+      "connection": "0x600000f4eb00",
+      "reply": "0x60000106de00",
+      "expected_reply_to": 8
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589454912000,
+      "monotonic_ns": 15603183291,
+      "kind": "host_worker_enqueue_entry",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131e164b4",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "blob_hex": "6c02010100000000050000001000000008016700000000000501750008000000"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589475374000,
+      "monotonic_ns": 15623645333,
+      "kind": "host_data_before_publication",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131e16520",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "epoch": 1,
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120"
+    },
+    {
+      "event": "host_selected_sites_disabled",
+      "wall_ns": 1793344589496755000,
+      "monotonic_ns": 15645027041,
+      "reason": "selected reply queued; original method sites disabled, transport observation continues"
+    },
+    {
+      "event": "host_boundary",
+      "wall_ns": 1793344589497138000,
+      "monotonic_ns": 15645409291,
+      "kind": "reply_queued",
+      "pid": 8951,
+      "tid": 28394,
+      "pc": "0x131e0a2bc",
+      "connection": "0x600000f4eb00",
+      "reply": "0x60000106de00",
+      "outgoing_serial": 5,
+      "expected_reply_to": 8,
+      "proves": "worker queue acceptance only"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589498866000,
+      "monotonic_ns": 15647138541,
+      "kind": "host_worker_pop",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e1710c",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589528646000,
+      "monotonic_ns": 15676917166,
+      "kind": "host_outgoing_filter_return",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e1714c",
+      "data": "0x600003d01440",
+      "old_message": "0x60000106de00",
+      "returned_message": "0x60000106de00",
+      "dropped": false,
+      "replaced": false,
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589553554000,
+      "monotonic_ns": 15701826625,
+      "kind": "host_write_async_entry",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e17398",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "effective_blob_hex": "6c02010100000000050000001000000008016700000000000501750008000000"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589572756000,
+      "monotonic_ns": 15721028083,
+      "kind": "host_write_task_created",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e173b4",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "W": "0x60000064db00"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589590151000,
+      "monotonic_ns": 15738422916,
+      "kind": "host_write_continue",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e1761c",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x60000064db00",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589617150000,
+      "monotonic_ns": 15765420791,
+      "kind": "host_socket_write_return",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e177c4",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 0,
+      "data_task": "0x60000064db00",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "result": 32,
+      "error_pointer": "0x0",
+      "error": null,
+      "path": "socket"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589667546000,
+      "monotonic_ns": 15815818041,
+      "kind": "host_write_task_success",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e183b0",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 32,
+      "data_task": "0x60000064db00",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "W": "0x60000064db00",
+      "completion": true
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589706520000,
+      "monotonic_ns": 15854791208,
+      "kind": "host_write_callback_entry",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e17408",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 32,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "W": "0x60000064db00"
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589721925000,
+      "monotonic_ns": 15870196416,
+      "kind": "host_write_final_result",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e17448",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 32,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "W": "0x60000064db00",
+      "finish": 1,
+      "error_pointer": "0x0",
+      "error": null
+    },
+    {
+      "event": "host_transport_retired",
+      "wall_ns": 1793344589770573000,
+      "monotonic_ns": 15918844125,
+      "reason": "selected write data freed; transport sites disabled before later exec attachments",
+      "hit_counts": {
+        "": 1,
+        "handler_begin": 1,
+        "handler_state": 3,
+        "entry_future_branch": 1,
+        "handler_success_complete": 1,
+        "handler_error_complete": 6,
+        "generated_reply_callback": 1,
+        "handler_finish_result": 1,
+        "reply_created": 1,
+        "reply_send_begin": 1,
+        "reply_queued": 14,
+        "transport__host_worker_enqueue_entry": 2,
+        "transport__host_data_before_publication": 2,
+        "transport__host_worker_pop": 2,
+        "transport__host_outgoing_filter_return": 1,
+        "transport__host_write_async_entry": 1,
+        "transport__host_write_task_created": 1,
+        "transport__host_write_continue": 1,
+        "transport__host_generic_write_submit": 0,
+        "transport__host_socket_write_return": 1,
+        "transport__host_socket_would_block": 0,
+        "transport__host_socket_ready": 0,
+        "transport__host_generic_write_finish": 0,
+        "transport__host_write_task_success": 1,
+        "transport__host_write_callback_entry": 1,
+        "transport__host_write_final_result": 1,
+        "transport__host_data_free": 1
+      }
+    },
+    {
+      "event": "host_transport",
+      "wall_ns": 1793344589770774000,
+      "monotonic_ns": 15919045166,
+      "kind": "host_data_free",
+      "pid": 8951,
+      "tid": 28820,
+      "pc": "0x131e16fbc",
+      "data": "0x600003d01440",
+      "worker": "0x600000f44300",
+      "connection": "0x600000f4eb00",
+      "message": "0x60000106de00",
+      "blob": "0x600001d70000",
+      "blob_size": 32,
+      "total_written": 32,
+      "data_task": "0x0",
+      "socket": "0x10ee12170",
+      "stream": "0x60000185c120",
+      "epoch": 1,
+      "retired": "MessageToWriteData epoch 1"
+    },
+    {
+      "event": "host_continue",
+      "wall_ns": 1793344596732931000,
+      "monotonic_ns": 22881203250,
+      "success": true,
+      "error": "success",
+      "state": 10
+    },
+    {
+      "event": "host_controller_terminal",
+      "wall_ns": 1793344596733652000,
+      "monotonic_ns": 22881922458,
+      "pid": 8951,
+      "exit": 1,
+      "observer_failed": false
+    },
+    {
+      "event": "host_debugger_terminal",
+      "wall_ns": 1793344596733796000,
+      "monotonic_ns": 22882066708,
+      "pid": 8951,
+      "state": 10,
+      "exit": 1
+    }
+  ],
+  "controller_events": [
+    {
+      "event": "identity",
+      "monotonic_ns": 429853710208,
+      "kernel": "24.6.0",
+      "machine": "arm64",
+      "python": "3.12.10 (v3.12.10:0cc81280367, Apr  8 2025, 08:46:59) [Clang 13.0.0 (clang-1300.0.29.30)]",
+      "executable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+      "frida": "17.24.3",
+      "uid": 0,
+      "workload_uid": 501,
+      "mode": "close"
+    },
+    {
+      "event": "source",
+      "monotonic_ns": 429876793625,
+      "fixture_sha256": "b25b4b90fdee712965e5d9b5d5857e913c6ad926cc4443e56c65b15e12bd7490",
+      "probe_sha256": "131fd03912447f9de67c389dd6f87e8d560dc54d56b538853dee77fcde05ab66"
+    },
+    {
+      "event": "script_lifecycle",
+      "monotonic_ns": 432508921041,
+      "pid": 9104,
+      "instrumented": false
+    },
+    {
+      "event": "gating_enabled",
+      "monotonic_ns": 432509312166,
+      "pid": 9104
+    },
+    {
+      "event": "child_added",
+      "monotonic_ns": 432744058208,
+      "pid": 9184,
+      "parent_pid": 9104,
+      "origin": "fork",
+      "identifier": null
+    },
+    {
+      "event": "script_lifecycle",
+      "monotonic_ns": 432799655125,
+      "pid": 9184,
+      "instrumented": false
+    },
+    {
+      "event": "gating_enabled",
+      "monotonic_ns": 432799775458,
+      "pid": 9184
+    },
+    {
+      "event": "observer_gate_wait",
+      "monotonic_ns": 432800090791,
+      "pid": 9184
+    },
+    {
+      "event": "child_resumed",
+      "monotonic_ns": 436206502125,
+      "pid": 9184
+    },
+    {
+      "event": "probe_failure",
+      "monotonic_ns": 444584045375,
+      "error_type": "TimeoutError",
+      "error": "root failed to exit"
+    },
+    {
+      "event": "cleanup_kill",
+      "monotonic_ns": 444593841125,
+      "pid": 9104,
+      "method": "frida.device.kill"
+    },
+    {
+      "event": "cleanup_kill",
+      "monotonic_ns": 444602282250,
+      "pid": 9184,
+      "method": "frida.device.kill"
+    },
+    {
+      "event": "cleanup_root_reaped",
+      "monotonic_ns": 444602546333,
+      "pid": 9104,
+      "returncode": -9
+    },
+    {
+      "event": "cleanup_terminal",
+      "monotonic_ns": 445234496208,
+      "identities": [
+        9104,
+        9184
+      ],
+      "absent": {
+        "9104": true,
+        "9184": true
+      }
+    },
+    {
+      "event": "probe_result",
+      "monotonic_ns": 445234577125,
+      "passed": false,
+      "mode": "close"
+    }
+  ],
+  "cleanup_receipts": {
+    "audit-pids-response.json": {
+      "exit": 0,
+      "output": "debug3: receive packet: type 98\r\ndebug1: client_input_channel_req: channel 0 rtype keepalive@openssh.com reply 1\r\ndebug3: send packet: type 100\r\nps -p 4562,4563,4588,4754,4763,4766,8920,8921,8951,9104,9184,9185 -o p \rid=,ppid=,stat=,command=; owned_ps_status=$?; test \"$owned_ps_status\" -eq 1 && p \rrintf 'ALL_OBSERVED_OWNED_PIDS_ABSENT\\n'; __cat_status=$?; printf \"\\n__CAT_DONE_ \r0090:%s__\\n\" \"$__cat_status\"\r\nALL_OBSERVED_OWNED_PIDS_ABSENT\r\n\r\n__CAT_DONE_0090:0__\r\nbash-3.2$ "
+    },
+    "audit-processes-response.json": {
+      "exit": 0,
+      "output": "python3 -c 'import subprocess,os,json;own=os.getpid();p=subprocess.run \r([\"ps\",\"-axo\",\"pid=,ppid=,command=\"],capture_output=True,text=True);root=os.envi \rron[\"QUEUE_PROBE_ROOT\"];rows=[s for s in p.stdout.splitlines() if root in s and  \rint(s.split(None,1)[0])!=own];print(json.dumps({\"ps_exit\":p.returncode,\"owned_pa \rth_processes\":rows}))'; __cat_status=$?; printf \"\\n__CAT_DONE_0091:%s__\\n\" \"$__c \rat_status\"\r\n{\"ps_exit\": 0, \"owned_path_processes\": []}\r\n\r\n__CAT_DONE_0091:0__\r\nbash-3.2$ "
+    },
+    "remove-remote-response.json": {
+      "exit": 0,
+      "output": "debug3: obfuscate_keystroke_timing: starting: interval ~20ms\r\nsudo -n rm -rf -- \"$QUEUE_PROBE_ROOT\"; test ! -e \"$QUEUE_PROBE_ROOT\" & \r& printf \"OWNED_REMOTE_REMOVED=%s\\n\" \"$QUEUE_PROBE_ROOT\"; __cat_status=$?; print \rf \"\\n__CAT_DONE_0092:%s__\\n\" \"$__cat_status\"\r\nOWNED_REMOTE_REMOVED=/Users/runner/work/_temp/normal-kevent-qKrfWk\r\n\r\n__CAT_DONE_0092:0__\r\nbash-3.2$ "
+    },
+    "credentials-cleanup.json": {
+      "removed_after_verified_ssh_and_provider_terminal": true,
+      "removed": [
+        {
+          "name": "client-key",
+          "bytes": 399
+        },
+        {
+          "name": "client-key.pub",
+          "bytes": 94
+        }
+      ],
+      "all_absent": true,
+      "time_ns": 1793344690837071606
+    },
+    "client/ssh-terminal.json": {
+      "exit": 0,
+      "pid": 31
+    },
+    "hosted-terminal.json": {
+      "id": 41018519414,
+      "name": "Runner failure debugging smoke test",
+      "node_id": "WFR_kwLOUNeRfc8AAAAJjOTvdg",
+      "head_branch": "main.new",
+      "head_sha": "2398651b996b5387c4445a7bb222b6800a32da22",
+      "path": ".github/workflows/runner-debug-smoke.yml",
+      "display_title": "Runner failure debugging smoke test",
+      "run_number": 143,
+      "event": "workflow_dispatch",
+      "status": "completed",
+      "conclusion": "failure",
+      "workflow_id": 398706242,
+      "check_suite_id": 111189075575,
+      "check_suite_node_id": "CS_kwDOUNeRfc8AAAAZ42Kmdw",
+      "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414",
+      "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41018519414",
+      "pull_requests": [],
+      "created_at": "2026-10-30T07:11:07Z",
+      "updated_at": "2026-10-30T07:17:47Z",
+      "actor": {
+        "login": "cowwoc",
+        "id": 633348,
+        "node_id": "MDQ6VXNlcjYzMzM0OA==",
+        "avatar_url": "https://avatars.githubusercontent.com/u/633348?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/cowwoc",
+        "html_url": "https://github.com/cowwoc",
+        "followers_url": "https://api.github.com/users/cowwoc/followers",
+        "following_url": "https://api.github.com/users/cowwoc/following{/other_user}",
+        "gists_url": "https://api.github.com/users/cowwoc/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/cowwoc/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/cowwoc/subscriptions",
+        "organizations_url": "https://api.github.com/users/cowwoc/orgs",
+        "repos_url": "https://api.github.com/users/cowwoc/repos",
+        "events_url": "https://api.github.com/users/cowwoc/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/cowwoc/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "run_attempt": 1,
+      "referenced_workflows": [],
+      "run_started_at": "2026-10-30T07:11:07Z",
+      "triggering_actor": {
+        "login": "cowwoc",
+        "id": 633348,
+        "node_id": "MDQ6VXNlcjYzMzM0OA==",
+        "avatar_url": "https://avatars.githubusercontent.com/u/633348?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/cowwoc",
+        "html_url": "https://github.com/cowwoc",
+        "followers_url": "https://api.github.com/users/cowwoc/followers",
+        "following_url": "https://api.github.com/users/cowwoc/following{/other_user}",
+        "gists_url": "https://api.github.com/users/cowwoc/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/cowwoc/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/cowwoc/subscriptions",
+        "organizations_url": "https://api.github.com/users/cowwoc/orgs",
+        "repos_url": "https://api.github.com/users/cowwoc/repos",
+        "events_url": "https://api.github.com/users/cowwoc/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/cowwoc/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "jobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414/jobs",
+      "logs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414/logs",
+      "check_suite_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-suites/111189075575",
+      "artifacts_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414/artifacts",
+      "cancel_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414/cancel",
+      "rerun_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414/rerun",
+      "previous_attempt_url": null,
+      "workflow_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/workflows/398706242",
+      "head_commit": {
+        "id": "2398651b996b5387c4445a7bb222b6800a32da22",
+        "tree_id": "f1078699b88cb96a10f7b6f67fe34aecdf106dfb",
+        "message": "feat: add scheduler CLI and action coordinator",
+        "timestamp": "2026-10-30T07:04:43Z",
+        "author": {
+          "name": "Gili Tzabari",
+          "email": "cowwoc2020@gmail.com"
+        },
+        "committer": {
+          "name": "Gili Tzabari",
+          "email": "cowwoc2020@gmail.com"
+        }
+      },
+      "repository": {
+        "id": 1356304765,
+        "node_id": "R_kgDOUNeRfQ",
+        "name": "codex-unleashed",
+        "full_name": "holdmyspot-com/codex-unleashed",
+        "private": false,
+        "owner": {
+          "login": "holdmyspot-com",
+          "id": 326636212,
+          "node_id": "O_kgDOE3gStA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/326636212?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/holdmyspot-com",
+          "html_url": "https://github.com/holdmyspot-com",
+          "followers_url": "https://api.github.com/users/holdmyspot-com/followers",
+          "following_url": "https://api.github.com/users/holdmyspot-com/following{/other_user}",
+          "gists_url": "https://api.github.com/users/holdmyspot-com/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/holdmyspot-com/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/holdmyspot-com/subscriptions",
+          "organizations_url": "https://api.github.com/users/holdmyspot-com/orgs",
+          "repos_url": "https://api.github.com/users/holdmyspot-com/repos",
+          "events_url": "https://api.github.com/users/holdmyspot-com/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/holdmyspot-com/received_events",
+          "type": "Organization",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/holdmyspot-com/codex-unleashed",
+        "description": "Unofficial patches for OpenAI Codex",
+        "fork": false,
+        "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed",
+        "forks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/forks",
+        "keys_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/teams",
+        "hooks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/hooks",
+        "issue_events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/events",
+        "assignees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/tags",
+        "blobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/languages",
+        "stargazers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/stargazers",
+        "contributors_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contributors",
+        "subscribers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscribers",
+        "subscription_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscription",
+        "commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/merges",
+        "archive_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/downloads",
+        "issues_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/labels{/name}",
+        "releases_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/deployments"
+      },
+      "head_repository": {
+        "id": 1356304765,
+        "node_id": "R_kgDOUNeRfQ",
+        "name": "codex-unleashed",
+        "full_name": "holdmyspot-com/codex-unleashed",
+        "private": false,
+        "owner": {
+          "login": "holdmyspot-com",
+          "id": 326636212,
+          "node_id": "O_kgDOE3gStA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/326636212?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/holdmyspot-com",
+          "html_url": "https://github.com/holdmyspot-com",
+          "followers_url": "https://api.github.com/users/holdmyspot-com/followers",
+          "following_url": "https://api.github.com/users/holdmyspot-com/following{/other_user}",
+          "gists_url": "https://api.github.com/users/holdmyspot-com/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/holdmyspot-com/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/holdmyspot-com/subscriptions",
+          "organizations_url": "https://api.github.com/users/holdmyspot-com/orgs",
+          "repos_url": "https://api.github.com/users/holdmyspot-com/repos",
+          "events_url": "https://api.github.com/users/holdmyspot-com/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/holdmyspot-com/received_events",
+          "type": "Organization",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/holdmyspot-com/codex-unleashed",
+        "description": "Unofficial patches for OpenAI Codex",
+        "fork": false,
+        "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed",
+        "forks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/forks",
+        "keys_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/teams",
+        "hooks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/hooks",
+        "issue_events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/events",
+        "assignees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/tags",
+        "blobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/languages",
+        "stargazers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/stargazers",
+        "contributors_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contributors",
+        "subscribers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscribers",
+        "subscription_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscription",
+        "commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/merges",
+        "archive_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/downloads",
+        "issues_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/labels{/name}",
+        "releases_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/deployments"
+      }
+    },
+    "hosted-jobs-terminal.json": {
+      "total_count": 2,
+      "jobs": [
+        {
+          "id": 123940231808,
+          "run_id": 41018519414,
+          "workflow_name": "Runner failure debugging smoke test",
+          "head_branch": "main.new",
+          "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOUNeRfc8AAAAc22nagA",
+          "head_sha": "2398651b996b5387c4445a7bb222b6800a32da22",
+          "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123940231808",
+          "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41018519414/job/123940231808",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-30T07:11:09Z",
+          "started_at": "2026-10-30T07:11:11Z",
+          "completed_at": "2026-10-30T07:11:23Z",
+          "name": "select",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-30T07:11:12Z",
+              "completed_at": "2026-10-30T07:11:13Z"
+            },
+            {
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-30T07:11:13Z",
+              "completed_at": "2026-10-30T07:11:20Z"
+            },
+            {
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-30T07:11:20Z",
+              "completed_at": "2026-10-30T07:11:20Z"
+            },
+            {
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-30T07:11:20Z",
+              "completed_at": "2026-10-30T07:11:21Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-30T07:11:21Z",
+              "completed_at": "2026-10-30T07:11:21Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-runs/123940231808",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000010051,
+          "runner_name": "GitHub Actions 1000010051",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123940313326,
+          "run_id": 41018519414,
+          "workflow_name": "Runner failure debugging smoke test",
+          "head_branch": "main.new",
+          "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/41018519414",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOUNeRfc8AAAAc22sY7g",
+          "head_sha": "2398651b996b5387c4445a7bb222b6800a32da22",
+          "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123940313326",
+          "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41018519414/job/123940313326",
+          "status": "completed",
+          "conclusion": "failure",
+          "created_at": "2026-10-30T07:11:24Z",
+          "started_at": "2026-10-30T07:11:30Z",
+          "completed_at": "2026-10-30T07:17:46Z",
+          "name": "Debug - aarch64-apple-darwin",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-30T07:11:31Z",
+              "completed_at": "2026-10-30T07:11:32Z"
+            },
+            {
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-30T07:11:32Z",
+              "completed_at": "2026-10-30T07:11:33Z"
+            },
+            {
+              "name": "Create owned partial build state",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-30T07:11:33Z",
+              "completed_at": "2026-10-30T07:11:33Z"
+            },
+            {
+              "name": "Record the deliberate build failure",
+              "status": "completed",
+              "conclusion": "failure",
+              "number": 4,
+              "started_at": "2026-10-30T07:11:33Z",
+              "completed_at": "2026-10-30T07:11:34Z"
+            },
+            {
+              "name": "Debug the original failed workspace",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-30T07:11:34Z",
+              "completed_at": "2026-10-30T07:11:39Z"
+            },
+            {
+              "name": "Post Debug the original failed workspace",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-10-30T07:11:39Z",
+              "completed_at": "2026-10-30T07:17:41Z"
+            },
+            {
+              "name": "Post Create owned partial build state",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9,
+              "started_at": "2026-10-30T07:17:41Z",
+              "completed_at": "2026-10-30T07:17:41Z"
+            },
+            {
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10,
+              "started_at": "2026-10-30T07:17:41Z",
+              "completed_at": "2026-10-30T07:17:41Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11,
+              "started_at": "2026-10-30T07:17:41Z",
+              "completed_at": "2026-10-30T07:17:43Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-runs/123940313326",
+          "labels": [
+            "macos-15"
+          ],
+          "runner_id": 1000010052,
+          "runner_name": "GitHub Actions 1000010052",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        }
+      ]
+    }
+  },
+  "offline_source_mapping": {
+    "status": "partial offline source mapping; native lifetime cause unresolved",
+    "scope": "No maintained code changes, native reruns, worker dispatches, deadline changes or descriptor-policy workaround.",
+    "native_input_report_sha256": "47f127b50c1a6d8e1a4728f6d0be58c5ffabe38fef927d897aa38f82c013ba64",
+    "source_versions": {
+      "glib": "ae4ec44f4484bf22ff387e712c5e9902af07c0c7",
+      "frida_core": "57161b0ddd2311adf18e84f4680f9cb935ce8376",
+      "cpython_observed": "3.12.10 (v3.12.10:0cc81280367)",
+      "cpython_source_revision": "0cc81280367"
+    },
+    "source_hashes": {
+      "gmain.c": {
+        "bytes": 213465,
+        "sha256": "fc4bfe997cf54187b7079b64434b8b768fb9bb6ebd0e56222281ec0b0e8f11b8",
+        "git_blob_sha1": "1bdf266eb4155847b4deed62aea90c2599f7ef1e"
+      },
+      "fd-guard.vala": {
+        "bytes": 2132,
+        "sha256": "2127dd4ef199f7553f057db194ea276d4ba8f582bde0beb5bc51d99bc52cd242",
+        "git_blob_sha1": "829b5ab337e9d2322663dccab297d2cebcbf9497"
+      },
+      "fork-monitor.vala": {
+        "bytes": 5805,
+        "sha256": "eb4469c4b95ad2032e3397c75f5a12dfa7be21918c063cfdc5c103feff4d32d3",
+        "git_blob_sha1": "e0c695df87b5cbe97b2a3d002b01e0ed830a2163"
+      },
+      "cloak.vala": {
+        "bytes": 14076,
+        "sha256": "78a8fdcb51ab22ca9b1d4b217010960a50ecfd8241f983083f69489c0576d4e5",
+        "git_blob_sha1": "4eba03815ede0338966f53a228f8fe33f47f7bd0"
+      },
+      "libc-shim.c": {
+        "bytes": 47894,
+        "sha256": "0fd93c7ae1c3363293afe6b2d5348b7dab5069c934e6024f7eb213db152a00e1",
+        "git_blob_sha1": "56b6e5494b4fb471c5af663ec62e8b202759d003"
+      },
+      "posixsubprocess.c": {
+        "bytes": 42634,
+        "sha256": "eb1074585ce62af638d15680bd13ba99aab25c9b6cbed7ac88ae21b60f060f3b",
+        "git_blob_sha1": "35ea2ac306a3e6614cad3dc59dda99d36dfa41c5"
+      }
+    },
+    "established_source_contracts": [
+      {
+        "file": "gmain.c",
+        "lines": [
+          530,
+          556
+        ],
+        "claim": "Child fork recovery replaces each main context kq with kqueue() after temporarily setting it to -1."
+      },
+      {
+        "file": "gmain.c",
+        "lines": [
+          596,
+          704
+        ],
+        "claim": "Final context unref removes the context from the list and closes its kq before freeing the context."
+      },
+      {
+        "file": "gmain.c",
+        "lines": [
+          805,
+          805
+        ],
+        "claim": "New context construction stores the kqueue return value in context.kq."
+      },
+      {
+        "file": "gmain.c",
+        "lines": [
+          5152,
+          5160
+        ],
+        "claim": "Default polling calls kevent on context.kq, preserves errno, then clears each poll revents before translating returned events."
+      },
+      {
+        "file": "fd-guard.vala",
+        "lines": [
+          29,
+          75
+        ],
+        "claim": "Guard attaches libc close; calls from agent range proceed, while external calls for Gum-cloaked descriptors replace the argument with -1 and report success."
+      },
+      {
+        "file": "fork-monitor.vala",
+        "lines": [
+          92,
+          101
+        ],
+        "claim": "Monitor attaches fork and replaces vfork with fork."
+      },
+      {
+        "file": "fork-monitor.vala",
+        "lines": [
+          131,
+          145
+        ],
+        "claim": "Fork return invokes parent or child recovery before returning to the caller."
+      },
+      {
+        "file": "cloak.vala",
+        "lines": [
+          198,
+          236
+        ],
+        "claim": "FDListCloaker directory filtering in this file is Linux-only; this does not establish Darwin descriptor protection."
+      },
+      {
+        "file": "posixsubprocess.c",
+        "lines": [
+          385,
+          466
+        ],
+        "claim": "Non-Linux close_fds fallback enumerates FD_DIR and calls close on eligible descriptors, or falls back to closerange."
+      },
+      {
+        "file": "posixsubprocess.c",
+        "lines": [
+          723,
+          737
+        ],
+        "claim": "After child setup, close_fds closes eligible descriptors from 3 before invoking exec."
+      },
+      {
+        "file": "posixsubprocess.c",
+        "lines": [
+          833,
+          859
+        ],
+        "claim": "Child setup runs after fork returns; Frida fork recovery precedes it when the pinned fork monitor executes."
+      }
+    ],
+    "unresolved": [
+      "Source sequence is not proof of the exact native closing operation.",
+      "The retained normal observer starts after selected context creation; kq35 is an integer, not a captured descriptor lifetime.",
+      "No retained native evidence establishes whether kq35 was Gum-cloaked, whether its close went through the guarded export, or whether close/dup/reuse/fork invalidation produced the observed EBADF.",
+      "Declared GLib revision is not an independent wheel-build attestation; machinecode mapping is required for new internal breakpoint sites.",
+      "Exact CPython source revision is now resolved from the retained controller identity; its close_fds native branch and actual imported close target remain unobserved."
+    ],
+    "next_required_evidence": "Capture the selected kqueue creation/store, relevant fork transition and actual close/dup/reuse operations with native return values and caller identity before the selected context first polls. Correlate descriptor epochs and context identity; merely matching integer35 is insufficient. Validate binary sites before any changed remote diagnostic.",
+    "cleanup": "Root owns this scratch directory until its source-mapping evidence is integrated or superseded; no live process or remote resource created."
+  }
+}
