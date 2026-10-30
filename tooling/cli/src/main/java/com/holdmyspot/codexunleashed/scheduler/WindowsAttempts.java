@@ -25,7 +25,9 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
     /** Build correlation seed shared across distinct attempt ordinals. */
     private final UUID build;
     /** Copied action configuration, indexed by stable name. */
-    private final Map<String, Command> commands;
+    private final Map<String, Command> commands = new LinkedHashMap<>();
+    /** Original positions remain reserved after attempt cleanup. */
+    private final HashSet<Long> positions = new HashSet<>();
     /** Positive bounded native control interval. */
     private final Duration timeout;
     /** Retained acquisition plan, including any checked preparation-failure capsule. */
@@ -77,14 +79,28 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
     WindowsAttempts(UUID build, Map<String, Command> commands, Duration timeout, ResourcesFactory resources)
     {
         this.build = Objects.requireNonNull(build, "build");
-        this.commands = Map.copyOf(commands);
         this.timeout = checkedTimeout(timeout);
         this.resources = Objects.requireNonNull(resources, "resources");
-        var positions = new HashSet<Long>();
-        for (var entry : this.commands.entrySet())
-            if (entry.getKey().equals(entry.getValue().action().name()) == false ||
-                positions.add(entry.getValue().action().position()) == false)
-                throw new IllegalArgumentException("Commands require matching names and distinct original positions");
+        Map.copyOf(commands).forEach(this::register);
+    }
+
+    /**
+     * Appends one immutable action before queue submission without acquiring native resources.
+     * A finished action still reserves its name and original submission position.
+     * @param name stable action name matching the command
+     * @param command copied command with its original queue position
+     * @throws IllegalArgumentException if the name or position is already reserved or mismatched
+     */
+    void register(String name, Command command)
+    {
+        requireOwner();
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(command, "command");
+        if (name.equals(command.action().name()) == false || commands.containsKey(name) ||
+            positions.contains(command.action().position()))
+            throw new IllegalArgumentException("Command requires an unused matching name and original position");
+        commands.put(name, command);
+        positions.add(command.action().position());
     }
 
     @Override
@@ -207,6 +223,10 @@ final class WindowsAttempts implements JobQueue.AttemptFactory<WindowsProcess.Re
                 if (argument.indexOf('\0') >= 0) throw new IllegalArgumentException("Command contains NUL");
             Objects.requireNonNull(directory, "directory");
             environment = Map.copyOf(environment);
+            for (var entry : environment.entrySet())
+                if (entry.getKey().isEmpty() || entry.getKey().indexOf('\0') >= 0 ||
+                    entry.getKey().indexOf('=', 1) >= 0 || entry.getValue().indexOf('\0') >= 0)
+                    throw new IllegalArgumentException("Environment contains an invalid native name or value");
             Objects.requireNonNull(input, "input");
             Objects.requireNonNull(output, "output");
             Objects.requireNonNull(error, "error");
