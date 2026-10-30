@@ -214,6 +214,10 @@ public final class Policy
 	 * Stopping trees prevent further controls. Current pressure or an active swap-growth incident prevents admission;
 	 * the swap incident also permits terminating the newest live attempt while protecting the oldest running attempt.
 	 * Otherwise the oldest blocked denial precedes retries in original submission order, which precede new work.
+	 * If every live attempt has an allocation wait and the oldest denial cannot resume, termination selects the newest
+	 * other blocked attempt, or that denial itself when it is the only live attempt. This conservative recovery may
+	 * discard work in other threads; an allocation wait does not establish that the whole process is suspended.
+	 * Reaping and cleanup must precede fresh measurements and bounded retry by the owner.
 	 * An ineligible or unaffordable older action is never bypassed. An unmet retry completion count prevents admission
 	 * while any live attempt remains. With no live attempts, the retry proceeds through normal memory checks; its
 	 * owner must enforce the per-action completion-free recovery bound. Resumption does not consume another process slot.
@@ -247,7 +251,10 @@ public final class Policy
 			default -> false;
 		}).toList();
 		if (observation.memoryPressure() || observation.swapRecovery())
-			return choosePressureControl(running, live, observation);
+		{
+			Decision pressureControl = choosePressureControl(running, live, observation);
+			return chooseBlockedRecovery(running, blocked, pressureControl);
+		}
 
 		Job candidate = blocked.stream().min(Comparator.comparingLong(Job::blockedAt)).orElse(null);
 		Control control = Control.RESUME;
@@ -270,7 +277,30 @@ public final class Policy
 			if (live.size() >= budget.jobs())
 				return waitFor("Build-tool concurrency limit is occupied");
 		}
-		return chooseAdmission(budget, running, live, candidate, control, observation);
+		Decision admission = chooseAdmission(budget, running, live, candidate, control, observation);
+		return chooseBlockedRecovery(running, blocked, admission);
+	}
+
+	/**
+	 * Selects targeted reclamation when every live attempt has an allocation wait and normal admission must wait.
+	 * The oldest denial is retained while any blocked peer remains; among those peers the newest attempt is selected.
+	 * A sole blocked attempt is selected for termination so its owner can perform bounded process retry after reaping.
+	 *
+	 * @param running attempts without a published allocation wait
+	 * @param blocked attempts with published allocation waits
+	 * @param decision the normal admission or pressure-control request
+	 * @return the unchanged request unless all live attempts are blocked and it waits; then a termination request
+	 */
+	private static Decision chooseBlockedRecovery(List<Job> running, List<Job> blocked, Decision decision)
+	{
+		if (decision.control() != Control.WAIT || !running.isEmpty() || blocked.isEmpty())
+			return decision;
+
+		Job oldest = blocked.stream().min(Comparator.comparingLong(Job::blockedAt)).orElseThrow();
+		Job victim = blocked.stream().filter(job -> !job.equals(oldest)).
+			max(Comparator.comparingLong(Job::startedAt)).orElse(oldest);
+		return new Decision(Control.TERMINATE, victim.name(),
+			"Every live attempt has an allocation wait and the oldest denial cannot resume; reclaim one attempt");
 	}
 
 	/**
