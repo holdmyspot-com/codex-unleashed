@@ -17,6 +17,59 @@ Selected scope:
 
 The owner explicitly replaces the original stable baseline with upstream main at commit `dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4`. `.github/upstream-ref` records `main` and `.github/upstream-commit` supplies the immutable checkout identity. Keep that commit fixed through step 6 unless the owner directs another change; do not follow a moving branch implicitly. Keep upstream source/tests unmodified through steps 1–3.
 
+## Agent handoff — start here
+
+The owner requested transfer to another agent. Implementation is stopped for this handoff; resume only when the owner starts the successor. The checkpoint status and scope below supersede older pending-status paragraphs in this chronological plan. Do not restart completed investigations merely because their original agent is gone.
+
+### Accepted state
+
+| Checkpoint | State and evidence |
+| --- | --- |
+| 1 — upstream baseline | Complete, including the separate six-platform clean recheck. Preserve the approved runtime/audit deferrals; see `docs/evidence/checkpoint-1-acceptance.json` and `docs/evidence/checkpoint-1-clean-recheck.json`. |
+| 2 — caching | Complete. Private GHCR caches, incremental recovery and six-target acceptance are recorded in `docs/evidence/checkpoint-2-acceptance.json`. |
+| 3 — Java memory scheduler | In progress. Component proofs are accepted; actual Cargo/Bazel scheduling, complete native platform integration and pressure/recovery acceptance remain open. Explicit CLI scheduler selection still refuses to start unavailable adapters. |
+| 4–8 | Unstarted. Keep their original sequence, scope and concerns list below. |
+
+Recent accepted commits on `main.new`:
+
+- `f9644cfc47`: narrow Frida script-destruction cleanup race repair and Windows x86-64 observation/denial evidence. [Windows evidence](docs/evidence/windows-observation-recovery-native.json) retains original failures and the exact acceptance limits.
+- `2f5f66675e`: Linux peer authentication correction and maintained descriptor/multi-leaf recovery evidence. [Linux evidence](docs/evidence/linux-maintained-streams-recovery-native.json) covers diagnostic direct execution; real producer registration and injected execution remain separate gates. The provider retry-marker check remains failed.
+- `6141feb9cc`: Java Cargo request/session and append-only platform registration, with [23-case acceptance and independent review](docs/evidence/cargo-registration-session-java.json). This is modeled producer coverage; it does not activate real Cargo scheduling.
+
+The final integrated JDK 27 package compiles successfully. Its 253 class entries equal the union of the separately verified candidates; its SHA-256 is `76a24016057ebe1575c3d8483fc1591828e35a4ffa5be19c688b69e6e1c551b1`. No passing tests were repeated for this package-only integration check. Local outputs and the exact command/receipt are in `.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/cargo-integration-szHi5Z/`. This compilation is not a new native acceptance result.
+
+### Next work, preserving existing evidence
+
+1. Connect the real Cargo producer to `CargoCompilerRequest`/`CargoSession`. Establish authentic wrapper/parent birth identities, stream and exit authority before calling `registerAuthenticated`. Route the accepted Linux borrowed binding into attached attempt execution; Windows needs authenticated cross-process handle import, not reuse of numeric foreign handles. Preserve a wrapper's outer Cargo slot across retries and account for extra tokens borrowed by killed compiler descendants. Cover execution of build scripts, linker children and nested Cargo, not only rustc wrapper calls. Resolve invocation ownership after partial outer close and normal wrapper exit after final response before native activation.
+2. Resolve macOS normal transport. The accepted trace in `docs/evidence/macos-kqueue-close-native.json` proves that Python's close-all-FDs sweep closes an uncloaked Frida context kqueue and the next poll returns `EBADF`. Do not rerun that conclusive negative or assume it applies to ordinary Cargo. The latest offline review finds no corresponding close-all sweep in Rust/Cargo's ordinary launch path; actual Cargo impact remains unknown. Run the sealed tiny real Cargo contract (build script, Rust child and linker), first uninstrumented, then instrumented on one retained macOS ARM64 worker. A passing tiny Cargo fixture will not waive Python/other close-all descendant coverage. Checked older stable Frida sources and 17.25.0 do not establish a supported remedy; do not backport dependency changes. The [handoff evidence](docs/evidence/checkpoint-3-handoff.json) preserves the review, unexecuted native contract and raw archive identity.
+3. Resolve Bazel action interception. The newest held-generator diagnostic proves the same kernel PID/starttime changes from `jspawnhelper` to a live process wrapper while its Frida session detaches and its script is destroyed; three public pending-child samples are empty. Detach reason 3 can be the default or a canceled transition, so it does not prove OS exit, absent preparation or an upstream defect. The next check must distinguish actual helper thread/dispatch timing and missing preparation from a failed/canceled transition before choosing another hook. Require genuine action-parent result authority and successful interception of one action before broader coverage. The unchanged failure, source constraints and exact next observation are preserved in [the handoff evidence](docs/evidence/checkpoint-3-handoff.json).
+4. Complete actual denied-allocation recovery, original-order retries, all-blocked recovery and swap/physical-pressure behavior through the shared coordinator on every required platform/architecture. Existing direct-execution, named-module and linked-runtime proofs cover only the cases their receipts name. ARM64 Linux borrowed-stream acceptance, macOS ownership and real native top-level coordinator coverage remain open. Reuse prior accepted component checks when inputs remain equivalent.
+5. Enable Cargo/Bazel workflow integration only after those native gates pass. Demonstrate the under-five-minute cached-step aim and account for restore/save overhead. Tag checkpoint 3 only after all its acceptance conditions pass. Then run the owner-requested uncached scheduler-on/off release comparison on all six platforms; the prepared comparison is commit `e30c101f3218aa41f5faabd938cbf95f052917bb`, and it has not run. Preserve per-platform timings and identical source/toolchain/configuration.
+
+### Environment, ownership and retained artifacts
+
+All child agents are terminal. Their current runner owners report processes/cgroups or Jobs, remote directories, persistent SSH clients and credentials closed; there is no live retained worker to resume. The goal is paused for transfer. Do not launch new remote work as part of this handoff.
+
+For subsequent remote workflow tests, use CAT's `remote-runner-session` skill and a persistent authenticated Upterm/SSH session. Retain the original worker for incremental diagnosis. Supply a unique optional `session_id` to distinguish your dispatch from other agents' runs, and use the exact returned run/job identity. Never select the newest run as a substitute. Keep per-target concurrency at `cancel-in-progress: false`, `queue: max`, and use free runners only. The smoke harness requires both partial-build and incremental-retry markers; retain missing-marker failures independently from native results.
+
+Local toolchain: Zulu JDK `27.0.1+9` at `/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu`; Maven at `/home/gili/.sdkman/candidates/maven/current/bin/mvn`; Maven repository `/home/gili/codex-unleashed/home/.m2/repository`; Rust `1.95.0` under `/home/gili/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin`. Previously required explicit Java/Maven network proxy: `http://127.0.0.1:18080`; recheck its availability before a network operation. Offline Maven worked for the final package. Use your own CAT_TEMP for new scratch/output directories and avoid historical build directories whose packaged artifacts were restored by byte-preserving overlays.
+
+The maintained source changes are committed; isolated worktrees and `.cat` directories retain diagnostic evidence, not additional authorized implementations to copy blindly. The [handoff JSON](docs/evidence/checkpoint-3-handoff.json) contains the latest Bazel/macOS reports and archive hashes. Raw local evidence remains at:
+
+| Investigation | Retained local directory |
+| --- | --- |
+| Linux maintained streams/recovery | `.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/borrowed-maintained-native-0t3pjl_y/` |
+| Windows observation/cleanup | `.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-observation-native-8l3uft9i/` |
+| Cargo Java candidate and XML/class proofs | `.cat/sessions/01a18a76-79cc-7882-b628-5532c4c5e7f5/temp/cargo-registration-wXDnnN/` |
+| Bazel latest native lifecycle | `.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-lifecycle-native-26qi4e/` |
+| macOS latest offline Cargo review/fixture | `.cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/cargo-launch-review-5Y6SuM/` |
+| macOS supported-remedy review | `.cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/macos-kqueue-remedy-u78hk3fp/` |
+| Original macOS close trace | `.cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/macos-kqueue-close-h5ve4taw/` |
+
+These raw archives are machine-local, not restored by Git. Transfer them separately if the successor moves machines, and verify the recorded hashes before use. Do not delete them until the successor accepts the evidence. For older component evidence, begin with the committed `docs/evidence/` files and their named inputs. The invocation ledger `.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/frida-java-native-m_5wixxq/current-handoff-state.json` is supplementary; historical fields can be stale and do not override this handoff.
+
+Retain the owner's execution preferences: decide routine engineering questions yourself and notify them; ask only material unresolved product choices. Never use a user-input tool to communicate with another agent. Keep upstream source/tests pristine through checkpoint 3, warnings nonfatal through checkpoint 5, source/root-cause investigation before repairs, private caches/publication scope unchanged, and new Java assertions in Requirements. All original product/dependency deferrals and old-main leftovers remain below.
+
 ## Current execution
 
 **Current scheduler recovery contract:** retain injection to observe and hold a failed allocation while the Java scheduler decides recovery. Prefer safe same-process retry when memory becomes available and it avoids repeating useful work; the owner also permits terminating the attempt and retrying its build action in a new process when that is preferable. Preserve the action's original queue position and completed valid outputs. Build-tool hooks still govern ordinary admission, and native memory accounting supports estimates and failure diagnosis. [The alternatives and selection rationale](docs/build-scheduler-investigation.md#selected-approach-and-alternatives) explain the choice, recovery criteria and unproven coverage. Checkpoint 3 still requires actual compiler/child coverage and native Cargo/Bazel recovery across all six release targets.

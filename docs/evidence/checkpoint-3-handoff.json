@@ -1,0 +1,936 @@
+{
+  "scope": "Transfer of checkpoint 3 work; no new native tests run during wind-down. Checkpoints 1/2 complete, checkpoint 3 incomplete, checkpoints 4\u20138 unstarted.",
+  "sourceCommit": "6141feb9cc4cd3175f4bc9212d77c009f4d77e22",
+  "bazel": {
+    "report": {
+      "task_contract": "acknowledged",
+      "task": "One unchanged-hook held Bazel generator exec/session lifecycle native gate",
+      "workspace_mode": "isolated CAT_TEMP scratch and one owned free Linux x64 retained worker",
+      "maintained_edits": false,
+      "scope_preserved": [
+        "All required Cargo/Bazel compiler/linker/build-script/generator action coverage remains required",
+        "No custom Bazel implementation",
+        "No API/source patches, private prepare hooks, second tracer, replay or full build"
+      ],
+      "accepted_inputs": [
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/report.json",
+          "sha256": "733d32852a473a16aa651e0ca477b726758d1ce4c5286e46eeec128853828299",
+          "bytes": 21266
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/primary/frida-core.h",
+          "sha256": "4133b44f5745dfdd74ab3dbaa51a17dd98a938061ae1048d1d5831f0f6b56762",
+          "bytes": 3139380
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/primary/frida.vala",
+          "sha256": "ecba7afb953439e7e9501b55c7c9d3f8027947040138997e2b509455249fde40",
+          "bytes": 164985
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/primary/host-session.vala",
+          "sha256": "cf0228e1163ac694966865a3769db5858db4ada80b1aa54d7d6ecdca2171671f",
+          "bytes": 53228
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/primary/spawn-monitor.vala",
+          "sha256": "8ace46347be5dc6be86bc8927d4074ee62b54f235a04612fdd43bf814005db47",
+          "bytes": 13909
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-exec-lifecycle-bJ0UKC/primary/agent.vala",
+          "sha256": "691e505d12784feb62dfa1f763c45a71f858742fc2fa4e5b53dca106562cd021",
+          "bytes": 49626
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-action-ancestry-DwahOa/report.json",
+          "sha256": "4478d0a97320bbe643c93dd69f0099d6c4a513cddf9615d0e6f79d1793549c67",
+          "bytes": 24732
+        },
+        {
+          "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-action-ancestry-DwahOa/payload/action-boundary.js",
+          "sha256": "d038a2989f71e28d04df206116c56ae2b5bbee4891d6ccf8db2ba5db9dddbd2c",
+          "bytes": 4043
+        }
+      ],
+      "current_source_head": "984879cb67580a272ce3aafae6669e7020112363",
+      "run_session": {
+        "provider": "GitHub free ubuntu24.04 x64",
+        "run": 41079436217,
+        "job": 124144430116,
+        "artifact": 12989669936,
+        "persistent_ssh_foreground_tool_session": 31054,
+        "owned_remote_root": "/home/runner/work/_temp/cat-bazel-ancestry-jdl6Df",
+        "connected_before_changed_commands": true,
+        "identity_setup_failure": "dispatch-identity-correction.json",
+        "wrong_run_changed_commands": false
+      },
+      "pinned_executed_inputs": {
+        "bazel": "7668a95db1250f12c40407251e4e203b4ec8bf39bc495d2f485b2d8c99048694",
+        "libfrida-core.so": "e7d4e72f39921b1fa04def32742c8945ed00b6ccf117f01969f3763ac575727c",
+        "devkit.tar.xz": "9a11abf474899a33af6dd9af8a064448b23947a29a3af747eb3c7851591ffec2",
+        "jdk.tar.gz": "c734ba335498892ecabdf5722526d945e25f41a09cd6d619b72bc20bec60f852",
+        "jdk/bin/java": "b75d10605b5ad02dc6fd5d9e783269afc450a4e6071781ae8c5923445e15276e",
+        "jdk/bin/javac": "1366727692aa6e870617b7345af07747bdbfd8f2593bf53a13b2f67e5f3a3445",
+        "signal-metadata": "7312ea0fc3f8bd070015d172ae02ffad1ddcf47c19153fc04b3ba1f3dd53b696",
+        "devkit/frida-core.h": "4133b44f5745dfdd74ab3dbaa51a17dd98a938061ae1048d1d5831f0f6b56762",
+        "modules/tooling-fixture.jar": "ab96de8c2ceabf85412f9b3a1210f95b465c2564a48058d7380003a9b7436e8e",
+        "modules/jackson-databind-3.2.3.jar": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2",
+        "modules/jackson-annotations-2.22.jar": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0",
+        "modules/jackson-core-3.2.3.jar": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817"
+      },
+      "callback_metadata": {
+        "signal": "detached",
+        "id": 2,
+        "n_params": 2,
+        "return_type": "void",
+        "param0": "FridaSessionDetachReason",
+        "param1": "FridaCrash",
+        "reason_replaced": 2,
+        "reason_terminated": 3,
+        "query_size": 56,
+        "query_param_offset": 48
+      },
+      "callback_contract": "callback-contract.json",
+      "unchanged_hook_sha256": "d038a2989f71e28d04df206116c56ae2b5bbee4891d6ccf8db2ba5db9dddbd2c",
+      "compiled_executed_correspondence": {
+        "sha256": "380b0dfd608f2800bad8fec99ab184252ad2ef30f838bffa438c112fdb44c604",
+        "manifest_entries": 80,
+        "class_correspondence": [
+          {
+            "path": "module-info.class",
+            "sha256": "8f67c39d04acb955751e84c9bfbac7a87aeb327082efc0395be107f7e4eae1e3"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager.class",
+            "sha256": "250aae734db1a12a42af8f2a7812d669422fff4acd8d44213a3645d92881714c"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$NativeFailure.class",
+            "sha256": "88c366e00c98b6081b5aac2af966fe9a0087ac93f26b79e027a188074ed425b5"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/BazelActionProbe.class",
+            "sha256": "88c38f7294e2540c7e4c3d01cdb5aff61445e2c99e5b90ed12d797b66c624d0c"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager$Session.class",
+            "sha256": "44ef11827363c1f7512e0080ac8cf56d4289de6a3be44e83591fd265a1dd8d1d"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$ChildReceiver.class",
+            "sha256": "2ecdd1f02e6ffffabc9038ea21b14a310a74b6457be18502a920c9e342da6c7d"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Receiver.class",
+            "sha256": "b8db10bf65d917e7e5864580cac22a82b2ddb102daabaf09ccf1772427f01a93"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Child.class",
+            "sha256": "5ffb61f1a2130303e7b8fb76708572a2ab0d738270ce17daa30be39cad9f49a8"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime$Manager$Session$Script.class",
+            "sha256": "10d2c6bd34f1e079649e3ccf7c22733b7d6f41cb6a602ea22b033c4d32959b1b"
+          },
+          {
+            "path": "com/holdmyspot/codexunleashed/scheduler/FridaRuntime.class",
+            "sha256": "048ed876ee42ca9d817c9e1f83f7f69068aba8339e40a1fa869fb0ce7311186b"
+          }
+        ],
+        "no_unexpected_archive_members": true
+      },
+      "exact_commands": [
+        {
+          "invocation": "python3 rpc.py preflight.sh preflight",
+          "script": "preflight.sh",
+          "script_sha256": "6b21a843111b0ebbdd193c68226fafe302ceb44a8ec8dd0b1b8b60f3858a5492",
+          "receipt": "preflight.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py transfer.sh transfer",
+          "script": "transfer.sh",
+          "script_sha256": "0c5dd4f9e876c456973100e6465eba3e78accbb2e7a41e53b96d64dac28f9060",
+          "receipt": "transfer.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py acquire.sh acquire",
+          "script": "acquire.sh",
+          "script_sha256": "fbeb49c4894ddf01fb0e2c081deb6c9e6a7b4d48546c9aaf1e527ffe97b5edf2",
+          "receipt": "acquire.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py setup.sh setup",
+          "script": "setup.sh",
+          "script_sha256": "504adb9683859922ac56e9bc49ac58633c6463bf53248f053e96894eaee5671e",
+          "receipt": "setup.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py native-first.sh native-first",
+          "script": "native-first.sh",
+          "script_sha256": "f6f2a4afefe69ce0b531d1240d8d34a689ef3d7ad9f82df99de90633df8c7616",
+          "receipt": "native-first.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py inspect-lifecycle.sh inspect-lifecycle",
+          "script": "inspect-lifecycle.sh",
+          "script_sha256": "abe8c83c3039b46e0cffecaf61137c5560bdc4c0ff32774893c4618ed9bc71b6",
+          "receipt": "inspect-lifecycle.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py retain-elf.sh retain-elf",
+          "script": "retain-elf.sh",
+          "script_sha256": "4fbd09ea0051a2ff7f11c48fbd3e0dea0f8bfd4e2fc0b461c684c60bf55ba222",
+          "receipt": "retain-elf.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py seal-remote.sh seal-remote",
+          "script": "seal-remote.sh",
+          "script_sha256": "24221e6a0a28803598831f9b1d850a7bd07ec4a8a7a1edcdb9acd42116e13d7e",
+          "receipt": "seal-remote.json",
+          "exit": 0
+        },
+        {
+          "invocation": "python3 rpc.py cleanup-native.sh cleanup-native",
+          "script": "cleanup-native.sh",
+          "script_sha256": "8c601ca5af527bb261db014912925df3bad37fd947c74ec5132fd6229bcf7b90",
+          "receipt": "cleanup-native.json",
+          "exit": 0
+        }
+      ],
+      "gates": {
+        "persistent_authenticated_upterm": "passed",
+        "pinned_dependency_and_producer_hashes": "passed",
+        "signal_header_and_runtime_metadata_before_callback": "passed",
+        "same_kernel_helper_to_wrapper_identity": "passed",
+        "detached_signal_and_isDetached_scriptDestroyed_while_generator_alive": "passed",
+        "public_pending_children_while_generator_alive": "passed three empty samples",
+        "generator_release_and_root_natural_completion": "passed root0/probe0; root result only",
+        "actual_action_exec_interception": "failed preserved; no helper-to-wrapper/action entry",
+        "action_parent_result_or_targeted_replay": "unproven; no inference from wrapper/root status",
+        "fresh_candidate_verification": "not applicable: no corrected integration boundary or hook variant was implemented",
+        "cleanup": "passed"
+      },
+      "observations": {
+        "actual_chain": [
+          {
+            "pid": 3483,
+            "ppid": 3456,
+            "starttime_ticks": "21282",
+            "exe": "/usr/bin/bash",
+            "exe_sha256": "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1"
+          },
+          {
+            "pid": 3456,
+            "ppid": 3117,
+            "starttime_ticks": "21244",
+            "exe": "/home/runner/work/_temp/cat-bazel-ancestry-jdl6Df/native-first/bazel-root/install/3e6f3b7d6fdac67aed908160850e082b/process-wrapper",
+            "exe_sha256": "d617093642d9b3647c5623e2f9cef6e6836eaf409b598be908b960297a346482"
+          },
+          {
+            "pid": 3117,
+            "ppid": 3116,
+            "starttime_ticks": "20444",
+            "exe": "/home/runner/work/_temp/cat-bazel-ancestry-jdl6Df/native-first/bazel-root/install/3e6f3b7d6fdac67aed908160850e082b/embedded_tools/jdk/bin/java",
+            "exe_sha256": "89686531da3a4b84b66ced22d0642c930bc113a8ba70453bdffa452faa14eedf"
+          }
+        ],
+        "helper_before_resume": {
+          "pid": 3456,
+          "exe": "/home/runner/work/_temp/cat-bazel-ancestry-jdl6Df/native-first/bazel-root/install/3e6f3b7d6fdac67aed908160850e082b/embedded_tools/jdk/lib/jspawnhelper",
+          "exe_sha256": "5c0f00c09bff61e6664fc09880262dd8f1a4164e0b57a86c7c865cfa6fb62c0f",
+          "starttime_ticks": "21244"
+        },
+        "same_pid_starttime_transition": true,
+        "helper_session_detach": {
+          "pid": 3456,
+          "reason": 3,
+          "reason_name": "PROCESS_TERMINATED",
+          "crash_present": false,
+          "while_same_identity_wrapper_alive": true
+        },
+        "held_native_samples": [
+          {
+            "pendingChildren": [],
+            "sessions": [
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  false
+                ],
+                "pid": 3117,
+                "sessionDetached": false
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3367,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3456,
+                "sessionDetached": true
+              }
+            ],
+            "detachEvents": [
+              {
+                "crashPresent": false,
+                "nanoTime": 205462420904,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 207373442421,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 211623667381,
+                "pid": 3367,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 212826423099,
+                "pid": 3456,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              }
+            ],
+            "nanoTime": 212898602933
+          },
+          {
+            "pendingChildren": [],
+            "sessions": [
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  false
+                ],
+                "pid": 3117,
+                "sessionDetached": false
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3367,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3456,
+                "sessionDetached": true
+              }
+            ],
+            "detachEvents": [
+              {
+                "crashPresent": false,
+                "nanoTime": 205462420904,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 207373442421,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 211623667381,
+                "pid": 3367,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 212826423099,
+                "pid": 3456,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              }
+            ],
+            "nanoTime": 212999427509
+          },
+          {
+            "pendingChildren": [],
+            "sessions": [
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3117,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  false
+                ],
+                "pid": 3117,
+                "sessionDetached": false
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3367,
+                "sessionDetached": true
+              },
+              {
+                "scriptDestroyed": [
+                  true
+                ],
+                "pid": 3456,
+                "sessionDetached": true
+              }
+            ],
+            "detachEvents": [
+              {
+                "crashPresent": false,
+                "nanoTime": 205462420904,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 207373442421,
+                "pid": 3117,
+                "callbackThread": "Thread-0",
+                "reason": 2
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 211623667381,
+                "pid": 3367,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              },
+              {
+                "crashPresent": false,
+                "nanoTime": 212826423099,
+                "pid": 3456,
+                "callbackThread": "Thread-0",
+                "reason": 3
+              }
+            ],
+            "nanoTime": 213100238890
+          }
+        ],
+        "helper_installed_threads": [],
+        "helper_hooks_have_flush_receipt": true,
+        "helper_script_and_session_native_state": {
+          "scriptDestroyed": true,
+          "sessionDetached": true
+        },
+        "root_exec_lifecycle_control": {
+          "same_root_pid": 3117,
+          "process_replaced_reason2_count": 2,
+          "replacement_children_delivered": true,
+          "current_jvm_session_still_attached": true
+        },
+        "observed_action_pid": 3483,
+        "action_has_direct_wait_receipt": false,
+        "all_native_exec_entry_pids": [
+          3117
+        ]
+      },
+      "interpretation": {
+        "established": "Actual helper3456 changed executable into live process-wrapper3456 without kernel PID identity change. Its native session/script closed with reason3 while the replacement image and generator were alive. No replacement child was pending in three public enumerations during this interval. Root exec recognition/new attachment worked as control.",
+        "not_established": [
+          "Reason3 is not proof of kernel process exit",
+          "Reason3 does not prove prepare_to_exec was never reached: it is both default and cancel_exec reset value",
+          "Empty held samples exclude an already-pending child at those samples, not every possible transient delivery history",
+          "No missing-enable claim or upstream defect established",
+          "Missing preparation versus failed/canceled transition remains unresolved"
+        ],
+        "source_constraints": [
+          {
+            "path": "bazel-exec-lifecycle-bJ0UKC/primary/host-session.vala",
+            "lines": "1159-1191",
+            "fact": "prepare_to_exec assigns PROCESS_REPLACED then prepares/awaits transition; pending child is added after successful await and entry closure"
+          },
+          {
+            "path": "bazel-exec-lifecycle-bJ0UKC/primary/host-session.vala",
+            "lines": "1193-1203 and1302-1305",
+            "fact": "cancel_exec resets PROCESS_TERMINATED, which is also default"
+          },
+          {
+            "path": "bazel-exec-lifecycle-bJ0UKC/primary/agent.vala",
+            "lines": "729-740",
+            "fact": "agent prepare_to_exec catches GLib.Error; public lifecycle does not expose every intermediate failure"
+          }
+        ]
+      },
+      "next_unmet_gate": {
+        "objective": "Determine why actual helper execution bypasses the installed script/recognized exec lifecycle before selecting another interception path",
+        "smallest_next_operation": "Read-only correlate exact retained helper ELF/installed hook bytes, inherited-fork execution and pinned Frida thread-cloaking/exec monitor lifetime. Existing helper installed threads=[] means no actual helper-thread PC was captured; do not assume hooks were installed before the helper passed the dispatch point. If source review cannot discriminate, specify a single supported native observation of actual kernel helper main-TID execution/stack at acknowledged script readiness and exec monitor transition, without private prepare calls or second tracer.",
+        "acceptance": "Explain observed same-process helper-to-wrapper image transition with actual thread/dispatch evidence, then demonstrate replacement event/action interception and genuine action-parent status on one action before broader action coverage/replay.",
+        "limits": "This report does not select a new hook or claim a proven cause for missing preparation/transition."
+      },
+      "cleanup": {
+        "native": {
+          "owned_root": "/home/runner/work/_temp/cat-bazel-ancestry-jdl6Df",
+          "root_removed": true,
+          "recorded_pids_absent": {
+            "3117": true,
+            "3367": true,
+            "3456": true,
+            "3483": true,
+            "3488": true,
+            "3495": true,
+            "3118": true
+          },
+          "group": "/sys/fs/cgroup/cat-bazel-action-3116",
+          "group_absent": true,
+          "matching_owned_processes": [],
+          "scan_excluded_own_cleanup_ancestor_pids": [
+            1,
+            2712,
+            2722,
+            3658,
+            3660,
+            3661,
+            3662
+          ]
+        },
+        "native_summary": {
+          "groups_removed": true,
+          "observed_pids_absent": {
+            "3117": true,
+            "3367": true,
+            "3456": true,
+            "3483": true,
+            "3488": true,
+            "3495": true
+          },
+          "probe_pids_absent": {
+            "3118": true
+          }
+        },
+        "ssh_child_exit": {
+          "exit": 0
+        },
+        "ssh_exit_request": {
+          "ssh_exit": 0
+        },
+        "key_cleanup": {
+          "keys_removed": true,
+          "ssh_child_exit": 0,
+          "foreground_owner_tool_terminal_exit": 0
+        },
+        "provider": {
+          "run": 41079436217,
+          "job": 124144430116,
+          "status": "completed",
+          "conclusion": "failure",
+          "failed_steps": [
+            "Record the deliberate build failure"
+          ],
+          "post_steps": [
+            {
+              "name": "Post Debug the original failed workspace",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Create owned partial build state",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "conclusion": "success"
+            }
+          ]
+        },
+        "all_resources_terminal": true
+      },
+      "raw_evidence": {
+        "native_archive": "native-evidence.tar.gz",
+        "native_archive_sha256": "380b0dfd608f2800bad8fec99ab184252ad2ef30f838bffa438c112fdb44c604",
+        "native_manifest": "native/native-manifest.json",
+        "lifecycle": "native/native-first/lifecycle-held.json",
+        "pre_resume_helpers": "native/native-first/events.json",
+        "live_chain": "native/native-first/live-ancestry.json",
+        "script_raw": "native/native-first/script-raw.jsonl",
+        "runtime_metadata": "native/signal-metadata.json",
+        "runtime_commands": "native/native-first/probe-command.json",
+        "exact_retained_elfs": "native/embedded-identities/identities.json"
+      },
+      "executed_source_correspondence": [
+        {
+          "path": "payload/actions.bzl",
+          "sha256": "9114d43a60ad7253a832774d45ac6153442509a64cf9699f2d6b70e2ae171320",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/signal-metadata.c",
+          "sha256": "c8cdd7a9a62120a4b262ba60dd8af60c10403ca888dc344e5005a77bf7e09c5c",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/module-info.java",
+          "sha256": "0d8cbe27508e2c40aa1e21876148c218f5f9c4bc619e777859567a946b5d6c48",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/gate.c",
+          "sha256": "3d25dd4fc4b58e42497e90d494e5fbcf8f8f90fdb1f5197a4ab5ac1e483deabb",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/action.sh",
+          "sha256": "8383c2065f62b8b9a030364e6656b5197edd65b984c4eb771de9a1d1833fd80e",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/BUILD.bazel",
+          "sha256": "7879898af2ee305adecf5f7beaf6c6d9073d1411c39d64e9ead0f60057ca0ab2",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/driver.py",
+          "sha256": "709d7a47705aac11451cf86d0524e8d5f070832241e69bc42bde92bd8a9516bf",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/action-boundary.js",
+          "sha256": "d038a2989f71e28d04df206116c56ae2b5bbee4891d6ccf8db2ba5db9dddbd2c",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/FridaRuntime.java",
+          "sha256": "0fab2251f78d30ea2f6fa9a66d3cd16079480c2628523d25f95a6eca6bf67b94",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/adapter.c",
+          "sha256": "b3f77fa165227d516398c77615669d4919b19d7cb7d6be8dc8d0daf14b70d704",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/BazelActionProbe.java",
+          "sha256": "4e04683857db3f6d0d8c01357f8b0c7694b9ad5c82da087bd360c9441587a9bf",
+          "native_source_equal": true
+        },
+        {
+          "path": "payload/abi.c",
+          "sha256": "f784760cd36268933b9eef8741ab783953bc4e68ca019d87b69c182ac2f661b4",
+          "native_source_equal": true
+        }
+      ]
+    },
+    "reportIdentity": {
+      "path": ".cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-lifecycle-native-26qi4e/report.json",
+      "sha256": "9fadb0b07330beae7d031d9b0710f5699ae75fced1207ce59eb2ee8eaa4f8908",
+      "bytes": 24510
+    },
+    "archive": {
+      "path": ".cat/sessions/01a18a26-73ab-7913-a052-824f31ad0597/temp/bazel-lifecycle-native-26qi4e/handoff.tar.gz",
+      "sha256": "611d814c7c8b0f12dac37cc1becec82d8446e5373df749cfc9f4ade5a256bf0c",
+      "bytes": 2155421
+    },
+    "parentVerification": "Outer archive: all 80 data members and embedded manifest verified safe with exact sizes and hashes. Native interpretation remains the scoped agent result; no successful action interception or root cause accepted."
+  },
+  "macos": {
+    "report": {
+      "task_contract": "acknowledged",
+      "scope": "Offline read-only launch-path source review and minimal native test design; only this fresh CAT_TEMP root written. No remote dispatch, native execution, dependency change, maintained edit, issue, commit or push.",
+      "terminal_conclusion": {
+        "cargo_affected_by_confirmed_python_defect": "Not established; ordinary Cargo source lacks the known triggering close-all sweep. Actual Cargo native gate is the next discriminating observation.",
+        "ordinary_cargo_same_as_python_close_fds": false,
+        "reason": "Cargo FD jobserver forces fork through pre_exec, but fork itself is not the confirmed trigger. Its callback changes flags on two owned FDs only; Rust do_exec performs stdio/credential/cwd/signal setup and callbacks then execvp, without enumerating/closing arbitrary other descriptors.",
+        "python_child_coverage": "Still unmet; build scripts are arbitrary programs and can themselves launch Python or explicit close-all descendants. A tiny Cargo pass cannot dispose of that requirement."
+      },
+      "exact_identities": {
+        "rust": "1.95.0",
+        "cargo_commit": "f2d3ce0bd7f24a49f8f72d9000448f8838c4e850",
+        "cargo_identity_proof": "Rust1.95.0 src/tools/cargo submodule and Cargo rust-1.95.0 branch commit agree in retained API trees.",
+        "jobserver": "0.1.34",
+        "jobserver_crate_sha256": "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33",
+        "jobserver_crate_checksum_verified_against_cargo_lock": true,
+        "codex_upstream": "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4"
+      },
+      "source_observations": [
+        {
+          "finding": "Rust Command::spawn first calls posix_spawn; fallback forks and child calls do_exec. posix_spawn rejects nonempty pre_exec closure list.",
+          "evidence": "rust-process-unix.raw",
+          "lines": [
+            [
+              55,
+              104
+            ],
+            [
+              449,
+              468
+            ]
+          ]
+        },
+        {
+          "finding": "Rust ordinary do_exec does stdio dup2, optional credentials/chroot/cwd/process-group/session changes, signals, configured callbacks and execvp. This complete function contains no closefrom/close_range/FD-directory loop. Narrow drops/owned FD cleanup and kernel close-on-successful-exec are not a Python pre-exec close-all sweep. User pre_exec callbacks may perform additional work; no universal Rust-child guarantee.",
+          "evidence": "rust-process-unix.raw",
+          "lines": [
+            [
+              278,
+              410
+            ]
+          ]
+        },
+        {
+          "finding": "Cargo ProcessBuilder build_command_without_args calls jobserver Client.configure when jobserver attached. Both rustc process preparation and custom build execution attach the build runner jobserver.",
+          "evidence": [
+            "cargo-process-builder.raw",
+            "cargo-compiler-mod.raw",
+            "cargo-custom-build.raw"
+          ],
+          "lines": [
+            [
+              493,
+              523
+            ],
+            [
+              795,
+              808
+            ],
+            [
+              350,
+              381
+            ]
+          ]
+        },
+        {
+          "finding": "No inherited jobserver => Cargo creates Client::new and acquires its own token. On nonLinux Unix new client uses pipe and CLOEXEC FDs. Its configure installs pre_exec clearing CLOEXEC for exactly read/write. FIFO-auth configure returns without pre_exec. Linux-only inherited FD-to-FIFO optimization must not be generalized to macOS. Actual inherited auth changes path, so native gate must record it.",
+          "evidence": [
+            "cargo-build-runner.raw",
+            "jobserver-src-unix.rs"
+          ],
+          "lines": [
+            [
+              98,
+              113
+            ],
+            [
+              47,
+              90
+            ],
+            [
+              165,
+              192
+            ],
+            [
+              348,
+              368
+            ]
+          ]
+        },
+        {
+          "finding": "Build scripts are separately compiled/executed Cargo programs with jobserver environment; they can spawn arbitrary children and configure their own descriptor policies. Jobserver inheritance does not normalize all descendant spawning.",
+          "evidence": [
+            "cargo-custom-build.raw",
+            "cargo-build-script-doc.raw"
+          ]
+        }
+      ],
+      "codex_build_script_inventory": {
+        "tree_api_complete": true,
+        "count": 7,
+        "identities": "source-identities.json",
+        "classification": {
+          "build-info": "Embeds target env only; no direct process spawn.",
+          "cli": "Emits macOS linker argument only.",
+          "linux-sandbox": "Emits rerun-if-env-changed only.",
+          "skills": "Filesystem traversal only.",
+          "windows-sandbox-rs": "Returns off Windows; Windows-only link metadata.",
+          "bwrap": "Returns off Linux; Linux cc::Build path.",
+          "code-mode-protocol": "Uses tonic_prost_build Config plus protoc_bin_vendored; generation library expected to launch protoc. This slice does not inspect exact prost implementation/transitive dependencies, so marks process mechanism inferred and next real-target coverage pending."
+        },
+        "limits": "Inventory covers repository build.rs files, not every registry dependency/build helper or compiler/linker internals. No claim that all macOS Codex build descendants avoid Python or explicit FD sweeps."
+      },
+      "minimal_native_contract": {
+        "path": "minimal-cargo-native-contract.json",
+        "sha256": "1586f0f1f97b74a570a1579fe003697eab9f9b5e40a892c2a3d8c0f5e6aabcd5",
+        "status": "unexecuted",
+        "fixture": "proposed-fixture",
+        "fixture_has_external_dependencies": false,
+        "first_gate": "One real tiny Cargo build with unchanged ordinary build.rs self-child and linker, uninstrumented baseline then instrumented fresh target dir on same retained macOS ARM64 worker. Require actual FD jobserver path, root/child instrumentation and matched process-replacement identities before accepting Cargo exit0.",
+        "do_not_repeat": "No conclusive Python negative or broad previous build suite rerun. No old native probes repeated."
+      },
+      "older_stable_frida": {
+        "status": "No source-verified pre-kqueue released candidate established in this bounded review; do not dispatch an old-version native probe yet.",
+        "checked_versions": [
+          "17.23.3",
+          "17.22.0",
+          "17.20.0",
+          "17.0.0",
+          "16.7.19",
+          "16.6.6",
+          "16.5.9"
+        ],
+        "source_findings": "All checked release releng dependency sources include GMainContext kqueue construction/recovery. The older8f43c78 GLib source was independently decoded through contents API and raw Git blob SHA1 checked, and its meson checks for kqueue. A calendar release date before a later rebase/introduction commit does not prove backend absence.",
+        "validated_old_blob": {
+          "glib": "8f43c78bc4f6a510c610c7738fdf23ecf99c6be8",
+          "gmain_git_blob_sha1": "0626c950dddd75a497ae7b4a919c032b1b5aa699"
+        },
+        "viability": "A genuinely earlier published binary without this backend could be an isolated diagnostic comparator, never a producer fix or proof of current-version compatibility. Need exact release/wheel/SDK provenance, absence established from actual binary or exact attested build, required public API compatibility and expected distinguishing behavior before any native run. Current checked candidates lack that differentiating premise. No dependency pin changed.",
+        "remaining_unknowns": [
+          "Whether a still earlier stable artifact meeting all current API/ABI requirements predates actual backend activation",
+          "Actual binary feature activation for checked old wheels; declared source is not build attestation",
+          "Security/API/runtime behavior of any older release"
+        ]
+      },
+      "failures_and_corrections": [
+        {
+          "attempt": "jobserver raw source under guessed0.1.34 tag",
+          "result": "404; resolved through official crates.io0.1.34 archive and Cargo.lock checksum; files retained."
+        },
+        {
+          "attempt": "Cargo git ref tags/rust-1.95.0",
+          "result": "404; resolved rust-1.95.0 commit and verified exact Rust submodule identity."
+        },
+        {
+          "attempt": "Frida16.0.0 tree lookup",
+          "result": "404; not evidence of all older artifacts absent."
+        },
+        {
+          "attempt": "workspace codex-rs source lookup",
+          "result": "Not present; used authoritative .github/upstream-commit and official pinned Codex tree rather than assuming local source."
+        }
+      ],
+      "clean_reader_replay": {
+        "inputs": "Parent archives report, source-identities/retained primary sources, fixture and contract; before future remote use record client/script bytes and retrieve the exact pinned published toolchain/Frida artifact. Scratch alone is not durable dependency.",
+        "unresolved_before_native": "Exact Java client and Frida script identity must be selected by parent from current accepted candidate; no guessed path is built into native command.",
+        "cleanup_owner": "Parent owns durable integration after acceptance; this root preserved read-only for archive verification. No remote processes or credentials created."
+      }
+    },
+    "reportIdentity": {
+      "path": ".cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/cargo-launch-review-5Y6SuM/report.json",
+      "sha256": "8cd945130592ac25cd3f1bbacbb1c7a5a12a0a3ebf8daf2fc9cd7bc31909984e",
+      "bytes": 8942
+    },
+    "archive": {
+      "path": ".cat/sessions/01a189fd-8dab-75e0-808f-f067ad4d70cc/temp/cargo-launch-review-5Y6SuM/evidence.tar.gz",
+      "sha256": "89360b96d8b9126f1116a0da03a450e5275b9aebb3a0131039dfea882a2fa166",
+      "bytes": 1297027
+    },
+    "parentVerification": "All 63 data members and embedded manifest verified safe with exact sizes and hashes. Offline source analysis only; proposed Cargo native test remains unexecuted.",
+    "nextNativeContract": {
+      "task_contract": "acknowledged",
+      "status": "proposal only; no commands in this contract executed",
+      "claim": "A real Cargo1.95 build with FD jobserver, build.rs, ordinary Rust descendant, rustc and linker can progress under unchanged Frida child gating/instrumentation without the Python close-all-FDs sweep.",
+      "does_not_claim": [
+        "All build scripts/dependencies are free of Python or explicit close-all behavior",
+        "Python-child coverage passed",
+        "macOS allocation admission/block/retry coverage",
+        "all initial interpreter/agent queue lifetimes known",
+        "older Frida compatible"
+      ],
+      "preconditions": [
+        "Parent reviews this contract; no remote dispatch in current slice",
+        "One free retained native macOS ARM64 worker; CAT remote session/Upterm persistent authenticated before changed commands",
+        "Pin Rust/Cargo1.95.0 and accepted stable Frida17.24.3 exact retained wheel and current client/instrumentation sources; do not change dependencies",
+        "Select and record exact production-candidate Java/FFM client and Frida script bytes before running; no Python fixture spawn in target tree",
+        "Prestage tiny fixture and Rust toolchain; no dependency downloads, fresh isolated CARGO_TARGET_DIR, offline mode; ensure baseline does real compile/build.rs/link",
+        "Run without inherited MAKEFLAGS/MFLAGS/CARGO_MAKEFLAGS jobserver environment so Cargo creates its ordinary FD jobserver; retain full environment allowlisted nonsecret launch fields",
+        "Retain original per-child4s arming and12s progress gates; separate explicit outer Cargo compile watchdog chosen before run, not interpreted as child deadline"
+      ],
+      "fixture_source_allowlist": [
+        "Cargo.toml",
+        "build.rs",
+        "src/main.rs"
+      ],
+      "command_argv": [
+        "cargo",
+        "+1.95.0",
+        "build",
+        "--offline",
+        "--manifest-path",
+        "<owned-fixture>/Cargo.toml",
+        "--target-dir",
+        "<owned-run>/target",
+        "-j",
+        "2",
+        "-vv"
+      ],
+      "sequence": [
+        "Record cargo/rustc versions, executable SHA/UUID and toolchain identity, source and client/script hashes; preserve original fixture files exactly.",
+        "Run this tiny real Cargo build without Frida first as environment control; require actual build.rs and nested-child marker plus final executable. This previously unrun fixture baseline is distinct from broad accepted build tests.",
+        "On same worker use separate fresh target dir for instrumented Cargo so none of the exercised units is skipped. Spawn exact Cargo executable under accepted root client (resolve rustup proxy before Frida); enable child gating and require root instrumentation before root resume.",
+        "Record every child event with parent/birth/case and argv/path, actual FORK/EXEC/process-replaced transitions; correlate Cargo rustc invocations, build-script execution, its nested current-exe child and linker. Do not infer fork versus posix_spawn merely from event labels; use minimal read-only public hook boundary receipts if existing client does not prove syscall entry.",
+        "Require before-resume instrumentation marker for each relevant executable session and new marker after exec per actual accepted process-replacement lifecycle. Preserve fork-only coverage separately if unavailable.",
+        "Require build-script CARGO_MAKEFLAGS exposes FD auth, actual successful build-script nested-child exit, final Cargo exit0, final executable present, matching build marker and all child cleanup. If any required identity/arming/progress fails, stop at that first failed gate and diagnose on same worker without changing descriptor policy or deadlines."
+      ],
+      "negative_controls": [
+        "Python close_fds=True native failure remains accepted negative, do not rerun it or mark it fixed",
+        "Uninstrumented tiny Cargo build distinguishes environment/compiler/fixture failure",
+        "No FD blanket cloaking/private offsets or custom close_fds=False shortcuts",
+        "No pre_exec hook added to nested helper solely to force fork; Cargo existing jobserver path supplies natural fork case"
+      ],
+      "outcome_mapping": {
+        "instrumented_pass": "Confirmed Python sweep is not required to reproduce ordinary Cargo topology and this bounded topology works; proceed next to relevant real Codex build.rs/protoc/dependency spawn coverage plus allocation behavior. Python-child support remains unmet.",
+        "same_failure": "Actual request/selected-context/real-close evidence needed before claiming same defect; retain exact failing process/caller/FD epoch and use existing diagnostics narrowly.",
+        "different_failure": "Report gate, actual event and source premise; do not classify as known Python defect without causal evidence."
+      },
+      "cleanup": "Own only runner scratch/PIDs/session/key resources. Retain worker for incremental harness fixes; seal every failure/version. Verify PID tree, SSH terminal, hosted cleanup then remove owned credentials/remote roots; explicit parent handoff for retained evidence."
+    }
+  },
+  "resourceState": {
+    "agents": "All 11 child agents report terminal status at wind-down.",
+    "remote": "Current Linux descriptor, Windows observation, Bazel lifecycle and macOS trace owners report all owned resources closed. No retained runner to reconnect.",
+    "local": "Retain the named .cat evidence, archives, worktrees and exact package outputs for the successor. They are machine-local and are not restored by Git checkout."
+  },
+  "artifactTransfer": "Reports and the proposed native contract are preserved in this committed JSON. Raw archive identities and local locations are included. For transfer to another machine, copy those archives before deleting .cat; revalidate hashes before use. A report or archive pass is not native behavior acceptance."
+}
