@@ -1,4 +1,5 @@
 name: Runner failure debugging smoke test
+run-name: ${{ inputs.session_id && format('Runner debugging - {0} - {1}', inputs.target, inputs.session_id) || 'Runner failure debugging smoke test' }}
 
 on:
   push:
@@ -6,6 +7,10 @@ on:
     paths: [.github/workflows/runner-debug-smoke.yml]
   workflow_dispatch:
     inputs:
+      session_id:
+        description: Unique client identifier to match this dispatch in the run list
+        type: string
+        default: ''
       public_key:
         description: Public SSH key for the debugging client
         type: string
