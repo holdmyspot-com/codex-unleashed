@@ -1,0 +1,372 @@
+{
+  "task_contract": "acknowledged; read-only Cargo production-readiness investigation at immutable requested commit; fresh owned report only; no maintained writes, builds, tests, remote dispatches, dependency updates, issues, commits or pushes",
+  "snapshot": {
+    "commit": "63c5a7d7bcfc7bb03eec605c19cedf47af3be264",
+    "cargo_source_commit": "f2d3ce0bd7f24a49f8f72d9000448f8838c4e850",
+    "cargo_source_authority": "https://api.github.com/repos/rust-lang/rust/contents/src/tools/cargo?ref=1.95.0",
+    "cargo_version": "1.95.0",
+    "jobserver_version": "0.1.34",
+    "jobserver_original_crate_sha256": "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33"
+  },
+  "input_identities": [
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java",
+      "git_blob": "4e7bd09169e0a247ce83a922f7d2a8ff70af02d5",
+      "sha256": "ed16a3004471292f43dcfee78acb7d432b57813d37d40827ea1c5fdb9de47a1d"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java",
+      "git_blob": "6adda81e32cc5b77a0dfb907cd1d91705015e571",
+      "sha256": "2f4aefd76d0c1c7fef0430a716c40bb2d10a724d7f474456d8d9833b0bb91566"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java",
+      "git_blob": "7b029974ed41c77d58d078d5e4ce525af6dc06ac",
+      "sha256": "ea51a5f66cc0d2daf59d31e25fbac97d3344dd3467b8fe3f9dc154c6cff56dac"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver.java",
+      "git_blob": "6af1bd1eccfee5b14efc690403e5610228af60ac",
+      "sha256": "ec217d2fc7783586bca63838003566cd48c3a96b9e39f15fc161ef692a8044b4"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java",
+      "git_blob": "9a7516596e3329328c40cf6792f9c535e81c21f1",
+      "sha256": "acc5f7a7bc76c2524e321031de2489cdeaaa0b52336f2c5f25cca148f3460c7a"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java",
+      "git_blob": "5e212be7b9a19a3750efe40929a30193ffbdd58e",
+      "sha256": "c45e56a25aa0e8a1b37627b383a8a3ef678fa27e0e199a7f4e8434ec4fe8497f"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java",
+      "git_blob": "52ec5bdd22103e709b439f25609c344f7d9e7b15",
+      "sha256": "c4d3eba82a3d2e14ed1bb8c8ddaf11baa9018b8fdf1bc6929c8f4765bec30d0b"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationHook.java",
+      "git_blob": "480c302fcd3a1dda666d6c4fe4323c184c3468ef",
+      "sha256": "0d84be0c7b31259d3f1287538bd7070fc7023ce2adcac1196a1dfb0c0b7ff827"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaits.java",
+      "git_blob": "21e9f925452fcba76ff0ff858d6bad35ef632b25",
+      "sha256": "b8f01955ed0cf776dd9e0e690abae12bc7059dcfb875b9361862bcee6df5e505"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAuthority.java",
+      "git_blob": "e7b637db4906a98059094d2b36fca1ef78ae0057",
+      "sha256": "b043fedf0a0e35c1c0423b8d61356c99c02cca31a5f3b68205c655bd1f9f6ea6"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMeasurements.java",
+      "git_blob": "d6c2a2383c02424a42cf654b380df42977175858",
+      "sha256": "5dbc308d35fa04d714a13e34839822ea5df4d1b2fbe4930df7c1128ae8e5992d"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java",
+      "git_blob": "ef59b99c77c3be102e9a93002052946b2306558e",
+      "sha256": "a741aadf9f684b306bf1c3825ee0b61df14e0441845c0e3bb49cf6e67b0a86e1"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java",
+      "git_blob": "d19894fe5301ee1cdc313ba5364a0e58fb799f3d",
+      "sha256": "5cf8f3fb5a97f7d40638d4b842c240b02d138a2c60d3b22e26051101deca0787"
+    },
+    {
+      "path": ".github/scripts/build-upstream-release.sh",
+      "git_blob": "90786bae6aeffa3d4495e911f906b1208e531966",
+      "sha256": "3b5c33a2ff53e096b5544bf5499844e50441c321f9d39594a65915eb8e4ee0e9"
+    },
+    {
+      "path": "tooling/cli/src/main/java/module-info.java",
+      "git_blob": "62ea17df69f43fa2076fecd48f8cb963673cefff",
+      "sha256": "3859d555f1aebf823125e342be08469a0f32c23db10721fded4b64068e382ca4"
+    },
+    {
+      "path": "docs/evidence/cargo-wrapper-admission.json",
+      "git_blob": "1f60b93c626abdb655c06d7dacc12e0ab7286836",
+      "sha256": "62706bd232302135aab6eeaa038a36618fee9259c165fdc31cbe70c5a492b7ac"
+    },
+    {
+      "path": "docs/evidence/cargo-jobserver-transport-native.json",
+      "git_blob": "0e61edba16f7b1dadf9b8f8434c2fdb8f68ad8e5",
+      "sha256": "364627db2ae4c707de48d6f0ee7f5b753952188827e35bad66517b4b5bd6e2d1"
+    },
+    {
+      "path": "docs/evidence/linux-cargo-fifo-owner.json",
+      "git_blob": "16d9e22cf192d0d508bf3195bcdf946b24897bee",
+      "sha256": "6b7357ecca3f5596e8f677e4e75f866b152122b83b12651f94d298534eee5bd1"
+    },
+    {
+      "path": "docs/evidence/linux-cargo-fifo-owner-composition.json",
+      "git_blob": "2604dcea81428692b4b0e387009a81b02ecf61b8",
+      "sha256": "46661ace4f9473a1673e67ecfef887336a20cdbbc5b660cdda6f36af45048689"
+    },
+    {
+      "path": "docs/evidence/windows-cargo-jobserver-native.json",
+      "git_blob": "4e31eb11d9048332ed02bf89c3cb481c7daa4bbe",
+      "sha256": "4e639af416f2c76dacd9d41361de623ea1f6839a3affd2116af4fdf5d6795bb8"
+    },
+    {
+      "path": "docs/evidence/injected-launch-vectors-native.json",
+      "git_blob": "0c50af066bc7bdad678c05c01eabe853b173e228",
+      "sha256": "6d7a651596b1b7adbe506b4ec608544049eb1191c383c7fe3367f8e951ac9439"
+    },
+    {
+      "path": "docs/evidence/linux-concurrent-compiler-attempts.json",
+      "git_blob": "5e45f9c50ae67f911c8d5be9b4ddba52c0fd99d8",
+      "sha256": "86a9e1fd6069800f95f1a9237979a954efa1d1ac22783ec57f94842ca676cfeb"
+    },
+    {
+      "path": "docs/evidence/linux-retained-owner-native.json",
+      "git_blob": "98f493d322f2da2f9ba2046e0abf558511087ca5",
+      "sha256": "564b448afe737cca1365c32fee14d34e0332582083c2e63e2ec4c1866518e303"
+    },
+    {
+      "path": "docs/evidence/java-allocation-hook-owner.json",
+      "git_blob": "b27783d05f281bd986f0e7b1bdabbb8c33654e76",
+      "sha256": "cf9fe6bbd2578cf39f118b52e34c4788d9c1ec1c8c3e7587d6d1acb5fa433bb1"
+    },
+    {
+      "path": "docs/evidence/linux-scheduler-construction-inventory.json",
+      "git_blob": "c4eb5a73bd32898ef91b90edc7731228d489d877",
+      "sha256": "ec0456e2a19b965cca306a90ab465071045392820676e25824fb4e37eac86310"
+    },
+    {
+      "path": "docs/evidence/bazel-sandbox-socket-native.json",
+      "git_blob": "6992e919cd2f7e14bc201e13aed221c44d4b36f7",
+      "sha256": "1224e5e91070bfeae19b52b95bdc0b96ab40abdac1f2ab67f75be9622cc33b23"
+    }
+  ],
+  "official_sources": [
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/src/cargo/core/compiler/mod.rs",
+      "sha256": "0676b172894d2d0e8536bb5197019f2c147f9aa3e4587e13909e73512fa9d023",
+      "bytes": 100146
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/src/cargo/core/compiler/custom_build.rs",
+      "sha256": "2a2feaff913b3c63152ba5d7dc4328e73c01aeb239f3c9ca570f8fbf39db115e",
+      "bytes": 60442
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/src/cargo/core/compiler/job_queue/mod.rs",
+      "sha256": "0cccd1337e007e233670579b1fa2aa236e776bbe72372f97209f9fcfe3e61260",
+      "bytes": 51491
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/src/cargo/util/rustc.rs",
+      "sha256": "bdc3b21d37cb07c472cb1e59964f99f91734071b75257f842eb8467ba00ecb93",
+      "bytes": 14035
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/crates/cargo-util/src/process_builder.rs",
+      "sha256": "225dad38fa80928269fcd572d55ff21384c365b043c39c6a6090434d995263ae",
+      "bytes": 24760
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rust-lang/cargo/f2d3ce0bd7f24a49f8f72d9000448f8838c4e850/src/doc/src/reference/environment-variables.md",
+      "sha256": "6f665b89e5a164da0526f22602105ba9dfb16928d76e028bf2fc4a30e0d37323",
+      "bytes": 29272
+    }
+  ],
+  "terminal_outcome": {
+    "required": "Real individual compiler actions controlled by the shared Java JobQueue with chosen allocation injection, preserved invocation/results, retained incremental completed output, correct shared Cargo capacity, and complete native cleanup. This report is an intermediate readiness artifact.",
+    "state": "unrun; supported components exist, their action-registration and ownership composition is missing"
+  },
+  "inventory": {
+    "maintained_Cargo_owner": "LinuxCargoJobserver.create(parent, workloadGid, jobs), retainCargo(environment), CargoLease.environment/close, owner.close. FIFO holds jobs-1 explicit tokens plus one implicit root slot, immutable auth strings, one lease. Path traversal/GID setup and quiescent cleanup have native x64 receipts. Owner does not launch work, control admission, infer consumer completion or restore tokens lost inside killed consumers.",
+    "Windows_owner": "WindowsCargoJobserver candidate and R1 repair are separate isolated work, absent from this requested snapshot; windows-cargo-jobserver-native.json is semaphore/outer-wrapper-slot prerequisite evidence, not this Java production owner integration.",
+    "wrappers": "No maintained production Cargo compiler wrapper/request controller exists in tooling main sources. cargo-wrapper-admission.json has a shell diagnostic (Cargo1.99.1, not pinned1.95). linux-cargo-fifo-owner-composition.json has pinned1.95 scratch Java wrapper/Rust importer using actual packaged owner/supervisor. These are scoped native receipts, not a shipping CLI.",
+    "CLI": "tooling.Main.run switches only V8 script extraction, retention preview and source cache commands (lines58-65, usage100-103). No scheduler entry point or per-compiler action command is exposed. .github/scripts/build-upstream-release.sh calls ordinary cargo build per binary at line56; no scheduled compiler ingress.",
+    "queue": "JobQueue.submit(name,peakBytes) reserves original position; cycle reconciles native outcomes then applies at most one policy control; allocationBlocked(name,attemptSequence,waitSequence) accepts current denial; completedAttempts retains typed native payload. Resource-free AttemptFactory.create returns owner before start I/O. Attempt.start/resume/terminate/poll/close are the supported lifecycle; ordinary nonzero natural results are completions, not retry candidates. Aborted attempts preserve original action position and obey retry admission/completion thresholds. No native launch/adoption implementation is supplied by this interface.",
+    "native_execution": "LinuxSupervisor.prepare/prepareInstrumented owns a directly launched gate/supervisor and whole-tree completion. Launch carries full command, environment, cwd, UID/GID, explicit classpath/java, execution mode. StandardFiles are caller-owned filesystem endpoints, not an arbitrary inherited-FD or remote-waiter handoff. Existing native injected-launch-vectors receipt proves exact valid Unicode/empty/newline argv/env, binary streams and same-PID leader exec for that topology only.",
+    "injection": "AllocationHook is one verified PID/image installation, borrows manager/waits, start/awaitReady/pump/grant/stop/close. Manager.pollChild copies PID,parent,origin,path only. Session.enableChildGating and Manager.resume are available. Child events do not establish containment, argv/env/cwd, inherited descriptor ownership, a wait status, action completion or retry authority. No maintained LinuxAllocationAttempt or registered-wrapper Attempt adapter exists in this snapshot.",
+    "one_controller": "All native managers/hooks and the queue coordinator must be pumped on their owning Java thread. Concurrent wrappers supply requests to one ingress; they must never call queue methods directly. A copied event/request queue is sufficient to serialize policy; its authenticated transport/lifetime is not implemented."
+  },
+  "supported_Cargo_sequences": [
+    {
+      "operation": "rustc invocation hook",
+      "sequence": "Cargo builds its unit command -> RUSTC_WRAPPER receives executable plus exact rustc arguments -> optional RUSTC_WORKSPACE_WRAPPER -> real rustc. Compilation of build.rs is such a rustc unit. Pinned Rustc::new also runs capability/version queries through the wrapper; do not treat every wrapper invocation as a crate compilation.",
+      "authority": "Pinned util/rustc.rs; pinned environment-variables.md; compiler/mod.rs Executor lines122-168."
+    },
+    {
+      "operation": "slot inheritance",
+      "sequence": "Cargo job_queue permits active jobs < explicit acquired tokens +1, then starts rustc/build-script job. ProcessBuilder.inherit_jobserver passes the selected client to both compiler and script commands. Wrapper already occupies the Cargo-granted outer slot; it does not acquire another token merely to launch one compiler. Keep wrapper alive across admitted targeted retries and return exactly one final status to Cargo. Inner rustc/make threads borrow extra tokens from the same pool.",
+      "authority": "Pinned job_queue/mod.rs lines31-56,100-102,556-607; compiler/mod.rs808; custom_build.rs381."
+    },
+    {
+      "operation": "fresh work",
+      "sequence": "Cargo fingerprint/dependency scheduling decides freshness before execution. Fresh crate/build-script actions do not require compiler launch; leave output, fingerprints, target directory and cache configuration untouched. Wrapper identity must remain stable across retries; do not add/churn RUSTC_WORKSPACE_WRAPPER because it changes Cargo artifact hashes. Existing cache wrapper must remain in the invocation chain.",
+      "authority": "Pinned compiler/mod.rs171-211; job_queue freshness; environment wrapper documentation."
+    },
+    {
+      "operation": "build-script execution",
+      "sequence": "custom_build::build_work chooses script_dir/target.name, calls compilation.host_process, configures build environment/jobserver, and directly exec_with_streaming. It is a distinct Cargo job after compiling build.rs; RUSTC_WRAPPER and the Rust Executor trait do not wrap this execution.",
+      "authority": "Pinned custom_build.rs330-381,582-589; compiler/mod.rs207-208."
+    }
+  ],
+  "smallest_Cargo_integration_sequence": [
+    {
+      "step": 1,
+      "actor": "session owner",
+      "action": "Provision accepted Linux authority, fresh measurements, swap preparation and one Frida runtime. Retain one root LinuxCargoJobserver and immutable Cargo lease. Launch actual Cargo as orchestration, not as the sole memory-scheduled action. Root Cargo/container ownership never substitutes for individual compiler Attempt entries.",
+      "state": "components/native prerequisites accepted; session composition unrun"
+    },
+    {
+      "step": 2,
+      "actor": "persistent compiler wrapper",
+      "action": "Receive Cargo-supplied argv and inherited complete env/cwd/stdio, retain the borrowed outer slot by remaining alive, and register one request before starting expensive compiler work. Retain wrapper-local native child launch/wait and streams; do not rebuild argv by parsing logs, JSON compiler messages or Frida path events.",
+      "state": "wrapper/import behavior accepted diagnostically; production registration/control operation missing"
+    },
+    {
+      "step": 3,
+      "actor": "single Java controller",
+      "action": "Validate request against this live session and native wrapper identity, assign a monotonic action identity independent of PID, copy immutable launch identity, submit once to JobQueue. Map retries to same action, original position and request; per-attempt sequence/generation is fresh. Return no success while request identity or cleanup is uncertain.",
+      "state": "queue semantics accepted; authenticated ingress and registered owner missing"
+    },
+    {
+      "step": 4,
+      "actor": "per-action Attempt adapter",
+      "action": "Factory allocates only resource-free owner. start establishes owned native compiler containment/wait authority in the wrapper execution context, installs allocation hook while image is held, enables/verifies descendant gates and awaits readiness, then authorizes the actual compiler. Preserve native parent/wait owner and borrowed Cargo slot. Do not pass a wrapper PID to the direct-launch LinuxSupervisor as if that adopted the existing process.",
+      "state": "direct launch/hook pieces accepted; wrapper-local owner to outside Attempt handoff unproved"
+    },
+    {
+      "step": 5,
+      "actor": "controller loop",
+      "action": "Pump all per-attempt copied messages/held children; drain immutable denial notifications in observed order via queue.allocationBlocked; queue.cycle; pump/drain again. During grant acknowledgements pump peers without queue reentry. Publish a new wait for the resuming attempt only after successful RUNNING transition, behind already observed peer waits.",
+      "state": "existing queue/hook contracts support order; native adapter composition unrun"
+    },
+    {
+      "step": 6,
+      "actor": "attempt plus persistent wrapper",
+      "action": "In-process grant resumes blocked allocation as chosen. On targeted retry fallback, stop all grants, terminate only that attempt, establish whole-tree reaping and preserve completed Cargo outputs, then retry same action/slot only after native token obligations are resolved. Ordinary compiler failure is returned once with original child status/diagnostics; Cargo may map it to101.",
+      "state": "shared policy accepted; arbitrary killed-rustc extra-token loss unresolved, never reseed"
+    },
+    {
+      "step": 7,
+      "actor": "session owner",
+      "action": "After wrapper final waits and Cargo whole-tree completion, reject future starts, close attempts/registrations/hooks/managers, release the Cargo lease, then close FIFO owner and runtime/authority. Root Cargo exit alone is insufficient. Preserve uncertain native cleanup owners and failure receipts.",
+      "state": "scoped transport cleanup accepted; composed scheduler cleanup unrun"
+    }
+  ],
+  "scope_cases": {
+    "linker": "The linker remains a descendant in its parent rustc action, sharing admission estimate, whole-tree measurement, cancellation, result and Cargo outer slot. Do not submit a separate queue action that double-counts its parent. Install/reinstall allocation hooks before each linker/exec image release; a rustc-only hook does not cover linker allocation. Native descendant exec/fork and containment proof is a required gate.",
+    "build_script": "Compiling build.rs belongs to a compiler attempt. Executing the resulting build script is a distinct Cargo action, with any C/C++ compiler/linker children inside that script attempt. No stable1.95 build-script CLI wrapper was found in the actual direct execution path; full coverage needs a verified native held-child registration/adoption operation or another demonstrated existing mechanism before implementation. Replacing built executables with shims or patching Cargo is not selected.",
+    "cache_hits": "Cargo fresh units produce no compiler action. A preexisting caching wrapper may answer without spawning rustc; preserve that hit path and submit expensive child only if it exists. Placing memory admission outside a cache wrapper would unnecessarily gate hits and changes the claimed action; exact ordering and hit/no-rustc receipts are required. No existing sccache workflow configuration was found in the bounded .github/tooling scan; caller-supplied wrappers remain a contract to preserve.",
+    "nested_Cargo": "A nested Cargo launched synchronously by a build script inherits its existing outer slot plus shared explicit client; never create a second pool or implicit root slot for it. Passing copied MAKEFLAGS alone does not authorize an additional token. If parent script waits for nested actions, charging parent as an active memory action while denying every child can deadlock a one-slot admission policy. The controller needs a verified retained-parent/delegated-capacity relationship or must retain the entire nested subtree inside the script attempt. Exact classification and child-action delegation are unproved; fail explicitly rather than silently treating nested Cargo as a new root.",
+    "token_loss": "Persistent wrapper retains Cargo outer slot when a compiler subprocess retries. It does not guarantee return of extra tokens borrowed internally by killed rustc/linker/make. Native Windows proof explicitly demonstrates acquired-token loss after forced death. Quiescent observed deficit must remain failure; no owner reseeding. Prefer in-process allocation resume; arbitrary killed consumers cannot be accepted as safe retry from current evidence."
+  },
+  "missing_operations_and_owners": [
+    {
+      "operation": "Persistent compiler request registration/control with native wrapper child/wait/streams retained",
+      "owner": "Cargo integration implementer, reviewed by parent",
+      "status": "missing production operation; accepted scratch wrapper does not expose it as maintained API"
+    },
+    {
+      "operation": "Verified held Cargo build-script child/exec becomes a separately owned queue Attempt without relaunching host argv or changing parent/std streams",
+      "owner": "native registered-attempt integration; parent authorizes prerequisite diagnostic first",
+      "status": "unproved; Frida child notification alone cannot provide the missing lifetime/result/launch context"
+    },
+    {
+      "operation": "LinuxAllocationAttempt/hook/queue composition",
+      "owner": "linux_attempt_composition workstream / parent integrated reviewed artifact",
+      "status": "not present at immutable snapshot; consume only accepted integrated APIs, not unstable scratch outputs"
+    },
+    {
+      "operation": "Descendant image generations, linker coverage, nested-Cargo ownership and inherited extra-token recovery classification",
+      "owner": "attempt native lifecycle plus Cargo integration",
+      "status": "unrun consumer gates; necessary before claiming complete compiler/build-script execution coverage"
+    },
+    {
+      "operation": "Production Windows semaphore candidate/native composition and macOS backend",
+      "owner": "platform workstreams / parent",
+      "status": "separate gates; Linux proof cannot establish cross-platform scheduler acceptance"
+    }
+  ],
+  "new_boundary_policy": {
+    "decision": "No new IPC schema, CLI or native adoption API is selected by this report. Existing operations and native receipts identify the missing registration/ownership handoff, but this read-only task forbids the smallest runtime sequence needed to establish a new boundary.",
+    "next_discriminating_operation": "One existing pinned Cargo tiny fixture with wrapper preserving inherited streams plus root child gating; observe wrapper rustc/build-script/linker child graphs and exact wait ownership. Use current APIs; report specifically whether a wrapper-local native owner can return whole-tree outcomes and service outside controller controls. Reachability alone is insufficient."
+  },
+  "minimal_future_write_closure": {
+    "ready_first_cluster": [
+      "new same-package Cargo request/driver acceptance fixture and its dependency-free Rust workspace under owned scratch only; reuse current packaged owners and pinned artifacts"
+    ],
+    "conditional_production_files": [
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerWrapper.java (persistent compiler ingress/native child wait; proposed responsibility, name provisional)",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoCompilerRequests.java (one session request ownership and controller-thread delivery; proposed only after transport gate)",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/CargoScheduler.java (Cargo session composition, typed queue action mapping and completion handoff; proposed only)",
+      "matching focused scheduler tests for those three responsibilities"
+    ],
+    "must_reuse_not_edit_by_default": [
+      "JobQueue, Controller, Policy, LinuxCargoJobserver, LinuxSupervisor, FridaRuntime, AllocationHook, AllocationWaits",
+      "The independently owned platform Attempt adapter once integrated"
+    ],
+    "excluded_initially": [
+      "upstream Codex/Cargo sources",
+      "workflows",
+      "POM/module descriptors/dependencies",
+      "public scheduler CLI",
+      "Bazel",
+      "Windows/macOS",
+      "security fixes",
+      "native owner modifications absent a diagnosed contract failure"
+    ],
+    "static_analysis_scope": "Read complete changed Java classes, tests and directly called ownership/transport contracts; run configured compiler/static analysis only for their tooling module/changed closure. Inspect start/resume/terminate/poll/close, all post-acquisition failure exits, authentication identity, disconnect containment, parent/wait ownership and exact-token accounting. Do not infer behavior from source-shape tests. No static analysis command executed in this task."
+  },
+  "cheapest_future_real_Cargo_gate": {
+    "state": "unrun; authorizes no implementation in this report",
+    "fixture": "Dependency-free workspace: independent libraries a and b plus binary app depending on both; app has build.rs printing a fixed cargo::rustc-env line and rerun-if-changed=build.rs. The app forces a real final link. All source, manifests and offline lockfile produced in one owned scratch directory by the gate; preserve source/toolchain/packaged JAR/native producer hashes.",
+    "existing_command_argv": [
+      "cargo",
+      "+1.95.0",
+      "build",
+      "--offline",
+      "--locked",
+      "--workspace",
+      "--manifest-path",
+      "<owned-fixture>/Cargo.toml",
+      "--message-format=json-render-diagnostics",
+      "--verbose"
+    ],
+    "environment": "Actual owner lease installs CARGO_MAKEFLAGS/MAKEFLAGS/MFLAGS without reconstruction; configured capacity2 is implicit1 plus explicit1. Gate supplies stable RUSTC_WRAPPER pointing at its retained Java launcher, unchanged CARGO_TARGET_DIR and wrapper executable across retry and warm run; caller cwd is fixture root; binary stdin and separately captured stdout/stderr pipes inherited. Cargo may warn explicit --jobs is ignored, so omit redundant --jobs.",
+    "invocation_boundary": "A same-package scratch Java gate drives the actual accepted owner, real queue, reviewed production Attempt adapter and one request owner. Invoke as java <existing native/module grants and producer library inputs> com.holdmyspot.codexunleashed.scheduler.CargoSchedulingGate <owned-fixture>. This is a proposed acceptance-driver main, not a new production scheduler CLI. It is not runnable until the named missing adapter/request operation is supplied and reviewed.",
+    "action_identities": "Session-generated root invocation identity + monotonic request ordinal. Record exact native executable, full argument vector (including @argfile path/lifetime), environment, cwd, stream identities, wrapper host PID/start identity, parent and owned group, Cargo slot lineage, queue position/attempt sequence, installation generation. Compiler -vV/--print capability requests are classified separately and delegated unchanged. App/build.rs compilation and app/build-script execution are different actions; linker is an app rustc descendant.",
+    "incremental_observations": [
+      "Hold a before real compiler release while b request is received; both wrapper requests visible and no a compiler output exists. Admit b via actual queue, observe b native success while a stays held, then admit a. Capacity2 remains implicit1+explicit1, without wrapper extra acquire.",
+      "Before first real a compiler release, trigger one controller-selected termination of that held attempt. Prove whole-tree completion/cleanup, stable original position and retained wrapper/outer Cargo slot; retry a once, then actual rustc succeeds. This avoids claiming recovery of extra tokens borrowed by an arbitrarily killed running compiler.",
+      "Observe actual build.rs executable and app linker descendant using existing native child gating, with preserved parent/stream/wait ownership. Do not claim build-script scheduling until its own registered Attempt is proved; keep this as separate unmet gate if only observation is available.",
+      "Repeat unchanged successful Cargo command with same target: Cargo fresh artifact messages, no new crate compiler or script execution and no output deletion. Capability queries may occur and must not be misreported as cache misses.",
+      "Introduce an E0308 error in a only; one natural compiler failure, original compiler status1/diagnostic preserved, Cargo101, no memory retry, b completed output retained. Restore exact source, continue retained target."
+    ],
+    "capacity_and_cleanup": "After all consumers terminal/reaped, independent pinned jobserver client drains exactly1 explicit token at capacity2 and restores only the one observed token; root owner not reseeded. Stop future requests, complete/disconnect request owners, assert all wrapper/compiler/linker/script/supervisor PIDs and owned groups gone, no borrowed slot pending, then release lease and prove FIFO/FD/storage cleanup. A missing token is a failure with preserved evidence.",
+    "fresh_once": "Only after incremental connected path passes, recreate one empty target/output directory with identical fixture and artifact hashes, run the same success case once. Reuse existing accepted producers and dependencies; no Codex build, downloads or unchanged broad platform suites.",
+    "TDD_before_behavior": "For a production implementation, first add and run focused Requirements API behavioral tests for serialized requests, exact launch/results, ordinary failure, stable retry identity, disconnect cleanup and hit bypass. Capture behavior-specific red before edits; unavailable IPC/adoption semantics require the prerequisite native diagnostic, not speculative mocks."
+  },
+  "scope_analysis": {
+    "smallest_case": "One Cargo wrapper retains an outer slot while one real rustc runs under one queue action.",
+    "analogous_case": "Two concurrent wrappers require serialized ingress to the same queue and correct original-order retry.",
+    "next_case": "rustc starts a linker; it stays in the same attempt, requiring descendant generation and whole-tree completion.",
+    "different_case": "Cargo fresh unit or cache wrapper hit spawns no compiler; it must not become an expensive admitted compiler action.",
+    "invariant": "Only actual expensive action execution consumes memory admission; retained Cargo slot/native process and result ownership must survive controls, retries and descendants. This does not make a whole Cargo invocation one compiler action."
+  },
+  "execution_receipt": {
+    "read_only_source_and_official_documentation": "completed",
+    "builds": 0,
+    "tests": 0,
+    "native_probes": 0,
+    "remote_dispatches": 0,
+    "maintained_source_mutations": 0,
+    "commits_pushes_issues": 0,
+    "initial_external_lookup": "Two guessed Cargo1.95.0 tag raw URLs returned404. Corrected by resolving Rust1.95.0 official Cargo submodule through GitHub contents API; all source conclusions use exact immutable submodule SHA, not the failed URLs."
+  },
+  "cleanup": {
+    "owner": "/root/cargo_fifo_owner_design",
+    "owned_directory": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/cargo-production-readiness-HH8pt8",
+    "retained_report": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/cargo-production-readiness-HH8pt8/report.json",
+    "live_resources": [],
+    "retention": "Retain report for parent review/archive; remove this owned directory only after parent accepts. Prior candidate worktree/evidence not modified."
+  }
+}
