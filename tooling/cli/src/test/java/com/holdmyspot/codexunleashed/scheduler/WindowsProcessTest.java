@@ -167,6 +167,242 @@ public final class WindowsProcessTest
 	}
 
 	/**
+	 * Retains the original preparation fault and usable Job authority until actual zero, then preserves failed releases.
+	 * This executes production Java ownership with modeled Kernel replies, not native Windows effects.
+	 * @throws IOException if modeled terminal observation unexpectedly fails
+	 */
+	@Test
+	public void retainsFailedPreparationOwnership() throws IOException
+	{
+		var kernel = new FailedPreparationKernel(true);
+		try
+		{
+			var failure = requireException(WindowsProcess.PreparationFailure.class, () -> prepareSeparate(kernel));
+			var process = failure.owner();
+			Throwable original = failure.getCause();
+			requireThat(kernel.created, "modeledCreateSucceeded").isTrue();
+			requireThat(original, "preparationFault").isNotNull();
+			Throwable nativeFault = original;
+			while (nativeFault.getCause() != null) nativeFault = nativeFault.getCause();
+			requireThat(nativeFault == kernel.postCreateFailure, "originalPostCreateFaultIdentity").isTrue();
+			requireThat(kernel.liveHandles, "unreleasedAcquiredHandles").isEqualTo(Set.of(10L, 20L, 21L), "jobRootThread");
+			requireThat(kernel.failedCloses.isEmpty(), "noDependentReleaseBeforeZero").isTrue();
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedPreparationNativeStorageRetained").isTrue();
+			requireException(IOException.class, process::poll);
+			requireException(IllegalStateException.class, process::releaseRoot);
+			requireException(IllegalStateException.class, () -> process.openMember(77));
+			kernel.statusFailure = false;
+			kernel.active = 0;
+			requireThat(process.poll().orElseThrow(), "authenticTerminalStatus").isEqualTo(
+				new WindowsProcess.Result(0, false), "unchangedRootAndNoTerminationRequest");
+			requireException(IOException.class, failure::close);
+			requireThat(kernel.failedCloses, "oneNativeAttemptPerRelease").isEqualTo(List.of(21L, 20L, 10L), "reverseOrder");
+			requireException(IOException.class, failure::close);
+			requireThat(kernel.failedCloses.size(), "noAmbiguousReleaseRetry").isEqualTo(3, "originalAttempts");
+			requireThat(kernel.attributeDestructions, "noAmbiguousAttributeRetry").isEqualTo(1, "originalAttempt");
+			requireThat(failure.getCause() == original, "originalFaultUnchanged").isTrue();
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedNativeStorageRetained").isTrue();
+		}
+		finally { if (kernel.arena.scope().isAlive()) kernel.close(); }
+	}
+
+	/**
+	 * Reconciles actual terminal state after failed termination, without repeating cancellation or uncertain releases.
+	 * @throws IOException if initial preparation or terminal observation unexpectedly fails
+	 */
+	@Test
+	public void retainsFailedDrainOwnership() throws IOException
+	{
+		var kernel = new FailedPreparationKernel(false);
+		try
+		{
+			var process = prepareSeparate(kernel);
+			requireException(IOException.class, process::close);
+			requireThat(kernel.failedCloses.isEmpty(), "noHandleReleaseBeforeZero").isTrue();
+			requireThat(process.poll().isEmpty(), "activeJobStillObservable").isTrue();
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedDrainNativeStorageRetained").isTrue();
+			requireException(IllegalStateException.class, process::terminate);
+			kernel.active = 0;
+			requireThat(process.poll().orElseThrow(), "actualCollectedStatus").isEqualTo(
+				new WindowsProcess.Result(0, true), "nativeRootAndExplicitRequest");
+			requireException(IOException.class, process::close);
+			requireThat(kernel.failedCloses, "failedNativeReleases").isEqualTo(List.of(21L, 20L, 10L), "reverseOrder");
+			requireException(IOException.class, process::close);
+			requireThat(kernel.failedCloses.size(), "noReleaseRetry").isEqualTo(3, "firstAttemptsOnly");
+			requireThat(kernel.calls.stream().filter("TerminateJobObject"::equals).count(), "singleTerminationRequest")
+				.isEqualTo(1L, "firstAttemptOnly");
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedNativeStorageRetained").isTrue();
+		}
+		finally { if (kernel.arena.scope().isAlive()) kernel.close(); }
+	}
+
+	/**
+	 * Releases storage after later actual zero while keeping the original cleanup fault visible to its caller.
+	 * @throws IOException if preparation or terminal observation unexpectedly fails
+	 */
+	@Test
+	public void reconcilesDrainWithoutRepeatingTermination() throws IOException
+	{
+		var kernel = new FailedPreparationKernel(false);
+		try
+		{
+			kernel.failLifetimeClose = false;
+			var process = prepareSeparate(kernel);
+			var original = requireException(IOException.class, process::close);
+			kernel.active = 0;
+			kernel.rootExit = 0xc0000017L;
+			requireThat(process.poll().orElseThrow(), "originalUnsignedRoot").isEqualTo(
+				new WindowsProcess.Result(0xc0000017L, true), "unchangedNativeStatus");
+			var reconciled = requireException(IOException.class, process::close);
+			requireThat(reconciled.getCause() == original.getCause(), "firstCleanupFaultRetained").isTrue();
+			requireThat(kernel.liveHandles.isEmpty(), "allModeledHandlesReleased").isTrue();
+			requireThat(kernel.arena.scope().isAlive(), "terminalStorageReleased").isFalse();
+			requireException(IOException.class, process::close);
+			requireThat(kernel.calls.stream().filter("TerminateJobObject"::equals).count(), "singleTerminationRequest")
+				.isEqualTo(1L, "firstAttemptOnly");
+		}
+		finally { if (kernel.arena.scope().isAlive()) kernel.close(); }
+	}
+
+	/**
+	 * Supplies native BOOL rejection and an invocation with an unavailable result, both of which forbid retry.
+	 * @return whether a modeled handle close throws instead of returning a failed BOOL
+	 */
+	@DataProvider
+	public Object[][] uncertainLifetimeReleases() { return new Object[][] {{false}, {true}}; }
+
+	/**
+	 * Retains failed lifetime-handle release after Job zero, including an unavailable native return.
+	 * @param throwsAfterCall whether the modeled result is unavailable
+	 * @throws IOException if preparation or terminal observation unexpectedly fails
+	 */
+	@Test(dataProvider = "uncertainLifetimeReleases")
+	public void retainsUncertainLifetimeRelease(boolean throwsAfterCall) throws IOException
+	{
+		var kernel = new FailedPreparationKernel(false);
+		try
+		{
+			kernel.active = 0;
+			kernel.throwOnClose = throwsAfterCall;
+			var process = prepareSeparate(kernel);
+			requireException(IOException.class, process::close);
+			requireThat(process.poll().orElseThrow(), "cachedNativeResult").isEqualTo(
+				new WindowsProcess.Result(0, false), "naturalRootStatus");
+			requireException(IOException.class, process::close);
+			requireThat(kernel.failedCloses, "ambiguousReleasesNeverRepeated").isEqualTo(List.of(21L, 20L, 10L), "oneEach");
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedReleaseStorageRetained").isTrue();
+		}
+		finally { if (kernel.arena.scope().isAlive()) kernel.close(); }
+	}
+
+	/**
+	 * Retains a temporary handle whose close failed after process creation, while closing independent terminal owners.
+	 * @throws IOException if retained status observation unexpectedly fails
+	 */
+	@Test
+	public void retainsFailedTemporaryLaunchRelease() throws IOException
+	{
+		var kernel = new FailedPreparationKernel(false);
+		try
+		{
+			kernel.active = 0;
+			kernel.failLifetimeClose = false;
+			kernel.failTemporaryClose = true;
+			var failure = requireException(WindowsProcess.PreparationFailure.class, () -> prepareSeparate(kernel));
+			requireThat(kernel.liveHandles, "retainedTemporaryHandle").isEqualTo(Set.of(103L), "failedErrorDuplicate");
+			requireThat(kernel.failedCloses, "onlyFailedNativeRelease").isEqualTo(List.of(103L), "oneAttempt");
+			requireException(IOException.class, failure::close);
+			requireThat(kernel.failedCloses.size(), "temporaryReleaseNeverRetried").isEqualTo(1, "firstAttemptOnly");
+			requireThat(kernel.arena.scope().isAlive(), "temporaryNativeStorageRetained").isTrue();
+		}
+		finally { if (kernel.arena.scope().isAlive()) kernel.close(); }
+	}
+
+	/** Models actual Java lifecycle decisions only; no native Windows process or handle is acquired. */
+	private static final class FailedPreparationKernel extends RecordingKernel
+	{
+		private final boolean failPreparation;
+		/** Exact original fault allocated before the modeled native acquisition. */
+		private final IllegalStateException postCreateFailure =
+			new IllegalStateException("modeled post-CreateProcess temporary cleanup failure");
+		private boolean created;
+		private boolean statusFailure;
+		private int active = 1;
+		private long rootExit;
+		private boolean failLifetimeClose = true;
+		private boolean failTemporaryClose;
+		private boolean throwOnClose;
+		private int attributeDestructions;
+		private final Set<Long> liveHandles = new HashSet<>();
+		private final List<Long> failedCloses = new ArrayList<>();
+
+		/**
+		 * Chooses the post-create failure boundary without acquiring resources.
+		 * @param failPreparation whether temporary attribute destruction fails
+		 */
+		private FailedPreparationKernel(boolean failPreparation)
+		{
+			this.failPreparation = failPreparation;
+			statusFailure = failPreparation;
+		}
+
+		@Override
+		Object call(String name, Object... arguments)
+		{
+			if (name.equals("CreateJobObjectW")) liveHandles.add(10L);
+			if (name.equals("DeleteProcThreadAttributeList"))
+			{
+				++attributeDestructions;
+				if (failPreparation)
+				{
+					calls.add(name);
+					throw postCreateFailure;
+				}
+			}
+			if (name.equals("QueryInformationJobObject"))
+			{
+				calls.add(name);
+				((MemorySegment) arguments[2]).set(ValueLayout.JAVA_INT, 40, active);
+				return statusFailure ? 0 : 1;
+			}
+			if (name.equals("GetExitCodeProcess"))
+			{
+				calls.add(name);
+				((MemorySegment) arguments[1]).set(ValueLayout.JAVA_INT, 0, (int) rootExit);
+				return 1;
+			}
+			if (name.equals("TerminateJobObject"))
+			{
+				calls.add(name);
+				return 0;
+			}
+			if (name.equals("CloseHandle"))
+			{
+				long handle = ((MemorySegment) arguments[0]).address();
+				boolean lifetime = handle == 10 || handle == 20 || handle == 21;
+				if ((lifetime && failLifetimeClose) || (handle == 103 && failTemporaryClose))
+				{
+					calls.add(name);
+					failedCloses.add(handle);
+					if (throwOnClose) throw new IllegalStateException("modeled native close result unavailable");
+					return 0;
+				}
+				liveHandles.remove(handle);
+			}
+			Object result = super.call(name, arguments);
+			if (name.equals("CreateProcessW") && (int) result == 1)
+			{
+				created = true;
+				liveHandles.add(20L);
+				liveHandles.add(21L);
+			}
+			if (name.equals("DuplicateHandle") && (int) result == 1)
+				liveHandles.add(((MemorySegment) arguments[3]).get(ValueLayout.ADDRESS, 0).address());
+			return result;
+		}
+	}
+
+	/**
 	 * Supplies invalid handles independently for each standard stream.
 	 * @return standard-stream position and invalid handle
 	 */
@@ -439,7 +675,8 @@ public final class WindowsProcessTest
 		requireException(IOException.class, process::close);
 		requireThat(kernel.openedMembers, "acquisitionsBeforeFailure").isEqualTo(List.of(77L), "firstOnly");
 		requireThat(kernel.memberCloses, "uncertainCloseAttempts").isEqualTo(List.of(1077L), "oneAttempt");
-		requireThat(kernel.arena.scope().isAlive(), "releasedNativeStorage").isFalse();
+		requireThat(kernel.arena.scope().isAlive(), "unresolvedMemberStorageRetained").isTrue();
+		kernel.close();
 	}
 
 	/**
@@ -706,7 +943,8 @@ public final class WindowsProcessTest
 			}
 			requireThat(kernel.queryCloses.stream().filter(handle -> handle == 1042L).count(), "oneReleaseRequest")
 				.isEqualTo(1L, "expected");
-			requireThat(kernel.arena.scope().isAlive(), "ownerNativeStorageReleased").isFalse();
+			requireThat(kernel.arena.scope().isAlive(), "unresolvedQueryStorageRetained").isTrue();
+			kernel.close();
 		}
 	}
 
