@@ -160,8 +160,9 @@ final class FridaRuntime implements AutoCloseable
 		findLocalDevice = function("frida_device_manager_get_device_by_type_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
 		unref = function("frida_unref", FunctionDescriptor.ofVoid(ADDRESS));
-		errorFree = function("_frida_g_error_free", FunctionDescriptor.ofVoid(ADDRESS));
-		quarkToString = function("_frida_g_quark_to_string", FunctionDescriptor.of(ADDRESS, ValueLayout.JAVA_INT));
+		String glibPrefix = System.getProperty("os.name", "").startsWith("Windows") ? "" : "_frida_";
+		errorFree = function(glibPrefix + "g_error_free", FunctionDescriptor.ofVoid(ADDRESS));
+		quarkToString = function(glibPrefix + "g_quark_to_string", FunctionDescriptor.of(ADDRESS, ValueLayout.JAVA_INT));
 		attach = function("frida_device_attach_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
 		detach = function("frida_session_detach_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
@@ -173,8 +174,8 @@ final class FridaRuntime implements AutoCloseable
 		unloadScript = function("frida_script_unload_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
 		isDestroyed = function("frida_script_is_destroyed", FunctionDescriptor.of(ValueLayout.JAVA_INT, ADDRESS));
 		post = function("frida_script_post", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
-		connect = function("_frida_g_signal_connect_data", FunctionDescriptor.of(signalIdLayout, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ValueLayout.JAVA_INT));
-		disconnect = function("_frida_g_signal_handler_disconnect", FunctionDescriptor.ofVoid(ADDRESS, signalIdLayout));
+		connect = function(glibPrefix + "g_signal_connect_data", FunctionDescriptor.of(signalIdLayout, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ValueLayout.JAVA_INT));
+		disconnect = function(glibPrefix + "g_signal_handler_disconnect", FunctionDescriptor.ofVoid(ADDRESS, signalIdLayout));
 
 		resume = function("frida_device_resume_sync", FunctionDescriptor.ofVoid(ADDRESS, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
 		enableChildGating = function("frida_session_enable_child_gating_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
