@@ -293,10 +293,8 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 					}
 				});
 			}
-			if (failure != null)
-				throw failure;
-			closed = true;
 			attempts.forget(this);
+			closed = true;
 		}
 		catch (IOException | RuntimeException cause)
 		{
@@ -304,6 +302,8 @@ final class LinuxAttempt implements JobQueue.Attempt<LinuxSupervisor.Result>
 			throw closeFailure;
 		}
 		catch (Error cause) { closeFailure = failed("Cleanup", cause); throw cause; }
+		if (failure != null)
+			throw failure;
 	}
 
 	/** Orders real owner closure after instrumentation COLLECT; fault cleanup needs the supervisor's private receipt path.
