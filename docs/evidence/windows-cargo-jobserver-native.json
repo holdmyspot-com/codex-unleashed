@@ -1,0 +1,991 @@
+{
+  "scope": "Native Windows x64 named jobserver semaphore accounting and persistent Cargo wrapper slot across controlled child retry. Full scheduler, arbitrary interrupted-rustc capacity recovery and Windows ARM64 remain unverified.",
+  "worker_report": {
+    "task_contract": "acknowledged",
+    "status": "bounded_native_prerequisite_passed",
+    "created_at": "2026-10-30T02:40:23.227890+00:00",
+    "terminal_scope": "One native Windows x64 named-semaphore owner/import/borrow/return/loss diagnostic and persistent Cargo compiler-wrapper outer-slot retention across a controlled child retry. No full scheduler integration.",
+    "remote": {
+      "run_id": 40991490859,
+      "job_id": 123854755087,
+      "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40991490859/job/123854755087",
+      "head": "717b8bb6b0a6223448222725466d0c2a86fc14b0",
+      "runner": "windows-2025 / runnervmdaln5 / x86_64-pc-windows-msvc",
+      "os": "Windows 10.0.26100 Windows 11 ServerDatacenter 64-bit",
+      "connection": "one persistent authenticated Upterm SSH process; commands only after workspace effect verified",
+      "provider_terminal": "failure only from deliberate smoke exit 17; debug and all post steps success",
+      "owned_root": "/d/a/_temp/windows-cargo-VBXCAk"
+    },
+    "reuse": {
+      "prior_design_report": "windows-cargo-handoff-TevEYp/report.json",
+      "prior_design_sha256": "1f96c1f42d647eaea6296001296353cfbbbcc5a96e8b40b2b8500171a2a1f10c",
+      "maintained_owner": "actual accepted WindowsProcess from tooling-cli.jar; no replacement process-tree implementation",
+      "windows_process_source_sha256": "a741aadf9f684b306bf1c3825ee0b61df14e0441845c0e3bb49cf6e67b0a86e1",
+      "tooling_cli_jar_sha256": "181a7a63325af5985db1eb666f825b391cf8e57bcf00b2ff409b1842b1235ac6",
+      "accepted_source_matches_immutable_snapshot": true,
+      "unchanged_passing_builds_repeated": false
+    },
+    "source_identities": {
+      "final_inputs_sha256": {
+        "CapacityProbe.java": "ff349f0d2ffd82ad68424785c597d3eb50f663b5d188dbe1bbcd7f998a8e81fc",
+        "dependencies.json": "6b11753c7ecd9c547a1141703b0eefb93972c2eefffc555a8bee783059447a2c",
+        "fixture/Cargo.toml": "d1891f917c05707dfe69f326195fbc9f26e8c51921fd1cc900f6c4c7f25439a8",
+        "fixture/a/Cargo.toml": "33ae00febb23515c6e0e5e9ef8c4176c8d8e3b7c40ef96eb852399a1bd52cc2d",
+        "fixture/a/src/lib.rs": "4e92a128107a07131a5b8ebe412161015bc5f4d0202483e71aeb7d8899d4dd7b",
+        "fixture/b/Cargo.toml": "0feac600cb373fd00031ad436079701e90d249ebf5000bb7c0048b12d4b9fb2e",
+        "fixture/b/src/lib.rs": "4e92a128107a07131a5b8ebe412161015bc5f4d0202483e71aeb7d8899d4dd7b",
+        "helper/Cargo.toml": "e715ee54f62e8768dd28630468bd822d5dc75311e577b93a1f38d3c72283f369",
+        "helper/src/main.rs": "230fe771a7e671f243c9218c3b70d2fe871f80add3cce4c0eb55a9873641918e",
+        "jobserver.crate": "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33",
+        "run.sh": "de061ef46b044336c060a2204a890e72bb8466491debfd13f23f6212d3ac23f6",
+        "setup.sh": "94236af323dc84d29d00f6e98af24572703d13ef7b8692cdc4f87f6584b4d97f",
+        "snapshot.json": "d95467b57ec31400bd8b37441028f5978046fb57abf45a699393a2b85e88891b",
+        "tooling-cli.jar": "181a7a63325af5985db1eb666f825b391cf8e57bcf00b2ff409b1842b1235ac6"
+      },
+      "input_archive_sha256": "d525606da4291f8195376107df32bc1d3262bf675538f15efef2388705b9cfb9",
+      "patch_archive_sha256": "07fe2c732ecb7d1698dd35aefa285a6d3421858c1b0bdffb9265c419d620054c",
+      "jobserver": "original 0.1.34 archive, verified 9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33 before extraction; local path dependency preserves exact archive content",
+      "cargo": "1.95.0 f2d3ce0bd7f24a49f8f72d9000448f8838c4e850",
+      "rustc": "1.95.0 59807616e1fa2540724bfbac14d7976d7e4a3860",
+      "jdk": "Zulu JDK27.0.1+9 x64, zip SHA256 1ceeca99240959cb40325183b067b6c6c82d708f971f4ecc26420a6d914fed9c",
+      "helper_lock_sha256": "f81ce7751fbfd5c51d79e163699715aff113836279fbf98c7151480cccb8c172",
+      "executed_binary_and_class_hashes": "remote-evidence/executed-sha256.txt",
+      "dependency_policy": "Only scratch helper dependencies resolved into retained Cargo.lock and scratch homes; project dependencies unchanged."
+    },
+    "documented_native_operations": {
+      "create": "HANDLE CreateSemaphoreExW(SECURITY_ATTRIBUTES*,LONG,LONG,LPCWSTR,DWORD,DWORD): NULL security attributes, initial jobs-1, maximum jobs, flags0, rights0x00100002",
+      "open": "HANDLE OpenSemaphoreW(DWORD,BOOL,LPCWSTR): same rights, inherit FALSE; used only after final close to require ERROR_FILE_NOT_FOUND2",
+      "wait": "DWORD WaitForSingleObject(HANDLE,DWORD): timeout0; only0 consumes,258 ends drain; all other outcomes fail",
+      "release": "BOOL ReleaseSemaphore(HANDLE,LONG,LONG*): restore only exact positive drained count, never seed/mint",
+      "close": "BOOL CloseHandle(HANDLE): called once per owner after maintained Job Object whole-tree completion; no count repair",
+      "binding": "JDK27 FFM, captured GetLastError; scratch unnamed Java driver enabled only ALL-UNNAMED; production module grant not designed here",
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsemaphoreexw",
+        "https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-opensemaphorew",
+        "https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject",
+        "https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasesemaphore",
+        "https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle",
+        "https://learn.microsoft.com/en-us/windows/win32/sync/semaphore-objects"
+      ]
+    },
+    "gates": {
+      "native_FFM_create_import_return_close": "passed",
+      "pinned_consumer_normal_return_count_1": "passed",
+      "acknowledged_forced_death_count_0_without_repair": "passed",
+      "actual_cargo_capacity_1_outer_slot_retry": "passed",
+      "actual_cargo_capacity_2_outer_slot_retry": "passed",
+      "quiescent_expected_capacity_after_cargo": "passed",
+      "all_Job_Object_consumers_terminal_before_owner_close": "passed",
+      "last_semaphore_handle_gone": "passed",
+      "same_source_fresh_helper_java_and_fixture_outputs": "passed",
+      "owned_remote_root_removed": "passed",
+      "ssh_terminal_0": "passed",
+      "provider_cleanup_posts_success": "passed"
+    },
+    "case_results": {
+      "incremental": {
+        "status": "passed",
+        "explicit_counts_normal_death_cargo1_cargo2": [
+          1,
+          0,
+          0,
+          1
+        ],
+        "owners_closed_after_tree_completion": 4,
+        "named_objects_unopenable_after_last_close": 4,
+        "wrappers": [
+          {
+            "jobs": 1,
+            "wrapper_pid": 6152,
+            "controlled_child_pid": 1528,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-incremental/cargo-1/wrapper-6152"
+          },
+          {
+            "jobs": 1,
+            "wrapper_pid": 9212,
+            "controlled_child_pid": 5612,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-incremental/cargo-1/wrapper-9212"
+          },
+          {
+            "jobs": 2,
+            "wrapper_pid": 7428,
+            "controlled_child_pid": 1148,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-incremental/cargo-2/wrapper-7428"
+          },
+          {
+            "jobs": 2,
+            "wrapper_pid": 9172,
+            "controlled_child_pid": 6112,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-incremental/cargo-2/wrapper-9172"
+          }
+        ]
+      },
+      "fresh": {
+        "status": "passed",
+        "explicit_counts_normal_death_cargo1_cargo2": [
+          1,
+          0,
+          0,
+          1
+        ],
+        "owners_closed_after_tree_completion": 4,
+        "named_objects_unopenable_after_last_close": 4,
+        "wrappers": [
+          {
+            "jobs": 1,
+            "wrapper_pid": 2108,
+            "controlled_child_pid": 2248,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-fresh/cargo-1/wrapper-2108"
+          },
+          {
+            "jobs": 1,
+            "wrapper_pid": 8824,
+            "controlled_child_pid": 9332,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-fresh/cargo-1/wrapper-8824"
+          },
+          {
+            "jobs": 2,
+            "wrapper_pid": 1944,
+            "controlled_child_pid": 6272,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-fresh/cargo-2/wrapper-1944"
+          },
+          {
+            "jobs": 2,
+            "wrapper_pid": 7180,
+            "controlled_child_pid": 8244,
+            "controlled_child_exit": 1,
+            "real_rustc_exit": 0,
+            "acknowledged_child_identity_matches": true,
+            "retained_paths": "result-fresh/cargo-2/wrapper-7180"
+          }
+        ]
+      }
+    },
+    "commands": {
+      "dispatch": "gh workflow run runner-debug-smoke.yml --ref main.new -f public_key=<owned public key> -f target=x86_64-pc-windows-msvc",
+      "exact_per_command_argv": "requests/*.json and responses/*.json; raw bytes in ssh-transcript.log",
+      "setup": "bash setup.sh with RUSTUP_HOME,CARGO_HOME,TEMP,TMP,TMPDIR inside owned root; checksums then javac and Cargo helper build",
+      "incremental": "bash run.sh incremental",
+      "fresh": "mv classes classes-incremental && mv helper/target helper/target-incremental && bash setup.sh && bash run.sh fresh; preserves previous output evidence; same source hashes",
+      "phase2": "actual Cargo build --workspace --jobs N --manifest-path fixture/Cargo.toml --verbose, immutable imported jobserver flags in CARGO_MAKEFLAGS/MAKEFLAGS/MFLAGS, RUSTC_WRAPPER actual helper, distinct CARGO_TARGET_DIR",
+      "scope_note": "Cargo warns that --jobs is ignored when importing an external jobserver. Effective capacities1/2 are the owner implicit-slot plus initial semaphore count, not the redundant CLI argument. The warnings were retained unchanged."
+    },
+    "observed_behavior": {
+      "normal": "Acquired pinned Rust token returned normally; aggregate count1 restored",
+      "forced_death": "Acquired/atomic acknowledged consumer killed via accepted WindowsProcess termination and fully reaped, original unsigned exit125/aborted true; count0 detected; zero was not replenished; owner then closed",
+      "wrapper": "Each persistent wrapper validates all three auth environment fields against original PROBE_AUTH, owns a controlled helper child, validates acknowledged PID, kills/reaps it(exit1), keeps its own PID, then runs real rustc with original compiler args/cwd/env/inherited streams and returns final0 to Cargo",
+      "streams": "Fixture intentionally launches Cargo through WindowsProcess single-output overload: stdin NUL, stdout/stderr combined to borrowed parent stdout. Inside wrapper both child attempts inherit these same streams; independent stream routing not tested."
+    },
+    "failure_diagnostics": [
+      {
+        "case": "initial identity command",
+        "exit": 128,
+        "cause": "Upterm starts in runner home; git rev-parse ran outside checkout",
+        "repair": "Explicit cd GITHUB_WORKSPACE; same worker marker and immutable HEAD then verified",
+        "evidence": "responses/0001.json,0002.json"
+      },
+      {
+        "case": "archive extraction",
+        "exit": 2,
+        "cause": "GNU tar interpreted D: drive prefix in absolute archive path as remote host; both transferred archive checksums had passed",
+        "repair": "Normalize owned root with cygpath -u, cd root and extract relative archives, retaining uploaded bytes",
+        "evidence": "responses/0775.json,0776.json,0778.json,0779.json",
+        "native_behavior_affected": false
+      }
+    ],
+    "unrun_gates": [
+      "Windows ARM64",
+      "explicit ACL/workload SID or cross-session access and unauthorized opener",
+      "arbitrary killed-rustc/internal extra-token recovery",
+      "token minting/reseeding or deliberately lost-token repair",
+      "implicit-slot temporary loan protocol",
+      "memory-pressure hook and Java queue integration",
+      "Bazel composition",
+      "owner/wrapper disconnection/death races",
+      "ordinary compiler-error propagation",
+      "independent stdin/stdout/stderr native routing"
+    ],
+    "limitations": [
+      "Controlled first child is this fixture helper, not an arbitrarily interrupted real rustc. Real rustc runs normally after that child has been killed and reaped.",
+      "Same runner user/default creator ACL only; minimum-right cross-identity production ACL remains unrun.",
+      "Quiescent count differentiates retained/lost aggregate capacity only in this fully controlled graph; it is not a per-process live borrow ledger.",
+      "Whole tree completion relies on the already accepted maintained WindowsProcess Job Object owner, invoked from its actual packaged artifact; its prior unchanged native behavior was reused rather than retested separately.",
+      "No maintained source/workflow edit or production transport implementation."
+    ],
+    "cleanup": {
+      "owner": "/root/cargo_fifo_owner_design",
+      "all_consumers": "accepted Job Object waitFor before every semaphore drain/close; normal and killed fixture children waited before subsequent attempts",
+      "semaphore_handles": "8 total owner CloseHandle successes; all8 subsequent OpenSemaphoreW calls returnedNULL/ERROR_FILE_NOT_FOUND2",
+      "remote_root_removed": true,
+      "remote_removal_evidence": "OWNED_ROOT_REMOVED=true in persistent SSH transcript after leaving owned cwd",
+      "ssh_exit": 0,
+      "private_and_public_keys_removed": true,
+      "provider_posts": "debug wait, storage, smoke fixture and checkout completed successfully",
+      "local_scratch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/windows-cargo-native-zNpnoo",
+      "local_retention": "Retain report, handoff archive, inputs and evidence until parent accepts; parent owns durable integration/archive and may authorize removal. No retained remote worker or live client."
+    },
+    "artifacts": {
+      "report": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/windows-cargo-native-zNpnoo/report.json",
+      "handoff_archive": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/windows-cargo-native-zNpnoo/handoff.tar.gz",
+      "handoff_archive_sha256": "352f8d35dc64307f39b5a8b18132796bbd759358d3f17cdf957fc545644d3801",
+      "native_archive": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189ff-be3c-7b23-aa45-3122d12bca41/temp/windows-cargo-native-zNpnoo/remote-evidence.tar.gz",
+      "native_archive_sha256": "dddefbf342def0a3238787bd16687e263fe64a52af5d0870e6b97053dcd1c0bf",
+      "native_archive_bytes": 13763
+    },
+    "scope_preserved": "No maintained edits, workflow edits, commits, pushes, issues, dependency updates, cancellations or other workers changed."
+  },
+  "worker_report_sha256": "501c552103f35166e657c7a63a518c84485d1778b7268d7f54f72e7cd678b7a6",
+  "parent_verification": {
+    "native_behavior": "Both incremental and fresh actual journals record quiescent counts [1,0,0,1]: normal token returned, intentionally killed borrower loses token without reseeding, Cargo capacity 1/2 wrappers retain their slots. All eight semaphore names become unopenable after consumer tree completion and last owner close.",
+    "source_review": "Read full CapacityProbe.java and Rust helper. Each selected wrapper kills/reaps an acknowledged controlled helper, then invokes real rustc with its original arguments, environment, cwd and inherited streams. The killed helper is not real rustc; no arbitrary compiler-token recovery is claimed.",
+    "actual_Cargo_results": "Eight selected wrappers record real rustc success across incremental/fresh jobs-1/jobs-2 fixture runs. Both native driver exit files are zero.",
+    "cleanup": "Actual SSH transcript ends with logout and OWNED_ROOT_REMOVED=true, separately from the earlier echoed trap command. SSH terminal exit zero and terminal provider cleanup steps verified.",
+    "archive_identity": "Original complete handoff hash matches report. Durable native archive below preserves diagnostic sources, locks, executed hashes, native logs, journals and per-wrapper receipts; selected lifecycle receipts are embedded separately.",
+    "limits": [
+      "Same-user default semaphore ACL only",
+      "Compiler failure propagation not exercised",
+      "No independent stream routing test",
+      "No memory-pressure or queue integration",
+      "No Windows ARM64 proof"
+    ]
+  },
+  "lifecycle_receipts": {
+    "ssh-terminal.json": {
+      "exit": 0,
+      "pid": 43
+    },
+    "provider-run.json": {
+      "id": 40991490859,
+      "name": "Runner failure debugging smoke test",
+      "node_id": "WFR_kwLOUNeRfc8AAAAJi0iDKw",
+      "head_branch": "main.new",
+      "head_sha": "717b8bb6b0a6223448222725466d0c2a86fc14b0",
+      "path": ".github/workflows/runner-debug-smoke.yml",
+      "display_title": "Runner failure debugging smoke test",
+      "run_number": 114,
+      "event": "workflow_dispatch",
+      "status": "completed",
+      "conclusion": "failure",
+      "workflow_id": 398706242,
+      "check_suite_id": 111117449985,
+      "check_suite_node_id": "CS_kwDOUNeRfc8AAAAZ3x27AQ",
+      "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859",
+      "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40991490859",
+      "pull_requests": [],
+      "created_at": "2026-10-30T02:24:23Z",
+      "updated_at": "2026-10-30T02:37:30Z",
+      "actor": {
+        "login": "cowwoc",
+        "id": 633348,
+        "node_id": "MDQ6VXNlcjYzMzM0OA==",
+        "avatar_url": "https://avatars.githubusercontent.com/u/633348?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/cowwoc",
+        "html_url": "https://github.com/cowwoc",
+        "followers_url": "https://api.github.com/users/cowwoc/followers",
+        "following_url": "https://api.github.com/users/cowwoc/following{/other_user}",
+        "gists_url": "https://api.github.com/users/cowwoc/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/cowwoc/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/cowwoc/subscriptions",
+        "organizations_url": "https://api.github.com/users/cowwoc/orgs",
+        "repos_url": "https://api.github.com/users/cowwoc/repos",
+        "events_url": "https://api.github.com/users/cowwoc/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/cowwoc/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "run_attempt": 1,
+      "referenced_workflows": [],
+      "run_started_at": "2026-10-30T02:24:23Z",
+      "triggering_actor": {
+        "login": "cowwoc",
+        "id": 633348,
+        "node_id": "MDQ6VXNlcjYzMzM0OA==",
+        "avatar_url": "https://avatars.githubusercontent.com/u/633348?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/cowwoc",
+        "html_url": "https://github.com/cowwoc",
+        "followers_url": "https://api.github.com/users/cowwoc/followers",
+        "following_url": "https://api.github.com/users/cowwoc/following{/other_user}",
+        "gists_url": "https://api.github.com/users/cowwoc/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/cowwoc/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/cowwoc/subscriptions",
+        "organizations_url": "https://api.github.com/users/cowwoc/orgs",
+        "repos_url": "https://api.github.com/users/cowwoc/repos",
+        "events_url": "https://api.github.com/users/cowwoc/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/cowwoc/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "jobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859/jobs",
+      "logs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859/logs",
+      "check_suite_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-suites/111117449985",
+      "artifacts_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859/artifacts",
+      "cancel_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859/cancel",
+      "rerun_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859/rerun",
+      "previous_attempt_url": null,
+      "workflow_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/workflows/398706242",
+      "head_commit": {
+        "id": "717b8bb6b0a6223448222725466d0c2a86fc14b0",
+        "tree_id": "dd2f801c9d97800189d8912b7e5bbaf913df0445",
+        "message": "test: cover macOS memory acquisition and cleanup failures\n\nExercise the reader's existing rejection and resource-release behavior through typed controlled native outcomes. Preserve its public operation and native ABI, verify primary and suppressed cleanup errors, and retain incremental/fresh evidence without repeating accepted native acquisition checks.",
+        "timestamp": "2026-10-30T02:05:39Z",
+        "author": {
+          "name": "Gili Tzabari",
+          "email": "cowwoc2020@gmail.com"
+        },
+        "committer": {
+          "name": "Gili Tzabari",
+          "email": "cowwoc2020@gmail.com"
+        }
+      },
+      "repository": {
+        "id": 1356304765,
+        "node_id": "R_kgDOUNeRfQ",
+        "name": "codex-unleashed",
+        "full_name": "holdmyspot-com/codex-unleashed",
+        "private": false,
+        "owner": {
+          "login": "holdmyspot-com",
+          "id": 326636212,
+          "node_id": "O_kgDOE3gStA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/326636212?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/holdmyspot-com",
+          "html_url": "https://github.com/holdmyspot-com",
+          "followers_url": "https://api.github.com/users/holdmyspot-com/followers",
+          "following_url": "https://api.github.com/users/holdmyspot-com/following{/other_user}",
+          "gists_url": "https://api.github.com/users/holdmyspot-com/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/holdmyspot-com/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/holdmyspot-com/subscriptions",
+          "organizations_url": "https://api.github.com/users/holdmyspot-com/orgs",
+          "repos_url": "https://api.github.com/users/holdmyspot-com/repos",
+          "events_url": "https://api.github.com/users/holdmyspot-com/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/holdmyspot-com/received_events",
+          "type": "Organization",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/holdmyspot-com/codex-unleashed",
+        "description": "Unofficial patches for OpenAI Codex",
+        "fork": false,
+        "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed",
+        "forks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/forks",
+        "keys_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/teams",
+        "hooks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/hooks",
+        "issue_events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/events",
+        "assignees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/tags",
+        "blobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/languages",
+        "stargazers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/stargazers",
+        "contributors_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contributors",
+        "subscribers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscribers",
+        "subscription_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscription",
+        "commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/merges",
+        "archive_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/downloads",
+        "issues_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/labels{/name}",
+        "releases_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/deployments"
+      },
+      "head_repository": {
+        "id": 1356304765,
+        "node_id": "R_kgDOUNeRfQ",
+        "name": "codex-unleashed",
+        "full_name": "holdmyspot-com/codex-unleashed",
+        "private": false,
+        "owner": {
+          "login": "holdmyspot-com",
+          "id": 326636212,
+          "node_id": "O_kgDOE3gStA",
+          "avatar_url": "https://avatars.githubusercontent.com/u/326636212?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/holdmyspot-com",
+          "html_url": "https://github.com/holdmyspot-com",
+          "followers_url": "https://api.github.com/users/holdmyspot-com/followers",
+          "following_url": "https://api.github.com/users/holdmyspot-com/following{/other_user}",
+          "gists_url": "https://api.github.com/users/holdmyspot-com/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/holdmyspot-com/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/holdmyspot-com/subscriptions",
+          "organizations_url": "https://api.github.com/users/holdmyspot-com/orgs",
+          "repos_url": "https://api.github.com/users/holdmyspot-com/repos",
+          "events_url": "https://api.github.com/users/holdmyspot-com/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/holdmyspot-com/received_events",
+          "type": "Organization",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "html_url": "https://github.com/holdmyspot-com/codex-unleashed",
+        "description": "Unofficial patches for OpenAI Codex",
+        "fork": false,
+        "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed",
+        "forks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/forks",
+        "keys_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/keys{/key_id}",
+        "collaborators_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/collaborators{/collaborator}",
+        "teams_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/teams",
+        "hooks_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/hooks",
+        "issue_events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/events{/number}",
+        "events_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/events",
+        "assignees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/assignees{/user}",
+        "branches_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/branches{/branch}",
+        "tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/tags",
+        "blobs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/blobs{/sha}",
+        "git_tags_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/tags{/sha}",
+        "git_refs_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/refs{/sha}",
+        "trees_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/trees{/sha}",
+        "statuses_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/statuses/{sha}",
+        "languages_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/languages",
+        "stargazers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/stargazers",
+        "contributors_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contributors",
+        "subscribers_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscribers",
+        "subscription_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/subscription",
+        "commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/commits{/sha}",
+        "git_commits_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/git/commits{/sha}",
+        "comments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/comments{/number}",
+        "issue_comment_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues/comments{/number}",
+        "contents_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/contents/{+path}",
+        "compare_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/compare/{base}...{head}",
+        "merges_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/merges",
+        "archive_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/{archive_format}{/ref}",
+        "downloads_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/downloads",
+        "issues_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/issues{/number}",
+        "pulls_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/pulls{/number}",
+        "milestones_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/milestones{/number}",
+        "notifications_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/notifications{?since,all,participating}",
+        "labels_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/labels{/name}",
+        "releases_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/releases{/id}",
+        "deployments_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/deployments"
+      }
+    },
+    "provider-jobs.json": {
+      "total_count": 2,
+      "jobs": [
+        {
+          "id": 123854709751,
+          "run_id": 40991490859,
+          "workflow_name": "Runner failure debugging smoke test",
+          "head_branch": "main.new",
+          "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOUNeRfc8AAAAc1lDj9w",
+          "head_sha": "717b8bb6b0a6223448222725466d0c2a86fc14b0",
+          "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123854709751",
+          "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40991490859/job/123854709751",
+          "status": "completed",
+          "conclusion": "success",
+          "created_at": "2026-10-30T02:24:24Z",
+          "started_at": "2026-10-30T02:24:26Z",
+          "completed_at": "2026-10-30T02:24:33Z",
+          "name": "select",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-30T02:24:27Z",
+              "completed_at": "2026-10-30T02:24:27Z"
+            },
+            {
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-30T02:24:27Z",
+              "completed_at": "2026-10-30T02:24:31Z"
+            },
+            {
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-30T02:24:31Z",
+              "completed_at": "2026-10-30T02:24:32Z"
+            },
+            {
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6,
+              "started_at": "2026-10-30T02:24:32Z",
+              "completed_at": "2026-10-30T02:24:32Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7,
+              "started_at": "2026-10-30T02:24:32Z",
+              "completed_at": "2026-10-30T02:24:32Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-runs/123854709751",
+          "labels": [
+            "ubuntu-24.04"
+          ],
+          "runner_id": 1000009992,
+          "runner_name": "GitHub Actions 1000009992",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        },
+        {
+          "id": 123854755087,
+          "run_id": 40991490859,
+          "workflow_name": "Runner failure debugging smoke test",
+          "head_branch": "main.new",
+          "run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/runs/40991490859",
+          "run_attempt": 1,
+          "node_id": "CR_kwDOUNeRfc8AAAAc1lGVDw",
+          "head_sha": "717b8bb6b0a6223448222725466d0c2a86fc14b0",
+          "url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/actions/jobs/123854755087",
+          "html_url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/40991490859/job/123854755087",
+          "status": "completed",
+          "conclusion": "failure",
+          "created_at": "2026-10-30T02:24:33Z",
+          "started_at": "2026-10-30T02:24:35Z",
+          "completed_at": "2026-10-30T02:37:29Z",
+          "name": "Debug - x86_64-pc-windows-msvc",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1,
+              "started_at": "2026-10-30T02:24:35Z",
+              "completed_at": "2026-10-30T02:24:36Z"
+            },
+            {
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2,
+              "started_at": "2026-10-30T02:24:36Z",
+              "completed_at": "2026-10-30T02:24:43Z"
+            },
+            {
+              "name": "Create owned partial build state",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3,
+              "started_at": "2026-10-30T02:24:43Z",
+              "completed_at": "2026-10-30T02:24:43Z"
+            },
+            {
+              "name": "Record the deliberate build failure",
+              "status": "completed",
+              "conclusion": "failure",
+              "number": 4,
+              "started_at": "2026-10-30T02:24:43Z",
+              "completed_at": "2026-10-30T02:24:43Z"
+            },
+            {
+              "name": "Debug the original failed workspace",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5,
+              "started_at": "2026-10-30T02:24:43Z",
+              "completed_at": "2026-10-30T02:24:51Z"
+            },
+            {
+              "name": "Post Debug the original failed workspace",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8,
+              "started_at": "2026-10-30T02:24:51Z",
+              "completed_at": "2026-10-30T02:37:26Z"
+            },
+            {
+              "name": "Post Create owned partial build state",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9,
+              "started_at": "2026-10-30T02:37:26Z",
+              "completed_at": "2026-10-30T02:37:26Z"
+            },
+            {
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10,
+              "started_at": "2026-10-30T02:37:26Z",
+              "completed_at": "2026-10-30T02:37:28Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11,
+              "started_at": "2026-10-30T02:37:28Z",
+              "completed_at": "2026-10-30T02:37:28Z"
+            }
+          ],
+          "check_run_url": "https://api.github.com/repos/holdmyspot-com/codex-unleashed/check-runs/123854755087",
+          "labels": [
+            "windows-2025"
+          ],
+          "runner_id": 1000009993,
+          "runner_name": "GitHub Actions 1000009993",
+          "runner_group_id": 0,
+          "runner_group_name": "GitHub Actions"
+        }
+      ]
+    },
+    "actual_shell_exit_tail": "94CPEX/b/N/MKlQ\r\n/68CaHc8p/cNYyz/X/IW4Cn6f+v/mcTzv+tgLv2/dBr0K8vHWP6/5C3AU/T/bvyn\r\nFPX/Ktjq/81MYKv/9y4n0/8bp4D6/5Iwlv8veQswpP+Xxd4u/wlH/tfAZqxG/R/1\r\n/z3p/z3nM/MpMI/XNP27gBFP9uQ3Aj7ZRIilK6YEXQlB5Mp7IlZGSGGSlV5ZNjrt\r\n9oiy8I3Aa8aI8d8yWlP/Va3+i/HfVTDW/qj/vk77S0VRp3nDGMv/evpvy3+O8V9V\r\nMJf+WzoN+pXlYyz/Uf99nfzf6r/NTGCr//YuJ9N/G6eA+u+SMJb/qP++Tv5vxuoD\r\n13/x/I/DPf8D9V/UfxH7wYPj/4SngD85/rfEfwvUf2vgEftvdgEKZqrHf1OM/66C\r\nsfavp/+38Z+a4vy/BigVGP/9hjGW/7XjvwXGf1fBbOe/CNxXcggYy/96+n/Df8ok\r\n8r8GevHfZSbQi//eXk53/ktxCqj/Lwlj+V9P/9f4/q8iNmM16v+o/y9I/5/nFJjH\r\na6qj/7/0RBjps9Dc+ZU11q+EzWnleXIrDf9oRYMBC47V/8eUhfr/a8aI8d9SXf/8\r\nD4r6fxWMtX9t/Veh/lMFimKc5lvGWP5X139R/6mC2eK/KeaVPQSM5X91/RfjP6ug\r\nl/+R3on/7l1OF/9dnALqv0vCWP5X138x/3sVbMbqA9d/8fyP13X+B+q/qP8iEAgE\r\nAoFAIBAIBAKBQCAQCAQCgUAgEAgEAoEYh/8D06KW8wAIAgA=\r\n__END_EVIDENCE__\r\n\n__CAT_DONE_0784:0__\u001b[?2004h\r\n\n\u001b[32mrunneradmin@runnervmdaln5 \u001b[35mMINGW64 \u001b[33m/d/a/_temp/windows-cargo-VBXCAk/input\u001b[K\r\u001b[m\n\u001b[1m#\u001b[22m\u001b[K\u001b[1Ctest \"$(cat incremental.exit)\" = 0 && test \"$(cat fresh.exit)\" = 0 && cd \"$GIT\r\n\u001b[23;80HTHUB_WORKSPACE\" && printf \"READY_FOR_EXIT=true ROOT=%s\\n\" \"$WIN_CARGO_ROOT\"; __ca\r\n\u001b[23;80Hat_status=$?; printf \"\\n__CAT_DONE_0785:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\nREADY_FOR_EXIT=true ROOT=/d/a/_temp/windows-cargo-VBXCAk\r\n\n__CAT_DONE_0785:0__\u001b[?2004h\r\n\u001b]0;/d/a/codex-unleashed/codex-unleashed\u0007\n\u001b[32mrunneradmin@runnervmdaln5 \u001b[35mMINGW64 \u001b[33m/d/a/codex-unleashed/codex-unleashed\u001b[K\r\u001b[m\n\u001b[1m#\u001b[22m\u001b[K\u001b[1Cexit\u001b[?2004l\r\nlogout\r\nOWNED_ROOT_REMOVED=true\r\n\u001b[?1004l"
+  },
+  "native_archive_manifest": [
+    {
+      "path": "CapacityProbe.java",
+      "bytes": 7417,
+      "sha256": "ff349f0d2ffd82ad68424785c597d3eb50f663b5d188dbe1bbcd7f998a8e81fc"
+    },
+    {
+      "path": "setup.sh",
+      "bytes": 1301,
+      "sha256": "94236af323dc84d29d00f6e98af24572703d13ef7b8692cdc4f87f6584b4d97f"
+    },
+    {
+      "path": "run.sh",
+      "bytes": 522,
+      "sha256": "de061ef46b044336c060a2204a890e72bb8466491debfd13f23f6212d3ac23f6"
+    },
+    {
+      "path": "dependencies.json",
+      "bytes": 4162,
+      "sha256": "6b11753c7ecd9c547a1141703b0eefb93972c2eefffc555a8bee783059447a2c"
+    },
+    {
+      "path": "snapshot.json",
+      "bytes": 318,
+      "sha256": "d95467b57ec31400bd8b37441028f5978046fb57abf45a699393a2b85e88891b"
+    },
+    {
+      "path": "helper/Cargo.toml",
+      "bytes": 123,
+      "sha256": "e715ee54f62e8768dd28630468bd822d5dc75311e577b93a1f38d3c72283f369"
+    },
+    {
+      "path": "helper/Cargo.lock",
+      "bytes": 1545,
+      "sha256": "f81ce7751fbfd5c51d79e163699715aff113836279fbf98c7151480cccb8c172"
+    },
+    {
+      "path": "helper/src/main.rs",
+      "bytes": 2989,
+      "sha256": "230fe771a7e671f243c9218c3b70d2fe871f80add3cce4c0eb55a9873641918e"
+    },
+    {
+      "path": "fixture/a/Cargo.toml",
+      "bytes": 58,
+      "sha256": "33ae00febb23515c6e0e5e9ef8c4176c8d8e3b7c40ef96eb852399a1bd52cc2d"
+    },
+    {
+      "path": "fixture/a/src/lib.rs",
+      "bytes": 29,
+      "sha256": "4e92a128107a07131a5b8ebe412161015bc5f4d0202483e71aeb7d8899d4dd7b"
+    },
+    {
+      "path": "fixture/b/Cargo.toml",
+      "bytes": 58,
+      "sha256": "0feac600cb373fd00031ad436079701e90d249ebf5000bb7c0048b12d4b9fb2e"
+    },
+    {
+      "path": "fixture/b/src/lib.rs",
+      "bytes": 29,
+      "sha256": "4e92a128107a07131a5b8ebe412161015bc5f4d0202483e71aeb7d8899d4dd7b"
+    },
+    {
+      "path": "fixture/Cargo.lock",
+      "bytes": 203,
+      "sha256": "89a2422e90000f09be6b2a6ca9090505540b2df4baf3e51fa428272ceffd4fb4"
+    },
+    {
+      "path": "fixture/Cargo.toml",
+      "bytes": 43,
+      "sha256": "d1891f917c05707dfe69f326195fbc9f26e8c51921fd1cc900f6c4c7f25439a8"
+    },
+    {
+      "path": "setup.log",
+      "bytes": 2418,
+      "sha256": "9d5912a6986594cf53503bdc7653168854377a666d179fc0d9779a68046a115a"
+    },
+    {
+      "path": "setup.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "setup-result.txt",
+      "bytes": 87,
+      "sha256": "f194c06787800b70dcf6ec6b64546da560a7b4e4217263403d9b2cd773fd6946"
+    },
+    {
+      "path": "fresh-setup.log",
+      "bytes": 1219,
+      "sha256": "b6eb14752c4b1d83a97b3341cb39da992bebaba39fc87270a61a4d5744cc608a"
+    },
+    {
+      "path": "incremental.log",
+      "bytes": 7994,
+      "sha256": "7b5f586b81bcc02e7ba0d0fb83a17e8ab62f83891c6c702609e2cb61b8ecb3d4"
+    },
+    {
+      "path": "incremental.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "fresh.log",
+      "bytes": 7881,
+      "sha256": "862633be45b2393ce8adf9d0b0caa86d5e98df7f7ca9cf5e8ed05b6143ff061a"
+    },
+    {
+      "path": "fresh.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "executed-sha256.txt",
+      "bytes": 2089,
+      "sha256": "b601f697595f2442b7db2a98115cf74c395b29bdf8b6c5571239dabf25ae87a4"
+    },
+    {
+      "path": "result-fresh/journal.txt",
+      "bytes": 4231,
+      "sha256": "630032da19bbea86032651d88b82e799789901cf8d2285acd5423dac8ea2995a"
+    },
+    {
+      "path": "result-incremental/journal.txt",
+      "bytes": 4272,
+      "sha256": "213bec4ce1c379849f3cfdc94fef694a70a628385b2899bd0f4c20645c48bf43"
+    },
+    {
+      "path": "result-fresh/killed-ack.txt",
+      "bytes": 188,
+      "sha256": "4acd25e9e64456d614250c267985a9cae26f20c5413ffed4ea14c3deb5c3412a"
+    },
+    {
+      "path": "result-fresh/returned-ack.txt",
+      "bytes": 188,
+      "sha256": "bf98b2a7727c0d0efc8b57e102f4306f25f9e4cc3163962d57b5211b831f54b2"
+    },
+    {
+      "path": "result-incremental/killed-ack.txt",
+      "bytes": 188,
+      "sha256": "7dc399649b1c48941d01d927279bc2881def0ec81c567a99fdf81fcaf93afd14"
+    },
+    {
+      "path": "result-incremental/returned-ack.txt",
+      "bytes": 188,
+      "sha256": "8efb4c245ae03171a530829520b347b03fcfe39bdb330aaebeb1acc657622e9d"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-2108/child-ack.txt",
+      "bytes": 5,
+      "sha256": "097326d9ad88cc539dbcb73eff61f96b632889e62ac303aac8a4d3a50118c7cc"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-2108/finished.txt",
+      "bytes": 93,
+      "sha256": "f6f94bded897077b6a572945414d5950e5e2a2155b49dae2f9a659a0620592ae"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-2108/retry.txt",
+      "bytes": 165,
+      "sha256": "b00482f242ee137e2d51c97244344fa10759a228ceda65c9200d94753ddf2b90"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-2108/start.txt",
+      "bytes": 1140,
+      "sha256": "e72a0b2935ef35a34145b3bd99a15acec6ed821ab4afb3d2065785713bdd3458"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-8824/child-ack.txt",
+      "bytes": 5,
+      "sha256": "bf2a10be4e65b21deb16cc1503c7dc6e9fc580dec663b4ced2b4443db899bec4"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-8824/finished.txt",
+      "bytes": 93,
+      "sha256": "d4d3e2ed75deb86b4be036b1bd8719206b880d871008b244305f87d59661deed"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-8824/retry.txt",
+      "bytes": 165,
+      "sha256": "d5defd0a7d4385a4a6a5a1c4d07075c548a2659df1209137ff1906b90751c666"
+    },
+    {
+      "path": "result-fresh/cargo-1/wrapper-8824/start.txt",
+      "bytes": 1140,
+      "sha256": "91a68a4fe4d2220fd41f8140bcb83b7a49cd2efa96390016c5df57d3bf6ea0be"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-1944/child-ack.txt",
+      "bytes": 5,
+      "sha256": "00be92cc869607aeeacaec66ebcfd3230c5ee6ff89e71930045d7f9f78880ced"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-1944/finished.txt",
+      "bytes": 93,
+      "sha256": "f1240f04264523cc56f86dd8749bf7f4f5ac120ce3765ef73867298bd34bd8ac"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-1944/retry.txt",
+      "bytes": 165,
+      "sha256": "e3199b28d6d018974039e2b95add677f4b5c894f118f73998c437a0fab0599f1"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-1944/start.txt",
+      "bytes": 1140,
+      "sha256": "2186a294818821c4900f383152bdf3a3dc43000c640f2d973f31a70ca2129fb3"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-7180/child-ack.txt",
+      "bytes": 5,
+      "sha256": "2e00f3f512eb4f0535c93bfe0fb2a3b7b2465526f9f186aa9d0b6faf00621f30"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-7180/finished.txt",
+      "bytes": 93,
+      "sha256": "6e97be8a641a28eaa42899216c426f29ee73b04783bb96ae10af4ad4b4dc34b1"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-7180/retry.txt",
+      "bytes": 165,
+      "sha256": "ebaee7e0575c88c210c9134f196a565b39154517cf74569b2c17d5e8b1c392bb"
+    },
+    {
+      "path": "result-fresh/cargo-2/wrapper-7180/start.txt",
+      "bytes": 1140,
+      "sha256": "9a17b806635ebd108716fb6f599c5bb911250d25cbfe8f55e3a8716033b2f694"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-6152/child-ack.txt",
+      "bytes": 5,
+      "sha256": "0d5d52ecffa09441d395e5a03acda7b62a61c9a6d01ffa3e12e8b211e82649c4"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-6152/finished.txt",
+      "bytes": 93,
+      "sha256": "43cf0b1b71c9064eae7d705c1a73442a230f92abfcd3887a649719bf02239efc"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-6152/retry.txt",
+      "bytes": 165,
+      "sha256": "c2199186018412bb6f31192a8bea4437158d5074e5f567f5fcd69696c9ff431d"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-6152/start.txt",
+      "bytes": 1158,
+      "sha256": "7db6a71fdc737f972971c0b6f14d1deab26ee13ba488a50ddb4e66656794f6ad"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-9212/child-ack.txt",
+      "bytes": 5,
+      "sha256": "7d5084180e10f9d315fbe9790516f09e9f7521b8fe2fc0c95d088ba95afc830d"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-9212/finished.txt",
+      "bytes": 93,
+      "sha256": "0272e0f178b1a6e5f7bca48e99b5b7349705a820e51a4ccb7bfad2f235e501cb"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-9212/retry.txt",
+      "bytes": 165,
+      "sha256": "7765ed36df427dc94e50259ad80c23af2e1504942634cc3ea580292c79b306a6"
+    },
+    {
+      "path": "result-incremental/cargo-1/wrapper-9212/start.txt",
+      "bytes": 1158,
+      "sha256": "b182cab6b573a0d19c1533f9072b04381a251f1b42c69306f69e131f3f3bfcf7"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-7428/child-ack.txt",
+      "bytes": 5,
+      "sha256": "2b7f13306363b97bc2969af0a03418f887e2cd93d84d8f3ecbf02d2207997e12"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-7428/finished.txt",
+      "bytes": 93,
+      "sha256": "ac8f2882a9dd0dfe0114a0f68a3f65957d708f993aab76df700d7b6f13a26db6"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-7428/retry.txt",
+      "bytes": 165,
+      "sha256": "03315f77b27a3ad1a0db4f93874b2862732a5a6f67a6d06f64e53e0aa9737736"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-7428/start.txt",
+      "bytes": 1158,
+      "sha256": "b03c61b9f08ca39339f0b8425ebe50c69ec50503d15f07e76ebf03398dcea3c5"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-9172/child-ack.txt",
+      "bytes": 5,
+      "sha256": "67ea2fee704686a33d44a0ac31b354cc631db2a11ed695a583ad79c76e2aae0d"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-9172/finished.txt",
+      "bytes": 93,
+      "sha256": "a9d78aa0b1de7d70729fded4833d85f5330bedf1414b9cb0e452eee0d61487f5"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-9172/retry.txt",
+      "bytes": 165,
+      "sha256": "8969120625bf56a3cb292b9eb80a79441aacb9396595252fceed3969d1a98e7a"
+    },
+    {
+      "path": "result-incremental/cargo-2/wrapper-9172/start.txt",
+      "bytes": 1158,
+      "sha256": "e9a39a4963631df3e42213855fdaed7ba528761298c9f96712c900f87bb09877"
+    }
+  ],
+  "archive": {
+    "format": "tar.gz",
+    "encoding": "base64",
+    "member_count": 79,
+    "sha256": "dddefbf342def0a3238787bd16687e263fe64a52af5d0870e6b97053dcd1c0bf",
+    "data": "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"
+  }
+}
