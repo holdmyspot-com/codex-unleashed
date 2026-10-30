@@ -120,6 +120,17 @@ public final class LinuxCgroup implements AutoCloseable
 	public boolean isPopulated() throws IOException
 	{
 		requireOpen();
+		return isPopulated(directory);
+	}
+
+	/**
+	 * Reads live population for a borrowed, retained action subtree without acquiring its ownership.
+	 * @param directory the exclusive action cgroup retained by its existing owner
+	 * @return true when the kernel reports live processes in that group or its descendants
+	 * @throws IOException if events are missing, unreadable or have no valid population field
+	 */
+	static boolean isPopulated(Path directory) throws IOException
+	{
 		Properties events = new Properties();
 		try (Reader input = Files.newBufferedReader(directory.resolve(EVENTS_FILE)))
 		{
