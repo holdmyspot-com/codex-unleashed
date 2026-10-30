@@ -1,5 +1,6 @@
 package com.holdmyspot.codexunleashed.tooling;
 
+import com.holdmyspot.codexunleashed.scheduler.Scheduler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
@@ -9,7 +10,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Runs source-cache preparation and recording, retention previews, and V8 action-script extraction.
+ * Runs cache commands, retention previews, V8 script extraction and explicit scheduler selection.
  */
 public final class Main
 {
@@ -42,7 +43,7 @@ public final class Main
 	 * @param in caller-owned inventory input for retention previews; remains open and is unused by the other commands
 	 * @param out progress output
 	 * @param err diagnostics
-	 * @return zero on success, one on operational failure or a rejected input document, or two on an unknown command or invalid command arguments
+	 * @return zero on success, one on operational failure, unavailable scheduling or a rejected input document, or two on an unknown command or invalid command arguments
 	 * @throws NullPointerException if an argument is null
 	 */
 	public static int run(String[] arguments, InputStream in, PrintStream out, PrintStream err)
@@ -57,6 +58,7 @@ public final class Main
 		{
 			return switch (arguments[0])
 			{
+				case "schedule" -> Scheduler.run(Arrays.copyOfRange(arguments, 1, arguments.length), out, err);
 				case V8_SCRIPT_COMMAND -> writeV8Script(arguments, out, err);
 				case RetentionPreview.NAME -> RetentionPreview.run(Arrays.copyOfRange(arguments, 1,
 					arguments.length), in, out, err);
@@ -100,6 +102,7 @@ public final class Main
 		err.println("Usage: codex-tooling " + SourceCacheCommand.NAME +
 			" [--record-source-inputs] [--profile release|ci-test] <workspace> <target> [binary ...]");
 		err.println("       codex-tooling " + RetentionPreview.NAME + " < inventory.json");
+		err.println("       codex-tooling schedule <scheduler-options> -- <tool-arguments>");
 		err.println("       codex-tooling " + V8_SCRIPT_COMMAND + " <upstream-action.yml>");
 		return 2;
 	}
