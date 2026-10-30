@@ -1009,6 +1009,9 @@ public final class LinuxBorrowedStreams {
         }
         /**
          * Verifies socket peer credentials against a stable live kernel identity.
+         * The privileged receiver separately verifies the wrapper's PID namespace before sending its authorization
+         * frame. The unprivileged wrapper cannot read the privileged gate's namespace link; it authenticates that
+         * gate using root socket credentials and the action, attempt and capability frame instead.
          * @param fd native descriptor already retained by its owner
          * @return the validated result retained by this operation
          * @throws java.io.IOException if validation, native access or owned cleanup fails
@@ -1024,7 +1027,8 @@ public final class LinuxBorrowedStreams {
                 Peer live=Peer.capture(pid);
                 if(live.uid()!=credentials.get(ValueLayout.JAVA_INT,4)||live.gid()!=credentials.get(ValueLayout.JAVA_INT,8))
                 throw new IOException("Socket peer credentials changed during identity verification");
-                live.requireLive();
+                if (!live.equals(Peer.capture(pid)))
+                    throw new IOException("Socket peer identity changed during verification");
                 return live;
             }
         }
