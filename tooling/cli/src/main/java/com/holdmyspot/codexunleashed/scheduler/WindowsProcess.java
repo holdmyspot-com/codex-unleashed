@@ -47,8 +47,39 @@ public final class WindowsProcess implements AutoCloseable
     /** First query-release failure, with later failed releases suppressed, or null before any failure. */
     private IOException residencyCleanupFailure = null;
     private final Kernel kernel;
-    private final Releases releases;
-    private final MemorySegment job;
+    /** Lifetime and temporary release records exist before the first native acquisition. */
+    private final OwnedHandle jobHandle = new OwnedHandle("Job Object");
+    private final OwnedHandle processHandle = new OwnedHandle("root process");
+    private final OwnedHandle threadHandle = new OwnedHandle("primary thread");
+    private final OwnedHandle nullInputHandle = new OwnedHandle("NUL input");
+    private final OwnedHandle inputHandle = new OwnedHandle("input duplicate");
+    private final OwnedHandle outputHandle = new OwnedHandle("output duplicate");
+    private final OwnedHandle errorHandle = new OwnedHandle("error duplicate");
+    private final OwnedHandle[] launchHandles = {errorHandle, outputHandle, inputHandle, nullInputHandle};
+    private final OwnedHandle[] lifetimeHandles = {threadHandle, processHandle, jobHandle};
+    private MemorySegment job = MemorySegment.NULL;
+    /** Temporary attribute-list ownership, retained after an uncertain native destruction. */
+    private MemorySegment attributes;
+    private boolean attributesInitialized;
+    private boolean attributesCloseAttempted;
+    private IOException attributesCloseFailure;
+    /** Checked ownership capsule allocated before any native resource is acquired. */
+    private final PreparationFailure preparationFailure = new PreparationFailure(this);
+    private boolean preparationFailed;
+    /** A native creation call without an authoritative result prevents assuming that no process exists. */
+    private boolean creationUncertain;
+    /** Native creation output stays retained even when its invocation has no authoritative result. */
+    private MemorySegment processInformation;
+    /** First cleanup fault remains visible even if later status reconciliation permits more cleanup. */
+    private IOException cleanupFailure;
+    /** Arena destruction has one attempt even if its Java result is uncertain. */
+    private boolean kernelCloseAttempted;
+    private Throwable kernelCloseFailure;
+    /** Root termination is never repeated after an ambiguous native effect. */
+    private boolean terminationAttempted;
+    private Throwable terminationFailure;
+    /** Accepted whole-Job result remains readable while terminal native cleanup is unresolved. */
+    private Result completion;
     /** Reused native job accounting storage; calls are confined to the controlling thread. */
     private final MemorySegment accounting;
     /** Reused native root exit-code storage. */
@@ -69,6 +100,8 @@ public final class WindowsProcess implements AutoCloseable
     private long pid;
     private boolean aborted;
     private boolean closed;
+    /** Close permanently withdraws new execution and acquisition authority, while poll remains usable. */
+    private boolean closing;
 
     /**
      * Reports the root's original unsigned DWORD exit status and explicit attempt abortion.
@@ -97,7 +130,8 @@ public final class WindowsProcess implements AutoCloseable
      * The environment is explicit and copied. Arguments follow Windows CRT quoting semantics;
      * names beginning with '=' retain the drive-current-directory environment convention.
      * Standard input is NUL, and both output streams use a duplicated borrowed output handle.
-     * Launch failure releases owned resources without closing the borrowed output.
+     * Launch failure releases owned resources without closing the borrowed output. If cleanup remains unresolved,
+     * a checked PreparationFailure retains the exact partial owner and native storage.
      *
      * @param command nonempty argv whose first element is an absolute executable file
      * @param directory an existing absolute working directory
@@ -157,6 +191,7 @@ public final class WindowsProcess implements AutoCloseable
      * @param input live borrowed standard-input handle
      * @param output live borrowed standard-output handle
      * @param error live borrowed standard-error handle
+     * Failed preparation returns unfinished ownership through PreparationFailure rather than discarding native state.
      * @return the suspended workload owner
      * @throws NullPointerException if an input or member is null
      * @throws IllegalArgumentException if an input violates the start contract
@@ -193,19 +228,8 @@ public final class WindowsProcess implements AutoCloseable
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error, Kernel kernel) throws IOException
     {
-        try
-        {
-            validateStandardHandle(input, "Input");
-            validateStandardHandle(output, "Output");
-            validateStandardHandle(error, "Error");
-            return new WindowsProcess(command, directory, environment, input, output, error, kernel, false);
-        }
-        catch (IOException | RuntimeException | Error failure)
-        {
-            try { kernel.close(); }
-            catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
-            throw failure;
-        }
+        validateSeparateHandles(input, output, error, kernel);
+        return acquire(command, directory, environment, input, output, error, kernel, false);
     }
 
     /**
@@ -224,19 +248,8 @@ public final class WindowsProcess implements AutoCloseable
         Map<String,String> environment, MemorySegment input, MemorySegment output,
         MemorySegment error, Kernel kernel) throws IOException
     {
-        try
-        {
-            validateStandardHandle(input, "Input");
-            validateStandardHandle(output, "Output");
-            validateStandardHandle(error, "Error");
-            return new WindowsProcess(command, directory, environment, input, output, error, kernel, true);
-        }
-        catch (IOException | RuntimeException | Error failure)
-        {
-            try { kernel.close(); }
-            catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
-            throw failure;
-        }
+        validateSeparateHandles(input, output, error, kernel);
+        return acquire(command, directory, environment, input, output, error, kernel, true);
     }
 
     /**
@@ -253,11 +266,26 @@ public final class WindowsProcess implements AutoCloseable
     static WindowsProcess launch(List<String> command, Path directory,
         Map<String,String> environment, MemorySegment output, Kernel kernel) throws IOException
     {
+        return acquire(command, directory, environment, null, output, null, kernel, false);
+    }
+
+    /**
+     * Rejects invalid separate streams before acquisition and releases the unused binding owner.
+     * @param input borrowed input
+     * @param output borrowed output
+     * @param error borrowed error
+     * @param kernel unused exclusively owned binding scope
+     */
+    private static void validateSeparateHandles(MemorySegment input, MemorySegment output, MemorySegment error,
+        Kernel kernel)
+    {
         try
         {
-            return new WindowsProcess(command, directory, environment, null, output, null, kernel, false);
+            validateStandardHandle(input, "Input");
+            validateStandardHandle(output, "Output");
+            validateStandardHandle(error, "Error");
         }
-        catch (IOException | RuntimeException | Error failure)
+        catch (RuntimeException | Error failure)
         {
             try { kernel.close(); }
             catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
@@ -266,37 +294,111 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
-     * Acquires a contained workload and arranges reverse-order cleanup before every acquisition.
-     *
+     * Reserves the Java owner before acquisition and returns failed cleanup ownership through a checked capsule.
      * @param command validated direct argv
-     * @param directory validated absolute working directory
+     * @param directory working directory
      * @param environment copied child environment
-     * @param input borrowed input handle, or null for NUL input and merged output
-     * @param output borrowed output handle
-     * @param error borrowed error handle, ignored when input is null
-     * @param kernel native access owned after successful construction
-     * @param prepared indicates whether primary-thread execution requires explicit release
-     * @throws IOException if native acquisition, launch or cleanup fails
+     * @param input borrowed input, or null for NUL input
+     * @param output borrowed output
+     * @param error borrowed error, ignored for combined output
+     * @param kernel exclusively owned native access
+     * @param prepared whether the primary thread must remain suspended
+     * @return completely acquired process owner
+     * @throws IOException if acquisition fails; PreparationFailure retains any unfinished cleanup
      */
-    private WindowsProcess(List<String> command, Path directory,
-        Map<String,String> environment, MemorySegment input, MemorySegment output,
-        MemorySegment error, Kernel kernel, boolean prepared) throws IOException
+    private static WindowsProcess acquire(List<String> command, Path directory, Map<String,String> environment,
+        MemorySegment input, MemorySegment output, MemorySegment error, Kernel kernel, boolean prepared)
+        throws IOException
+    {
+        WindowsProcess owner;
+        try
+        {
+            if (input != null)
+            {
+                validateStandardHandle(input, "Input");
+                validateStandardHandle(error, "Error");
+            }
+            validateStandardHandle(output, "Output");
+            owner = new WindowsProcess(kernel, prepared);
+        }
+        catch (RuntimeException | Error failure)
+        {
+            try { kernel.close(); }
+            catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+        try
+        {
+            owner.jobHandle.value = kernel.pointer("CreateJobObjectW", MemorySegment.NULL, MemorySegment.NULL);
+            owner.job = owner.jobHandle.value;
+            kernel.requireHandle("CreateJobObjectW", owner.job);
+            var limits = kernel.arena.allocate(144, 8);
+            limits.set(ValueLayout.JAVA_INT, 16, 0x2000);
+            kernel.require("SetInformationJobObject", kernel.call("SetInformationJobObject", owner.job, 9, limits, 144));
+            owner.create(command, directory, environment, input, output, error);
+            owner.closeLaunchResources();
+            return owner;
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            owner.preparationFailed = true;
+            owner.preparationFailure.initCause(failure);
+            try { owner.close(); }
+            catch (IOException | RuntimeException | Error cleanup)
+            {
+                owner.preparationFailure.addSuppressed(cleanup);
+                throw owner.preparationFailure;
+            }
+            throw failure;
+        }
+    }
+
+    /**
+     * Creates native storage and ownership records without acquiring any native handle.
+     * @param kernel exclusively owned bindings
+     * @param prepared whether the primary thread requires explicit release
+     */
+    private WindowsProcess(Kernel kernel, boolean prepared)
     {
         this.kernel = Objects.requireNonNull(kernel, "kernel may not be null");
         this.prepared = prepared;
-        this.accounting = kernel.arena.allocate(48, 8);
-        this.exitCode = kernel.arena.allocate(ValueLayout.JAVA_INT);
-        try (var owned = new Releases())
+        accounting = kernel.arena.allocate(48, 8);
+        exitCode = kernel.arena.allocate(ValueLayout.JAVA_INT);
+    }
+
+    /**
+     * Retains the exact partial owner when failed preparation cannot finish cleanup. The cause is the original
+     * preparation fault; suppressed failures describe cleanup. Keep this capsule until cleanup is resolved.
+     */
+    public static final class PreparationFailure extends IOException implements AutoCloseable
+    {
+        private static final long serialVersionUID = 1L;
+        /** Exclusive partial process owner, reserved before native acquisition. */
+        private final WindowsProcess owner;
+
+        /**
+         * Reserves failure ownership before acquisition.
+         * @param owner resource-free process owner
+         */
+        private PreparationFailure(WindowsProcess owner)
         {
-            this.job = kernel.pointer("CreateJobObjectW", MemorySegment.NULL, MemorySegment.NULL);
-            kernel.requireHandle("CreateJobObjectW", job);
-            owned.add(() -> kernel.closeHandle(job));
-            var limits = kernel.arena.allocate(144, 8);
-            limits.set(ValueLayout.JAVA_INT, 16, 0x2000);
-            kernel.require("SetInformationJobObject", kernel.call("SetInformationJobObject", job, 9, limits, 144));
-            create(command, directory, environment, input, output, error, owned);
-            this.releases = owned.transfer();
+            super("Windows preparation retains unfinished native cleanup");
+            this.owner = owner;
         }
+
+        /**
+         * Returns the retained owner for actual status reconciliation and terminal cleanup. Failed preparation
+         * permanently forbids root release and new member acquisitions; no workload outcome is fabricated.
+         * @return exact partial owner, with its original fault preserved by this capsule
+         */
+        public WindowsProcess owner() { return owner; }
+
+        /**
+         * Reconciles retained cleanup without retrying uncertain native releases.
+         * @throws IOException if cleanup remains unresolved or an earlier cleanup fault was retained
+         */
+        @Override
+        public void close() throws IOException { owner.close(); }
     }
 
     /**
@@ -308,81 +410,81 @@ public final class WindowsProcess implements AutoCloseable
      * @param input borrowed input handle, or null for NUL input and merged output
      * @param output borrowed output handle
      * @param error borrowed error handle, ignored when input is null
-     * @param owned receives all lifetime resources before subsequent fallible work
      * @throws IOException if native launch or release fails
      */
     private void create(List<String> command, Path directory, Map<String,String> environment,
-        MemorySegment input, MemorySegment output, MemorySegment error, Releases owned) throws IOException
+        MemorySegment input, MemorySegment output, MemorySegment error) throws IOException
     {
-        try (var launch = new Releases())
+        var standardInput = input;
+        if (standardInput == null)
         {
-            var standardInput = input;
-            if (standardInput == null)
-            {
-                var nullInput = kernel.pointer("CreateFileW", kernel.wide("NUL"), 0x80000000, 3,
-                    MemorySegment.NULL, 3, 0, MemorySegment.NULL);
-                kernel.requireHandle("CreateFileW(NUL)", nullInput);
-                launch.add(() -> kernel.closeHandle(nullInput));
-                standardInput = nullInput;
-            }
-            var current = kernel.pointer("GetCurrentProcess");
-            var inputCopy = kernel.duplicate(current, standardInput);
-            launch.add(() -> kernel.closeHandle(inputCopy));
-            var outputCopy = kernel.duplicate(current, output);
-            launch.add(() -> kernel.closeHandle(outputCopy));
-            var errorCopy = outputCopy;
-            if (input != null)
-            {
-                var separateErrorCopy = kernel.duplicate(current, error);
-                launch.add(() -> kernel.closeHandle(separateErrorCopy));
-                errorCopy = separateErrorCopy;
-            }
-            var size = kernel.arena.allocate(ValueLayout.JAVA_LONG);
-            int query = kernel.integer("InitializeProcThreadAttributeList", MemorySegment.NULL, 2, 0, size);
-            long queryError = kernel.lastError();
-            if (query != 0 || queryError != 122)
-                throw new IOException("Attribute-list size query requires error 122; got result " + query + " and error " + queryError);
-            long attributeBytes = size.get(ValueLayout.JAVA_LONG, 0);
-            if (attributeBytes <= 0)
-                throw new IOException("Attribute-list size must be positive: " + attributeBytes);
-            var attributes = kernel.arena.allocate(attributeBytes, 8);
-            kernel.require("InitializeProcThreadAttributeList",
-                kernel.call("InitializeProcThreadAttributeList", attributes, 2, 0, size));
-            launch.add(() -> kernel.call("DeleteProcThreadAttributeList", attributes));
-            var jobs = kernel.arena.allocate(ValueLayout.ADDRESS);
-            jobs.set(ValueLayout.ADDRESS, 0, job);
-            long inheritedBytes = input == null ? 16 : 24;
-            var inherited = kernel.arena.allocate(inheritedBytes, 8);
-            inherited.set(ValueLayout.ADDRESS, 0, inputCopy);
-            inherited.set(ValueLayout.ADDRESS, 8, outputCopy);
-            if (input != null)
-                inherited.set(ValueLayout.ADDRESS, 16, errorCopy);
-            kernel.require("UpdateProcThreadAttribute(JOB_LIST)", kernel.call("UpdateProcThreadAttribute",
-                attributes, 0, 0x2000dL, jobs, 8L, MemorySegment.NULL, MemorySegment.NULL));
-            kernel.require("UpdateProcThreadAttribute(HANDLE_LIST)", kernel.call("UpdateProcThreadAttribute",
-                attributes, 0, 0x20002L, inherited, inheritedBytes, MemorySegment.NULL, MemorySegment.NULL));
-
-            // STARTUPINFOEXW is 112 bytes on both native Windows 64-bit targets.
-            var startup = kernel.arena.allocate(112, 8);
-            startup.set(ValueLayout.JAVA_INT, 0, 112);
-            startup.set(ValueLayout.JAVA_INT, 60, 0x100);
-            startup.set(ValueLayout.ADDRESS, 80, inputCopy);
-            startup.set(ValueLayout.ADDRESS, 88, outputCopy);
-            startup.set(ValueLayout.ADDRESS, 96, errorCopy);
-            startup.set(ValueLayout.ADDRESS, 104, attributes);
-            var info = kernel.arena.allocate(24, 8);
-            kernel.require("CreateProcessW", kernel.call("CreateProcessW", kernel.wide(command.getFirst()),
-                kernel.wide(commandLine(command)), MemorySegment.NULL, MemorySegment.NULL, 1,
-                prepared ? 0x80404 : 0x80400,
-                kernel.wide(environmentBlock(environment)), kernel.wide(directory.toString()), startup, info));
-            process = info.get(ValueLayout.ADDRESS, 0);
-            pid = Integer.toUnsignedLong(info.get(ValueLayout.JAVA_INT, 16));
-            owned.add(() -> kernel.closeHandle(process));
-            primaryThread = info.get(ValueLayout.ADDRESS, 8);
-            owned.add(() -> kernel.closeHandle(primaryThread));
-            owned.add(this::closeMembers);
-            owned.add(this::drain);
+            nullInputHandle.value = kernel.pointer("CreateFileW", kernel.wide("NUL"), 0x80000000, 3,
+                MemorySegment.NULL, 3, 0, MemorySegment.NULL);
+            kernel.requireHandle("CreateFileW(NUL)", nullInputHandle.value);
+            standardInput = nullInputHandle.value;
         }
+        var current = kernel.pointer("GetCurrentProcess");
+        inputHandle.value = kernel.duplicate(current, standardInput);
+        var inputCopy = inputHandle.value;
+        outputHandle.value = kernel.duplicate(current, output);
+        var outputCopy = outputHandle.value;
+        var errorCopy = outputCopy;
+        if (input != null)
+        {
+            errorHandle.value = kernel.duplicate(current, error);
+            errorCopy = errorHandle.value;
+        }
+        var size = kernel.arena.allocate(ValueLayout.JAVA_LONG);
+        int query = kernel.integer("InitializeProcThreadAttributeList", MemorySegment.NULL, 2, 0, size);
+        long queryError = kernel.lastError();
+        if (query != 0 || queryError != 122)
+            throw new IOException("Attribute-list size query requires error 122; got result " + query + " and error " + queryError);
+        long attributeBytes = size.get(ValueLayout.JAVA_LONG, 0);
+        if (attributeBytes <= 0)
+            throw new IOException("Attribute-list size must be positive: " + attributeBytes);
+        attributes = kernel.arena.allocate(attributeBytes, 8);
+        kernel.require("InitializeProcThreadAttributeList",
+            kernel.call("InitializeProcThreadAttributeList", attributes, 2, 0, size));
+        attributesInitialized = true;
+        var jobs = kernel.arena.allocate(ValueLayout.ADDRESS);
+        jobs.set(ValueLayout.ADDRESS, 0, job);
+        long inheritedBytes = input == null ? 16 : 24;
+        var inherited = kernel.arena.allocate(inheritedBytes, 8);
+        inherited.set(ValueLayout.ADDRESS, 0, inputCopy);
+        inherited.set(ValueLayout.ADDRESS, 8, outputCopy);
+        if (input != null)
+            inherited.set(ValueLayout.ADDRESS, 16, errorCopy);
+        kernel.require("UpdateProcThreadAttribute(JOB_LIST)", kernel.call("UpdateProcThreadAttribute",
+            attributes, 0, 0x2000dL, jobs, 8L, MemorySegment.NULL, MemorySegment.NULL));
+        kernel.require("UpdateProcThreadAttribute(HANDLE_LIST)", kernel.call("UpdateProcThreadAttribute",
+            attributes, 0, 0x20002L, inherited, inheritedBytes, MemorySegment.NULL, MemorySegment.NULL));
+
+        // STARTUPINFOEXW is 112 bytes on both native Windows 64-bit targets.
+        var startup = kernel.arena.allocate(112, 8);
+        startup.set(ValueLayout.JAVA_INT, 0, 112);
+        startup.set(ValueLayout.JAVA_INT, 60, 0x100);
+        startup.set(ValueLayout.ADDRESS, 80, inputCopy);
+        startup.set(ValueLayout.ADDRESS, 88, outputCopy);
+        startup.set(ValueLayout.ADDRESS, 96, errorCopy);
+        startup.set(ValueLayout.ADDRESS, 104, attributes);
+        processInformation = kernel.arena.allocate(24, 8);
+        var info = processInformation;
+        creationUncertain = true;
+        int created = kernel.integer("CreateProcessW", kernel.wide(command.getFirst()),
+            kernel.wide(commandLine(command)), MemorySegment.NULL, MemorySegment.NULL, 1,
+            prepared ? 0x80404 : 0x80400,
+            kernel.wide(environmentBlock(environment)), kernel.wide(directory.toString()), startup, info);
+        if (created == 0)
+        {
+            creationUncertain = false;
+            kernel.require("CreateProcessW", created);
+        }
+        processHandle.value = info.get(ValueLayout.ADDRESS, 0);
+        threadHandle.value = info.get(ValueLayout.ADDRESS, 8);
+        process = processHandle.value;
+        primaryThread = threadHandle.value;
+        pid = Integer.toUnsignedLong(info.get(ValueLayout.JAVA_INT, 16));
+        creationUncertain = false;
     }
 
     /**
@@ -395,6 +497,8 @@ public final class WindowsProcess implements AutoCloseable
     {
         requireControllingThread();
         requireOpen();
+        if (preparationFailed || closing)
+            throw new IllegalStateException("Failed preparation or cleanup cannot release a workload", preparationFailure);
         if (prepared == false)
             throw new IllegalStateException("Root was launched without preparation");
         if (aborted)
@@ -431,6 +535,8 @@ public final class WindowsProcess implements AutoCloseable
     {
         requireControllingThread();
         requireOpen();
+        if (preparationFailed || closing)
+            throw new IllegalStateException("Failed preparation or cleanup cannot acquire members", preparationFailure);
         if (memberPid <= 0 || memberPid > 0xffff_ffffL)
             throw new IllegalArgumentException("Member process ID must be an unsigned nonzero DWORD: " + memberPid);
         if (memberCleanupFailure != null)
@@ -564,7 +670,14 @@ public final class WindowsProcess implements AutoCloseable
      */
     public Optional<Result> poll() throws IOException
     {
+        requireControllingThread();
         requireOpen();
+        if (completion != null)
+            return Optional.of(completion);
+        if (creationUncertain)
+            throw new IOException("Process creation has no authoritative native result", preparationFailure.getCause());
+        if (!processHandle.valid())
+            return Optional.empty();
         kernel.require("QueryInformationJobObject", kernel.call("QueryInformationJobObject", job, 1,
             accounting, 48, MemorySegment.NULL));
         if (accounting.get(ValueLayout.JAVA_INT, 40) != 0)
@@ -577,7 +690,8 @@ public final class WindowsProcess implements AutoCloseable
         if (status != 0)
             throw new IOException("Unexpected root wait status: " + Integer.toUnsignedLong(status));
         kernel.require("GetExitCodeProcess", kernel.call("GetExitCodeProcess", process, exitCode));
-        return Optional.of(new Result(Integer.toUnsignedLong(exitCode.get(ValueLayout.JAVA_INT, 0)), aborted));
+        completion = new Result(Integer.toUnsignedLong(exitCode.get(ValueLayout.JAVA_INT, 0)), aborted);
+        return Optional.of(completion);
     }
 
     /**
@@ -600,6 +714,8 @@ public final class WindowsProcess implements AutoCloseable
         requireOpen();
         if (Thread.currentThread() != controllingThread)
             throw new IllegalStateException("Windows process residency must be read by its controlling thread");
+        if (preparationFailed || closing)
+            throw new IOException("New residency acquisitions are forbidden during failed preparation or cleanup");
         if (residencyCleanupFailure != null)
             throw new IOException("Job residency sampling stopped after unresolved query-handle cleanup",
                 residencyCleanupFailure);
@@ -736,7 +852,7 @@ public final class WindowsProcess implements AutoCloseable
     private void closeResidencyQuery(MemorySegment handle) throws IOException
     {
         try { kernel.closeHandle(handle); }
-        catch (IOException failure)
+        catch (IOException | RuntimeException | Error failure)
         {
             unresolvedResidencyHandles.add(handle);
             var contextual = new IOException("Job residency query handle " +
@@ -765,9 +881,20 @@ public final class WindowsProcess implements AutoCloseable
      */
     public void terminate() throws IOException
     {
+        requireControllingThread();
         requireOpen();
+        if (terminationAttempted)
+            throw new IllegalStateException("Job termination was already attempted", terminationFailure);
+        terminationAttempted = true;
         aborted = true;
-        kernel.require("TerminateJobObject", kernel.call("TerminateJobObject", job, ABORT_EXIT));
+        if (completion != null)
+            completion = new Result(completion.rootExit(), true);
+        try { kernel.require("TerminateJobObject", kernel.call("TerminateJobObject", job, ABORT_EXIT)); }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            terminationFailure = failure;
+            throw failure;
+        }
     }
 
     /**
@@ -817,49 +944,180 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
-     * Terminates unfinished work, waits up to ten seconds and closes every owned native handle.
-     * Release failures are preserved, with subsequent failures suppressed; borrowed handles stay open.
-     * Calling close again has no effect. A failed drain never becomes a successful completion receipt.
-     *
-     * @throws IOException if termination, drain or handle release fails
+     * Establishes actual Job zero before destroying dependent native resources. A failed drain retains an open
+     * owner for status reconciliation. Failed releases remain recorded and are never repeated; their native arena
+     * stays open. Earlier cleanup faults remain visible even after later terminal observations permit safe cleanup.
+     * @throws IOException if cleanup is unresolved or a prior cleanup fault remains recorded
      */
     @Override
     public void close() throws IOException
     {
+        requireControllingThread();
         if (closed)
-            return;
-        try (kernel)
         {
-            try { releases.close(); }
+            if (cleanupFailure != null)
+                throw new IOException("Windows process retained a cleanup fault", cleanupFailure);
+            return;
+        }
+        closing = true;
+        try
+        {
+            drain();
+            IOException failedRelease = null;
+            try { closeLaunchResources(); }
+            catch (IOException failure) { failedRelease = failure; }
+            try { closeMembers(); }
             catch (IOException failure)
             {
-                if (residencyCleanupFailure != null)
-                    failure.addSuppressed(new IOException("Residency query handles remain unresolved: " +
-                        unresolvedResidencyHandles.size(), residencyCleanupFailure));
-                throw failure;
+                if (failedRelease == null) failedRelease = failure;
+                else failedRelease.addSuppressed(failure);
             }
             if (residencyCleanupFailure != null)
-                throw new IOException("Residency query handles remain unresolved: " +
+            {
+                var failure = new IOException("Residency query handles remain unresolved: " +
                     unresolvedResidencyHandles.size(), residencyCleanupFailure);
-        }
-        finally
-        {
+                if (failedRelease == null) failedRelease = failure;
+                else failedRelease.addSuppressed(failure);
+            }
+            for (OwnedHandle handle : lifetimeHandles)
+            {
+                try { handle.close(); }
+                catch (IOException failure)
+                {
+                    if (failedRelease == null) failedRelease = failure;
+                    else failedRelease.addSuppressed(failure);
+                }
+            }
+            if (failedRelease != null)
+                throw failedRelease;
+            if (kernelCloseAttempted)
+                throw new IOException("Native arena release remains uncertain", kernelCloseFailure);
+            kernelCloseAttempted = true;
+            try { kernel.close(); }
+            catch (RuntimeException | Error failure)
+            {
+                kernelCloseFailure = failure;
+                throw failure;
+            }
             closed = true;
         }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            rememberCleanup(failure);
+            throw new IOException("Windows process cleanup remains retained", cleanupFailure);
+        }
+        if (cleanupFailure != null)
+            throw new IOException("Windows process retained an earlier cleanup fault", cleanupFailure);
     }
 
     /**
-     * Terminates and drains work only when the job is still active.
-     *
-     * @throws IOException if native control or the bounded drain fails
+     * Stops active work once and observes actual zero without repeating an uncertain termination request.
+     * @throws IOException if creation, status or termination remains uncertain
      */
     private void drain() throws IOException
     {
-        if (poll().isEmpty())
-        {
+        if (creationUncertain)
+            throw new IOException("Cannot drain an uncertain process creation", preparationFailure.getCause());
+        if (!processHandle.valid() || poll().isPresent())
+            return;
+        if (!terminationAttempted)
             terminate();
-            try { waitFor(CLOSE_TIMEOUT); }
-            catch (TimeoutException e) { throw new IOException("Owned process tree did not drain during close", e); }
+        if (terminationFailure != null)
+            throw new IOException("Awaiting actual zero after failed termination", terminationFailure);
+        try { waitFor(CLOSE_TIMEOUT); }
+        catch (TimeoutException failure) { throw new IOException("Owned process tree did not drain during close", failure); }
+    }
+
+    /**
+     * Releases temporary launch resources once, retaining every failed native effect and its storage.
+     * @throws IOException if attribute or handle cleanup remains unresolved
+     */
+    private void closeLaunchResources() throws IOException
+    {
+        IOException failure = null;
+        if (attributesInitialized)
+        {
+            if (!attributesCloseAttempted)
+            {
+                attributesCloseAttempted = true;
+                try
+                {
+                    kernel.call("DeleteProcThreadAttributeList", attributes);
+                    attributesInitialized = false;
+                }
+                catch (IOException | RuntimeException | Error cause)
+                {
+                    attributesCloseFailure = new IOException("Attribute-list destruction is unresolved", cause);
+                }
+            }
+            if (attributesInitialized)
+                failure = new IOException("Attribute-list destruction cannot be repeated", attributesCloseFailure);
+        }
+        for (OwnedHandle handle : launchHandles)
+        {
+            try { handle.close(); }
+            catch (IOException cause)
+            {
+                if (failure == null) failure = cause;
+                else failure.addSuppressed(cause);
+            }
+        }
+        if (failure != null)
+            throw failure;
+    }
+
+    /**
+     * Retains the first cleanup failure without changing native ownership or retry authority.
+     * @param failure actual cleanup failure
+     */
+    private void rememberCleanup(Throwable failure)
+    {
+        if (cleanupFailure == null)
+            cleanupFailure = new IOException("First Windows process cleanup fault", failure);
+        else if (failure != cleanupFailure)
+            cleanupFailure.addSuppressed(failure);
+    }
+
+    /** Owns one native handle with a release record reserved before its acquisition. */
+    private final class OwnedHandle
+    {
+        private final String name;
+        private MemorySegment value = MemorySegment.NULL;
+        private boolean closeAttempted;
+        private Throwable failure;
+
+        /**
+         * Reserves ownership without native effects.
+         * @param name bounded diagnostic resource name
+         */
+        private OwnedHandle(String name) { this.name = name; }
+
+        /**
+         * Checks whether acquisition supplied a native handle that has not been successfully released.
+         * @return whether a non-null, non-invalid native value is retained
+         */
+        private boolean valid() { return value.address() != 0 && value.address() != -1; }
+
+        /**
+         * Attempts release once, retaining ambiguous or failed results without native retry.
+         * @throws IOException if ownership remains unresolved
+         */
+        private void close() throws IOException
+        {
+            if (!valid()) return;
+            if (closeAttempted)
+                throw new IOException(name + " release remains unresolved", failure);
+            closeAttempted = true;
+            try
+            {
+                kernel.closeHandle(value);
+                value = MemorySegment.NULL;
+            }
+            catch (IOException | RuntimeException | Error cause)
+            {
+                failure = cause;
+                throw new IOException(name + " release failed", cause);
+            }
         }
     }
 
@@ -987,18 +1245,6 @@ public final class WindowsProcess implements AutoCloseable
          * @param release the owned release action
          */
         void add(Release release) { callbacks.push(Objects.requireNonNull(release)); }
-
-        /**
-         * Transfers callbacks so failed scope exit no longer releases successfully handed-off resources.
-         * @return the new owner of all callbacks
-         */
-        Releases transfer()
-        {
-            var result = new Releases();
-            result.callbacks.addAll(callbacks);
-            callbacks.clear();
-            return result;
-        }
 
         /**
          * Runs all releases even if one fails, suppressing subsequent errors onto the first.
