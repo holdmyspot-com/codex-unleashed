@@ -140,6 +140,21 @@ public final class Controller
 		 * @throws IOException if complete, consistent owned-tree residency cannot be obtained
 		 */
 		long readResidentBytes(Policy.Job job) throws IOException;
+
+		/**
+		 * Accepts the host reading after every required owned-tree reading has succeeded and been validated.
+		 * A stateful provider advances cumulative-counter baselines here, rather than during {@link #readHost()}.
+		 * It must retain the previous accepted baseline after an incomplete batch or a failed acceptance. The next host
+		 * read replaces any unaccepted staged reading. The default does nothing for stateless providers.
+		 * <p>
+		 * The controller calls this once per complete batch before publishing its own histories or applying controls.
+		 * A later control failure does not undo acceptance. This operation must not start, resume or terminate work.
+		 *
+		 * @throws IOException if the provider cannot accept the batch without changing its previously accepted baseline
+		 */
+		default void acceptReadings() throws IOException
+		{
+		}
 	}
 
 	/**
@@ -179,8 +194,10 @@ public final class Controller
 	 * Fresh resident-byte readings replace the supplied values for this decision. Fully acquired cycles retain the
 	 * greatest supplied peak estimate and live residency per action across retries. Known peaks are raised to that
 	 * residency lower bound; residency alone never makes an unknown peak known. A failed reading leaves demand and swap
-	 * history unchanged and issues no control. Successful readings advance both histories even if the selected control
-	 * then fails. The caller must establish the actual process state after a failed control before another cycle;
+	 * history unchanged and issues no control. The measurement provider must accept a complete batch before either
+	 * history advances. Failed acceptance issues no control and preserves both histories. Accepted readings advance
+	 * both histories even if the selected control then fails. The caller must establish the actual process state after
+	 * a failed control before another cycle;
 	 * repeating the same snapshot could repeat a partially completed effect. The supplied list and job records stay
 	 * unchanged on success and failure.
 	 *
@@ -190,7 +207,7 @@ public final class Controller
 	 * @return the issued request, or a waiting decision when no effect is eligible
 	 * @throws NullPointerException if {@code jobs} or an action is null
 	 * @throws IllegalArgumentException if ordering sequences or identities repeat, or {@code completions} is negative
-	 * @throws IOException if required sampling or applying the selected effect fails
+	 * @throws IOException if required sampling, accepting readings or applying the selected effect fails
 	 */
 	public Policy.Decision cycle(List<Policy.Job> jobs, long completions) throws IOException
 	{
@@ -247,6 +264,7 @@ public final class Controller
 		}
 		Map<Action, MemoryDemand> completeDemands = Map.copyOf(candidateDemands);
 		List<Policy.Job> completeJobs = List.copyOf(enriched);
+		measurements.acceptReadings();
 		memoryDemands = completeDemands;
 
 		boolean recovering = swapRecovery.observe(host.swapUsedBytes(), host.memoryPressure());
