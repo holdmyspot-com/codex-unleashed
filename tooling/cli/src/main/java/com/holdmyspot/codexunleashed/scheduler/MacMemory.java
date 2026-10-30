@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
@@ -85,8 +86,20 @@ public final class MacMemory
 		if (!System.getProperty("os.name", "").startsWith("Mac"))
 			throw new UnsupportedOperationException("MacMemory requires macOS");
 
-		long totalBytes = SysctlUtilFFM.sysctl("hw.memsize", -1L);
-		int pageBytes = SysctlUtilFFM.sysctl("hw.pagesize", -1);
+		return read(new SystemCalls());
+	}
+
+	/**
+	 * Acquires and validates one sample using call-local native operations.
+	 *
+	 * @param calls the native operations used only by this acquisition
+	 * @return the complete sample after releasing its host port
+	 * @throws IOException if acquisition, validation, arithmetic or release fails
+	 */
+	private static Sample read(NativeCalls calls) throws IOException
+	{
+		long totalBytes = calls.sysctl("hw.memsize", -1L);
+		int pageBytes = calls.sysctl("hw.pagesize", -1);
 		if (totalBytes <= 0)
 			throw new IOException("hw.memsize must return positive physical bytes: " + totalBytes);
 		if (pageBytes <= 0)
@@ -94,12 +107,11 @@ public final class MacMemory
 
 		try (Arena arena = Arena.ofConfined())
 		{
-			var library = SymbolLookup.libraryLookup("/usr/lib/libSystem.B.dylib", arena);
-			var hostSelf = bind(library, "mach_host_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
-			var taskSelf = bind(library, "mach_task_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
-			var release = bind(library, "mach_port_deallocate",
+			var hostSelf = calls.bind(arena, "mach_host_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+			var taskSelf = calls.bind(arena, "mach_task_self", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+			var release = calls.bind(arena, "mach_port_deallocate",
 				FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-			var statisticsQuery = bind(library, "host_statistics", FunctionDescriptor.of(ValueLayout.JAVA_INT,
+			var statisticsQuery = calls.bind(arena, "host_statistics", FunctionDescriptor.of(ValueLayout.JAVA_INT,
 				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 			int task = invoke("mach_task_self", taskSelf);
 			int host = invoke("mach_host_self", hostSelf);
@@ -124,7 +136,7 @@ public final class MacMemory
 					throw new IOException("Available physical bytes exceed total bytes: " + availableBytes + ">" + totalBytes);
 
 				var swap = arena.allocate(32, 8);
-				if (!SysctlUtilFFM.sysctl("vm.swapusage", swap))
+				if (!calls.sysctl("vm.swapusage", swap))
 					throw new IOException("vm.swapusage acquisition failed");
 				long swapTotalBytes = swap.get(ValueLayout.JAVA_LONG, 0);
 				long swapUsedBytes = swap.get(ValueLayout.JAVA_LONG, 16);
@@ -132,7 +144,7 @@ public final class MacMemory
 					throw new IOException("Swap capacities require 0 <= used <= total bytes: " +
 						swapUsedBytes + "/" + swapTotalBytes);
 
-				int pressureFlag = SysctlUtilFFM.sysctl("kern.memorystatus_vm_pressure_level", -1);
+				int pressureFlag = calls.sysctl("kern.memorystatus_vm_pressure_level", -1);
 				Pressure pressure = switch (pressureFlag)
 				{
 					case 1 -> Pressure.NORMAL;
@@ -146,6 +158,111 @@ public final class MacMemory
 		catch (ArithmeticException e)
 		{
 			throw new IOException("Native memory counters exceed the signed 64-bit byte range", e);
+		}
+	}
+
+	/**
+	 * Supplies system queries and ABI-compatible functions for one acquisition.
+	 */
+	interface NativeCalls
+	{
+		/**
+		 * Reads a signed 64-bit sysctl value.
+		 * @param name the native query name
+		 * @param fallback the sentinel returned when acquisition fails
+		 * @return the native value or the failure sentinel
+		 */
+		long sysctl(String name, long fallback);
+
+		/**
+		 * Reads a signed 32-bit sysctl value.
+		 * @param name the native query name
+		 * @param fallback the sentinel returned when acquisition fails
+		 * @return the native value or the failure sentinel
+		 */
+		int sysctl(String name, int fallback);
+
+		/**
+		 * Acquires a native sysctl structure into the caller's buffer.
+		 * @param name the native query name
+		 * @param result the writable native result buffer
+		 * @return true on successful acquisition
+		 */
+		boolean sysctl(String name, MemorySegment result);
+
+		/**
+		 * Binds one required native function within the acquisition scope.
+		 * @param arena the scope that owns the loaded library
+		 * @param name the required native function name
+		 * @param descriptor the exact return and parameter layouts
+		 * @return the native function with the supplied ABI
+		 */
+		MethodHandle bind(Arena arena, String name, FunctionDescriptor descriptor);
+	}
+
+	/**
+	 * Acquires system values and lazily opens the library in the current read's arena.
+	 */
+	private static final class SystemCalls implements NativeCalls
+	{
+		/** System-library lookup initialized by the first binding and confined to one read. */
+		private SymbolLookup library;
+
+		/**
+		 * Creates the native operations for one read.
+		 */
+		private SystemCalls()
+		{
+		}
+
+		@Override
+		public long sysctl(String name, long fallback)
+		{
+			return SysctlUtilFFM.sysctl(name, fallback);
+		}
+
+		@Override
+		public int sysctl(String name, int fallback)
+		{
+			return SysctlUtilFFM.sysctl(name, fallback);
+		}
+
+		@Override
+		public boolean sysctl(String name, MemorySegment result)
+		{
+			return SysctlUtilFFM.sysctl(name, result);
+		}
+
+		@Override
+		public MethodHandle bind(Arena arena, String name, FunctionDescriptor descriptor)
+		{
+			if (library == null)
+				library = SymbolLookup.libraryLookup("/usr/lib/libSystem.B.dylib", arena);
+			return MacMemory.bind(library, name, descriptor);
+		}
+	}
+
+	/**
+	 * Gives package tests typed access to the production acquisition without loading a platform library.
+	 */
+	static final class SharedSecrets
+	{
+		/**
+		 * Prevents construction of this access facade.
+		 */
+		private SharedSecrets()
+		{
+		}
+
+		/**
+		 * Runs the same acquisition and cleanup operation used by the public reader.
+		 * @param calls the controlled native outcomes for this acquisition
+		 * @return the acquired sample after successful cleanup
+		 * @throws IOException if acquisition or cleanup fails
+		 */
+		static Sample read(NativeCalls calls) throws IOException
+		{
+			return MacMemory.read(calls);
 		}
 	}
 
