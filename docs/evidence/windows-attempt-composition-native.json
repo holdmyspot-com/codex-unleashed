@@ -1,0 +1,1648 @@
+{
+  "schema": 1,
+  "scope": "Native Windows attempt composition: four ARM64 gates pass, x64 observation failure retained; scheduler checkpoint remains incomplete.",
+  "producer_report": {
+    "task_contract": "acknowledged",
+    "scope": "Recover same retained Windows workers, collect actual production-composition native results, diagnose retained x64 red, clean all owned remote/client resources; no maintained edits.",
+    "acceptedSnapshot": "da6474a35d593b507204658d9c768d2c308935c3",
+    "packageSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+    "determiningSourceSha256": {
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java": "6a1c38028cd633193168e0eb16311c22e3f36e852769a7485891b18b30c74519",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.java": "04fe0dfef5e07ae596c5266d771b21032df8c8502089167ffdd301190c3ac31b",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.java": "150e6c5075a9e2ab0eac10a29c17d3037b6c53ce0ca01da876bf3e25aa106332",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java": "7d7f3371fae13994d680c49e1bda68856e6e2b25747abaa98be9b9c3d762af50",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMeasurements.java": "81c8530aa8facf1c779adc851f841b365f1255965b59a53f824d2d90ac77d620",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMemory.java": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java": "ed16a3004471292f43dcfee78acb7d432b57813d37d40827ea1c5fdb9de47a1d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java": "2f4aefd76d0c1c7fef0430a716c40bb2d10a724d7f474456d8d9833b0bb91566",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java": "ea51a5f66cc0d2daf59d31e25fbac97d3344dd3467b8fe3f9dc154c6cff56dac",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationHook.java": "0d84be0c7b31259d3f1287538bd7070fc7023ce2adcac1196a1dfb0c0b7ff827",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaits.java": "b8f01955ed0cf776dd9e0e690abae12bc7059dcfb875b9361862bcee6df5e505",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java": "c4d3eba82a3d2e14ed1bb8c8ddaf11baa9018b8fdf1bc6929c8f4765bec30d0b"
+    },
+    "changedMaintainedPaths": [],
+    "cases": {
+      "x64/natural-named": {
+        "state": "failed",
+        "receipt": {
+          "path": "x64/native-receipts/natural-named/receipt.json",
+          "sha256": "cee2e1e69833f21e0c1a55e2895edc9d33e9a3f4db1dd0305a80d60212f28d63",
+          "bytes": 649
+        },
+        "log": {
+          "path": "x64/native-receipts/natural-named.log",
+          "sha256": "c12d05410b5b2ce44b133534288d9c7341e472ad22abf723f5630d8532df9e54",
+          "bytes": 1442
+        },
+        "events": 5,
+        "execution": "actual native, not modeled"
+      },
+      "x64/natural-linked": {
+        "state": "unrun",
+        "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+      },
+      "x64/denial-named": {
+        "state": "unrun",
+        "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+      },
+      "x64/denial-linked": {
+        "state": "unrun",
+        "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+      },
+      "arm64/natural-named": {
+        "state": "passed",
+        "receipt": {
+          "path": "arm64/native-receipts/natural-named/receipt.json",
+          "sha256": "c77d312f1340689543f111830f54027c8f9e94844e41bc6dd47c4fadcdcc1ce7",
+          "bytes": 1053
+        },
+        "log": {
+          "path": "arm64/native-receipts/natural-named.log",
+          "sha256": "a4e0de966cae94eef90eabc49a4c1a1590a5d16879c49fba5eb72665e500772c",
+          "bytes": 924
+        },
+        "events": 9,
+        "execution": "actual native, not modeled"
+      },
+      "arm64/natural-linked": {
+        "state": "passed",
+        "receipt": {
+          "path": "arm64/native-receipts/natural-linked/receipt.json",
+          "sha256": "085bcd75060a81abe86ca3fd30bf15c0c0174ac1df762c84a0eedc7e7db7523c",
+          "bytes": 1054
+        },
+        "log": {
+          "path": "arm64/native-receipts/natural-linked.log",
+          "sha256": "aba02ecd2bfc3474e9017a7004477ae97ac4966e4900c2a11510db189226d192",
+          "bytes": 925
+        },
+        "events": 9,
+        "execution": "actual native, not modeled"
+      },
+      "arm64/denial-named": {
+        "state": "passed",
+        "receipt": {
+          "path": "arm64/native-receipts/denial-named/receipt.json",
+          "sha256": "67f7f2a0e08886830931fdb5ff473b6533e5472eaee1a89165cee987bbbc1366",
+          "bytes": 3008
+        },
+        "log": {
+          "path": "arm64/native-receipts/denial-named.log",
+          "sha256": "8ac56ed5a674e85d9ef8de8c57ca9a43387575bb78fdb51d7754aaa04503e3cd",
+          "bytes": 2911
+        },
+        "events": 40,
+        "execution": "actual native, not modeled"
+      },
+      "arm64/denial-linked": {
+        "state": "passed",
+        "receipt": {
+          "path": "arm64/native-receipts/denial-linked/receipt.json",
+          "sha256": "0f0a1572abaa567ff2820fb0d35e25a3dfa37e52abe22cc1748858ce14dadf65",
+          "bytes": 2983
+        },
+        "log": {
+          "path": "arm64/native-receipts/denial-linked.log",
+          "sha256": "97d6d02db46d893a34f93870965b390f49b5ed8354e465d740fa6368444cf1f9",
+          "bytes": 2886
+        },
+        "events": 40,
+        "execution": "actual native, not modeled"
+      }
+    },
+    "architectures": {
+      "x64": {
+        "run": 41015502363,
+        "job": 123930868740,
+        "artifactId": 12960214683,
+        "artifactRetentionDays": 1,
+        "exactNativeInputs": {
+          "path": "x64/exact-artifact/native-exact-inputs.tar.gz",
+          "sha256": "5a003e0cfce6fa211962f2fef4b286c661a27b4876a76bdad3b43533da2dfa61",
+          "bytes": 36448893
+        },
+        "nativeReceipts": {
+          "path": "x64/native-receipts-recovered.tar.gz",
+          "sha256": "a2a12d08f52f64920a537dc5a2b26a4bd8a89b26499cd809ccf610a3e25ae2d6",
+          "bytes": 179205
+        },
+        "exactInputVerification": {
+          "exactArchiveSha256": "5a003e0cfce6fa211962f2fef4b286c661a27b4876a76bdad3b43533da2dfa61",
+          "exactArchiveBytes": 36448893,
+          "dllSha256": "6f17c9f4f74e9ff83efd2abd4f642d9110feec8aee8c85427d28808cadef3def",
+          "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+          "nativeArchiveMatchesIndependentSshDownload": true
+        },
+        "producer": {
+          "librarySha256": "1204d9360b3909a7ad18163810edce8c43c53df999886c15133e8814474627f4",
+          "dllSha256": "6f17c9f4f74e9ff83efd2abd4f642d9110feec8aee8c85427d28808cadef3def",
+          "archiveSha256": "42af54ded8be200b461d6e75066bc2c781878a6afd249c940dd8888158a9bf3a",
+          "url": "https://github.com/frida/frida/releases/download/17.24.3/frida-core-devkit-17.24.3-windows-x86_64.tar.xz",
+          "architecture": "x64",
+          "completed": "2026-10-30T06:51:42.0267682Z",
+          "exportCount": 29,
+          "workloadSha256": "59c95d2accb22b24316e621fabd9cb1c7db5ea040ec14a5cb20c3ca35b41dd49"
+        },
+        "linkedClassIdentity": {
+          "path": "x64/native-receipts/package-linked-identities.json",
+          "sha256": "6c3547767d80252231f6080c59698e7909e3d0c6123e3d798fb5e52e173e4f8f",
+          "bytes": 6107
+        },
+        "identityCommandResult": {
+          "path": "x64/strip-debug-identity-result.json",
+          "sha256": "c4e3f59e8b9d75f77964e6b164b3d191d1c9031912611fec62bfeb3b212d1c07",
+          "bytes": 7889
+        },
+        "driverSource": {
+          "path": "x64/native-receipts/WindowsCompositionProbe.java",
+          "sha256": "75403d93ee23f1976e599640a256b7f8d262276cca4cc30787785dc759763b03",
+          "bytes": 16017
+        },
+        "fixtureSource": {
+          "path": "x64/native-receipts/composition-worker.c",
+          "sha256": "7766aff6a1072750222bb6b91e4698a8b0d98e3b6d3fca4367dccdecd41f3934",
+          "bytes": 1422
+        },
+        "fixtureExecutable": {
+          "path": "x64/native-receipts/composition-worker.exe",
+          "sha256": "15eed1e75aae560044cf79272e457ba93b67ea03be488a02507b06af6c010172",
+          "bytes": 135680
+        },
+        "runtime": "Zulu JDK27.0.1+9; exact accepted named module and canonical --strip-debug linked runtime",
+        "nativeAccess": "com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm only; --illegal-native-access=deny"
+      },
+      "arm64": {
+        "run": 41015505277,
+        "job": 123930892562,
+        "artifactId": 12961255351,
+        "artifactRetentionDays": 1,
+        "exactNativeInputs": {
+          "path": "arm64/exact-artifact/native-exact-inputs.tar.gz",
+          "sha256": "822930bb33c0cd7711aa99ee373b0ea3cbec554e1927ee33ee985f880310e816",
+          "bytes": 50679136
+        },
+        "nativeReceipts": {
+          "path": "arm64/native-receipts-recovered.tar.gz",
+          "sha256": "3526633af2ace622d76536c54ace6e788858d8e3b3ffa1ece67389f987b0f165",
+          "bytes": 165695
+        },
+        "exactInputVerification": {
+          "exactArchiveSha256": "822930bb33c0cd7711aa99ee373b0ea3cbec554e1927ee33ee985f880310e816",
+          "exactArchiveBytes": 50679136,
+          "dllSha256": "68f700ed451b7b40bf95a1e385ea5293b72eec22c5d04f7c8b2c607e70e3edbb",
+          "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+          "nativeArchiveMatchesIndependentSshDownload": true
+        },
+        "producer": {
+          "librarySha256": "bf0e0b340d44bc5d1de3e908d819471fb4538e80efedc366da7a4f8d16b1348b",
+          "dllSha256": "68f700ed451b7b40bf95a1e385ea5293b72eec22c5d04f7c8b2c607e70e3edbb",
+          "archiveSha256": "7a735990d33b272e5e5eee82d5b312bc0d3c11281a5277a14ca2651a1076a669",
+          "url": "https://github.com/frida/frida/releases/download/17.24.3/frida-core-devkit-17.24.3-windows-arm64.tar.xz",
+          "architecture": "arm64",
+          "completed": "2026-10-30T06:50:42.9816512Z",
+          "exportCount": 29,
+          "workloadSha256": "5e4cbdd9df801a251578602acd1aa1abaff458c16ace347cc8c078b2e3c9f4c3"
+        },
+        "linkedClassIdentity": {
+          "path": "arm64/native-receipts/package-linked-identities.json",
+          "sha256": "6c3547767d80252231f6080c59698e7909e3d0c6123e3d798fb5e52e173e4f8f",
+          "bytes": 6107
+        },
+        "identityCommandResult": {
+          "path": "arm64/strip-debug-identity-result.json",
+          "sha256": "ddbe57ae5dd92d22f5acba6c0db189cb3249d811b8055afd3d61027b63fbb0f2",
+          "bytes": 8030
+        },
+        "driverSource": {
+          "path": "arm64/native-receipts/WindowsCompositionProbe.java",
+          "sha256": "75403d93ee23f1976e599640a256b7f8d262276cca4cc30787785dc759763b03",
+          "bytes": 16017
+        },
+        "fixtureSource": {
+          "path": "arm64/native-receipts/composition-worker.c",
+          "sha256": "7766aff6a1072750222bb6b91e4698a8b0d98e3b6d3fca4367dccdecd41f3934",
+          "bytes": 1422
+        },
+        "fixtureExecutable": {
+          "path": "arm64/native-receipts/composition-worker.exe",
+          "sha256": "4fb58788495274a8d7cd05bc7a884388a4ab2d87d3f24bed0b42fdd430e4a735",
+          "bytes": 137728
+        },
+        "runtime": "Zulu JDK27.0.1+9; exact accepted named module and canonical --strip-debug linked runtime",
+        "nativeAccess": "com.holdmyspot.codexunleashed.tooling,com.github.oshi.ffm only; --illegal-native-access=deny"
+      }
+    },
+    "cleanup": {
+      "x64": {
+        "run": 41015502363,
+        "job": 123930868740,
+        "originalSshExit": 255,
+        "recoverySshExit": 0,
+        "zeroConsumers": true,
+        "remoteRootRemoved": true,
+        "smokeRetryMarkerVerified": true,
+        "providerStatus": "completed",
+        "providerConclusion": "failure",
+        "deliberateSmokeFailureRetained": true,
+        "postCleanup": {
+          "Post Debug the original failed workspace": "success",
+          "Post Create owned partial build state": "success",
+          "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd": "success"
+        },
+        "clientKeysRemoved": [
+          "x64/client-key",
+          "x64/client-key.pub",
+          "x64/recovery/client-key",
+          "x64/recovery/client-key.pub",
+          "x64/proxy-recovery/client-key",
+          "x64/proxy-recovery/client-key.pub",
+          "x64/proxy-recovery2/client-key",
+          "x64/proxy-recovery2/client-key.pub"
+        ],
+        "remainingClientKeyFiles": [],
+        "at": "2026-10-30T07:18:28.024111+00:00"
+      },
+      "arm64": {
+        "run": 41015505277,
+        "job": 123930892562,
+        "originalSshExit": 255,
+        "recoverySshExit": 0,
+        "zeroConsumers": true,
+        "remoteRootRemoved": true,
+        "smokeRetryMarkerVerified": true,
+        "providerStatus": "completed",
+        "providerConclusion": "failure",
+        "deliberateSmokeFailureRetained": true,
+        "postCleanup": {
+          "Post Debug the original failed workspace": "success",
+          "Post Create owned partial build state": "success",
+          "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd": "success"
+        },
+        "clientKeysRemoved": [
+          "arm64/client-key",
+          "arm64/client-key.pub",
+          "arm64/recovery/client-key",
+          "arm64/recovery/client-key.pub",
+          "arm64/proxy-recovery/client-key",
+          "arm64/proxy-recovery/client-key.pub",
+          "arm64/proxy-recovery2/client-key",
+          "arm64/proxy-recovery2/client-key.pub"
+        ],
+        "remainingClientKeyFiles": [],
+        "at": "2026-10-30T07:18:30.723574+00:00"
+      }
+    },
+    "recovery": {
+      "originalSshExit255Preserved": true,
+      "sameProviderRuns": true,
+      "noNewWorkflowDuringRecovery": true,
+      "noArmPassingCaseRepeated": true,
+      "directNetworkProbe": "socket.create_connection: network unreachable; known HTTPS_PROXY CONNECT reached authoritative Upterm SSH relay",
+      "directRecoveryClients": "interrupted locally before prompt (tool exit130), no authenticated command",
+      "firstProxyRecovery": "SSH255 before prompt; failure retained",
+      "successfulProxyRecovery": "persistent foreground clients, pinned relay/key checks unchanged, actual original remote root verified; SSH0 after explicit exit",
+      "verificationFile": {
+        "path": "recovery-status.json",
+        "sha256": "8b7bf3c6422797816212576d388a402363356ca2b73a2ac4c9b7116813d37b0a",
+        "bytes": 598
+      }
+    },
+    "identityCorrection": {
+      "originalFailure": "Setup compared debug-bearing JAR class bytes directly to canonical --strip-debug jlink output; original AssertionError retained on both workers.",
+      "rootCause": "Canonical DistributionMain deliberately uses --strip-debug; native code was not mismatched.",
+      "correction": "Exact official JDK27 ClassFile debug-attribute transformation used by parent to derive expected stripped bytes; existing runtime was verified without rebuild. All20 exact class hashes on both hosts match.",
+      "helperArchive": {
+        "path": "identity-check-recovered.tar.gz",
+        "sha256": "98c6973375d3bd8d1cecd109780e54cbfcaaf5936daec4a544f3ca7d382bfc53",
+        "bytes": 3970
+      },
+      "reconstruction": "Exact3970-byte staging archive reconstructed from acknowledged original x64 RPC1124..1134; SHA98c6973375d3bd8d1cecd109780e54cbfcaaf5936daec4a544f3ca7d382bfc53 verified against original RPC1135."
+    },
+    "x64RootCause": {
+      "status": "native behavioral red retained; production repair intentionally not implemented",
+      "nativeObservation": "WindowsProcess.readResidentBytes reached its SECOND retained-handle live recheck at line755, then requireLiveMember line844 threw wait status0. The same query handle passed the earlier live check and memory read; native process exit during sequential RSS sampling is therefore established. IsProcessInJob succeeded; WAIT_FAILED was not reported.",
+      "identityLimit": "The original diagnostic does not log which queried PID became signaled. Do not assert it was the root.",
+      "propagation": [
+        "WindowsProcess.readResidentBytes:755",
+        "WindowsMeasurements.readResidentBytes:138",
+        "Controller.cycle:232",
+        "JobQueue.cycle:123",
+        "WindowsCompositionProbe.main:110"
+      ],
+      "faultClass": "An intentionally rejected incomplete transient observation is exposed as generic IOException. The controlling invocation aborts instead of reconciling a fresh observation. No partial RSS sum was accepted.",
+      "smallestRepairProposal": "Parent owns typed transient observation retry design: preserve checked query-handle cleanup; distinguish proven native membership/liveness churn from access/ABI/overflow/cleanup faults; bounded fresh sample/whole-Job reconcile before any new control; never swallow arbitrary IOException or return partial/zero sample. No production edit performed here.",
+      "redReceipt": {
+        "path": "x64/native-receipts/natural-named/receipt.json",
+        "sha256": "cee2e1e69833f21e0c1a55e2895edc9d33e9a3f4db1dd0305a80d60212f28d63",
+        "bytes": 649
+      },
+      "redRawLog": {
+        "path": "x64/native-receipts/natural-named.log",
+        "sha256": "c12d05410b5b2ce44b133534288d9c7341e472ad22abf723f5630d8532df9e54",
+        "bytes": 1442
+      }
+    },
+    "observationBoundary": {
+      "natural": "Unmodified default WindowsAttempts factory, actual JobQueue/WindowsMeasurements/native owners/hooks. Scratch reflection reads retained process solely for authentic lifetime observations.",
+      "denial": "Actual WindowsAttempt.NativeResources plus production WindowsAllocationHooks coordinator; scratch Backend/Manager/Member/Hook decorators forward native operations one-for-one to accepted private NativeBackend. They observe readiness/sentinel absence immediately before actual release/resume. Native owners, results, frames and acknowledgements are never fabricated.",
+      "abortion": "Actual attempt.poll observes rootExit23/abortedtrue after whole-Job cancellation while the root already exited. The queue accepted deferred waits and applied actual RESUME, but its aborted Completion acceptance/retry is deliberately unexercised: direct attempt outcome followed by queue.close.",
+      "allocationFailure": "Native HeapAlloc receives impossible positive SIZE_MAX-4095 bytes and genuinely returns NULL, then accepted hook parks/retries after authentic permission; retry still fails and creates a fresh native wait. This establishes denial/control correlation, not physical pressure or successful allocation recovery."
+    },
+    "claimsExcluded": [
+      "Physical-memory pressure threshold correctness",
+      "Successful previously denied allocation recovery",
+      "Queue-accepted aborted completion or automatic retry",
+      "Same-PID Windows EXEC support",
+      "Concurrent unrelated PID or ABI cases already accepted by W2/owner evidence",
+      "New failed-native-close injection",
+      "Exact original allocator last-error asserted by this driver (resource/parser premises reused)"
+    ],
+    "remainingGates": [
+      "After the reviewed transient-observation repair, x64 natural named-module must pass on exact maintained package; then x64 linked natural and named/linked denial composition are unrun.",
+      "Any focused native verification required for the new repair is separate; no ARM64 passing suite was repeated during recovery.",
+      "No new clean SDK/product build was performed; accepted package compile/model tests and prior standalone native premises were reused."
+    ],
+    "evidenceHandling": "Exact DLL/header/export/package archives downloaded privately and hash-verified. Raw SSH/artifact-action debug output may contain short-lived write-only upload SAS values; those raw private files are mode0600 and excluded from the shareable sealed evidence. No client private key is retained.",
+    "createdAt": "2026-10-30T07:20:30.021243+00:00"
+  },
+  "parent_checks": {
+    "outer_files_match_staged_archive": 22,
+    "nested_x64_files_match": 27,
+    "nested_arm64_files_match": 52,
+    "declared_sources_match_accepted_snapshot": 12,
+    "native_exact_archives_hash_verified": 2,
+    "reviewed_native_cases": 5,
+    "linked_classes_per_architecture": 20,
+    "native_tests_repeated": 0
+  },
+  "archive": {
+    "bytes": 404863,
+    "sha256": "e881dd955147bc3b2cee2b53487fcf09c6eb689fb2b0167e414e214adfa707c2",
+    "member_manifest": {
+      "arm64/exact-input-verification.json": {
+        "bytes": 347,
+        "sha256": "17d8130c3c2b006931ead08d70ee177f9e5f1254c529d656ca2cee80f43f5f0c"
+      },
+      "arm64/native-receipts-recovered.tar.gz": {
+        "bytes": 165695,
+        "sha256": "3526633af2ace622d76536c54ace6e788858d8e3b3ffa1ece67389f987b0f165"
+      },
+      "arm64/process-cleanup-receipt.json": {
+        "bytes": 664,
+        "sha256": "1175e0e66e8f91a5272ede855b5100b77ec2bc23b5c0cf4d3afe102ee82ca9af"
+      },
+      "arm64/provider-terminal.json": {
+        "bytes": 2308,
+        "sha256": "d2d2d13db5a01db5cad10862d5d402bbc997f755bdc18a9501a7ac21119ed371"
+      },
+      "arm64/provider-terminal.log": {
+        "bytes": 282049,
+        "sha256": "33a321e82a6051d9e4e943cb8221dce348186942a8fa88e7567d1c95619b42ac"
+      },
+      "arm64/recovery-ssh-terminal.json": {
+        "bytes": 21,
+        "sha256": "96dd35f33286d6e5e9e14402b2f7d9fa48352fc75bf222be6bc46bd69cf9ff71"
+      },
+      "arm64/remote-removal-receipt.json": {
+        "bytes": 853,
+        "sha256": "45053a03a65fc27e10effc207d64f4b6b9c2970edc12d6dce1e9f91e97da4bf7"
+      },
+      "arm64/ssh-terminal.json": {
+        "bytes": 23,
+        "sha256": "b2d521bb9bf4027b22ef0ac8b9b35238a699c13b1f88bee4ffa59d7017012c70"
+      },
+      "arm64/strip-debug-identity-result.json": {
+        "bytes": 8030,
+        "sha256": "ddbe57ae5dd92d22f5acba6c0db189cb3249d811b8055afd3d61027b63fbb0f2"
+      },
+      "cleanup-receipts.json": {
+        "bytes": 1950,
+        "sha256": "cf47ce955b27c95e91084f60750c6af2d1748c07a281c49e74f0d7e465fd57fd"
+      },
+      "identity-check-recovered.tar.gz": {
+        "bytes": 3970,
+        "sha256": "98c6973375d3bd8d1cecd109780e54cbfcaaf5936daec4a544f3ca7d382bfc53"
+      },
+      "recovery-status.json": {
+        "bytes": 598,
+        "sha256": "8b7bf3c6422797816212576d388a402363356ca2b73a2ac4c9b7116813d37b0a"
+      },
+      "report.json": {
+        "bytes": 19608,
+        "sha256": "3a1e2d21fc1050ee5b9bf0a63162b814ccd4ca21b8468ed0d3627ea60e474891"
+      },
+      "x64/exact-input-verification.json": {
+        "bytes": 347,
+        "sha256": "9c433af6c66771478a045df25a25b2d1423975de58532e41b4e69f57d84ec671"
+      },
+      "x64/native-receipts-recovered.tar.gz": {
+        "bytes": 179205,
+        "sha256": "a2a12d08f52f64920a537dc5a2b26a4bd8a89b26499cd809ccf610a3e25ae2d6"
+      },
+      "x64/process-cleanup-receipt.json": {
+        "bytes": 664,
+        "sha256": "c04e0b11f6bf1c1b10e1b8e878db751ba60b6b5e69ebea7be48b02e8af5fbdf2"
+      },
+      "x64/provider-terminal.json": {
+        "bytes": 2307,
+        "sha256": "87f6e6f9f748f41835653880521992e0cd33ca2fd7c26925e97b05cf0672cd23"
+      },
+      "x64/provider-terminal.log": {
+        "bytes": 283891,
+        "sha256": "4ab8a1bf4d2d155a85b45f940dcfab4e9477a42ff62bde455e1eebe2844ca821"
+      },
+      "x64/recovery-ssh-terminal.json": {
+        "bytes": 21,
+        "sha256": "441610ef84f1e095b9f40696f948795b18da90301f3c797017820793c458e0b7"
+      },
+      "x64/remote-removal-receipt.json": {
+        "bytes": 895,
+        "sha256": "ca7f3dab2c12e160d29ab5fdfc8ec70f5e13824d3badeaa442d3a79589f74eec"
+      },
+      "x64/ssh-terminal.json": {
+        "bytes": 23,
+        "sha256": "b2d521bb9bf4027b22ef0ac8b9b35238a699c13b1f88bee4ffa59d7017012c70"
+      },
+      "x64/strip-debug-identity-result.json": {
+        "bytes": 7889,
+        "sha256": "c4e3f59e8b9d75f77964e6b164b3d191d1c9031912611fec62bfeb3b212d1c07"
+      }
+    }
+  },
+  "native_cases": {
+    "x64/natural-named": {
+      "receipt": {
+        "outcome": "failed",
+        "scenario": "natural",
+        "events": [
+          {
+            "event": "actual-host-memory",
+            "sample": "Memory[availableBytes=14257586176, swapUsedBytes=0, memoryPressure=false]"
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "probe-failed",
+            "type": "java.io.IOException",
+            "message": "Retained job member is not unsignaled; wait status=0"
+          },
+          {
+            "event": "failure-queue-cleanup-complete",
+            "openAttempts": false
+          },
+          {
+            "event": "failure-runtime-closed"
+          }
+        ],
+        "failure": "java.io.IOException: Retained job member is not unsignaled; wait status=0",
+        "pressureClaim": false,
+        "successfulDeniedAllocationRecoveryClaim": false
+      },
+      "raw_log": "{\"event\":\"actual-host-memory\",\"sample\":\"Memory[availableBytes=14257586176, swapUsedBytes=0, memoryPressure=false]\"}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"probe-failed\",\"type\":\"java.io.IOException\",\"message\":\"Retained job member is not unsignaled; wait status=0\"}\n{\"event\":\"failure-queue-cleanup-complete\",\"openAttempts\":false}\n{\"event\":\"failure-runtime-closed\"}\nException in thread \"main\" java.io.IOException: Retained job member is not unsignaled; wait status=0\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcess.requireLiveMember(WindowsProcess.java:844)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcess.readResidentBytes(WindowsProcess.java:755)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsMeasurements.readResidentBytes(WindowsMeasurements.java:138)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.Controller.cycle(Controller.java:232)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.JobQueue.cycle(JobQueue.java:123)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsCompositionProbe.main(WindowsCompositionProbe.java:110)\n"
+    },
+    "x64/natural-linked": {
+      "state": "unrun",
+      "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+    },
+    "x64/denial-named": {
+      "state": "unrun",
+      "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+    },
+    "x64/denial-linked": {
+      "state": "unrun",
+      "reason": "x64 native transient-observation red preserved; no production patch authorized in this recovery cluster"
+    },
+    "arm64/natural-named": {
+      "receipt": {
+        "outcome": "passed",
+        "scenario": "natural",
+        "events": [
+          {
+            "event": "actual-host-memory",
+            "sample": "Memory[availableBytes=13564297216, swapUsedBytes=0, memoryPressure=false]"
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "B",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "root-exited-child-live",
+            "action": "A",
+            "pid": 6252,
+            "residentBytes": 16265216
+          },
+          {
+            "event": "root-exited-child-live",
+            "action": "B",
+            "pid": 2176,
+            "residentBytes": 16265216
+          },
+          {
+            "event": "queue-accepted-authentic-outcome",
+            "completion": "Completion[name=A, attemptSequence=0, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]"
+          },
+          {
+            "event": "queue-accepted-authentic-outcome",
+            "completion": "Completion[name=B, attemptSequence=1, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]"
+          },
+          {
+            "event": "queue-closed",
+            "openAttempts": false
+          },
+          {
+            "event": "runtime-closed"
+          }
+        ],
+        "failure": null,
+        "pressureClaim": false,
+        "successfulDeniedAllocationRecoveryClaim": false
+      },
+      "raw_log": "{\"event\":\"actual-host-memory\",\"sample\":\"Memory[availableBytes=13564297216, swapUsedBytes=0, memoryPressure=false]\"}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"B\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"root-exited-child-live\",\"action\":\"A\",\"pid\":6252,\"residentBytes\":16265216}\n{\"event\":\"root-exited-child-live\",\"action\":\"B\",\"pid\":2176,\"residentBytes\":16265216}\n{\"event\":\"queue-accepted-authentic-outcome\",\"completion\":\"Completion[name=A, attemptSequence=0, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]\"}\n{\"event\":\"queue-accepted-authentic-outcome\",\"completion\":\"Completion[name=B, attemptSequence=1, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]\"}\n{\"event\":\"queue-closed\",\"openAttempts\":false}\n{\"event\":\"runtime-closed\"}\n"
+    },
+    "arm64/natural-linked": {
+      "receipt": {
+        "outcome": "passed",
+        "scenario": "natural",
+        "events": [
+          {
+            "event": "actual-host-memory",
+            "sample": "Memory[availableBytes=13573812224, swapUsedBytes=0, memoryPressure=false]"
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "B",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "root-exited-child-live",
+            "action": "A",
+            "pid": 5916,
+            "residentBytes": 16273408
+          },
+          {
+            "event": "root-exited-child-live",
+            "action": "B",
+            "pid": 10344,
+            "residentBytes": 16269312
+          },
+          {
+            "event": "queue-accepted-authentic-outcome",
+            "completion": "Completion[name=A, attemptSequence=0, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]"
+          },
+          {
+            "event": "queue-accepted-authentic-outcome",
+            "completion": "Completion[name=B, attemptSequence=1, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]"
+          },
+          {
+            "event": "queue-closed",
+            "openAttempts": false
+          },
+          {
+            "event": "runtime-closed"
+          }
+        ],
+        "failure": null,
+        "pressureClaim": false,
+        "successfulDeniedAllocationRecoveryClaim": false
+      },
+      "raw_log": "{\"event\":\"actual-host-memory\",\"sample\":\"Memory[availableBytes=13573812224, swapUsedBytes=0, memoryPressure=false]\"}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"B\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"root-exited-child-live\",\"action\":\"A\",\"pid\":5916,\"residentBytes\":16273408}\n{\"event\":\"root-exited-child-live\",\"action\":\"B\",\"pid\":10344,\"residentBytes\":16269312}\n{\"event\":\"queue-accepted-authentic-outcome\",\"completion\":\"Completion[name=A, attemptSequence=0, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]\"}\n{\"event\":\"queue-accepted-authentic-outcome\",\"completion\":\"Completion[name=B, attemptSequence=1, outcome=Outcome[result=Result[rootExit=23, aborted=false], aborted=false]]\"}\n{\"event\":\"queue-closed\",\"openAttempts\":false}\n{\"event\":\"runtime-closed\"}\n"
+    },
+    "arm64/denial-named": {
+      "receipt": {
+        "outcome": "passed",
+        "scenario": "denial",
+        "events": [
+          {
+            "event": "actual-host-memory",
+            "sample": "Memory[availableBytes=13545639936, swapUsedBytes=0, memoryPressure=false]"
+          },
+          {
+            "event": "prepared-root-held",
+            "action": "A",
+            "pid": 10756
+          },
+          {
+            "event": "measurement-registered",
+            "action": "A"
+          },
+          {
+            "event": "native-job-member-retained",
+            "action": "A",
+            "pid": 10756
+          },
+          {
+            "event": "manager-started",
+            "action": "A"
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10756,
+            "checks": 1
+          },
+          {
+            "event": "hook-started",
+            "action": "A",
+            "pid": 10756,
+            "installation": 1
+          },
+          {
+            "event": "authentic-hook-ready",
+            "action": "A",
+            "pid": 10756,
+            "installation": 1
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10756,
+            "checks": 2
+          },
+          {
+            "event": "root-before-native-release",
+            "action": "A",
+            "pid": 10756
+          },
+          {
+            "event": "root-native-released",
+            "action": "A",
+            "pid": 10756
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "native-child-event",
+            "action": "A",
+            "pid": 10864,
+            "parent": 10756,
+            "origin": 2,
+            "path": "C:\\a\\_temp\\windows-composition-WKhRk0gQ\\composition-worker.exe"
+          },
+          {
+            "event": "native-job-member-retained",
+            "action": "A",
+            "pid": 10864
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10864,
+            "checks": 1
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10864,
+            "checks": 2
+          },
+          {
+            "event": "hook-started",
+            "action": "A",
+            "pid": 10864,
+            "installation": 2
+          },
+          {
+            "event": "authentic-hook-ready",
+            "action": "A",
+            "pid": 10864,
+            "installation": 2
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10864,
+            "checks": 3
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 10864,
+            "checks": 4
+          },
+          {
+            "event": "child-before-native-resume",
+            "action": "A",
+            "pid": 10864
+          },
+          {
+            "event": "child-native-resumed",
+            "action": "A",
+            "pid": 10864
+          },
+          {
+            "event": "deferred-native-batch-accepted",
+            "action": "A",
+            "attempt": 0,
+            "batch": 0
+          },
+          {
+            "event": "native-grant-begin",
+            "action": "A",
+            "wait": "Wait[installation=2, sequence=1]"
+          },
+          {
+            "event": "native-grant-authentically-acknowledged",
+            "action": "A",
+            "wait": "Wait[installation=2, sequence=1]"
+          },
+          {
+            "event": "queue-control",
+            "control": "RESUME",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "deferred-native-batch-accepted",
+            "action": "A",
+            "attempt": 0,
+            "batch": 1
+          },
+          {
+            "event": "root-exited-native-child-still-blocked",
+            "rootPid": 10756,
+            "residentBytes": 16228352
+          },
+          {
+            "event": "whole-job-terminate-request",
+            "action": "A",
+            "rootPid": 10756
+          },
+          {
+            "event": "hook-closed-after-native-job-zero",
+            "action": "A",
+            "pid": 10756,
+            "installation": 1
+          },
+          {
+            "event": "hook-closed-after-native-job-zero",
+            "action": "A",
+            "pid": 10864,
+            "installation": 2
+          },
+          {
+            "event": "manager-closed",
+            "action": "A"
+          },
+          {
+            "event": "member-identity-closed",
+            "action": "A",
+            "pid": 10756
+          },
+          {
+            "event": "member-identity-closed",
+            "action": "A",
+            "pid": 10864
+          },
+          {
+            "event": "authentic-aborted-attempt-outcome",
+            "rootExit": 23,
+            "aborted": true
+          },
+          {
+            "event": "queueAbortedOutcomeAcceptance",
+            "state": "not_exercised_no_automatic_retry_requested"
+          },
+          {
+            "event": "registration-retired",
+            "action": "A"
+          },
+          {
+            "event": "process-owner-closed",
+            "action": "A"
+          },
+          {
+            "event": "queue-closed",
+            "openAttempts": false
+          },
+          {
+            "event": "runtime-closed"
+          }
+        ],
+        "failure": null,
+        "pressureClaim": false,
+        "successfulDeniedAllocationRecoveryClaim": false
+      },
+      "raw_log": "{\"event\":\"actual-host-memory\",\"sample\":\"Memory[availableBytes=13545639936, swapUsedBytes=0, memoryPressure=false]\"}\n{\"event\":\"prepared-root-held\",\"action\":\"A\",\"pid\":10756}\n{\"event\":\"measurement-registered\",\"action\":\"A\"}\n{\"event\":\"native-job-member-retained\",\"action\":\"A\",\"pid\":10756}\n{\"event\":\"manager-started\",\"action\":\"A\"}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10756,\"checks\":1}\n{\"event\":\"hook-started\",\"action\":\"A\",\"pid\":10756,\"installation\":1}\n{\"event\":\"authentic-hook-ready\",\"action\":\"A\",\"pid\":10756,\"installation\":1}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10756,\"checks\":2}\n{\"event\":\"root-before-native-release\",\"action\":\"A\",\"pid\":10756}\n{\"event\":\"root-native-released\",\"action\":\"A\",\"pid\":10756}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"native-child-event\",\"action\":\"A\",\"pid\":10864,\"parent\":10756,\"origin\":2,\"path\":\"C:\\\\a\\\\_temp\\\\windows-composition-WKhRk0gQ\\\\composition-worker.exe\"}\n{\"event\":\"native-job-member-retained\",\"action\":\"A\",\"pid\":10864}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10864,\"checks\":1}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10864,\"checks\":2}\n{\"event\":\"hook-started\",\"action\":\"A\",\"pid\":10864,\"installation\":2}\n{\"event\":\"authentic-hook-ready\",\"action\":\"A\",\"pid\":10864,\"installation\":2}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10864,\"checks\":3}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":10864,\"checks\":4}\n{\"event\":\"child-before-native-resume\",\"action\":\"A\",\"pid\":10864}\n{\"event\":\"child-native-resumed\",\"action\":\"A\",\"pid\":10864}\n{\"event\":\"deferred-native-batch-accepted\",\"action\":\"A\",\"attempt\":0,\"batch\":0}\n{\"event\":\"native-grant-begin\",\"action\":\"A\",\"wait\":\"Wait[installation=2, sequence=1]\"}\n{\"event\":\"native-grant-authentically-acknowledged\",\"action\":\"A\",\"wait\":\"Wait[installation=2, sequence=1]\"}\n{\"event\":\"queue-control\",\"control\":\"RESUME\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"deferred-native-batch-accepted\",\"action\":\"A\",\"attempt\":0,\"batch\":1}\n{\"event\":\"root-exited-native-child-still-blocked\",\"rootPid\":10756,\"residentBytes\":16228352}\n{\"event\":\"whole-job-terminate-request\",\"action\":\"A\",\"rootPid\":10756}\n{\"event\":\"hook-closed-after-native-job-zero\",\"action\":\"A\",\"pid\":10756,\"installation\":1}\n{\"event\":\"hook-closed-after-native-job-zero\",\"action\":\"A\",\"pid\":10864,\"installation\":2}\n{\"event\":\"manager-closed\",\"action\":\"A\"}\n{\"event\":\"member-identity-closed\",\"action\":\"A\",\"pid\":10756}\n{\"event\":\"member-identity-closed\",\"action\":\"A\",\"pid\":10864}\n{\"event\":\"authentic-aborted-attempt-outcome\",\"rootExit\":23,\"aborted\":true}\n{\"event\":\"queueAbortedOutcomeAcceptance\",\"state\":\"not_exercised_no_automatic_retry_requested\"}\n{\"event\":\"registration-retired\",\"action\":\"A\"}\n{\"event\":\"process-owner-closed\",\"action\":\"A\"}\n{\"event\":\"queue-closed\",\"openAttempts\":false}\n{\"event\":\"runtime-closed\"}\n"
+    },
+    "arm64/denial-linked": {
+      "receipt": {
+        "outcome": "passed",
+        "scenario": "denial",
+        "events": [
+          {
+            "event": "actual-host-memory",
+            "sample": "Memory[availableBytes=13596971008, swapUsedBytes=0, memoryPressure=false]"
+          },
+          {
+            "event": "prepared-root-held",
+            "action": "A",
+            "pid": 7968
+          },
+          {
+            "event": "measurement-registered",
+            "action": "A"
+          },
+          {
+            "event": "native-job-member-retained",
+            "action": "A",
+            "pid": 7968
+          },
+          {
+            "event": "manager-started",
+            "action": "A"
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 7968,
+            "checks": 1
+          },
+          {
+            "event": "hook-started",
+            "action": "A",
+            "pid": 7968,
+            "installation": 1
+          },
+          {
+            "event": "authentic-hook-ready",
+            "action": "A",
+            "pid": 7968,
+            "installation": 1
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 7968,
+            "checks": 2
+          },
+          {
+            "event": "root-before-native-release",
+            "action": "A",
+            "pid": 7968
+          },
+          {
+            "event": "root-native-released",
+            "action": "A",
+            "pid": 7968
+          },
+          {
+            "event": "queue-control",
+            "control": "START",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "native-child-event",
+            "action": "A",
+            "pid": 4204,
+            "parent": 7968,
+            "origin": 2,
+            "path": "C:\\a\\_temp\\windows-composition-WKhRk0gQ\\composition-worker.exe"
+          },
+          {
+            "event": "native-job-member-retained",
+            "action": "A",
+            "pid": 4204
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 4204,
+            "checks": 1
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 4204,
+            "checks": 2
+          },
+          {
+            "event": "hook-started",
+            "action": "A",
+            "pid": 4204,
+            "installation": 2
+          },
+          {
+            "event": "authentic-hook-ready",
+            "action": "A",
+            "pid": 4204,
+            "installation": 2
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 4204,
+            "checks": 3
+          },
+          {
+            "event": "native-member-live",
+            "action": "A",
+            "pid": 4204,
+            "checks": 4
+          },
+          {
+            "event": "child-before-native-resume",
+            "action": "A",
+            "pid": 4204
+          },
+          {
+            "event": "child-native-resumed",
+            "action": "A",
+            "pid": 4204
+          },
+          {
+            "event": "deferred-native-batch-accepted",
+            "action": "A",
+            "attempt": 0,
+            "batch": 0
+          },
+          {
+            "event": "native-grant-begin",
+            "action": "A",
+            "wait": "Wait[installation=2, sequence=1]"
+          },
+          {
+            "event": "native-grant-authentically-acknowledged",
+            "action": "A",
+            "wait": "Wait[installation=2, sequence=1]"
+          },
+          {
+            "event": "queue-control",
+            "control": "RESUME",
+            "action": "A",
+            "reason": "Memory estimate fits available budget"
+          },
+          {
+            "event": "deferred-native-batch-accepted",
+            "action": "A",
+            "attempt": 0,
+            "batch": 1
+          },
+          {
+            "event": "root-exited-native-child-still-blocked",
+            "rootPid": 7968,
+            "residentBytes": 16289792
+          },
+          {
+            "event": "whole-job-terminate-request",
+            "action": "A",
+            "rootPid": 7968
+          },
+          {
+            "event": "hook-closed-after-native-job-zero",
+            "action": "A",
+            "pid": 7968,
+            "installation": 1
+          },
+          {
+            "event": "hook-closed-after-native-job-zero",
+            "action": "A",
+            "pid": 4204,
+            "installation": 2
+          },
+          {
+            "event": "manager-closed",
+            "action": "A"
+          },
+          {
+            "event": "member-identity-closed",
+            "action": "A",
+            "pid": 7968
+          },
+          {
+            "event": "member-identity-closed",
+            "action": "A",
+            "pid": 4204
+          },
+          {
+            "event": "authentic-aborted-attempt-outcome",
+            "rootExit": 23,
+            "aborted": true
+          },
+          {
+            "event": "queueAbortedOutcomeAcceptance",
+            "state": "not_exercised_no_automatic_retry_requested"
+          },
+          {
+            "event": "registration-retired",
+            "action": "A"
+          },
+          {
+            "event": "process-owner-closed",
+            "action": "A"
+          },
+          {
+            "event": "queue-closed",
+            "openAttempts": false
+          },
+          {
+            "event": "runtime-closed"
+          }
+        ],
+        "failure": null,
+        "pressureClaim": false,
+        "successfulDeniedAllocationRecoveryClaim": false
+      },
+      "raw_log": "{\"event\":\"actual-host-memory\",\"sample\":\"Memory[availableBytes=13596971008, swapUsedBytes=0, memoryPressure=false]\"}\n{\"event\":\"prepared-root-held\",\"action\":\"A\",\"pid\":7968}\n{\"event\":\"measurement-registered\",\"action\":\"A\"}\n{\"event\":\"native-job-member-retained\",\"action\":\"A\",\"pid\":7968}\n{\"event\":\"manager-started\",\"action\":\"A\"}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":7968,\"checks\":1}\n{\"event\":\"hook-started\",\"action\":\"A\",\"pid\":7968,\"installation\":1}\n{\"event\":\"authentic-hook-ready\",\"action\":\"A\",\"pid\":7968,\"installation\":1}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":7968,\"checks\":2}\n{\"event\":\"root-before-native-release\",\"action\":\"A\",\"pid\":7968}\n{\"event\":\"root-native-released\",\"action\":\"A\",\"pid\":7968}\n{\"event\":\"queue-control\",\"control\":\"START\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"native-child-event\",\"action\":\"A\",\"pid\":4204,\"parent\":7968,\"origin\":2,\"path\":\"C:\\\\a\\\\_temp\\\\windows-composition-WKhRk0gQ\\\\composition-worker.exe\"}\n{\"event\":\"native-job-member-retained\",\"action\":\"A\",\"pid\":4204}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":4204,\"checks\":1}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":4204,\"checks\":2}\n{\"event\":\"hook-started\",\"action\":\"A\",\"pid\":4204,\"installation\":2}\n{\"event\":\"authentic-hook-ready\",\"action\":\"A\",\"pid\":4204,\"installation\":2}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":4204,\"checks\":3}\n{\"event\":\"native-member-live\",\"action\":\"A\",\"pid\":4204,\"checks\":4}\n{\"event\":\"child-before-native-resume\",\"action\":\"A\",\"pid\":4204}\n{\"event\":\"child-native-resumed\",\"action\":\"A\",\"pid\":4204}\n{\"event\":\"deferred-native-batch-accepted\",\"action\":\"A\",\"attempt\":0,\"batch\":0}\n{\"event\":\"native-grant-begin\",\"action\":\"A\",\"wait\":\"Wait[installation=2, sequence=1]\"}\n{\"event\":\"native-grant-authentically-acknowledged\",\"action\":\"A\",\"wait\":\"Wait[installation=2, sequence=1]\"}\n{\"event\":\"queue-control\",\"control\":\"RESUME\",\"action\":\"A\",\"reason\":\"Memory estimate fits available budget\"}\n{\"event\":\"deferred-native-batch-accepted\",\"action\":\"A\",\"attempt\":0,\"batch\":1}\n{\"event\":\"root-exited-native-child-still-blocked\",\"rootPid\":7968,\"residentBytes\":16289792}\n{\"event\":\"whole-job-terminate-request\",\"action\":\"A\",\"rootPid\":7968}\n{\"event\":\"hook-closed-after-native-job-zero\",\"action\":\"A\",\"pid\":7968,\"installation\":1}\n{\"event\":\"hook-closed-after-native-job-zero\",\"action\":\"A\",\"pid\":4204,\"installation\":2}\n{\"event\":\"manager-closed\",\"action\":\"A\"}\n{\"event\":\"member-identity-closed\",\"action\":\"A\",\"pid\":7968}\n{\"event\":\"member-identity-closed\",\"action\":\"A\",\"pid\":4204}\n{\"event\":\"authentic-aborted-attempt-outcome\",\"rootExit\":23,\"aborted\":true}\n{\"event\":\"queueAbortedOutcomeAcceptance\",\"state\":\"not_exercised_no_automatic_retry_requested\"}\n{\"event\":\"registration-retired\",\"action\":\"A\"}\n{\"event\":\"process-owner-closed\",\"action\":\"A\"}\n{\"event\":\"queue-closed\",\"openAttempts\":false}\n{\"event\":\"runtime-closed\"}\n"
+    }
+  },
+  "raw_identity_and_cleanup_receipts": {
+    "arm64/exact-input-verification.json": {
+      "exactArchiveSha256": "822930bb33c0cd7711aa99ee373b0ea3cbec554e1927ee33ee985f880310e816",
+      "exactArchiveBytes": 50679136,
+      "dllSha256": "68f700ed451b7b40bf95a1e385ea5293b72eec22c5d04f7c8b2c607e70e3edbb",
+      "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+      "nativeArchiveMatchesIndependentSshDownload": true
+    },
+    "arm64/process-cleanup-receipt.json": {
+      "exit": 0,
+      "output": "cd \"$WINDOWS_COMPOSITION_ROOT\" && powershell.exe -NoProfile -ExecutionPolicy B\r\n\u001b[23;80HBypass -File \"$(cygpath -w \"$PWD/cleanup.ps1\")\"; __cat_status=$?; printf \"\\n__CAT\r\n\u001b[23;80HT_DONE_0018:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\n\u001b]0;Administrator: /c/a/_temp/windows-composition-WKhRk0gQ\u0007{\r\n    \"root\":  \"C:\\\\a\\\\_temp\\\\windows-composition-WKhRk0gQ\",\r\n    \"zeroConsumers\":  true,\r\n    \"consumers\":  [\r\n\n                  ],\r\n    \"at\":  \"2026-10-30T07:16:49.2279214Z\"\r\n}\r\n\n__CAT_DONE_0018:0__\u001b[?2004h\r\n\u001b]0;/c/a/_temp/windows-composition-WKhRk0gQ\u0007"
+    },
+    "arm64/provider-terminal.json": {
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "completedAt": "2026-10-30T06:41:13Z",
+          "conclusion": "success",
+          "databaseId": 123930814495,
+          "name": "select",
+          "startedAt": "2026-10-30T06:41:00Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 6,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 7,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41015505277/job/123930814495"
+        },
+        {
+          "completedAt": "2026-10-30T07:17:43Z",
+          "conclusion": "failure",
+          "databaseId": 123930892562,
+          "name": "Debug - aarch64-pc-windows-msvc",
+          "startedAt": "2026-10-30T06:41:15Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure",
+              "number": 4,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace",
+              "number": 5,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace",
+              "number": 8,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state",
+              "number": 9,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 10,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41015505277/job/123930892562"
+        }
+      ],
+      "status": "completed"
+    },
+    "arm64/recovery-ssh-terminal.json": {
+      "exit": 0,
+      "pid": 4
+    },
+    "arm64/remote-removal-receipt.json": {
+      "exit": 0,
+      "output": "owned=\"$WINDOWS_COMPOSITION_ROOT\"; test -n \"$owned\" && cd \"$RUNNER_TEMP\" && rm\r\n\u001b[23;80Hm -rf -- \"$owned\" && test ! -e \"$owned\" && printf \"OWNED_REMOTE_ROOT_REMOVED=%s\\n\r\n\u001b[23;80Hn\" \"$owned\" && if [ \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed\r\n\u001b[23;80Hd-part ]; then printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progres\r\n\u001b[23;80Hss.txt\"; fi && printf \"completed-part\\nincremental-retry\\n\" | cmp - \"$RUNNER_DEBU\r\n\u001b[23;80HUG_SMOKE/build-progress.txt\" && printf \"SMOKE_RETRY_MARKER_VERIFIED\\n\"; __cat_sta\r\n\u001b[23;80Hatus=$?; printf \"\\n__CAT_DONE_0019:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\nOWNED_REMOTE_ROOT_REMOVED=C:\\a\\_temp/windows-composition-WKhRk0gQ\r\nSMOKE_RETRY_MARKER_VERIFIED\r\n\n__CAT_DONE_0019:0__"
+    },
+    "arm64/ssh-terminal.json": {
+      "exit": 255,
+      "pid": 4
+    },
+    "arm64/strip-debug-identity-result.json": {
+      "exit": 0,
+      "output": "cd \"$WINDOWS_COMPOSITION_ROOT\" && python verify-linked.py; __cat_status=$?; pr\r\n\u001b[23;80Hrintf \"\\n__CAT_DONE_1136:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\n{\r\n  \"verifiedClasses\": 20,\r\n  \"comparison\": \"exact official JDK27 strip-java-debug-attributes transformation\r\n\u001b[23;80Hn\",\r\n  \"jarSha256\": \"5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e\r\n\u001b[23;80He\",\r\n  \"classes\": [\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Process.c\r\n\u001b[23;80Hclass\",\r\n      \"packagedSha256\": \"eca9b0ddb5bbe50c5b8d09ec400a6910758d1f1ce0573a20491db64\r\n\u001b[23;80H4fd7ef1682\",\r\n      \"stripDebugSha256\": \"74b116051dd16ef05930518156e675a040bba32997764eb91dfd3\r\n\u001b[23;80H3a243597bfc1\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeMember.class\",\r\n      \"packagedSha256\": \"0f4038555ae65f3f472059d90d52b985090d23b2211abcfe15f2c92\r\n\u001b[23;80H293d84609b\",\r\n      \"stripDebugSha256\": \"b295eb566a02a12654fb0ca0ab6f262fed4a733ed065f0c28e86d\r\n\u001b[23;80Hd2d0733f4ef3\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Resources\r\n\u001b[23;80Hs.class\",\r\n      \"packagedSha256\": \"b4a318e9e81ca23b52073ab2bf87d615db759bdbb6ab7e8e8087bf2\r\n\u001b[23;80H2983c3eedf\",\r\n      \"stripDebugSha256\": \"3d7dade256a43047e5bca5b180524852c1553691b19a37f8fa24c\r\n\u001b[23;80Hcac346bd7d6d\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$H\r\n\u001b[23;80HHook.class\",\r\n      \"packagedSha256\": \"1ac2a6dfa3786d05412905b69ce1b5c3ceca5d65167207e6007312b\r\n\u001b[23;80Hb1fff92ffd\",\r\n      \"stripDebugSha256\": \"c4291ac1e4c9d275313b213ae83593fe7c63f780f113da6744e10\r\n\u001b[23;80H02a5ac5ba4e4\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Resource\r\n\u001b[23;80HesFactory.class\",\r\n      \"packagedSha256\": \"700e0ada798d2b2a3f5c9a880f6f68191169baa7c0398ded75dd741\r\n\u001b[23;80H152925526a\",\r\n      \"stripDebugSha256\": \"1e720264c7cc8e11c24e275b12500f265d1c4a0f78167ac0121eb\r\n\u001b[23;80Hb0356736addb\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeBackend.class\",\r\n      \"packagedSha256\": \"f4a80a5854116cef3ee210320347da79cf5c62395e0e47ba4af6099\r\n\u001b[23;80H986d2e2f7c\",\r\n      \"stripDebugSha256\": \"f8580f56e4bc7fd68bb2eaec24d3d49d19ed721b86dc48c98f6f0\r\n\u001b[23;80H068b65ac3dc9\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Hooks.cla\r\n\u001b[23;80Hass\",\r\n      \"packagedSha256\": \"37700016c35ac779ee9118fa156fa2fa0a247f4f4374c031996823e\r\n\u001b[23;80Hebd91d43dc\",\r\n      \"stripDebugSha256\": \"ecb2ba9f852353e6bc1f64bff0acbf2565d6593fbb8d2653d9518\r\n\u001b[23;80H8927fbc156db\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$M\r\n\u001b[23;80HMember.class\",\r\n      \"packagedSha256\": \"9c1db28ed04dd4692dac4f109a8ea458670c748e5646f15b485282d\r\n\u001b[23;80Hd21e2caac7\",\r\n      \"stripDebugSha256\": \"ceb23aac63886e542342fd78b65a1b7fcde065d9cba590311b4e1\r\n\u001b[23;80H18708d636231\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.c\r\n\u001b[23;80Hclass\",\r\n      \"packagedSha256\": \"df8ea5512f3ed2e4b15fe5f3a74d4641df7c5c744b02353cfafb401\r\n\u001b[23;80H1ed419f30e\",\r\n      \"stripDebugSha256\": \"fa6d515ed1a0d02303a179b1f41fc573360cdc46066d46e61b0f3\r\n\u001b[23;80H349056a97ec7\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Command.\r\n\u001b[23;80H.class\",\r\n      \"packagedSha256\": \"1b52b9e82b119fcf5688d299ad7466b104925c0f596fcd9ff013ef2\r\n\u001b[23;80H28ec195ccf\",\r\n      \"stripDebugSha256\": \"4c88e21166e8162c960f8090180468a7f8029cb1b61b9e9b716fa\r\n\u001b[23;80Ha888bd755dd0\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.class\", \u001b[24;1H\n      \"packagedSha256\": \"668800c5b18d1bafde0766ac60da68104ed61c088b0e56cf4290150\r\n\u001b[23;80H02b3c23130\",\r\n      \"stripDebugSha256\": \"e0c831781915c1e785ca2f2546e760d4f8f31a99b8f87574d5c6f\r\n\u001b[23;80Hf8e63f867c1a\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeHook.class\",\r\n      \"packagedSha256\": \"676ed11572e58ea3e554639c7df32b2c09e3e5185a8fce3acf1cc54\r\n\u001b[23;80H4102d924fa\",\r\n      \"stripDebugSha256\": \"daf336817bfa103681bf77f1f7c2b4574e6100bf650412cd4da4e\r\n\u001b[23;80Hefd534a5a387\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$B\r\n\u001b[23;80HBackend.class\",\r\n      \"packagedSha256\": \"79edfa3864c0a56ae03fc9ac193e3ae40c5b6c1c5e493b1248ff74a\r\n\u001b[23;80Ha374eb1e2b\",\r\n      \"stripDebugSha256\": \"56e00dadc6cddeb85bcc05d48852f853a672e219f041128333450\r\n\u001b[23;80H051648b052e7\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Blocked.\r\n\u001b[23;80H.class\",\r\n      \"packagedSha256\": \"4f8dcafc0f6f3a8e2600802aecef9470d86342480cd5f31faa25fca\r\n\u001b[23;80Hac38aff405\",\r\n      \"stripDebugSha256\": \"f17dd7edc02453733d6bb15b42b4ec0d4cb2774ec2070daf1f6ca\r\n\u001b[23;80Hae99f890df70\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeManager.class\",\r\n      \"packagedSha256\": \"164dd42f653ed3843dbe994a73add2ecb3effaf48a3fed064b1a770\r\n\u001b[23;80H0cdba1b2df\",\r\n      \"stripDebugSha256\": \"5d1dbfcd4500c4d4dff90ea5404a4ff131f645e89385d55e7fe15\r\n\u001b[23;80H5fde2922ecde\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.class\",  \r\n      \"packagedSha256\": \"91835e93d15f6f4fbde7e1708d883f2552895e2c8e7d12a404c007d\r\n\u001b[23;80Hd7df72c621\",\r\n      \"stripDebugSha256\": \"78885669178df45b3b5d8ff737e4fba096affd7049e38237f1850\r\n\u001b[23;80H0622f7399c65\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativePro\r\n\u001b[23;80Hocess.class\",\r\n      \"packagedSha256\": \"71fef22bfa2bbea386ba81192a79cefe4ed7a4d0047e171e52add42\r\n\u001b[23;80H2252406a8b\",\r\n      \"stripDebugSha256\": \"beb973bdcbb001e62d5e8b2cf830e243c148704460e3174ca2bef\r\n\u001b[23;80Hf76dbe98bb56\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Close.cla\r\n\u001b[23;80Hass\",\r\n      \"packagedSha256\": \"4080979e8092e799dcc75179fe1797f9aa3bddb0f022d54f88f58f2\r\n\u001b[23;80H27ed2d7897\",\r\n      \"stripDebugSha256\": \"50fbe2cb3710688eb623ac7c0274fc059ffc7b307c23d80bd222c\r\n\u001b[23;80Hcff47efd9a99\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeRes\r\n\u001b[23;80Hsources.class\",\r\n      \"packagedSha256\": \"d99684f88aa41c64c3714c2fd3cefc3d5154d7916c103c4e5c2a459\r\n\u001b[23;80H92ebdf9aaa\",\r\n      \"stripDebugSha256\": \"ae4657f786a5aaf019bbd5ce32b0f71c444398f13ca3c7970d21c\r\n\u001b[23;80Hc419e3a9d05f\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$M\r\n\u001b[23;80HManager.class\",\r\n      \"packagedSha256\": \"2dd198af2f54ec3db80cb2a438c88c9ec60e881107f9955982428e3\r\n\u001b[23;80H332c8ab412\",\r\n      \"stripDebugSha256\": \"b115de99d39c8c45ddd39661954ff094642188dd5c43a7ff42127\r\n\u001b[23;80H7151f6499e59\"\r\n    }\r\n  ]\r\n}\r\n\n__CAT_DONE_1136:0__\u001b[?2004h\r\n\n\u001b[32mrunneradmin@runnervmmaf2v \u001b[35mMINGW64 \u001b[33m/c/a/_temp/windows-composition-WKhRk0gQ       \u001b[24;1H"
+    },
+    "cleanup-receipts.json": {
+      "x64": {
+        "run": 41015502363,
+        "job": 123930868740,
+        "originalSshExit": 255,
+        "recoverySshExit": 0,
+        "zeroConsumers": true,
+        "remoteRootRemoved": true,
+        "smokeRetryMarkerVerified": true,
+        "providerStatus": "completed",
+        "providerConclusion": "failure",
+        "deliberateSmokeFailureRetained": true,
+        "postCleanup": {
+          "Post Debug the original failed workspace": "success",
+          "Post Create owned partial build state": "success",
+          "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd": "success"
+        },
+        "clientKeysRemoved": [
+          "x64/client-key",
+          "x64/client-key.pub",
+          "x64/recovery/client-key",
+          "x64/recovery/client-key.pub",
+          "x64/proxy-recovery/client-key",
+          "x64/proxy-recovery/client-key.pub",
+          "x64/proxy-recovery2/client-key",
+          "x64/proxy-recovery2/client-key.pub"
+        ],
+        "remainingClientKeyFiles": [],
+        "at": "2026-10-30T07:18:28.024111+00:00"
+      },
+      "arm64": {
+        "run": 41015505277,
+        "job": 123930892562,
+        "originalSshExit": 255,
+        "recoverySshExit": 0,
+        "zeroConsumers": true,
+        "remoteRootRemoved": true,
+        "smokeRetryMarkerVerified": true,
+        "providerStatus": "completed",
+        "providerConclusion": "failure",
+        "deliberateSmokeFailureRetained": true,
+        "postCleanup": {
+          "Post Debug the original failed workspace": "success",
+          "Post Create owned partial build state": "success",
+          "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd": "success"
+        },
+        "clientKeysRemoved": [
+          "arm64/client-key",
+          "arm64/client-key.pub",
+          "arm64/recovery/client-key",
+          "arm64/recovery/client-key.pub",
+          "arm64/proxy-recovery/client-key",
+          "arm64/proxy-recovery/client-key.pub",
+          "arm64/proxy-recovery2/client-key",
+          "arm64/proxy-recovery2/client-key.pub"
+        ],
+        "remainingClientKeyFiles": [],
+        "at": "2026-10-30T07:18:30.723574+00:00"
+      }
+    },
+    "recovery-status.json": {
+      "task_contract": "acknowledged",
+      "exclusiveOwner": "/root/finish_completion_free_retry",
+      "sameRuns": [
+        41015502363,
+        41015505277
+      ],
+      "recoveredClients": {
+        "x64": 55154,
+        "arm64": 4812
+      },
+      "rootVerified": true,
+      "rawNetwork": "unreachable",
+      "transport": "existing HTTPS_PROXY HTTP CONNECT to pinned Upterm SSH relay",
+      "old255Preserved": true,
+      "at": "2026-10-30T07:16:53.918056+00:00",
+      "phase": "native evidence recovered; exact DLL/package artifacts uploaded privately; original x64 red retained; native process-zero cleanup running; SSH/provider cleanup next"
+    },
+    "x64/exact-input-verification.json": {
+      "exactArchiveSha256": "5a003e0cfce6fa211962f2fef4b286c661a27b4876a76bdad3b43533da2dfa61",
+      "exactArchiveBytes": 36448893,
+      "dllSha256": "6f17c9f4f74e9ff83efd2abd4f642d9110feec8aee8c85427d28808cadef3def",
+      "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+      "nativeArchiveMatchesIndependentSshDownload": true
+    },
+    "x64/process-cleanup-receipt.json": {
+      "exit": 0,
+      "output": "cd \"$WINDOWS_COMPOSITION_ROOT\" && powershell.exe -NoProfile -ExecutionPolicy B\r\n\u001b[23;80HBypass -File \"$(cygpath -w \"$PWD/cleanup.ps1\")\"; __cat_status=$?; printf \"\\n__CAT\r\n\u001b[23;80HT_DONE_0019:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\n\u001b]0;Administrator: /d/a/_temp/windows-composition-UX0Xpe2y\u0007{\r\n    \"root\":  \"D:\\\\a\\\\_temp\\\\windows-composition-UX0Xpe2y\",\r\n    \"zeroConsumers\":  true,\r\n    \"consumers\":  [\r\n\n                  ],\r\n    \"at\":  \"2026-10-30T07:16:47.0865716Z\"\r\n}\r\n\n__CAT_DONE_0019:0__\u001b[?2004h\r\n\u001b]0;/d/a/_temp/windows-composition-UX0Xpe2y\u0007"
+    },
+    "x64/provider-terminal.json": {
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "completedAt": "2026-10-30T06:41:08Z",
+          "conclusion": "success",
+          "databaseId": 123930805559,
+          "name": "select",
+          "startedAt": "2026-10-30T06:40:58Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run printf 'value=%s\\n' \"$(jq --arg target \"$PROBE_TARGET\" -c '{include: [.[] | select(($target == \"all\") or (.target == $target) or (($target == \"remaining\") and (.target != \"x86_64-unknown-linux-musl\")))]}' .github/release-matrix.json)\" >> \"$GITHUB_OUTPUT\"",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 6,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 7,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41015502363/job/123930805559"
+        },
+        {
+          "completedAt": "2026-10-30T07:17:38Z",
+          "conclusion": "failure",
+          "databaseId": 123930868740,
+          "name": "Debug - x86_64-pc-windows-msvc",
+          "startedAt": "2026-10-30T06:41:11Z",
+          "status": "completed",
+          "steps": [
+            {
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 2,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Create owned partial build state",
+              "number": 3,
+              "status": "completed"
+            },
+            {
+              "conclusion": "failure",
+              "name": "Record the deliberate build failure",
+              "number": 4,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Debug the original failed workspace",
+              "number": 5,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Debug the original failed workspace",
+              "number": 8,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Create owned partial build state",
+              "number": 9,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              "number": 10,
+              "status": "completed"
+            },
+            {
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 11,
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/holdmyspot-com/codex-unleashed/actions/runs/41015502363/job/123930868740"
+        }
+      ],
+      "status": "completed"
+    },
+    "x64/recovery-ssh-terminal.json": {
+      "exit": 0,
+      "pid": 5
+    },
+    "x64/remote-removal-receipt.json": {
+      "exit": 0,
+      "output": "owned=\"$WINDOWS_COMPOSITION_ROOT\"; test -n \"$owned\" && cd \"$RUNNER_TEMP\" && rm\r\n\u001b[23;80Hm -rf -- \"$owned\" && test ! -e \"$owned\" && printf \"OWNED_REMOTE_ROOT_REMOVED=%s\\n\r\n\u001b[23;80Hn\" \"$owned\" && if [ \"$(cat \"$RUNNER_DEBUG_SMOKE/build-progress.txt\")\" = completed\r\n\u001b[23;80Hd-part ]; then printf \"incremental-retry\\n\" >> \"$RUNNER_DEBUG_SMOKE/build-progres\r\n\u001b[23;80Hss.txt\"; fi && printf \"completed-part\\nincremental-retry\\n\" | cmp - \"$RUNNER_DEBU\r\n\u001b[23;80HUG_SMOKE/build-progress.txt\" && printf \"SMOKE_RETRY_MARKER_VERIFIED\\n\"; __cat_sta\r\n\u001b[23;80Hatus=$?; printf \"\\n__CAT_DONE_0020:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\nOWNED_REMOTE_ROOT_REMOVED=D:\\a\\_temp/windows-composition-UX0Xpe2y\r\nSMOKE_RETRY_MARKER_VERIFIED\r\n\n__CAT_DONE_0020:0__\u001b[?2004h\r\n\u001b]0;/d/a/_temp\u0007"
+    },
+    "x64/ssh-terminal.json": {
+      "exit": 255,
+      "pid": 4
+    },
+    "x64/strip-debug-identity-result.json": {
+      "exit": 0,
+      "output": "cd \"$WINDOWS_COMPOSITION_ROOT\" && python verify-linked.py; __cat_status=$?; pr\r\n\u001b[23;80Hrintf \"\\n__CAT_DONE_1136:%s__\\n\" \"$__cat_status\"\u001b[?2004l\r\n{\r\n  \"verifiedClasses\": 20,\r\n  \"comparison\": \"exact official JDK27 strip-java-debug-attributes transformation\r\n\u001b[23;80Hn\",\r\n  \"jarSha256\": \"5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e\r\n\u001b[23;80He\",\r\n  \"classes\": [\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Process.c\r\n\u001b[23;80Hclass\",\r\n      \"packagedSha256\": \"eca9b0ddb5bbe50c5b8d09ec400a6910758d1f1ce0573a20491db64\r\n\u001b[23;80H4fd7ef1682\",\r\n      \"stripDebugSha256\": \"74b116051dd16ef05930518156e675a040bba32997764eb91dfd3\r\n\u001b[23;80H3a243597bfc1\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeMember.class\",\r\n      \"packagedSha256\": \"0f4038555ae65f3f472059d90d52b985090d23b2211abcfe15f2c92\r\n\u001b[23;80H293d84609b\",\r\n      \"stripDebugSha256\": \"b295eb566a02a12654fb0ca0ab6f262fed4a733ed065f0c28e86d\r\n\u001b[23;80Hd2d0733f4ef3\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Resources\r\n\u001b[23;80Hs.class\",\r\n      \"packagedSha256\": \"b4a318e9e81ca23b52073ab2bf87d615db759bdbb6ab7e8e8087bf2\r\n\u001b[23;80H2983c3eedf\",\r\n      \"stripDebugSha256\": \"3d7dade256a43047e5bca5b180524852c1553691b19a37f8fa24c\r\n\u001b[23;80Hcac346bd7d6d\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$H\r\n\u001b[23;80HHook.class\",\r\n      \"packagedSha256\": \"1ac2a6dfa3786d05412905b69ce1b5c3ceca5d65167207e6007312b\r\n\u001b[23;80Hb1fff92ffd\",\r\n      \"stripDebugSha256\": \"c4291ac1e4c9d275313b213ae83593fe7c63f780f113da6744e10\r\n\u001b[23;80H02a5ac5ba4e4\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Resource\r\n\u001b[23;80HesFactory.class\",\r\n      \"packagedSha256\": \"700e0ada798d2b2a3f5c9a880f6f68191169baa7c0398ded75dd741\r\n\u001b[23;80H152925526a\",\r\n      \"stripDebugSha256\": \"1e720264c7cc8e11c24e275b12500f265d1c4a0f78167ac0121eb\r\n\u001b[23;80Hb0356736addb\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeBackend.class\",\r\n      \"packagedSha256\": \"f4a80a5854116cef3ee210320347da79cf5c62395e0e47ba4af6099\r\n\u001b[23;80H986d2e2f7c\",\r\n      \"stripDebugSha256\": \"f8580f56e4bc7fd68bb2eaec24d3d49d19ed721b86dc48c98f6f0\r\n\u001b[23;80H068b65ac3dc9\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Hooks.cla\r\n\u001b[23;80Hass\",\r\n      \"packagedSha256\": \"37700016c35ac779ee9118fa156fa2fa0a247f4f4374c031996823e\r\n\u001b[23;80Hebd91d43dc\",\r\n      \"stripDebugSha256\": \"ecb2ba9f852353e6bc1f64bff0acbf2565d6593fbb8d2653d9518\r\n\u001b[23;80H8927fbc156db\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$M\r\n\u001b[23;80HMember.class\",\r\n      \"packagedSha256\": \"9c1db28ed04dd4692dac4f109a8ea458670c748e5646f15b485282d\r\n\u001b[23;80Hd21e2caac7\",\r\n      \"stripDebugSha256\": \"ceb23aac63886e542342fd78b65a1b7fcde065d9cba590311b4e1\r\n\u001b[23;80H18708d636231\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.c\r\n\u001b[23;80Hclass\",\r\n      \"packagedSha256\": \"df8ea5512f3ed2e4b15fe5f3a74d4641df7c5c744b02353cfafb401\r\n\u001b[23;80H1ed419f30e\",\r\n      \"stripDebugSha256\": \"fa6d515ed1a0d02303a179b1f41fc573360cdc46066d46e61b0f3\r\n\u001b[23;80H349056a97ec7\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Command.\r\n\u001b[23;80H.class\",\r\n      \"packagedSha256\": \"1b52b9e82b119fcf5688d299ad7466b104925c0f596fcd9ff013ef2\r\n\u001b[23;80H28ec195ccf\",\r\n      \"stripDebugSha256\": \"4c88e21166e8162c960f8090180468a7f8029cb1b61b9e9b716fa\r\n\u001b[23;80Ha888bd755dd0\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.class\", \u001b[24;1H\n      \"packagedSha256\": \"668800c5b18d1bafde0766ac60da68104ed61c088b0e56cf4290150\r\n\u001b[23;80H02b3c23130\",\r\n      \"stripDebugSha256\": \"e0c831781915c1e785ca2f2546e760d4f8f31a99b8f87574d5c6f\r\n\u001b[23;80Hf8e63f867c1a\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeHook.class\",\r\n      \"packagedSha256\": \"676ed11572e58ea3e554639c7df32b2c09e3e5185a8fce3acf1cc54\r\n\u001b[23;80H4102d924fa\",\r\n      \"stripDebugSha256\": \"daf336817bfa103681bf77f1f7c2b4574e6100bf650412cd4da4e\r\n\u001b[23;80Hefd534a5a387\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$B\r\n\u001b[23;80HBackend.class\",\r\n      \"packagedSha256\": \"79edfa3864c0a56ae03fc9ac193e3ae40c5b6c1c5e493b1248ff74a\r\n\u001b[23;80Ha374eb1e2b\",\r\n      \"stripDebugSha256\": \"56e00dadc6cddeb85bcc05d48852f853a672e219f041128333450\r\n\u001b[23;80H051648b052e7\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Blocked.\r\n\u001b[23;80H.class\",\r\n      \"packagedSha256\": \"4f8dcafc0f6f3a8e2600802aecef9470d86342480cd5f31faa25fca\r\n\u001b[23;80Hac38aff405\",\r\n      \"stripDebugSha256\": \"f17dd7edc02453733d6bb15b42b4ec0d4cb2774ec2070daf1f6ca\r\n\u001b[23;80Hae99f890df70\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$N\r\n\u001b[23;80HNativeManager.class\",\r\n      \"packagedSha256\": \"164dd42f653ed3843dbe994a73add2ecb3effaf48a3fed064b1a770\r\n\u001b[23;80H0cdba1b2df\",\r\n      \"stripDebugSha256\": \"5d1dbfcd4500c4d4dff90ea5404a4ff131f645e89385d55e7fe15\r\n\u001b[23;80H5fde2922ecde\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.class\",  \r\n      \"packagedSha256\": \"91835e93d15f6f4fbde7e1708d883f2552895e2c8e7d12a404c007d\r\n\u001b[23;80Hd7df72c621\",\r\n      \"stripDebugSha256\": \"78885669178df45b3b5d8ff737e4fba096affd7049e38237f1850\r\n\u001b[23;80H0622f7399c65\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativePro\r\n\u001b[23;80Hocess.class\",\r\n      \"packagedSha256\": \"71fef22bfa2bbea386ba81192a79cefe4ed7a4d0047e171e52add42\r\n\u001b[23;80H2252406a8b\",\r\n      \"stripDebugSha256\": \"beb973bdcbb001e62d5e8b2cf830e243c148704460e3174ca2bef\r\n\u001b[23;80Hf76dbe98bb56\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Close.cla\r\n\u001b[23;80Hass\",\r\n      \"packagedSha256\": \"4080979e8092e799dcc75179fe1797f9aa3bddb0f022d54f88f58f2\r\n\u001b[23;80H27ed2d7897\",\r\n      \"stripDebugSha256\": \"50fbe2cb3710688eb623ac7c0274fc059ffc7b307c23d80bd222c\r\n\u001b[23;80Hcff47efd9a99\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeRes\r\n\u001b[23;80Hsources.class\",\r\n      \"packagedSha256\": \"d99684f88aa41c64c3714c2fd3cefc3d5154d7916c103c4e5c2a459\r\n\u001b[23;80H92ebdf9aaa\",\r\n      \"stripDebugSha256\": \"ae4657f786a5aaf019bbd5ce32b0f71c444398f13ca3c7970d21c\r\n\u001b[23;80Hc419e3a9d05f\"\r\n    },\r\n    {\r\n      \"entry\": \"com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$M\r\n\u001b[23;80HManager.class\",\r\n      \"packagedSha256\": \"2dd198af2f54ec3db80cb2a438c88c9ec60e881107f9955982428e3\r\n\u001b[23;80H332c8ab412\",\r\n      \"stripDebugSha256\": \"b115de99d39c8c45ddd39661954ff094642188dd5c43a7ff42127\r\n\u001b[23;80H7151f6499e59\"\r\n    }\r\n  ]\r\n}\r\n\n__CAT_DONE_1136:0__"
+    },
+    "x64/linked-class-identities.json": {
+      "verifiedClasses": 20,
+      "comparison": "exact official JDK27 strip-java-debug-attributes transformation",
+      "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+      "classes": [
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Process.class",
+          "packagedSha256": "eca9b0ddb5bbe50c5b8d09ec400a6910758d1f1ce0573a20491db64fd7ef1682",
+          "stripDebugSha256": "74b116051dd16ef05930518156e675a040bba32997764eb91dfd3a243597bfc1"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeMember.class",
+          "packagedSha256": "0f4038555ae65f3f472059d90d52b985090d23b2211abcfe15f2c9293d84609b",
+          "stripDebugSha256": "b295eb566a02a12654fb0ca0ab6f262fed4a733ed065f0c28e86d2d0733f4ef3"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Resources.class",
+          "packagedSha256": "b4a318e9e81ca23b52073ab2bf87d615db759bdbb6ab7e8e8087bf2983c3eedf",
+          "stripDebugSha256": "3d7dade256a43047e5bca5b180524852c1553691b19a37f8fa24cac346bd7d6d"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Hook.class",
+          "packagedSha256": "1ac2a6dfa3786d05412905b69ce1b5c3ceca5d65167207e6007312b1fff92ffd",
+          "stripDebugSha256": "c4291ac1e4c9d275313b213ae83593fe7c63f780f113da6744e102a5ac5ba4e4"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$ResourcesFactory.class",
+          "packagedSha256": "700e0ada798d2b2a3f5c9a880f6f68191169baa7c0398ded75dd74152925526a",
+          "stripDebugSha256": "1e720264c7cc8e11c24e275b12500f265d1c4a0f78167ac0121eb0356736addb"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeBackend.class",
+          "packagedSha256": "f4a80a5854116cef3ee210320347da79cf5c62395e0e47ba4af609986d2e2f7c",
+          "stripDebugSha256": "f8580f56e4bc7fd68bb2eaec24d3d49d19ed721b86dc48c98f6f068b65ac3dc9"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Hooks.class",
+          "packagedSha256": "37700016c35ac779ee9118fa156fa2fa0a247f4f4374c031996823ebd91d43dc",
+          "stripDebugSha256": "ecb2ba9f852353e6bc1f64bff0acbf2565d6593fbb8d2653d9518927fbc156db"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Member.class",
+          "packagedSha256": "9c1db28ed04dd4692dac4f109a8ea458670c748e5646f15b485282d21e2caac7",
+          "stripDebugSha256": "ceb23aac63886e542342fd78b65a1b7fcde065d9cba590311b4e18708d636231"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.class",
+          "packagedSha256": "df8ea5512f3ed2e4b15fe5f3a74d4641df7c5c744b02353cfafb401ed419f30e",
+          "stripDebugSha256": "fa6d515ed1a0d02303a179b1f41fc573360cdc46066d46e61b0f349056a97ec7"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Command.class",
+          "packagedSha256": "1b52b9e82b119fcf5688d299ad7466b104925c0f596fcd9ff013ef28ec195ccf",
+          "stripDebugSha256": "4c88e21166e8162c960f8090180468a7f8029cb1b61b9e9b716fa888bd755dd0"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.class",
+          "packagedSha256": "668800c5b18d1bafde0766ac60da68104ed61c088b0e56cf42901502b3c23130",
+          "stripDebugSha256": "e0c831781915c1e785ca2f2546e760d4f8f31a99b8f87574d5c6f8e63f867c1a"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeHook.class",
+          "packagedSha256": "676ed11572e58ea3e554639c7df32b2c09e3e5185a8fce3acf1cc54102d924fa",
+          "stripDebugSha256": "daf336817bfa103681bf77f1f7c2b4574e6100bf650412cd4da4efd534a5a387"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Backend.class",
+          "packagedSha256": "79edfa3864c0a56ae03fc9ac193e3ae40c5b6c1c5e493b1248ff74a374eb1e2b",
+          "stripDebugSha256": "56e00dadc6cddeb85bcc05d48852f853a672e219f04112833345051648b052e7"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Blocked.class",
+          "packagedSha256": "4f8dcafc0f6f3a8e2600802aecef9470d86342480cd5f31faa25fcac38aff405",
+          "stripDebugSha256": "f17dd7edc02453733d6bb15b42b4ec0d4cb2774ec2070daf1f6cae99f890df70"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeManager.class",
+          "packagedSha256": "164dd42f653ed3843dbe994a73add2ecb3effaf48a3fed064b1a770cdba1b2df",
+          "stripDebugSha256": "5d1dbfcd4500c4d4dff90ea5404a4ff131f645e89385d55e7fe15fde2922ecde"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.class",
+          "packagedSha256": "91835e93d15f6f4fbde7e1708d883f2552895e2c8e7d12a404c007d7df72c621",
+          "stripDebugSha256": "78885669178df45b3b5d8ff737e4fba096affd7049e38237f1850622f7399c65"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeProcess.class",
+          "packagedSha256": "71fef22bfa2bbea386ba81192a79cefe4ed7a4d0047e171e52add42252406a8b",
+          "stripDebugSha256": "beb973bdcbb001e62d5e8b2cf830e243c148704460e3174ca2bef76dbe98bb56"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Close.class",
+          "packagedSha256": "4080979e8092e799dcc75179fe1797f9aa3bddb0f022d54f88f58f27ed2d7897",
+          "stripDebugSha256": "50fbe2cb3710688eb623ac7c0274fc059ffc7b307c23d80bd222cff47efd9a99"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeResources.class",
+          "packagedSha256": "d99684f88aa41c64c3714c2fd3cefc3d5154d7916c103c4e5c2a4592ebdf9aaa",
+          "stripDebugSha256": "ae4657f786a5aaf019bbd5ce32b0f71c444398f13ca3c7970d21c419e3a9d05f"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Manager.class",
+          "packagedSha256": "2dd198af2f54ec3db80cb2a438c88c9ec60e881107f9955982428e332c8ab412",
+          "stripDebugSha256": "b115de99d39c8c45ddd39661954ff094642188dd5c43a7ff42127151f6499e59"
+        }
+      ]
+    },
+    "arm64/linked-class-identities.json": {
+      "verifiedClasses": 20,
+      "comparison": "exact official JDK27 strip-java-debug-attributes transformation",
+      "jarSha256": "5c00ad65d56384e0e2f370eec033558348a20dc90dbebfc4a9da4488be9e459e",
+      "classes": [
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Process.class",
+          "packagedSha256": "eca9b0ddb5bbe50c5b8d09ec400a6910758d1f1ce0573a20491db64fd7ef1682",
+          "stripDebugSha256": "74b116051dd16ef05930518156e675a040bba32997764eb91dfd3a243597bfc1"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeMember.class",
+          "packagedSha256": "0f4038555ae65f3f472059d90d52b985090d23b2211abcfe15f2c9293d84609b",
+          "stripDebugSha256": "b295eb566a02a12654fb0ca0ab6f262fed4a733ed065f0c28e86d2d0733f4ef3"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Resources.class",
+          "packagedSha256": "b4a318e9e81ca23b52073ab2bf87d615db759bdbb6ab7e8e8087bf2983c3eedf",
+          "stripDebugSha256": "3d7dade256a43047e5bca5b180524852c1553691b19a37f8fa24cac346bd7d6d"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Hook.class",
+          "packagedSha256": "1ac2a6dfa3786d05412905b69ce1b5c3ceca5d65167207e6007312b1fff92ffd",
+          "stripDebugSha256": "c4291ac1e4c9d275313b213ae83593fe7c63f780f113da6744e102a5ac5ba4e4"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$ResourcesFactory.class",
+          "packagedSha256": "700e0ada798d2b2a3f5c9a880f6f68191169baa7c0398ded75dd74152925526a",
+          "stripDebugSha256": "1e720264c7cc8e11c24e275b12500f265d1c4a0f78167ac0121eb0356736addb"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeBackend.class",
+          "packagedSha256": "f4a80a5854116cef3ee210320347da79cf5c62395e0e47ba4af609986d2e2f7c",
+          "stripDebugSha256": "f8580f56e4bc7fd68bb2eaec24d3d49d19ed721b86dc48c98f6f068b65ac3dc9"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Hooks.class",
+          "packagedSha256": "37700016c35ac779ee9118fa156fa2fa0a247f4f4374c031996823ebd91d43dc",
+          "stripDebugSha256": "ecb2ba9f852353e6bc1f64bff0acbf2565d6593fbb8d2653d9518927fbc156db"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Member.class",
+          "packagedSha256": "9c1db28ed04dd4692dac4f109a8ea458670c748e5646f15b485282d21e2caac7",
+          "stripDebugSha256": "ceb23aac63886e542342fd78b65a1b7fcde065d9cba590311b4e18708d636231"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks.class",
+          "packagedSha256": "df8ea5512f3ed2e4b15fe5f3a74d4641df7c5c744b02353cfafb401ed419f30e",
+          "stripDebugSha256": "fa6d515ed1a0d02303a179b1f41fc573360cdc46066d46e61b0f349056a97ec7"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Command.class",
+          "packagedSha256": "1b52b9e82b119fcf5688d299ad7466b104925c0f596fcd9ff013ef28ec195ccf",
+          "stripDebugSha256": "4c88e21166e8162c960f8090180468a7f8029cb1b61b9e9b716fa888bd755dd0"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.class",
+          "packagedSha256": "668800c5b18d1bafde0766ac60da68104ed61c088b0e56cf42901502b3c23130",
+          "stripDebugSha256": "e0c831781915c1e785ca2f2546e760d4f8f31a99b8f87574d5c6f8e63f867c1a"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeHook.class",
+          "packagedSha256": "676ed11572e58ea3e554639c7df32b2c09e3e5185a8fce3acf1cc54102d924fa",
+          "stripDebugSha256": "daf336817bfa103681bf77f1f7c2b4574e6100bf650412cd4da4efd534a5a387"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Backend.class",
+          "packagedSha256": "79edfa3864c0a56ae03fc9ac193e3ae40c5b6c1c5e493b1248ff74a374eb1e2b",
+          "stripDebugSha256": "56e00dadc6cddeb85bcc05d48852f853a672e219f04112833345051648b052e7"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempts$Blocked.class",
+          "packagedSha256": "4f8dcafc0f6f3a8e2600802aecef9470d86342480cd5f31faa25fcac38aff405",
+          "stripDebugSha256": "f17dd7edc02453733d6bb15b42b4ec0d4cb2774ec2070daf1f6cae99f890df70"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$NativeManager.class",
+          "packagedSha256": "164dd42f653ed3843dbe994a73add2ecb3effaf48a3fed064b1a770cdba1b2df",
+          "stripDebugSha256": "5d1dbfcd4500c4d4dff90ea5404a4ff131f645e89385d55e7fe15fde2922ecde"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.class",
+          "packagedSha256": "91835e93d15f6f4fbde7e1708d883f2552895e2c8e7d12a404c007d7df72c621",
+          "stripDebugSha256": "78885669178df45b3b5d8ff737e4fba096affd7049e38237f1850622f7399c65"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeProcess.class",
+          "packagedSha256": "71fef22bfa2bbea386ba81192a79cefe4ed7a4d0047e171e52add42252406a8b",
+          "stripDebugSha256": "beb973bdcbb001e62d5e8b2cf830e243c148704460e3174ca2bef76dbe98bb56"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$Close.class",
+          "packagedSha256": "4080979e8092e799dcc75179fe1797f9aa3bddb0f022d54f88f58f27ed2d7897",
+          "stripDebugSha256": "50fbe2cb3710688eb623ac7c0274fc059ffc7b307c23d80bd222cff47efd9a99"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAttempt$NativeResources.class",
+          "packagedSha256": "d99684f88aa41c64c3714c2fd3cefc3d5154d7916c103c4e5c2a4592ebdf9aaa",
+          "stripDebugSha256": "ae4657f786a5aaf019bbd5ce32b0f71c444398f13ca3c7970d21c419e3a9d05f"
+        },
+        {
+          "entry": "com/holdmyspot/codexunleashed/scheduler/WindowsAllocationHooks$Manager.class",
+          "packagedSha256": "2dd198af2f54ec3db80cb2a438c88c9ec60e881107f9955982428e332c8ab412",
+          "stripDebugSha256": "b115de99d39c8c45ddd39661954ff094642188dd5c43a7ff42127151f6499e59"
+        }
+      ]
+    }
+  },
+  "fixture_sources": {
+    "WindowsCompositionProbe.java": "package com.holdmyspot.codexunleashed.scheduler;\nimport java.io.*;\nimport java.lang.foreign.*;\nimport java.lang.invoke.MethodHandle;\nimport java.lang.reflect.Field;\nimport java.nio.file.*;\nimport java.time.Duration;\nimport java.util.*;\nimport tools.jackson.databind.json.JsonMapper;\nimport static java.lang.foreign.ValueLayout.*;\nimport static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;\n\n/** Scratch observer; native owners, payload, callbacks and results are delegated unchanged. */\npublic final class WindowsCompositionProbe {\n static final JsonMapper JSON=JsonMapper.builder().build();\n static Path output;static final List<Map<String,Object>> events=new ArrayList<>();\n static void event(String name,Object...pairs)throws IOException{\n  var row=new LinkedHashMap<String,Object>();row.put(\"event\",name);\n  for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);\n  events.add(row);String text=JSON.writeValueAsString(row);System.out.println(text);\n  Files.writeString(output.resolve(\"events.jsonl\"),text+\"\\n\",StandardOpenOption.CREATE,StandardOpenOption.APPEND);\n }\n static Object field(Object owner,String name){try{Field f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}catch(ReflectiveOperationException e){throw new IllegalStateException(e);}}\n @SuppressWarnings(\"unchecked\") static List<WindowsAttempt> live(WindowsAttempts factory){return new ArrayList<>(((Map<Long,WindowsAttempt>)field(factory,\"live\")).values());}\n static WindowsProcess nativeProcess(WindowsAttempt attempt){Object port=field(attempt,\"process\");if(port instanceof ObservedProcess observed)return observed.nativeProcess;return (WindowsProcess)field(port,\"process\");}\n static Path marker(String name,String suffix){return output.resolve(name+\"-\"+suffix);}\n static void absent(Path p,String why){requireThat(Files.exists(p),why).isFalse();}\n static final class ObservedProcess implements WindowsAttempt.Process{\n  final String name;final WindowsAttempt.Process delegate;final WindowsProcess nativeProcess;final Observation observation;\n  ObservedProcess(String name,WindowsAttempt.Process delegate,Observation observation){this.name=name;this.delegate=delegate;this.observation=observation;nativeProcess=(WindowsProcess)field(delegate,\"process\");}\n  public Optional<WindowsProcess.Result> poll()throws IOException{return delegate.poll();}\n  public void terminate()throws IOException{event(\"whole-job-terminate-request\",\"action\",name,\"rootPid\",nativeProcess.pid());delegate.terminate();}\n  public void close()throws IOException{requireThat(delegate.poll().isPresent(),\"actualJobZeroBeforeOwnerClose\").isTrue();requireThat(observation.registrationClosed,\"registrationClosedBeforeOwner\").isTrue();delegate.close();event(\"process-owner-closed\",\"action\",name);}\n }\n static final class Observation implements WindowsAttempt.Resources{\n  final WindowsAttempt.NativeResources delegate;final String name;ObservedProcess process;boolean registrationClosed;int hooksClosed;boolean managerClosed;\n  Observation(WindowsAttempt.NativeResources delegate,String name){this.delegate=delegate;this.name=name;}\n  public WindowsAttempt.Process prepare()throws IOException{process=new ObservedProcess(name,delegate.prepare(),this);absent(marker(name,\"root\"),\"rootHeldBeforePreparationReturns\");absent(marker(name,\"child\"),\"childAbsentBeforePreparationReturns\");event(\"prepared-root-held\",\"action\",name,\"pid\",process.nativeProcess.pid());return process;}\n  public WindowsAttempt.Close register(WindowsAttempt.Process p)throws IOException{requireThat(p==process,\"exactPreparedOwner\").isTrue();var registration=delegate.register(process.delegate);event(\"measurement-registered\",\"action\",name);return ()->{requireThat(process.poll().isPresent(),\"jobZeroBeforeRegistrationRetirement\").isTrue();requireThat(managerClosed,\"managerClosedBeforeRegistrationRetirement\").isTrue();registration.close();registrationClosed=true;event(\"registration-retired\",\"action\",name);};}\n  public WindowsAttempt.Hooks hooks(WindowsAttempt.Process p,AllocationWaits waits,AllocationHook.Pump peers)throws IOException{\n   var coordinator=(WindowsAllocationHooks)delegate.hooks(process.delegate,waits,peers);\n   var backend=(WindowsAllocationHooks.Backend)field(coordinator,\"backend\");\n   return new WindowsAllocationHooks(new ObservedBackend(backend,this),peers);\n  }\n  public void closePreparationFailure()throws IOException{delegate.closePreparationFailure();}\n }\n static final class ObservedBackend implements WindowsAllocationHooks.Backend{\n  final WindowsAllocationHooks.Backend delegate;final Observation observation;final Map<Long,ObservedMember> members=new LinkedHashMap<>();final Set<Long> ready=new HashSet<>();int acquiredHooks;\n  ObservedBackend(WindowsAllocationHooks.Backend delegate,Observation observation){this.delegate=delegate;this.observation=observation;}\n  public long rootPid(){return delegate.rootPid();}\n  public WindowsAllocationHooks.Member member(long pid)throws IOException{var m=new ObservedMember(delegate.member(pid));members.put(pid,m);event(\"native-job-member-retained\",\"action\",observation.name,\"pid\",pid);return m;}\n  final class ObservedMember implements WindowsAllocationHooks.Member{\n   final WindowsAllocationHooks.Member delegate;int checks;\n   ObservedMember(WindowsAllocationHooks.Member delegate){this.delegate=delegate;}\n   public long pid(){return delegate.pid();}\n   public void requireLive()throws IOException{delegate.requireLive();checks++;event(\"native-member-live\",\"action\",observation.name,\"pid\",pid(),\"checks\",checks);}\n   public void close()throws IOException{requireThat(observation.managerClosed,\"managerClosedBeforeMemberIdentity\").isTrue();delegate.close();event(\"member-identity-closed\",\"action\",observation.name,\"pid\",pid());}\n  }\n  final class ObservedManager implements WindowsAllocationHooks.Manager{\n   final WindowsAllocationHooks.Manager delegate;\n   ObservedManager(WindowsAllocationHooks.Manager delegate){this.delegate=delegate;}\n   public void start()throws IOException{delegate.start();event(\"manager-started\",\"action\",observation.name);}\n   public Optional<FridaRuntime.Child> pollChild()throws IOException{var c=delegate.pollChild();if(c.isPresent()){var v=c.get();absent(marker(observation.name,\"child\"),\"nativeChildHeldBeforeDelivery\");event(\"native-child-event\",\"action\",observation.name,\"pid\",v.pid(),\"parent\",v.parentPid(),\"origin\",v.origin(),\"path\",String.valueOf(v.path()));}return c;}\n   public void resume(long pid)throws IOException{requireThat(ready.contains(pid),\"authenticReadyBeforeChildResume\").isTrue();requireThat(members.get(pid).checks>=3,\"ownedMemberRecheckedBeforeChildResume\").isTrue();absent(marker(observation.name,\"child\"),\"sentinelAbsentImmediatelyBeforeNativeChildResume\");event(\"child-before-native-resume\",\"action\",observation.name,\"pid\",pid);delegate.resume(pid);event(\"child-native-resumed\",\"action\",observation.name,\"pid\",pid);}\n   public void close()throws IOException{requireThat(observation.process.poll().isPresent(),\"actualJobZeroBeforeManagerClose\").isTrue();requireThat(observation.hooksClosed,\"allHooksClosed\").isEqualTo(acquiredHooks,\"acquiredHooks\");delegate.close();observation.managerClosed=true;event(\"manager-closed\",\"action\",observation.name);}\n  }\n  public WindowsAllocationHooks.Manager manager(){return new ObservedManager(delegate.manager());}\n  public WindowsAllocationHooks.Hook hook(long generation,WindowsAllocationHooks.Member member,WindowsAllocationHooks.Manager manager)throws IOException{\n   var real=delegate.hook(generation,member,((ObservedManager)manager).delegate);acquiredHooks++;\n   return new WindowsAllocationHooks.Hook(){\n    public void start()throws IOException{real.start();event(\"hook-started\",\"action\",observation.name,\"pid\",member.pid(),\"installation\",generation);}\n    public void awaitReady(AllocationHook.Pump peers)throws IOException{real.awaitReady(peers);ready.add(member.pid());absent(marker(observation.name,member.pid()==rootPid()?\"root\":\"child\"),\"sentinelAbsentAfterAuthenticReady\");event(\"authentic-hook-ready\",\"action\",observation.name,\"pid\",member.pid(),\"installation\",generation);}\n    public void pump()throws IOException{real.pump();}\n    public void grant(AllocationWaits.Wait wait,AllocationHook.Pump peers)throws IOException{event(\"native-grant-begin\",\"action\",observation.name,\"wait\",wait.toString());real.grant(wait,peers);event(\"native-grant-authentically-acknowledged\",\"action\",observation.name,\"wait\",wait.toString());}\n    public void stop(){real.stop();}\n    public void close(AllocationHook.ExecutionBarrier barrier)throws IOException{requireThat(observation.process.poll().isPresent(),\"actualJobZeroBeforeHookClose\").isTrue();real.close(barrier);observation.hooksClosed++;event(\"hook-closed-after-native-job-zero\",\"action\",observation.name,\"pid\",member.pid(),\"installation\",generation);}\n   };\n  }\n  public void releaseRoot()throws IOException{requireThat(ready.contains(rootPid()),\"authenticReadyBeforeRootRelease\").isTrue();requireThat(members.get(rootPid()).checks>=2,\"ownedRootRecheckedBeforeRelease\").isTrue();absent(marker(observation.name,\"root\"),\"sentinelAbsentImmediatelyBeforeNativeRootRelease\");event(\"root-before-native-release\",\"action\",observation.name,\"pid\",rootPid());delegate.releaseRoot();event(\"root-native-released\",\"action\",observation.name,\"pid\",rootPid());}\n }\n static int drain(WindowsAttempts factory,JobQueue<WindowsProcess.Result> queue)throws IOException{int n=0;for(;;){var next=factory.pollBlocked();if(next.isEmpty())break;var b=next.get();boolean accepted=queue.allocationBlocked(b.name(),b.attemptSequence(),b.waitSequence());requireThat(accepted,\"deferredNativeBatchAcceptedOutsideControl\").isTrue();event(\"deferred-native-batch-accepted\",\"action\",b.name(),\"attempt\",b.attemptSequence(),\"batch\",b.waitSequence());n++;}return n;}\n static void pause(long deadline)throws InterruptedException{if(System.nanoTime()-deadline>=0)throw new IllegalStateException(\"Native composition deadline exceeded\");Thread.sleep(2);}\n public static void main(String[]args)throws Throwable{\n  output=Path.of(args[2]);Files.createDirectories(output);boolean denial=args[3].equals(\"denial\");Throwable failure=null;FridaRuntime runtime=new FridaRuntime(Path.of(args[0]));boolean started=false;JobQueue<WindowsProcess.Result> queue=null;WindowsAttempts factory=null;\n  try(var arena=Arena.ofConfined()){\n   var kernel=SymbolLookup.libraryLookup(\"kernel32.dll\",arena);MethodHandle std=Linker.nativeLinker().downcallHandle(kernel.find(\"GetStdHandle\").orElseThrow(),FunctionDescriptor.of(ADDRESS,JAVA_INT));\n   MemorySegment in=(MemorySegment)std.invokeExact(-10),out=(MemorySegment)std.invokeExact(-11),err=(MemorySegment)std.invokeExact(-12);\n   try{\n    runtime.start();started=true;var measurements=new WindowsMeasurements();event(\"actual-host-memory\",\"sample\",measurements.readHost().toString());\n    var commands=new LinkedHashMap<String,WindowsAttempts.Command>();List<String> names=denial?List.of(\"A\"):List.of(\"A\",\"B\");\n    for(int i=0;i<names.size();i++){String name=names.get(i);commands.put(name,new WindowsAttempts.Command(new Controller.Action(name,i),List.of(args[1],denial?\"root-denial\":\"root-natural\",marker(name,\"child\").toString(),marker(name,\"release\").toString(),marker(name,\"root\").toString(),marker(name,\"allocation-invoked\").toString()),output,System.getenv(),in,out,err));}\n    var observations=new ArrayList<Observation>();\n    if(denial)factory=new WindowsAttempts(UUID.randomUUID(),commands,Duration.ofSeconds(20),(command,sequence,identity,timeout)->{var o=new Observation(new WindowsAttempt.NativeResources(runtime,measurements,command,sequence,identity,timeout),command.action().name());observations.add(o);return o;});\n    else factory=new WindowsAttempts(UUID.randomUUID(),runtime,measurements,commands,Duration.ofSeconds(20));\n    queue=new JobQueue<>(new Policy.Budget(0,2),measurements,factory);for(String name:names)queue.submit(name,256L*1024*1024);\n    long deadline=System.nanoTime()+Duration.ofSeconds(55).toNanos();boolean released=false,resumed=false;int batches=0;\n    for(;;){\n     factory.pumpAll();batches+=drain(factory,queue);\n     if(denial&&resumed&&batches>=2){\n      var attempt=live(factory).getFirst();var process=nativeProcess(attempt);\n      if(ProcessHandle.of(process.pid()).map(ProcessHandle::isAlive).orElse(false)){pause(deadline);continue;}\n      requireThat(process.poll().isEmpty(),\"blockedDescendantKeepsWholeJobLive\").isTrue();\n      event(\"root-exited-native-child-still-blocked\",\"rootPid\",process.pid(),\"residentBytes\",measurements.readResidentBytes(queue.jobs().getFirst()));\n      attempt.terminate();Optional<JobQueue.Outcome<WindowsProcess.Result>> result;\n      while((result=attempt.poll()).isEmpty())pause(deadline);\n      requireThat(result.get().result().rootExit(),\"preservedOriginalRootExit\").isEqualTo(23L);\n      requireThat(result.get().aborted(),\"actualRequestedAbortion\").isTrue();event(\"authentic-aborted-attempt-outcome\",\"rootExit\",result.get().result().rootExit(),\"aborted\",result.get().aborted());\n      event(\"queueAbortedOutcomeAcceptance\",\"state\",\"not_exercised_no_automatic_retry_requested\");break;\n     }\n     var decision=queue.cycle();if(decision.control()!=Policy.Control.WAIT)event(\"queue-control\",\"control\",decision.control().name(),\"action\",decision.jobName(),\"reason\",decision.reason());\n     if(decision.control()==Policy.Control.RESUME){requireThat(denial,\"grantOnlyDenialScenario\").isTrue();resumed=true;}\n     factory.pumpAll();batches+=drain(factory,queue);\n     if(!denial&&!released&&live(factory).size()==2&&names.stream().allMatch(name->Files.exists(marker(name,\"child\")))){\n      boolean rootsDead=true;for(var attempt:live(factory)){var process=nativeProcess(attempt);rootsDead &= !ProcessHandle.of(process.pid()).map(ProcessHandle::isAlive).orElse(false);}\n      if(rootsDead){for(var attempt:live(factory)){var process=nativeProcess(attempt);requireThat(process.poll().isEmpty(),\"rootExitIsNotCompleteJob\").isTrue();event(\"root-exited-child-live\",\"action\",attempt.name(),\"pid\",process.pid(),\"residentBytes\",measurements.readResidentBytes(queue.jobs().stream().filter(j->j.name().equals(attempt.name())).findFirst().orElseThrow()));Files.writeString(marker(attempt.name(),\"release\"),\"release\\n\");}released=true;}\n     }\n     if(!denial&&queue.completedAttempts().size()==2){for(var completion:queue.completedAttempts()){requireThat(completion.outcome().result().rootExit(),\"authenticNaturalRootExit\").isEqualTo(23L);requireThat(completion.outcome().aborted(),\"naturalOutcomeNotAborted\").isFalse();event(\"queue-accepted-authentic-outcome\",\"completion\",completion.toString());}requireThat(factory.hasOpenAttempts(),\"queueReleasedAllAttemptOwners\").isFalse();break;}\n     pause(deadline);\n    }\n    queue.close();event(\"queue-closed\",\"openAttempts\",factory.hasOpenAttempts());requireThat(factory.hasOpenAttempts(),\"noOwnedAttemptsAfterQueueClose\").isFalse();queue=null;\n    runtime.close();started=false;event(\"runtime-closed\");\n   }catch(Throwable e){failure=e;event(\"probe-failed\",\"type\",e.getClass().getName(),\"message\",String.valueOf(e.getMessage()));}\n   finally{if(queue!=null)try{queue.close();event(\"failure-queue-cleanup-complete\",\"openAttempts\",factory!=null&&factory.hasOpenAttempts());}catch(Throwable e){if(failure==null)failure=e;else failure.addSuppressed(e);event(\"cleanup-failed\",\"message\",e.toString());}if(started)try{runtime.close();event(\"failure-runtime-closed\");}catch(Throwable e){if(failure==null)failure=e;else failure.addSuppressed(e);}}\n  }\n  var receipt=new LinkedHashMap<String,Object>();receipt.put(\"outcome\",failure==null?\"passed\":\"failed\");receipt.put(\"scenario\",args[3]);receipt.put(\"events\",events);receipt.put(\"failure\",failure==null?null:failure.toString());receipt.put(\"pressureClaim\",false);receipt.put(\"successfulDeniedAllocationRecoveryClaim\",false);\n  Files.writeString(output.resolve(\"receipt.json\"),JSON.writeValueAsString(receipt)+\"\\n\");if(failure!=null)throw failure;\n }\n}\n",
+    "composition-worker.c": "#define UNICODE\n#define _UNICODE\n#include <windows.h>\n#include <wchar.h>\n#include <stdio.h>\nstatic void mark(const wchar_t *path){HANDLE f=CreateFileW(path,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);if(f==INVALID_HANDLE_VALUE)ExitProcess(91);DWORD n;const char s[]=\"native-workload-entered\\n\";if(!WriteFile(f,s,sizeof(s)-1,&n,NULL))ExitProcess(92);CloseHandle(f);}\nint wmain(int argc,wchar_t**argv){\n if(argc!=6)return 80;\n if(wcscmp(argv[1],L\"child-natural\")==0||wcscmp(argv[1],L\"child-denial\")==0){\n  mark(argv[2]);\n  if(wcscmp(argv[1],L\"child-denial\")==0){mark(argv[5]);SetLastError(0x12345678);volatile void *p=HeapAlloc(GetProcessHeap(),0,((SIZE_T)-1)-4095);if(p)HeapFree(GetProcessHeap(),0,(void*)p);return p?94:95;}\n  for(int i=0;i<12000;i++){if(GetFileAttributesW(argv[3])!=INVALID_FILE_ATTRIBUTES)return 37;Sleep(5);}return 81;\n }\n mark(argv[4]);wchar_t self[32768];if(!GetModuleFileNameW(NULL,self,32768))return 82;\n wchar_t command[65536];const wchar_t*mode=wcscmp(argv[1],L\"root-denial\")==0?L\"child-denial\":L\"child-natural\";\n if(_snwprintf_s(command,65536,_TRUNCATE,L\"\\\"%s\\\" %s \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" \\\"%s\\\"\",self,mode,argv[2],argv[3],argv[4],argv[5])<0)return 83;\n STARTUPINFOW startup={0};startup.cb=sizeof(startup);PROCESS_INFORMATION pi={0};\n if(!CreateProcessW(self,command,NULL,NULL,FALSE,0,NULL,NULL,&startup,&pi))return 84;\n CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return 23;\n}\n"
+  }
+}
