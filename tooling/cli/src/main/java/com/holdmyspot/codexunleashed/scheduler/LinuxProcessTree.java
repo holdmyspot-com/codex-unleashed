@@ -28,14 +28,22 @@ import java.util.concurrent.TimeUnit;
  * Instances are single-thread confined.
  */
 public final class LinuxProcessTree implements AutoCloseable {
-    /** Selects whether release executes directly or waits for controller-driven leader-thread exec. */
+    /**
+     * Selects whether release executes directly or waits for controller-driven leader-thread exec.
+     */
     public enum ExecutionMode {
-        /** Executes the launch command in the credential-dropped gate. */
+        /**
+         * Executes the launch command in the credential-dropped gate.
+         */
         DIRECT_EXEC,
-        /** Waits for the controller to replace the credential-dropped gate on its process leader thread. */
+        /**
+         * Waits for the controller to replace the credential-dropped gate on its process leader thread.
+         */
         ATTACHED_LEADER_EXEC;
 
-        /** XML property carried through the supervisor and trusted gate configuration. */
+        /**
+         * XML property carried through the supervisor and trusted gate configuration.
+         */
         private static final String PROPERTY = "execution.mode";
 
         /**
@@ -63,10 +71,14 @@ public final class LinuxProcessTree implements AutoCloseable {
         }
     }
 
-    /** Monotonic preparation interval after credential drop for controller-driven process replacement. */
+    /**
+     * Monotonic preparation interval after credential drop for controller-driven process replacement.
+     */
     private static final long EXTERNAL_EXEC_WAIT_NANOS = TimeUnit.SECONDS.toNanos(30);
 
-    /** Native workload replacement, which returns only on failure. */
+    /**
+     * Native workload replacement, which returns only on failure.
+     */
     @FunctionalInterface
     private interface WorkloadExecution {
         /**
@@ -76,9 +88,13 @@ public final class LinuxProcessTree implements AutoCloseable {
         void execute() throws IOException;
     }
 
-    /** Typed access to the private gate dispatch boundary for focused behavioral tests. */
+    /**
+     * Typed access to the private gate dispatch boundary for focused behavioral tests.
+     */
     static final class SharedSecrets {
-        /** Prevents construction of this access facade. */
+        /**
+         * Prevents construction of this access facade.
+         */
         private SharedSecrets() { }
 
         /**
@@ -127,11 +143,17 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @param error absolute standard-error endpoint
      */
     public record StandardFiles(Path input, Path output, Path error) {
-        /** Supervisor launch property for the workload standard-input endpoint. */
+        /**
+         * Supervisor launch property for the workload standard-input endpoint.
+         */
         private static final String INPUT = "standard.input";
-        /** Supervisor launch property for the workload standard-output endpoint. */
+        /**
+         * Supervisor launch property for the workload standard-output endpoint.
+         */
         private static final String OUTPUT = "standard.output";
-        /** Supervisor launch property for the workload standard-error endpoint. */
+        /**
+         * Supervisor launch property for the workload standard-error endpoint.
+         */
         private static final String ERROR = "standard.error";
 
         /**
@@ -296,6 +318,43 @@ public final class LinuxProcessTree implements AutoCloseable {
      */
     private boolean terminationRequested;
     /**
+     * Successful kill publication retained independently of the cancellation intent.
+     */
+    private KillRequest killRequest;
+
+    /**
+     * Writes one owned subtree kill, retrying a failed or uncertain write until it succeeds.
+     */
+    static final class KillRequest {
+        /**
+         * Borrowed cgroup whose existing owner retains its lifetime.
+         */
+        private final Path group;
+        /**
+         * Indicates whether the kill write returned successfully.
+         */
+        private boolean written;
+
+        /**
+         * Retains the action subtree to which all retries belong.
+         * @param group the exclusive retained action cgroup
+         */
+        KillRequest(Path group) { this.group = group; }
+
+        /**
+         * Requests subtree termination without collecting statuses or waiting for task exit.
+         * A failed write retains its uncertain effect and is retried on the same group; a repeated successful request
+         * has no effect. Only a successful write prevents further writes.
+         * @throws IOException if the owned kill file cannot be written
+         */
+        void request() throws IOException {
+            if (written) return;
+            Files.writeString(group.resolve("cgroup.kill"), "1\n", StandardOpenOption.WRITE);
+            written = true;
+        }
+    }
+
+    /**
      * Whether native waiting has established that no adopted child status remains.
      */
     private boolean adoptedDrained;
@@ -425,6 +484,7 @@ public final class LinuxProcessTree implements AutoCloseable {
     public void release() throws IOException {
         requireOpen();
         if (released) throw new IllegalStateException("The workload gate is already released");
+        if (terminationRequested) throw new IllegalStateException("Termination already withdrew workload release authority");
         if (members().contains(root.pid()) == false) throw new IOException("Gate lost owned cgroup membership before release");
         Files.writeString(scratch.resolve("release"), "release\n", StandardOpenOption.CREATE_NEW);
         released = true;
@@ -530,6 +590,21 @@ public final class LinuxProcessTree implements AutoCloseable {
     public Path scratch() { return scratch; }
 
     /**
+     * Requests termination without waiting for root exit, population changes or adopted statuses.
+     * Intent survives a failed kill write, and retry actually writes again until a write succeeds.
+     * @throws IllegalStateException if closed
+     * @throws IOException if the action cgroup kill cannot be written
+     */
+    public void requestTermination() throws IOException {
+        requireOpen();
+        terminationRequested = true;
+        if (group != null) {
+            if (killRequest == null) killRequest = new KillRequest(group);
+            killRequest.request();
+        }
+    }
+
+    /**
      * Terminates only this cgroup and collects root/adopted statuses; termination remains a distinct outcome.
      * @throws IllegalStateException if closed
      * @throws IOException if termination or child-status collection fails
@@ -565,7 +640,7 @@ public final class LinuxProcessTree implements AutoCloseable {
      * @throws IOException if termination, waiting or population sampling fails
      */
     private void stopAndReap() throws IOException {
-        if (group != null) Files.writeString(group.resolve("cgroup.kill"), "1\n", StandardOpenOption.WRITE);
+        requestTermination();
         if (root != null) {
             // A gate may fail before placement; its direct owner still has to stop and reap it.
             if (root.isAlive()) root.destroyForcibly();
@@ -722,7 +797,9 @@ public final class LinuxProcessTree implements AutoCloseable {
         private final MethodHandle execve = bind("execve", FunctionDescriptor.of(ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS), false);
 
-        /** Resolves the required libc bindings without starting processes or changing native state. */
+        /**
+         * Resolves the required libc bindings without starting processes or changing native state.
+         */
         private NativeCalls() { }
 
         /**

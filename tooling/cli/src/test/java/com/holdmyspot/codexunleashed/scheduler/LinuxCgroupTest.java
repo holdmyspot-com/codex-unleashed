@@ -8,6 +8,8 @@ import java.util.Comparator;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static org.testng.Assert.assertTrue;
+import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
 /**
@@ -108,4 +110,33 @@ public final class LinuxCgroupTest
 			}
 		}
 	}
+	/**
+	 * Shares the strict population decision with retained borrowed action groups.
+	 * Ordinary files establish decoding only, not kernel containment.
+	 * @throws IOException if fixture creation or cleanup fails
+	 */
+	@Test
+	public void readsBorrowedPopulationWithoutInferringMissingZero() throws IOException
+	{
+		Path group = Files.createTempDirectory("borrowed-population-");
+		Path events = group.resolve("cgroup.events");
+		try
+		{
+			requireException(IOException.class, () -> LinuxCgroup.isPopulated(group));
+			Files.writeString(events, "populated 1\nfrozen 0\n");
+			requireThat(LinuxCgroup.isPopulated(group), "populated").isTrue();
+			Files.writeString(events, "populated 0\nfrozen 0\n");
+			requireThat(LinuxCgroup.isPopulated(group), "populated").isFalse();
+			Files.writeString(events, "populated 2\n");
+			requireException(IOException.class, () -> LinuxCgroup.isPopulated(group));
+			Files.writeString(events, "frozen 0\n");
+			requireException(IOException.class, () -> LinuxCgroup.isPopulated(group));
+		}
+		finally
+		{
+			Files.deleteIfExists(events);
+			Files.delete(group);
+		}
+	}
+
 }
