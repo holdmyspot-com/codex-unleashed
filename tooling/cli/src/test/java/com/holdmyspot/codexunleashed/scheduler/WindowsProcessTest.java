@@ -222,6 +222,349 @@ public final class WindowsProcessTest
 	}
 
 	/**
+	 * Keeps the prepared primary thread suspended while retaining atomic job membership and its native handles.
+	 * These modeled calls verify Java decisions, not Windows execution or Frida attachment.
+	 * @throws IOException if the modeled launch or cleanup fails
+	 */
+	@Test
+	public void preparesRootWithoutReleasingIt() throws IOException
+	{
+		var kernel = new RecordingKernel();
+		try (var process = WindowsProcess.launchPrepared(List.of("compiler"), Path.of("."), Map.of(),
+			MemorySegment.ofAddress(31), MemorySegment.ofAddress(32), MemorySegment.ofAddress(33), kernel))
+		{
+			requireThat(kernel.creationFlags, "creationFlags").isEqualTo(0x80404, "preparedFlags");
+			requireThat(kernel.jobList, "atomicMembership").isEqualTo(List.of(10L), "ownedJob");
+			requireThat(kernel.calls.contains("ResumeThread"), "releasedBeforeRequest").isFalse();
+			requireThat(kernel.closedHandles.contains(21L), "primaryThreadReleased").isFalse();
+		}
+		requireThat(kernel.closedHandles, "releaseOrder")
+			.isEqualTo(List.of(103L, 102L, 101L, 21L, 20L, 10L), "ownedHandles");
+	}
+
+	/**
+	 * Releases only acquired resources when a prepared launch fails before it returns an owner.
+	 * @param duplicateFailure one-based duplicate failure, or zero
+	 * @param createFailure indicates native process creation failure
+	 * @param expectedClosed expected owned handles released in reverse order
+	 */
+	@Test(dataProvider = "launchFailures")
+	public void releasesPreparedLaunchFailure(int duplicateFailure, boolean createFailure,
+		List<Long> expectedClosed)
+	{
+		var kernel = new RecordingKernel();
+		kernel.duplicateFailure = duplicateFailure;
+		kernel.createFailure = createFailure;
+		requireException(IOException.class, () -> prepareSeparate(kernel));
+		requireThat(kernel.closedHandles, "releasedPreparedResources").isEqualTo(expectedClosed, "acquiredHandles");
+		requireThat(kernel.arena.scope().isAlive(), "releasedNativeStorage").isFalse();
+		requireThat(kernel.resumedThreads.isEmpty(), "releaseAfterFailedPreparation").isTrue();
+	}
+
+	/**
+	 * Releases only the retained prepared primary thread and rejects a second native release.
+	 * @throws IOException if a modeled native operation fails
+	 */
+	@Test
+	public void releasesPreparedRootOnlyOnce() throws IOException
+	{
+		var kernel = new RecordingKernel();
+		try (var process = prepareSeparate(kernel))
+		{
+			process.releaseRoot();
+			requireException(IllegalStateException.class, process::releaseRoot);
+			requireThat(kernel.resumedThreads, "resumedThreads").isEqualTo(List.of(21L), "primaryThread");
+		}
+		requireThat(kernel.closedHandles.stream().filter(handle -> handle == 21L).count(), "primaryThreadCloses")
+			.isEqualTo(1L, "oneClose");
+	}
+
+	/**
+	 * Supplies exact native results that cannot prove release from one owned suspension.
+	 * @return previous suspend-count bits, including native failure
+	 */
+	@DataProvider
+	public Object[][] failedReleaseResults()
+	{
+		return new Object[][] {{0}, {2}, {-1}, {0x8000_0000}};
+	}
+
+	/**
+	 * Retains failed and ambiguous release state without retrying a possibly effective native operation.
+	 * @param previous exact native return bits
+	 * @throws IOException if launch or cleanup fails
+	 */
+	@Test(dataProvider = "failedReleaseResults")
+	public void retainsFailedRootRelease(int previous) throws IOException
+	{
+		var kernel = new RecordingKernel();
+		kernel.resumeResult = previous;
+		try (var process = prepareSeparate(kernel))
+		{
+			var failure = requireException(IOException.class, process::releaseRoot);
+			var repeat = requireException(IllegalStateException.class, process::releaseRoot);
+			requireThat(repeat.getCause(), "retainedFailure").isEqualTo(failure, "original");
+			requireThat(kernel.resumedThreads.size(), "nativeReleaseRequests").isEqualTo(1, "oneRequest");
+			String diagnostic = previous == -1 ? "122" : Integer.toUnsignedString(previous);
+			requireThat(failure.getMessage().contains(diagnostic), "nativeStatusPreserved").isTrue();
+		}
+	}
+
+	/**
+	 * Consumes release authority even when an invocation throws without a trustworthy native result.
+	 * @throws IOException if launch or cleanup fails
+	 */
+	@Test
+	public void retainsAmbiguousRootRelease() throws IOException
+	{
+		var kernel = new RecordingKernel();
+		kernel.resumeFailure = new IllegalArgumentException("native result unavailable");
+		try (var process = prepareSeparate(kernel))
+		{
+			requireException(IllegalArgumentException.class, process::releaseRoot);
+			var repeat = requireException(IllegalStateException.class, process::releaseRoot);
+			requireThat(repeat.getCause(), "retainedInvocationFailure").isEqualTo(kernel.resumeFailure, "original");
+			requireThat(kernel.resumedThreads.size(), "nativeReleaseRequests").isEqualTo(1, "oneRequest");
+		}
+	}
+
+	/**
+	 * Denies release for legacy starts, terminated prepared roots and closed owners before touching the primary thread.
+	 * @throws IOException if launch or cleanup fails
+	 */
+	@Test
+	public void rejectsReleaseWithoutAuthority() throws IOException
+	{
+		var legacy = new RecordingKernel();
+		try (var process = launchSeparate(legacy))
+		{
+			requireException(IllegalStateException.class, process::releaseRoot);
+			requireThat(legacy.resumedThreads.isEmpty(), "legacyReleaseRequests").isTrue();
+		}
+		var stopped = new RecordingKernel();
+		var process = prepareSeparate(stopped);
+		process.terminate();
+		requireException(IllegalStateException.class, process::releaseRoot);
+		process.close();
+		requireException(IllegalStateException.class, process::releaseRoot);
+		requireThat(stopped.resumedThreads.isEmpty(), "stoppingReleaseRequests").isTrue();
+	}
+
+	/**
+	 * Retains a native identity across checks and never reopens its PID after the retained process exits.
+	 * @throws IOException if a valid modeled native operation fails
+	 */
+	@Test
+	public void retainsVerifiedMemberIdentity() throws IOException
+	{
+		var kernel = new MemberKernel();
+		try (var process = prepareSeparate(kernel))
+		{
+			try (var member = process.openMember(0xffff_ffffL))
+			{
+				requireThat(member.pid(), "memberPid").isEqualTo(0xffff_ffffL, "unsignedPid");
+				member.requireLive();
+				kernel.memberWait = 0;
+				requireException(IOException.class, member::requireLive);
+				requireThat(kernel.openedMembers, "openedProcessIds").isEqualTo(List.of(0xffff_ffffL), "oneIdentity");
+			}
+			requireThat(kernel.memberCloses.size(), "memberHandleCloses").isEqualTo(1, "oneClose");
+		}
+	}
+
+	/**
+	 * Supplies acquisition, membership and liveness failures at the owned identity boundary.
+	 * @return exact failing native boundary
+	 */
+	@DataProvider
+	public Object[][] memberFaults()
+	{
+		return new Object[][] {{"open"}, {"membershipCall"}, {"outsideJob"}, {"exited"}, {"waitFailure"},
+			{"unexpectedWait"}};
+	}
+
+	/**
+	 * Rejects unverifiable members and closes an acquired query handle without affecting unrelated native work.
+	 * @param fault failed native boundary
+	 * @throws IOException if owner creation or cleanup fails
+	 */
+	@Test(dataProvider = "memberFaults")
+	public void rejectsUnverifiedMemberIdentity(String fault) throws IOException
+	{
+		var kernel = new MemberKernel();
+		kernel.fault = fault;
+		try (var process = prepareSeparate(kernel))
+		{
+			requireException(IOException.class, () -> process.openMember(77));
+			requireThat(kernel.memberCloses.size(), "releasedQueries")
+				.isEqualTo(fault.equals("open") ? 0 : 1, "acquiredQueries");
+			requireThat(kernel.calls.contains("TerminateJobObject"), "memberFailureTermination").isFalse();
+		}
+	}
+
+	/**
+	 * Rechecks the same handle's membership and lets the enclosing owner close a still-retained identity exactly once.
+	 * @throws IOException if valid modeled operations fail
+	 */
+	@Test
+	public void rechecksAndClosesRetainedMember() throws IOException
+	{
+		var kernel = new MemberKernel();
+		var process = prepareSeparate(kernel);
+		var member = process.openMember(77);
+		kernel.fault = "outsideJob";
+		requireException(IOException.class, member::requireLive);
+		process.close();
+		requireException(IllegalStateException.class, member::requireLive);
+		member.close();
+		requireThat(kernel.memberCloses, "memberHandleCloses").isEqualTo(List.of(1077L), "oneClose");
+		requireThat(kernel.closedHandles, "releaseOrder")
+			.isEqualTo(List.of(103L, 102L, 101L, 1077L, 21L, 20L, 10L), "ownedHandles");
+	}
+
+	/**
+	 * Retains an ambiguous query-handle release, prevents further acquisition and reports it during owner cleanup.
+	 * @throws IOException if launch or member acquisition fails
+	 */
+	@Test
+	public void retainsFailedMemberCleanup() throws IOException
+	{
+		var kernel = new MemberKernel();
+		var process = prepareSeparate(kernel);
+		var member = process.openMember(77);
+		kernel.fault = "close";
+		requireException(IOException.class, member::close);
+		member.close();
+		requireException(IOException.class, () -> process.openMember(99));
+		requireException(IOException.class, process::close);
+		requireThat(kernel.openedMembers, "acquisitionsBeforeFailure").isEqualTo(List.of(77L), "firstOnly");
+		requireThat(kernel.memberCloses, "uncertainCloseAttempts").isEqualTo(List.of(1077L), "oneAttempt");
+		requireThat(kernel.arena.scope().isAlive(), "releasedNativeStorage").isFalse();
+	}
+
+	/**
+	 * Preserves an invocation failure after an uncertain member close and never acquires or closes again silently.
+	 * @throws IOException if launch or member acquisition fails
+	 */
+	@Test
+	public void retainsAmbiguousMemberCleanup() throws IOException
+	{
+		var kernel = new MemberKernel();
+		var process = prepareSeparate(kernel);
+		var member = process.openMember(77);
+		kernel.fault = "ambiguousClose";
+		requireException(IllegalArgumentException.class, member::close);
+		member.close();
+		requireException(IOException.class, process::close);
+		requireThat(kernel.memberCloses, "uncertainCloseAttempts").isEqualTo(List.of(1077L), "oneAttempt");
+	}
+
+	/**
+	 * Preserves both failed membership verification and failed partial-acquisition cleanup.
+	 * @throws IOException if the prepared launch fails
+	 */
+	@Test
+	public void preservesMemberVerificationAndCleanupFailures() throws IOException
+	{
+		var kernel = new MemberKernel();
+		var process = prepareSeparate(kernel);
+		kernel.fault = "outsideAndClose";
+		var failure = requireException(IOException.class, () -> process.openMember(77));
+		requireThat(failure.getSuppressed().length, "cleanupFailureCount").isEqualTo(1, "retainedCleanup");
+		requireException(IOException.class, process::close);
+		requireThat(kernel.memberCloses, "uncertainCloseAttempts").isEqualTo(List.of(1077L), "oneAttempt");
+	}
+
+	/**
+	 * Rejects invalid process identifiers before acquiring any native query handle.
+	 * @throws IOException if launch or cleanup fails
+	 */
+	@Test
+	public void validatesMemberIdsBeforeAcquisition() throws IOException
+	{
+		var kernel = new MemberKernel();
+		try (var process = prepareSeparate(kernel))
+		{
+			for (long pid : new long[] {-1, 0, 0x1_0000_0000L})
+				requireException(IllegalArgumentException.class, () -> process.openMember(pid));
+			requireThat(kernel.openedMembers.isEmpty(), "invalidPidAcquisitions").isTrue();
+		}
+	}
+
+	/**
+	 * Creates a prepared owner with separately borrowed stream handles through the existing native fixture boundary.
+	 * @param kernel native replies and request recorder
+	 * @return suspended workload owner
+	 * @throws IOException if modeled launch fails
+	 */
+	private WindowsProcess prepareSeparate(RecordingKernel kernel) throws IOException
+	{
+		return WindowsProcess.launchPrepared(List.of("compiler"), Path.of("."), Map.of(),
+			MemorySegment.ofAddress(31), MemorySegment.ofAddress(32), MemorySegment.ofAddress(33), kernel);
+	}
+
+	/**
+	 * Models only process-query identity and release decisions; native PID reuse and ABI behavior remain unproven here.
+	 */
+	private static final class MemberKernel extends RecordingKernel
+	{
+		/** Process IDs for which a query was requested, retaining unsigned DWORD values. */
+		private final List<Long> openedMembers = new ArrayList<>();
+		/** Member query-handle close requests, including failed requests. */
+		private final List<Long> memberCloses = new ArrayList<>();
+		/** Selected native boundary fault, or empty for valid replies. */
+		private String fault = "";
+		/** Native member wait result, independent of the root's terminal wait. */
+		private int memberWait = 258;
+
+		@Override
+		Object call(String name, Object... arguments)
+		{
+			if (name.equals("OpenProcess"))
+			{
+				calls.add(name);
+				requireThat(arguments[0], "minimalQueryRights").isEqualTo(0x101000, "queryAndSynchronize");
+				requireThat(arguments[1], "inheritedQuery").isEqualTo(0, "notInheritable");
+				long pid = Integer.toUnsignedLong((int) arguments[2]);
+				openedMembers.add(pid);
+				return fault.equals("open") ? MemorySegment.NULL : MemorySegment.ofAddress(pid + 1000);
+			}
+			if (name.equals("IsProcessInJob"))
+			{
+				calls.add(name);
+				requireThat(((MemorySegment) arguments[1]).address(), "membershipJob").isEqualTo(10L, "ownedJob");
+				boolean outsideJob = fault.equals("outsideJob") || fault.equals("outsideAndClose");
+				((MemorySegment) arguments[2]).set(ValueLayout.JAVA_INT, 0, outsideJob ? 0 : 1);
+				return fault.equals("membershipCall") ? 0 : 1;
+			}
+			if (name.equals("WaitForSingleObject") && ((MemorySegment) arguments[0]).address() >= 1000)
+			{
+				calls.add(name);
+				return switch (fault)
+				{
+					case "exited" -> 0;
+					case "waitFailure" -> -1;
+					case "unexpectedWait" -> 128;
+					default -> memberWait;
+				};
+			}
+			if (name.equals("CloseHandle") && ((MemorySegment) arguments[0]).address() >= 1000)
+			{
+				memberCloses.add(((MemorySegment) arguments[0]).address());
+				if (fault.equals("ambiguousClose"))
+					throw new IllegalArgumentException("native close result unavailable");
+				boolean closeFails = fault.equals("close") || fault.equals("outsideAndClose");
+				if (closeFails)
+				{
+					calls.add(name);
+					return 0;
+				}
+			}
+			return super.call(name, arguments);
+		}
+	}
+
+	/**
 	 * Sums the owned job's root and detached descendant, excluding a process absent from its membership list.
 	 * The native-access fixture models documented Win32 replies, rather than proving native membership or ABI layouts.
 	 * @throws IOException if a valid modeled observation fails
@@ -541,6 +884,12 @@ public final class WindowsProcessTest
 		private int duplicateFailure;
 		/** Indicates whether CreateProcessW returns a failed BOOL. */
 		private boolean createFailure;
+		/** Exact native primary-thread release results, normally one previous suspension. */
+		private int resumeResult = 1;
+		/** Failure thrown after recording a release request, without an authoritative native return. */
+		private RuntimeException resumeFailure = null;
+		/** Primary-thread identities supplied to native release requests. */
+		private final List<Long> resumedThreads = new ArrayList<>();
 
 		/**
 		 * Creates confined storage without loading Windows libraries.
@@ -605,6 +954,13 @@ public final class WindowsProcessTest
 					yield 1;
 				}
 				case "WaitForSingleObject" -> 0;
+				case "ResumeThread" -> {
+					resumedThreads.add(((MemorySegment) arguments[0]).address());
+					if (resumeFailure != null)
+						throw resumeFailure;
+					yield resumeResult;
+				}
+				case "TerminateJobObject" -> 1;
 				case "GetExitCodeProcess" -> {
 					((MemorySegment)arguments[1]).set(ValueLayout.JAVA_INT, 0, 0);
 					yield 1;

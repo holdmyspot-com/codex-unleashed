@@ -1,0 +1,546 @@
+{
+  "scope": "Java Windows prepared-launch and member-identity owner. Fixture/package acceptance only; native suspended attach/readiness/release remains unrun on both architectures.",
+  "worker_report_sha256": "40bd6cd716abc0b7e884387a0b05ccbd9e82b60821359d71eb7e5a8d46e09fb1",
+  "worker_report": {
+    "task_contract": "acknowledged",
+    "status": "prepared Windows owner implemented; focused fixture and package gates passed; native G1 explicitly unrun",
+    "worktree": "/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner",
+    "predecessor": "829f63160c04b3811ba0adf0e124e64cd8544493",
+    "changed_paths": {
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java": "a741aadf9f684b306bf1c3825ee0b61df14e0441845c0e3bb49cf6e67b0a86e1",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java": "9b45b2d60b58a2db39cb984611e60a43f6e591e3593b5606e48b877f317124f4"
+    },
+    "patch": {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/candidate.patch",
+      "sha256": "16d72ac53d9b58702afe1f192481f2f2db8d3db586e8fb498764ee52237f7180"
+    },
+    "acceptance": {
+      "owned_suspended_launch": "passed modeled flags, job-list ownership, unchanged legacy launch flags and partial-acquisition cleanup",
+      "one_shot_release": "passed exact count=1, native failure and unexpected unsigned counts, ambiguous invocation, repeated call, stopping and closed rejection",
+      "opaque_member_identity": "passed unsigned PID, exact owned job membership, repeated same-handle checks, exit and membership loss, unavailable native queries, partial-effect cleanup and automatic enclosing-owner cleanup",
+      "ambiguous_cleanup": "passed retained failure and no uncertain native close retry; new acquisition blocked after unresolved release",
+      "focused_tests": "30 passed incrementally and from an initially empty fresh root, none skipped",
+      "packaging": "all seven WindowsProcess class bytes identical to tested classes in each package; fresh and incremental class hashes equal",
+      "javadoc": "JDK27 -Xdoclint:all passed without warning",
+      "static_analysis": "POM has no configured static-analysis plugin; scoped javac, Javadoc and git diff --check passed",
+      "G1_native": "UNRUN; actual Windows x64/ARM64 suspended attach/ready/release using maintained Frida, named module and linked JDK27 remains parent-owned future gate"
+    },
+    "verification": {
+      "seam-verification": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-aKJo5P",
+        "receipt_sha256": "7617752abe753483a6fd64a4435e61a71c25dffe171968af1542f7791691c16f",
+        "log_sha256": "b56c690957a3ef99a3c5d2546f62f71ef703db70aa6bfdb0488a75e87e84e66f",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output",
+          "-Dtest=WindowsProcessTest#duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure",
+          "test"
+        ],
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "WindowsProcessTest#duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure": {
+              "tests": "6",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          },
+          "passed": true
+        },
+        "conflicts": [],
+        "rollback_count": 0,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/seam-verification-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "15d1e59e610420cf2ff4eef455636c4a4e73094d6e02deb3b48bfef17a0ff83a"
+        }
+      },
+      "prepared-red": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-vN5agl",
+        "receipt_sha256": "c9790b850e780c01855e4e593430f0f1b252715022e87ad0054ddfa7248fc2a4",
+        "log_sha256": "d68e73a71ae1451378f86147528a1c9eab17a79af6f9b094c00196ddd51feefb",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output",
+          "-Dtest=WindowsProcessTest#preparesRootWithoutReleasingIt",
+          "test"
+        ],
+        "checks": {
+          "exit": 1,
+          "tests": {
+            "WindowsProcessTest#preparesRootWithoutReleasingIt": {
+              "tests": "1",
+              "failures": "0",
+              "errors": "1",
+              "skipped": "0"
+            }
+          },
+          "passed": false
+        },
+        "conflicts": [],
+        "rollback_count": 197,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/prepared-red-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "119bc6f2cb4a33d4b2c90c657783d88ba90d6127bd7d92489f36296662f617b5"
+        },
+        "behavioral_failure": [
+          {
+            "tag": "error",
+            "attributes": {
+              "message": "\"creationFlags\" must be equal to \"preparedFlags\".\ncreationFlags: 525312\npreparedFlags: 525316",
+              "type": "java.lang.IllegalArgumentException"
+            },
+            "trace": "java.lang.IllegalArgumentException: \n\"creationFlags\" must be equal to \"preparedFlags\".\ncreationFlags: 525312\npreparedFlags: 525316\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.preparesRootWithoutReleasingIt(WindowsProcessTest.java:236)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:583)\n\tat org.testng.internal.invokers.MethodInvocationHelper.invokeMethod(MethodInvocationHelper.java:141)\n\tat org.testng.internal.invokers.TestInvoker.invokeMethod(TestInvoker.java:697)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethod(TestInvoker.java:230)\n\tat org.testng.internal.invokers.MethodRunner.runInSequence(MethodRunner.java:63)\n\tat org.testng.internal.invokers.TestInvoker$MethodInvocationAgent.invoke(TestInvoker.java:1005)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethods(TestInvoker.java:203)\n\tat org.testng.internal.invokers.TestMethodWorker.invokeTestMethods(TestMethodWorker.java:154)\n\tat org.testng.internal.invokers.TestMethodWorker.run(TestMethodWorker.java:134)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1612)\n\tat org.testng.TestRunner.privateRun(TestRunner.java:744)\n\tat org.testng.TestRunner.run(TestRunner.java:616)\n\tat org.testng.SuiteRunner.runTest(SuiteRunner.java:421)\n\tat org.testng.SuiteRunner.runSequentially(SuiteRunner.java:413)\n\tat org.testng.SuiteRunner.privateRun(SuiteRunner.java:373)\n\tat org.testng.SuiteRunner.run(SuiteRunner.java:312)\n\tat org.testng.SuiteRunnerWorker.runSuite(SuiteRunnerWorker.java:52)\n\tat org.testng.SuiteRunnerWorker.run(SuiteRunnerWorker.java:95)\n\tat org.testng.TestNG.runSuitesSequentially(TestNG.java:1274)\n\tat org.testng.TestNG.runSuitesLocally(TestNG.java:1208)\n\tat org.testng.TestNG.runSuites(TestNG.java:1112)\n\tat org.testng.TestNG.run(TestNG.java:1079)\n"
+          }
+        ]
+      },
+      "prepared-green": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-KgM8mE",
+        "receipt_sha256": "467efb3467968848f70bcc0eec77bce43b92fd48864d35e871fd7b169595cc18",
+        "log_sha256": "ccea907ffcdf2b609fb09828728b77150f3b0049f209def1204ad148815f9a60",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output",
+          "-Dtest=WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+validatesMemberIdsBeforeAcquisition",
+          "test"
+        ],
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+validatesMemberIdsBeforeAcquisition": {
+              "tests": "18",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          },
+          "passed": true
+        },
+        "conflicts": [],
+        "rollback_count": 0,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/prepared-green-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "86a60d8e5b031512c8504c25a8c1483a6dbcf8223bfe4a70c1354b25ce976528"
+        }
+      },
+      "ambiguous-close-red": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-JLArcF",
+        "receipt_sha256": "7375f60435ef81ec23f9e22b2969f7e28339635ab8f467cfd51e591f6f6228ca",
+        "log_sha256": "758644cc26d1d522198a78948fc7b49509a3c3b6faf181b7043f97f64a26e748",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output",
+          "-Dtest=WindowsProcessTest#retainsAmbiguousMemberCleanup",
+          "test"
+        ],
+        "checks": {
+          "exit": 1,
+          "tests": {
+            "WindowsProcessTest#retainsAmbiguousMemberCleanup": {
+              "tests": "1",
+              "failures": "0",
+              "errors": "1",
+              "skipped": "0"
+            }
+          },
+          "passed": false
+        },
+        "conflicts": [],
+        "rollback_count": 199,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/ambiguous-close-red-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "11630d4b0d43288865d9abfabdf768b28f37ffe92f07525fd4e28350b8f7e79e"
+        },
+        "behavioral_failure": [
+          {
+            "tag": "error",
+            "attributes": {
+              "message": "\"exception\" may not be null",
+              "type": "java.lang.NullPointerException"
+            },
+            "trace": "java.lang.NullPointerException: \"exception\" may not be null\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException(TestRequirements.java:36)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.retainsAmbiguousMemberCleanup(WindowsProcessTest.java:458)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:583)\n\tat org.testng.internal.invokers.MethodInvocationHelper.invokeMethod(MethodInvocationHelper.java:141)\n\tat org.testng.internal.invokers.TestInvoker.invokeMethod(TestInvoker.java:697)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethod(TestInvoker.java:230)\n\tat org.testng.internal.invokers.MethodRunner.runInSequence(MethodRunner.java:63)\n\tat org.testng.internal.invokers.TestInvoker$MethodInvocationAgent.invoke(TestInvoker.java:1005)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethods(TestInvoker.java:203)\n\tat org.testng.internal.invokers.TestMethodWorker.invokeTestMethods(TestMethodWorker.java:154)\n\tat org.testng.internal.invokers.TestMethodWorker.run(TestMethodWorker.java:134)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1612)\n\tat org.testng.TestRunner.privateRun(TestRunner.java:744)\n\tat org.testng.TestRunner.run(TestRunner.java:616)\n\tat org.testng.SuiteRunner.runTest(SuiteRunner.java:421)\n\tat org.testng.SuiteRunner.runSequentially(SuiteRunner.java:413)\n\tat org.testng.SuiteRunner.privateRun(SuiteRunner.java:373)\n\tat org.testng.SuiteRunner.run(SuiteRunner.java:312)\n\tat org.testng.SuiteRunnerWorker.runSuite(SuiteRunnerWorker.java:52)\n\tat org.testng.SuiteRunnerWorker.run(SuiteRunnerWorker.java:95)\n\tat org.testng.TestNG.runSuitesSequentially(TestNG.java:1274)\n\tat org.testng.TestNG.runSuitesLocally(TestNG.java:1208)\n\tat org.testng.TestNG.runSuites(TestNG.java:1112)\n\tat org.testng.TestNG.run(TestNG.java:1079)\n"
+          }
+        ]
+      },
+      "prepared-incremental": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-QAIfRs",
+        "receipt_sha256": "8f29de6b1233f70c5bc9f3800b3e3dcccc29888f85aed0aa5175ae3abd45f7a7",
+        "log_sha256": "ba45950295104aaf36c52c33c0690f367e1b84b37d3837af4a50dc3626729fc0",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output",
+          "-Dtest=WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure",
+          "package"
+        ],
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure": {
+              "tests": "30",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          },
+          "passed": true,
+          "package_matches_tested": true,
+          "packaged_classes": {
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "5a8745963ed3a66b4053348f849f1fe274dd54017a604d4d15e3f45d0525971f",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "1f0e7c2889dd147dd4054b1cf2defcda99791fcf6548907478c2bc1fc655f20a",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "495b8683b6880daf26880ce6ad282e99f853eb391212741e9669e07330b8f0a7",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "6ab5bb0268f3261886ca68379c5255898941fd1b61764539ddc988cf00d10e31",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "64dfaa61ed759b6fca5508386349be4fbc70b084d3203ebd82585e1c16d615f2",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "27ecc2dc8c493e2773a1cb1b5e3369df4a6d34243cef2677effbc2627d02f458"
+          },
+          "jar_sha256": "be92eb66257aec68ebde4f798e4fc42f567603cfc5c56dc912f9721006ef54f2"
+        },
+        "conflicts": [],
+        "rollback_count": 0,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/prepared-incremental-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "0198bcf2b5be9e23a5e2cd2b99b47f6b72440c473ce3c15f347a1faddaec476e"
+        }
+      },
+      "prepared-fresh": {
+        "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-CdmWBE",
+        "receipt_sha256": "c70da6f08013888087bf9d9ca0761d0c43376413ba1d4b6803c754adfc04110c",
+        "log_sha256": "4ec9e01f16d3b6dd34281dd4abfea3c8436a473742deb8c00dd2f313514f8b1b",
+        "command": [
+          "mvn",
+          "-o",
+          "-f",
+          "tooling/cli/pom.xml",
+          "-Dmaven.repo.local=/home/gili/codex-unleashed/home/.m2/repository",
+          "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output",
+          "-Dtest=WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure",
+          "package"
+        ],
+        "checks": {
+          "exit": 0,
+          "tests": {
+            "WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure": {
+              "tests": "30",
+              "failures": "0",
+              "errors": "0",
+              "skipped": "0"
+            }
+          },
+          "passed": true,
+          "package_matches_tested": true,
+          "packaged_classes": {
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "5a8745963ed3a66b4053348f849f1fe274dd54017a604d4d15e3f45d0525971f",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "1f0e7c2889dd147dd4054b1cf2defcda99791fcf6548907478c2bc1fc655f20a",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "495b8683b6880daf26880ce6ad282e99f853eb391212741e9669e07330b8f0a7",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "6ab5bb0268f3261886ca68379c5255898941fd1b61764539ddc988cf00d10e31",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "64dfaa61ed759b6fca5508386349be4fbc70b084d3203ebd82585e1c16d615f2",
+            "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "27ecc2dc8c493e2773a1cb1b5e3369df4a6d34243cef2677effbc2627d02f458"
+          },
+          "jar_sha256": "3c66774141fb434331852ec8e0b2d696eeb89f877bc459adfd63a528130f55ba"
+        },
+        "conflicts": [],
+        "rollback_count": 0,
+        "test_reports": {
+          "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/test-receipts/prepared-fresh-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": "addcd4c3fc7248dadba1c8edf21968be71434712bb64a650c28211820e2b62e1"
+        }
+      }
+    },
+    "javadoc": {
+      "transaction": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-7MrVUE",
+      "receipt_sha256": "bb7e8c333ba3ed7b8592e330a4e67e8549d72342379db8a81ac1e11bd23b40f5",
+      "log_sha256": "0d1f52bc2769069668c0c1e443a3ff0c163c21d7f0b79a15ef9f7a6472d92d09",
+      "exit": 0
+    },
+    "final_packaged_classes": {
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "5a8745963ed3a66b4053348f849f1fe274dd54017a604d4d15e3f45d0525971f",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "1f0e7c2889dd147dd4054b1cf2defcda99791fcf6548907478c2bc1fc655f20a",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "495b8683b6880daf26880ce6ad282e99f853eb391212741e9669e07330b8f0a7",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "6ab5bb0268f3261886ca68379c5255898941fd1b61764539ddc988cf00d10e31",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "64dfaa61ed759b6fca5508386349be4fbc70b084d3203ebd82585e1c16d615f2",
+      "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "27ecc2dc8c493e2773a1cb1b5e3369df4a6d34243cef2677effbc2627d02f458"
+    },
+    "fresh_empty_preimage_manifest": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-CdmWBE/pre-images.json",
+    "reuse": {
+      "retained_native_residency": "reused c77cbdf590; no native residency cases repeated",
+      "bindings": "existing OpenProcess/IsProcessInJob/WaitForSingleObject/CloseHandle reused; only new binding is documented ResumeThread with DWORD return bits",
+      "libraries": "existing Requirements test API and JDK27 FFM only; no dependencies or native-access changes"
+    },
+    "design_notes": [
+      "prepare exposes separate borrowed standard handles; original start overloads retain original immediate execution",
+      "Member is an opaque nested native identity owner, not a PID crawl or exported borrowed handle",
+      "owner registration precedes native member acquisition; failed cleanup is retained, not retried",
+      "a positive member observation is not a blanket authorization to resume arbitrary work",
+      "primary-thread suspension does not prevent injected/helper threads; instrumentation readiness is not claimed by fixture tests",
+      "exact root result/aborted status and existing native completion/residency behavior remain unchanged"
+    ],
+    "scope_exclusions": [
+      "No source outside the two allowed files",
+      "No full test suite or standalone accepted residency cases rerun; only affected launch and new prepared/member cases selected",
+      "No workflow, remote dispatch, upstream/product/dependency/module edits",
+      "No commits, pushes or issue mutations"
+    ],
+    "process_outcomes": {
+      "all_commands_terminal": true,
+      "all_owned_test_processes_exited": true,
+      "remote_runs_or_ssh_sessions_started": false,
+      "red_fixture_resources": "try-with-resources or owner close completed; transaction rolled back failed output conditionally and retained exact evidence",
+      "transaction_conflicts": []
+    },
+    "ownership": {
+      "worktree": "Retain for parent acceptance; parent owns integration and later cleanup",
+      "scratch": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy",
+      "transactions": [
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-aKJo5P",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-vN5agl",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-KgM8mE",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-JLArcF",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-QAIfRs",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-CdmWBE",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/mutation-transaction-7MrVUE"
+      ],
+      "cleanup": "No live owned processes, remote sessions, keys or native jobs. Do not remove retained evidence before parent acceptance."
+    }
+  },
+  "parent_integration": {
+    "all_tracked_tooling_inputs_equal_worker": true,
+    "input_count": 82,
+    "input_sha256": {
+      "tooling/cli/pom.xml": "f42aad6371b6a16dfa2be198016b5d3e948ee42459613147a778ff7e07f4cccd",
+      "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "c0c9413ea618f6efd9d5eda15d8ccc4064d1d77f8a48c20a03019fb12ee6e299",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationMessages.java": "448b7b891c5adfb9722680dea88a6dccd0fd5e82e052d5413998fa84c6c449bb",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationPermissions.java": "59068f725b1255ae0e9caf58a3826d72a136b49296141417f82241d80583be81",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaits.java": "b8f01955ed0cf776dd9e0e690abae12bc7059dcfb875b9361862bcee6df5e505",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Controller.java": "2f4aefd76d0c1c7fef0430a716c40bb2d10a724d7f474456d8d9833b0bb91566",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntime.java": "4579ed9fb68833b93f94204ca2322c44d7b6204fa0440d260acd6fbe795d539e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java": "ed16a3004471292f43dcfee78acb7d432b57813d37d40827ea1c5fdb9de47a1d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver.java": "ec217d2fc7783586bca63838003566cd48c3a96b9e39f15fc161ef692a8044b4",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCgroup.java": "0673293c091995604b436594cc6531a2ac1b04af260476ad4e08107e87f404dc",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxMemory.java": "8d2d125e29326c7eb58fa5452789c39fb56948b2fcb33ef0ef8dbddf739656b1",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTree.java": "7904d98ca900a0e5ca107d34de11db58dbfc2f051aaf95dea26c316c3af15c6b",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxResidency.java": "d652ea698b27aa1d97e0d6ebf21fe4073d2566057189edc43f2a758ffdc302f7",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisor.java": "ec33d58a60efacb22c2abb783a80b18543c08f40522c820f31cff761aac67779",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/MacMemory.java": "900b90df7a2e9633aee467533d9f1f932f05a50c2a35524c88cde155aa995934",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/Policy.java": "ea51a5f66cc0d2daf59d31e25fbac97d3344dd3467b8fe3f9dc154c6cff56dac",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SwapRecovery.java": "fda95b4aec0f8f6cec168cc956b0ca8928826096f0c09b9cfc165b1ca5139f19",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsMemory.java": "5b5b271decfab2fef7f66488fc8a5cd24f9ea0f957c0bd6627968180c78678f8",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcess.java": "a741aadf9f684b306bf1c3825ee0b61df14e0441845c0e3bb49cf6e67b0a86e1",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/ArtifactJson.java": "832afff114ae41213044d01c9bfb518b0fed1929439da03af5a7b78efed4c911",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/CargoCacheProfile.java": "0cc389e10bd0b8bc945e231e4273e04e77e8f0514e65e85cd42f540e2315e05f",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Main.java": "5cf8f3fb5a97f7d40638d4b842c240b02d138a2c60d3b22e26051101deca0787",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/PayloadFiles.java": "8dd374889ed34b861743e830d484c5eb9e2463888580fe7cf2791b3acd46d802",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/RetentionPreview.java": "b3e861ea66c0809fe70737d2a1238887e87b3ff2967451a438f01cc4624638ed",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/Sha256.java": "f361fe970419c522d892693eb506444983434ad335d9c0621d7c466202e14d7e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommand.java": "8ad6c88b3f61f65f2eff0320fa6f8bf29b211b80392c9c53eec9e7a29b0a7258",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheMetadata.java": "f5104369cbaeba21ca1ff3b4bce83dfa95702215881cb1ab8bfb7d85511d7d23",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceCacheTargets.java": "230c21ca121d62ce55ee9cc1cd457e5cef81d37683c7b02eb19806c5cbc73ac3",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputCache.java": "2f5482edd27454df8ba6324e6fe12884703ecce6f42ff4e9fcf39e3bc1e3e3f1",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputChanges.java": "78de823440a8d237c2f0d89dc3fe5d885a12b007e601fa1a50d2a0bb70d717b3",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputInventory.java": "f3396905820224151c53b67f4ffb4dd2fef35b52186763e9cfef2e32b09afd41",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputPaths.java": "5472ef58ffbe84c167c2dba73f4077fe9fc6c7edc146f586e69e602cd291a287",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputSnapshots.java": "09ad0ccd8d245818720b60d9beacace796b95ae5fed8445c63a9e2ab5e0c86cd",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SourceInputTimes.java": "702305e4ea9b4a02822614e029886d67a5ebd760066d4f3e4da060e8bfdbebcd",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/SystemCommands.java": "8bbeb04a225432232aff80f71952bd88b7a43fbc608f89732d7aec64014f4a44",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UnixFileMetadata.java": "726cc24d656fc8a4306e92e5ed5e4ee23658f32d6b3b7cef0c863a2c1c53f1fb",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UnixFileTimes.java": "8b50709374207336dce7e6f5c73dc005e373f5829f51d972093b1f6af3ce715e",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/UpstreamV8Script.java": "6351484d06217b2e7dd1d3f2bf940eaf5c353a3a51f5767ed439c25939ce671d",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/V8BindingCache.java": "8c4edbf8a6d661ee22ffe308c8eadf48ef2e15cd5eb35607b337c200393803e7",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/WindowsArguments.java": "8f2ac8631f28754f7df0d00d1bc53df714276dd5220c023ed661a2c4d11f14d9",
+      "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/WindowsFileTimes.java": "0d536c6b25c537cc9e61441c6ab4766f3f8444f00afac9fb25402c2f0b37e805",
+      "tooling/cli/src/main/java/module-info.java": "3859d555f1aebf823125e342be08469a0f32c23db10721fded4b64068e382ca4",
+      "tooling/cli/src/main/resources/logback.xml": "92c6f14c42bf7592d6e2696b86dc6748133cafc44566796beb21d0d56d5c1456",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationMessagesTest.java": "e8585e8a9e36889e412d9d495a4506a5bed219f60e932409432e23d675259b8b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationPermissionsTest.java": "09412047b82ca1448309cda2a1cc7ab38503b3967701286072d14d9162b23895",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationWaitsTest.java": "401594ba228c3e871ce8c17cf8a44a69f3572010ddb5c0c492a525f8ca923be5",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerMemoryHistoryTest.java": "0f8a34a02edcdd86cf86c4b7c6cdceb41805671a6aaac265ecafaa04e1e8b618",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerSampleAcceptanceTest.java": "0cfa8480207381747ce793597093192407b4b9b6ee3c377439fb03a60813fd99",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/ControllerTest.java": "14ca5805264fa6d9cba4e5f7835382de9e9cbc0271da67f6c79c2226ec8509de",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeProbe.java": "bc332e146cf2d06915311725b7e0ee2770fc5a9c4f2892d8f233122c6b02efdf",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaRuntimeTest.java": "b7d97d79df5e4b53fdcae9e25082c6cb395342d75beeee09bb7ffed5178574cb",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/FridaScriptProbe.java": "42060901b195f6e7ec8576bde90ba04ec7d953fcd555a6574b8051802c907e1a",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueBlockedRecoveryTest.java": "a051545d96b16dbe2f79dd28a28adf3fb1b68c06870f8442f0b0934674b3a2e3",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueCompletionFreeRetryTest.java": "67e036765d8fef1c69ddf0597ed1aee61ca2bb0f4bab5a6c3485387479027092",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueMemoryHistoryTest.java": "845afe5ff50265496b1cf1775de11665c0f252d39ae4027e3def9f9d45691af0",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueTest.java": "dcec3f137c3044fc42413dbf284ea230f963e5c858686ac47d039b1b1ef37e1b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserverNativeTest.java": "6991b27b7ac839f33b8401e996be19af8890ba865aa050b64d40144c5912b6d7",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserverTest.java": "acd342db4b0620046649307f29bc6fcb6d1c67a48b5436e2eb099ca3ec8da90b",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCgroupTest.java": "1278325fff69e783b9dd6c957264f56eee38ce1334748833ff18960e27384ee4",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxMemoryTest.java": "6a353e2edec33bcec6c01465018c79e75716859192f27a3242456324ff29fd24",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxProcessTreeTest.java": "d4dce806684f59bf381ae3b5748e7224127fb4909c32ff94f871cff1fbe30cd0",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxResidencyTest.java": "dc17a15f8c6b28fa1af51277ba9c258575673ea21e7b93dcd9ac9835b151bf08",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxStandardFilesTest.java": "ca91aecfc295d05bca5ede1fdca46ebedacbfa66dc96b40689aaf3186f295c8e",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxSupervisorTest.java": "1b42ee98c869bbbee5bc0ead91409748df3c86d054927de7f2db42c984d81e6e",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/MacMemoryTest.java": "9c500b119b9db36ba32ab4ba74d8cd3b0ff95507d915e3fc746c40ef2f7423d8",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyBlockedRecoveryTest.java": "644491b4963ea13760ab03330c0914a2dd230637560d02b7ed3321f9b2011745",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyCompletionFreeRetryTest.java": "3d1ca98c1482d251db32152465031d91a553de20cf6dd29e1abb2e771f04abce",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/PolicyTest.java": "eefb618af37cd02e590ec577d29da332780dd269a1b1b4effcf7329bbecad718",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SwapRecoveryTest.java": "9a8e34c58903b818a7f8a938827fb5110ff1016e85c93aaa62508d576d3465c5",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/TestRequirements.java": "8b39d2d8782be2977a3ef5865b5712942fcd3dad366de812867a051df91b6c1f",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsProcessTest.java": "9b45b2d60b58a2db39cb984611e60a43f6e591e3593b5606e48b877f317124f4",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/NativeTimestampRange.java": "58f62c018bc9658819f632b7515a6fbe7eba15f845eb3d4c7895b320cbbae1ec",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/RetentionPreviewTest.java": "a1bd59f5b3c799923302035bc143c0cecfb209b9b0aeb55613c20424c98de2c7",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheCommandTest.java": "1bfbb22379dcc8d681ddd50c20205f35f83ef24a3faed3abf218986549be57ac",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheMetadataTest.java": "969a563881720f4fc874bab666a257711890b9434d27c2a1368da1ae2088eb48",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceCacheTargetsTest.java": "c5817abab1887dd58d5672eab8ee6ddb216f2c1a47f2cbd7721fb9b64f24b218",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputCacheTest.java": "7191bef0fd4e6ccca8399e133a8cf75dd5994f8259926a1cb0de5a3ba9ef048a",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputChangesTest.java": "0cc87d56f5364d6e6d9501eccc35fcc36e53a4617d50c44f38085cf8d97bd3d2",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputInventoryTest.java": "ed1c0fa05a107ce0b6af6df6c3d62fd5d9b0a67c58f468288247bd8f33d8f916",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/SourceInputSnapshotsTest.java": "ad6379b0c3ea5cafa0af4e7c8c4cefd440c7ab2f28dc21436397d737744c9ec4",
+      "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/UpstreamV8ScriptTest.java": "54e4df87d74d6d51a515220b5861f2d2ff9dbebeffefd95ad9ddc2b221ee5f54",
+      "tooling/cli/src/test/resources/logback-test.xml": "92c6f14c42bf7592d6e2696b86dc6748133cafc44566796beb21d0d56d5c1456"
+    },
+    "changed_paths_equal_approved_allowlist": true,
+    "packaged_classes_checked": 7,
+    "incremental_and_fresh_focused_cases": 30,
+    "root_tests_repeated": false,
+    "reuse_reason": "All tracked tooling source, resources and POM bytes match the worker whose exact changed-source fixture and fresh package receipts are verified here; documentation-only parent commits introduce no new determining build inputs."
+  },
+  "retained_phase_reports": {
+    "prepared-red": {
+      "test_reports": {
+        "prepared-red-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": {
+          "sha256": "119bc6f2cb4a33d4b2c90c657783d88ba90d6127bd7d92489f36296662f617b5",
+          "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuite xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd\" version=\"3.0.2\" name=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.119\" tests=\"1\" errors=\"1\" skipped=\"0\" failures=\"0\" flakes=\"0\">\n  <properties>\n    <property name=\"java.specification.version\" value=\"27\"/>\n    <property name=\"sun.jnu.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"java.vm.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"sun.arch.data.model\" value=\"64\"/>\n    <property name=\"java.vendor.url\" value=\"http://www.azul.com/\"/>\n    <property name=\"user.timezone\" value=\"America/Toronto\"/>\n    <property name=\"os.name\" value=\"Linux\"/>\n    <property name=\"java.vm.specification.version\" value=\"27\"/>\n    <property name=\"sun.java.launcher\" value=\"SUN_STANDARD\"/>\n    <property name=\"sun.boot.library.path\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/lib\"/>\n    <property name=\"sun.java.command\" value=\"org.apache.maven.surefire.booter.ForkedBooter /home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/surefire 2026-10-29T21-08-50_399-jvmRun1 surefire-20261029210850641_1tmp surefire_0-20261029210850641_2tmp\"/>\n    <property name=\"jdk.debug\" value=\"release\"/>\n    <property name=\"test\" value=\"WindowsProcessTest#preparesRootWithoutReleasingIt\"/>\n    <property name=\"surefire.test.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"sun.cpu.endian\" value=\"little\"/>\n    <property name=\"user.home\" value=\"/home/gili\"/>\n    <property name=\"user.language\" value=\"en\"/>\n    <property name=\"tooling.build.directory\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output\"/>\n    <property name=\"java.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"jdk.module.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/classes:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.2.3/jackson-dataformat-yaml-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-core/3.2.3/jackson-core-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-databind/3.2.3/jackson-databind-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/gili/codex-unleashed/home/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.jar\"/>\n    <property name=\"java.version.date\" value=\"2026-10-20\"/>\n    <property name=\"java.home\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu\"/>\n    <property name=\"file.separator\" value=\"/\"/>\n    <property name=\"basedir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"java.vm.compressedOopsMode\" value=\"Zero based\"/>\n    <property name=\"line.separator\" value=\"&#10;\"/>\n    <property name=\"java.vm.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"java.specification.name\" value=\"Java Platform API Specification\"/>\n    <property name=\"surefire.real.class.path\" value=\"/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-booter/3.6.0/surefire-booter-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-api/3.6.0/surefire-api-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-extensions-spi/3.6.0/surefire-extensions-spi-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-shared-utils/3.6.0/surefire-shared-utils-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-logger-api/3.6.0/surefire-logger-api-3.6.0.jar:/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-junit-platform/3.6.0/surefire-junit-platform-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/common-java5/3.6.0/common-java5-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-engine/1.14.4/junit-platform-engine-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-commons/1.14.4/junit-platform-commons-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-launcher/1.14.4/junit-platform-launcher-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/beust/jcommander/1.72/jcommander-1.72.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache-extras/beanshell/bsh/2.0b6/bsh-2.0b6.jar\"/>\n    <property name=\"sun.management.compiler\" value=\"HotSpot 64-Bit Tiered Compilers\"/>\n    <property name=\"java.runtime.version\" value=\"27.0.1+9\"/>\n    <property name=\"user.name\" value=\"gili\"/>\n    <property name=\"stdout.encoding\" value=\"UTF-8\"/>\n    <property name=\"path.separator\" value=\":\"/>\n    <property name=\"os.version\" value=\"6.18.54.1-microsoft-standard-WSL2\"/>\n    <property name=\"java.runtime.name\" value=\"OpenJDK Runtime Environment\"/>\n    <property name=\"file.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vm.name\" value=\"OpenJDK 64-Bit Server VM\"/>\n    <property name=\"java.vendor.version\" value=\"Zulu27.30+107-CA\"/>\n    <property name=\"localRepository\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.vendor.url.bug\" value=\"http://www.azul.com/support/\"/>\n    <property name=\"java.io.tmpdir\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/tmp\"/>\n    <property name=\"java.version\" value=\"27.0.1\"/>\n    <property name=\"user.dir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"os.arch\" value=\"amd64\"/>\n    <property name=\"java.vm.specification.name\" value=\"Java Virtual Machine Specification\"/>\n    <property name=\"native.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.library.path\" value=\"/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib\"/>\n    <property name=\"java.vm.info\" value=\"mixed mode\"/>\n    <property name=\"stderr.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"java.vm.version\" value=\"27.0.1+9\"/>\n    <property name=\"stdin.encoding\" value=\"UTF-8\"/>\n    <property name=\"sun.io.unicode.encoding\" value=\"UnicodeLittle\"/>\n    <property name=\"maven.repo.local\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.class.version\" value=\"71.0\"/>\n  </properties>\n  <testcase name=\"preparesRootWithoutReleasingIt\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.107\">\n    <error message=\"&quot;creationFlags&quot; must be equal to &quot;preparedFlags&quot;.&#10;creationFlags: 525312&#10;preparedFlags: 525316\" type=\"java.lang.IllegalArgumentException\"><![CDATA[java.lang.IllegalArgumentException: \n\"creationFlags\" must be equal to \"preparedFlags\".\ncreationFlags: 525312\npreparedFlags: 525316\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.preparesRootWithoutReleasingIt(WindowsProcessTest.java:236)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:583)\n\tat org.testng.internal.invokers.MethodInvocationHelper.invokeMethod(MethodInvocationHelper.java:141)\n\tat org.testng.internal.invokers.TestInvoker.invokeMethod(TestInvoker.java:697)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethod(TestInvoker.java:230)\n\tat org.testng.internal.invokers.MethodRunner.runInSequence(MethodRunner.java:63)\n\tat org.testng.internal.invokers.TestInvoker$MethodInvocationAgent.invoke(TestInvoker.java:1005)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethods(TestInvoker.java:203)\n\tat org.testng.internal.invokers.TestMethodWorker.invokeTestMethods(TestMethodWorker.java:154)\n\tat org.testng.internal.invokers.TestMethodWorker.run(TestMethodWorker.java:134)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1612)\n\tat org.testng.TestRunner.privateRun(TestRunner.java:744)\n\tat org.testng.TestRunner.run(TestRunner.java:616)\n\tat org.testng.SuiteRunner.runTest(SuiteRunner.java:421)\n\tat org.testng.SuiteRunner.runSequentially(SuiteRunner.java:413)\n\tat org.testng.SuiteRunner.privateRun(SuiteRunner.java:373)\n\tat org.testng.SuiteRunner.run(SuiteRunner.java:312)\n\tat org.testng.SuiteRunnerWorker.runSuite(SuiteRunnerWorker.java:52)\n\tat org.testng.SuiteRunnerWorker.run(SuiteRunnerWorker.java:95)\n\tat org.testng.TestNG.runSuitesSequentially(TestNG.java:1274)\n\tat org.testng.TestNG.runSuitesLocally(TestNG.java:1208)\n\tat org.testng.TestNG.runSuites(TestNG.java:1112)\n\tat org.testng.TestNG.run(TestNG.java:1079)\n]]></error>\n  </testcase>\n</testsuite>",
+          "summary": {
+            "tests": "1",
+            "failures": "0",
+            "errors": "1",
+            "skipped": "0"
+          }
+        }
+      },
+      "checks": {
+        "exit": 1,
+        "tests": {
+          "WindowsProcessTest#preparesRootWithoutReleasingIt": {
+            "tests": "1",
+            "failures": "0",
+            "errors": "1",
+            "skipped": "0"
+          }
+        },
+        "passed": false
+      },
+      "transaction_receipt_sha256": "c9790b850e780c01855e4e593430f0f1b252715022e87ad0054ddfa7248fc2a4"
+    },
+    "ambiguous-close-red": {
+      "test_reports": {
+        "ambiguous-close-red-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": {
+          "sha256": "11630d4b0d43288865d9abfabdf768b28f37ffe92f07525fd4e28350b8f7e79e",
+          "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuite xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd\" version=\"3.0.2\" name=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.083\" tests=\"1\" errors=\"1\" skipped=\"0\" failures=\"0\" flakes=\"0\">\n  <properties>\n    <property name=\"java.specification.version\" value=\"27\"/>\n    <property name=\"sun.jnu.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"java.vm.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"sun.arch.data.model\" value=\"64\"/>\n    <property name=\"java.vendor.url\" value=\"http://www.azul.com/\"/>\n    <property name=\"user.timezone\" value=\"America/Toronto\"/>\n    <property name=\"os.name\" value=\"Linux\"/>\n    <property name=\"java.vm.specification.version\" value=\"27\"/>\n    <property name=\"sun.java.launcher\" value=\"SUN_STANDARD\"/>\n    <property name=\"sun.boot.library.path\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/lib\"/>\n    <property name=\"sun.java.command\" value=\"org.apache.maven.surefire.booter.ForkedBooter /home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/surefire 2026-10-29T21-13-25_879-jvmRun1 surefire-20261029211326097_1tmp surefire_0-20261029211326097_2tmp\"/>\n    <property name=\"jdk.debug\" value=\"release\"/>\n    <property name=\"test\" value=\"WindowsProcessTest#retainsAmbiguousMemberCleanup\"/>\n    <property name=\"surefire.test.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"sun.cpu.endian\" value=\"little\"/>\n    <property name=\"user.home\" value=\"/home/gili\"/>\n    <property name=\"user.language\" value=\"en\"/>\n    <property name=\"tooling.build.directory\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output\"/>\n    <property name=\"java.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"jdk.module.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/classes:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.2.3/jackson-dataformat-yaml-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-core/3.2.3/jackson-core-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-databind/3.2.3/jackson-databind-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/gili/codex-unleashed/home/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.jar\"/>\n    <property name=\"java.version.date\" value=\"2026-10-20\"/>\n    <property name=\"java.home\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu\"/>\n    <property name=\"file.separator\" value=\"/\"/>\n    <property name=\"basedir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"java.vm.compressedOopsMode\" value=\"Zero based\"/>\n    <property name=\"line.separator\" value=\"&#10;\"/>\n    <property name=\"java.vm.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"java.specification.name\" value=\"Java Platform API Specification\"/>\n    <property name=\"surefire.real.class.path\" value=\"/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-booter/3.6.0/surefire-booter-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-api/3.6.0/surefire-api-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-extensions-spi/3.6.0/surefire-extensions-spi-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-shared-utils/3.6.0/surefire-shared-utils-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-logger-api/3.6.0/surefire-logger-api-3.6.0.jar:/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-junit-platform/3.6.0/surefire-junit-platform-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/common-java5/3.6.0/common-java5-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-engine/1.14.4/junit-platform-engine-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-commons/1.14.4/junit-platform-commons-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-launcher/1.14.4/junit-platform-launcher-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/beust/jcommander/1.72/jcommander-1.72.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache-extras/beanshell/bsh/2.0b6/bsh-2.0b6.jar\"/>\n    <property name=\"sun.management.compiler\" value=\"HotSpot 64-Bit Tiered Compilers\"/>\n    <property name=\"java.runtime.version\" value=\"27.0.1+9\"/>\n    <property name=\"user.name\" value=\"gili\"/>\n    <property name=\"stdout.encoding\" value=\"UTF-8\"/>\n    <property name=\"path.separator\" value=\":\"/>\n    <property name=\"os.version\" value=\"6.18.54.1-microsoft-standard-WSL2\"/>\n    <property name=\"java.runtime.name\" value=\"OpenJDK Runtime Environment\"/>\n    <property name=\"file.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vm.name\" value=\"OpenJDK 64-Bit Server VM\"/>\n    <property name=\"java.vendor.version\" value=\"Zulu27.30+107-CA\"/>\n    <property name=\"localRepository\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.vendor.url.bug\" value=\"http://www.azul.com/support/\"/>\n    <property name=\"java.io.tmpdir\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/tmp\"/>\n    <property name=\"java.version\" value=\"27.0.1\"/>\n    <property name=\"user.dir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"os.arch\" value=\"amd64\"/>\n    <property name=\"java.vm.specification.name\" value=\"Java Virtual Machine Specification\"/>\n    <property name=\"native.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.library.path\" value=\"/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib\"/>\n    <property name=\"java.vm.info\" value=\"mixed mode\"/>\n    <property name=\"stderr.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"java.vm.version\" value=\"27.0.1+9\"/>\n    <property name=\"stdin.encoding\" value=\"UTF-8\"/>\n    <property name=\"sun.io.unicode.encoding\" value=\"UnicodeLittle\"/>\n    <property name=\"maven.repo.local\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.class.version\" value=\"71.0\"/>\n  </properties>\n  <testcase name=\"retainsAmbiguousMemberCleanup\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.073\">\n    <error message=\"&quot;exception&quot; may not be null\" type=\"java.lang.NullPointerException\"><![CDATA[java.lang.NullPointerException: \"exception\" may not be null\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException(TestRequirements.java:36)\n\tat com.holdmyspot.codexunleashed.tooling@1.0-SNAPSHOT/com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.retainsAmbiguousMemberCleanup(WindowsProcessTest.java:458)\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:583)\n\tat org.testng.internal.invokers.MethodInvocationHelper.invokeMethod(MethodInvocationHelper.java:141)\n\tat org.testng.internal.invokers.TestInvoker.invokeMethod(TestInvoker.java:697)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethod(TestInvoker.java:230)\n\tat org.testng.internal.invokers.MethodRunner.runInSequence(MethodRunner.java:63)\n\tat org.testng.internal.invokers.TestInvoker$MethodInvocationAgent.invoke(TestInvoker.java:1005)\n\tat org.testng.internal.invokers.TestInvoker.invokeTestMethods(TestInvoker.java:203)\n\tat org.testng.internal.invokers.TestMethodWorker.invokeTestMethods(TestMethodWorker.java:154)\n\tat org.testng.internal.invokers.TestMethodWorker.run(TestMethodWorker.java:134)\n\tat java.base/java.util.ArrayList.forEach(ArrayList.java:1612)\n\tat org.testng.TestRunner.privateRun(TestRunner.java:744)\n\tat org.testng.TestRunner.run(TestRunner.java:616)\n\tat org.testng.SuiteRunner.runTest(SuiteRunner.java:421)\n\tat org.testng.SuiteRunner.runSequentially(SuiteRunner.java:413)\n\tat org.testng.SuiteRunner.privateRun(SuiteRunner.java:373)\n\tat org.testng.SuiteRunner.run(SuiteRunner.java:312)\n\tat org.testng.SuiteRunnerWorker.runSuite(SuiteRunnerWorker.java:52)\n\tat org.testng.SuiteRunnerWorker.run(SuiteRunnerWorker.java:95)\n\tat org.testng.TestNG.runSuitesSequentially(TestNG.java:1274)\n\tat org.testng.TestNG.runSuitesLocally(TestNG.java:1208)\n\tat org.testng.TestNG.runSuites(TestNG.java:1112)\n\tat org.testng.TestNG.run(TestNG.java:1079)\n]]></error>\n  </testcase>\n</testsuite>",
+          "summary": {
+            "tests": "1",
+            "failures": "0",
+            "errors": "1",
+            "skipped": "0"
+          }
+        }
+      },
+      "checks": {
+        "exit": 1,
+        "tests": {
+          "WindowsProcessTest#retainsAmbiguousMemberCleanup": {
+            "tests": "1",
+            "failures": "0",
+            "errors": "1",
+            "skipped": "0"
+          }
+        },
+        "passed": false
+      },
+      "transaction_receipt_sha256": "7375f60435ef81ec23f9e22b2969f7e28339635ab8f467cfd51e591f6f6228ca"
+    },
+    "prepared-incremental": {
+      "test_reports": {
+        "prepared-incremental-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": {
+          "sha256": "0198bcf2b5be9e23a5e2cd2b99b47f6b72440c473ce3c15f347a1faddaec476e",
+          "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuite xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd\" version=\"3.0.2\" name=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.225\" tests=\"30\" errors=\"0\" skipped=\"0\" failures=\"0\" flakes=\"0\">\n  <properties>\n    <property name=\"java.specification.version\" value=\"27\"/>\n    <property name=\"sun.jnu.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"java.vm.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"sun.arch.data.model\" value=\"64\"/>\n    <property name=\"java.vendor.url\" value=\"http://www.azul.com/\"/>\n    <property name=\"user.timezone\" value=\"America/Toronto\"/>\n    <property name=\"os.name\" value=\"Linux\"/>\n    <property name=\"java.vm.specification.version\" value=\"27\"/>\n    <property name=\"sun.java.launcher\" value=\"SUN_STANDARD\"/>\n    <property name=\"sun.boot.library.path\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/lib\"/>\n    <property name=\"sun.java.command\" value=\"org.apache.maven.surefire.booter.ForkedBooter /home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/surefire 2026-10-29T21-14-13_743-jvmRun1 surefire-20261029211413981_1tmp surefire_0-20261029211413981_2tmp\"/>\n    <property name=\"jdk.debug\" value=\"release\"/>\n    <property name=\"test\" value=\"WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure\"/>\n    <property name=\"surefire.test.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"sun.cpu.endian\" value=\"little\"/>\n    <property name=\"user.home\" value=\"/home/gili\"/>\n    <property name=\"user.language\" value=\"en\"/>\n    <property name=\"tooling.build.directory\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output\"/>\n    <property name=\"java.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"jdk.module.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/classes:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.2.3/jackson-dataformat-yaml-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-core/3.2.3/jackson-core-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-databind/3.2.3/jackson-databind-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/gili/codex-unleashed/home/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.jar\"/>\n    <property name=\"java.version.date\" value=\"2026-10-20\"/>\n    <property name=\"java.home\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu\"/>\n    <property name=\"file.separator\" value=\"/\"/>\n    <property name=\"basedir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"java.vm.compressedOopsMode\" value=\"Zero based\"/>\n    <property name=\"line.separator\" value=\"&#10;\"/>\n    <property name=\"java.vm.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"java.specification.name\" value=\"Java Platform API Specification\"/>\n    <property name=\"surefire.real.class.path\" value=\"/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-booter/3.6.0/surefire-booter-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-api/3.6.0/surefire-api-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-extensions-spi/3.6.0/surefire-extensions-spi-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-shared-utils/3.6.0/surefire-shared-utils-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-logger-api/3.6.0/surefire-logger-api-3.6.0.jar:/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-junit-platform/3.6.0/surefire-junit-platform-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/common-java5/3.6.0/common-java5-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-engine/1.14.4/junit-platform-engine-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-commons/1.14.4/junit-platform-commons-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-launcher/1.14.4/junit-platform-launcher-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/beust/jcommander/1.72/jcommander-1.72.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache-extras/beanshell/bsh/2.0b6/bsh-2.0b6.jar\"/>\n    <property name=\"sun.management.compiler\" value=\"HotSpot 64-Bit Tiered Compilers\"/>\n    <property name=\"java.runtime.version\" value=\"27.0.1+9\"/>\n    <property name=\"user.name\" value=\"gili\"/>\n    <property name=\"stdout.encoding\" value=\"UTF-8\"/>\n    <property name=\"path.separator\" value=\":\"/>\n    <property name=\"os.version\" value=\"6.18.54.1-microsoft-standard-WSL2\"/>\n    <property name=\"java.runtime.name\" value=\"OpenJDK Runtime Environment\"/>\n    <property name=\"file.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vm.name\" value=\"OpenJDK 64-Bit Server VM\"/>\n    <property name=\"java.vendor.version\" value=\"Zulu27.30+107-CA\"/>\n    <property name=\"localRepository\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.vendor.url.bug\" value=\"http://www.azul.com/support/\"/>\n    <property name=\"java.io.tmpdir\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/build/tmp\"/>\n    <property name=\"java.version\" value=\"27.0.1\"/>\n    <property name=\"user.dir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"os.arch\" value=\"amd64\"/>\n    <property name=\"java.vm.specification.name\" value=\"Java Virtual Machine Specification\"/>\n    <property name=\"native.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.library.path\" value=\"/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib\"/>\n    <property name=\"java.vm.info\" value=\"mixed mode\"/>\n    <property name=\"stderr.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"java.vm.version\" value=\"27.0.1+9\"/>\n    <property name=\"stdin.encoding\" value=\"UTF-8\"/>\n    <property name=\"sun.io.unicode.encoding\" value=\"UnicodeLittle\"/>\n    <property name=\"maven.repo.local\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.class.version\" value=\"71.0\"/>\n  </properties>\n  <testcase name=\"duplicatesSeparateStandardHandles\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.044\"/>\n  <testcase name=\"preparesRootWithoutReleasingIt\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.035\"/>\n  <testcase name=\"preservesMemberVerificationAndCleanupFailures\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.013\"/>\n  <testcase name=\"rechecksAndClosesRetainedMember\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsReleaseWithoutAuthority\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.005\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[4]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[5]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.007\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.001\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.001\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesPreparedRootOnlyOnce\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsAmbiguousMemberCleanup\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsAmbiguousRootRelease\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"retainsCombinedOutputLaunch\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsFailedMemberCleanup\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.004\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.001\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsVerifiedMemberIdentity\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"validatesMemberIdsBeforeAcquisition\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n</testsuite>",
+          "summary": {
+            "tests": "30",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0"
+          }
+        }
+      },
+      "checks": {
+        "exit": 0,
+        "tests": {
+          "WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure": {
+            "tests": "30",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0"
+          }
+        },
+        "passed": true,
+        "package_matches_tested": true,
+        "packaged_classes": {
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "5a8745963ed3a66b4053348f849f1fe274dd54017a604d4d15e3f45d0525971f",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "1f0e7c2889dd147dd4054b1cf2defcda99791fcf6548907478c2bc1fc655f20a",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "495b8683b6880daf26880ce6ad282e99f853eb391212741e9669e07330b8f0a7",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "6ab5bb0268f3261886ca68379c5255898941fd1b61764539ddc988cf00d10e31",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "64dfaa61ed759b6fca5508386349be4fbc70b084d3203ebd82585e1c16d615f2",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "27ecc2dc8c493e2773a1cb1b5e3369df4a6d34243cef2677effbc2627d02f458"
+        },
+        "jar_sha256": "be92eb66257aec68ebde4f798e4fc42f567603cfc5c56dc912f9721006ef54f2"
+      },
+      "transaction_receipt_sha256": "8f29de6b1233f70c5bc9f3800b3e3dcccc29888f85aed0aa5175ae3abd45f7a7"
+    },
+    "prepared-fresh": {
+      "test_reports": {
+        "prepared-fresh-TEST-com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest.xml": {
+          "sha256": "addcd4c3fc7248dadba1c8edf21968be71434712bb64a650c28211820e2b62e1",
+          "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuite xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd\" version=\"3.0.2\" name=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.308\" tests=\"30\" errors=\"0\" skipped=\"0\" failures=\"0\" flakes=\"0\">\n  <properties>\n    <property name=\"java.specification.version\" value=\"27\"/>\n    <property name=\"sun.jnu.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"java.vm.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"sun.arch.data.model\" value=\"64\"/>\n    <property name=\"java.vendor.url\" value=\"http://www.azul.com/\"/>\n    <property name=\"user.timezone\" value=\"America/Toronto\"/>\n    <property name=\"os.name\" value=\"Linux\"/>\n    <property name=\"java.vm.specification.version\" value=\"27\"/>\n    <property name=\"sun.java.launcher\" value=\"SUN_STANDARD\"/>\n    <property name=\"sun.boot.library.path\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/lib\"/>\n    <property name=\"sun.java.command\" value=\"org.apache.maven.surefire.booter.ForkedBooter /home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output/surefire 2026-10-29T21-15-13_415-jvmRun1 surefire-20261029211513668_1tmp surefire_0-20261029211513668_2tmp\"/>\n    <property name=\"jdk.debug\" value=\"release\"/>\n    <property name=\"test\" value=\"WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure\"/>\n    <property name=\"surefire.test.class.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar\"/>\n    <property name=\"sun.cpu.endian\" value=\"little\"/>\n    <property name=\"user.home\" value=\"/home/gili\"/>\n    <property name=\"user.language\" value=\"en\"/>\n    <property name=\"tooling.build.directory\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output\"/>\n    <property name=\"java.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"jdk.module.path\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output/classes:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/dataformat/jackson-dataformat-yaml/3.2.3/jackson-dataformat-yaml-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-core/3.2.3/jackson-core-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/snakeyaml/snakeyaml-engine/3.0.1/snakeyaml-engine-3.0.1.jar:/home/gili/codex-unleashed/home/.m2/repository/tools/jackson/core/jackson-databind/3.2.3/jackson-databind-3.2.3.jar:/home/gili/codex-unleashed/home/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar:/home/gili/codex-unleashed/home/.m2/repository/commons-io/commons-io/2.20.0/commons-io-2.20.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-core-ffm/7.7.2/oshi-core-ffm-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/com/github/oshi/oshi-common/7.7.2/oshi-common-7.7.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.jar:/home/gili/codex-unleashed/home/.m2/repository/ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.jar\"/>\n    <property name=\"java.version.date\" value=\"2026-10-20\"/>\n    <property name=\"java.home\" value=\"/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu\"/>\n    <property name=\"file.separator\" value=\"/\"/>\n    <property name=\"basedir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"java.vm.compressedOopsMode\" value=\"Zero based\"/>\n    <property name=\"line.separator\" value=\"&#10;\"/>\n    <property name=\"java.vm.specification.vendor\" value=\"Oracle Corporation\"/>\n    <property name=\"java.specification.name\" value=\"Java Platform API Specification\"/>\n    <property name=\"surefire.real.class.path\" value=\"/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-booter/3.6.0/surefire-booter-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-api/3.6.0/surefire-api-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-extensions-spi/3.6.0/surefire-extensions-spi-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-shared-utils/3.6.0/surefire-shared-utils-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-logger-api/3.6.0/surefire-logger-api-3.6.0.jar:/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/output/test-classes:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-java/13.2/requirements-java-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/requirements/requirements-annotation/13.2/requirements-annotation-13.2.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/java-diff-utils/java-diff-utils/4.16/java-diff-utils-4.16.jar:/home/gili/codex-unleashed/home/.m2/repository/io/github/cowwoc/pouch/pouch-core/10.3/pouch-core-10.3.jar:/home/gili/codex-unleashed/home/.m2/repository/org/testng/testng/7.12.0/testng-7.12.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/jcommander/jcommander/1.83/jcommander-1.83.jar:/home/gili/codex-unleashed/home/.m2/repository/org/webjars/jquery/3.7.1/jquery-3.7.1.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/surefire-junit-platform/3.6.0/surefire-junit-platform-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache/maven/surefire/common-java5/3.6.0/common-java5-3.6.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-engine/1.14.4/junit-platform-engine-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-commons/1.14.4/junit-platform-commons-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/platform/junit-platform-launcher/1.14.4/junit-platform-launcher-1.14.4.jar:/home/gili/codex-unleashed/home/.m2/repository/org/junit/support/testng-engine/1.1.0/testng-engine-1.1.0.jar:/home/gili/codex-unleashed/home/.m2/repository/com/beust/jcommander/1.72/jcommander-1.72.jar:/home/gili/codex-unleashed/home/.m2/repository/org/apache-extras/beanshell/bsh/2.0b6/bsh-2.0b6.jar\"/>\n    <property name=\"sun.management.compiler\" value=\"HotSpot 64-Bit Tiered Compilers\"/>\n    <property name=\"java.runtime.version\" value=\"27.0.1+9\"/>\n    <property name=\"user.name\" value=\"gili\"/>\n    <property name=\"stdout.encoding\" value=\"UTF-8\"/>\n    <property name=\"path.separator\" value=\":\"/>\n    <property name=\"os.version\" value=\"6.18.54.1-microsoft-standard-WSL2\"/>\n    <property name=\"java.runtime.name\" value=\"OpenJDK Runtime Environment\"/>\n    <property name=\"file.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vm.name\" value=\"OpenJDK 64-Bit Server VM\"/>\n    <property name=\"java.vendor.version\" value=\"Zulu27.30+107-CA\"/>\n    <property name=\"localRepository\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.vendor.url.bug\" value=\"http://www.azul.com/support/\"/>\n    <property name=\"java.io.tmpdir\" value=\"/home/gili/codex-unleashed/workspace/.cat/sessions/01a189fd-5ec8-7c62-a0a5-073c2721dfe7/temp/windows-prepared-owner-OqpPLy/fresh-build/tmp\"/>\n    <property name=\"java.version\" value=\"27.0.1\"/>\n    <property name=\"user.dir\" value=\"/home/gili/codex-unleashed/worktrees/cp3-windows-prepared-owner/tooling/cli\"/>\n    <property name=\"os.arch\" value=\"amd64\"/>\n    <property name=\"java.vm.specification.name\" value=\"Java Virtual Machine Specification\"/>\n    <property name=\"native.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.library.path\" value=\"/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib\"/>\n    <property name=\"java.vm.info\" value=\"mixed mode\"/>\n    <property name=\"stderr.encoding\" value=\"UTF-8\"/>\n    <property name=\"java.vendor\" value=\"Azul Systems, Inc.\"/>\n    <property name=\"java.vm.version\" value=\"27.0.1+9\"/>\n    <property name=\"stdin.encoding\" value=\"UTF-8\"/>\n    <property name=\"sun.io.unicode.encoding\" value=\"UnicodeLittle\"/>\n    <property name=\"maven.repo.local\" value=\"/home/gili/codex-unleashed/home/.m2/repository\"/>\n    <property name=\"java.class.version\" value=\"71.0\"/>\n  </properties>\n  <testcase name=\"duplicatesSeparateStandardHandles\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.053\"/>\n  <testcase name=\"preparesRootWithoutReleasingIt\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.04\"/>\n  <testcase name=\"preservesMemberVerificationAndCleanupFailures\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.015\"/>\n  <testcase name=\"rechecksAndClosesRetainedMember\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.004\"/>\n  <testcase name=\"rejectsReleaseWithoutAuthority\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.005\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.011\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.007\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.006\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[4]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.007\"/>\n  <testcase name=\"rejectsUnverifiedMemberIdentity(java.lang.String)[5]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.005\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.009\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesOwnedHandlesOnLaunchFailure(int, boolean, java.util.List)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"releasesPreparedLaunchFailure(int, boolean, java.util.List)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"releasesPreparedRootOnlyOnce\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"retainsAmbiguousMemberCleanup\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsAmbiguousRootRelease\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.003\"/>\n  <testcase name=\"retainsCombinedOutputLaunch\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsFailedMemberCleanup\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.004\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[0]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.006\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[1]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[2]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsFailedRootRelease(int)[3]\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"retainsVerifiedMemberIdentity\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.002\"/>\n  <testcase name=\"validatesMemberIdsBeforeAcquisition\" classname=\"com.holdmyspot.codexunleashed.scheduler.WindowsProcessTest\" time=\"0.004\"/>\n</testsuite>",
+          "summary": {
+            "tests": "30",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0"
+          }
+        }
+      },
+      "checks": {
+        "exit": 0,
+        "tests": {
+          "WindowsProcessTest#preparesRootWithoutReleasingIt+releasesPreparedLaunchFailure+releasesPreparedRootOnlyOnce+retainsFailedRootRelease+retainsAmbiguousRootRelease+rejectsReleaseWithoutAuthority+retainsVerifiedMemberIdentity+rejectsUnverifiedMemberIdentity+rechecksAndClosesRetainedMember+retainsFailedMemberCleanup+retainsAmbiguousMemberCleanup+preservesMemberVerificationAndCleanupFailures+validatesMemberIdsBeforeAcquisition+duplicatesSeparateStandardHandles+retainsCombinedOutputLaunch+releasesOwnedHandlesOnLaunchFailure": {
+            "tests": "30",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0"
+          }
+        },
+        "passed": true,
+        "package_matches_tested": true,
+        "packaged_classes": {
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Result.class": "5a8745963ed3a66b4053348f849f1fe274dd54017a604d4d15e3f45d0525971f",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Releases.class": "1f0e7c2889dd147dd4054b1cf2defcda99791fcf6548907478c2bc1fc655f20a",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$MembershipAccounting.class": "495b8683b6880daf26880ce6ad282e99f853eb391212741e9669e07330b8f0a7",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Release.class": "4553ec9cb03084bd08b76b4781a7d7cfedd320c58a47129612ef181adf726613",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess.class": "6ab5bb0268f3261886ca68379c5255898941fd1b61764539ddc988cf00d10e31",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Member.class": "64dfaa61ed759b6fca5508386349be4fbc70b084d3203ebd82585e1c16d615f2",
+          "com/holdmyspot/codexunleashed/scheduler/WindowsProcess$Kernel.class": "27ecc2dc8c493e2773a1cb1b5e3369df4a6d34243cef2677effbc2627d02f458"
+        },
+        "jar_sha256": "3c66774141fb434331852ec8e0b2d696eeb89f877bc459adfd63a528130f55ba"
+      },
+      "transaction_receipt_sha256": "c70da6f08013888087bf9d9ca0761d0c43376413ba1d4b6803c754adfc04110c"
+    }
+  }
+}

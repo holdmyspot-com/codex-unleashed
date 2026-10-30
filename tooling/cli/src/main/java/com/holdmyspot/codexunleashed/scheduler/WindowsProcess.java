@@ -54,6 +54,18 @@ public final class WindowsProcess implements AutoCloseable
     /** Reused native root exit-code storage. */
     private final MemorySegment exitCode;
     private MemorySegment process;
+    /** Owned primary-thread handle, retained until process-owner cleanup. */
+    private MemorySegment primaryThread;
+    /** Indicates whether launch suspended the primary thread for explicit release. */
+    private final boolean prepared;
+    /** Set before native release, including a failed or ambiguous invocation that must not be repeated. */
+    private boolean rootReleaseAttempted = false;
+    /** Original failed release, retained as the cause when another release is rejected. */
+    private Throwable rootReleaseFailure = null;
+    /** Opaque process identities retained by this job owner, including unresolved failed releases. */
+    private final List<Member> members = new ArrayList<>();
+    /** First unresolved member-handle release, or null before any failed release. */
+    private IOException memberCleanupFailure = null;
     private long pid;
     private boolean aborted;
     private boolean closed;
@@ -136,6 +148,33 @@ public final class WindowsProcess implements AutoCloseable
     }
 
     /**
+     * Creates a contained command with its primary thread suspended until {@link #releaseRoot()}.
+     * Launch validation and borrowed-handle ownership follow {@link #start(List, Path, Map, MemorySegment,
+     * MemorySegment, MemorySegment)}. Suspension prevents primary-thread execution, not injected helper threads.
+     * @param command nonempty argv whose first element is an absolute executable file
+     * @param directory an existing absolute working directory
+     * @param environment explicit child environment
+     * @param input live borrowed standard-input handle
+     * @param output live borrowed standard-output handle
+     * @param error live borrowed standard-error handle
+     * @return the suspended workload owner
+     * @throws NullPointerException if an input or member is null
+     * @throws IllegalArgumentException if an input violates the start contract
+     * @throws UnsupportedOperationException if native Windows access is unavailable
+     * @throws IOException if native acquisition, launch or cleanup fails
+     */
+    public static WindowsProcess prepare(List<String> command, Path directory,
+        Map<String,String> environment, MemorySegment input, MemorySegment output,
+        MemorySegment error) throws IOException
+    {
+        validateStandardHandle(input, "Input");
+        validateStandardHandle(output, "Output");
+        validateStandardHandle(error, "Error");
+        var arguments = validate(command, directory, environment, output);
+        return launchPrepared(arguments, directory, Map.copyOf(environment), input, output, error, new Kernel());
+    }
+
+    /**
      * Launches with separate borrowed standard handles and supplied native access.
      *
      * @param command copied, validated direct argv
@@ -159,7 +198,38 @@ public final class WindowsProcess implements AutoCloseable
             validateStandardHandle(input, "Input");
             validateStandardHandle(output, "Output");
             validateStandardHandle(error, "Error");
-            return new WindowsProcess(command, directory, environment, input, output, error, kernel);
+            return new WindowsProcess(command, directory, environment, input, output, error, kernel, false);
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            try { kernel.close(); }
+            catch (RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    /**
+     * Creates a contained process with its primary thread suspended through supplied native access.
+     * @param command copied direct argv
+     * @param directory working directory
+     * @param environment copied child environment
+     * @param input borrowed standard-input handle
+     * @param output borrowed standard-output handle
+     * @param error borrowed standard-error handle
+     * @param kernel native access owned by the returned process or failed launch
+     * @return the process owner
+     * @throws IOException if native launch or cleanup fails
+     */
+    static WindowsProcess launchPrepared(List<String> command, Path directory,
+        Map<String,String> environment, MemorySegment input, MemorySegment output,
+        MemorySegment error, Kernel kernel) throws IOException
+    {
+        try
+        {
+            validateStandardHandle(input, "Input");
+            validateStandardHandle(output, "Output");
+            validateStandardHandle(error, "Error");
+            return new WindowsProcess(command, directory, environment, input, output, error, kernel, true);
         }
         catch (IOException | RuntimeException | Error failure)
         {
@@ -185,7 +255,7 @@ public final class WindowsProcess implements AutoCloseable
     {
         try
         {
-            return new WindowsProcess(command, directory, environment, null, output, null, kernel);
+            return new WindowsProcess(command, directory, environment, null, output, null, kernel, false);
         }
         catch (IOException | RuntimeException | Error failure)
         {
@@ -205,25 +275,27 @@ public final class WindowsProcess implements AutoCloseable
      * @param output borrowed output handle
      * @param error borrowed error handle, ignored when input is null
      * @param kernel native access owned after successful construction
+     * @param prepared indicates whether primary-thread execution requires explicit release
      * @throws IOException if native acquisition, launch or cleanup fails
      */
     private WindowsProcess(List<String> command, Path directory,
         Map<String,String> environment, MemorySegment input, MemorySegment output,
-        MemorySegment error, Kernel kernel) throws IOException
+        MemorySegment error, Kernel kernel, boolean prepared) throws IOException
     {
         this.kernel = Objects.requireNonNull(kernel, "kernel may not be null");
-        accounting = kernel.arena.allocate(48, 8);
-        exitCode = kernel.arena.allocate(ValueLayout.JAVA_INT);
+        this.prepared = prepared;
+        this.accounting = kernel.arena.allocate(48, 8);
+        this.exitCode = kernel.arena.allocate(ValueLayout.JAVA_INT);
         try (var owned = new Releases())
         {
-            job = kernel.pointer("CreateJobObjectW", MemorySegment.NULL, MemorySegment.NULL);
+            this.job = kernel.pointer("CreateJobObjectW", MemorySegment.NULL, MemorySegment.NULL);
             kernel.requireHandle("CreateJobObjectW", job);
             owned.add(() -> kernel.closeHandle(job));
             var limits = kernel.arena.allocate(144, 8);
             limits.set(ValueLayout.JAVA_INT, 16, 0x2000);
             kernel.require("SetInformationJobObject", kernel.call("SetInformationJobObject", job, 9, limits, 144));
             create(command, directory, environment, input, output, error, owned);
-            releases = owned.transfer();
+            this.releases = owned.transfer();
         }
     }
 
@@ -300,15 +372,187 @@ public final class WindowsProcess implements AutoCloseable
             startup.set(ValueLayout.ADDRESS, 104, attributes);
             var info = kernel.arena.allocate(24, 8);
             kernel.require("CreateProcessW", kernel.call("CreateProcessW", kernel.wide(command.getFirst()),
-                kernel.wide(commandLine(command)), MemorySegment.NULL, MemorySegment.NULL, 1, 0x80400,
+                kernel.wide(commandLine(command)), MemorySegment.NULL, MemorySegment.NULL, 1,
+                prepared ? 0x80404 : 0x80400,
                 kernel.wide(environmentBlock(environment)), kernel.wide(directory.toString()), startup, info));
             process = info.get(ValueLayout.ADDRESS, 0);
             pid = Integer.toUnsignedLong(info.get(ValueLayout.JAVA_INT, 16));
             owned.add(() -> kernel.closeHandle(process));
-            var thread = info.get(ValueLayout.ADDRESS, 8);
-            owned.add(() -> kernel.closeHandle(thread));
+            primaryThread = info.get(ValueLayout.ADDRESS, 8);
+            owned.add(() -> kernel.closeHandle(primaryThread));
+            owned.add(this::closeMembers);
             owned.add(this::drain);
         }
+    }
+
+    /**
+     * Releases this prepared root's primary thread exactly once, after its caller completes instrumentation.
+     * A failed, ambiguous or unexpected native result permanently consumes release authority; terminate instead.
+     * @throws IllegalStateException if closed, called by another thread, not prepared, stopping or already attempted
+     * @throws IOException if ResumeThread fails or does not report exactly one prior suspension
+     */
+    public void releaseRoot() throws IOException
+    {
+        requireControllingThread();
+        requireOpen();
+        if (prepared == false)
+            throw new IllegalStateException("Root was launched without preparation");
+        if (aborted)
+            throw new IllegalStateException("Root release is forbidden after termination was requested");
+        if (rootReleaseAttempted)
+            throw new IllegalStateException("Root release was already attempted", rootReleaseFailure);
+        rootReleaseAttempted = true;
+        try
+        {
+            int previous = kernel.integer("ResumeThread", primaryThread);
+            if (previous == -1)
+                throw kernel.failure("ResumeThread");
+            if (previous != 1)
+                throw new IOException("Root release requires one prior suspension; ResumeThread returned " +
+                    Integer.toUnsignedLong(previous));
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            rootReleaseFailure = failure;
+            throw failure;
+        }
+    }
+
+    /**
+     * Retains and verifies one live process identity against this exact Job Object, without exposing its handle.
+     * Keep the returned identity while attaching or releasing instrumentation and recheck it at each boundary.
+     * @param memberPid unsigned native process ID, from one through 4294967295
+     * @return the query-handle owner, also closed by this process owner
+     * @throws IllegalArgumentException if the identifier is outside its range
+     * @throws IllegalStateException if closed or called by another thread
+     * @throws IOException if acquisition, membership, liveness or prior member cleanup is unresolved
+     */
+    public Member openMember(long memberPid) throws IOException
+    {
+        requireControllingThread();
+        requireOpen();
+        if (memberPid <= 0 || memberPid > 0xffff_ffffL)
+            throw new IllegalArgumentException("Member process ID must be an unsigned nonzero DWORD: " + memberPid);
+        if (memberCleanupFailure != null)
+            throw new IOException("Member acquisition stopped after unresolved handle cleanup", memberCleanupFailure);
+        var member = new Member(memberPid);
+        members.add(member);
+        try
+        {
+            member.handle = kernel.pointer("OpenProcess", 0x101000, 0, (int) memberPid);
+            kernel.requireHandle("OpenProcess(job member)", member.handle);
+            member.acquired = true;
+            member.requireLive();
+            return member;
+        }
+        catch (IOException | RuntimeException | Error failure)
+        {
+            try { member.close(); }
+            catch (IOException | RuntimeException | Error cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    /**
+     * Retains a verified process identity while allowing later membership/liveness checks against the same handle.
+     * A successful check is an observation, not authority to resume an arbitrary process. No native handle is exposed.
+     */
+    public final class Member implements AutoCloseable
+    {
+        /** The original unsigned process identifier; handle identity prevents PID reuse from passing later checks. */
+        private final long pid;
+        /** Reused membership-result storage owned by the enclosing native arena. */
+        private final MemorySegment inJob;
+        /** Owned query handle, or NULL before native acquisition. */
+        private MemorySegment handle = MemorySegment.NULL;
+        /** Indicates whether acquisition returned a valid handle. */
+        private boolean acquired = false;
+        /** Set before close to prevent retrying an ambiguous handle release. */
+        private boolean closed = false;
+
+        /**
+         * Reserves Java and result-storage ownership before native acquisition.
+         * @param pid validated original process identifier
+         */
+        private Member(long pid)
+        {
+            this.pid = pid;
+            this.inJob = kernel.arena.allocate(ValueLayout.JAVA_INT);
+        }
+
+        /**
+         * Returns the original identifier without exposing or transferring handle ownership.
+         * @return unsigned process identifier
+         */
+        public long pid() { return pid; }
+
+        /**
+         * Requires the retained native process to be live and still in the exact owned Job Object.
+         * @throws IllegalStateException if this identity or its owner is closed, or called by another thread
+         * @throws IOException if native membership or liveness cannot be established
+         */
+        public void requireLive() throws IOException
+        {
+            requireControllingThread();
+            requireOpen();
+            if (closed)
+                throw new IllegalStateException("Member identity is closed");
+            requireLiveMember(handle, inJob);
+        }
+
+        /**
+         * Attempts this identity's native handle release once; the enclosing owner retains any unresolved failure.
+         * @throws IllegalStateException if called by another thread
+         * @throws IOException if native release fails
+         */
+        @Override
+        public void close() throws IOException
+        {
+            requireControllingThread();
+            if (closed)
+                return;
+            closed = true;
+            if (acquired)
+            {
+                try { kernel.closeHandle(handle); }
+                catch (IOException | RuntimeException | Error failure)
+                {
+                    var contextual = new IOException("Member identity handle for process " + pid +
+                        " could not be released", failure);
+                    if (memberCleanupFailure == null)
+                        memberCleanupFailure = contextual;
+                    else
+                        memberCleanupFailure.addSuppressed(contextual);
+                    throw failure;
+                }
+            }
+            members.remove(this);
+        }
+    }
+
+    /**
+     * Releases retained member identities after the process tree has drained, preserving unresolved failures.
+     * @throws IOException if any member handle release failed
+     */
+    private void closeMembers() throws IOException
+    {
+        for (var member : List.copyOf(members))
+        {
+            try { member.close(); }
+            catch (IOException ignored) { /* The member retained this failure for aggregation below. */ }
+        }
+        if (memberCleanupFailure != null)
+            throw new IOException("Member identity handles remain unresolved", memberCleanupFailure);
+    }
+
+    /**
+     * Requires the thread that owns this confined native arena.
+     * @throws IllegalStateException if called by another thread
+     */
+    private void requireControllingThread()
+    {
+        if (Thread.currentThread() != controllingThread)
+            throw new IllegalStateException("Windows process access requires its controlling thread");
     }
 
     /**
@@ -832,6 +1076,7 @@ public final class WindowsProcess implements AutoCloseable
                 bind(lookup,"TerminateJobObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
                 bind(lookup,"WaitForSingleObject",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
                 bind(lookup,"GetExitCodeProcess",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
+                bind(lookup,"ResumeThread",ValueLayout.JAVA_INT,ValueLayout.ADDRESS);
                 bind(lookup,"OpenProcess",ValueLayout.ADDRESS,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT,ValueLayout.JAVA_INT);
                 bind(lookup,"IsProcessInJob",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.ADDRESS);
                 bind(lookup,"K32GetProcessMemoryInfo",ValueLayout.JAVA_INT,ValueLayout.ADDRESS,ValueLayout.ADDRESS,ValueLayout.JAVA_INT);
