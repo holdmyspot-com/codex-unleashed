@@ -1,0 +1,28 @@
+{
+  "scope": "Future debug dispatch discovery only; no remote commands or concurrency settings changed.",
+  "reported_case": "Two parallel agents dispatch the same workflow and revision. A stale newest-run list selects another client\u2019s worker and SSH rejects its key.",
+  "analogous_case": "Concurrent Windows debug runs use different client keys but the same source revision; each caller must identify its own dispatch.",
+  "dissimilar_case": "A caller already has an authoritative run ID. It can use that ID without requiring a display identifier.",
+  "invariant": "Correlate each client with its own dispatch before obtaining connection details; source revision or newest position alone is insufficient.",
+  "mechanism": "Optional caller-generated session_id appears in run-name together with target. Empty input preserves the current display name. Caller chooses a fresh unique value and matches its exact display name, rather than newest run.",
+  "before_sha256": "0c9a977fcd343ecb3177bae2b0ea41092703d0fecab970abee0126347cba3e54",
+  "after_sha256": "9af46d07deb34c115233601aafb5d43675acb27f053080e20301df8358f6176a",
+  "remote_execution_gate": "Unrun: this change affects workflow metadata only. Existing active and queued runs retain their own original definitions.",
+  "actionlint": {
+    "baseline": {
+      "exit": 1,
+      "diagnostic": "unexpected key \"queue\" for \"concurrency\" section. expected one of \"cancel-in-progress\", \"group\" [syntax-check]\n"
+    },
+    "candidate": {
+      "exit": 1,
+      "diagnostic": "unexpected key \"queue\" for \"concurrency\" section. expected one of \"cancel-in-progress\", \"group\" [syntax-check]\n"
+    }
+  },
+  "validation": "No new actionlint diagnostics. Full check retains the existing unsupported concurrency.queue diagnostic; no suppression or concurrency change. Hosted run-name behavior is unrun.",
+  "acceptance": {
+    "metadata": "Optional unique session_id is displayed with target; empty value keeps previous display name.",
+    "validation": "No new local lint diagnostics relative to parent workflow. Existing queue:max lint incompatibility retained.",
+    "hosted_behavior": "Unrun; current native jobs use their original definitions and are not restarted.",
+    "concurrency": "Unchanged group, cancel-in-progress:false and queue:max."
+  }
+}
