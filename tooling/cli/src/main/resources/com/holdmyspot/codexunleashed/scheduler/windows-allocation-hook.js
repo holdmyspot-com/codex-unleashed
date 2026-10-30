@@ -1,0 +1,320 @@
+'use strict';
+
+/*
+ * One 64-bit Windows process-image installation, initialized by AllocationHook's allocationIdentity.
+ * Positive-size RtlAllocateHeap/RtlReAllocateHeap NULL returns with exact flags 0 or 3 may wait. Exceptions,
+ * zero-size requests, in-place-only and other flags pass through. This is not coverage of every Windows allocator.
+ * Native callbacks use Gum's listener guard; JS control calls use traps:none. No thread-ID snapshot is excluded.
+ * Retain listeners, CModule and backing until the owner proves whole-workload execution is impossible.
+ */
+if (Process.platform !== 'windows' || Process.pointerSize !== 8)
+  throw new Error('Allocation hook requires 64-bit Windows');
+
+const maximumWait = uint64('9223372036854775807');
+const zero = uint64('0');
+
+/** Read a canonical positive decimal native identity without losing unsigned magnitudes. */
+function positiveInteger(raw, maximum) {
+  if (typeof raw !== 'string')
+    throw new Error('Allocation identity must be a decimal string');
+  const value = uint64(raw);
+  if (value.compare(zero) <= 0 || value.compare(maximum) > 0 || value.toString() !== raw)
+    throw new Error('Allocation identity is outside its canonical positive range');
+  return value;
+}
+
+const identityFields = ['attempt', 'installation', 'pid'];
+if (Object.keys(allocationIdentity).length !== identityFields.length ||
+    identityFields.some(field => !Object.prototype.hasOwnProperty.call(allocationIdentity, field)))
+  throw new Error('Allocation initialization has unexpected fields');
+if (typeof allocationIdentity.attempt !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(allocationIdentity.attempt))
+  throw new Error('Allocation initialization requires a canonical attempt UUID');
+positiveInteger(allocationIdentity.installation, maximumWait);
+positiveInteger(allocationIdentity.pid, uint64('4294967295'));
+if (allocationIdentity.pid !== Process.id.toString())
+  throw new Error('Allocation initialization identifies a different process');
+
+const ntdll = Process.getModuleByName('ntdll.dll');
+const kernel = Process.getModuleByName('kernel32.dll');
+const allocateAddress = ntdll.getExportByName('RtlAllocateHeap');
+const reallocateAddress = ntdll.getExportByName('RtlReAllocateHeap');
+/* Preallocated bound validated against actual native sizeof before initialization or listener attachment. */
+const registryBytes = 16384;
+const backing = Memory.alloc(registryBytes);
+backing.writeByteArray(new Uint8Array(registryBytes));
+const nativeModule = new CModule(`
+#include <glib.h>
+#include <gum/guminterceptor.h>
+#include <stddef.h>
+
+#define SLOT_COUNT 8
+#define MAX_WAIT 9223372036854775807ULL
+
+enum Phase { FREE, WAITING_UNPUBLISHED, WAITING_PUBLISHED, PERMITTED, RETRYING };
+enum Fault { NO_FAULT, SLOT_EXHAUSTED, WAIT_EXHAUSTED, INVALID_PHASE, NO_INVOCATION_DATA };
+typedef struct {
+  gpointer heap, original;
+  gsize bytes;
+  guint32 flags, incoming_error;
+  gboolean reallocate;
+} Call;
+typedef struct {
+  GCond condition;
+  guint64 id, thread, bytes;
+  gint error, phase;
+} Slot;
+typedef struct {
+  GMutex mutex;
+  GCond fatal_condition;
+  guint64 issued;
+  gint fault;
+  Slot slots[SLOT_COUNT];
+} Registry;
+typedef struct { guint64 id, thread, bytes; guint32 error; } Publication;
+extern Registry registry;
+extern gpointer original_allocate(gpointer heap, guint32 flags, gsize bytes);
+extern gpointer original_reallocate(gpointer heap, guint32 flags, gpointer original, gsize bytes);
+extern guint32 native_last_error(void);
+extern void native_set_last_error(guint32 error);
+extern guint32 native_thread_id(void);
+
+/* Size checks run before initialize touches the supplied external backing. */
+guint registry_size(void) { return sizeof(Registry); }
+guint publication_size(void) { return sizeof(Publication); }
+void initialize(void) {
+  guint i;
+  g_mutex_init(&registry.mutex);
+  g_cond_init(&registry.fatal_condition);
+  for (i = 0; i < SLOT_COUNT; i++) g_cond_init(&registry.slots[i].condition);
+}
+
+/* Called with mutex held. Fatal callback waits release it, preserving controller fault/kill responsiveness. */
+void fatal_locked(gint fault) {
+  if (registry.fault == NO_FAULT) registry.fault = fault;
+  for (;;) g_cond_wait(&registry.fatal_condition, &registry.mutex);
+}
+
+/* Sticky fault is observed by JS; no permission or cleanup-time wake can make a fatal callback continue. */
+gint fault_code(void) {
+  gint value;
+  g_mutex_lock(&registry.mutex);
+  value = registry.fault;
+  g_mutex_unlock(&registry.mutex);
+  return value;
+}
+
+/* Retain all ABI-width arguments and the caller's pre-call last-error without converting pointers to JS numbers. */
+void capture(GumInvocationContext *context, gboolean reallocate) {
+  Call *call = GUM_IC_GET_INVOCATION_DATA(context, Call);
+  if (call == NULL) {
+    g_mutex_lock(&registry.mutex);
+    fatal_locked(NO_INVOCATION_DATA);
+  }
+  call->incoming_error = (guint32)context->system_error;
+  call->heap = gum_invocation_context_get_nth_argument(context, 0);
+  call->flags = (guint32)(gsize)gum_invocation_context_get_nth_argument(context, 1);
+  call->reallocate = reallocate;
+  call->original = reallocate ? gum_invocation_context_get_nth_argument(context, 2) : NULL;
+  call->bytes = (gsize)gum_invocation_context_get_nth_argument(context, reallocate ? 3 : 2);
+  context->system_error = (gint)call->incoming_error;
+}
+void allocate_enter(GumInvocationContext *context) { capture(context, FALSE); }
+void reallocate_enter(GumInvocationContext *context) { capture(context, TRUE); }
+
+/* Reserve one fresh denial identity while preserving its invocation's slot and native mutex ownership. */
+void denied_locked(Slot *slot, gint error) {
+  if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
+  if (registry.issued == MAX_WAIT) fatal_locked(WAIT_EXHAUSTED);
+  slot->id = ++registry.issued;
+  slot->error = error;
+  slot->phase = WAITING_UNPUBLISHED;
+}
+
+/* A real positive-size NULL with supported flags waits, independently of last-error's diagnostic value.
+ * Failed reallocation retains the original block; this listener never copies, frees or publishes that pointer.
+ */
+void leave(GumInvocationContext *context) {
+  Call *call = GUM_IC_GET_INVOCATION_DATA(context, Call);
+  gpointer result = gum_invocation_context_get_return_value(context);
+  gint error = context->system_error;
+  Slot *slot = NULL;
+  guint i;
+  if (call == NULL) {
+    g_mutex_lock(&registry.mutex);
+    fatal_locked(NO_INVOCATION_DATA);
+  }
+  if (result != NULL || call->bytes == 0 || (call->flags != 0 && call->flags != 3)) {
+    context->system_error = error;
+    return;
+  }
+  g_mutex_lock(&registry.mutex);
+  if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
+  for (i = 0; i < SLOT_COUNT; i++) {
+    if (registry.slots[i].phase == FREE) { slot = &registry.slots[i]; break; }
+  }
+  if (slot == NULL) fatal_locked(SLOT_EXHAUSTED);
+  slot->thread = (guint64)native_thread_id();
+  slot->bytes = call->bytes;
+  denied_locked(slot, error);
+  for (;;) {
+    while (slot->phase == WAITING_UNPUBLISHED || slot->phase == WAITING_PUBLISHED)
+      g_cond_wait(&slot->condition, &registry.mutex);
+    if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
+    if (slot->phase != PERMITTED) fatal_locked(INVALID_PHASE);
+    slot->phase = RETRYING;
+    g_mutex_unlock(&registry.mutex);
+
+    native_set_last_error(call->incoming_error);
+    result = call->reallocate
+      ? original_reallocate(call->heap, call->flags, call->original, call->bytes)
+      : original_allocate(call->heap, call->flags, call->bytes);
+    error = (gint)native_last_error();
+
+    g_mutex_lock(&registry.mutex);
+    if (registry.fault != NO_FAULT) fatal_locked(registry.fault);
+    if (result != NULL) {
+      slot->phase = FREE;
+      slot->id = 0;
+      g_mutex_unlock(&registry.mutex);
+      gum_invocation_context_replace_return_value(context, result);
+      context->system_error = error;
+      return;
+    }
+    denied_locked(slot, error);
+  }
+}
+
+/* Atomically copy the oldest unpublished denial. Slot contents stay retained until accepted permission. */
+gint next_publication(Publication *output) {
+  Slot *oldest = NULL;
+  guint i;
+  g_mutex_lock(&registry.mutex);
+  if (registry.fault != NO_FAULT) { g_mutex_unlock(&registry.mutex); return -1; }
+  for (i = 0; i < SLOT_COUNT; i++) {
+    Slot *slot = &registry.slots[i];
+    if (slot->phase == WAITING_UNPUBLISHED && (oldest == NULL || slot->id < oldest->id)) oldest = slot;
+  }
+  if (oldest == NULL) { g_mutex_unlock(&registry.mutex); return 0; }
+  output->id = oldest->id;
+  output->thread = oldest->thread;
+  output->bytes = oldest->bytes;
+  output->error = (guint32)oldest->error;
+  oldest->phase = WAITING_PUBLISHED;
+  g_mutex_unlock(&registry.mutex);
+  return 1;
+}
+
+/* 0 unknown, 1 accepted, 2 duplicate, -1 fatal. Every absent issued ID retired only after accepted grant. */
+gint grant(guint64 id) {
+  guint i;
+  gint result;
+  g_mutex_lock(&registry.mutex);
+  if (registry.fault != NO_FAULT) { g_mutex_unlock(&registry.mutex); return -1; }
+  for (i = 0; i < SLOT_COUNT; i++) {
+    Slot *slot = &registry.slots[i];
+    if (slot->id != id || id == 0) continue;
+    switch (slot->phase) {
+      case WAITING_PUBLISHED:
+        slot->phase = PERMITTED;
+        g_cond_signal(&slot->condition);
+        g_mutex_unlock(&registry.mutex);
+        return 1;
+      case PERMITTED:
+      case RETRYING:
+        g_mutex_unlock(&registry.mutex);
+        return 2;
+      case WAITING_UNPUBLISHED:
+        g_mutex_unlock(&registry.mutex);
+        return 0;
+      default:
+        if (registry.fault == NO_FAULT) registry.fault = INVALID_PHASE;
+        g_mutex_unlock(&registry.mutex);
+        return -1;
+    }
+  }
+  result = id > 0 && id <= registry.issued ? 2 : 0;
+  g_mutex_unlock(&registry.mutex);
+  return result;
+}
+`, {
+  registry: backing,
+  original_allocate: allocateAddress,
+  original_reallocate: reallocateAddress,
+  native_last_error: kernel.getExportByName('GetLastError'),
+  native_set_last_error: kernel.getExportByName('SetLastError'),
+  native_thread_id: kernel.getExportByName('GetCurrentThreadId')
+});
+
+/** Bind only control/query operations, excluding their runtime allocations from the application listener. */
+function control(name, result, arguments_) {
+  return new NativeFunction(nativeModule[name], result, arguments_, { traps: 'none' });
+}
+
+const nativeSize = control('registry_size', 'uint', [])();
+if (nativeSize > registryBytes)
+  throw new Error('Native allocation registry exceeds preallocated backing');
+const publicationSize = control('publication_size', 'uint', [])();
+if (publicationSize !== 32)
+  throw new Error('Native allocation publication layout differs from 64-bit Windows contract');
+const publication = Memory.alloc(publicationSize);
+control('initialize', 'void', [])();
+const faultCode = control('fault_code', 'int', []);
+const nextPublication = control('next_publication', 'int', ['pointer']);
+const nativeGrant = control('grant', 'int', ['uint64']);
+
+/** Send only strict version-1 allocation payloads accepted by the existing Java codec. */
+function emit(event, details = {}) {
+  send({ protocol: 'codex-build-allocation', version: 1, attempt: allocationIdentity.attempt,
+    installation: allocationIdentity.installation, pid: allocationIdentity.pid, event, ...details });
+}
+
+/** Validate one identity-exact permission before any native effect; malformed controls become terminal script errors. */
+function receivePermission() {
+  recv('allocation-control', message => {
+    const fields = ['type', 'version', 'attempt', 'installation', 'pid', 'operation', 'wait'];
+    if (Object.keys(message).length !== fields.length ||
+        fields.some(field => !Object.prototype.hasOwnProperty.call(message, field)))
+      throw new Error('Allocation control has unexpected fields');
+    if (message.type !== 'allocation-control' || message.version !== 1 || message.attempt !== allocationIdentity.attempt ||
+        message.installation !== allocationIdentity.installation || message.pid !== allocationIdentity.pid ||
+        message.operation !== 'grant')
+      throw new Error('Allocation control has wrong identity, version or operation');
+    const id = positiveInteger(message.wait, maximumWait);
+    const result = nativeGrant(id);
+    if (result === -1) {
+      clearInterval(publicationTimer);
+      throw new Error('Allocation registry fault ' + faultCode());
+    }
+    const statuses = ['unknown', 'accepted', 'duplicate'];
+    if (result < 0 || result >= statuses.length)
+      throw new Error('Native allocation permission result is outside its range');
+    emit('granted', { wait: message.wait, status: statuses[result] });
+    receivePermission();
+  });
+}
+
+/* Reachability retains all executable state. There is intentionally no dispose/unload while target tasks can execute. */
+const listeners = [];
+listeners.push(Interceptor.attach(allocateAddress, { onEnter: nativeModule.allocate_enter, onLeave: nativeModule.leave }));
+listeners.push(Interceptor.attach(reallocateAddress, { onEnter: nativeModule.reallocate_enter, onLeave: nativeModule.leave }));
+Interceptor.flush();
+receivePermission();
+const publicationTimer = setInterval(() => {
+  if (faultCode() !== 0) {
+    clearInterval(publicationTimer);
+    throw new Error('Allocation registry fault ' + faultCode());
+  }
+  for (let count = 0; count < 8; count++) {
+    const result = nextPublication(publication);
+    if (result === 0)
+      return;
+    if (result !== 1) {
+      clearInterval(publicationTimer);
+      throw new Error('Allocation registry fault ' + faultCode());
+    }
+    emit('blocked', { wait: publication.readU64().toString(), thread: publication.add(8).readU64().toString(),
+      bytes: publication.add(16).readU64().toString(), error: publication.add(24).readU32().toString() });
+  }
+}, 10);
+emit('ready');
