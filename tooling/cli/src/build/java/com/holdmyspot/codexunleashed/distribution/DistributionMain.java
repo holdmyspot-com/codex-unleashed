@@ -10,6 +10,8 @@ import java.nio.file.Path;
  */
 public final class DistributionMain
 {
+	/** Runtime service provider selected explicitly for the bundled logging implementation. */
+	private static final String LOGGING_MODULE = "ch.qos.logback.classic";
 	private static final String TOOLING_MODULE = "com.holdmyspot.codexunleashed.tooling";
 	private static final String TOOLING_MAIN = TOOLING_MODULE + ".Main";
 
@@ -42,7 +44,7 @@ public final class DistributionMain
 		{
 			ProcessBuilder builder = new ProcessBuilder(jlink.toString(),
 				"-J-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
-				"--module-path", modules.toString(), "--add-modules", TOOLING_MODULE,
+				"--module-path", modules.toString(), "--add-modules", TOOLING_MODULE + "," + LOGGING_MODULE,
 				"--launcher", "codex-tooling=" + TOOLING_MODULE + "/" + TOOLING_MAIN, "--output", output.toString(),
 				"--strip-debug", "--no-header-files", "--no-man-pages");
 			builder.redirectErrorStream(true).redirectOutput(diagnostics.path().toFile());

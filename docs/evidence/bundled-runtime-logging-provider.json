@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "status": "passed-bundled-runtime-logging-provider",
+  "source_sha256": {
+    "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "c0c9413ea618f6efd9d5eda15d8ccc4064d1d77f8a48c20a03019fb12ee6e299"
+  },
+  "root_cause": "jlink resolves only selected roots and transitive requirements by default; runtime-scope service provider is present on module path but not linked. Explicit provider root includes its dependency closure.",
+  "primary_contract": "https://docs.oracle.com/en/java/javase/27/docs/specs/man/jlink.html",
+  "selection": "Explicitly add the already-declared Logback provider module as a runtime root. This includes only Logback classic/core beyond the prior image, preserving the existing service-provider choice without binding every observable service.",
+  "red": "SLF4J(W): No SLF4J providers were found.\nSLF4J(W): Defaulting to no-operation (NOP) logger implementation\nSLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.\nLOGGER_FACTORY=org.slf4j.helpers.NOPLoggerFactory\n",
+  "green": "LOGGER_FACTORY=ch.qos.logback.classic.LoggerContext\n20:26:35.872 [main] WARN logging-check -- LOGGING_PROVIDER_BEHAVIOR\n",
+  "additional_modules": [
+    "ch.qos.logback.classic@1.6.6",
+    "ch.qos.logback.core@1.6.6"
+  ],
+  "commands": [
+    {
+      "name": "compile",
+      "command": [
+        "/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/bin/javac",
+        "-J-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/tmp",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/modules/slf4j-api-2.0.20.jar",
+        "-d",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/classes",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/LoggingCheck.java"
+      ],
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "baseline-link",
+      "command": [
+        "/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/bin/java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/tmp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/baseline/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/modules",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/baseline-runtime"
+      ],
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "baseline-operation",
+      "command": [
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/baseline-runtime/bin/java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/tmp",
+        "--add-modules",
+        "org.slf4j",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/classes",
+        "LoggingCheck"
+      ],
+      "exit": 0,
+      "log_sha256": "14ddc9d891e7c7c211fde8d044a0b254c96932f39c2102a5aa223ac0a1e9c811"
+    },
+    {
+      "name": "baseline-modules",
+      "command": [
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/baseline-runtime/bin/java",
+        "--list-modules"
+      ],
+      "exit": 0,
+      "log_sha256": "2a8682a87986fbb5c51f7292744039a452a96dabb5f2e9fbab1e849b8ace821a"
+    },
+    {
+      "name": "candidate-link",
+      "command": [
+        "/home/gili/.sdkman/candidates/java/27.0.1.0+9-zulu/bin/java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/tmp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/candidate/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/modules",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/candidate-runtime"
+      ],
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "candidate-operation",
+      "command": [
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/candidate-runtime/bin/java",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/tmp",
+        "--add-modules",
+        "org.slf4j",
+        "-cp",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/classes",
+        "LoggingCheck"
+      ],
+      "exit": 0,
+      "log_sha256": "74ca139ee1f5f5b1a0087906785f67b00e8df46c4bc33a063e6afedc4a64035b"
+    },
+    {
+      "name": "candidate-modules",
+      "command": [
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a170c7-eade-7431-b337-01b356b20b2d/temp/logging-provider-dYVGPH/candidate-runtime/bin/java",
+        "--list-modules"
+      ],
+      "exit": 0,
+      "log_sha256": "fba42d035452b0d7947e35f9cd6708a79f1682076615d6b54b1faf527d6ae2d1"
+    }
+  ],
+  "input_module_sha256": {
+    "commons-io-2.20.0.jar": "df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72",
+    "jackson-annotations-2.22.jar": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0",
+    "jackson-core-3.2.3.jar": "a0c17e7e665a5e95c82f5fb45c0fec2ae3dc556c80f0016452c9c84cd23f3817",
+    "jackson-databind-3.2.3.jar": "235b72436af983857e44efa42449f4f0a2c571e69d6c5d9dd1253ae7d192dcf2",
+    "jackson-dataformat-yaml-3.2.3.jar": "260dd15f1a044dc00cbefd6f01198403fe45ff4ae5fc37895a7842cab6c583d0",
+    "logback-classic-1.6.6.jar": "5230217ccba7a9d31dda1dd878e5606037a7972282c7d3f8eac1efa80e9463d9",
+    "logback-core-1.6.6.jar": "5458415d5d58a97ab670632f9b2bdac2d6f7e0e11455b45dd4e64e90d12670ab",
+    "oshi-common-7.7.2.jar": "69964db6f04ea5edcbd6615b555794aa9a7c9afa6475f0c9e48b3ca93a36ae51",
+    "oshi-core-ffm-7.7.2.jar": "c055bb16f6e7f17110321bf7dd0f0d31b8b96ced08ec11bfd7d40e3899d685db",
+    "slf4j-api-2.0.20.jar": "7e1446499b359675d8aabe6af2de86b85e72ae8a2a932c0b40d0e5ba57097439",
+    "snakeyaml-engine-3.0.1.jar": "0b638c8806112215e02e58e95cbd9e9a69d4bd540991f47553d053919994cc94",
+    "tooling-cli-1.0-SNAPSHOT.jar": "93aa0ba30946265068fb0463785b2774a04a8757502cb1cb7af0e68f193ce91f"
+  },
+  "limits": [
+    "This is a Linux x64 JDK27 linked-runtime behavior check; it does not rerun accepted Windows residency behavior or establish any new scheduler integration.",
+    "The first scratch link attempt failed before image creation because the copied Java source path did not match its package; only fixture layout was corrected. That failure is retained separately and is not the behavioral red."
+  ],
+  "raw": {
+    "LoggingCheck.java": "cHVibGljIGNsYXNzIExvZ2dpbmdDaGVjayB7CiAgcHVibGljIHN0YXRpYyB2b2lkIG1haW4oU3RyaW5nW10gYXJncykgewogICBTeXN0ZW0ub3V0LnByaW50bG4oIkxPR0dFUl9GQUNUT1JZPSIgKyBvcmcuc2xmNGouTG9nZ2VyRmFjdG9yeS5nZXRJTG9nZ2VyRmFjdG9yeSgpLmdldENsYXNzKCkuZ2V0TmFtZSgpKTsKICAgb3JnLnNsZjRqLkxvZ2dlckZhY3RvcnkuZ2V0TG9nZ2VyKCJsb2dnaW5nLWNoZWNrIikud2FybigiTE9HR0lOR19QUk9WSURFUl9CRUhBVklPUiIpOwogIH0KIH0KIA==",
+    "baseline/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "cGFja2FnZSBjb20uaG9sZG15c3BvdC5jb2RleHVubGVhc2hlZC5kaXN0cmlidXRpb247CgppbXBvcnQgamF2YS5pby5GaWxlOwppbXBvcnQgamF2YS5pby5JT0V4Y2VwdGlvbjsKaW1wb3J0IGphdmEubmlvLmZpbGUuRmlsZXM7CmltcG9ydCBqYXZhLm5pby5maWxlLlBhdGg7CgovKioKICogQXNzZW1ibGVzIHRoZSB0b29saW5nIG1vZHVsZSBhbmQgaXRzIGRlcGVuZGVuY2llcyBpbnRvIGEgYnVuZGxlZCBKYXZhIHJ1bnRpbWUuCiAqLwpwdWJsaWMgZmluYWwgY2xhc3MgRGlzdHJpYnV0aW9uTWFpbgp7Cglwcml2YXRlIHN0YXRpYyBmaW5hbCBTdHJpbmcgVE9PTElOR19NT0RVTEUgPSAiY29tLmhvbGRteXNwb3QuY29kZXh1bmxlYXNoZWQudG9vbGluZyI7Cglwcml2YXRlIHN0YXRpYyBmaW5hbCBTdHJpbmcgVE9PTElOR19NQUlOID0gVE9PTElOR19NT0RVTEUgKyAiLk1haW4iOwoKCS8qKgoJICogUHJldmVudHMgY29uc3RydWN0aW9uLgoJICovCglwcml2YXRlIERpc3RyaWJ1dGlvbk1haW4oKQoJewoJfQoKCS8qKgoJICogQnVpbGRzIGEgcnVudGltZSBpbWFnZSBmcm9tIHRoZSBwYWNrYWdlZCB0b29saW5nIG1vZHVsZXMuCgkgKgoJICogQHBhcmFtIGFyZ3MgdGhlIG1vZHVsZSBkaXJlY3RvcnkgZm9sbG93ZWQgYnkgdGhlIG5ldyBvdXRwdXQgZGlyZWN0b3J5CgkgKiBAdGhyb3dzIElsbGVnYWxBcmd1bWVudEV4Y2VwdGlvbiBpZiB0aGUgYXJndW1lbnQgY291bnQgaXMgaW52YWxpZCBvciB0aGUgb3V0cHV0IGFscmVhZHkgZXhpc3RzCgkgKiBAdGhyb3dzIElPRXhjZXB0aW9uIGlmIGxpbmtpbmcgb3Igd3JpdGluZyB0aGUgaW1hZ2UgZmFpbHMKCSAqLwoJcHVibGljIHN0YXRpYyB2b2lkIG1haW4oU3RyaW5nW10gYXJncykgdGhyb3dzIElPRXhjZXB0aW9uCgl7CgkJaWYgKGFyZ3MubGVuZ3RoICE9IDIpCgkJCXRocm93IG5ldyBJbGxlZ2FsQXJndW1lbnRFeGNlcHRpb24oIkV4cGVjdGVkIHRoZSBtb2R1bGUgZGlyZWN0b3J5IGFuZCBuZXcgb3V0cHV0IGRpcmVjdG9yeSIpOwoJCVBhdGggbW9kdWxlcyA9IFBhdGgub2YoYXJnc1swXSkudG9BYnNvbHV0ZVBhdGgoKTsKCQlQYXRoIG91dHB1dCA9IFBhdGgub2YoYXJnc1sxXSkudG9BYnNvbHV0ZVBhdGgoKTsKCQlpZiAoRmlsZXMuZXhpc3RzKG91dHB1dCkpCgkJCXRocm93IG5ldyBJbGxlZ2FsQXJndW1lbnRFeGNlcHRpb24oIlJ1bnRpbWUgb3V0cHV0IGFscmVhZHkgZXhpc3RzOiAiICsgb3V0cHV0KTsKCQlQYXRoIGpsaW5rID0gUGF0aC5vZihTeXN0ZW0uZ2V0UHJvcGVydHkoImphdmEuaG9tZSIpLCAiYmluIiwgImpsaW5rIik7CgkJaWYgKCFGaWxlcy5pc1JlZ3VsYXJGaWxlKGpsaW5rKSkKCQkJamxpbmsgPSBqbGluay5yZXNvbHZlU2libGluZygiamxpbmsuZXhlIik7CgkJdHJ5ICh2YXIgZGlhZ25vc3RpY3MgPSBuZXcgSmxpbmtEaWFnbm9zdGljcyhGaWxlcy5jcmVhdGVUZW1wRmlsZSgiamxpbmstIiwgIi5sb2ciKSkpCgkJewoJCQlQcm9jZXNzQnVpbGRlciBidWlsZGVyID0gbmV3IFByb2Nlc3NCdWlsZGVyKGpsaW5rLnRvU3RyaW5nKCksCgkJCQkiLUotRGphdmEuaW8udG1wZGlyPSIgKyBTeXN0ZW0uZ2V0UHJvcGVydHkoImphdmEuaW8udG1wZGlyIiksCgkJCQkiLS1tb2R1bGUtcGF0aCIsIG1vZHVsZXMudG9TdHJpbmcoKSwgIi0tYWRkLW1vZHVsZXMiLCBUT09MSU5HX01PRFVMRSwKCQkJCSItLWxhdW5jaGVyIiwgImNvZGV4LXRvb2xpbmc9IiArIFRPT0xJTkdfTU9EVUxFICsgIi8iICsgVE9PTElOR19NQUlOLCAiLS1vdXRwdXQiLCBvdXRwdXQudG9TdHJpbmcoKSwKCQkJCSItLXN0cmlwLWRlYnVnIiwgIi0tbm8taGVhZGVyLWZpbGVzIiwgIi0tbm8tbWFuLXBhZ2VzIik7CgkJCWJ1aWxkZXIucmVkaXJlY3RFcnJvclN0cmVhbSh0cnVlKS5yZWRpcmVjdE91dHB1dChkaWFnbm9zdGljcy5wYXRoKCkudG9GaWxlKCkpOwoJCQl0cnkgKFByb2Nlc3MgcHJvY2VzcyA9IGJ1aWxkZXIuc3RhcnQoKSkKCQkJewoJCQkJaW50IHJlc3VsdCA9IHByb2Nlc3Mud2FpdEZvcigpOwoJCQkJaWYgKHJlc3VsdCAhPSAwKQoJCQkJCXRocm93IG5ldyBJT0V4Y2VwdGlvbigiamxpbmsgZmFpbGVkIHdpdGggc3RhdHVzICIgKyByZXN1bHQgKyAiOiAiICsKCQkJCQkJRmlsZXMucmVhZFN0cmluZyhkaWFnbm9zdGljcy5wYXRoKCkpLnN0cmlwKCkpOwoJCQl9CgkJfQoJCWNhdGNoIChJbnRlcnJ1cHRlZEV4Y2VwdGlvbiBmYWlsdXJlKQoJCXsKCQkJVGhyZWFkLmN1cnJlbnRUaHJlYWQoKS5pbnRlcnJ1cHQoKTsKCQkJdGhyb3cgbmV3IElPRXhjZXB0aW9uKCJJbnRlcnJ1cHRlZCB3aGlsZSB3YWl0aW5nIGZvciBqbGluayIsIGZhaWx1cmUpOwoJCX0KCgkJU3RyaW5nIG5vcm1hbGl6ZUxhdW5jaGVyID0gIiI7CgkJaWYgKEZpbGUuc2VwYXJhdG9yQ2hhciA9PSAnXFwnKQoJCQlub3JtYWxpemVMYXVuY2hlciA9ICJMQVVOQ0hFUj0ke0xBVU5DSEVSLy9cXFxcLy99XG4iOwoJCVN0cmluZyBsYXVuY2hlciA9ICIiIgoJCQkjIS9iaW4vc2gKCQkJc2V0IC1ldQoJCQlMQVVOQ0hFUj0kMAoJCQklc0RJUj0kKENEUEFUSD0gY2QgLS0gIiR7TEFVTkNIRVIlJS8qfSIgJiYgcHdkKQoJCQlKQVZBX1RFTVA9JHtUTVBESVI6LS90bXB9CgkJCWlmIGNvbW1hbmQgLXYgY3lncGF0aCA+L2Rldi9udWxsIDI+JjE7IHRoZW4KCQkJCUpBVkFfVEVNUD0kKGN5Z3BhdGggLW0gIiRKQVZBX1RFTVAiKQoJCQlmaQoJCQlleGVjICIkRElSL2phdmEiICItRGphdmEuaW8udG1wZGlyPSRKQVZBX1RFTVAiIC1YbG9nOmFsbD1vZmY6c3Rkb3V0IC1YbG9nOmFsbD13YXJuaW5nOnN0ZGVyciBcCgkJCQktRGpkay5sYW5nLlByb2Nlc3MuYWxsb3dBbWJpZ3VvdXNDb21tYW5kcz10cnVlIC0tZW5hYmxlLW5hdGl2ZS1hY2Nlc3M9JXMgLW0gJXMvJXMgIiRAIgoJCQkiIiIuZm9ybWF0dGVkKG5vcm1hbGl6ZUxhdW5jaGVyLCBUT09MSU5HX01PRFVMRSArICIsY29tLmdpdGh1Yi5vc2hpLmZmbSIsIFRPT0xJTkdfTU9EVUxFLCBUT09MSU5HX01BSU4pOwoJCUZpbGVzLndyaXRlU3RyaW5nKG91dHB1dC5yZXNvbHZlKCJiaW4vY29kZXgtdG9vbGluZyIpLCBsYXVuY2hlcik7CgkJRmlsZXMuY3JlYXRlRmlsZShvdXRwdXQucmVzb2x2ZSgiLmNvbXBsZXRlIikpOwoJfQoKCS8qKgoJICogT3ducyB0aGUgbGlua2VyJ3MgY2FwdHVyZWQgb3V0cHV0IHVudGlsIHRoZSBwcm9jZXNzIHJlc3VsdCBpcyBjb25zdW1lZC4KCSAqCgkgKiBAcGFyYW0gcGF0aCB0aGUgb3duZWQgdGVtcG9yYXJ5IGRpYWdub3N0aWNzIGZpbGUKCSAqLwoJcHJpdmF0ZSByZWNvcmQgSmxpbmtEaWFnbm9zdGljcyhQYXRoIHBhdGgpIGltcGxlbWVudHMgQXV0b0Nsb3NlYWJsZQoJewoJCS8qKgoJCSAqIERlbGV0ZXMgY2FwdHVyZWQgb3V0cHV0IHdoaWxlIHByZXNlcnZpbmcgYW55IHByaW1hcnkgbGlua2luZyBmYWlsdXJlLgoJCSAqCgkJICogQHRocm93cyBJT0V4Y2VwdGlvbiBpZiB0aGUgZGlhZ25vc3RpY3MgZmlsZSBjYW5ub3QgYmUgcmVtb3ZlZAoJCSAqLwoJCUBPdmVycmlkZQoJCXB1YmxpYyB2b2lkIGNsb3NlKCkgdGhyb3dzIElPRXhjZXB0aW9uCgkJewoJCQlGaWxlcy5kZWxldGUocGF0aCk7CgkJfQoJfQp9Cg==",
+    "candidate/com/holdmyspot/codexunleashed/distribution/DistributionMain.java": "cGFja2FnZSBjb20uaG9sZG15c3BvdC5jb2RleHVubGVhc2hlZC5kaXN0cmlidXRpb247CgppbXBvcnQgamF2YS5pby5GaWxlOwppbXBvcnQgamF2YS5pby5JT0V4Y2VwdGlvbjsKaW1wb3J0IGphdmEubmlvLmZpbGUuRmlsZXM7CmltcG9ydCBqYXZhLm5pby5maWxlLlBhdGg7CgovKioKICogQXNzZW1ibGVzIHRoZSB0b29saW5nIG1vZHVsZSBhbmQgaXRzIGRlcGVuZGVuY2llcyBpbnRvIGEgYnVuZGxlZCBKYXZhIHJ1bnRpbWUuCiAqLwpwdWJsaWMgZmluYWwgY2xhc3MgRGlzdHJpYnV0aW9uTWFpbgp7CgkvKiogUnVudGltZSBzZXJ2aWNlIHByb3ZpZGVyIHNlbGVjdGVkIGV4cGxpY2l0bHkgZm9yIHRoZSBidW5kbGVkIGxvZ2dpbmcgaW1wbGVtZW50YXRpb24uICovCglwcml2YXRlIHN0YXRpYyBmaW5hbCBTdHJpbmcgTE9HR0lOR19NT0RVTEUgPSAiY2gucW9zLmxvZ2JhY2suY2xhc3NpYyI7Cglwcml2YXRlIHN0YXRpYyBmaW5hbCBTdHJpbmcgVE9PTElOR19NT0RVTEUgPSAiY29tLmhvbGRteXNwb3QuY29kZXh1bmxlYXNoZWQudG9vbGluZyI7Cglwcml2YXRlIHN0YXRpYyBmaW5hbCBTdHJpbmcgVE9PTElOR19NQUlOID0gVE9PTElOR19NT0RVTEUgKyAiLk1haW4iOwoKCS8qKgoJICogUHJldmVudHMgY29uc3RydWN0aW9uLgoJICovCglwcml2YXRlIERpc3RyaWJ1dGlvbk1haW4oKQoJewoJfQoKCS8qKgoJICogQnVpbGRzIGEgcnVudGltZSBpbWFnZSBmcm9tIHRoZSBwYWNrYWdlZCB0b29saW5nIG1vZHVsZXMuCgkgKgoJICogQHBhcmFtIGFyZ3MgdGhlIG1vZHVsZSBkaXJlY3RvcnkgZm9sbG93ZWQgYnkgdGhlIG5ldyBvdXRwdXQgZGlyZWN0b3J5CgkgKiBAdGhyb3dzIElsbGVnYWxBcmd1bWVudEV4Y2VwdGlvbiBpZiB0aGUgYXJndW1lbnQgY291bnQgaXMgaW52YWxpZCBvciB0aGUgb3V0cHV0IGFscmVhZHkgZXhpc3RzCgkgKiBAdGhyb3dzIElPRXhjZXB0aW9uIGlmIGxpbmtpbmcgb3Igd3JpdGluZyB0aGUgaW1hZ2UgZmFpbHMKCSAqLwoJcHVibGljIHN0YXRpYyB2b2lkIG1haW4oU3RyaW5nW10gYXJncykgdGhyb3dzIElPRXhjZXB0aW9uCgl7CgkJaWYgKGFyZ3MubGVuZ3RoICE9IDIpCgkJCXRocm93IG5ldyBJbGxlZ2FsQXJndW1lbnRFeGNlcHRpb24oIkV4cGVjdGVkIHRoZSBtb2R1bGUgZGlyZWN0b3J5IGFuZCBuZXcgb3V0cHV0IGRpcmVjdG9yeSIpOwoJCVBhdGggbW9kdWxlcyA9IFBhdGgub2YoYXJnc1swXSkudG9BYnNvbHV0ZVBhdGgoKTsKCQlQYXRoIG91dHB1dCA9IFBhdGgub2YoYXJnc1sxXSkudG9BYnNvbHV0ZVBhdGgoKTsKCQlpZiAoRmlsZXMuZXhpc3RzKG91dHB1dCkpCgkJCXRocm93IG5ldyBJbGxlZ2FsQXJndW1lbnRFeGNlcHRpb24oIlJ1bnRpbWUgb3V0cHV0IGFscmVhZHkgZXhpc3RzOiAiICsgb3V0cHV0KTsKCQlQYXRoIGpsaW5rID0gUGF0aC5vZihTeXN0ZW0uZ2V0UHJvcGVydHkoImphdmEuaG9tZSIpLCAiYmluIiwgImpsaW5rIik7CgkJaWYgKCFGaWxlcy5pc1JlZ3VsYXJGaWxlKGpsaW5rKSkKCQkJamxpbmsgPSBqbGluay5yZXNvbHZlU2libGluZygiamxpbmsuZXhlIik7CgkJdHJ5ICh2YXIgZGlhZ25vc3RpY3MgPSBuZXcgSmxpbmtEaWFnbm9zdGljcyhGaWxlcy5jcmVhdGVUZW1wRmlsZSgiamxpbmstIiwgIi5sb2ciKSkpCgkJewoJCQlQcm9jZXNzQnVpbGRlciBidWlsZGVyID0gbmV3IFByb2Nlc3NCdWlsZGVyKGpsaW5rLnRvU3RyaW5nKCksCgkJCQkiLUotRGphdmEuaW8udG1wZGlyPSIgKyBTeXN0ZW0uZ2V0UHJvcGVydHkoImphdmEuaW8udG1wZGlyIiksCgkJCQkiLS1tb2R1bGUtcGF0aCIsIG1vZHVsZXMudG9TdHJpbmcoKSwgIi0tYWRkLW1vZHVsZXMiLCBUT09MSU5HX01PRFVMRSArICIsIiArIExPR0dJTkdfTU9EVUxFLAoJCQkJIi0tbGF1bmNoZXIiLCAiY29kZXgtdG9vbGluZz0iICsgVE9PTElOR19NT0RVTEUgKyAiLyIgKyBUT09MSU5HX01BSU4sICItLW91dHB1dCIsIG91dHB1dC50b1N0cmluZygpLAoJCQkJIi0tc3RyaXAtZGVidWciLCAiLS1uby1oZWFkZXItZmlsZXMiLCAiLS1uby1tYW4tcGFnZXMiKTsKCQkJYnVpbGRlci5yZWRpcmVjdEVycm9yU3RyZWFtKHRydWUpLnJlZGlyZWN0T3V0cHV0KGRpYWdub3N0aWNzLnBhdGgoKS50b0ZpbGUoKSk7CgkJCXRyeSAoUHJvY2VzcyBwcm9jZXNzID0gYnVpbGRlci5zdGFydCgpKQoJCQl7CgkJCQlpbnQgcmVzdWx0ID0gcHJvY2Vzcy53YWl0Rm9yKCk7CgkJCQlpZiAocmVzdWx0ICE9IDApCgkJCQkJdGhyb3cgbmV3IElPRXhjZXB0aW9uKCJqbGluayBmYWlsZWQgd2l0aCBzdGF0dXMgIiArIHJlc3VsdCArICI6ICIgKwoJCQkJCQlGaWxlcy5yZWFkU3RyaW5nKGRpYWdub3N0aWNzLnBhdGgoKSkuc3RyaXAoKSk7CgkJCX0KCQl9CgkJY2F0Y2ggKEludGVycnVwdGVkRXhjZXB0aW9uIGZhaWx1cmUpCgkJewoJCQlUaHJlYWQuY3VycmVudFRocmVhZCgpLmludGVycnVwdCgpOwoJCQl0aHJvdyBuZXcgSU9FeGNlcHRpb24oIkludGVycnVwdGVkIHdoaWxlIHdhaXRpbmcgZm9yIGpsaW5rIiwgZmFpbHVyZSk7CgkJfQoKCQlTdHJpbmcgbm9ybWFsaXplTGF1bmNoZXIgPSAiIjsKCQlpZiAoRmlsZS5zZXBhcmF0b3JDaGFyID09ICdcXCcpCgkJCW5vcm1hbGl6ZUxhdW5jaGVyID0gIkxBVU5DSEVSPSR7TEFVTkNIRVIvL1xcXFwvL31cbiI7CgkJU3RyaW5nIGxhdW5jaGVyID0gIiIiCgkJCSMhL2Jpbi9zaAoJCQlzZXQgLWV1CgkJCUxBVU5DSEVSPSQwCgkJCSVzRElSPSQoQ0RQQVRIPSBjZCAtLSAiJHtMQVVOQ0hFUiUlLyp9IiAmJiBwd2QpCgkJCUpBVkFfVEVNUD0ke1RNUERJUjotL3RtcH0KCQkJaWYgY29tbWFuZCAtdiBjeWdwYXRoID4vZGV2L251bGwgMj4mMTsgdGhlbgoJCQkJSkFWQV9URU1QPSQoY3lncGF0aCAtbSAiJEpBVkFfVEVNUCIpCgkJCWZpCgkJCWV4ZWMgIiRESVIvamF2YSIgIi1EamF2YS5pby50bXBkaXI9JEpBVkFfVEVNUCIgLVhsb2c6YWxsPW9mZjpzdGRvdXQgLVhsb2c6YWxsPXdhcm5pbmc6c3RkZXJyIFwKCQkJCS1EamRrLmxhbmcuUHJvY2Vzcy5hbGxvd0FtYmlndW91c0NvbW1hbmRzPXRydWUgLS1lbmFibGUtbmF0aXZlLWFjY2Vzcz0lcyAtbSAlcy8lcyAiJEAiCgkJCSIiIi5mb3JtYXR0ZWQobm9ybWFsaXplTGF1bmNoZXIsIFRPT0xJTkdfTU9EVUxFICsgIixjb20uZ2l0aHViLm9zaGkuZmZtIiwgVE9PTElOR19NT0RVTEUsIFRPT0xJTkdfTUFJTik7CgkJRmlsZXMud3JpdGVTdHJpbmcob3V0cHV0LnJlc29sdmUoImJpbi9jb2RleC10b29saW5nIiksIGxhdW5jaGVyKTsKCQlGaWxlcy5jcmVhdGVGaWxlKG91dHB1dC5yZXNvbHZlKCIuY29tcGxldGUiKSk7Cgl9CgoJLyoqCgkgKiBPd25zIHRoZSBsaW5rZXIncyBjYXB0dXJlZCBvdXRwdXQgdW50aWwgdGhlIHByb2Nlc3MgcmVzdWx0IGlzIGNvbnN1bWVkLgoJICoKCSAqIEBwYXJhbSBwYXRoIHRoZSBvd25lZCB0ZW1wb3JhcnkgZGlhZ25vc3RpY3MgZmlsZQoJICovCglwcml2YXRlIHJlY29yZCBKbGlua0RpYWdub3N0aWNzKFBhdGggcGF0aCkgaW1wbGVtZW50cyBBdXRvQ2xvc2VhYmxlCgl7CgkJLyoqCgkJICogRGVsZXRlcyBjYXB0dXJlZCBvdXRwdXQgd2hpbGUgcHJlc2VydmluZyBhbnkgcHJpbWFyeSBsaW5raW5nIGZhaWx1cmUuCgkJICoKCQkgKiBAdGhyb3dzIElPRXhjZXB0aW9uIGlmIHRoZSBkaWFnbm9zdGljcyBmaWxlIGNhbm5vdCBiZSByZW1vdmVkCgkJICovCgkJQE92ZXJyaWRlCgkJcHVibGljIHZvaWQgY2xvc2UoKSB0aHJvd3MgSU9FeGNlcHRpb24KCQl7CgkJCUZpbGVzLmRlbGV0ZShwYXRoKTsKCQl9Cgl9Cn0K",
+    "baseline-link.log": "",
+    "baseline-operation.log": "U0xGNEooVyk6IE5vIFNMRjRKIHByb3ZpZGVycyB3ZXJlIGZvdW5kLgpTTEY0SihXKTogRGVmYXVsdGluZyB0byBuby1vcGVyYXRpb24gKE5PUCkgbG9nZ2VyIGltcGxlbWVudGF0aW9uClNMRjRKKFcpOiBTZWUgaHR0cHM6Ly93d3cuc2xmNGoub3JnL2NvZGVzLmh0bWwjbm9Qcm92aWRlcnMgZm9yIGZ1cnRoZXIgZGV0YWlscy4KTE9HR0VSX0ZBQ1RPUlk9b3JnLnNsZjRqLmhlbHBlcnMuTk9QTG9nZ2VyRmFjdG9yeQo=",
+    "baseline-modules.log": "Y29tLmZhc3RlcnhtbC5qYWNrc29uLmFubm90YXRpb25AMi4yMiBvcGVuCmNvbS5naXRodWIub3NoaS5jb21tb25ANy43LjIKY29tLmdpdGh1Yi5vc2hpLmZmbUA3LjcuMgpjb20uaG9sZG15c3BvdC5jb2RleHVubGVhc2hlZC50b29saW5nQDEuMC1TTkFQU0hPVApqYXZhLmJhc2VAMjcuMC4xCmphdmEuZGF0YXRyYW5zZmVyQDI3LjAuMQpqYXZhLmRlc2t0b3BAMjcuMC4xCmphdmEubWFuYWdlbWVudEAyNy4wLjEKamF2YS5wcmVmc0AyNy4wLjEKamF2YS54bWxAMjcuMC4xCm9yZy5hcGFjaGUuY29tbW9ucy5pb0AyLjIwLjAKb3JnLnNsZjRqQDIuMC4yMApvcmcuc25ha2V5YW1sLmVuZ2luZUAzLjAuMQp0b29scy5qYWNrc29uLmNvcmVAMy4yLjMKdG9vbHMuamFja3Nvbi5kYXRhYmluZEAzLjIuMwp0b29scy5qYWNrc29uLmRhdGFmb3JtYXQueWFtbEAzLjIuMwo=",
+    "candidate-link.log": "",
+    "candidate-operation.log": "TE9HR0VSX0ZBQ1RPUlk9Y2gucW9zLmxvZ2JhY2suY2xhc3NpYy5Mb2dnZXJDb250ZXh0CjIwOjI2OjM1Ljg3MiBbbWFpbl0gV0FSTiBsb2dnaW5nLWNoZWNrIC0tIExPR0dJTkdfUFJPVklERVJfQkVIQVZJT1IK",
+    "candidate-modules.log": "Y2gucW9zLmxvZ2JhY2suY2xhc3NpY0AxLjYuNgpjaC5xb3MubG9nYmFjay5jb3JlQDEuNi42CmNvbS5mYXN0ZXJ4bWwuamFja3Nvbi5hbm5vdGF0aW9uQDIuMjIgb3Blbgpjb20uZ2l0aHViLm9zaGkuY29tbW9uQDcuNy4yCmNvbS5naXRodWIub3NoaS5mZm1ANy43LjIKY29tLmhvbGRteXNwb3QuY29kZXh1bmxlYXNoZWQudG9vbGluZ0AxLjAtU05BUFNIT1QKamF2YS5iYXNlQDI3LjAuMQpqYXZhLmRhdGF0cmFuc2ZlckAyNy4wLjEKamF2YS5kZXNrdG9wQDI3LjAuMQpqYXZhLm1hbmFnZW1lbnRAMjcuMC4xCmphdmEucHJlZnNAMjcuMC4xCmphdmEueG1sQDI3LjAuMQpvcmcuYXBhY2hlLmNvbW1vbnMuaW9AMi4yMC4wCm9yZy5zbGY0akAyLjAuMjAKb3JnLnNuYWtleWFtbC5lbmdpbmVAMy4wLjEKdG9vbHMuamFja3Nvbi5jb3JlQDMuMi4zCnRvb2xzLmphY2tzb24uZGF0YWJpbmRAMy4yLjMKdG9vbHMuamFja3Nvbi5kYXRhZm9ybWF0LnlhbWxAMy4yLjMK",
+    "compile.log": ""
+  },
+  "transaction": {
+    "sha256": "68bf63e648e605e7c572b6fd70bac5de47b0e81726b0aa27d2a3552851028997",
+    "status": "passed-baseline-red-candidate-green",
+    "pre_manifest_sha256": "6a17bd1d6bfaa4f703f560c8258160e2d96684489532ea50a72e959733686c59"
+  },
+  "recreation": "Build the existing Maven runtime profile with the repository JDK27 and declared runtime dependencies, compile the embedded LoggingCheck.java against its slf4j-api JAR, then run the bundled java --add-modules org.slf4j -cp <compiled probe directory> LoggingCheck. Require LoggerContext, the warning marker and no SLF4J no-provider diagnostic. The embedded baseline and candidate sources reproduce the paired distinction using that same module directory."
+}
