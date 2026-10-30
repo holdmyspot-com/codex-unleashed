@@ -28,7 +28,8 @@ import static java.lang.foreign.ValueLayout.ADDRESS;
  * <p>
  * The controller must load this type once and use no other initializer for this producer in the JVM. Native
  * initialization is permitted only once; successful shutdown does not permit reinitialization. Managers must close before
- * this runtime. A refused close while managers remain does not change state; release those managers and close again.
+ * this runtime. A refused close while managers remain does not change state. A manager whose full startup is unresolved
+ * retains this runtime; neither owner may report successful cleanup or unload the producer.
  * The native runtime owns its dispatcher. This type neither starts a second dispatcher nor owns instrumented processes.
  */
 final class FridaRuntime implements AutoCloseable
@@ -69,7 +70,9 @@ final class FridaRuntime implements AutoCloseable
 	private MethodHandle newManager = null;
 	/** Synchronous per-manager close, resolved before any global effect. */
 	private MethodHandle closeManager = null;
-	/** Local-device acquisition initializes the manager backend before it can serve an attempt. */
+	/** Full manager startup, completed by successful synchronous device enumeration. */
+	private MethodHandle enumerateDevices = null;
+	/** Local-device acquisition after full manager startup. */
 	private MethodHandle findLocalDevice = null;
 	/** Reference retirement on the native runtime's dispatcher. */
 	private MethodHandle unref = null;
@@ -157,6 +160,7 @@ final class FridaRuntime implements AutoCloseable
 		deinit = function("frida_deinit", FunctionDescriptor.ofVoid());
 		newManager = function("frida_device_manager_new", FunctionDescriptor.of(ADDRESS));
 		closeManager = function("frida_device_manager_close_sync", FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+		enumerateDevices = function("frida_device_manager_enumerate_devices_sync", FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS, ADDRESS));
 		findLocalDevice = function("frida_device_manager_get_device_by_type_sync",
 			FunctionDescriptor.of(ADDRESS, ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ADDRESS, ADDRESS));
 		unref = function("frida_unref", FunctionDescriptor.ofVoid(ADDRESS));
@@ -257,11 +261,19 @@ final class FridaRuntime implements AutoCloseable
 		private MemorySegment handle = MemorySegment.NULL;
 		/** Owned local device reference; NULL until backend selection returns it. */
 		private MemorySegment device = MemorySegment.NULL;
+		/** Owned enumeration result retained until its single reference-release call returns. */
+		private MemorySegment startupDevices = MemorySegment.NULL;
+		/** Indicates whether native manager acquisition was entered without a proven return. */
+		private boolean acquiring = false;
+		/** Indicates whether enumeration returned a non-NULL list without a native error. */
+		private boolean fullStartupComplete = false;
+		/** First startup failure, retained to explain why cleanup cannot safely proceed. */
+		private Throwable startupFailure = null;
 		/** Indicates whether this owner has attempted native acquisition. */
 		private boolean startAttempted = false;
 		/** Indicates whether this owner has released all resources and its runtime registration. */
 		private boolean closed = false;
-		/** First cleanup failure retained without releasing an unresolved manager. */
+		/** First cleanup failure or unsafe-cleanup refusal, retained without releasing an unresolved manager. */
 		private IOException closeFailure = null;
 		/** Sessions remain owned until their native references are released. */
 		private final Set<Session> sessions = new LinkedHashSet<>();
@@ -280,9 +292,11 @@ final class FridaRuntime implements AutoCloseable
 		}
 
 		/**
-		 * Acquires a distinct native manager and selects its local device once. Failed acquisition remains owned and requires close.
+		 * Acquires a distinct native manager, completes full startup and selects its local device once.
+		 * Failed acquisition remains owned. An acquired native manager can close only after full startup and
+		 * enumeration-list release are confirmed; otherwise cleanup is refused and the runtime remains owned.
 		 * @throws IllegalStateException if called by another thread, after start or close, or while the runtime is inactive
-		 * @throws IOException if native acquisition returns no manager or local-device selection fails
+		 * @throws IOException if native acquisition, enumeration, local-device selection or callback registration fails
 		 */
 		void start() throws IOException
 		{
@@ -290,30 +304,54 @@ final class FridaRuntime implements AutoCloseable
 			if (startAttempted || closed)
 				throw new IllegalStateException("Frida manager start is permitted once on an open owner");
 			startAttempted = true;
-			handle = (MemorySegment) invoke(newManager);
-			if (handle.equals(MemorySegment.NULL))
-				throw new IOException("Frida manager acquisition returned NULL");
-
-			try (Arena arena = Arena.ofConfined())
-			{
-				MemorySegment error = arena.allocate(ADDRESS);
-				device = (MemorySegment) invoke(findLocalDevice, handle, 0, 0, MemorySegment.NULL, error);
-				throwNativeFailure("frida_device_manager_get_device_by_type_sync", error.get(ADDRESS, 0));
-				if (device.equals(MemorySegment.NULL))
-					throw new IOException("Frida local-device selection returned NULL without a native error");
-			}
-			children = new ChildReceiver(childPid, childParent, childOrigin, childPath);
 			try
 			{
-				MethodHandle callback = MethodHandles.lookup().findVirtual(ChildReceiver.class, "onChild",
-					MethodType.methodType(void.class, MemorySegment.class, MemorySegment.class, MemorySegment.class)).bindTo(children);
-				childHandler = registerSignal(device, "child-added", callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+				acquiring = true;
+				handle = (MemorySegment) invoke(newManager);
+				acquiring = false;
+				if (handle.equals(MemorySegment.NULL))
+					throw new IOException("Frida manager acquisition returned NULL");
+
+				// A successful local lookup can precede Linux pairing-backend initialization. Immediate close then
+				// dereferences its NULL backend. Successful enumeration waits for full startup before close is allowed.
+				try (Arena arena = Arena.ofConfined())
+				{
+					MemorySegment error = arena.allocate(ADDRESS);
+					startupDevices = (MemorySegment) invoke(enumerateDevices, handle, MemorySegment.NULL, error);
+					throwNativeFailure("frida_device_manager_enumerate_devices_sync", error.get(ADDRESS, 0));
+					if (startupDevices.equals(MemorySegment.NULL))
+						throw new IOException("Frida device enumeration returned NULL without a native error");
+					fullStartupComplete = true;
+				}
+				invoke(unref, startupDevices);
+				startupDevices = MemorySegment.NULL;
+
+				try (Arena arena = Arena.ofConfined())
+				{
+					MemorySegment error = arena.allocate(ADDRESS);
+					device = (MemorySegment) invoke(findLocalDevice, handle, 0, 0, MemorySegment.NULL, error);
+					throwNativeFailure("frida_device_manager_get_device_by_type_sync", error.get(ADDRESS, 0));
+					if (device.equals(MemorySegment.NULL))
+						throw new IOException("Frida local-device selection returned NULL without a native error");
+				}
+				children = new ChildReceiver(childPid, childParent, childOrigin, childPath);
+				try
+				{
+					MethodHandle callback = MethodHandles.lookup().findVirtual(ChildReceiver.class, "onChild",
+						MethodType.methodType(void.class, MemorySegment.class, MemorySegment.class, MemorySegment.class)).bindTo(children);
+					childHandler = registerSignal(device, "child-added", callback, FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS));
+				}
+				catch (ReflectiveOperationException failure)
+				{
+					throw new IOException("Cannot bind the native child-event receiver", failure);
+				}
+				started = true;
 			}
-			catch (ReflectiveOperationException failure)
+			catch (IOException | RuntimeException | Error failure)
 			{
-				throw new IOException("Cannot bind the native child-event receiver", failure);
+				startupFailure = failure;
+				throw failure;
 			}
-			started = true;
 		}
 
 		/**
@@ -379,8 +417,10 @@ final class FridaRuntime implements AutoCloseable
 		/**
 		 * Closes only this manager, retires its reference and releases its runtime registration.
 		 * Repeated successful close is a no-op; failed cleanup preserves its reference and original failure.
+		 * If full startup or enumeration-list release is unresolved, refuses native close and retains every owned reference.
 		 * @throws IllegalStateException if called by another thread
-		 * @throws IOException if sessions remain or native close fails; native errors retain domain, code and message
+		 * @throws IOException if sessions remain, startup is unresolved or native cleanup fails;
+		 * native errors retain domain, code and message
 		 */
 		@Override
 		public void close() throws IOException
@@ -392,6 +432,13 @@ final class FridaRuntime implements AutoCloseable
 				throw new IOException("Frida manager cleanup previously failed; retain its runtime", closeFailure);
 			if (sessions.isEmpty() == false)
 				throw new IOException("Frida manager still owns sessions; close them first");
+			boolean startupUnresolved = acquiring || (!handle.equals(MemorySegment.NULL) && !fullStartupComplete);
+			if (startupUnresolved || !startupDevices.equals(MemorySegment.NULL))
+			{
+				closeFailure = new IOException("Frida manager full startup or enumeration-list release is unresolved; " +
+					"retain this manager and its runtime without native cleanup", startupFailure);
+				throw closeFailure;
+			}
 			try
 			{
 				if (children != null)
