@@ -49,9 +49,19 @@
         ],
         "exit_code": 0,
         "output": ""
+      },
+      {
+        "argv": [
+          "bash",
+          "-n",
+          ".github/scripts/release-scheduler-cargo.sh"
+        ],
+        "exit_code": 0,
+        "output": ""
       }
     ],
-    "result": "All21 behavioral checks passed; both Bash scripts parse; diff whitespace check passed."
+    "result": "All21 behavioral checks passed; both Bash scripts parse; diff whitespace check passed.",
+    "syntax_scope": "The original two-path bash -n invocation parses only the first script; the separately recorded adapter invocation verifies the second script."
   },
   "gates": {
     "focused_behavioral_red": "passed",
