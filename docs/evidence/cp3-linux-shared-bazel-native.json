@@ -1,0 +1,411 @@
+{
+  "task_contract": "acknowledged",
+  "scope": "Linux x86_64 authentic shared backend Producer/public Main and compiler-free frozen4 staging only; four passed gate scopes. No broader CP3, release, ordinary23, ARM64, macOS or Windows acceptance.",
+  "sourceHandoff": {
+    "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198cf-7499-7ee2-afd6-28d24fef3baf/temp/linux-shared-backend-oUppAU/native-handoff.json",
+    "sha256": "63d19279ff65b3e0e2a998a6c3f2d6aed08f235fb1a73dac114244a27d3cd4c9"
+  },
+  "verifiedInputs": [
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198cf-7499-7ee2-afd6-28d24fef3baf/temp/linux-shared-backend-oUppAU/shared-native-evidence.tar.gz",
+      "sha256": "ca1bbfcf92bb91185800b6597c6c45622011de6354c6eabc43f8026d4734a060",
+      "bytes": 28706,
+      "verified": true
+    },
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198cf-7499-7ee2-afd6-28d24fef3baf/temp/linux-shared-backend-oUppAU/shared-final-evidence.tar.gz",
+      "sha256": "0a5ddf5423a79766edcb3a0950642cc74f0d533561fe918ca5b23c84e5e1d3f2",
+      "bytes": 44878,
+      "verified": true
+    },
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198cf-7499-7ee2-afd6-28d24fef3baf/temp/linux-shared-backend-oUppAU/linux-shared-backend-source-v2.tar.gz",
+      "sha256": "2908843b9c5370ef0b8067abb834e4084bbb94d1d1f7607827a3e5a10566035f",
+      "bytes": 54218,
+      "verified": true
+    },
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198cf-7499-7ee2-afd6-28d24fef3baf/temp/linux-shared-backend-oUppAU/native-command-evidence-interim.tar.gz",
+      "sha256": "64e6677f18a9349b87cf0ea6d007d906e2aa0ceb69fd7c48a9c7a7a9e3e80e25",
+      "bytes": 44573,
+      "verified": true
+    }
+  ],
+  "gates": [
+    {
+      "name": "authentic Producer.main shared backend useful action",
+      "result": "PASS",
+      "root": "/var/lib/cp3-static-fXwlkr/producer-cdx2dzxs",
+      "jarSha256": "658c325eedc78a05ebeee37fcfe788e29a8852d2c401aa1c510468ee8214ac07",
+      "actualExit": 0,
+      "attempts": 1,
+      "publications": 1,
+      "elfBytes": 2456,
+      "elfSha256": "f4e0ffd057c74811377004ec53aa90425e23bc21b34295819d856ebf3809a49e",
+      "cleanup": true
+    },
+    {
+      "name": "genuine held-denial CANCEL original no-retry owner",
+      "result": "PASS",
+      "root": "/var/lib/cp3-static-fXwlkr/producer-agme_5c_",
+      "actualExit": 0,
+      "controllerFailure": null,
+      "acks": 2,
+      "realDeniedTrapHeldSeconds": 2,
+      "attempts": 1,
+      "publication": false,
+      "cleanup": true
+    },
+    {
+      "name": "connected ordinary root23 then child exec0",
+      "result": "NOT ACCEPTED; original foreground command interrupted130 after indefinite fixture cleanup retry",
+      "root": "/var/lib/cp3-static-fXwlkr/producer-vs6a98vt",
+      "originalLaunch": {
+        "pid": 13126,
+        "birthTicks": 213872
+      },
+      "observed": "actual Bazel NativeOrdinaryRoot23 launched and authenticated hooks resumed original attempt; no completion/publication observed; Fixture retains original resources after cleanup failure: Queue-owned Bazel attempts retain original invocation dependencies; repeats",
+      "intervention": "one terminal interrupt of owned foreground after >10minutes; observed original shell prompt; original actual shell status130 acknowledged and original exec8168 collected. Primary queue/native cause not established before interruption; cannot claim native wait status23 or original wait-owner receipt",
+      "after": "original birth absent; every owned cgroup populated0. No second ordinary23 attempt",
+      "next": "Use existing NativeTerminalNoRetryCase with EXEC23 to surface original failure rather than indefinite NativeTerminalCase.retire loop; preserve original-process wait and lineage. Existing actual parent terminal-status0/5888 mismatch may be related; not established"
+    },
+    {
+      "name": "frozen4 actual shared staging CLI on native products",
+      "result": "PASS",
+      "backendSourceSha256": "04604c6266e381cbcb8418e5f7bed909b6feeb3d249bb3fe683de245006edfee",
+      "target": "x86_64-unknown-linux-musl",
+      "products": 7,
+      "allNativeProductManifestLicenseHashesEqual": true,
+      "nativeValidation": true,
+      "acceptedRuntimeJarUnchanged": true
+    },
+    {
+      "name": "real public Main schedule --bazel-launch-config",
+      "result": "PASS",
+      "root": "/var/lib/cp3-static-fXwlkr/producer-dwmydio4",
+      "actualExit": 0,
+      "originalShellJobWait": 0,
+      "jarSha256": "75fa0edd90344c82a907d8a12a14720735f9285175bcf522d2f076b7299b9077",
+      "dispatcherSourceArchiveSha256": "6e3158d11087303c4706c1daa09efa530a98a999f883e89fbd43638686c6376d",
+      "callerClassArchiveSha256": "bc7453756747c5b6b5d5f0d6d8e8d3bbaf09328507747b1a77e1a6d21bdbff56",
+      "actualCallerClasses": 31,
+      "attempts": 1,
+      "publications": 1,
+      "elfBytes": 2456,
+      "elfSha256": "3463940d2c6d1cb9ac3b4c72efc25c846bbd3f259c791945b56e29a6af25f78e",
+      "allOriginalBirthsAbsent": true,
+      "allOwnedCgroupsZero": true
+    }
+  ],
+  "nativeInputs": {
+    "originalAcceptedJar": "c191680b79d133e8faf3c1b3b13c0743b02779f7089f5743c34e002b9b7fcc74",
+    "originalFinalSourceClosure": "74f88fe4d899e441a4aaa5bb45d778c5aa805b724af279033be15badd4bc07bc",
+    "facadeAndMinimalReadiness": "frozen v2 source; 6 production files; all13743 unaffected JAR entries byte-identical",
+    "sealedSameLeaderRepairArchive": "df80ee2071e130e4a6b5bda525a617f0038829054de40502548e0476aa056fd2",
+    "sameLeaderRepairProof": "meaningful actual red unchangedLeaderExec failure; strict private doclint;40 affected HelperMain/NamespaceHooks tests methodparallel8 pass",
+    "nativeBuilds": 0
+  },
+  "runtimeComposition": {
+    "initialSharedOverlay": {
+      "originalJar": "c191680b79d133e8faf3c1b3b13c0743b02779f7089f5743c34e002b9b7fcc74",
+      "composedJar": "46303ddada7e5c7b93fc699d11c91965ee50483ca2737f272565b6aece8a79d7",
+      "compileExit": 0,
+      "compileCommand": [
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/zulu27.30.109-ca-jdk27.0.1.0.3-linux_x64/bin/javac",
+        "--release",
+        "27",
+        "-proc:none",
+        "-Xlint:all,-processing",
+        "-Werror",
+        "-Xdoclint:all/private",
+        "-cp",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/classes:/home/runner/work/_temp/cp3-signal-d5P6kg/producer.jar",
+        "-d",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/classes",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentials.java",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackend.java",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackend.java",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelProducer.java",
+        "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/source/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunner.java"
+      ],
+      "untouchedEntriesCompared": 13743,
+      "sourceHashes": {
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentials.java": "ed7d5a1501b80b416be47475f773299bb5e846d48a07fb9242d8d1c69e5e62df",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackend.java": "b13c415408845b158a126f410109249ff73bac130ddda4e82633f1e5e1911c5b",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java": "cd186c46e1e98a758af30c03bd20563f48fc10c1512badb2090b44e88a49367d",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackend.java": "73227b8c7ad46e3555150cd203036fc4635991abedda5dfdec4703437e6bdb76",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelProducer.java": "1c1855a73920a0724c459ab0d768b8ef95703ecc591a4bb30b4e838957660036",
+        "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunner.java": "1f2bbb07d43d4cbc3d2e93633a77e93fc950c511d06bcd36b9dd76389678905e"
+      },
+      "nativeBuilds": 0,
+      "nativeGates": "unrun"
+    },
+    "sameLeaderRepair": {
+      "jar": "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-backend-composition/producer.jar",
+      "sha256": "658c325eedc78a05ebeee37fcfe788e29a8852d2c401aa1c510468ee8214ac07",
+      "changedClasses": [
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.class",
+        "com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper$Generation.class"
+      ],
+      "red": "unchangedLeaderExec fails",
+      "green": "HelperMain and NamespaceHooks methods parallel8"
+    },
+    "sameLeaderRepairSources": [
+      {
+        "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+        "bytes": 22743,
+        "sha256": "2c7a62d02b43f424906731799f2ded8e7af94b3565f32c6939b544322556aa83",
+        "previousSha256": "73b3a5425075aad693d80719c93b90ab4ff3f9ecfef3dc734b00a020e89760f2"
+      },
+      {
+        "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMainTest.java",
+        "bytes": 29974,
+        "sha256": "2bc692ee0886378c751fa63c28ec16536dc99addb3317ad121387f53a5c67488",
+        "previousSha256": "e69c4086b7f78542e214bceae4548bcbe3e59b470113e42c9df81cafd47b0e2d"
+      }
+    ],
+    "publicCallerOverlay": {
+      "baseJarSha256": "658c325eedc78a05ebeee37fcfe788e29a8852d2c401aa1c510468ee8214ac07",
+      "jarSha256": "75fa0edd90344c82a907d8a12a14720735f9285175bcf522d2f076b7299b9077",
+      "classManifest": {
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler.class": "eb14254fb39f8ef22cdec40edab899fe84949ead39429d00dca188f91016d58c",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$Settings.class": "87a1a9dc793caf69a3fd62039f0416b639ab74e67151fd343233b46b01f59235",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$Cleanup.class": "494e55fca751eaea18285d04ee0e7971f598773e31712284d8245c51441660c6",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$PendingCleanup.class": "3628da29db294619b6d834a47157635e43f76ddbf80142ae42f46290187d9fff",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$Adapter.class": "25dca12ffbd07813566719505e080144e8d2b0d7af449e5964724016f9fabe6f",
+        "com/holdmyspot/codexunleashed/scheduler/Scheduler$SharedSecrets.class": "7f96c4a5cd6d2debcbb1ca6563a82be01ee73ff65204450298d3110193690b16",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInstrumentation$Image.class": "22065a055581944258a2c91384145404f3360d0f7ecf56546aea8aef97a00514",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInstrumentation.class": "e9eda648d4dbed149bdcd8bcefef0ad60ba4ea3b355d89663e6211239a933a42",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelAttempt$1.class": "6456aed0d008458d3b1cc5fd7ee767ba99fd46e18639f6251a305945c0fe0282",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelAttempt$Command.class": "6aed562389b1c64f6980e1ab3cdc1ae6002ed179ee990854082bcd9c2742b40e",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelAttempt$Context.class": "962c1a284fcc390100ab1744e23388ef8d4a688cad81f37fffe8707e549596ad",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelAttempt.class": "adb4a3675e20bd95c24c4a8bde585ad362b8047903a888b50a30ecf753d7ca23",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelLaunchConfiguration$Installed.class": "fdeba51e13a6e6ccff0f0c13890a5f824853a365d04569b72d6dd25bd988da14",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelLaunchConfiguration.class": "3059d8ed65cc6f3d2bf911c63b3004b1b8f377a84075b9bb213f0851a2d06aaa",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelWorkspace$Lease.class": "070e43f6fb55d9a2c165ca10d2966a1731c5d7fe902bd61572c360a0b6d590b2",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelWorkspace.class": "851c17e4d66d4b43112869eb952a89685d374df71478d7d03593ae35b77cb070",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Admission.class": "9a65aad7e3b2819334e47bc4122ca1d102ea9a4cce88a21d37e69f8445a1a05b",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$OuterWorkload$1.class": "2ff63da0edc99ec89e7720395e8a7adb787bb24ad960cf308c490fe594e027e1",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Attempt.class": "53f08b9d63000943df14d2de9651bae7f364470a17bb72313f653a3e4bd4527b",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Descriptors.class": "eee8a6ed21b5375d803471706cd2b716bdae684dde9d756ba5cde51ae781cdb4",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Boundary.class": "1b2523d06aea4f181ec22cfcf52de17fe76a9288b259ae989aca1b7db8d48f91",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Daemon.class": "f807ba1607c8d69600cfa5366b7091a2f6337af69c62dee33fae93a05d4ada83",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$OuterInstrumentation.class": "a376b1fe8d1ccb5dffcf89446f3c99431d86aa68cb69d5d67eda7d2ea86c82f8",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$1.class": "59d0993d050d771a57026502a74b04ce05b789b37752af6633b3954a91f292b7",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Action.class": "7a32540f63ca3cc1a5d3a8304aeb8215bab504cd33b8e50947a39a4f47dd6816",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$OuterWorkload.class": "89837c7304341a07d4de90b217aa3ddcf347f81a424be52a6ced694f1063ec69",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation$Streams.class": "27bbf70c5534d6783944b2ae2571672c944f6e406e09ccbccf3dc9ad0722e6af",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelInvocation.class": "a8149438efd08755332eb78bc244839e7adb058cef62bd25fa3a12ff086c757f",
+        "com/holdmyspot/codexunleashed/scheduler/MacBazelSchedule.class": "ff00c3843cedbe3ccae5c76fbfe2de3e18c9f672e15f704a15b45fea0283b8e7",
+        "com/holdmyspot/codexunleashed/scheduler/BazelWorkspace.class": "f81444a94040cdb8f54f7fc5d2248b076ad9605f553d579f9988241d57845af4",
+        "com/holdmyspot/codexunleashed/scheduler/BazelWorkspace$Attempt.class": "6dd1f635e9e3dfc540a0e8f3b5d66c172396d22bb9c234569760969ad2e68239"
+      },
+      "nativeBuilds": 0
+    },
+    "frozen4Stage": {
+      "source": "/home/runner/work/_temp/cp3-signal-d5P6kg/backend",
+      "destination": "/home/runner/work/_temp/cp3-signal-d5P6kg/shared-staging/native-products",
+      "target": "x86_64-unknown-linux-musl",
+      "products": 7,
+      "allProductManifestLicenseHashesEqual": true,
+      "hashes": {
+        "bb_worker": "0abde206646aeb6f21dda95d880d2efc10877a3563fd3ea9b53c940dd7bd3eb4",
+        "bb_scheduler": "d60b9f397e306f03069a606d1c3047f39cb5cb3dc19ae93d600efcf67e9b31e3",
+        "linux-bazel-action-owner": "df1b8d970fbf4b949639a446386b259ab3843471e67f39dc06f7420af1501a82",
+        "codex-tooling": "ec69b98392822a6a434166dfea9e619d973b983f0a54e3c03e362eac884abd21",
+        "codex-cargo-wrapper-linux": "709077d18ef530744b0f8e78fe0a6355fcda2f7f484fb6920656da7243a6ac01",
+        "bb_storage": "c59e1d9778fa963076c1fc6976bab9a4fdafd4c54c85b894f2fde23edf72e046",
+        "backend-manifest.json": "79290d0f0c9ebe12ff362b3c0539da6f0ef150425cc1c766b16aa912429ca7eb",
+        "linux-bazel-action-waiter": "e8561d1d866e183a114b2bf09fed457a63d3d7c45b306c9b5fff277f71530705",
+        "licenses/dependency-index.json": "0de4046c8a10b5c60899eb03a68d0f9ae829f02652dd35a6be5b6e90316b1810",
+        "licenses/110244b02140866ee37d17fa7449436a377ec3b85a481fbb208f4c87964382de": "110244b02140866ee37d17fa7449436a377ec3b85a481fbb208f4c87964382de",
+        "licenses/a94710b55e03b5285f77d048c5ba61bb9d6ee04a06c0eb90e68821e11b0c707a": "a94710b55e03b5285f77d048c5ba61bb9d6ee04a06c0eb90e68821e11b0c707a",
+        "licenses/dfffb9ec737eaba985243e95a549bd8c3a4d462032cfe603e2a6704c346427b6": "dfffb9ec737eaba985243e95a549bd8c3a4d462032cfe603e2a6704c346427b6",
+        "licenses/aa1376b9bc5dea6f30cdefde40c176a254f247d2814d0a9929395138631b2ae0": "aa1376b9bc5dea6f30cdefde40c176a254f247d2814d0a9929395138631b2ae0",
+        "licenses/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+        "licenses/1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
+        "licenses/f19d6aac3a063b4ea43196472248ff68e277b7c2a9e0a193799134677d496cda": "f19d6aac3a063b4ea43196472248ff68e277b7c2a9e0a193799134677d496cda",
+        "licenses/a15b1d1b168954c92ff7fb1620382418f7c72f4f4d251ee791d1098ad68ab0c4": "a15b1d1b168954c92ff7fb1620382418f7c72f4f4d251ee791d1098ad68ab0c4",
+        "licenses/f69f157b0be75da373605dbc8bbf142e8924ee82d8f44f11bcaf351335bf98cf": "f69f157b0be75da373605dbc8bbf142e8924ee82d8f44f11bcaf351335bf98cf",
+        "licenses/d315e6cdedc07c478de6992027bfb66f220886c6216fd7e9885ced30c3703646": "d315e6cdedc07c478de6992027bfb66f220886c6216fd7e9885ced30c3703646",
+        "licenses/4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20": "4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20",
+        "licenses/f5122de47ce62d57dcd3e57cdf778ceacc3a847645de3332fea58903def93ecb": "f5122de47ce62d57dcd3e57cdf778ceacc3a847645de3332fea58903def93ecb",
+        "licenses/2dfbe6d2b5eb18b55148f3805d88648a09e0d17e38428123259afb08c8996e37": "2dfbe6d2b5eb18b55148f3805d88648a09e0d17e38428123259afb08c8996e37",
+        "licenses/bb-storage-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "licenses/fc0a2f71df4e8f047902da53d1f85301be43e0f360fc167057a2d04658ed2ba9": "fc0a2f71df4e8f047902da53d1f85301be43e0f360fc167057a2d04658ed2ba9",
+        "licenses/df8a106722ad54f80ba391201a876f8a6345b8f3d5ccee65e5f121c68228c9ac": "df8a106722ad54f80ba391201a876f8a6345b8f3d5ccee65e5f121c68228c9ac",
+        "licenses/0db7c9ebb3717e526f34f87dd1ee8bc77d36846e29cb0cec9246f7138fbe962b": "0db7c9ebb3717e526f34f87dd1ee8bc77d36846e29cb0cec9246f7138fbe962b",
+        "licenses/5d966570d7a442d4e969892860a914e542c97f262c873baee8f0aa48e1f40212": "5d966570d7a442d4e969892860a914e542c97f262c873baee8f0aa48e1f40212",
+        "licenses/bb-remote-execution-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "licenses/f6c2dd3a67b576eafb89b80200b8b1627230bf3821a0c14cb99a22ac19107d00": "f6c2dd3a67b576eafb89b80200b8b1627230bf3821a0c14cb99a22ac19107d00",
+        "licenses/b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+        "licenses/8778a9fc1eaffb03ab873caae251df2d224f6b5502be8777d3cd573a4dd43903": "8778a9fc1eaffb03ab873caae251df2d224f6b5502be8777d3cd573a4dd43903",
+        "licenses/03cfaf331a260694d06227a589cdd2b5fcfab474697b72e250736696c313655a": "03cfaf331a260694d06227a589cdd2b5fcfab474697b72e250736696c313655a",
+        "licenses/0d9e582ee4bff57bf1189c9e514e6da7ce277f9cd3bc2d488b22fbb39a6d87cf": "0d9e582ee4bff57bf1189c9e514e6da7ce277f9cd3bc2d488b22fbb39a6d87cf",
+        "licenses/3c0dbd7f2068b713b6784788ffde16a5b91baa86a61a1357e43beb97475a90b3": "3c0dbd7f2068b713b6784788ffde16a5b91baa86a61a1357e43beb97475a90b3",
+        "licenses/5dc79da695aea39a47245008a168e3f7d461b686da8bec299fd55fee0393cbcc": "5dc79da695aea39a47245008a168e3f7d461b686da8bec299fd55fee0393cbcc",
+        "licenses/dd26a7abddd02e2d0aba97805b31f248ef7835d9e10da289b22e3b8ab78b324d": "dd26a7abddd02e2d0aba97805b31f248ef7835d9e10da289b22e3b8ab78b324d",
+        "licenses/693ff28ec216d5112ac1bbfe64ef539005867d1c7bd427b57d579683293b947f": "693ff28ec216d5112ac1bbfe64ef539005867d1c7bd427b57d579683293b947f",
+        "licenses/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+        "licenses/08683b14bda8ae3538abf19e1879e853a39e3b8276a8d673363b529d15a61c1a": "08683b14bda8ae3538abf19e1879e853a39e3b8276a8d673363b529d15a61c1a",
+        "licenses/0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d",
+        "licenses/600244c8052c8c1d307043fafacbc83b429c171dd8e08f5a537c0a54014585ee": "600244c8052c8c1d307043fafacbc83b429c171dd8e08f5a537c0a54014585ee",
+        "licenses/497fcdb9fae55924c12f55f05cbe83a096662e5c591d79b74e4a8f23bab5ffee": "497fcdb9fae55924c12f55f05cbe83a096662e5c591d79b74e4a8f23bab5ffee",
+        "licenses/332c4f0a1a657a8937ad0caf7a335a31ec72343821481e364d8894f568c8b010": "332c4f0a1a657a8937ad0caf7a335a31ec72343821481e364d8894f568c8b010",
+        "licenses/0589f544f68ffc436e6e21efec2cf7cc2dbb2ac09ce6cb8a8cdb75ab74489716": "0589f544f68ffc436e6e21efec2cf7cc2dbb2ac09ce6cb8a8cdb75ab74489716",
+        "licenses/00b227761c515a5bddcd08489f97bcff2e56166df27729f25c8611902ceaf665": "00b227761c515a5bddcd08489f97bcff2e56166df27729f25c8611902ceaf665",
+        "licenses/2252a5b1e2b1d3663b53ea77051b8ed065cb9270a3d1174d5d6ead8a2de051b6": "2252a5b1e2b1d3663b53ea77051b8ed065cb9270a3d1174d5d6ead8a2de051b6",
+        "licenses/f566a9f97bacdaf00d9f21dd991e81dc11201c4e016c86b470799429a1c9a79c": "f566a9f97bacdaf00d9f21dd991e81dc11201c4e016c86b470799429a1c9a79c",
+        "licenses/8548bfb2bc1913396df38c548a6ec60b8dbcac3b0800485a40569c8bdd184471": "8548bfb2bc1913396df38c548a6ec60b8dbcac3b0800485a40569c8bdd184471",
+        "licenses/cac4eb3b6bbf79e8fbcb1cdc4ef7f7087c82ac90df74ade89954ef519fd752fa": "cac4eb3b6bbf79e8fbcb1cdc4ef7f7087c82ac90df74ade89954ef519fd752fa",
+        "licenses/a6e830174d62dafad3a718384772ea1f4c0e27989f050932dc442a5e3ddad080": "a6e830174d62dafad3a718384772ea1f4c0e27989f050932dc442a5e3ddad080",
+        "licenses/6a358d2540ca14048f02d366f23787c0a480157e58f058113f0e27168dd4e447": "6a358d2540ca14048f02d366f23787c0a480157e58f058113f0e27168dd4e447",
+        "licenses/09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+        "licenses/b95218cd9607855a6536384c0262922b30a0c2bf56e4ced790240f3a3bac4722": "b95218cd9607855a6536384c0262922b30a0c2bf56e4ced790240f3a3bac4722",
+        "licenses/10fa24a602fde465db603cd5d546e37e33642a73cd24ddf5910be81724fec8b2": "10fa24a602fde465db603cd5d546e37e33642a73cd24ddf5910be81724fec8b2",
+        "licenses/dfbcc1e2f291edd259c29454db7ba94c451e75af7b1ed98bdd8368cbba564570": "dfbcc1e2f291edd259c29454db7ba94c451e75af7b1ed98bdd8368cbba564570",
+        "licenses/c2534e065069887565f871f0648b013a7e5f4a422809faf4ae3c590b7c0bf561": "c2534e065069887565f871f0648b013a7e5f4a422809faf4ae3c590b7c0bf561",
+        "licenses/d4ff111fa30ac75e28dca3868de957a3b73ff50b76bc4b8fe5c3a1f008d26703": "d4ff111fa30ac75e28dca3868de957a3b73ff50b76bc4b8fe5c3a1f008d26703",
+        "licenses/d4290ed64c2edd0fce1d84e3f9dfb2881240fe534def76b8cd29ed6af683e287": "d4290ed64c2edd0fce1d84e3f9dfb2881240fe534def76b8cd29ed6af683e287",
+        "licenses/20873bd48d04a4e4075ee881ec2a5f3a3b14bf4920018b1131a7c52ec9b4a318": "20873bd48d04a4e4075ee881ec2a5f3a3b14bf4920018b1131a7c52ec9b4a318",
+        "licenses/6c79faa15168885fb88a316ae0df18f486deafddefdc16826cdc56dfbd421e24": "6c79faa15168885fb88a316ae0df18f486deafddefdc16826cdc56dfbd421e24",
+        "licenses/0b77fdea862f869ef4f201ac5649bdbd38ccb055c7f6454dffae9e2adb4941c1": "0b77fdea862f869ef4f201ac5649bdbd38ccb055c7f6454dffae9e2adb4941c1",
+        "licenses/14a34c4db2d21bf9cf80d028b802cd22fed9bf597a6c2db7ce30ee6ffd04967a": "14a34c4db2d21bf9cf80d028b802cd22fed9bf597a6c2db7ce30ee6ffd04967a",
+        "licenses/8108e14b5cb2b6bcd51583d3849ef0c2b5c4de61758256c20308bc70d1775dbb": "8108e14b5cb2b6bcd51583d3849ef0c2b5c4de61758256c20308bc70d1775dbb",
+        "licenses/b1da0716d546b386221283d08b32c3ca82f539f3b3abe740b7d8729e90aa3ac8": "b1da0716d546b386221283d08b32c3ca82f539f3b3abe740b7d8729e90aa3ac8",
+        "licenses/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "licenses/8582c87d9a6baa28f7827c5205b7d16c3179bc794ebd4c7cc287c49a89b7eaa1": "8582c87d9a6baa28f7827c5205b7d16c3179bc794ebd4c7cc287c49a89b7eaa1"
+      },
+      "backendSourceSha256": "04604c6266e381cbcb8418e5f7bed909b6feeb3d249bb3fe683de245006edfee",
+      "nativeBuilds": 0,
+      "acceptedMainJarUnchanged": "658c325eedc78a05ebeee37fcfe788e29a8852d2c401aa1c510468ee8214ac07"
+    }
+  },
+  "runtimeDifferences": "Original accepted JAR c191... received six shared facade/readiness sources ->46303...; actual red same-leader exec repaired two helper class entries ->658c... for Producer/CANCEL/ordinary23. Public Main then overlays exactly31 caller classes ->75fa... (including Mac classes compiled but not executed here). Frozen4 staging04604... compiled separately; accepted658c... JAR unchanged. Source hashes and literal commands retained in archive.",
+  "failedOrdinary23": {
+    "accepted": false,
+    "actualForegroundShellStatus": 130,
+    "cause": "Unresolved. Original authenticated NativeOrdinaryRoot23 attempt did not complete/publish before >10minute fixture cleanup retry loop was interrupted. No authentic native23 or original wait-owner receipt. Do not equate shell130 with native status23.",
+    "intervention": {
+      "time": "2026-11-01T21:20:52.715131+00:00",
+      "foregroundCommandReceipt": "CP3_DONE_6f52198d274244f1ba7fa9a8c1db3a0c.command.json",
+      "root": "/var/lib/cp3-static-fXwlkr/producer-vs6a98vt",
+      "action": "one terminal interrupt to exact owned foreground command; retain launch birth/cgroup files for authenticated cleanup",
+      "reason": "pending >10minutes; fixture contains indefinite cleanup retry; fixed worker deadline21:35UTC requires export/cleanup",
+      "completionClaim": false
+    },
+    "nextConsumer": "Linux ordinary23 diagnosis/successor owner: use retained products and NativeTerminalNoRetryCase EXEC23 to expose original failure; preserve original birth/lineage and wait ownership."
+  },
+  "cleanup": {
+    "time": "2026-11-01T21:32:33.723752+00:00",
+    "worker": 41347615272,
+    "providerStatus": "completed",
+    "providerConclusion": "failure",
+    "sshExit": 0,
+    "originalSSHExecHandle": 93544,
+    "handleCollection": "Unknown process id from this agent scope; originating owner must collect original tool handle; actual SSH child wait exit0 receipt retained",
+    "removedClientKeys": [
+      "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/static-child-adoption-oiAcJ1/successor-4-53_mta4z/client-key",
+      "/home/gili/codex-unleashed/workspace/.cat/sessions/01a197e5-6c7d-7550-8ea5-f8d02bf5ae73/temp/static-child-adoption-oiAcJ1/successor-4-53_mta4z/client-key.pub"
+    ],
+    "knownHostsAndReceiptsPreserved": true,
+    "allOwnedCgroupsZero": true,
+    "allKnownOriginalBirthsAbsent": true,
+    "nativeAndUploadJobs": "collected; public shell job original wait status0; ordinary command interrupted status130"
+  },
+  "cleanupClarification": {
+    "originalTool93544": "Root confirms original handle also unavailable in root scope; actual SSH child wait exit0 receipt governs. No reconnect/relaunch requested or performed.",
+    "provider": "Completed failure due deliberate original failure17; Debug/PostDebug and partial-state/checkout post steps succeeded, per provider-terminal.json. All owned cgroups0 and known original births absent; keys removed.",
+    "newNativeOperations": 0
+  },
+  "retainedProducts": [
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/linux-shared-products-6rYqKx/13100534757.zip",
+      "sha256": "f282da2e4ee0cb269e5c397b94fb14bce56b5381e98054b528cea3b6b9018e3b",
+      "bytes": 31191204,
+      "artifact": {
+        "id": 13100534757,
+        "name": "cp3-shared-native-41347615272",
+        "zipBytes": 31191204,
+        "zipDigest": "sha256:f282da2e4ee0cb269e5c397b94fb14bce56b5381e98054b528cea3b6b9018e3b",
+        "tar": "runtime-shared-native.tar",
+        "tarBytes": 31191040,
+        "tarSha256": "82d523298848f91b8de331b7ed7101075b3988b10bd479bb52f412d2a7e35000",
+        "retentionDays": 3
+      },
+      "consumers": [
+        "Linux ordinary23 diagnosis/successor",
+        "six-target scheduled release"
+      ],
+      "nativeExtraction": "none"
+    },
+    {
+      "path": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/linux-shared-products-6rYqKx/13101499426.zip",
+      "sha256": "7698fde09f81f1575c7367df49cf323b5b867c70dd746c3816fd188ecffa0571",
+      "bytes": 227809442,
+      "artifact": {
+        "id": 13101499426,
+        "name": "cp3-shared-public-staging-41347615272",
+        "zipBytes": 227809442,
+        "zipDigest": "sha256:7698fde09f81f1575c7367df49cf323b5b867c70dd746c3816fd188ecffa0571",
+        "tar": "runtime-shared-final.tar",
+        "tarBytes": 227809280,
+        "tarSha256": "3664ec07a4879b3fccf43d366fa185a3e58fcac0134dd63701541fcc3efdc5c3",
+        "contains": "actual public JAR/caller classes, validated staged7nativeproducts+manifest+alllicenses, staging classes/source/driver, exact evidence",
+        "retentionDays": 3
+      },
+      "consumers": [
+        "Linux ordinary23 diagnosis/successor",
+        "six-target scheduled release"
+      ],
+      "nativeExtraction": "none"
+    }
+  ],
+  "explicitNextConsumers": [
+    "Linux ordinary23 diagnosis/successor owner",
+    "Root six-target scheduled-release integration; artifacts preserve native/Java products for reuse without duplicate builds"
+  ],
+  "limitations": [
+    "Connected ordinary23 still requires root/native owner repair and authentic acceptance; do not mark checkpoint3 complete from this handoff",
+    "SSH owner actual child wait recorded exit0; inherited original exec93544 not visible to this child tool scope (Unknown process id). Originating owner/root should collect that original tool handle; do not reconnect or relaunch worker",
+    "Provider workflow completed failure as expected original deliberate17; Debug and PostDebug succeeded; smoke marker acknowledged before shell exit",
+    "Full Maven/JPMS/static/release not rerun here; root owns ongoing maintained Maven checks and composition",
+    "No ARM/Mac/Windows execution claim from this Linuxx64 worker",
+    "Missing run-main.py recovered by reusing retained actual predecessor script; first artifact upload sudo environment failed then exact sealed upload succeeded under retained runner environment; staging first sudo JDK reset failure retained then exact JDK27 retry passed"
+  ],
+  "preservedLimitationsNote": "Original handoff deferred tool93544 collection to root. That request is superseded by root confirmation that the handle is unavailable; actual SSH0 receipt governs.",
+  "safety": {
+    "passed": true,
+    "files": 210,
+    "allUtf8": true,
+    "allRegularPaths": true,
+    "privateCredentials": false,
+    "nativeOrJarPayloads": false,
+    "patterns": [
+      "private-key-material",
+      "github-token",
+      "signed-url",
+      "credential-assignment"
+    ],
+    "findings": [],
+    "scope": "All packaged source/control/log members; source references to credential types/paths contain no credential bytes; compressed product archives only hashed, never extracted."
+  },
+  "archive": {
+    "path": "docs/evidence/artifacts/cp3-linux-shared-bazel-native.tar.gz",
+    "sha256": "70dafc99995ba8cc1fe1f6c038b4d094b7eeab2b9c8eeb73284bfb8c3345b95d",
+    "bytes": 199497,
+    "members": 212,
+    "roundTripVerified": true
+  },
+  "decisiveMembers": {
+    "producer": "original/shared-native-evidence.tar.gz.members/producer-cases/producer-cdx2dzxs/main-result.json",
+    "cancel": "original/shared-native-evidence.tar.gz.members/producer-cases/producer-agme_5c_/terminal-result.json",
+    "ordinaryFailedStreams": "original/shared-native-evidence.tar.gz.members/producer-cases/producer-vs6a98vt/exec23.stderr",
+    "publicMain": "original/shared-final-evidence.tar.gz.members/public-case/main-result.json",
+    "finalCleanup": "original/shared-final-evidence.tar.gz.members/shared-final-check.json",
+    "staging": "original/shared-final-evidence.tar.gz.members/shared-staging/receipt.json",
+    "scan": "credential-omission-scan.json",
+    "allMemberHashes": "inventory.json"
+  }
+}
