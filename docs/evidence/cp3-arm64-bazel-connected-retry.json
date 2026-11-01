@@ -1,0 +1,70 @@
+{
+  "scope": "Linux ARM64 connected static Bazel allocation denial, queue-authorized whole-attempt retry, useful output and owned cleanup only. Production source remains isolated; this is not complete CP3 or release acceptance.",
+  "provider": {
+    "run": 41347135479,
+    "artifact": 13100377320,
+    "workerState": "retained by original owner for connected terminal cases; provider cleanup not accepted here"
+  },
+  "evidence": {
+    "path": "docs/evidence/cp3-arm64-bazel-connected-retry.tar.gz",
+    "bytes": 110304,
+    "sha256": "0e26bd4e660a6b864dcbe1fa662c2280c72734d8b52a84f113b4a4fba110e131",
+    "members": 36,
+    "contents": "Bounded source, exact determining callers, fixture/controller source, logs and native receipts; no native product extraction."
+  },
+  "runtimeSha256": "a7943e68dad29c06f70fc205f22fc90741d98b2a2d16ecc324478aa082d50e99",
+  "sourceSha256": {
+    "source/LinuxAarch64TraceTest.java": "bee8719812ce7809d8c91a89d66aba125a416da31986fbdb875af0e3b61a81a1",
+    "source/LinuxBazelStaticImageTest.java": "80c22973f298eb85ae71ceaac911f470d41a0ab84330b7a0f580c00e1a1055c7",
+    "source/LinuxAarch64Trace.java": "59b6d017b507480c6c2a3a07a87b1a4562d79107f381f2ff2e55750c9a40d2a3",
+    "source/LinuxAarch64TraceNativeTest.java": "9c682ced8fc2a0ecab1fa608ea5a4474d82b991b9f031243cb1c4e33d152748f",
+    "source/TestRequirements.java": "ce84dfff81005c450154faf05ef799cf77f8f4b4241c788537ddea9f6086ed23",
+    "source/LinuxBazelHelperMain.java": "4d0d099926bba3b47c7f644c4f284f8fdaed41eca76458ceb7a5c632769a47f6",
+    "source/LinuxAllocationTrace.java": "58a2d47eb1285b5ea9c3ec5c93567ec3ab94649ccda19a445015f8cad7ee0367",
+    "final-callers/LinuxBazelProducer.java": "e36806427aaef6d673fc430016ebac42de5406edc7a7de98e686e3d9c4847794",
+    "final-callers/LinuxBazelAction.java": "aa255fd66691603db4e995fab0f8aba372dc5faa29066070034dfb851a49c16b",
+    "final-callers/LinuxBazelRunner.java": "07e697ccac0b2469396a492d472cb8774c25b002941764aae5a2137658a00945",
+    "final-callers/LinuxBazelInvocation.java": "2dd2dedbd1e8398767523093f119bea16865107299283225dad955e70a961ada",
+    "final-callers/BazelRunner.java": "8f26620e7fa0199cf008fd845e2e51b6286775e1f702d8a2c222ff2943aa847a",
+    "final-callers/SchedulerCoordinator.java": "16dfb51bccbc1e35f2ab3f638b2f4d5513f40876e5abfe3d6f5facb432e18bcc",
+    "final-callers/SchedulerCoordinatorTest.java": "1c4b0eb71e3e708ca5006951622244de7d06971b1bdd06461858c4a2141f075f"
+  },
+  "passed": [
+    "Native strict JDK27 compilation and private Javadoc checks; 16 focused native/portable cases with zero skips.",
+    "Real LinuxBazelProducer.main and pinned Bazel //:tiny, using the original authenticated CREATE child.",
+    "Independently authenticated address-space cap before CREATE; executed ARM BRK held for two seconds; restore acknowledged against the same native PID and birth identity.",
+    "Queue TERMINATE decision, original attempt0 signaled9 and private output discarded while original Runner run retained.",
+    "Fresh attempt1 succeeds and publishes exactly once with authentic ordinary status0.",
+    "Original waiter5343 and helper5338 absent; invocation/action/helper cgroups empty and populated0; owned cleanup complete."
+  ],
+  "output": {
+    "elfMachine": 183,
+    "bytes": 2608,
+    "sha256": "948b7d363c23cd55abb0e3cea8a1ce661a34d63c6d610fca04f02f35f9b09ff5",
+    "originalOwnersAbsent": [
+      5343,
+      5338
+    ],
+    "cgroups": {
+      "/sys/fs/cgroup/a197f4/producer-5tsy_2jy": {
+        "events": "populated 0\nfrozen 0\n",
+        "procs": ""
+      },
+      "/sys/fs/cgroup/a197f4/producer-5tsy_2jy/actions": {
+        "events": "populated 0\nfrozen 0\n",
+        "procs": ""
+      },
+      "/sys/fs/cgroup/a197f4/producer-5tsy_2jy/helpers": {
+        "events": "populated 0\nfrozen 0\n",
+        "procs": ""
+      }
+    }
+  },
+  "unmet": [
+    "Connected ordinary-status, signal, cancellation and root/descendant terminal gates on the successor source.",
+    "Native acceptance of the common backend facade and newly authenticated readiness future.",
+    "Root composition with the latest x64 terminal repair and full project verification.",
+    "Public installed scheduling, warm reuse and full six-target release acceptance."
+  ],
+  "interpretation": "This replaces the earlier claim that ARM64 connected held denial/retry and useful output were unverified for this exact source closure. It does not make a standalone or availability result count as complete scheduling acceptance."
+}
