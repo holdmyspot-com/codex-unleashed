@@ -361,9 +361,9 @@
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoInvocation.java",
-    "sha256": "ff9df0999ec1db0306a8d4bf6184773ca3db23cb1e3ddabe3c354c409ef67cfa",
-    "bytes": 52239,
-    "mode": "0o600"
+    "sha256": "1399120e25dfe3e78e1377ea415103598ed7b86ca4b727ebca55890b9c99f5ca",
+    "bytes": 57989,
+    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserver.java",
@@ -385,9 +385,9 @@
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRegistration.java",
-    "sha256": "a312ec439fc18134aaab7e413acd2248bbffaf739f40265ac7a9346616f74727",
-    "bytes": 24476,
-    "mode": "0o600"
+    "sha256": "b8bd2552c36d7eb1b692286272781e6b87fbcf809a02beb43a54ba5cde43b543",
+    "bytes": 31430,
+    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRootStreams.java",
@@ -1321,9 +1321,9 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoInvocationTest.java",
-    "sha256": "e0d9abd3a03fa4860b420941b0401ac8430cbda723ee011b0c2c3d7b121c62fc",
-    "bytes": 16078,
-    "mode": "0o600"
+    "sha256": "ff7e95ba90d7783ab221e58b7742b9ab710b59c1048968a2a1ce5d164eaef97e",
+    "bytes": 19673,
+    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoJobserverNativeTest.java",
@@ -1357,9 +1357,9 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRegistrationTest.java",
-    "sha256": "838315cdb03b8efb3ba933c458a6a3c1b286b76e653f5484f8e4662ca064e730",
-    "bytes": 26817,
-    "mode": "0o600"
+    "sha256": "179cb8ef17bde93a709d0f7068f5a82bf969411733b08748efebd63359adc7a0",
+    "bytes": 30879,
+    "mode": "0o644"
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRootCollectionTest.java",
