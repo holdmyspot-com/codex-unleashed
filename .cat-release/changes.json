@@ -1,0 +1,12 @@
+[
+  {
+    "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoLaunchConfigurationCommandTest.java",
+    "preimage": "c1a05e6894b69286410c8f718611e7c3a2dad80a8e4e0c65eaa6bc1a708f613a",
+    "postimage": "53008f6a9d7828f6bf96938848c8304c45ade275bf3daafb2dd472bd22583c24"
+  },
+  {
+    "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/ValidateReleaseSchedulerInstallationTest.java",
+    "preimage": "c2aa8066466f6bfd5fd8068c51985761f934568da2e0da38b5877e919174fa0a",
+    "postimage": "78b9b4533092a8cd2086d7ed4276b9182498afb42c9fcea37cb9e57cc2558751"
+  }
+]
