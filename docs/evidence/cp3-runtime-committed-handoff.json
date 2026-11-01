@@ -1,0 +1,16 @@
+{
+  "status": "PASS_COMMITTED_SOURCE_RETRIEVAL",
+  "integrationCommit": "ccbecbf7efaa64bde041be56bfe38335f5c18566",
+  "retrieval": "git archive of this commit and the explicit 333 retained source/evidence paths; extracted into an invocation-owned empty directory, with no uncommitted input copied.",
+  "sourceInputs": 318,
+  "explicitAbsences": 4,
+  "retainedFiles": 333,
+  "committedChangePaths": 302,
+  "allowlistPaths": 337,
+  "sourceManifest": "docs/evidence/cp3-runtime-maintained-source-manifest.json",
+  "verificationEvidence": "docs/evidence/cp3-runtime-final-maven.json",
+  "formattingEvidence": "docs/evidence/cp3-runtime-source-formatting.json",
+  "checked": "All 318 committed byte/size/executable identities, four deletion absences, original verification source/archive and raw Maven evidence hashes.",
+  "doesNotClaim": "No Maven rebuild, native behavior repeat, remote cache retention, release acceptance or CP3 completion.",
+  "checkpoint3Complete": false
+}
