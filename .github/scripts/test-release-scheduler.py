@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import sys
 
 SCRIPTS = Path(__file__).parent
 COMMIT = "dddc3c0a79528c4de8d9a20d51dd3bd89b02a3e4"
@@ -143,6 +144,117 @@ class ReleaseSchedulerTest(unittest.TestCase):
             (install/'retained-owner').unlink()
             cleaned=subprocess.run([*command,'cleanup',str(install)],env=env,capture_output=True)
             self.assertEqual(cleaned.returncode,0,cleaned.stderr);self.assertFalse(install.exists());self.assertTrue(runtime.exists())
+
+
+class ReleaseNativePreparationTest(unittest.TestCase):
+    """Exercise shell routing; the controlled runtime does not establish native receipt validity."""
+
+    def fixture(self, root, platform='Linux', architecture='X64', validation_status=0):
+        """Supply a process boundary matching the producer/validator CLI and its recorded exit contract."""
+        runtime=root/'source-cache-build/runtime';(runtime/'bin').mkdir(parents=True)
+        support=root/'support literal ; $()';support.mkdir()
+        output=root/'native literal ; $()'
+        record=root/'native-calls.jsonl'
+        tool=root/'runtime-fixture.py'
+        tool.write_text('''import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]
+with Path(os.environ['NATIVE_RECORD']).open('a') as target:
+ target.write(json.dumps(args)+'\\n')
+if args[0]=='prepare-release-native':
+ output=Path(args[1]);output.mkdir();(output/'product').write_bytes(b'fixture products')
+elif args[0]=='validate-release-native':
+ sys.exit(int(os.environ['NATIVE_VALIDATION_STATUS']))
+else:
+ sys.exit(90)
+''')
+        # The packaged entry point is a Bash launcher; its controlled child records exact argv.
+        (runtime/'bin/codex-tooling').write_text(
+            '#!/usr/bin/env bash\nexec "$FIXTURE_PYTHON" "$FIXTURE_TOOL" "$@"\n')
+        env=dict(os.environ,RUNNER_OS=platform,RUNNER_ARCH=architecture,RUNNER_TEMP=str(root),
+            FIXTURE_PYTHON=sys.executable,FIXTURE_TOOL=str(tool),NATIVE_RECORD=str(record),
+            NATIVE_VALIDATION_STATUS=str(validation_status))
+        return runtime,support,output,record,env
+
+    def prepare(self, runtime, support, output, env):
+        """Invoke the actual provisioner's shell-facing preparation operation."""
+        return subprocess.run(['bash',str(SCRIPTS/'provision-release-scheduler.sh'),'prepare-native',
+            str(runtime),str(output),str(support)],env=env,capture_output=True)
+
+    def calls(self, record):
+        """Read only the exact runtime requests issued by the shell under test."""
+        return [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
+
+    def test_existing_products_validate_without_production(self):
+        """Retained products select validation only, preserving quoted paths and the worker target."""
+        for platform,architecture,native_arch in [('Linux','X64','x86_64'),('macOS','ARM64','arm64'),
+            ('Windows','ARM64','arm64')]:
+            with self.subTest(platform=platform),tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+                runtime,support,output,record,env=self.fixture(Path(tmp),platform,architecture)
+                output.mkdir();(output/'product').write_bytes(b'retained')
+                result=self.prepare(runtime,support,output,env)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(self.calls(record),[
+                    ['validate-release-native',str(output),str(support),platform,native_arch]])
+                self.assertEqual((output/'product').read_bytes(),b'retained')
+
+    def test_absent_products_produce_then_validate(self):
+        """An absent output selects fresh production followed by current-runtime validation."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            runtime,support,output,record,env=self.fixture(Path(tmp))
+            result=self.prepare(runtime,support,output,env)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(self.calls(record),[
+                ['prepare-release-native',str(output),str(support)],
+                ['validate-release-native',str(output),str(support),'Linux','x86_64']])
+
+    def test_rejected_products_preserve_bytes_and_failure_status(self):
+        """A validator rejection is returned without replacing retained products or invoking production."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            runtime,support,output,record,env=self.fixture(Path(tmp),validation_status=61)
+            output.mkdir();(output/'product').write_bytes(b'recovery evidence')
+            result=self.prepare(runtime,support,output,env)
+            self.assertEqual(result.returncode,61,result.stderr)
+            self.assertEqual(len(self.calls(record)),1)
+            self.assertEqual(self.calls(record)[0][0],'validate-release-native')
+            self.assertEqual((output/'product').read_bytes(),b'recovery evidence')
+
+    def test_unsupported_worker_architecture_starts_no_runtime(self):
+        """An unsupported worker target is refused before production or validation starts."""
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            runtime,support,output,record,env=self.fixture(Path(tmp),architecture='X86')
+            result=self.prepare(runtime,support,output,env)
+            self.assertEqual(result.returncode,2,result.stderr)
+            self.assertEqual(self.calls(record),[])
+            self.assertFalse(output.exists())
+
+    def test_workflow_rejection_stops_before_installation(self):
+        """The actual release step stops at rejected reuse before querying the toolchain or elevating."""
+        import yaml
+        workflow=yaml.load((SCRIPTS.parent/'workflows/baseline-release-builds.yml').read_text(),Loader=yaml.BaseLoader)
+        step=next(step for step in workflow['jobs']['build']['steps']
+            if step.get('name')=='Provision the job-exclusive scheduler installation')
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
+            root=Path(tmp)
+            runtime,support,_,record,env=self.fixture(root,validation_status=61)
+            (root/'release-scheduler-native').mkdir()
+            output=root/'release-native';output.mkdir();(output/'product').write_bytes(b'recovery evidence')
+            shutil.copy2(SCRIPTS/'provision-release-scheduler.sh',root/'provision-release-scheduler.sh')
+            (root/'baseline-evidence').mkdir()
+            programs=root/'programs';programs.mkdir()
+            after_validation=root/'after-validation'
+            for name in ['rustc','sudo']:
+                program=programs/name
+                program.write_text('#!'+sys.executable+'\nfrom pathlib import Path\nimport os\n'
+                    'Path(os.environ["AFTER_VALIDATION"]).touch()\nraise SystemExit(91)\n')
+                program.chmod(0o755)
+            env.update(PATH=str(programs)+os.pathsep+env['PATH'],AFTER_VALIDATION=str(after_validation))
+            result=subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],env=env,capture_output=True)
+            self.assertEqual(result.returncode,61,result.stderr)
+            self.assertEqual(self.calls(record),[
+                ['validate-release-native',str(output),str(root/'release-scheduler-native'),'Linux','x86_64']])
+            self.assertFalse(after_validation.exists())
+            self.assertEqual((output/'product').read_bytes(),b'recovery evidence')
 
 
 class ReleaseDebugPreparationTest(unittest.TestCase):

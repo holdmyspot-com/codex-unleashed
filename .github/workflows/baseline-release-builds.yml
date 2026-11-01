@@ -350,7 +350,8 @@ jobs:
         run: |
           set -euo pipefail
           native="$RUNNER_TEMP/release-native"
-          bash "$RUNNER_TEMP/source-cache-build/runtime/bin/codex-tooling" prepare-release-native "$native" "$RUNNER_TEMP/release-scheduler-native" \
+          bash "$RUNNER_TEMP/provision-release-scheduler.sh" prepare-native \
+            "$RUNNER_TEMP/source-cache-build/runtime" "$native" "$RUNNER_TEMP/release-scheduler-native" \
             2>&1 | tee "$RUNNER_TEMP/baseline-evidence/scheduler-native-setup.log"
           toolchain="$(rustc --print sysroot)"
           if [[ "$RUNNER_OS" == Windows ]]; then toolchain="$(cygpath -u "$toolchain")"; fi

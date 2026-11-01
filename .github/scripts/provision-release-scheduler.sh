@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install or release one job-exclusive scheduler runtime, toolchain and native authority.
 # Usage: provision-release-scheduler.sh install RUNTIME TOOLCHAIN FRIDA [LIBCGROUP]
+#        provision-release-scheduler.sh prepare-native RUNTIME OUTPUT SUPPORT
 #        provision-release-scheduler.sh cleanup ROOT
 #        provision-release-scheduler.sh prepare-debug-session ACTION_SOURCE CHECKOUT EVIDENCE
 #        provision-release-scheduler.sh wait-for-client EVIDENCE
@@ -12,6 +13,12 @@
 # action's post-session cleanup and disappear with the worker checkout.
 # RUNNER_OS selects Linux, macOS or Windows; RUNNER_TEMP owns Windows installation.
 # GITHUB_ENV receives only the exclusive root and original Unix workload credentials.
+# Native preparation uses RUNNER_OS and RUNNER_ARCH (X64 or ARM64) to validate the
+# intended worker target. RUNTIME supplies the current codex-tooling launcher;
+# OUTPUT is its absolute native output directory and SUPPORT holds current producer
+# inputs. An absent output is produced then validated. An existing output is only
+# validated, including linked or incomplete paths, and is preserved on rejection.
+# Preparation exits with the producer/validator status before installation or elevation.
 # Unix installation requires noninteractive sudo; copies become root-owned and protected.
 # Windows follows the existing caller-identity contract and acquires no foreign handles
 # or new elevation policy. Its runtime is copied into an exclusive job-owned directory.
@@ -91,6 +98,26 @@ elif [[ "${1:-}" == wait-for-client ]]; then
     fi
     sleep 1
   done
+elif [[ "${1:-}" == prepare-native ]]; then
+  [[ $# == 4 ]] || { printf 'prepare-native requires runtime, native output and producer-support inputs.\n' >&2; exit 2; }
+  runtime_input="$2"; native_output="$3"; support_input="$4"
+  for path in "$runtime_input" "$native_output" "$support_input"; do require_path_record "$path"; done
+  case "${RUNNER_OS:-}" in
+    Linux | macOS | Windows) ;;
+    *) printf 'Unsupported scheduler native preparation platform: %s\n' "${RUNNER_OS:-}" >&2; exit 2 ;;
+  esac
+  case "${RUNNER_ARCH:-}" in
+    X64) architecture=x86_64 ;;
+    ARM64) architecture=arm64 ;;
+    *) printf 'Unsupported scheduler native preparation architecture: %s\n' "${RUNNER_ARCH:-}" >&2; exit 2 ;;
+  esac
+
+  # Existing paths, including dangling links, must reach validation rather than fresh production.
+  if ! [[ -e "$native_output" || -L "$native_output" ]]; then
+    bash "$runtime_input/bin/codex-tooling" prepare-release-native "$native_output" "$support_input"
+  fi
+  bash "$runtime_input/bin/codex-tooling" validate-release-native \
+    "$native_output" "$support_input" "$RUNNER_OS" "$architecture"
 elif [[ "${1:-}" == install ]]; then
   [[ $# == 4 || $# == 5 ]] || { printf 'install requires runtime, toolchain and native library inputs.\n' >&2; exit 2; }
   : "${GITHUB_ENV:?Set the workflow environment output}"
@@ -183,6 +210,6 @@ elif [[ "${1:-}" == cleanup ]]; then
   fi
   admin rm -rf -- "$root"
 else
-  printf 'Usage: %s install RUNTIME TOOLCHAIN FRIDA [LIBCGROUP] | cleanup ROOT | prepare-debug-session ACTION_SOURCE CHECKOUT EVIDENCE | wait-for-client EVIDENCE\n' "$0" >&2
+  printf 'Usage: %s install RUNTIME TOOLCHAIN FRIDA [LIBCGROUP] | prepare-native RUNTIME OUTPUT SUPPORT | cleanup ROOT | prepare-debug-session ACTION_SOURCE CHECKOUT EVIDENCE | wait-for-client EVIDENCE\n' "$0" >&2
   exit 2
 fi
