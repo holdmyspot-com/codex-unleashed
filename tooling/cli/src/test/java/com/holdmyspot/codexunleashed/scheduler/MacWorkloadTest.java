@@ -6,11 +6,15 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -46,6 +50,34 @@ public final class MacWorkloadTest
     }
 
     /**
+     * Preserves slash-relative and bare executable names plus every argument without PATH rewriting.
+     */
+    @Test public void launchPreservesRelativeExecutableAndExactArguments()
+    {
+        Path absolute = Path.of(".").toAbsolutePath().getRoot();
+        for (String executable : List.of("./tools/workload", "workload"))
+        {
+            List<String> command = new ArrayList<>(List.of(executable, "", "argument with spaces", "--literal=$PATH"));
+            List<String> expected = List.copyOf(command);
+            MacWorkloadNative.Launch launch = new MacWorkloadNative.Launch(absolute, absolute, absolute, absolute,
+                new MacWorkloadNative.Streams(0, 1, 2), command, List.of("PATH=/unrelated"), 501, 20);
+            command.set(0, "replacement");
+            requireThat(launch.command(), "originalCommandVectorFrozenWithoutResolution").isEqualTo(expected, "expected");
+        }
+    }
+
+    /**
+     * Rejects absent, empty and NUL-containing executable names before native acquisition.
+     */
+    @Test public void launchRejectsInvalidExecutableNames()
+    {
+        Path absolute = Path.of(".").toAbsolutePath().getRoot();
+        for (List<String> command : List.of(List.<String>of(), List.of(""), List.of("work\0load")))
+            requireException(IllegalArgumentException.class, () -> new MacWorkloadNative.Launch(
+                absolute, absolute, absolute, absolute, new MacWorkloadNative.Streams(0, 1, 2), command, List.of(), 501, 20));
+    }
+
+    /**
      * Checks the native control socket's UTF-8 byte boundary before acquiring a workload owner.
      */
     @Test public void launchValidatesControlSocketByteBudget()
@@ -71,7 +103,7 @@ public final class MacWorkloadTest
     {
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            Calls calls = new Calls();
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
             MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
             owner.start();
             requireThat(calls.events.indexOf("instrument:10") < calls.events.indexOf("release-root"),
@@ -99,7 +131,7 @@ public final class MacWorkloadTest
     {
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            Calls calls = new Calls();
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
             MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
             owner.start();
             IOException loss = new IOException("Primary membership observation failed");
@@ -124,7 +156,7 @@ public final class MacWorkloadTest
     {
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            Calls calls = new Calls();
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
             IOException denial = new IOException("Required root hook did not acknowledge readiness");
             calls.instrumentationFailure = denial;
             MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
@@ -138,6 +170,29 @@ public final class MacWorkloadTest
     }
 
     /**
+     * Retains cleanup ownership and cancels without releasing the root when native descriptor admission fails.
+     * @throws IOException if workload construction fails
+     */
+    @Test public void descriptorAdmissionFailureNeverReleasesOriginalRoot() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            IOException denial = new IOException("Native descriptor inventory is incomplete");
+            calls.descriptorFailure = denial;
+            MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
+            requireThat(requireException(IOException.class, owner::start) == denial, "exactDescriptorAdmissionFailure").isTrue();
+            requireThat(calls.events.contains("release-root"), "rootHeldAfterDescriptorDenial").isFalse();
+            requireThat(calls.events.contains("cancel-owned"), "nativeCleanupOwnerRetained").isTrue();
+            requireThat(calls.events.contains("close-native"), "noCleanupBeforeTerminalProof").isFalse();
+            calls.result = OptionalInt.of(9);
+            requireThat(requireException(IOException.class, owner::advance) == denial, "descriptorFailureSurvivesCleanup").isTrue();
+            requireThat(calls.events.contains("close-connection:10"), "partialImageClosedAfterBarrier").isTrue();
+            requireThat(calls.events.contains("close-native"), "nativeOwnerClosedAfterBarrier").isTrue();
+        }
+    }
+
+    /**
      * Rejects instrumentation reentry before it can cancel a transition that will release the root.
      * @throws IOException if setup or cleanup fails
      */
@@ -145,7 +200,7 @@ public final class MacWorkloadTest
     {
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            Calls calls = new Calls();
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
             MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
             calls.duringInstrumentation = () ->
             {
@@ -167,7 +222,7 @@ public final class MacWorkloadTest
     {
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            Calls calls = new Calls();
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
             MacWorkload owner = new MacWorkload(scope, calls, calls::instrumentation, Duration.ofSeconds(1));
             owner.start();
             calls.result = OptionalInt.of(0);
@@ -187,6 +242,12 @@ public final class MacWorkloadTest
      */
     private static final class Calls implements MacWorkloadNative
     {
+        /** Scoped mapper borrowed from the method-owned service scope. */
+        private final JsonMapper json;
+        /** Indicates whether the next Script connection owns the temporary runtime worker. */
+        private boolean nextBootstrap;
+        /** Optional native descriptor enumeration failure while the root remains held. */
+        private IOException descriptorFailure;
         /** Cross-component effects controlled by production ordering. */
         private final List<String> events = new ArrayList<>();
         /** Root result becomes present only when the test supplies the full native terminal contract. */
@@ -204,12 +265,18 @@ public final class MacWorkloadTest
 
         /**
          * Creates per-method native observations without acquiring external resources.
+         * @param json mapper borrowed from this method's service scope
          */
-        private Calls() {}
+        private Calls(JsonMapper json) { this.json = json; }
 
         @Override public MacImages.Identity root() { return new MacImages.Identity(10, Instant.ofEpochSecond(1), 9); }
         @Override public MacImages.Identity inspect(long pid) { return root(); }
         @Override public void authenticate(MacImages.Identity identity) { events.add("authenticate:" + identity.pid()); }
+        @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity) throws IOException
+        {
+            if (descriptorFailure != null) throw descriptorFailure;
+            return new MacDescriptorProtection.Inventory(362, 5, List.of());
+        }
         @Override public void releaseRoot() { events.add("release-root"); }
         @Override public void resume(long pid) { events.add("resume:" + pid); }
         @Override public void cancel() { events.add("cancel-owned"); }
@@ -227,25 +294,59 @@ public final class MacWorkloadTest
         }
         @Override public AllocationHook.Connection connection(long pid)
         {
+            boolean bootstrap = nextBootstrap;
+            nextBootstrap = !nextBootstrap;
             return new AllocationHook.Connection()
             {
-                /** Exact send payload emitted by the image readiness script. */
-                private String payload;
-                /** Indicates whether the simulated script still owes its readiness message. */
-                private boolean pending;
-                @Override public void start(String script)
+                /** Configuration supplied to the maintained protection Script for this held image. */
+                private JsonNode configuration;
+                /** Copied native protocol messages awaiting production consumption. */
+                private final ArrayDeque<String> frames = new ArrayDeque<>();
+                @Override public void start(String script) throws IOException
                 {
-                    payload = script.substring(5, script.length() - 2);
-                    pending = true;
+                    String declaration = "const configuration = ";
+                    int start = script.indexOf(declaration) + declaration.length();
+                    configuration = json.readTree(script.substring(start, script.indexOf(";\n", start)));
+                    Object payload = bootstrap ? configuration.path("marker").asString() : Map.of(
+                        "kind", "mac-descriptor-installed", "marker", configuration.path("marker").asString(),
+                        "pid", pid, "registry", "0x1000", "inheritedDescriptors", List.of());
+                    frames.add(json.writeValueAsString(Map.of("type", "send", "payload", payload)));
                 }
                 @Override public Optional<String> pollMessage()
                 {
-                    if (!pending) return Optional.empty();
-                    pending = false;
-                    return Optional.of("{\"type\":\"send\",\"payload\":" + payload + "}");
+                    return Optional.ofNullable(frames.poll());
                 }
-                @Override public void post(JsonNode message) { throw new UnsupportedOperationException("No allocation messages in this lifecycle fixture"); }
-                @Override public void close() { events.add("close-connection:" + pid); }
+                @Override public void post(JsonNode message) throws IOException
+                {
+                    String kind = switch (message.path("type").asString())
+                    {
+                        case "mac-descriptor-bootstrap-completed" -> "mac-descriptor-ready";
+                        case "mac-descriptor-seal" -> "mac-descriptor-sealed";
+                        case "mac-descriptor-observe" -> "mac-descriptor-observed";
+                        case "mac-descriptor-validate" -> "mac-descriptor-validated";
+                        default -> throw new IOException("Unexpected descriptor protocol request");
+                    };
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("kind", kind);
+                    payload.put("marker", configuration.path("marker").asString());
+                    payload.put("pid", pid);
+                    if (kind.equals("mac-descriptor-ready"))
+                    {
+                        payload.put("registry", "0x1000");
+                        payload.put("mutations", 0);
+                        payload.put("creators", 1);
+                        payload.put("closers", 1);
+                        payload.put("inheritedDescriptors", List.of());
+                    }
+                    if (kind.equals("mac-descriptor-observed"))
+                    {
+                        payload.put("mutations", 0);
+                        payload.put("fault", 0);
+                        payload.put("sealed", 1);
+                    }
+                    frames.add(json.writeValueAsString(Map.of("type", "send", "payload", payload)));
+                }
+                @Override public void close() { events.add((bootstrap ? "close-bootstrap:" : "close-connection:") + pid); }
             };
         }
 

@@ -165,7 +165,7 @@ final class MacImages
         if (attempted || stopped) throw new IllegalStateException("Root arming is permitted once");
         attempted = true;
         advancing = true;
-        try { install(root); }
+        try { install(root, null); }
         catch (IOException | RuntimeException | Error cause) { fail(cause); throw cause; }
         finally { advancing = false; }
     }
@@ -216,7 +216,10 @@ final class MacImages
                 retirePredecessor(currentImages.get(child.pid()));
                 ((WorkloadAuthority) authority).authenticateChild(child, inspect(child.pid()));
             }
-            install(observed);
+            Image nativeParent = child.origin() == 0 ? currentImages.get(child.parentPid()) : null;
+            if (child.origin() == 0 && (nativeParent == null || nativeParent.protection == null))
+                throw new IOException("Native fork lacks its retained descriptor registry owner");
+            install(observed, nativeParent == null ? null : nativeParent.protection.registry());
             if (authority instanceof WorkloadAuthority workloadAuthority)
                 workloadAuthority.authenticateChild(child, inspect(child.pid()));
             else if (child.origin() != 1)
@@ -241,44 +244,22 @@ final class MacImages
      * Retains readiness and caller instrumentation owners before starting each one.
      * Both readiness acknowledgements and a final identity check precede publication or release.
      * @param expected independently authenticated image lineage
+     * @param inheritedRegistry exact native-fork parent mapping, otherwise null
      * @throws IOException if acquisition, readiness or identity changes
      */
-    private void install(Identity expected) throws IOException
+    private void install(Identity expected, String inheritedRegistry) throws IOException
     {
         if (!expected.equals(inspect(expected.pid()))) throw new IOException("Held image identity changed");
         var image = new Image(operations.connection(expected.pid()));
         images.add(image);
         String marker = "mac-image-ready:" + expected.pid() + ":" + images.size();
-        long began = clock.getAsLong();
-        try { image.connection.start("send(" + json.writeValueAsString(marker) + ");"); }
+        image.protection = new MacDescriptorProtection(json, image.connection, expected, marker, operations, timeout, clock);
+        try { image.protection.start(inheritedRegistry); }
         catch (FridaRuntime.NativeFailure cause)
         {
             suppress(cause, new IOException("Readiness attachment image: pid=" + expected.pid() +
                 ", birth=" + expected.birth() + ", nativeParent=" + expected.parent()));
             throw cause;
-        }
-        while (true)
-        {
-            if (Thread.currentThread().isInterrupted()) throw new IOException("Image readiness interrupted");
-            var frame = image.connection.pollMessage();
-            if (clock.getAsLong() - began >= timeout) throw new IOException("Image readiness deadline exceeded");
-            if (frame.isPresent())
-            {
-                var message = json.readTree(frame.orElseThrow());
-                if (!message.isObject() || message.size() != 2 || !message.path("type").isString() ||
-                    !message.path("type").asString().equals("send") || !message.path("payload").isString() ||
-                    !message.path("payload").asString().equals(marker))
-                    throw new IOException("Image did not acknowledge exact readiness");
-                if (clock.getAsLong() - began >= timeout) throw new IOException("Image readiness deadline exceeded");
-                break;
-            }
-            if (Thread.currentThread().isInterrupted()) throw new IOException("Image readiness interrupted");
-            try { Thread.sleep(1); }
-            catch (InterruptedException cause)
-            {
-                Thread.currentThread().interrupt();
-                throw new IOException("Image readiness interrupted", cause);
-            }
         }
         if (!expected.equals(inspect(expected.pid()))) throw new IOException("Birth changed before release");
         image.instrumentation = Objects.requireNonNull(instrumentation.create(expected), "instrumentation owner");
@@ -286,6 +267,8 @@ final class MacImages
         image.instrumentation.start();
         if (Thread.currentThread().isInterrupted()) throw new IOException("Image instrumentation interrupted");
         if (!expected.equals(inspect(expected.pid()))) throw new IOException("Birth changed after instrumentation readiness");
+        image.protection.verify();
+        if (!expected.equals(inspect(expected.pid()))) throw new IOException("Birth changed after descriptor agreement");
         current.put(expected.pid(), expected);
         currentImages.put(expected.pid(), image);
     }
@@ -359,7 +342,19 @@ final class MacImages
                     else suppress(cleanup, image.instrumentationFailure);
                     if (failure != null) suppress(failure, image.instrumentationFailure);
                 }
-                if ((image.instrumentation == null || image.instrumentationClosed) && !image.closeAttempted)
+                boolean bootstrapClosed = true;
+                if (image.protection != null)
+                {
+                    try { image.protection.closeBootstrap(); }
+                    catch (IOException | RuntimeException | Error cause)
+                    {
+                        bootstrapClosed = false;
+                        if (cleanup == null) cleanup = cause;
+                        else suppress(cleanup, cause);
+                        if (failure != null) suppress(failure, cause);
+                    }
+                }
+                if (bootstrapClosed && (image.instrumentation == null || image.instrumentationClosed) && !image.closeAttempted)
                 {
                     image.closeAttempted = true;
                     try { image.connection.close(); image.closed = true; }
@@ -555,6 +550,13 @@ final class MacImages
          */
         Identity inspect(long pid) throws IOException;
         /**
+         * Reads a complete descriptor table bracketed by full native workload image authority.
+         * @param identity retained independently authenticated held image
+         * @return complete immutable native observation with SDK queue constants
+         * @throws IOException if authority, completeness or descriptor lifetimes are uncertain
+         */
+        MacDescriptorProtection.Inventory descriptors(Identity identity) throws IOException;
+        /**
          * Creates a resource-free connection subsequently retained before start.
          * @param pid authenticated process
          * @return existing allocation transport connection
@@ -595,6 +597,10 @@ final class MacImages
                 process.parent().map(ProcessHandle::pid).orElse(-1L) != parent) throw new IOException("Native process birth changed");
             return new Identity(pid, before, parent);
         }
+        @Override public MacDescriptorProtection.Inventory descriptors(Identity identity) throws IOException
+        {
+            throw new IOException("Descriptor admission requires the authenticated native workload authority");
+        }
         @Override public AllocationHook.Connection connection(long pid) { return AllocationHook.newNativeConnection(manager, pid); }
         @Override public void resume(long pid) throws IOException { manager.resume(pid); }
     }
@@ -610,6 +616,8 @@ final class MacImages
          * Connection owning its dependent script/session resources.
          */
         private final AllocationHook.Connection connection;
+        /** Native descriptor protocol retained before attachment and through target termination. */
+        private MacDescriptorProtection protection;
         /**
          * Caller instrumentation retained before start, including partial acquisition.
          */

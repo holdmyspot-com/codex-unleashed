@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/event.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/proc_info.h>
@@ -27,6 +28,9 @@
 #include <limits.h>
 #include <grp.h>
 #include <sys/time.h>
+
+_Static_assert(sizeof(struct timespec)==2*sizeof(int64_t), "CModule zero timeout must match the native SDK timespec size");
+_Static_assert(EBADF==9, "CModule descriptor type revalidation must match the native SDK EBADF value");
 
 /* Private ABI layouts are pinned by source-proof.json's XNU headers. */
 struct mw_unique { uint8_t uuid[16]; uint64_t unique,parent; int32_t version,original_parent_version; uint64_t reserved[2]; };
@@ -130,6 +134,70 @@ int mw_snapshot(void *handle,int pid,uint64_t out[18]) {
  if(out[3]!=owner->coalition || pid==owner->anchor)return EPERM;
  if(out[7]!=owner->uid || out[8]!=owner->uid || out[9]!=owner->uid || out[10]!=owner->gid || out[11]!=owner->gid || out[12]!=owner->gid)return EPERM;
  return mw_watch(owner,pid,out[1]);
+}
+
+/* Order descriptor rows without subtraction that could overflow a signed int. */
+static int mw_compare_descriptors(const void *left,const void *right) {
+ const struct proc_fdinfo *a=left,*b=right;
+ if(a->proc_fd<b->proc_fd)return -1;if(a->proc_fd>b->proc_fd)return 1;
+ if(a->proc_fdtype<b->proc_fdtype)return -1;if(a->proc_fdtype>b->proc_fdtype)return 1;return 0;
+}
+
+/* Read the complete descriptor table, rejecting a filled buffer because the
+ * kernel may silently truncate PROC_PIDLISTFDS. Its sizing query includes spare
+ * entries, so it is a capacity bound rather than the expected returned length.
+ * Rows remain private until the caller validates a second complete observation. */
+static int mw_descriptor_table(pid_t pid,struct proc_fdinfo *rows,int capacity,int *count) {
+ int bytes=capacity*(int)sizeof *rows;
+ errno=0;int needed=proc_pidinfo(pid,PROC_PIDLISTFDS,0,NULL,0);
+ if(needed<0 || (needed==0 && errno))return errno?errno:EIO;
+ if(needed>=bytes)return EOVERFLOW;
+ errno=0;int copied=proc_pidinfo(pid,PROC_PIDLISTFDS,0,rows,bytes);
+ if(copied<0 || (copied==0 && errno))return errno?errno:EIO;
+ if(copied>=bytes || copied%(int)sizeof *rows)return EOVERFLOW;
+ *count=copied/(int)sizeof *rows;qsort(rows,(size_t)*count,sizeof *rows,mw_compare_descriptors);
+ for(int i=0;i<*count;i++){
+  if(rows[i].proc_fd<0 || rows[i].proc_fd>=65536 || rows[i].proc_fdtype>INT_MAX)return EOVERFLOW;
+  if(i>0 && rows[i-1].proc_fd==rows[i].proc_fd)return EAGAIN;
+ }
+ return 0;
+}
+
+/* Return complete sorted descriptor number/type pairs for one retained image.
+ * expected supplies all eighteen mw_snapshot fields; both snapshots must equal
+ * it byte for byte. Two complete descriptor observations must also match.
+ * capacity counts pairs and must be in 1..65536. count is zero on failure;
+ * rows and metadata are written only on success. metadata contains SDK
+ * SYS_kqueue and PROX_FDTYPE_KQUEUE. Return errno-style status, preserving query
+ * errors; EAGAIN means changed rows/authority and EOVERFLOW means incomplete
+ * capacity or an unsupported descriptor value. This API requires a held image;
+ * equal observations do not certify arbitrary running application mutations. */
+int mw_descriptors(void *handle,const uint64_t expected[18],int *rows,int capacity,int *count,int metadata[2]) {
+ if(!count)return EINVAL;*count=0;
+ if(!expected || !rows || !metadata || capacity<=0 || capacity>65536 || expected[0]==0 || expected[0]>INT_MAX)return EINVAL;
+ uint64_t before[18],after[18];
+ int error=mw_snapshot(handle,(int)expected[0],before);
+ if(error)return error;if(memcmp(before,expected,sizeof before)!=0)return EAGAIN;
+ struct proc_fdinfo *first=calloc((size_t)capacity,sizeof *first);
+ struct proc_fdinfo *second=calloc((size_t)capacity,sizeof *second);
+ if(!first || !second){free(first);free(second);return ENOMEM;}
+ int first_count=0,second_count=0;
+ error=mw_descriptor_table((pid_t)expected[0],first,capacity,&first_count);
+ if(!error)error=mw_descriptor_table((pid_t)expected[0],second,capacity,&second_count);
+ int after_error=mw_snapshot(handle,(int)expected[0],after);
+ if(!after_error && memcmp(after,expected,sizeof after)!=0)after_error=EAGAIN;
+ if(!error)error=after_error;
+ if(!error && first_count!=second_count)error=EAGAIN;
+ if(!error){
+  for(int i=0;i<first_count;i++){
+   if(first[i].proc_fd!=second[i].proc_fd || first[i].proc_fdtype!=second[i].proc_fdtype){error=EAGAIN;break;}
+  }
+ }
+ if(!error){
+  for(int i=0;i<first_count;i++){rows[2*i]=first[i].proc_fd;rows[2*i+1]=(int)first[i].proc_fdtype;}
+  metadata[0]=SYS_kqueue;metadata[1]=PROX_FDTYPE_KQUEUE;*count=first_count;
+ }
+ free(first);free(second);return error;
 }
 
 /* Execute the trusted launchctl with explicit arguments and no inherited environment. */

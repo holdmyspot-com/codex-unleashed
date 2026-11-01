@@ -180,7 +180,8 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
      * @param directory fresh exclusive launch state directory with at most 90 UTF-8 bytes
      * @param workingDirectory absolute original invocation working directory
      * @param streams original borrowed standard stream descriptors
-     * @param command absolute executable followed by its exact arguments
+     * @param command nonempty executable name followed by its exact arguments; relative executable names
+     * are interpreted in workingDirectory without searching PATH
      * @param environment complete explicit environment entries in NAME=value form
      * @param uid original workload real, effective and saved user identifier
      * @param gid original workload real, effective and saved group identifier
@@ -195,7 +196,8 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
          * @param directory exclusive state directory with at most 90 UTF-8 bytes
          * @param workingDirectory absolute original invocation working directory
          * @param streams borrowed standard stream descriptors kept open through acquisition
-         * @param command exact executable and arguments
+         * @param command nonempty executable name and exact arguments, without NUL characters;
+         * relative executable names use workingDirectory without PATH search
          * @param environment explicit complete environment
          * @param uid nonnegative target user identifier
          * @param gid nonnegative target group identifier
@@ -211,9 +213,10 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
             Objects.requireNonNull(streams, "streams");
             command = List.copyOf(command);
             environment = List.copyOf(environment);
-            if (!library.isAbsolute() || !helper.isAbsolute() || !directory.isAbsolute() || !workingDirectory.isAbsolute() || uid < 0 || gid < 0 ||
-                command.isEmpty() || !Path.of(command.getFirst()).isAbsolute())
-                throw new IllegalArgumentException("Absolute native launch paths, command and nonnegative credentials required");
+            if (!library.isAbsolute() || !helper.isAbsolute() || !directory.isAbsolute() || !workingDirectory.isAbsolute() || uid < 0 || gid < 0)
+                throw new IllegalArgumentException("Absolute native launch paths and nonnegative credentials required");
+            if (command.isEmpty() || command.getFirst().isEmpty())
+                throw new IllegalArgumentException("Native launch requires a nonempty executable name");
             if (directory.toString().getBytes(StandardCharsets.UTF_8).length > 90)
                 throw new IllegalArgumentException("Native launch directory exceeds the control socket UTF-8 byte budget");
             for (String value : command)
@@ -310,6 +313,8 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
             bind(library, "mw_root", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
             bind(library, "mw_snapshot", ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
             bind(library, "mw_inventory", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+            bind(library, "mw_descriptors", ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
             bind(library, "mw_release", ValueLayout.ADDRESS);
             bind(library, "mw_cancel", ValueLayout.ADDRESS);
             bind(library, "mw_terminal", ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -366,6 +371,53 @@ interface MacWorkloadNative extends MacImages.Operations, MacImages.WorkloadAuth
                 MemorySegment output = call.allocate(18 * Long.BYTES, Long.BYTES);
                 check("mw_snapshot", invoke("mw_snapshot", handle, (int) pid, output));
                 return retain(output);
+            }
+        }
+
+        /**
+         * Reads the complete descriptor table of one retained held image.
+         * The native bridge rejects capacity exhaustion, changed descriptor rows and any change to
+         * the retained eighteen-field authority. Its SDK supplies the kqueue syscall and type.
+         * Callers must keep the application's image held while obtaining and using this inventory.
+         * @param identity independently observed retained image lineage
+         * @return complete immutable descriptor rows ordered by descriptor number with native kqueue metadata
+         * @throws IOException if authority changed, enumeration is incomplete or the bridge fails
+         * @throws IllegalStateException if called from another thread
+         */
+        @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity) throws IOException
+        {
+            requireThread(); requireHandle();
+            authenticate(identity);
+            long[] expected = identities.get(identity.pid()).clone();
+            try (Arena call = Arena.ofConfined())
+            {
+                int capacity = 65536;
+                MemorySegment authority = call.allocateFrom(ValueLayout.JAVA_LONG, expected);
+                MemorySegment output = call.allocate((long) capacity * 2 * Integer.BYTES, Integer.BYTES);
+                MemorySegment count = call.allocate(ValueLayout.JAVA_INT);
+                MemorySegment metadata = call.allocate(2L * Integer.BYTES, Integer.BYTES);
+                check("mw_descriptors", invoke("mw_descriptors", handle, authority, output, capacity, count, metadata));
+                authenticate(identity);
+                if (!Arrays.equals(expected, identities.get(identity.pid())))
+                    throw new IOException("Native image authority changed during descriptor inventory");
+
+                int size = count.get(ValueLayout.JAVA_INT, 0);
+                int kqueueSyscall = metadata.getAtIndex(ValueLayout.JAVA_INT, 0);
+                int kqueueType = metadata.getAtIndex(ValueLayout.JAVA_INT, 1);
+                if (size < 0 || size > capacity || kqueueSyscall <= 0 || kqueueType <= 0)
+                    throw new IOException("Native descriptor inventory has invalid count or kqueue metadata");
+                List<MacDescriptorProtection.Descriptor> result = new ArrayList<>(size);
+                int previous = -1;
+                for (int row = 0; row < size; ++row)
+                {
+                    int number = output.getAtIndex(ValueLayout.JAVA_INT, 2L * row);
+                    int type = output.getAtIndex(ValueLayout.JAVA_INT, (2L * row) + 1);
+                    if (number <= previous || number >= capacity || type < 0)
+                        throw new IOException("Native descriptor rows are unordered or outside the supported range");
+                    result.add(new MacDescriptorProtection.Descriptor(number, type));
+                    previous = number;
+                }
+                return new MacDescriptorProtection.Inventory(kqueueSyscall, kqueueType, result);
             }
         }
 

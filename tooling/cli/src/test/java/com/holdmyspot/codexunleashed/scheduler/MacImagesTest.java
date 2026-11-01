@@ -670,6 +670,112 @@ public final class MacImagesTest
     }
 
     /**
+     * Keeps a child held and retains its owners when final descriptor agreement names another generation.
+     * @throws IOException if accepted root setup or barrier cleanup fails
+     */
+    @Test public void finalDescriptorAgreementFailurePreventsChildResume() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            MacImages.Identity root = calls.add(10, 1, 9);
+            calls.add(11, 2, 10);
+            MacImages owner = owner(scope, calls, root);
+            owner.start();
+            calls.badValidation = true;
+            requireException(IOException.class, () -> owner.advance(new FridaRuntime.Child(11, 10, 0, "")));
+            requireThat(calls.resumed.isEmpty(), "childHeldAfterRejectedFinalAgreement").isTrue();
+            requireThat(calls.instrumentationOwners.getLast().closeCalls, "partialChildInstrumentationRetained").isEqualTo(0);
+            requireThat(calls.connections.getLast().closeCalls, "partialChildConnectionRetained").isEqualTo(0);
+            owner.close(() -> true);
+            requireThat(calls.connections.getLast().closed, "childClosedAfterNativeBarrier").isTrue();
+            requireThat(calls.instrumentationOwners.getLast().closeCalls, "childInstrumentationClosedAfterBarrier").isEqualTo(1);
+        }
+    }
+
+    /**
+     * Destroys the separate runtime-worker Script before publishing a held image as ready.
+     * @throws IOException if setup or barrier cleanup fails
+     */
+    @Test public void bootstrapScriptClosesBeforeImageAdmission() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            MacImages.Identity root = calls.add(10, 1, 9);
+            MacImages owner = owner(scope, calls, root);
+            owner.start();
+            requireThat(calls.events.contains("bootstrap-close"), "workerScriptDestroyedBeforeAdmission").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
+     * Repeats complete native observations when runtime teardown changes a private lifetime during either agreement.
+     * @throws IOException if setup, admission or barrier cleanup fails
+     */
+    @Test public void retriesNativeDescriptorChurnBeforeAdmission() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            MacImages.Identity root = calls.add(10, 1, 9);
+            calls.sealRetries = 1;
+            calls.validationRetries = 1;
+            MacImages owner = owner(scope, calls, root);
+            owner.start();
+            requireThat(calls.events.contains("mac-descriptor-seal-retry"), "initialInventoryRaceObserved").isTrue();
+            requireThat(calls.events.contains("mac-descriptor-validate-retry"), "finalInventoryRaceObserved").isTrue();
+            owner.close(() -> true);
+        }
+    }
+
+    /**
+     * Keeps a partially started bootstrap until the native barrier, then destroys it exactly once.
+     * @throws IOException if controlled barrier cleanup fails
+     */
+    @Test public void failedBootstrapStartRetainsCleanupOwnership() throws IOException
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            MacImages.Identity root = calls.add(10, 1, 9);
+            calls.bootstrapStartFailure = new IOException("Partial bootstrap Script installation");
+            MacImages owner = owner(scope, calls, root);
+            requireThat(requireException(IOException.class, owner::start) == calls.bootstrapStartFailure,
+                "originalBootstrapStartFailure").isTrue();
+            requireThat(calls.bootstraps.getFirst().closeCalls, "partialBootstrapRetainedBeforeBarrier").isEqualTo(0);
+            requireThat(calls.connections.getFirst().closed, "primaryRetainedBeforeBarrier").isFalse();
+            owner.close(() -> true);
+            owner.close(() -> true);
+            requireThat(calls.bootstraps.getFirst().closeCalls, "bootstrapDestructionOnceAtBarrier").isEqualTo(1);
+            requireThat(calls.connections.getFirst().closed, "primaryClosesAfterBootstrap").isTrue();
+        }
+    }
+
+    /**
+     * Preserves an uncertain bootstrap destruction result without replay or premature primary release.
+     */
+    @Test public void uncertainBootstrapCloseRetainsPrimaryWithoutReplay()
+    {
+        try (DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Calls calls = new Calls(scope.getLeaderJsonMapper());
+            MacImages.Identity root = calls.add(10, 1, 9);
+            calls.bootstrapCloseFailure = new IOException("Uncertain bootstrap Script destruction");
+            MacImages owner = owner(scope, calls, root);
+            requireThat(requireException(IOException.class, owner::start) == calls.bootstrapCloseFailure,
+                "originalBootstrapCloseFailure").isTrue();
+            requireException(IOException.class, () -> owner.close(() -> true));
+            requireException(IOException.class, () -> owner.close(() -> true));
+            requireThat(calls.bootstraps.getFirst().closeCalls, "uncertainBootstrapDestructionNeverRepeated").isEqualTo(1);
+            requireThat(calls.connections.getFirst().closed, "primaryRetainedAfterUncertainBootstrap").isFalse();
+            requireThat(calls.resumed.isEmpty(), "noReleaseAfterUncertainBootstrap").isTrue();
+            requireThat(owner.isClosed(), "uncertainBootstrapOwnerRemainsRetained").isFalse();
+        }
+    }
+
+    /**
      * Builds a resource-free owner with an advancing test clock and fresh test operations.
      * @param scope this test's owned services
      * @param calls independent observations
@@ -754,6 +860,20 @@ public final class MacImagesTest
          * Whether readiness has an incorrect marker.
          */
         private boolean badReady;
+        /** Indicates whether the native final agreement reply names another generation. */
+        private boolean badValidation;
+        /** Number of controlled initial inventory lifetime changes still to report. */
+        private int sealRetries;
+        /** Number of controlled final inventory lifetime changes still to report. */
+        private int validationRetries;
+        /** Bootstrap Script connections retained separately from the primary image sessions. */
+        private final List<Connection> bootstraps = new ArrayList<>();
+        /** Indicates whether the next connection belongs to the current image's bootstrap. */
+        private boolean nextBootstrap;
+        /** Optional partial bootstrap start failure. */
+        private IOException bootstrapStartFailure;
+        /** Optional uncertain bootstrap Script destruction failure. */
+        private IOException bootstrapCloseFailure;
         /**
          * Borrows one test's scoped mapper.
          * @param json borrowed mapper
@@ -786,9 +906,17 @@ public final class MacImagesTest
         {
             var value = identities.get(pid); if (value == null) throw new IOException("missing observation"); return value;
         }
+        @Override public MacDescriptorProtection.Inventory descriptors(MacImages.Identity identity)
+        {
+            return new MacDescriptorProtection.Inventory(362, 5, List.of());
+        }
         @Override public AllocationHook.Connection connection(long pid)
         {
-            var value = new Connection(this); connections.add(value); return value;
+            Connection value = new Connection(this, nextBootstrap);
+            if (nextBootstrap) bootstraps.add(value);
+            else connections.add(value);
+            nextBootstrap = !nextBootstrap;
+            return value;
         }
         @Override public void resume(long pid) throws IOException
         {
@@ -872,10 +1000,16 @@ public final class MacImagesTest
          * Test-owned observations and scoped parser.
          */
         private final Calls calls;
+        /** Indicates whether this connection owns the temporary runtime-worker Script. */
+        private final boolean bootstrap;
         /**
          * Queued readiness frames.
          */
         private final ArrayDeque<String> frames = new ArrayDeque<>();
+        /** Exact held-image configuration emitted by the maintained protection Script. */
+        private JsonNode configuration;
+        /** Indicates whether the first readiness frame still awaits consumption. */
+        private boolean readinessPending;
         /**
          * Optional retained destruction failure.
          */
@@ -895,25 +1029,102 @@ public final class MacImagesTest
         /**
          * Retains one test's operation state.
          * @param calls owning test operations
+         * @param bootstrap indicates whether this Script owns the runtime worker
          */
-        private Connection(Calls calls) { this.calls = calls; }
+        private Connection(Calls calls, boolean bootstrap) { this.calls = calls; this.bootstrap = bootstrap; }
         @Override public boolean detached() throws IOException { if (detachFailure != null) throw detachFailure; return detached; }
         @Override public void start(String source) throws IOException
         {
+            if (bootstrap && calls.bootstrapStartFailure != null) throw calls.bootstrapStartFailure;
             if (calls.startFailure != null) throw calls.startFailure;
-            calls.events.add("connection-start");
-            String marker = calls.json.readTree(source.substring(5, source.length() - 2)).asString();
-            if (!calls.silent) frames.add(calls.json.writeValueAsString(Map.of("type", "send", "payload", calls.badReady ? "wrong" : marker)));
+            calls.events.add(bootstrap ? "bootstrap-start" : "connection-start");
+            String declaration = "const configuration = ";
+            int start = source.indexOf(declaration) + declaration.length();
+            configuration = calls.json.readTree(source.substring(start, source.indexOf(";\n", start)));
+            Object payload;
+            if (bootstrap)
+            {
+                // The pinned Gum worker runtime imports the second asset and invokes await w.run().
+                // This request fixture accepts the generated export contract and copies its send argument;
+                // actual JavaScript execution and worker termination remain native acceptance checks.
+                String separator = "\n✄\n";
+                String worker = source.substring(source.lastIndexOf(separator) + separator.length());
+                String prefix = "export function run() { send(";
+                String suffix = "); }";
+                requireThat(worker.startsWith(prefix) && worker.endsWith(suffix),
+                    "bootstrapRequestExportsTheRuntimeRunEntrypoint").isTrue();
+                JsonNode sent = calls.json.readTree(worker.substring(prefix.length(), worker.length() - suffix.length()));
+                requireThat(sent.isString(), "workerRunSendsAnExactGenerationChallenge").isTrue();
+                payload = sent.asString();
+            }
+            else
+                payload = Map.of("kind", "mac-descriptor-installed", "marker",
+                    calls.badReady ? "wrong" : configuration.path("marker").asString(),
+                    "pid", configuration.path("pid").asLong(), "registry", "0x1000", "inheritedDescriptors", List.of());
+            if (!calls.silent) frames.add(calls.json.writeValueAsString(Map.of("type", "send", "payload", payload)));
+            readinessPending = true;
         }
         @Override public Optional<String> pollMessage()
         {
-            var value = Optional.ofNullable(frames.poll()); if (value.isPresent() && calls.afterReady != null) calls.afterReady.run(); return value;
+            Optional<String> value = Optional.ofNullable(frames.poll());
+            if (value.isPresent() && readinessPending)
+            {
+                readinessPending = false;
+                if (calls.afterReady != null) calls.afterReady.run();
+            }
+            return value;
         }
-        @Override public void post(JsonNode permission) { throw new IllegalStateException("No allocation permission belongs to readiness owner"); }
+        /** Exact native lifetime generation expected in the next host agreement. */
+        private int mutationVersion;
+        @Override public void post(JsonNode permission) throws IOException
+        {
+            String kind = switch (permission.path("type").asString())
+            {
+                case "mac-descriptor-bootstrap-completed" -> "mac-descriptor-ready";
+                case "mac-descriptor-seal" -> "mac-descriptor-sealed";
+                case "mac-descriptor-observe" -> "mac-descriptor-observed";
+                case "mac-descriptor-validate" -> "mac-descriptor-validated";
+                default -> throw new IOException("Unexpected descriptor protocol request");
+            };
+            if (kind.equals("mac-descriptor-sealed") || kind.equals("mac-descriptor-validated"))
+            {
+                if (permission.path("mutations").asInt() != mutationVersion)
+                    throw new IOException("Host reused a stale native descriptor generation");
+                boolean retry = kind.equals("mac-descriptor-sealed") ? calls.sealRetries-- > 0 : calls.validationRetries-- > 0;
+                if (retry)
+                {
+                    kind = permission.path("type").asString() + "-retry";
+                    mutationVersion++;
+                    calls.events.add(kind);
+                }
+            }
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("kind", kind);
+            payload.put("marker", calls.badValidation && kind.equals("mac-descriptor-validated")
+                ? "wrong" : configuration.path("marker").asString());
+            payload.put("pid", configuration.path("pid").asLong());
+            if (kind.equals("mac-descriptor-ready"))
+            {
+                payload.put("registry", "0x1000");
+                payload.put("mutations", 0);
+                payload.put("creators", 1);
+                payload.put("closers", 1);
+                payload.put("inheritedDescriptors", List.of());
+            }
+            if (kind.endsWith("-retry")) payload.put("mutations", mutationVersion);
+            if (kind.equals("mac-descriptor-observed"))
+            {
+                payload.put("mutations", mutationVersion);
+                payload.put("fault", 0);
+                payload.put("sealed", 1);
+            }
+            frames.add(calls.json.writeValueAsString(Map.of("type", "send", "payload", payload)));
+        }
         @Override public void close() throws IOException
         {
             closeCalls++;
-            calls.events.add("connection-close");
+            calls.events.add(bootstrap ? "bootstrap-close" : "connection-close");
+            if (bootstrap && calls.bootstrapCloseFailure != null) throw calls.bootstrapCloseFailure;
             if (closeFailure instanceof IOException checked) throw checked;
             if (closeFailure instanceof RuntimeException unchecked) throw unchecked;
             if (closeFailure instanceof Error fatal) throw fatal;
