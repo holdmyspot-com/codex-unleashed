@@ -1,0 +1,62 @@
+{
+  "scope": "Resolve two plan-added acceptance mechanisms against the retained scheduler outcome; no native execution is newly accepted.",
+  "reviewer": "/root/plan_current_review",
+  "acceptedBy": "/root",
+  "authority": {
+    "thread": "01a170c7-eade-7431-b337-01b356b20b2d",
+    "retrieval": "CAT get-history with the original thread identifier; inspect the named owner messages rather than treating plan wording as independent authority.",
+    "parentVerification": "Root independently retrieved the exact original user records at ordinals55798,57078,57319 and confirmed the allocation, swap-growth and revised admission passages. The remaining provenance finding is the reviewer's bounded search, with its stated limit.",
+    "ownerMessages": [
+      {
+        "ordinal": 55798,
+        "messageId": "msg_01a17e25-2464-7cf3-9203-71c94fce362b",
+        "text": "If a job runs out of memory, pause it and wait for another job to complete."
+      },
+      {
+        "ordinal": 55854,
+        "messageId": "msg_01a17e27-9fd2-7a22-ab0c-4179aa60f37d",
+        "text": "Investigate exact allocation blocking first"
+      },
+      {
+        "ordinal": 57078,
+        "messageId": "msg_01a17e6b-0a0e-7ba2-aac1-a97fdc04bd1a",
+        "text": "If you cannot disable swap then can you have the scheduler monitor swap usage and if it increases then kill the newest jobs until the swap file usage decreases again? Once a running job completes you can retry the jobs you aborted. Make sure to retain ordering so killed jobs retain their positions for retry."
+      },
+      {
+        "ordinal": 57319,
+        "messageId": "msg_01a17e71-4ec1-72e0-b62b-b80bedd2a545",
+        "text": "Use estimated-memory admission in both modes (Recommended)"
+      }
+    ],
+    "boundedCleanupSearch": {
+      "terms": ["controller", "crash", "dies", "terminated", "cleanup", "partial"],
+      "finding": "The inspected owner messages do not establish automatic immediate deletion of outer groups and attempt storage as a product requirement.",
+      "limit": "This is the inspected provenance, not proof of absence from every earlier conversation."
+    }
+  },
+  "designCheckpoint": {
+    "reportedCase": "An actual allocation fails while the host native low-memory flag stays false: verify injected denied-call holding and ordered recovery; do not require unrelated host exhaustion.",
+    "analogousCase": "Swap usage grows while the native flag stays false: verify the explicitly requested newest-first termination and original-position retry.",
+    "nearestAllowedCase": "A native pressure observation is true: preserve the existing native-pressure policy and its applicable checks.",
+    "crashCases": {
+      "inertRetainedState": "After workload extinction, a successor obtains fresh authority and safely reuses valid outputs: immediate directory/group deletion is not necessary evidence.",
+      "obstructingRetainedState": "A stale group, lock, path or authority prevents the supported successor from completing: repair that acquisition/reconciliation boundary and verify resumption.",
+      "liveWorkload": "A controller dies while its workload remains alive: required shutdown/reaping remains failed regardless of retained-directory cleanup."
+    },
+    "invariant": "Require the authorized observable outcome and any demonstrated prerequisite; a particular diagnostic trigger or cleanup mechanism is not an additional outcome by itself.",
+    "governingArtifact": "plan.md owns current acceptance and execution decisions. restart-scope.md and historical receipts retain scope/history; they do not independently authorize a stronger guarantee.",
+    "preservation": "Keep allocation holding, admission, swap-growth recovery, ordinary results, native-pressure policy, workload extinction, safe resumption, useful outputs and accountable resource cleanup. Retain negative and unrun observations as such.",
+    "compaction": "The two decisions share outcome-based acceptance but govern different next actions: avoid unnecessary host exhaustion versus repair reconciliation only after a resumption failure. Keep both decisions explicit."
+  },
+  "decisions": {
+    "naturalPredicateActivation": "Natural activation of each host's native low-memory predicate is not an independent unconditional completion gate. Actual native observations, denied-allocation handling and the required swap-growth behavior remain acceptance requirements.",
+    "automaticCrashDeletion": "Do not add a crash-time cleanup subsystem solely to remove inert outer groups or attempt storage. Verify workload shutdown and the actual supported successor invocation against retained state; add production reconciliation where that check demonstrates it is necessary."
+  },
+  "remainingAcceptance": [
+    "Correlate actual accepted native measurements with the recovery decision at the installed consumer boundary.",
+    "Complete the required native allocation, swap-growth, static compiler/descendant and ordinary-execution integrations.",
+    "After authentic controller death, prove whole-workload extinction/reaping and supported resumption with fresh authority, valid completed-work reuse, failed-output exclusion and useful final outputs.",
+    "Account for retained resources through their established lifetime without diagnostic observer deletion standing in for product resumption."
+  ],
+  "nativeGateChanges": "No failed or unrun execution is relabelled as passed; no user-authorized outcome is excluded."
+}
