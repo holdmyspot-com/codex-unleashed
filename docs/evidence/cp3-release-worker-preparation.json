@@ -1,0 +1,68 @@
+{
+  "state": "source-integrated-focused-shell-checks-passed",
+  "checkpoint3Complete": false,
+  "baseline": "134ee42d615cdbd6f013446114f93fa0d3522b2c",
+  "integrationPredecessor": "5e87fe6aad632ae0183743fb350f468ae8600a14",
+  "changedPaths": [
+    ".github/workflows/baseline-release-builds.yml",
+    ".github/scripts/provision-release-scheduler.sh",
+    ".github/scripts/test-release-scheduler.py"
+  ],
+  "behavior": {
+    "public_key": "Optional SSH public key. Nonempty input stages the existing debug action after pristine upstream verification and opens authenticated runner access before release commands.",
+    "readiness": "The connected client creates RUNNER_TEMP/baseline-evidence/client-ready. The production barrier rejects nonregular or symlink signals and waits at most 600 seconds.",
+    "session_id": "Optional run-name correlation only.",
+    "failure": "Failed keyed runs retain their installed scheduler authority for correction. The original workflow failure remains failed. Successful and non-keyed runs preserve ordinary closed-authority cleanup.",
+    "staging": "The preserved action is copied into an absent ignored upstream checkout directory. Existing action files and stale readiness are rejected; tracked upstream files remain unchanged.",
+    "reuse": "No supplied scheduler runtime/native reuse input is enabled. Applicability validation is a separate unmet producer prerequisite."
+  },
+  "integration": {
+    "scope": "Three explicit single-target replays into a clean maintained tree; each predecessor matched the named immutable baseline before its write. Other maintained paths were preserved.",
+    "sourceInspection": "The complete returned patch was read before replay; only the three declared paths changed.",
+    "parentVerification": [
+      {
+        "command": "python3 .github/scripts/test-release-scheduler.py",
+        "exit": 0,
+        "tests": 14,
+        "output": "..............\n----------------------------------------------------------------------\nRan 14 tests in 7.324s\n\nOK\n"
+      },
+      {
+        "command": "python3 .github/scripts/test-build-upstream-release.py ReleaseStagesTest.test_each_platform_checkpoints_each_executable_once ReleaseStagesTest.test_compiler_failure_keeps_earlier_checkpoints_and_stops ReleaseStagesTest.test_checkpoint_failure_stops_before_next_build ReleaseStagesTest.test_scheduler_receives_every_compilation_before_its_checkpoint ReleaseStagesTest.test_scheduler_failure_preserves_completed_work_and_stops_later_stages",
+        "exit": 0,
+        "tests": 5,
+        "output": ".....\n----------------------------------------------------------------------\nRan 5 tests in 1.948s\n\nOK\n"
+      },
+      {
+        "command": "bash -n .github/scripts/build-upstream-release.sh .github/scripts/release-scheduler-cargo.sh .github/scripts/provision-release-scheduler.sh",
+        "exit": 0,
+        "output": ""
+      },
+      {
+        "command": "git diff --check",
+        "exit": 0,
+        "output": ""
+      }
+    ],
+    "temporaryFixtures": "Each check used an invocation-owned CAT_TEMP directory. Test fixtures clean themselves; no local Rust/Bazel/Go build or extraction ran."
+  },
+  "acceptanceLimits": {
+    "actionlint": {
+      "state": "failed-existing-tool-compatibility-finding",
+      "version": "1.7.12",
+      "candidateDiagnostic": ".github/workflows/baseline-release-builds.yml:120:7: unexpected key \"queue\" for \"concurrency\" section. expected one of \"cancel-in-progress\", \"group\" [syntax-check]",
+      "baselineDiagnostic": "<stdin>:110:7: unexpected key \"queue\" for \"concurrency\" section. expected one of \"cancel-in-progress\", \"group\" [syntax-check]",
+      "authority": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency",
+      "disposition": "The same finding occurs on baseline and candidate. Preserve the documented queue semantics and diagnostic; no suppression, exclusion or passing Actionlint claim."
+    },
+    "realCargoFixture": "Unrun locally: rustc is unavailable and local native builds are forbidden. The five portable shell cases pass; they do not establish real Cargo compilation.",
+    "hostedLifecycle": "Unrun: actual provider authentication, action post ordering, failed-worker correction and terminal cleanup still require a connected hosted run.",
+    "platformReadiness": "Unchanged. No failed or unrun native gate is activated by this preparation.",
+    "fullVerification": "Unrun for the final combined implementation. These checks establish the shell preparation scope only."
+  },
+  "remaining": [
+    "Producer-owned scheduler native applicability validation and its consuming reuse wiring",
+    "Connected retained-worker release/failure/correction/cleanup acceptance",
+    "Real native Cargo fixture and complete scheduled platform release acceptance",
+    "Final combined verification, activation and checkpoint tag"
+  ]
+}

@@ -1,8 +1,17 @@
 name: Stable upstream release builds
+run-name: ${{ inputs.session_id && format('Release builds - {0} - {1}', inputs.target, inputs.session_id) || 'Stable upstream release builds' }}
 
 on:
   workflow_dispatch:
     inputs:
+      public_key:
+        description: Optional SSH public key; connect and create RUNNER_TEMP/baseline-evidence/client-ready before release commands
+        type: string
+        default: ''
+      session_id:
+        description: Optional client correlation identifier for this retained worker run
+        type: string
+        default: ''
       scheduler:
         description: Opt in to the installed scheduler; requires accepted native prerequisites for every selected target
         type: boolean
@@ -99,6 +108,7 @@ jobs:
 
   build:
     needs: select
+    timeout-minutes: 360
     permissions:
       contents: read
       packages: write
@@ -151,6 +161,10 @@ jobs:
           cp restart-metadata/.github/scripts/verify-codex-cache-invalidation.py "$RUNNER_TEMP/verify-codex-cache-invalidation.py"
           cp restart-metadata/.github/scripts/test-ghcr-cargo-target-cache.sh "$RUNNER_TEMP/test-ghcr-cargo-target-cache.sh"
           cp restart-metadata/.github/scripts/build-upstream-release.sh "$RUNNER_TEMP/build-upstream-release.sh"
+          cp restart-metadata/.github/scripts/provision-release-scheduler.sh "$RUNNER_TEMP/provision-release-scheduler.sh"
+          if [[ -n "$DEBUG_PUBLIC_KEY" ]]; then
+            cp -R restart-metadata/.github/actions/debug-failed-runner "$RUNNER_TEMP/release-debug-action"
+          fi
           if [[ '${{ inputs.scheduler }}' == true ]]; then
             cp -R restart-metadata/.github/scripts/release-scheduler-native "$RUNNER_TEMP/release-scheduler-native"
             for script in provision-release-scheduler.sh release-scheduler-cargo.sh; do
@@ -165,6 +179,8 @@ jobs:
             restart-metadata/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/{Main,CargoCacheKeys,CargoCacheParts,VerifyCargoLock}.java \
             > "$evidence/cache-wrapper-inputs.sha256"
           printf 'commit=%s\n' "$(cat "$evidence/upstream-commit")" >> "$GITHUB_OUTPUT"
+        env:
+          DEBUG_PUBLIC_KEY: ${{ inputs.public_key }}
 
       - name: Preserve the cache helper before upstream checkout
         run: |
@@ -194,6 +210,22 @@ jobs:
           git diff --check
           git diff --binary > "$evidence/pristine-source.diff"
           git show HEAD:codex-rs/Cargo.lock > "$evidence/upstream-Cargo.lock"
+
+      - name: Prepare retained release worker
+        if: inputs.public_key != ''
+        run: |
+          bash "$RUNNER_TEMP/provision-release-scheduler.sh" prepare-debug-session \
+            "$RUNNER_TEMP/release-debug-action" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/baseline-evidence"
+
+      - name: Open authenticated release worker
+        if: inputs.public_key != ''
+        uses: ./.github/actions/debug-failed-runner
+        with:
+          public-key: ${{ inputs.public_key }}
+
+      - name: Wait for connected release client
+        if: inputs.public_key != ''
+        run: bash "$RUNNER_TEMP/provision-release-scheduler.sh" wait-for-client "$RUNNER_TEMP/baseline-evidence"
 
       - name: Record Linux runner capacity
         if: runner.os == 'Linux'
@@ -568,7 +600,10 @@ jobs:
             done > "$evidence/final-untracked-source-digests.txt"
 
       - name: Release only closed scheduler authority
-        if: always() && inputs.scheduler && env.RELEASE_SCHEDULER_ROOT != ''
+        # A failed authenticated worker retains its installation for correction.
+        # The connected owner may run this same cleanup after its final consumer;
+        # otherwise terminal hosted-worker disposal follows the debug action post wait.
+        if: always() && inputs.scheduler && env.RELEASE_SCHEDULER_ROOT != '' && (inputs.public_key == '' || success())
         run: |
           set -euo pipefail
           bash "$RUNNER_TEMP/provision-release-scheduler.sh" cleanup "$RELEASE_SCHEDULER_ROOT" \
