@@ -103,8 +103,8 @@
   },
   {
     "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
-    "sha256": "721f03d5b1a75be5abd564e34cd0f99520080e29d433ccdc67beb20fd91fe8fa",
-    "bytes": 18658,
+    "sha256": "63848f9ea9eb72a91b045008ac498253add2e218d44eac9bfa464ba35b9f8c9b",
+    "bytes": 18657,
     "mode": "0o600"
   },
   {
@@ -781,8 +781,8 @@
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/PrepareReleaseSchedulerNative.java",
-    "sha256": "c99e31b62ecfc32598bc02bfa03820434eccb9b22166a34dafad674dd2e56a53",
-    "bytes": 27948,
+    "sha256": "1edce38446f1d1b8112458a67dd85e843bc634fbe4ac29b7f0b7c01560f6a4ce",
+    "bytes": 28269,
     "mode": "0o644"
   },
   {
@@ -1020,6 +1020,12 @@
     "mode": "0o600"
   },
   {
+    "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/distribution/DistributionLauncherTest.java",
+    "sha256": "b260b65f67f8f83c011c0564b58a392c2851bced720391eaada86ddb95a5bc69",
+    "bytes": 5858,
+    "mode": "0o644"
+  },
+  {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/AllocationHookTest.java",
     "sha256": "b86441f089e80fc3f11253594584e4b833467eedad881d776e3c6bca27625819",
     "bytes": 28728,
@@ -1075,8 +1081,8 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/CargoLaunchConfigurationCommandTest.java",
-    "sha256": "c1a05e6894b69286410c8f718611e7c3a2dad80a8e4e0c65eaa6bc1a708f613a",
-    "bytes": 11910,
+    "sha256": "53008f6a9d7828f6bf96938848c8304c45ade275bf3daafb2dd472bd22583c24",
+    "bytes": 12164,
     "mode": "0o644"
   },
   {
@@ -1735,8 +1741,8 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/PrepareReleaseSchedulerNativeTest.java",
-    "sha256": "44f92de1aa579263c8bb22b3556e791a15240f20298bd70498af3e081d875b7c",
-    "bytes": 9057,
+    "sha256": "4b43e60bc9f262c5ceaddf86569265bb4ce27ae43cf0bead403dc898512fc477",
+    "bytes": 11827,
     "mode": "0o644"
   },
   {
@@ -1807,8 +1813,8 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/ValidateReleaseSchedulerInstallationTest.java",
-    "sha256": "c2aa8066466f6bfd5fd8068c51985761f934568da2e0da38b5877e919174fa0a",
-    "bytes": 5023,
+    "sha256": "78b9b4533092a8cd2086d7ed4276b9182498afb42c9fcea37cb9e57cc2558751",
+    "bytes": 5864,
     "mode": "0o644"
   },
   {
