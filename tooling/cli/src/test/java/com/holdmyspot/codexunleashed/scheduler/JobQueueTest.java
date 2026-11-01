@@ -100,6 +100,52 @@ public final class JobQueueTest
 	}
 
 	/**
+	 * Authorizes termination instead of a grant for an attempt that cannot continue its denied allocation, then
+	 * retains original position and permits only the existing single completion-free retry after accepted cleanup.
+	 *
+	 * @throws IOException if a valid controlled lifecycle is rejected
+	 */
+	@Test(groups = "waits")
+	public void retriesNoncontinuableDenialOnlyAfterAcceptedTermination() throws IOException
+	{
+		Fixture fixture = new Fixture(1);
+		try (JobQueue<Result> queue = fixture.queue())
+		{
+			queue.submit("A", 20L);
+			queue.submit("B", 20L);
+			queue.cycle();
+			Owner original = fixture.latestAttempt("A");
+			original.retryAfterDenial = true;
+			queue.allocationBlocked("A", 0, 4);
+
+			requireThat(queue.cycle().control(), "issuedControl").isEqualTo(Policy.Control.TERMINATE);
+			requireThat(original.resumes, "inPlaceGrants").isEqualTo(0);
+			requireThat(original.terminates, "authorizedTerminations").isEqualTo(1);
+			requireThat(queue.jobs().getFirst().state(), "awaitingOriginalOwner").isEqualTo(Policy.State.STOPPING);
+			requireThat(queue.cycle().control(), "uncollectedAttemptRetainsSlot").isEqualTo(Policy.Control.WAIT);
+			requireThat(fixture.owners.size(), "attemptsBeforeCollection").isEqualTo(1);
+
+			original.finish(true, 137);
+			Policy.Decision retry = queue.cycle();
+			requireThat(retry.control(), "freshAttemptControl").isEqualTo(Policy.Control.START);
+			requireThat(retry.jobName(), "originalActionRetainsPriority").isEqualTo("A");
+			requireThat(original.closes, "cleanupBeforeFreshAttempt").isEqualTo(1);
+			requireThat(queue.jobs().getFirst().position(), "originalPosition").isEqualTo(0);
+			requireThat(queue.jobs().getFirst().retryAfter(), "selectedCompletionThreshold").isEqualTo(1);
+			requireThat(queue.completions(), "abortionIsNotCompletion").isEqualTo(0);
+
+			Owner second = fixture.latestAttempt("A");
+			second.retryAfterDenial = true;
+			queue.allocationBlocked("A", 1, 0);
+			requireThat(queue.cycle().control(), "secondDenialControl").isEqualTo(Policy.Control.TERMINATE);
+			second.finish(true, 137);
+			requireException(IOException.class, queue::cycle);
+			requireThat(fixture.owners.size(), "noUnboundedCompletionFreeRetry").isEqualTo(2);
+			requireThat(second.resumes, "secondInPlaceGrants").isEqualTo(0);
+		}
+	}
+
+	/**
 	 * Preserves denial order and the resumed wait high-water mark while rejecting a newer wait during BLOCKED.
 	 *
 	 * @throws IOException if a valid controlled lifecycle is rejected
@@ -993,12 +1039,24 @@ public final class JobQueueTest
 
 		/** Accepted whole-job input, or null while no whole-job result is available. */
 		private JobQueue.Outcome<Result> outcome = null;
-		IOException startFailure = null, resumeFailure = null, terminateFailure = null, pollFailure = null, closeFailure = null;
+		/** Controlled partial start failure, or null for success. */
+		private IOException startFailure = null;
+		/** Controlled partial continuation failure, or null for success. */
+		private IOException resumeFailure = null;
+		/** Controlled partial termination failure, or null for success. */
+		private IOException terminateFailure = null;
+		/** Controlled observation failure, or null for success. */
+		private IOException pollFailure = null;
+		/** Controlled cleanup failure, or null for success. */
+		private IOException closeFailure = null;
 
 		/** Optional real wait collector for queue composition tests; null leaves native-wait composition unused. */
 		private AllocationWaits allocationWaits = null;
 		/** Borrowed acknowledgement input used only when this owner has an allocation-wait collector. */
 		private AllocationWaits.Continuation continuation = null;
+
+		/** Controlled denial capability; true models a native hold recoverable only by a fresh attempt. */
+		private boolean retryAfterDenial = false;
 
 		/** Counts issued start, resume, terminate, poll and cleanup requests. */
 		private int starts = 0, resumes = 0, terminates = 0, polls = 0, closes = 0;
@@ -1035,6 +1093,12 @@ public final class JobQueueTest
 			if (resumeFailure != null)throw resumeFailure;
 			if (allocationWaits != null)
 				allocationWaits.resume(waitSequence, continuation);
+		}
+
+		@Override
+		public boolean requiresRetryAfterDenial()
+		{
+			return retryAfterDenial;
 		}
 
 		@Override

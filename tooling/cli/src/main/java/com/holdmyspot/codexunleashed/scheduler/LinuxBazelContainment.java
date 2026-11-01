@@ -21,6 +21,8 @@ final class LinuxBazelContainment implements AutoCloseable
     private final LinuxBazelIdentity.Owner owner;
     /** Independently mapped child birth retained across approved exec transitions. */
     private final LinuxBazelIdentity.Child child;
+    /** Authenticated current kernel identity after any authorized original nonleader exec. */
+    private LinuxBazelIdentity.Child currentChild;
     /** Exclusive host cgroup owner retained until successful cleanup. */
     private final Group group;
     /** Indicates whether actual empty population was observed before the owned group disappeared. */
@@ -41,6 +43,7 @@ final class LinuxBazelContainment implements AutoCloseable
         this.authenticator = authenticator;
         this.owner = owner;
         this.child = child;
+        this.currentChild = child;
         this.group = group;
     }
 
@@ -220,11 +223,42 @@ final class LinuxBazelContainment implements AutoCloseable
     void requireContained() throws IOException
     {
         requireOpen();
-        authenticator.requireChildIdentity(owner, child);
+        authenticator.requireChildIdentity(owner, currentChild);
         if (!group.contains(child.hostPid())) throw new IOException("Authenticated child is outside its retained attempt cgroup");
         if (group.contains(owner.peer().pid())) throw new IOException("Native action owner entered the attempt cgroup");
-        authenticator.requireChildIdentity(owner, child);
+        authenticator.requireChildIdentity(owner, currentChild);
         if (!group.contains(child.hostPid())) throw new IOException("Authenticated child left its attempt cgroup during verification");
+    }
+
+    /**
+     * Captures a held original nonleader exec thread while current root identity and containment still hold.
+     * @param localThreadPid namespace-local thread ID from the original native exec-entry stop
+     * @param startTicks native exec-entry birth to match against independent thread observations
+     * @return one-use independently authenticated migration authority
+     * @throws IOException if current identity, membership or original thread cannot be authenticated
+     */
+    LinuxBazelIdentity.ExecAuthorization prepareExec(long localThreadPid, long startTicks) throws IOException
+    {
+        requireContained();
+        LinuxBazelIdentity.ExecAuthorization authorization = authenticator.prepareExec(owner, currentChild, localThreadPid, startTicks);
+        requireContained();
+        return authorization;
+    }
+
+    /**
+     * Admits the held original root's authenticated nonleader exec without changing its native parent's wait receipt.
+     * @param authorization exact original thread capability captured before native exec was authorized
+     * @throws IOException if native identity, original parent exclusion or cgroup membership differs
+     */
+    void admitExec(LinuxBazelIdentity.ExecAuthorization authorization) throws IOException
+    {
+        requireOpen();
+        if (!group.contains(child.hostPid()) || group.contains(owner.peer().pid()))
+            throw new IOException("Held exec containment membership differs before authentication");
+        LinuxBazelIdentity.Child migrated = authenticator.authenticateExec(owner, currentChild, authorization);
+        if (!group.contains(child.hostPid()) || group.contains(owner.peer().pid()))
+            throw new IOException("Authenticated exec containment membership differs");
+        currentChild = migrated;
     }
 
     /**

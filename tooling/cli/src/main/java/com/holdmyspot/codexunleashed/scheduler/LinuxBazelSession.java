@@ -452,6 +452,11 @@ final class LinuxBazelSession implements SchedulerCoordinator.Session<LinuxBazel
 
         @Override public void start() throws IOException { requireOwner(); delegate.start(); }
         @Override public void resume(long waitSequence) throws IOException { requireOwner(); delegate.resume(waitSequence); }
+        @Override public boolean requiresRetryAfterDenial()
+        {
+            requireOwner();
+            return delegate.requiresRetryAfterDenial();
+        }
         @Override public void terminate() throws IOException { requireOwner(); delegate.terminate(); }
         @Override public Optional<JobQueue.Outcome<LinuxBazelControl.Result>> poll() throws IOException
         {

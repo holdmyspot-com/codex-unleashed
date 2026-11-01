@@ -37,7 +37,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class LinuxBazelHelperMain
 {
     /** Maximum encoded frame bytes retained by either pipe endpoint; oversized bursts fail closed. */
-    static final int MAX_FRAME_BYTES = 1_048_576;
+    static final int MAX_FRAME_BYTES = ToolingScope.MAX_NAMESPACE_CONTROL_FRAME_BYTES;
     /** Fixed correlation schema for this package-owned helper and its host. */
     static final String SCHEMA = "codex-bazel-namespace-helper-v1";
 
@@ -60,8 +60,78 @@ final class LinuxBazelHelperMain
         System.setOut(new java.io.PrintStream(System.err, true, StandardCharsets.UTF_8));
         try (DefaultToolingScope scope = new DefaultToolingScope())
         {
-            serve(scope, System.in, originalControl, configuration -> new NativeBackend(scope, configuration));
+            serve(scope, System.in, originalControl, configuration -> selectBackend(scope, configuration));
         }
+    }
+
+    /**
+     * Validates and copies one independently represented host execution before native acquisition.
+     * @param configuration trusted INIT frame
+     * @param name held or original launch execution field
+     * @return owned exact execution record
+     * @throws IOException if executable, native vectors or credentials cannot be represented exactly
+     */
+    static ObjectNode readExecution(ObjectNode configuration, String name) throws IOException
+    {
+        JsonNode configuredExecution = configuration.path(name);
+        if (!(configuredExecution instanceof ObjectNode object))
+            throw new IOException("Namespace helper execution must be an object: " + name);
+        ObjectNode execution = object.deepCopy();
+        Path executable = Path.of(text(execution, "executable"));
+        JsonNode arguments = execution.path("arguments");
+        JsonNode environment = execution.path("environment");
+        if (!executable.isAbsolute() || !executable.normalize().equals(executable) ||
+            !arguments.isArray() || arguments.isEmpty() || !environment.isObject() ||
+            positive(execution, "uid") > Integer.MAX_VALUE || nonnegative(execution, "gid") > Integer.MAX_VALUE)
+            throw new IOException("Namespace helper held execution shape differs");
+        for (JsonNode argument : arguments)
+            if (!argument.isString() || argument.asString().indexOf(0) >= 0)
+                throw new IOException("Namespace helper native argv cannot be represented exactly");
+        for (Map.Entry<String, JsonNode> member : environment.properties())
+            if (member.getKey().isEmpty() || member.getKey().indexOf('=') >= 0 || member.getKey().indexOf(0) >= 0 ||
+                !member.getValue().isString() || member.getValue().asString().indexOf(0) >= 0)
+                throw new IOException("Namespace helper native environment cannot be represented exactly");
+        return execution;
+    }
+
+    /**
+     * Selects original-image instrumentation before either native owner acquires the child.
+     * @param scope borrowed process values
+     * @param configuration authenticated host configuration
+     * @return the exclusive backend for the requested executable
+     * @throws IOException if the original executable cannot be inspected
+     */
+    private static Backend selectBackend(ToolingScope scope, ObjectNode configuration) throws IOException
+    {
+        ObjectNode execution = readExecution(configuration, "execution");
+        Path executable = Path.of(text(execution, "executable"));
+        try (FileChannel image = FileChannel.open(executable, StandardOpenOption.READ))
+        {
+            if (isStaticTraceImage(image)) return new LinuxBazelTraceHelper(scope, configuration);
+        }
+        return new NativeBackend(scope, configuration);
+    }
+
+    /**
+     * Indicates whether the retained executable is a static little-endian ELF64 image using a supported native ABI.
+     * @param image original executable descriptor
+     * @return true when the image has no program interpreter and uses the supported native ABI
+     * @throws IOException if an ELF64 program table is malformed or truncated
+     */
+    static boolean isStaticTraceImage(FileChannel image) throws IOException
+    {
+        java.nio.ByteBuffer header = imageBytes(image, 0, 64).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        if (header.getInt(0) != 0x464c457f || header.get(4) != 2 || header.get(5) != 1 || (header.getShort(18) != 62 && header.getShort(18) != 183))
+            return false;
+        long offset = header.getLong(32);
+        int entrySize = Short.toUnsignedInt(header.getShort(54));
+        int count = Short.toUnsignedInt(header.getShort(56));
+        if (offset < 64 || entrySize != 56 || count == 0 || offset > image.size() - ((long) count * entrySize))
+            throw new IOException("Original ELF program header table is malformed");
+        for (int index = 0; index < count; index++)
+            if (imageBytes(image, offset + ((long) index * entrySize), entrySize)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt(0) == 3) return false;
+        return true;
     }
 
     /**
@@ -96,7 +166,7 @@ final class LinuxBazelHelperMain
     static void serve(ToolingScope scope, InputStream incoming, OutputStream outgoing, BackendFactory factory)
         throws IOException
     {
-        JsonMapper json = scope.getAllocationEnvelopeMapper();
+        JsonMapper json = scope.getNamespaceControlMapper();
         DataInputStream input = new DataInputStream(incoming);
         DataOutputStream output = new DataOutputStream(outgoing);
         write(output, json, json.createObjectNode().put("schema", SCHEMA).put("kind", "hello")
@@ -134,6 +204,7 @@ final class LinuxBazelHelperMain
                         case "pump" -> backend.pump();
                         case "installHeld" -> backend.installHeld(request);
                         case "resumeHeld" -> backend.resumeHeld(request);
+                        case "authorizeExec" -> backend.authorizeExec(request);
                         case "grant" -> backend.grant(new AllocationWaits.Wait(positive(request, "installation"),
                             positive(request, "sequence")));
                         case "stop" -> backend.stop();
@@ -156,6 +227,19 @@ final class LinuxBazelHelperMain
                     response.set("frames", json.valueToTree(snapshot.frames()));
                     response.set("held", json.valueToTree(snapshot.held()));
                     response.set("retired", json.valueToTree(snapshot.retired()));
+                    response.set("preExec", json.valueToTree(snapshot.preExec()));
+                    response.set("migrations", json.valueToTree(snapshot.migrations()));
+                    response.put("requiresRetryAfterDenial", backend.requiresRetryAfterDenial());
+                    LinuxAllocationTrace.Terminal terminal = backend.rootTerminal();
+                    if (terminal == null)
+                        response.putNull("rootTerminal");
+                    else
+                    {
+                        ObjectNode nativeTerminal = response.putObject("rootTerminal");
+                        nativeTerminal.put("waitStatus", terminal.waitStatus());
+                        nativeTerminal.putObject("identity").put("tid", terminal.identity().tid())
+                            .put("birthTicks", terminal.identity().birthTicks());
+                    }
                 }
             }
             catch (IOException | RuntimeException failure)
@@ -450,6 +534,13 @@ final class LinuxBazelHelperMain
          */
         void pump() throws IOException;
         /**
+         * Copies the original native root's actual wait status without claiming workload zero.
+         * @return collected root terminal status, or null for an unavailable observation
+         * @throws IOException if the original native owner failed
+         */
+        default LinuxAllocationTrace.Terminal rootTerminal() throws IOException { return null; }
+
+        /**
          * Installs an independently host-authorized held image without resuming it.
          * @param request exact original host image and generation authorization
          * @throws IOException if the backend does not support authenticated descendants or readiness fails
@@ -463,6 +554,18 @@ final class LinuxBazelHelperMain
          */
         default void resumeHeld(ObjectNode request) throws IOException
         { throw new IOException("Authenticated held resume is unsupported"); }
+        /**
+         * Authorizes a previously reported original nonleader exec entry.
+         * @param request independently authenticated host thread identity
+         * @throws IOException if the backend has no matching native entry hold
+         */
+        default void authorizeExec(ObjectNode request) throws IOException
+        { throw new IOException("Native nonleader exec authorization is unsupported"); }
+        /**
+         * Indicates whether observed allocation denials require a fresh attempt.
+         * @return true for a backend that cannot continue the denied allocation
+         */
+        default boolean requiresRetryAfterDenial() { return false; }
         /**
          * Grants one previously observed native wait and requires its exact acknowledgement.
          * @param wait selected native wait
@@ -491,22 +594,36 @@ final class LinuxBazelHelperMain
      * @param frames raw allocation envelopes with their original attempt/installation/local PID identities
      * @param held real manager child events, still requiring independent host authentication
      * @param retired generations whose original process birth no longer exists
+     * @param preExec original nonleader exec entries awaiting host thread authentication
+     * @param migrations actual held exec observations carrying original thread identity
      */
-    record Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired)
+    record Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired,
+        List<LinuxAllocationTrace.PreExec> preExec, List<LinuxAllocationTrace.Held> migrations)
     {
         /**
          * Copies report collections before transport serialization.
          * @param frames original allocation frames
          * @param held original copied child events
          * @param retired independently observed dead generations
+         * @param preExec original nonleader exec entries
+         * @param migrations original exec identity transitions
          */
-        Snapshot { frames = List.copyOf(frames); held = List.copyOf(held); retired = List.copyOf(retired); }
+        Snapshot { frames = List.copyOf(frames); held = List.copyOf(held); retired = List.copyOf(retired);
+            preExec = List.copyOf(preExec); migrations = List.copyOf(migrations); }
         /**
          * Copies a report batch without completed process generations.
          * @param frames original allocation frames
          * @param held copied original manager child events
          */
         Snapshot(List<String> frames, List<FridaRuntime.Child> held) { this(frames, held, List.of()); }
+        /**
+         * Copies a report without native thread migration observations.
+         * @param frames original allocation frames
+         * @param held original held images
+         * @param retired original dead generations
+         */
+        Snapshot(List<String> frames, List<FridaRuntime.Child> held, List<Long> retired)
+        { this(frames, held, retired, List.of(), List.of()); }
     }
 
     /**
@@ -607,36 +724,6 @@ final class LinuxBazelHelperMain
                 }
                 imagePolicy = new LinuxBazelNamespaceHooks.ActionImages(Path.of(text(object, "inputRoot")), roots);
             }
-        }
-
-        /**
-         * Validates and copies one independently represented host execution before native acquisition.
-         * @param configuration trusted INIT frame
-         * @param name held or original launch execution field
-         * @return owned exact execution record
-         * @throws IOException if executable, native vectors or credentials cannot be represented exactly
-         */
-        private static ObjectNode readExecution(ObjectNode configuration, String name) throws IOException
-        {
-            JsonNode configuredExecution = configuration.path(name);
-            if (!(configuredExecution instanceof ObjectNode object))
-                throw new IOException("Namespace helper execution must be an object: " + name);
-            ObjectNode execution = object.deepCopy();
-            Path executable = Path.of(text(execution, "executable"));
-            JsonNode arguments = execution.path("arguments");
-            JsonNode environment = execution.path("environment");
-            if (!executable.isAbsolute() || !executable.normalize().equals(executable) ||
-                !arguments.isArray() || arguments.isEmpty() || !environment.isObject() ||
-                positive(execution, "uid") > Integer.MAX_VALUE || nonnegative(execution, "gid") > Integer.MAX_VALUE)
-                throw new IOException("Namespace helper held execution shape differs");
-            for (JsonNode argument : arguments)
-                if (!argument.isString() || argument.asString().indexOf(0) >= 0)
-                    throw new IOException("Namespace helper native argv cannot be represented exactly");
-            for (Map.Entry<String, JsonNode> member : environment.properties())
-                if (member.getKey().isEmpty() || member.getKey().indexOf('=') >= 0 || member.getKey().indexOf(0) >= 0 ||
-                    !member.getValue().isString() || member.getValue().asString().indexOf(0) >= 0)
-                    throw new IOException("Namespace helper native environment cannot be represented exactly");
-            return execution;
         }
 
         @Override public void prepareHeld() throws IOException
@@ -813,7 +900,7 @@ final class LinuxBazelHelperMain
             if (positive(request, "localPid") != image.localPid() || positive(request, "birth") != image.birth() ||
                 !text(request, "executable").equals(image.executable().toString()) || !text(request, "sha256").equals(image.sha256()) ||
                 !text(request, "cgroup").equals(image.cgroup()) ||
-                !scope.getAllocationEnvelopeMapper().valueToTree(image.arguments()).equals(request.path("arguments")))
+                !scope.getNamespaceControlMapper().valueToTree(image.arguments()).equals(request.path("arguments")))
                 throw new IOException("Host-authorized held image differs from independent namespace-local facts");
         }
 

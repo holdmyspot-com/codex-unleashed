@@ -42,6 +42,139 @@ public final class LinuxBazelIdentityTest
     }
 
     /**
+     * Distinguishes an actually empty proc command stream from nonempty malformed vectors.
+     * @throws IOException if a valid native vector cannot be decoded unchanged
+     */
+    @Test public void distinguishesEmptyNativeCommandVector() throws IOException
+    {
+        requireException(LinuxBazelIdentity.EmptyCommandVectorException.class,
+            () -> LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(new byte[0])));
+        IOException malformed = requireException(IOException.class,
+            () -> LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(new byte[] {'x'})));
+        requireThat(malformed instanceof LinuxBazelIdentity.EmptyCommandVectorException,
+            "nonemptyMalformedVectorIsDistinct").isFalse();
+        requireThat(LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(
+            new byte[] {'/', 'p', 0, 0})), "unchangedNativeArguments").isEqualTo(List.of("/p", ""));
+    }
+
+    /**
+     * Authenticates a modeled nonleader exec without changing the original prepared-child receipt.
+     * @throws IOException if independent modeled thread or process facts are rejected
+     */
+    @Test public void authenticatesOriginalThreadExecAndPreservesPreparedReceipt() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        LinuxBazelIdentity identity = fixture.identity();
+        LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child original = identity.authenticateChild(owner, 3, 30, fixture.execution());
+        LinuxBazelIdentity.ExecAuthorization authorization = identity.prepareExec(owner, original, 4, 31);
+        fixture.observations.put(300L, fixture.observation(31, 200, List.of(300L, 3L), "pid:[sandbox]", "mnt:[sandbox]"));
+        LinuxBazelIdentity.Child migrated = identity.authenticateExec(owner, original, authorization);
+        identity.requireChildIdentity(owner, migrated);
+        requireThat(original.startTicks(), "preparedBirth").isEqualTo(30L);
+        requireThat(migrated.startTicks(), "authenticatedCurrentBirth").isEqualTo(31L);
+        requireThat(migrated.hostPid(), "unchangedProcessId").isEqualTo(original.hostPid());
+        requireException(IOException.class, () -> identity.requireChildIdentity(owner, original));
+        requireException(IOException.class, () -> identity.authenticateExec(owner, original, authorization));
+    }
+
+    /**
+     * Admits genuine nonleader exec retaining the independently authenticated original leader birth.
+     * @throws IOException if a valid one-use authorization or original live birth is rejected
+     */
+    @Test public void authenticatesExecRetainingOriginalLeaderBirth() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        LinuxBazelIdentity identity = fixture.identity();
+        LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child original = identity.authenticateChild(owner, 3, 30, fixture.execution());
+        LinuxBazelIdentity.ExecAuthorization authorization = identity.prepareExec(owner, original, 4, 31);
+        LinuxBazelIdentity.Child live = identity.authenticateExec(owner, original, authorization);
+        identity.requireChildIdentity(owner, live);
+        requireThat(original.startTicks(), "immutablePreparedBirth").isEqualTo(30L);
+        requireThat(live.startTicks(), "independentlyObservedLeaderBirth").isEqualTo(30L);
+        requireException(IOException.class, () -> identity.authenticateExec(owner, original, authorization));
+    }
+
+    /**
+     * Rejects unrelated group membership and each independently required original thread fact.
+     * @throws IOException if initial modeled owner or child authentication fails
+     */
+    @Test public void rejectsUnrelatedExecThreadFacts() throws IOException
+    {
+        for (Mismatch mismatch : List.of(Mismatch.BIRTH, Mismatch.CREDENTIALS, Mismatch.PID_MAPPING,
+            Mismatch.PID_NAMESPACE, Mismatch.MOUNT_NAMESPACE))
+        {
+            Fixture fixture = new Fixture();
+            LinuxBazelIdentity identity = fixture.identity();
+            LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+            LinuxBazelIdentity.Child child = identity.authenticateChild(owner, 3, 30, fixture.execution());
+            fixture.threadMismatch = mismatch;
+            requireException(IOException.class, () -> identity.prepareExec(owner, child, 4, 31));
+        }
+        Fixture fixture = new Fixture();
+        LinuxBazelIdentity identity = fixture.identity();
+        LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child child = identity.authenticateChild(owner, 3, 30, fixture.execution());
+        fixture.threadGroup = 999;
+        requireException(IOException.class, () -> identity.prepareExec(owner, child, 4, 31));
+    }
+
+    /**
+     * Rejects a different post-exec birth and prevents replaying the same attempted authorization.
+     * @throws IOException if initial modeled authorization cannot be captured
+     */
+    @Test public void rejectsUnrelatedExecBirthAndConsumesFailedAuthorization() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        LinuxBazelIdentity identity = fixture.identity();
+        LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child child = identity.authenticateChild(owner, 3, 30, fixture.execution());
+        LinuxBazelIdentity.ExecAuthorization authorization = identity.prepareExec(owner, child, 4, 31);
+        fixture.observations.put(300L, fixture.observation(32, 200, List.of(300L, 3L), "pid:[sandbox]", "mnt:[sandbox]"));
+        requireException(IOException.class, () -> identity.authenticateExec(owner, child, authorization));
+        fixture.observations.put(300L, fixture.observation(31, 200, List.of(300L, 3L), "pid:[sandbox]", "mnt:[sandbox]"));
+        requireException(IOException.class, () -> identity.authenticateExec(owner, child, authorization));
+    }
+
+    /**
+     * Rejects post-exec parent, credential and namespace drift despite a matching authorized thread birth.
+     * @throws IOException if initial modeled authorizations cannot be captured
+     */
+    @Test public void rejectsChangedExecIsolation() throws IOException
+    {
+        for (Mismatch mismatch : List.of(Mismatch.PARENT, Mismatch.CREDENTIALS, Mismatch.PID_MAPPING,
+            Mismatch.PID_NAMESPACE, Mismatch.MOUNT_NAMESPACE))
+        {
+            Fixture fixture = new Fixture();
+            LinuxBazelIdentity identity = fixture.identity();
+            LinuxBazelIdentity.Owner owner = identity.authenticate(fixture.peer(), 2);
+            LinuxBazelIdentity.Child child = identity.authenticateChild(owner, 3, 30, fixture.execution());
+            LinuxBazelIdentity.ExecAuthorization authorization = identity.prepareExec(owner, child, 4, 31);
+            fixture.observations.put(300L, fixture.changed(fixture.observation(31, 200, List.of(300L, 3L),
+                "pid:[sandbox]", "mnt:[sandbox]"), mismatch));
+            requireException(IOException.class, () -> identity.authenticateExec(owner, child, authorization));
+        }
+    }
+
+    /**
+     * Rejects migration authority issued for another original process policy.
+     * @throws IOException if initial modeled authorizations cannot be created
+     */
+    @Test public void rejectsForeignExecAuthorization() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        LinuxBazelIdentity first = fixture.identity();
+        LinuxBazelIdentity.Owner firstOwner = first.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child firstChild = first.authenticateChild(firstOwner, 3, 30, fixture.execution());
+        LinuxBazelIdentity.ExecAuthorization authorization = first.prepareExec(firstOwner, firstChild, 4, 31);
+        LinuxBazelIdentity second = fixture.identity();
+        LinuxBazelIdentity.Owner secondOwner = second.authenticate(fixture.peer(), 2);
+        LinuxBazelIdentity.Child secondChild = second.authenticateChild(secondOwner, 3, 30, fixture.execution());
+        requireException(IllegalArgumentException.class, () -> second.authenticateExec(secondOwner, secondChild, authorization));
+    }
+
+    /**
      * Names independently required native facts that must not grant owner or child authority when altered.
      */
     public enum Mismatch
@@ -244,6 +377,10 @@ public final class LinuxBazelIdentityTest
         private final Map<Long, Integer> reads = new HashMap<>();
         /** Initial direct-child snapshot returned by the simulated owner task's children file. */
         private List<Long> children = List.of(300L);
+        /** Independently supplied native group for the original exec thread. */
+        private long threadGroup = 300;
+        /** Optional original thread fact changed before authentication. */
+        private Mismatch threadMismatch;
         /** Process whose second observation changes, or zero when no change is scheduled. */
         private long changingPid;
         /** Independently selected change applied at the next simulated native transition. */
@@ -366,6 +503,16 @@ public final class LinuxBazelIdentityTest
             LinuxBazelIdentity.Observation observation = observations.get(pid);
             if (observation == null) throw new IOException("Modeled native process is absent");
             return observation;
+        }
+
+        @Override public LinuxBazelIdentity.ThreadObservation observeThread(long hostPid, long localThreadPid,
+            Path executable) throws IOException
+        {
+            if (hostPid != 300 || localThreadPid != 4) throw new IOException("Modeled original thread is absent");
+            LinuxBazelIdentity.Observation original = observation(31, 200, List.of(301L, 4L),
+                "pid:[sandbox]", "mnt:[sandbox]");
+            return new LinuxBazelIdentity.ThreadObservation(301, threadGroup,
+                threadMismatch == null ? original : changed(original, threadMismatch));
         }
 
         @Override

@@ -117,6 +117,22 @@
     </extensions>
     <directory>${tooling.build.directory}</directory>
     <plugins>
+      <!-- Build entry points stay outside the runtime module, but participate in typed packaging tests. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <id>packaging-test-sources</id>
+            <phase>generate-test-sources</phase>
+            <goals><goal>add-test-source</goal></goals>
+            <configuration>
+              <sources><source>${project.basedir}/src/build/java</source></sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.xolstice.maven.plugins</groupId>
         <artifactId>protobuf-maven-plugin</artifactId>
@@ -152,13 +168,25 @@
           <showWarnings>true</showWarnings>
           <failOnWarning>false</failOnWarning>
         </configuration>
+        <executions>
+          <execution>
+            <id>default-testCompile</id>
+            <configuration>
+              <!-- Build entry points and the packaging fixture need these JDK modules only during tests. -->
+              <compilerArgs>
+                <arg>--add-modules</arg><arg>java.net.http,java.compiler</arg>
+                <arg>--add-reads</arg><arg>com.holdmyspot.codexunleashed.tooling=java.net.http,java.compiler</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.6.0</version>
         <configuration>
-          <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}"</argLine>
+          <argLine>"-Djava.io.tmpdir=${java.io.tmpdir}" --add-modules java.net.http,java.compiler --add-reads com.holdmyspot.codexunleashed.tooling=java.net.http,java.compiler</argLine>
         </configuration>
       </plugin>
       <plugin>
@@ -257,7 +285,7 @@
         </plugins>
       </build>
     </profile>
-    <!-- This profile consumes prebuilt, validated native outputs; it never invokes a native compiler. -->
+    <!-- The backend stage consumes prebuilt products. macOS still builds its separate ordinary support below. -->
     <profile>
       <id>bazel-native-backend</id>
       <build><plugins><plugin>
@@ -275,6 +303,36 @@
               <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
               <argument>${project.build.directory}/modules</argument>
               <argument>${project.build.directory}/runtime</argument>
+              <argument>--bazel-backend</argument>
+              <argument>${bazel.backend.directory}</argument>
+            </arguments>
+          </configuration>
+        </execution></executions>
+      </plugin></plugins></build>
+    </profile>
+    <!-- macOS needs ordinary support sources in addition to the three prebuilt backend daemons. -->
+    <profile>
+      <id>bazel-native-backend-macos</id>
+      <activation>
+        <os><family>mac</family></os>
+        <property><name>bazel.backend.directory</name></property>
+      </activation>
+      <build><plugins><plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.4</version>
+        <executions><execution>
+          <id>build-bundled-runtime</id>
+          <phase>package</phase>
+          <goals><goal>exec</goal></goals>
+          <configuration>
+            <executable>${java.home}/bin/java</executable>
+            <arguments combine.self="override">
+              <argument>-Djava.io.tmpdir=${java.io.tmpdir}</argument>
+              <argument>${project.basedir}/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java</argument>
+              <argument>${project.build.directory}/modules</argument>
+              <argument>${project.build.directory}/runtime</argument>
+              <argument>${project.basedir}/src/main/resources/com/holdmyspot/codexunleashed/scheduler</argument>
               <argument>--bazel-backend</argument>
               <argument>${bazel.backend.directory}</argument>
             </arguments>

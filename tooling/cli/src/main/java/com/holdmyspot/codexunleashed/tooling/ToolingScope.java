@@ -14,6 +14,9 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public interface ToolingScope extends Scope
 {
+	/** Maximum UTF-8 bytes in one authenticated namespace-control frame, excluding its length prefix. */
+	int MAX_NAMESPACE_CONTROL_FRAME_BYTES = 1_048_576;
+
 	/**
 	 * Returns the platform native linker; arenas and native owners remain the borrower's responsibility.
 	 * @return the shared linker
@@ -88,6 +91,16 @@ public interface ToolingScope extends Scope
 	 * @throws IllegalStateException if the scope is closed
 	 */
 	JsonMapper getAllocationEnvelopeMapper();
+
+	/**
+	 * Returns the immutable namespace-control parser with strict duplicate and trailing-token rejection.
+	 * Documents, names and strings are bounded by {@link #MAX_NAMESPACE_CONTROL_FRAME_BYTES}; nesting is limited
+	 * to 16 levels and numbers to 20 characters. The framed transport independently bounds actual UTF-8 bytes.
+	 * Allocation messages and Frida diagnostic envelopes retain their separate 8192-byte limits.
+	 * @return this scope's shared immutable namespace-control mapper
+	 * @throws IllegalStateException if the scope is closed
+	 */
+	JsonMapper getNamespaceControlMapper();
 
 	/**
 	 * Returns the default JSON mapper for leader configuration and copied leader envelopes.

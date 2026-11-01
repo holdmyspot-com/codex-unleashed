@@ -66,6 +66,8 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
      * Monotonic logical identities within this invocation.
      */
     private final AtomicLong sequence = new AtomicLong();
+    /** Authenticated worker readiness following native path validation. */
+    private final java.util.concurrent.CompletableFuture<Void> workerReadiness = new java.util.concurrent.CompletableFuture<>();
     /** New RPC admission authority. */
     private final AtomicBoolean accepting = new AtomicBoolean(true);
     /** Sole actual bound server, retained through failed cleanup. */
@@ -83,6 +85,13 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
         this.boundary = Objects.requireNonNull(boundary, "boundary");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
     }
+
+    /**
+     * Observes the first authenticated worker readiness acknowledgement after native path validation.
+     * The returned copy cannot complete this Runner's original readiness authority.
+     * @return independent future observing the original readiness callback
+     */
+    java.util.concurrent.CompletableFuture<Void> workerReadiness() { return workerReadiness.copy(); }
 
     /**
      * Starts one JDK TLS listener on a kernel-selected loopback port.
@@ -458,6 +467,7 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
             {
                 if (!accepting.get()) throw new IOException("Runner admission stopped");
                 boundary.checkReadiness(request.getPath());
+                workerReadiness.complete(null);
                 observer.onNext(Empty.getDefaultInstance());
                 observer.onCompleted();
             }

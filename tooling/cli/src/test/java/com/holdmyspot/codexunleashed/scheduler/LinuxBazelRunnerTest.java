@@ -59,6 +59,28 @@ public final class LinuxBazelRunnerTest
     }
 
     /**
+     * Completes backend readiness only after authenticated native-path validation succeeds.
+     * @throws Exception if the private real Runner fixture or RPC fails
+     */
+    @Test
+    public void readinessWaitsForAuthenticatedValidNativePath() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            java.util.concurrent.CompletableFuture<Void> readiness = fixture.runner.workerReadiness();
+            requireThat(readiness.isDone(), "listenerIsNotWorkerReadiness").isFalse();
+            fixture.runner.workerReadiness().complete(null);
+            requireThat(readiness.isDone(), "observerCannotCompleteOriginalReadiness").isFalse();
+            requireException(StatusRuntimeException.class, () -> RunnerGrpc.newBlockingStub(fixture.client.channel)
+                .withDeadlineAfter(20, TimeUnit.SECONDS).checkReadiness(
+                    CheckReadinessRequest.newBuilder().setPath("../escape").build()));
+            requireThat(readiness.isDone(), "rejectedNativePathIsNotReadiness").isFalse();
+            fixture.readiness();
+            requireThat(readiness.isDone(), "validAuthenticatedNativePathAcknowledged").isTrue();
+        }
+    }
+
+    /**
      * A pending cancellation still permits bounded transport cleanup and survives that cleanup.
      * @throws Exception if the authenticated listener cannot start or finish cleanup
      */

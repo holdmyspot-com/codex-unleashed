@@ -174,7 +174,7 @@ final class LinuxBazelProducer
             var backendSettings = new LinuxBazelBackend.Configuration(configuration.distribution(), backendRoot,
                 runner.endpoint(), credentials, settings.budget().jobs(), runtime.trustedUid(), runtime.trustedGid(),
                 configuration.casBytes(), configuration.actionCacheBytes(), configuration.cachePolicy());
-            try { ownership.backend = LinuxBazelBackend.start(scope, backendSettings, ownership::closeActions); }
+            try { ownership.backend = LinuxBazelBackend.start(scope, backendSettings, ownership::closeActions, runner.workerReadiness()); }
             catch (LinuxBazelBackend.AcquisitionFailure failure)
             {
                 ownership.backend = failure.backend();

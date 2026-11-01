@@ -1,6 +1,7 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -212,6 +213,90 @@ public final class SchedulerCoordinatorTest
             requireThat(Thread.currentThread().isInterrupted(), "interrupted").isTrue();
             requireThat(session.events.contains("session-close"), "unsafeouterrelease").isFalse();
             requireThat(session.events.contains("stop-input"), "producerstopped").isTrue();
+        }
+        finally { Thread.interrupted(); }
+    }
+
+    /** Original cancellation stays primary while each mandatory cleanup boundary receives a clear interrupt. */
+    @Test
+    public void interruptedObserverAllowsCleanupAndRestoresCancellation()
+    {
+        var session = new Model();
+        session.rejectInterruptedCleanup = true;
+        session.interruptAfterStop = true;
+        var original = new IOException("cancel original held allocation");
+        try
+        {
+            IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+                new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+                {
+                    if (event.equals("decision"))
+                    {
+                        Thread.currentThread().interrupt();
+                        throw original;
+                    }
+                }).run());
+            requireThat(failure, "originalCancellationIdentity").isEqualTo(original);
+            requireThat(failure.getSuppressed().length, "noInterruptInducedCleanupFailure").isEqualTo(0);
+            requireThat(Thread.currentThread().isInterrupted(), "cancellationInterruptRestored").isTrue();
+            requireThat(session.events.contains("stop-input"), "admissionStopped").isTrue();
+            requireThat(session.events.contains("close:A:0"), "originalAttemptClosed").isTrue();
+            requireThat(session.events.getLast(), "dependenciesReleasedAfterOwners").isEqualTo("session-close");
+            requireThat(session.hasOpenAttempts(), "noRetainedResolvedLease").isFalse();
+            requireThat(session.delivered.isEmpty(), "cancelledOutputWithheld").isTrue();
+        }
+        finally { Thread.interrupted(); }
+    }
+
+    /** Clearing cancellation for cleanup does not hide a genuine owner failure or release its dependencies. */
+    @Test
+    public void interruptedCancellationRetainsGenuineCleanupFailure()
+    {
+        var session = new Model();
+        session.rejectInterruptedCleanup = true;
+        session.failClose = true;
+        var original = new IOException("cancel before native cleanup");
+        try
+        {
+            IOException failure = requireException(IOException.class, () -> new SchedulerCoordinator<>(session,
+                new Policy.Budget(0, 2), () -> {}, (event, payload) ->
+                {
+                    if (event.equals("decision"))
+                    {
+                        Thread.currentThread().interrupt();
+                        throw original;
+                    }
+                }).run());
+            requireThat(failure, "originalCancellationIdentity").isEqualTo(original);
+            requireThat(failure.getSuppressed().length, "realFailureAndUnresolvedLease").isEqualTo(2);
+            requireThat(failure.getSuppressed()[0].getCause().getMessage(), "realCleanupFailureVisible")
+                .isEqualTo("owner close failed");
+            requireThat(Thread.currentThread().isInterrupted(), "cancellationInterruptRestored").isTrue();
+            requireThat(session.events.contains("stop-input"), "admissionStopped").isTrue();
+            requireThat(session.events.contains("session-close"), "unresolvedDependenciesRetained").isFalse();
+            requireThat(session.hasOpenAttempts(), "failedLeaseRetained").isTrue();
+            requireThat(session.delivered.isEmpty(), "cancelledOutputWithheld").isTrue();
+        }
+        finally { Thread.interrupted(); }
+    }
+
+    /** An interrupted idle wait permits bounded owner cleanup before restoring the original interruption. */
+    @Test
+    public void interruptedIdleAllowsCleanupAndRestoresOriginalCause()
+    {
+        var session = new Model();
+        session.rejectInterruptedCleanup = true;
+        var original = new InterruptedException("cancel scheduler wait");
+        try
+        {
+            InterruptedIOException failure = requireException(InterruptedIOException.class, () ->
+                new SchedulerCoordinator<>(session, new Policy.Budget(0, 2), () -> { throw original; }).run());
+            requireThat(failure.getCause(), "originalIdleCancellation").isEqualTo(original);
+            requireThat(failure.getSuppressed().length, "cleanupAcknowledged").isEqualTo(0);
+            requireThat(Thread.currentThread().isInterrupted(), "idleInterruptRestored").isTrue();
+            requireThat(session.events.getLast(), "dependenciesClosedAfterOwners").isEqualTo("session-close");
+            requireThat(session.hasOpenAttempts(), "allOriginalLeasesReleased").isFalse();
+            requireThat(session.delivered.isEmpty(), "cancelledOutputWithheld").isTrue();
         }
         finally { Thread.interrupted(); }
     }
@@ -438,6 +523,10 @@ public final class SchedulerCoordinatorTest
         private boolean failStop;
         /** Whether closing outer dependencies fails. */
         private boolean failOuter;
+        /** Whether interruptible cleanup rejects a pending owner-thread cancellation flag. */
+        private boolean rejectInterruptedCleanup;
+        /** Whether producer stop supplies a new interrupt that later owner cleanup must preserve and clear. */
+        private boolean interruptAfterStop;
         /** Whether discovered actions lack memory estimates. */
         private boolean unknown;
         /** Largest number of simultaneously retained modeled owners. */
@@ -549,9 +638,28 @@ public final class SchedulerCoordinatorTest
         { return rootEarly || delivered.size() == 2 ? OptionalInt.of(23) : OptionalInt.empty(); }
         @Override public boolean hasOpenAttempts() { return owners.isEmpty() == false; }
         @Override public void stopAccepting() throws IOException
-        { events.add("stop-input"); if (failStop) throw new IOException("stop failed"); }
+        {
+            events.add("stop-input");
+            requireCleanupUninterrupted();
+            if (failStop) throw new IOException("stop failed");
+            if (interruptAfterStop) Thread.currentThread().interrupt();
+        }
         @Override public void close() throws IOException
-        { events.add("session-close"); if (failOuter) throw new IOException("outer close failed"); }
+        {
+            events.add("session-close");
+            requireCleanupUninterrupted();
+            if (failOuter) throw new IOException("outer close failed");
+        }
+
+        /**
+         * Models an interruptible native cleanup boundary without clearing the caller's flag itself.
+         * @throws InterruptedIOException if cancellation would prevent a bounded cleanup acknowledgement
+         */
+        private void requireCleanupUninterrupted() throws InterruptedIOException
+        {
+            if (rejectInterruptedCleanup && Thread.currentThread().isInterrupted())
+                throw new InterruptedIOException("cleanup entered with cancellation interrupt");
+        }
 
         /** Modeled exclusive owner retained until its successful cleanup. */
         private final class Owner implements JobQueue.Attempt<Integer>
@@ -603,6 +711,7 @@ public final class SchedulerCoordinatorTest
             @Override public void close() throws IOException
             {
                 events.add("close:" + name + ":" + sequence);
+                requireCleanupUninterrupted();
                 if (typedFault.equals("close")) throw rejection();
                 if (failClose) throw new IOException("owner close failed");
                 owners.remove(sequence);

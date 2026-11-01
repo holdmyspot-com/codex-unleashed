@@ -46,6 +46,235 @@ public final class LinuxBazelContainmentTest
     }
 
     /**
+     * Advances only live identity after modeled original nonleader exec while preserving the native wait receipt.
+     * @throws IOException if modeled original membership or authenticated migration is rejected
+     */
+    @Test public void admitsAuthenticatedExecWithoutReplacingPreparedReceipt() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            LinuxBazelIdentity.ExecAuthorization authorization = containment.prepareExec(4, 31);
+            fixture.childBirth = 31;
+            fixture.changedImage = true;
+            containment.admitExec(authorization);
+            containment.requireContained();
+            requireThat(fixture.child.startTicks(), "originalWaitReceiptBirth").isEqualTo(30L);
+            requireThat(containment.rootPid(), "unchangedWaitedProcess").isEqualTo(300L);
+            requireException(IOException.class, () -> containment.admitExec(authorization));
+            containment.requestTermination();
+            requireThat(fixture.group.terminationRequests, "originalGroupTermination").isEqualTo(1);
+        }
+    }
+
+    /**
+     * Preserves immutable PREPARED while admitting an authorized nonleader exec with unchanged leader birth.
+     * @throws IOException if retained native membership or independent original birth is rejected
+     */
+    @Test public void admitsExecRetainingOriginalLeaderBirth() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            LinuxBazelIdentity.ExecAuthorization authorization = containment.prepareExec(4, 31);
+            fixture.changedImage = true;
+            containment.admitExec(authorization);
+            containment.requireContained();
+            requireThat(fixture.child.startTicks(), "immutablePreparedBirth").isEqualTo(30L);
+            requireException(IOException.class, () -> containment.admitExec(authorization));
+        }
+    }
+
+    /**
+     * Completes admission when the root disappears after an earlier nonzero observation and actual subtree zero follows.
+     * @throws IOException if the independently empty original tree cannot retire image observation
+     */
+    @Test public void toleratesVanishedImageOnlyAfterFreshWholeTreeZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            requireThat(containment.observeExecutionImpossible(), "liveBeforeAdmission").isFalse();
+            LinuxBazelNamespaceHooks.admitLiveImages(containment, () ->
+            {
+                fixture.group.populated = false;
+                throw new java.nio.file.NoSuchFileException("/proc/300/cmdline");
+            });
+            requireThat(containment.observeExecutionImpossible(), "independentlyObservedZeroAfterRace").isTrue();
+        }
+    }
+
+    /**
+     * Preserves the exact vanished-root error while live descendants remain or zero observation is unavailable.
+     * @throws IOException if original admission or cleanup fails
+     */
+    @Test public void preservesVanishedImageFailureWithLiveDescendants() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            java.nio.file.NoSuchFileException failure = new java.nio.file.NoSuchFileException("/proc/300/cmdline");
+            java.nio.file.NoSuchFileException caught = requireException(java.nio.file.NoSuchFileException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "originalObservationFailure").isTrue();
+            requireThat(containment.observeExecutionImpossible(), "descendantStillExecutes").isFalse();
+        }
+    }
+
+    /**
+     * Retains a vanished-image failure when whole-tree population cannot be independently observed.
+     * @throws IOException if initial original ownership or later cleanup fails
+     */
+    @Test public void preservesVanishedImageWhenZeroIsUncertain() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            java.nio.file.NoSuchFileException failure = new java.nio.file.NoSuchFileException("/proc/300/cmdline");
+            fixture.group.populationFailure = true;
+            java.nio.file.NoSuchFileException caught = requireException(java.nio.file.NoSuchFileException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "originalObservationFailure").isTrue();
+            requireThat(caught.getSuppressed().length, "uncertainZeroEvidence").isEqualTo(1);
+            fixture.group.populationFailure = false;
+        }
+    }
+
+    /**
+     * Never hides a surviving-process authentication failure even if the tree becomes empty later.
+     * @throws IOException if initial original ownership or cleanup fails
+     */
+    @Test public void preservesOtherAdmissionFailuresEvenWithZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            IOException failure = new IOException("Surviving image credentials changed");
+            fixture.group.populated = false;
+            IOException caught = requireException(IOException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "survivingIdentityFailureRetained").isTrue();
+        }
+    }
+
+    /**
+     * Keeps missing sealed-image or runtime faults fatal even after the original workload becomes empty.
+     * @throws IOException if initial original ownership or cleanup fails
+     */
+    @Test public void preservesMissingRuntimeFailureEvenWithZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            java.nio.file.NoSuchFileException failure = new java.nio.file.NoSuchFileException("/runtime/sealed-image");
+            fixture.group.populated = false;
+            java.nio.file.NoSuchFileException caught = requireException(java.nio.file.NoSuchFileException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "missingRuntimeFailureRetained").isTrue();
+        }
+    }
+
+    /**
+     * Settles an exact empty proc command stream only after independent whole-tree zero following that read.
+     * @throws IOException if original ownership or independently empty workload retirement fails
+     */
+    @Test public void toleratesEmptyProcVectorOnlyAfterFreshWholeTreeZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            requireThat(containment.observeExecutionImpossible(), "liveBeforeCommandObservation").isFalse();
+            LinuxBazelNamespaceHooks.admitLiveImages(containment, () ->
+            {
+                fixture.group.populated = false;
+                LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(new byte[0]));
+            });
+            requireThat(containment.observeExecutionImpossible(), "zeroAfterEmptyVector").isTrue();
+        }
+    }
+
+    /**
+     * Preserves an exact empty-command failure while descendants remain alive or whole-tree zero is uncertain.
+     * @throws IOException if original ownership or final cleanup fails
+     */
+    @Test public void preservesEmptyVectorFailureWithoutVerifiedZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            LinuxBazelIdentity.EmptyCommandVectorException failure = requireException(
+                LinuxBazelIdentity.EmptyCommandVectorException.class,
+                () -> LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(new byte[0])));
+            IOException caught = requireException(IOException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "liveDescendantFailureRetained").isTrue();
+            fixture.group.populationFailure = true;
+            caught = requireException(IOException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw failure; }));
+            requireThat(caught == failure, "uncertainZeroFailureRetained").isTrue();
+            requireThat(caught.getSuppressed().length, "independentObservationFailure").isEqualTo(1);
+            fixture.group.populationFailure = false;
+        }
+    }
+
+    /**
+     * Never treats malformed command data or an unrelated same-message failure as an exact empty proc vector.
+     * @throws IOException if original ownership or cleanup fails
+     */
+    @Test public void preservesUnrelatedCommandFailuresEvenWithZero() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            fixture.group.populated = false;
+            IOException unrelated = new IOException("Native command vector is empty");
+            IOException caught = requireException(IOException.class,
+                () -> LinuxBazelNamespaceHooks.admitLiveImages(containment, () -> { throw unrelated; }));
+            requireThat(caught == unrelated, "sameMessageIsNotNativeEvidence").isTrue();
+            caught = requireException(IOException.class, () -> LinuxBazelNamespaceHooks.admitLiveImages(containment,
+                () -> LinuxBazelIdentity.readNativeArguments(300, new java.io.ByteArrayInputStream(new byte[] {'x'}))));
+            requireThat(caught instanceof LinuxBazelIdentity.EmptyCommandVectorException,
+                "malformedVectorRemainsFatal").isFalse();
+        }
+    }
+
+    /**
+     * Withholds live identity migration when the held process has left the original cgroup.
+     * @throws IOException if initial modeled admission fails
+     */
+    @Test public void rejectsExecOutsideOriginalContainment() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            LinuxBazelIdentity.ExecAuthorization authorization = containment.prepareExec(4, 31);
+            fixture.childBirth = 31;
+            fixture.group.member = false;
+            requireException(IOException.class, () -> containment.admitExec(authorization));
+            fixture.group.member = true;
+            requireException(IOException.class, containment::requireContained);
+            containment.admitExec(authorization);
+            containment.requireContained();
+            requireThat(fixture.child.startTicks(), "unchangedPreparedWaitReceipt").isEqualTo(30L);
+        }
+    }
+
+    /**
+     * Rejects an unapproved root birth change without replacing the current identity.
+     * @throws IOException if initial modeled admission fails
+     */
+    @Test public void rejectsUnapprovedExecBirth() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        try (LinuxBazelContainment containment = fixture.admit())
+        {
+            fixture.childBirth = 31;
+            requireException(IOException.class, containment::requireContained);
+            requireThat(fixture.child.startTicks(), "originalPreparedBirth").isEqualTo(30L);
+        }
+    }
+
+    /**
      * Uses the already reserved mapping group without allocating a replacement during blocked-child admission.
      * @throws IOException if controlled authentication or migration fails
      */
@@ -333,6 +562,16 @@ public final class LinuxBazelContainmentTest
                 childImageChanged ? "b".repeat(64) : execution.image().sha256(),
                 childImageChanged ? List.of("/native/compiler") : execution.arguments(), execution.environment(),
                 execution.directory());
+        }
+
+        @Override public LinuxBazelIdentity.ThreadObservation observeThread(long hostPid, long localThreadPid,
+            Path executable) throws IOException
+        {
+            if (hostPid != 300 || localThreadPid != 4) throw new IOException("Modeled original thread is absent");
+            LinuxBazelIdentity.Observation group = observe(300, executable);
+            return new LinuxBazelIdentity.ThreadObservation(301, 300, new LinuxBazelIdentity.Observation(31,
+                group.parentPid(), group.status(), List.of(301L, 4L), group.pidNamespace(), group.mountNamespace(),
+                group.sameExecutable(), group.executableSha256(), group.arguments(), group.environment(), group.directory()));
         }
 
         @Override public List<Long> children(long pid) { return List.of(300L); }

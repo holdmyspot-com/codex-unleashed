@@ -125,6 +125,7 @@ final class JobQueue<R> implements AutoCloseable
 	 * Reconciles retained attempts, then obtains fresh measurements and applies at most one selected control.
 	 * Polls run in original submission order. Accepted outcomes survive a later poll failure and are never polled again.
 	 * Every accepted non-aborted outcome counts once, including a nonzero exit; aborted outcomes never count.
+	 * A selected resume for an attempt requiring a fresh attempt instead authorizes termination and reports TERMINATE.
 	 * Selected termination retains its completion threshold at selection count plus one. An unexpected abort uses the
 	 * count after every natural completion in the successful observation batch, plus one. Neither threshold substitutes
 	 * for accepted whole-job completion and successful owner cleanup. With no live attempts, one retry per action may
@@ -147,7 +148,15 @@ final class JobQueue<R> implements AutoCloseable
 		if (retryFailure != null)
 			throw new IOException(retryFailureMessage, retryFailure);
 		reconcile();
-		return controller.cycle(jobs(), completions);
+		Policy.Decision decision = controller.cycle(jobs(), completions);
+		if (decision.control() == Policy.Control.RESUME)
+		{
+			Entry entry = entries.get(decision.jobName());
+			if (entry.state == Policy.State.STOPPING)
+				return new Policy.Decision(Policy.Control.TERMINATE, entry.name,
+					"Allocation denial requires a new attempt");
+		}
+		return decision;
 	}
 
 	/**
@@ -363,6 +372,11 @@ final class JobQueue<R> implements AutoCloseable
 			}
 			case RESUME ->
 			{
+				if (entry.owner.requiresRetryAfterDenial())
+				{
+					terminate(entry);
+					break;
+				}
 				try
 				{
 					entry.owner.resume(entry.waitSequence);
@@ -375,22 +389,31 @@ final class JobQueue<R> implements AutoCloseable
 					throw entry.uncertain;
 				}
 			}
-			case TERMINATE ->
-			{
-				entry.selectedRetryAfter = Math.incrementExact(completions);
-				entry.state = Policy.State.STOPPING;
-				entry.blockedAt = null;
-				try
-				{
-					entry.owner.terminate();
-				}
-				catch (IOException failure)
-				{
-					entry.uncertain = contextual(entry, "terminate", failure);
-					throw entry.uncertain;
-				}
-			}
+			case TERMINATE -> terminate(entry);
 			case WAIT -> throw new AssertionError("Controller must not apply WAIT");
+		}
+	}
+
+	/**
+	 * Authorizes whole-attempt termination and retains its retry threshold before issuing the native request.
+	 *
+	 * @param entry current owned attempt selected for allocation recovery
+	 * @throws ArithmeticException if the completion threshold cannot be represented
+	 * @throws IOException if termination has uncertain effects; the selected threshold and STOPPING state remain
+	 */
+	private void terminate(Entry entry) throws IOException
+	{
+		entry.selectedRetryAfter = Math.incrementExact(completions);
+		entry.state = Policy.State.STOPPING;
+		entry.blockedAt = null;
+		try
+		{
+			entry.owner.terminate();
+		}
+		catch (IOException failure)
+		{
+			entry.uncertain = contextual(entry, "terminate", failure);
+			throw entry.uncertain;
 		}
 	}
 
@@ -644,6 +667,20 @@ final class JobQueue<R> implements AutoCloseable
 		 * @throws IOException if continuation fails, possibly after partial effects
 		 */
 		void resume(long waitSequence) throws IOException;
+
+		/**
+		 * Indicates whether recovering from an allocation denial requires a new workload attempt.
+		 * Call only after successful start while an allocation wait is published.
+		 * This observation has no control effects and remains stable for the attempt lifetime.
+		 * The queue must authorize termination before retrying such an attempt; {@link #resume(long)} continues only
+		 * the current attempt. Implementations that can acknowledge an in-place allocation grant retain the default.
+		 *
+		 * @return true if a denied allocation cannot continue within this attempt
+		 */
+		default boolean requiresRetryAfterDenial()
+		{
+			return false;
+		}
 
 		/**
 		 * Requests termination once. Success acknowledges the request, not whole-job completion or ownership release.

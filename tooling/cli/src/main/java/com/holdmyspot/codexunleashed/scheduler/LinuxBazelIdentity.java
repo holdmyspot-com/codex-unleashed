@@ -167,6 +167,65 @@ final class LinuxBazelIdentity
     }
 
     /**
+     * Captures an original nonleader thread while its exec syscall remains held.
+     * @param owner original authenticated native parent
+     * @param child current authenticated root process
+     * @param localThreadPid namespace-local nonleader thread selected by the native exec-entry event
+     * @param startTicks native exec-entry thread birth that must match independent observations
+     * @return one-use authorization bound to this exact process and independently observed thread
+     * @throws IllegalArgumentException if either identity value is nonpositive or the thread names the process leader
+     * @throws IOException if current root identity, thread membership or stable native facts differ
+     */
+    ExecAuthorization prepareExec(Owner owner, Child child, long localThreadPid, long startTicks) throws IOException
+    {
+        requirePositive(localThreadPid, "localThreadPid");
+        requirePositive(startTicks, "startTicks");
+        requireChildIdentity(owner, child);
+        if (localThreadPid == child.localPid) throw new IllegalArgumentException("Exec thread must be a nonleader");
+        ThreadObservation thread = observer.observeThread(child.hostPid, localThreadPid, child.preparedExecutable);
+        if (thread.processId() != child.hostPid || thread.hostPid() == child.hostPid)
+            throw new IOException("Exec thread is outside the authenticated original process group");
+        requireChild(owner, thread.hostPid(), localThreadPid, thread.observation());
+        if (thread.observation().startTicks() != startTicks)
+            throw new IOException("Native exec-entry birth differs from the independently observed original thread");
+        ThreadObservation repeated = observer.observeThread(child.hostPid, localThreadPid, child.preparedExecutable);
+        if (!thread.equals(repeated)) throw new IOException("Original exec thread changed during authentication");
+        requireChildIdentity(owner, child);
+        return new ExecAuthorization(this, owner, child, thread);
+    }
+
+    /**
+     * Authenticates the held original process after its authorized nonleader exec.
+     * @param owner retained original native parent
+     * @param child current process receipt bound to the authorization
+     * @param authorization independently captured original exec thread
+     * @return new immutable receipt for the current process identity
+     * @throws NullPointerException if {@code authorization} is null
+     * @throws IllegalArgumentException if receipts belong to different authorities or processes
+     * @throws IOException if authorization was consumed or native identity differs
+     */
+    Child authenticateExec(Owner owner, Child child, ExecAuthorization authorization) throws IOException
+    {
+        Objects.requireNonNull(authorization, "authorization");
+        if (authorization.authenticator != this || authorization.owner != owner)
+            throw new IllegalArgumentException("Exec authorization belongs to another authority");
+        if (authorization.consumed) throw new IOException("Original exec authorization was already consumed");
+        if (authorization.child != child)
+            throw new IllegalArgumentException("Exec authorization belongs to another process receipt");
+        authorization.consumed = true;
+        requireOwnerLive(owner);
+        Observation observed = observer.observe(child.hostPid, child.preparedExecutable);
+        requireChild(owner, child.hostPid, child.localPid, observed);
+        boolean originalLeaderBirth = observed.startTicks() == child.observation.startTicks();
+        boolean formerThreadBirth = observed.startTicks() == authorization.thread.observation().startTicks();
+        if (!originalLeaderBirth && !formerThreadBirth)
+            throw new IOException("Held exec birth differs from both independently authenticated original identities");
+        requireUnchanged(observed, observer.observe(child.hostPid, child.preparedExecutable));
+        requireOwnerLive(owner);
+        return new Child(this, owner, child.hostPid, child.localPid, observed, child.preparedExecutable);
+    }
+
+    /**
      * Exports exact retained host identities for the private host-to-reader sandbox registration operation.
      * These fields carry previously authenticated kernel observations, not action-supplied registration authority.
      * The reader independently revalidates births, parentage, all credentials, namespace inodes and NSpid mappings.
@@ -454,6 +513,64 @@ final class LinuxBazelIdentity
     }
 
     /**
+     * Independently observed original thread, with the host group membership read from that task's proc status.
+     * @param hostPid controller-visible thread ID
+     * @param processId controller-visible thread-group ID
+     * @param observation stable thread birth, credentials and namespace mapping
+     */
+    record ThreadObservation(long hostPid, long processId, Observation observation)
+    {
+        /**
+         * Validates native identity values before retaining them.
+         * @param hostPid positive controller-visible thread ID
+         * @param processId positive controller-visible group ID
+         * @param observation nonnull stable original thread observation
+         * @throws IllegalArgumentException if either ID is nonpositive
+         * @throws NullPointerException if observation is null
+         */
+        ThreadObservation
+        {
+            requirePositive(hostPid, "hostPid");
+            requirePositive(processId, "processId");
+            Objects.requireNonNull(observation, "observation");
+        }
+    }
+
+    /**
+     * One-use authority to recognize the birth change caused by one independently observed original thread exec.
+     * Only the issuing operation thread may consume it.
+     */
+    static final class ExecAuthorization
+    {
+        /** Issuing policy, checked when this capability is consumed. */
+        private final LinuxBazelIdentity authenticator;
+        /** Original native parent whose wait authority remains unchanged. */
+        private final Owner owner;
+        /** Exact current immutable process receipt before exec. */
+        private final Child child;
+        /** Independently observed original thread and group identity. */
+        private final ThreadObservation thread;
+        /** Indicates whether the sole migration authentication has been attempted. */
+        private boolean consumed;
+
+        /**
+         * Retains an independently authenticated original thread; only the issuing policy constructs this capability.
+         * @param authenticator issuing policy
+         * @param owner original native parent
+         * @param child exact process before exec
+         * @param thread stable independently observed original thread
+         * @throws NullPointerException if any input is null
+         */
+        private ExecAuthorization(LinuxBazelIdentity authenticator, Owner owner, Child child, ThreadObservation thread)
+        {
+            this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.child = Objects.requireNonNull(child, "child");
+            this.thread = Objects.requireNonNull(thread, "thread");
+        }
+    }
+
+    /**
      * Mapped direct-child receipt, retained across its gate-to-workload exec transition.
      */
     static final class Child
@@ -466,18 +583,18 @@ final class LinuxBazelIdentity
         private final long hostPid;
         /** Independently verified innermost child PID. */
         private final long localPid;
-        /** Prepared child state, including the birth preserved by exec. */
+        /** Authenticated process state captured when this immutable receipt was issued. */
         private final Observation observation;
         /** Immutable declared gate path retained for independent proc reads after workload exec. */
         private final Path preparedExecutable;
 
         /**
-         * Retains an independently checked prepared child.
+         * Retains an independently authenticated direct child.
          * @param authenticator issuing policy
          * @param owner original authenticated parent of this child
          * @param hostPid independently mapped controller PID
          * @param localPid namespace-local PID
-         * @param observation verified prepared state
+         * @param observation verified current process state
          * @param preparedExecutable retained declared gate pathname in the child namespace
          */
         private Child(LinuxBazelIdentity authenticator, Owner owner, long hostPid, long localPid, Observation observation,
@@ -498,7 +615,7 @@ final class LinuxBazelIdentity
         long hostPid() { return hostPid; }
 
         /**
-         * Returns the kernel birth preserved across exec.
+         * Returns the kernel birth captured by this immutable receipt.
          * @return positive kernel clock tick count since boot
          */
         long startTicks() { return observation.startTicks(); }
@@ -571,6 +688,17 @@ final class LinuxBazelIdentity
         Observation observe(long pid, Path executable) throws IOException;
 
         /**
+         * Observes one namespace-local nonleader under the authenticated host process's task directory.
+         * @param hostPid authenticated controller-visible process-group ID
+         * @param localThreadPid expected innermost thread ID
+         * @param executable original declared gate used for independent proc observation
+         * @return stable thread identity with independently read host group membership
+         * @throws IOException if task membership, mapping or native facts cannot be observed
+         */
+        default ThreadObservation observeThread(long hostPid, long localThreadPid, Path executable) throws IOException
+        { throw new IOException("Independent original thread observation is unavailable"); }
+
+        /**
          * Enumerates the owner's current direct children in controller-visible PID numbers.
          * @param pid authenticated action owner PID
          * @return complete direct-child PID vector
@@ -586,6 +714,38 @@ final class LinuxBazelIdentity
          * @throws IOException if either directory cannot be observed
          */
         boolean sameDirectory(long pid, Path directory) throws IOException;
+    }
+
+    /** Identifies an actually empty native procfs command vector, independently of other decoder failures. */
+    static final class EmptyCommandVectorException extends IOException
+    {
+        /** Stable serialization identity of this native observation distinction. */
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * Retains the exact absent native vector observation.
+         * @param pid observed controller-visible process
+         */
+        private EmptyCommandVectorException(long pid)
+        {
+            super("Native command vector is empty for /proc/" + pid + "/cmdline");
+        }
+    }
+
+    /**
+     * Reads the existing bounded native argument format without translating other decoder failures.
+     * @param pid independently selected controller-visible process
+     * @param input borrowed original procfs command stream; caller retains closure
+     * @return unchanged native argument vector
+     * @throws IOException if the native vector is empty, malformed or unavailable
+     */
+    static List<String> readNativeArguments(long pid, InputStream input) throws IOException
+    {
+        java.io.PushbackInputStream observed = new java.io.PushbackInputStream(input, 1);
+        int first = observed.read();
+        if (first == -1) throw new EmptyCommandVectorException(pid);
+        observed.unread(first);
+        return LinuxCargoRegistration.SharedSecrets.arguments(observed);
     }
 
     /**
@@ -615,7 +775,7 @@ final class LinuxBazelIdentity
             List<String> arguments;
             try (InputStream input = Files.newInputStream(process.resolve("cmdline")))
             {
-                arguments = LinuxCargoRegistration.SharedSecrets.arguments(input);
+                arguments = readNativeArguments(pid, input);
             }
             Map<String, String> environment;
             try (InputStream input = Files.newInputStream(process.resolve("environ")))
@@ -628,6 +788,52 @@ final class LinuxBazelIdentity
             String credentials = String.join("\n", status.lines().filter(line -> line.startsWith("Uid:") || line.startsWith("Gid:")).toList());
             return new Observation(birth, parentPid, credentials, namespacePids, pidNamespace, mountNamespace,
                 sameExecutable, hash, arguments, environment, directory);
+        }
+
+        @Override public ThreadObservation observeThread(long hostPid, long localThreadPid, Path executable)
+            throws IOException
+        {
+            Path tasks = Path.of("/proc", Long.toString(hostPid), "task");
+            ThreadObservation result = null;
+            try (java.nio.file.DirectoryStream<Path> directories = Files.newDirectoryStream(tasks))
+            {
+                for (Path task : directories)
+                {
+                    String status = Files.readString(task.resolve("status"));
+                    List<Long> mapping = namespacePids(status);
+                    if (mapping.getLast() != localThreadPid) continue;
+                    String group = status.lines().filter(line -> line.startsWith("Tgid:")).findFirst()
+                        .orElseThrow(() -> new IOException("Original exec task group identity is absent"));
+                    long processId;
+                    try { processId = Long.parseLong(group.substring(5).strip()); }
+                    catch (NumberFormatException cause) { throw new IOException("Original exec task group is invalid", cause); }
+                    long threadPid = mapping.getFirst();
+                    Observation observation = observe(threadPid, executable);
+                    String after = Files.readString(task.resolve("status"));
+                    if (!observation.namespacePids().equals(mapping) || !mapping.equals(namespacePids(after)) ||
+                        !sameGroupAndCredentials(status, after))
+                        throw new IOException("Original exec task identity changed during observation");
+                    if (result != null) throw new IOException("Original exec thread has multiple host task mappings");
+                    result = new ThreadObservation(threadPid, processId, observation);
+                }
+            }
+            if (result == null) throw new IOException("Original exec thread is absent from its authenticated process group");
+            return result;
+        }
+
+        /**
+         * Indicates whether repeated task status retains group identity and all native credentials.
+         * @param before original task status
+         * @param after repeated task status
+         * @return true when group and credential records match exactly
+         */
+        private static boolean sameGroupAndCredentials(String before, String after)
+        {
+            List<String> original = before.lines().filter(line -> line.startsWith("Tgid:") ||
+                line.startsWith("Uid:") || line.startsWith("Gid:")).toList();
+            List<String> repeated = after.lines().filter(line -> line.startsWith("Tgid:") ||
+                line.startsWith("Uid:") || line.startsWith("Gid:")).toList();
+            return original.equals(repeated);
         }
 
         @Override

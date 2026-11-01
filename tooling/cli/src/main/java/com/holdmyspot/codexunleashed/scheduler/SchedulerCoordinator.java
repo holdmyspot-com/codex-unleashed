@@ -64,6 +64,8 @@ final class SchedulerCoordinator<R>
      * An uncertain protocol delivery is never resent. Cleanup issues no invented completion.
      * On failure, stop the producer, close queue-owned attempts once, then release outer resources only
      * if no attempt remains owned. The caller must retain the session when that barrier cannot be proved.
+     * Each cleanup stage temporarily clears a pending interrupt so bounded cleanup can collect its acknowledgement.
+     * The original failure stays primary, cleanup failures remain suppressed, and interruption is restored afterward.
      * @return the actual completed build-tool root status supplied by the session
      * @throws IOException if protocol, measurements, controls or cleanup fail
      * @throws IllegalStateException if called again or from another thread
@@ -141,22 +143,32 @@ final class SchedulerCoordinator<R>
         }
         catch (IOException | RuntimeException | Error cause) { failure = cause; }
         if (queue != null) accepted = queue.completedAttempts();
-        if (failure != null)
-        {
-            try { session.stopAccepting(); }
-            catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
-        }
-        if (queue != null)
-            try { queue.close(); }
-            catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
+        boolean restoreInterrupt = Thread.interrupted();
         try
         {
-            if (session.hasOpenAttempts())
-                throw new IOException("Attempt cleanup remains unresolved; retain the session and its dependencies");
-            session.close();
-            if (failure == null) observer.record("terminal", result);
+            if (failure != null)
+            {
+                try { session.stopAccepting(); }
+                catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
+            }
+            restoreInterrupt |= Thread.interrupted();
+            if (queue != null)
+                try { queue.close(); }
+                catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
+            restoreInterrupt |= Thread.interrupted();
+            try
+            {
+                if (session.hasOpenAttempts())
+                    throw new IOException("Attempt cleanup remains unresolved; retain the session and its dependencies");
+                session.close();
+                if (failure == null) observer.record("terminal", result);
+            }
+            catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
         }
-        catch (IOException | RuntimeException | Error cause) { failure = append(failure, cause); }
+        finally
+        {
+            if (restoreInterrupt) Thread.currentThread().interrupt();
+        }
         if (failure instanceof IOException cause) throw cause;
         if (failure instanceof RuntimeException cause) throw cause;
         if (failure instanceof Error cause) throw cause;

@@ -7,6 +7,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import org.testng.annotations.Test;
 
 import static com.holdmyspot.codexunleashed.scheduler.TestRequirements.requireException;
@@ -106,6 +107,40 @@ public final class LinuxBazelActionTest
     }
 
     /**
+     * Pumps live hook observations, then ignores late queued admissions after independently observed whole-tree zero.
+     * Both the session-facing pump and polling must still wait for and preserve the original native SIGNAL5 result.
+     * @throws IOException if a valid controlled native lifecycle is rejected
+     */
+    @Test public void wholeTreeZeroSkipsLateAdmissionsAndPreservesOriginalSignal() throws IOException
+    {
+        var fixture = new Fixture();
+        try (var action = fixture.action())
+        {
+            fixture.frames.add("PREPARED 1 7 51");
+            var attempt = action.create(0);
+            attempt.start();
+            action.pump();
+            requireThat(fixture.latest.pumpCount, "livePumpDelivered").isEqualTo(1);
+
+            fixture.latest.zero = true;
+            fixture.latest.pumpFailure = new IOException("Late queued admission refers to an already absent parent");
+            action.pump();
+            requireThat(attempt.poll().isEmpty(), "zeroCannotInventParentResult").isTrue();
+            requireThat(fixture.latest.hooksClosed, "hooksRetainedUntilOriginalResult").isFalse();
+            fixture.frames.add("EXIT 1 SIGNAL 5");
+            var outcome = attempt.poll().orElseThrow();
+            requireThat(outcome, "originalSignalOutcome").isEqualTo(
+                new JobQueue.Outcome<>(new LinuxBazelControl.Result(true, 5), false));
+            requireThat(fixture.latest.pumpCount, "noPostZeroAdmission").isEqualTo(1);
+            requireThat(fixture.latest.hooksClosed, "originalHooksClosedAfterResultAndZero").isTrue();
+            attempt.close();
+            action.acceptOutcome(new JobQueue.Completion<>("generator", 0, outcome));
+            requireThat(fixture.frames.sent, "unalteredNativeSignalProjection").isEqualTo(
+                List.of("CREATE 1", "FINAL 1 133"));
+        }
+    }
+
+    /**
      * Requires authentic collection and zero before RESET, and accepts the old receipt after a new retry is created.
      * @throws IOException if a valid replay lifecycle is rejected
      */
@@ -164,6 +199,62 @@ public final class LinuxBazelActionTest
             requireThat(action.pollBlocked().isEmpty(), "stoppedPublication").isTrue();
             attempt.close();
             requireThat(fixture.frames.sent, "cleanupInventsNoResult").isEqualTo(List.of("CREATE 1"));
+        }
+    }
+
+    /**
+     * Preserves a noncontinuable backend's denial through the session so the real queue authorizes abortion before
+     * the action resets its original owner and creates a fresh attempt. Native statuses and zero are controlled inputs.
+     * @throws IOException if a valid controlled allocation-retry lifecycle is rejected
+     */
+    @Test public void sessionPreservesQueueAuthorityForNoncontinuableDenial() throws IOException
+    {
+        Fixture fixture = new Fixture();
+        fixture.peakBytes = 20L;
+        Controller.Measurements measurements = new Controller.Measurements()
+        {
+            @Override public Controller.Memory readHost() { return new Controller.Memory(1000, 0, false); }
+            @Override public long readResidentBytes(Policy.Job job) { return 10; }
+        };
+        LinuxBazelSession.Invocation invocation = new LinuxBazelSession.Invocation()
+        {
+            @Override public void pump() {}
+            @Override public boolean inputClosed() { return true; }
+            @Override public OptionalInt pollToolResult() { return OptionalInt.empty(); }
+            @Override public void stopAccepting() {}
+            @Override public void close() {}
+        };
+        try (LinuxBazelAction action = fixture.action();
+            LinuxBazelSession session = new LinuxBazelSession(measurements, invocation);
+            JobQueue<LinuxBazelControl.Result> queue = new JobQueue<>(new Policy.Budget(0, 1),
+                session.measurements(), session.attempts()))
+        {
+            session.registerAuthenticated(action);
+            queue.submit(action.name(), action.peakBytes());
+            fixture.frames.add("PREPARED 1 7 51");
+            queue.cycle();
+            fixture.latest.retryAfterDenial = true;
+            fixture.latest.waits.blocked(new AllocationWaits.Wait(1, 1));
+            SchedulerCoordinator.Blocked blocked = session.pollBlocked().orElseThrow();
+            queue.allocationBlocked(blocked.name(), blocked.attemptSequence(), blocked.waitSequence());
+
+            requireThat(queue.cycle().control(), "queueAuthorizedRecovery").isEqualTo(Policy.Control.TERMINATE);
+            requireThat(fixture.latest.granted.isEmpty(), "noSameAttemptGrant").isTrue();
+            requireThat(queue.jobs().getFirst().state(), "awaitingOriginalNativeStatus").isEqualTo(Policy.State.STOPPING);
+            fixture.frames.add("EXIT 1 SIGNAL 9");
+            fixture.frames.add("RESET 1");
+            fixture.frames.add("PREPARED 2 8 52");
+            requireThat(queue.cycle().control(), "freshAttemptAfterCollectedAbort").isEqualTo(Policy.Control.START);
+            requireThat(fixture.frames.sent, "originalOwnerResetBeforeRetry").isEqualTo(List.of("CREATE 1", "RESET 1", "CREATE 2"));
+            requireThat(queue.completions(), "abortedAttemptDoesNotCount").isEqualTo(0);
+
+            fixture.frames.add("EXIT 2 EXIT 0");
+            fixture.latest.zero = true;
+            queue.cycle();
+            for (JobQueue.Completion<LinuxBazelControl.Result> completion : queue.completedAttempts())
+                session.acceptOutcome(completion);
+            requireThat(queue.completions(), "successfulRetryCountedOnce").isEqualTo(1);
+            requireThat(fixture.frames.sent, "singleFinalPublication").isEqualTo(List.of("CREATE 1", "RESET 1", "CREATE 2", "FINAL 2 0"));
         }
     }
 
@@ -412,6 +503,8 @@ public final class LinuxBazelActionTest
         private final AllocationWaits waits;
         /** Exact waits whose acknowledged grant was requested. */
         private final List<AllocationWaits.Wait> granted = new ArrayList<>();
+        /** Controlled installed backend capability; true requires queue-authorized whole-attempt retry. */
+        private boolean retryAfterDenial;
         /** Whether actual execution impossibility is reported by the external boundary. */
         private boolean zero;
         /** Whether admission reports a partial acquisition failure. */
@@ -424,6 +517,8 @@ public final class LinuxBazelActionTest
         private boolean failWorkspaceCollection;
         /** Distinct modeled event-delivery failure after successful start. */
         private IOException pumpFailure;
+        /** Number of actual deliveries requested while exercising the resource boundary. */
+        private int pumpCount;
         /** Distinct uncertain resource-close cause, including an original Error. */
         private Throwable closeFailure;
         /** Original hook closure returned successfully. */
@@ -460,8 +555,10 @@ public final class LinuxBazelActionTest
         @Override public void start() { events.add("start"); }
         @Override public void pump() throws IOException
         {
+            ++pumpCount;
             if (pumpFailure != null) throw pumpFailure;
         }
+        @Override public boolean requiresRetryAfterDenial() { return retryAfterDenial; }
         @Override public void grant(AllocationWaits.Wait wait) { granted.add(wait); }
         @Override public void stop() { events.add("stop"); }
         @Override public void requestTermination() { events.add("terminate"); zero = true; }

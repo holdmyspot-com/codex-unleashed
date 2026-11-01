@@ -1,0 +1,294 @@
+{
+  "scope": "Maintained44file common Bazel backend, Linux x64/ARM trace/readiness and optional six-target packaging Java composition; public Bazel Scheduler activation remains isolated.",
+  "baseCommit": "be3dbfe89bec6f884805606d73ebd1056dc73118",
+  "sources": [
+    {
+      "path": "tooling/cli/pom.xml",
+      "bytes": 13703,
+      "sha256": "1fd2029a31a2bc3b488860f5ed5e7f1af6f607c402161514e4dbd9e93117fa88"
+    },
+    {
+      "path": "tooling/cli/src/build-test/java/com/holdmyspot/codexunleashed/distribution/BazelNativeBackendMainTest.java",
+      "bytes": 4035,
+      "sha256": "a5b90f4fc3e718b5b22faf49ac837aa6ee7f38c4b3eddb99fad16b3fc17a70cf"
+    },
+    {
+      "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/BazelBackendMain.java",
+      "bytes": 1059,
+      "sha256": "e96c938bff293e18fe0ec028a4b8b7e05531f0236262b29c5c1ef65c902e91f5"
+    },
+    {
+      "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/BazelNativeBackendMain.java",
+      "bytes": 34771,
+      "sha256": "d5906ff2c1c971f31cb5525525c351a088956f2b90622198abc000f57c89fdb4"
+    },
+    {
+      "path": "tooling/cli/src/build/java/com/holdmyspot/codexunleashed/distribution/DistributionMain.java",
+      "bytes": 31077,
+      "sha256": "5b38ddfe73bf0dabf9e9b2ec38ddbae63d15d928c76a53e34c4a83a1ece41023"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentials.java",
+      "bytes": 38924,
+      "sha256": "ed7d5a1501b80b416be47475f773299bb5e846d48a07fb9242d8d1c69e5e62df"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackend.java",
+      "bytes": 60947,
+      "sha256": "04604c6266e381cbcb8418e5f7bed909b6feeb3d249bb3fe683de245006edfee"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java",
+      "bytes": 21744,
+      "sha256": "cd186c46e1e98a758af30c03bd20563f48fc10c1512badb2090b44e88a49367d"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/JobQueue.java",
+      "bytes": 31858,
+      "sha256": "4b2fa130d2ea176a9a36efd1f618bca6a4523ee37f370c79bdab1ec1156d0400"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64Trace.java",
+      "bytes": 7763,
+      "sha256": "59b6d017b507480c6c2a3a07a87b1a4562d79107f381f2ff2e55750c9a40d2a3"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxAllocationTrace.java",
+      "bytes": 69420,
+      "sha256": "29b9cc13a8f19d38b8924ff9b2fd99a51fd43ba2110f11fc46d832ac257a42bf"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelAction.java",
+      "bytes": 25943,
+      "sha256": "aa255fd66691603db4e995fab0f8aba372dc5faa29066070034dfb851a49c16b"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelAdmission.java",
+      "bytes": 17485,
+      "sha256": "7208946fbd507ff298d84eed7ec898243a22853a8077916dd8e88eee5cfd6469"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackend.java",
+      "bytes": 29028,
+      "sha256": "e6fb6db4d34e783afed19f63a85ba6f02528fc0d8a60d929a1d143a7374c2791"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainment.java",
+      "bytes": 23891,
+      "sha256": "25a4d40f7a2abb0db0344a61cf9acd7ed2cdeef2b2071c09b1a81e0eb7932593"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMain.java",
+      "bytes": 60493,
+      "sha256": "52914c675c6a6f4a8fac1e8ec46a9e2d53f7e48eaff283f2f608c16bcc6e8810"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentity.java",
+      "bytes": 49550,
+      "sha256": "64b3dfbf4e3b2737f392e65d4987da10535333a50fa1c2b69bc758ed0da15f05"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelInvocation.java",
+      "bytes": 110521,
+      "sha256": "2dd2dedbd1e8398767523093f119bea16865107299283225dad955e70a961ada"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooks.java",
+      "bytes": 82239,
+      "sha256": "3117262ed82bb818fe10fdded3ac5e90cddea4f06787e8a9674f36339508a412"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelProducer.java",
+      "bytes": 32239,
+      "sha256": "1c1855a73920a0724c459ab0d768b8ef95703ecc591a4bb30b4e838957660036"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunner.java",
+      "bytes": 16069,
+      "sha256": "1f2bbb07d43d4cbc3d2e93633a77e93fc950c511d06bcd36b9dd76389678905e"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelSession.java",
+      "bytes": 21190,
+      "sha256": "c4fa6323404ff4c2c2fc53b6c5d0f9f5e8de0a4bfe304cbb96beb39e9c33a8d8"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelTraceHelper.java",
+      "bytes": 22743,
+      "sha256": "2c7a62d02b43f424906731799f2ded8e7af94b3565f32c6939b544322556aa83"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinator.java",
+      "bytes": 15662,
+      "sha256": "16dfb51bccbc1e35f2ab3f638b2f4d5513f40876e5abfe3d6f5facb432e18bcc"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/DefaultToolingScope.java",
+      "bytes": 8152,
+      "sha256": "70651a119338d54f7efff777b0a345835f04621c1da9d32f7b7dcb69747260e6"
+    },
+    {
+      "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/tooling/ToolingScope.java",
+      "bytes": 5169,
+      "sha256": "930613c7b5952eabc1c7653c6358c117359169f3c037b8616eef620f48f87508"
+    },
+    {
+      "path": "tooling/cli/src/main/resources/com/holdmyspot/codexunleashed/scheduler/buildbarn/worker-windows.json.template",
+      "bytes": 1157,
+      "sha256": "4871731c7da96b14707693caa052fdfd22248149ae187f08fb38de2cd169d837"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/distribution/DistributionPackagingTest.java",
+      "bytes": 14251,
+      "sha256": "6e5f5208de7f3a213f010e34553aaa215544f0d430913ced708536b61b2f6e17"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/BazelBackendCredentialsTest.java",
+      "bytes": 14567,
+      "sha256": "c5c3e3534146b02498dd1a3d4cae216d4988696718e3bacaaf3ca1a4cf9f582b"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/BazelNativeBackendTest.java",
+      "bytes": 21727,
+      "sha256": "03d2bf2c86b82857a0d42d97c3aa44e4f056483018f1f316a9acd4118b326625"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/JobQueueTest.java",
+      "bytes": 46333,
+      "sha256": "9410e4ed5be5ff900465987c7b7f93b6887575bdf827ca63ebb61c04006bd3bb"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64TraceNativeTest.java",
+      "bytes": 8004,
+      "sha256": "9c682ced8fc2a0ecab1fa608ea5a4474d82b991b9f031243cb1c4e33d152748f"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxAarch64TraceTest.java",
+      "bytes": 6830,
+      "sha256": "bee8719812ce7809d8c91a89d66aba125a416da31986fbdb875af0e3b61a81a1"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelActionTest.java",
+      "bytes": 31095,
+      "sha256": "99009f00dc8dda503a927fce64dfab12e788c540f7e72afd5e783c474c5d69aa"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelBackendTest.java",
+      "bytes": 17472,
+      "sha256": "5f31d66f13f22c8360c348959d580959f4fe6c13c4804f3c36d542813625ca00"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelContainmentTest.java",
+      "bytes": 31675,
+      "sha256": "76f75e5ca99433fb8a490cfcc3ae3f5f1fde0a071fe343e809bd66ece9bf153d"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelHelperMainTest.java",
+      "bytes": 30305,
+      "sha256": "ba6fdda8a8f6efd53799e8338a4c17f4d59acd7b85c0772f60609fa2c79d2831"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelIdentityTest.java",
+      "bytes": 26403,
+      "sha256": "72b7dbf73668818cdeb5a06dab9aa558b5cfd58209a656b90118bd8b962fdefc"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelNamespaceHooksTest.java",
+      "bytes": 22999,
+      "sha256": "941df10f880dd439b760941a9e789190d424162e6ae6a91db02fd949b5b2b71c"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelRunnerTest.java",
+      "bytes": 30228,
+      "sha256": "4ee88c68ed5a7130146fcd011c42f6efdfbde9dea09b021c9c09de3daf8a49b9"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxBazelStaticImageTest.java",
+      "bytes": 2981,
+      "sha256": "80c22973f298eb85ae71ceaac911f470d41a0ab84330b7a0f580c00e1a1055c7"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/SchedulerCoordinatorTest.java",
+      "bytes": 38063,
+      "sha256": "1c4b0eb71e3e708ca5006951622244de7d06971b1bdd06461858c4a2141f075f"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/TestRequirements.java",
+      "bytes": 1615,
+      "sha256": "ce84dfff81005c450154faf05ef799cf77f8f4b4241c788537ddea9f6086ed23"
+    },
+    {
+      "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/tooling/ToolingScopeTest.java",
+      "bytes": 6586,
+      "sha256": "c3fe4db4bb7a93d15309a5ce4769e6dd19348b2de7157fece2ba7983389c3e80"
+    }
+  ],
+  "archives": [
+    {
+      "path": "docs/evidence/artifacts/cp3-bazel-java-composition-source.tar.gz",
+      "bytes": 250493,
+      "sha256": "983af96a6b1dd1e2b118ca881815d80a142e0ae737426fcc14cd8cd5e940ae04"
+    },
+    {
+      "path": "docs/evidence/artifacts/cp3-bazel-java-composition-verification.tar.gz",
+      "bytes": 22100,
+      "sha256": "297a397fe413c460b6ceca8a0d1f7efadcbfb3d8f519116818376949e4754197"
+    }
+  ],
+  "verification": {
+    "mavenJava": {
+      "result": "PASS",
+      "discovered": 1331,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 9,
+      "excluded": "SourceInputCacheTest:11 actual Rust compiler tests must execute remotely under user policy",
+      "parallel": "methods",
+      "threadCount": 8,
+      "command": [
+        "/home/gili/.sdkman/candidates/maven/current/bin/mvn",
+        "-B",
+        "-ntp",
+        "-e",
+        "-s",
+        "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/maintained-linux-maven-1qgTGP/environment-proxy-settings.xml",
+        "-f",
+        "tooling/cli/pom.xml",
+        "-Dmaven.repo.local=/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/maintained-linux-maven-1qgTGP/repository-proxy",
+        "-Dtooling.build.directory=/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/maintained-linux-maven-1qgTGP/build-proxy",
+        "-Djava.io.tmpdir=/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/maintained-linux-maven-1qgTGP",
+        "-Dtest=!SourceInputCacheTest",
+        "-Dparallel=methods",
+        "-DthreadCount=8",
+        "test"
+      ]
+    },
+    "packaging": "All production/test sources compile and11 packaging tests pass in named module. Native Windows cmd and full platform packaging remain unrun.",
+    "strictAffected": "233 selected composed Linux/ARM portable tests passed at pre-JPMS-repair source; terminal repair independently23 named-module tests passed, no aggregate/native relabeling."
+  },
+  "repairs": [
+    {
+      "original": "Full test run1331 produced12errors:11 rustc missing and1 helper terminal serialization error.",
+      "correction": "Original Java record terminal serialization could not cross closed JPMS package. Use scoped explicit ObjectNode fields; exact original native wait statuses remain asserted."
+    },
+    {
+      "original": "Packaging full test compilation failed because build entrypoints and receiver use java.net.http/java.compiler from closed module.",
+      "correction": "Added JDK reads only to test compiler/runtime configuration; production descriptor unchanged."
+    }
+  ],
+  "reproduction": {
+    "inputs": "Retrieve this commit and archives from repository; all44 source bytes are included and recorded.",
+    "command": "JDK27 and Maven3.9.16: mvn -B -ntp -f tooling/cli/pom.xml -Dparallel=methods -DthreadCount=8 -Dtest=!SourceInputCacheTest test",
+    "temporaryDirectories": "Create an owned scratch directory and set java.io.tmpdir, TMPDIR and tooling.build.directory to it. Resolve dependencies through the environment supported transport; original test used explicit localhost environment proxy without credentials.",
+    "nativeRustTests": "Run full Maven verification on a remote native build worker; this partial local pass does not satisfy that gate."
+  },
+  "gateStates": {
+    "maintainedJavaComposition": "passed at44source identities",
+    "fullProjectIncludingRustTests": "unrun after repair",
+    "publicBazelSchedulerActivation": "unrun in maintained source",
+    "LinuxOrdinary23": "failed on retained native predecessor, primary cause unresolved",
+    "sixTargetScheduledRelease": "unrun",
+    "CP3": "incomplete"
+  },
+  "preservation": "No native build or extraction locally. Native products retained for platform actions, failure diagnosis and final release."
+}

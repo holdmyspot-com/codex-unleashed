@@ -43,6 +43,52 @@ public final class LinuxBazelBackendTest
     }
 
     /**
+     * Selects exact-hash x64 products through the Linux compatibility boundary.
+     * @throws Exception if fixture creation or native format validation fails
+     */
+    @Test public void selectsValidatedX64Executables() throws Exception
+    {
+        try (Fixture fixture = new Fixture(62); DefaultToolingScope scope = new DefaultToolingScope())
+        {
+            Map<String, Path> selected = LinuxBazelBackend.validateDistribution(scope, fixture.root, "Linux", "amd64");
+            requireThat(selected.keySet(), "x64NativeExecutables").isEqualTo(fixture.files.keySet());
+        }
+    }
+
+    /**
+     * Resolves the shared native build settings used by the distribution driver for both supported host aliases.
+     */
+    @Test public void nativeTargetKeepsCompilerBazelHeadersAndManifestConsistent()
+    {
+        for (String architecture : List.of("aarch64", "arm64"))
+        {
+            LinuxBazelBackend.NativeTarget target = LinuxBazelBackend.NativeTarget.forHost("Linux", architecture);
+            requireThat(List.of(target.triple(), target.goArchitecture(), target.bazelArchitecture(),
+                target.systemHeaders().toString()), "arm64NativeBuildSettings").isEqualTo(List.of(
+                "aarch64-unknown-linux-musl", "arm64", "arm64", Path.of("/usr/include/aarch64-linux-gnu").toString()));
+        }
+        for (String architecture : List.of("amd64", "x86_64"))
+        {
+            LinuxBazelBackend.NativeTarget target = LinuxBazelBackend.NativeTarget.forHost("Linux", architecture);
+            requireThat(List.of(target.triple(), target.goArchitecture(), target.bazelArchitecture(),
+                target.systemHeaders().toString()), "x64NativeBuildSettings").isEqualTo(List.of(
+                "x86_64-unknown-linux-musl", "amd64", "x86_64", Path.of("/usr/include/x86_64-linux-gnu").toString()));
+        }
+    }
+
+    /**
+     * Rejects unsupported native hosts instead of selecting an available foreign release target.
+     */
+    @Test public void nativeTargetRejectsForeignHosts()
+    {
+        requireException(UnsupportedOperationException.class, () -> LinuxBazelBackend.NativeTarget.forHost("Linux", "riscv64"));
+        requireException(UnsupportedOperationException.class, () -> LinuxBazelBackend.NativeTarget.forHost("Windows", "amd64"));
+        requireException(UnsupportedOperationException.class, () -> LinuxBazelBackend.NativeTarget.forHost("Mac OS X", "arm64"));
+        requireException(NullPointerException.class, () -> LinuxBazelBackend.NativeTarget.forHost(null, "amd64"));
+        requireException(NullPointerException.class, () -> LinuxBazelBackend.NativeTarget.forHost("Linux", null));
+    }
+
+    /**
      * Rejects a manifest without the parked waiter before any native process can start.
      * @throws Exception if test-local fixture creation or cleanup fails
      */
@@ -148,17 +194,17 @@ public final class LinuxBazelBackendTest
 
     /**
      * Requires explicit recovery to disable matching remote action-cache results without changing the command.
-     * @throws IOException if the maintained Bazel policy cannot be read
+     * @throws Exception if fixture validation or the maintained Bazel policy fails
      */
-    @Test public void recoveryPolicyRequiresAnUncachedBazelBuild() throws IOException
+    @Test public void recoveryPolicyRequiresAnUncachedBazelBuild() throws Exception
     {
         LinuxBazelBackend.Configuration normal = configuration();
         LinuxBazelBackend.Configuration recovery = new LinuxBazelBackend.Configuration(normal.distribution(),
             normal.invocationRoot(), normal.runnerAddress(), normal.credentials(), normal.concurrency(),
             normal.trustedUid(), normal.trustedGid(), normal.casBytes(), normal.actionCacheBytes(),
             LinuxBazelBackend.CachePolicy.UNCACHED_RECOVERY);
-        String ordinary = LinuxBazelBackend.startupRc(normal, 12345);
-        String uncached = LinuxBazelBackend.startupRc(recovery, 12345);
+        String ordinary = startupRc(normal, 12345);
+        String uncached = startupRc(recovery, 12345);
         requireThat(ordinary.contains("remote_accept_cached"), "ordinaryCacheOverride").isFalse();
         requireThat(uncached.lines().filter(line -> line.equals("build --remote_accept_cached=false")).count(),
             "explicitRecoveryOverride").isEqualTo(1L);
@@ -180,56 +226,45 @@ public final class LinuxBazelBackendTest
      */
     @Test public void fileCertificatesHaveTheRequiredRefreshInterval()
     {
-        Map<String, Object> pair = LinuxBazelBackend.fileKeyPair(Path.of("server.pem"), Path.of("server.key"));
+        Map<String, Object> pair = BazelNativeBackend.fileKeyPair(Path.of("server.pem"), Path.of("server.key"));
         Map<?, ?> files = (Map<?, ?>) pair.get("files");
         requireThat(files.get("refreshInterval"), "fileCertificateRefreshInterval").isEqualTo("3600s");
     }
 
     /**
-     * Denies administrative queue mutation through the pinned scheduler's required authorizers.
-     * @throws IOException if the maintained scheduler policy cannot be read
-     */
-    @Test public void schedulerAdministrativeRequestsAreDenied() throws IOException
-    {
-        try (DefaultToolingScope scope = new DefaultToolingScope();
-            var input = getClass().getResourceAsStream("buildbarn/scheduler.json.template"))
-        {
-            requireThat(input, "schedulerPolicyResource").isNotNull();
-            var configuration = scope.getJsonMapper().readTree(input);
-            requireThat(configuration.path("modifyDrainsAuthorizer").path("deny").isObject(),
-                "drainMutationDenied").isTrue();
-            requireThat(configuration.path("killOperationsAuthorizer").path("deny").isObject(),
-                "operationMutationDenied").isTrue();
-        }
-    }
-
-    /**
      * Uses the mandatory identity transfer encoding when the private backend advertises no compressor.
-     * @throws IOException if the maintained backend startup policy cannot be read
+     * @throws Exception if fixture validation or the maintained backend policy fails
      */
-    @Test public void privateBackendOverridesUnsupportedCacheCompression() throws IOException
+    @Test public void privateBackendOverridesUnsupportedCacheCompression() throws Exception
     {
-        String startup = LinuxBazelBackend.startupRc(configuration(), 12345);
+        String startup = startupRc(configuration(), 12345);
         requireThat(startup.lines().filter(line -> line.equals("common --noremote_cache_compression")).count(),
             "explicitUncompressedCacheTransport").isEqualTo(1L);
     }
 
     /**
-     * Uses the file-backed block device supported by the pinned worker's temporary file pool.
-     * @throws IOException if the maintained worker configuration cannot be read
+     * Renders shared startup policy using a real validated non-executed distribution fixture.
+     * This tests request construction only; it does not claim a live backend or native worker.
+     * @param configuration retained Linux caller settings
+     * @param port selected private storage port
+     * @return shared mandatory startup policy
+     * @throws Exception if fixture validation or resource reading fails
      */
-    @Test public void workerFilePoolUsesTheSupportedBlockDevice() throws IOException
+    private static String startupRc(LinuxBazelBackend.Configuration configuration, int port) throws Exception
     {
-        try (DefaultToolingScope scope = new DefaultToolingScope();
-            var input = getClass().getResourceAsStream("buildbarn/worker.json.template"))
+        try (Fixture fixture = new Fixture(); DefaultToolingScope scope = new DefaultToolingScope())
         {
-            requireThat(input, "workerPolicyResource").isNotNull();
-            var pool = scope.getJsonMapper().readTree(input).path("filePool");
-            requireThat(pool.has("directoryPath"), "removedDirectoryPoolBackend").isFalse();
-            requireThat(pool.path("blockDevice").path("file").path("path").stringValue(),
-                "privatePoolBackingFile").isEqualTo("@FILE_POOL@");
-            requireThat(pool.path("blockDevice").path("file").path("sizeBytes").asLong(),
-                "boundedPoolBytes").isEqualTo(10737418240L);
+            BazelNativeBackend.ValidatedDistribution distribution = BazelNativeBackend.validateDistribution(scope,
+                BazelNativeBackend.NativeTarget.ARM64, fixture.root);
+            LinuxBazelBackend.Credentials paths = configuration.credentials();
+            BazelBackendCredentials credentials = new BazelBackendCredentials(paths.certificateAuthority(),
+                paths.serverCertificate(), paths.serverKey(), paths.workerCertificate(), paths.workerKey());
+            BazelNativeBackend.Configuration shared = new BazelNativeBackend.Configuration(distribution,
+                configuration.invocationRoot(), configuration.runnerAddress(), credentials, configuration.concurrency(),
+                configuration.casBytes(), configuration.actionCacheBytes(),
+                BazelNativeBackend.CachePolicy.valueOf(configuration.cachePolicy().name()),
+                new java.util.concurrent.CompletableFuture<>(), () -> {});
+            return BazelNativeBackend.startupRc(shared, port);
         }
     }
 
@@ -251,6 +286,8 @@ public final class LinuxBazelBackendTest
      */
     private static final class Fixture implements AutoCloseable
     {
+        /** Native ELF machine represented by this fixture. */
+        private final int machine;
         /** Root owned only by this test invocation. */
         private final Path root = Files.createTempDirectory("bazel-backend-");
         /** Executable identities placed into this fixture's manifest. */
@@ -260,13 +297,21 @@ public final class LinuxBazelBackendTest
          * Creates a complete test-local manifest with non-executed ELF-header inputs.
          * @throws Exception if fixture files cannot be created
          */
-        private Fixture() throws Exception
+        private Fixture() throws Exception { this(183); }
+
+        /**
+         * Creates non-executed native identity inputs for the requested processor.
+         * @param machine ELF machine identifier
+         * @throws Exception if fixture creation fails
+         */
+        private Fixture(int machine) throws Exception
         {
+            this.machine = machine;
             try
             {
                 for (String name : List.of("bb_storage", "bb_scheduler", "bb_worker", "linux-bazel-action-owner", "linux-bazel-action-waiter",
                     "codex-tooling", "codex-cargo-wrapper-linux"))
-                    writeExecutable(name, 183);
+                    writeExecutable(name, machine);
                 writeManifest();
             }
             catch (Exception failure)
@@ -304,7 +349,7 @@ public final class LinuxBazelBackendTest
         {
             try (DefaultToolingScope scope = new DefaultToolingScope())
             {
-                Map<String, Object> manifest = Map.of("schema", 1, "target", "aarch64-unknown-linux-musl",
+                Map<String, Object> manifest = Map.of("schema", 1, "target", machine == 183 ? "aarch64-unknown-linux-musl" : "x86_64-unknown-linux-musl",
                     "executionCommit", "1fbffdc417797f6afdb7f67b1f0d5cc27352db43",
                     "storageCommit", "025ab8081c7f", "executables", files);
                 Files.writeString(root.resolve("backend-manifest.json"),

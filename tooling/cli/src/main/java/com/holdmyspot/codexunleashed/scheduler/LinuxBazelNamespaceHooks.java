@@ -289,6 +289,62 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
     }
 
     /**
+     * Validates exact pre-exec authority against independently observed post-exec process identity.
+     * Linux may retain the original leader birth or expose the original executing thread birth.
+     * @param migration authentic copied held exec event
+     * @param authorized exact independently authenticated pre-exec thread
+     * @param localPid retained process identity
+     * @param originalBirth independently admitted previous leader birth
+     * @param observedBirth independently observed post-exec leader birth
+     * @return true only for the exact authorized migration and one retained original birth
+     */
+    static boolean authenticatedExecMigration(LinuxAllocationTrace.Held migration,
+        LinuxAllocationTrace.Identity authorized, long localPid, long originalBirth, long observedBirth)
+    {
+        return migration != null && migration.origin() == 1 && authorized != null &&
+            authorized.tid() != localPid && authorized.equals(migration.formerThread()) &&
+            migration.task().tid() == localPid && migration.task().birthTicks() == observedBirth &&
+            (observedBirth == originalBirth || observedBirth == authorized.birthTicks());
+    }
+
+    /** One live-image admission sequence, retaining its original checked observation failure. */
+    @FunctionalInterface
+    interface LiveImageAdmission
+    {
+        /**
+         * Performs the original live-image admission once.
+         * @throws IOException if native image authentication or continuation is uncertain
+         */
+        void admit() throws IOException;
+    }
+
+    /**
+     * Runs live-image admission while retaining containment ownership across a disappearing procfs image race.
+     * Missing procfs entries or exact empty native command observations are tolerated only after a fresh
+     * independently confirmed whole-tree zero; malformed vectors and other observation faults remain failures.
+     * @param containment original independent whole-tree observer
+     * @param admission original admission operation, invoked exactly once
+     * @throws IOException if image admission is uncertain while native execution remains possible
+     */
+    static void admitLiveImages(LinuxBazelContainment containment, LiveImageAdmission admission) throws IOException
+    {
+        try { admission.admit(); }
+        catch (java.nio.file.NoSuchFileException | LinuxBazelIdentity.EmptyCommandVectorException ended)
+        {
+            if (ended instanceof java.nio.file.NoSuchFileException missing &&
+                (missing.getFile() == null || !Path.of(missing.getFile()).startsWith(Path.of("/proc")))) throw ended;
+            boolean executionImpossible;
+            try { executionImpossible = containment.observeExecutionImpossible(); }
+            catch (IOException | RuntimeException uncertain)
+            {
+                if (uncertain != ended) ended.addSuppressed(uncertain);
+                throw ended;
+            }
+            if (!executionImpossible) throw ended;
+        }
+    }
+
+    /**
      * Original process owner retained by admission through actual whole-workload zero and helper cleanup.
      */
     private static final class Owner implements LinuxBazelAdmission.HookOwner
@@ -303,6 +359,16 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
         private final long installation;
         /** Original authenticated namespace owner. */
         private final LinuxBazelIdentity.Owner owner;
+        /** Backend denials require explicit whole-attempt retry rather than an allocation grant. */
+        private boolean retryAfterDenial;
+        /** Copied original nonleader exec entries awaiting independent host thread observations. */
+        private final List<LinuxAllocationTrace.PreExec> pendingExec = new ArrayList<>();
+        /** Independently observed original thread identities, keyed by their retained process group. */
+        private final Map<Long, LinuxAllocationTrace.Identity> authorizedExec = new LinkedHashMap<>();
+        /** Original root's opaque independently observed thread authorization, never native message authority alone. */
+        private LinuxBazelIdentity.ExecAuthorization rootExec;
+        /** Copied actual exec transitions, matched to the earlier independently observed thread. */
+        private final Map<Long, LinuxAllocationTrace.Held> migrations = new LinkedHashMap<>();
         /** Approved held image. */
         private final LinuxBazelIdentity.Execution execution;
         /** Original resolved executable and unchanged original execution vector. */
@@ -323,6 +389,10 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
         private final Set<Long> readyImages = new HashSet<>();
         /** Copied held events awaiting independent host authorization on the operation thread. */
         private final List<FridaRuntime.Child> pendingImages = new ArrayList<>();
+        /** Authentic native root status; descendant ownership survives this observation. */
+        private LinuxAllocationTrace.Terminal rootTerminal;
+        /** Native owner is collecting descendants after an actual signaled root death. */
+        private boolean rootSignalRetirement;
         /** Copied dead-generation claims deferred until outside any queue continuation. */
         private final List<Long> pendingRetirements = new ArrayList<>();
         /** Open actual executable inodes retained until whole-action zero. */
@@ -396,7 +466,7 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
             LinuxBazelContainment containment, AllocationWaits waits)
         {
             this.scope = scope;
-            this.json = scope.getAllocationEnvelopeMapper();
+            this.json = scope.getNamespaceControlMapper();
             this.attempt = attempt;
             this.installation = installation;
             this.owner = owner;
@@ -414,6 +484,8 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
             imageMessages.put(installation, messages);
             currentInstallations.put(local.pid(), installation);
         }
+
+        @Override public boolean requiresRetryAfterDenial() { return retryAfterDenial; }
 
         @Override
         public void prepareHeld() throws IOException
@@ -448,7 +520,8 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 if (!original.equals(birth(proc)))
                     throw new IOException("Action namespace owner changed during helper launch");
                 ObjectNode config = request("init").put("attempt", attempt.toString())
-                    .put("installation", Long.toString(installation)).put("localPid", Long.toString(local.pid())).put("producer", launch.producer().path().toString())
+                    .put("installation", Long.toString(installation)).put("localPid", Long.toString(local.pid()))
+                    .put("preparedBirth", Long.toString(local.birth())).put("producer", launch.producer().path().toString())
                     .put("producerSha256", launch.producer().sha256()).put("timeoutNanos", Long.toString(timeoutNanos))
                     .put("ownerLocalPid", Long.toString(owner.localPid())).put("ownerBirth", Long.toString(owner.peer().startTicks()));
                 config.set("execution", encodeExecution(json, execution));
@@ -491,11 +564,29 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
         @Override
         public void pump() throws IOException
         {
+            if (rootSignalRetirement) return;
             requireActive();
             if (!resumeAttempted) throw new IOException("Namespace helper has not resumed its original image");
             exchange(request("pump"));
-            retirePending();
-            admitPending();
+            if (rootSignalRetirement) return;
+            try
+            {
+                retirePending();
+                admitPending();
+            }
+            catch (IOException original)
+            {
+                ImageObservation latest = latestRoot();
+                if (!retryAfterDenial || !originalImageEnded(Path.of("/proc", Long.toString(latest.hostPid())), latest.birth()))
+                    throw original;
+                long start = System.nanoTime();
+                while (rootTerminal == null)
+                {
+                    exchange(request("pump"));
+                    if (rootTerminal == null) pause(start, "actual root terminal collection before descendant admission");
+                }
+                if (!rootSignalRetirement) throw original;
+            }
         }
 
         @Override
@@ -564,6 +655,53 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 if (!LinuxBazelHelperMain.text(response, "id").equals(LinuxBazelHelperMain.text(request, "id")) ||
                     !response.path("ok").isBoolean() || !response.path("ok").asBoolean())
                     throw new IOException("Original namespace helper response failed or differs: " + response);
+                JsonNode retry = response.path("requiresRetryAfterDenial");
+                if (retry.isBoolean()) retryAfterDenial = retry.asBoolean();
+                JsonNode terminal = response.path("rootTerminal");
+                if (!terminal.isMissingNode() && !terminal.isNull())
+                {
+                    LinuxAllocationTrace.Identity identity = nativeIdentity(terminal.path("identity"));
+                    JsonNode status = terminal.path("waitStatus");
+                    ImageObservation latest = latestRoot();
+                    if (!retryAfterDenial || identity.tid() != local.pid() || identity.birthTicks() != latest.birth() ||
+                        !status.isIntegralNumber() || !status.canConvertToInt() || status.asInt() < 0 ||
+                        (status.asInt() & 255) == 127 ||
+                        !originalImageEnded(Path.of("/proc", Long.toString(latest.hostPid())), latest.birth()))
+                        throw new IOException("Native root terminal record lacks its retained original identity or terminal proof");
+                    LinuxAllocationTrace.Terminal copied = new LinuxAllocationTrace.Terminal(identity, status.asInt());
+                    if (rootTerminal != null && !rootTerminal.equals(copied))
+                        throw new IOException("Original native root terminal record changed");
+                    rootTerminal = copied;
+                    rootSignalRetirement = (copied.waitStatus() & 127) != 0;
+                }
+                JsonNode entries = response.path("preExec");
+                if (!entries.isMissingNode())
+                {
+                    if (!entries.isArray() || entries.size() > 32 || pendingExec.size() + entries.size() > 64)
+                        throw new IOException("Native pre-exec reports exceed their bound");
+                    for (JsonNode entry : entries)
+                    {
+                        LinuxAllocationTrace.Identity thread = nativeIdentity(entry.path("thread"));
+                        int group = Math.toIntExact(entry.path("processId").asLong());
+                        if (group <= 0) throw new IOException("Native exec group identity must be positive");
+                        pendingExec.add(new LinuxAllocationTrace.PreExec(thread, group));
+                    }
+                }
+                JsonNode transitions = response.path("migrations");
+                if (!transitions.isMissingNode())
+                {
+                    if (!transitions.isArray() || transitions.size() > 32 || migrations.size() + transitions.size() > 64)
+                        throw new IOException("Native exec transitions exceed their bound");
+                    for (JsonNode transition : transitions)
+                    {
+                        LinuxAllocationTrace.Identity task = nativeIdentity(transition.path("task"));
+                        LinuxAllocationTrace.Identity former = nativeIdentity(transition.path("formerThread"));
+                        LinuxAllocationTrace.Held copied = new LinuxAllocationTrace.Held(task,
+                            Math.toIntExact(transition.path("parentPid").asLong()), transition.path("origin").asInt(),
+                            transition.path("path").asString(), former);
+                        migrations.put((long) task.tid(), copied);
+                    }
+                }
                 JsonNode held = response.path("held");
                 if (!held.isArray() || held.size() > 32 || pendingImages.size() + held.size() > 64)
                     throw new IOException("Copied held-event batch differs or exceeds its bound");
@@ -637,6 +775,16 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
          */
         private void admitPending() throws IOException
         {
+            admitLiveImages(containment, this::admitPendingLive);
+        }
+
+        /**
+         * Admits original live images; a disappeared proc entry is resolved by the outer containment barrier.
+         * @throws IOException if native identity, image or continuation is uncertain
+         */
+        private void admitPendingLive() throws IOException
+        {
+            authenticateExecEntries();
             while (!pendingImages.isEmpty())
             {
                 retirePending();
@@ -644,6 +792,22 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 FridaRuntime.Child event = pendingImages.removeFirst();
                 if (event.pid() <= 0 || event.pid() > 4294967295L || event.origin() < 0 || event.origin() > 2)
                     throw withdraw("Unknown held descendant identity or origin", null);
+                LinuxAllocationTrace.Held migration = migrations.get(event.pid());
+                LinuxAllocationTrace.Identity authorized = authorizedExec.get(event.pid());
+                boolean nonleaderExec = migration != null && migration.formerThread() != null &&
+                    migration.formerThread().tid() != event.pid();
+                if (nonleaderExec)
+                {
+                    if (authorized == null || !authorized.equals(migration.formerThread()) ||
+                        migration.task().tid() != event.pid())
+                        throw new IOException("Held nonleader exec lacks its exact independently observed original thread");
+                    if (event.pid() == local.pid())
+                    {
+                        if (rootExec == null) throw new IOException("Original root exec lacks its containment authorization");
+                        containment.admitExec(rootExec);
+                        rootExec = null;
+                    }
+                }
                 ImageObservation observed = map(event.pid());
                 ImageObservation previous = currentImages.get(event.pid());
                 ImageObservation parent = null;
@@ -652,7 +816,13 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                     if (event.parentPid() != event.pid()) throw new IOException("Held exec must be self-parented");
                     if (previous != null)
                     {
-                        if (previous.hostPid() != observed.hostPid() || previous.birth() != observed.birth() ||
+                        migrations.remove(event.pid());
+                        LinuxAllocationTrace.Identity former = authorizedExec.remove(event.pid());
+                        boolean sameBirth = previous.birth() == observed.birth();
+                        boolean migratedBirth = authenticatedExecMigration(migration, former, event.pid(),
+                            previous.birth(), observed.birth());
+                        boolean authenticatedBirth = nonleaderExec ? migratedBirth : sameBirth;
+                        if (previous.hostPid() != observed.hostPid() || !authenticatedBirth ||
                             previous.parent() != observed.parent()) throw new IOException("Held exec changed its retained process birth");
                     }
                     else parent = parent(observed.parent());
@@ -691,6 +861,64 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
                 exchange(imageRequest("resumeHeld", observed, generation));
                 currentImages.put(event.pid(), observed);
                 currentInstallations.put(event.pid(), generation);
+            }
+        }
+
+        /**
+         * Decodes a copied native task identity without treating it as host authority.
+         * @param value bounded helper identity object
+         * @return positive original task identity
+         * @throws IOException if the task or birth has an invalid representation
+         */
+        private static LinuxAllocationTrace.Identity nativeIdentity(JsonNode value) throws IOException
+        {
+            JsonNode tid = value.path("tid");
+            JsonNode birth = value.path("birthTicks");
+            if (!tid.isIntegralNumber() || !tid.canConvertToInt() || tid.asInt() <= 0 ||
+                !birth.isIntegralNumber() || !birth.canConvertToLong() || birth.asLong() <= 0)
+                throw new IOException("Copied native task identity differs from its exact positive representation");
+            return new LinuxAllocationTrace.Identity(tid.asInt(), birth.asLong());
+        }
+
+        /**
+         * Independently observes a nonleader thread before its held exec syscall may proceed.
+         * @throws IOException if thread birth, membership or namespace identity differs
+         */
+        private void authenticateExecEntries() throws IOException
+        {
+            while (!pendingExec.isEmpty())
+            {
+                LinuxAllocationTrace.PreExec entry = pendingExec.removeFirst();
+                ImageObservation processImage = currentImages.get((long) entry.processId());
+                if (processImage == null || entry.thread().tid() == entry.processId())
+                    throw new IOException("Nonleader exec has no admitted original process group");
+                processImage.requireUnchanged(observe(processImage.hostPid(), processImage.localPid()));
+                if (entry.processId() == local.pid())
+                {
+                    if (rootExec != null) throw new IOException("Original root already has a pending exec authorization");
+                    rootExec = containment.prepareExec(entry.thread().tid(), entry.thread().birthTicks());
+                }
+                else
+                {
+                    Path tasks = Path.of("/proc", Long.toString(processImage.hostPid()), "task");
+                    Path matching = null;
+                    try (java.nio.file.DirectoryStream<Path> directories = Files.newDirectoryStream(tasks))
+                    {
+                        for (Path task : directories)
+                        {
+                            String status = Files.readString(task.resolve("status"));
+                            if (namespacePid(status) != entry.thread().tid()) continue;
+                            if (matching != null) throw new IOException("Original exec thread maps to multiple host tasks");
+                            matching = task;
+                        }
+                    }
+                    if (matching == null || !birth(matching).equals(Long.toString(entry.thread().birthTicks())))
+                        throw new IOException("Original nonleader exec thread birth or group membership differs");
+                }
+                if (authorizedExec.putIfAbsent((long) entry.processId(), entry.thread()) != null)
+                    throw new IOException("Original process has another unresolved nonleader exec authorization");
+                exchange(request("authorizeExec").put("thread", Integer.toString(entry.thread().tid()))
+                    .put("birth", Long.toString(entry.thread().birthTicks())));
             }
         }
 
@@ -896,12 +1124,26 @@ final class LinuxBazelNamespaceHooks implements LinuxBazelAdmission.HookFactory
         }
 
         /**
+         * Selects the latest independently authenticated original-root executable generation.
+         * @return retained original root generation
+         * @throws IOException if the initial root was never installed
+         */
+        private ImageObservation latestRoot() throws IOException
+        {
+            ImageObservation latest = null;
+            for (ImageObservation image : generationImages.values())
+                if (image.localPid() == local.pid()) latest = image;
+            if (latest == null) throw new IOException("Original root generation is unavailable");
+            return latest;
+        }
+
+        /**
          * Requires the original live work authority, preserving its first failure.
          * @throws IOException if stopped, failed, or already closed
          */
         private void requireActive() throws IOException
         {
-            if (stopped || closed || failure != null) throw new IOException("Namespace helper work authority is withdrawn", failure);
+            if (stopped || closed || rootSignalRetirement || failure != null) throw new IOException("Namespace helper work authority is withdrawn", failure);
         }
 
         /**

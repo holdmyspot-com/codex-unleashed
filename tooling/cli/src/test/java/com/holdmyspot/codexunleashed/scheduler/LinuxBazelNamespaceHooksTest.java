@@ -23,6 +23,27 @@ public final class LinuxBazelNamespaceHooksTest
      */
     public LinuxBazelNamespaceHooksTest() {}
 
+    /** Accepts both genuine Linux exec birth observations while preserving exact former-thread authority. */
+    @Test public void authenticatesExactExecMigrationWithEitherRetainedBirth()
+    {
+        LinuxAllocationTrace.Identity authorized = new LinuxAllocationTrace.Identity(4, 31);
+        for (long liveBirth : List.of(30L, 31L))
+        {
+            LinuxAllocationTrace.Held migration = new LinuxAllocationTrace.Held(
+                new LinuxAllocationTrace.Identity(3, liveBirth), 3, 1, "/program", authorized);
+            requireThat(LinuxBazelNamespaceHooks.authenticatedExecMigration(migration, authorized, 3, 30, liveBirth),
+                "independentlyAuthenticatedExec").isTrue();
+            requireThat(LinuxBazelNamespaceHooks.authenticatedExecMigration(migration,
+                new LinuxAllocationTrace.Identity(5, 31), 3, 30, liveBirth), "unrelatedFormerThread").isFalse();
+            requireThat(LinuxBazelNamespaceHooks.authenticatedExecMigration(migration, authorized, 3, 30, 32),
+                "changedLiveBirth").isFalse();
+        }
+        LinuxAllocationTrace.Held unrelated = new LinuxAllocationTrace.Held(
+            new LinuxAllocationTrace.Identity(3, 32), 3, 1, "/program", authorized);
+        requireThat(LinuxBazelNamespaceHooks.authenticatedExecMigration(unrelated, authorized, 3, 30, 32),
+            "unrelatedPostExecBirth").isFalse();
+    }
+
     /**
      * Rejects relative or traversing executable inputs before any external effect can occur.
      */

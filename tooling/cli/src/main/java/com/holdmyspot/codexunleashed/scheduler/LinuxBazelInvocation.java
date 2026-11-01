@@ -932,6 +932,8 @@ final class LinuxBazelInvocation implements LinuxBazelSession.Invocation
             checkCancellation();
         }
         @Override public void pump() throws IOException { checkCancellation(); admission.pump(); }
+        @Override public boolean requiresRetryAfterDenial() { return admission.requiresRetryAfterDenial(); }
+
         @Override public void grant(AllocationWaits.Wait wait) throws IOException
         {
             checkCancellation();

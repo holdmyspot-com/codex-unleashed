@@ -35,6 +35,12 @@ final class LinuxBazelRunner implements AutoCloseable
     }
 
     /**
+     * Observes authenticated worker readiness after Linux pathname validation.
+     * @return independent future completed by the actual shared Runner readiness callback
+     */
+    java.util.concurrent.CompletableFuture<Void> workerReadiness() { return runner.workerReadiness(); }
+
+    /**
      * Starts one JDK TLS listener on a kernel-selected loopback port.
      * @throws IOException if identity material or listener setup fails
      */

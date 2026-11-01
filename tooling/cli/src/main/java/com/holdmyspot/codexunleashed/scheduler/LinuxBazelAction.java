@@ -265,6 +265,19 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
         }
 
         /**
+         * Indicates whether the acquired allocation backend requires a fresh attempt after denial.
+         * @return true if the current backend cannot continue the denied allocation
+         * @throws IllegalStateException if resource acquisition has not begun or another thread calls this method
+         */
+        @Override public boolean requiresRetryAfterDenial()
+        {
+            requireOwner();
+            if (resources == null)
+                throw new IllegalStateException("Bazel attempt has not acquired allocation resources");
+            return resources.requiresRetryAfterDenial();
+        }
+
+        /**
          * Withdraws grants before requesting host whole-tree termination; no signal status classifies the attempt.
          * @throws IOException if grant withdrawal or native cancellation is uncertain
          */
@@ -285,12 +298,17 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
 
         /**
          * Copies actual hook events for later batch publication without entering queue controls.
-         * @throws IOException if native event delivery fails
+         * Independent whole-tree zero makes queued image admissions obsolete; original native status and hook closure
+         * remain required by polling before any outcome can be accepted.
+         * @throws IOException if whole-tree observation or native event delivery fails
          */
         private void pump() throws IOException
         {
             if (resources == null || stopped || closed) return;
-            try { resources.pump(); }
+            try
+            {
+                if (!resources.zero()) resources.pump();
+            }
             catch (IOException | RuntimeException cause) { throw failed("hook event delivery", cause); }
             catch (Error cause) { failed("hook event delivery", cause); throw cause; }
         }
@@ -467,6 +485,16 @@ final class LinuxBazelAction implements LinuxBazelSession.Action
         /** Copies and validates actual hook events without queue callbacks.
          * @throws IOException if event delivery fails */
         void pump() throws IOException;
+        /**
+         * Indicates whether a denied allocation requires a new workload attempt instead of an in-place grant.
+         * This observation has no control effects and remains stable for the lifetime of these resources.
+         * @return true if the installed allocation backend cannot continue a denied allocation in this attempt
+         */
+        default boolean requiresRetryAfterDenial()
+        {
+            return false;
+        }
+
         /** Grants a matching actual allocation wait and awaits acknowledgement.
          * @param wait exact validated native wait
          * @throws IOException if permission has uncertain effects */

@@ -194,6 +194,9 @@ final class LinuxBazelAdmission implements LinuxBazelAction.Resources
         if (started && !stopped && !closed) hooks.pump();
     }
 
+    @Override public boolean requiresRetryAfterDenial()
+    { return hooks != null && hooks.requiresRetryAfterDenial(); }
+
     /**
      * Grants the exact original validated wait while this attempt remains active.
      * @param wait exact validated native allocation wait
@@ -321,6 +324,11 @@ final class LinuxBazelAdmission implements LinuxBazelAction.Resources
      */
     interface HookOwner
     {
+        /**
+         * Indicates whether a denied allocation requires a fresh attempt.
+         * @return true when same-attempt native continuation is unavailable
+         */
+        default boolean requiresRetryAfterDenial() { return false; }
         /**
          * Acquires the original manager and holds the approved target image without continuing it.
          * @throws IOException if native acquisition or held preparation fails

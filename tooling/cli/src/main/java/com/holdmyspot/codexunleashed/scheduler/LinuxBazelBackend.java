@@ -1,90 +1,47 @@
 package com.holdmyspot.codexunleashed.scheduler;
 
 import com.holdmyspot.codexunleashed.tooling.ToolingScope;
-import io.grpc.ConnectivityState;
-import io.grpc.ManagedChannel;
-import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
-import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslProvider;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.security.KeyStore;
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Owns one invocation's pinned Buildbarn storage, scheduler and worker processes.
- * Daemons inherit the root supervisor UID; the separate trusted consumer UID owns their private
- * paths and TLS leaf files, while action UIDs receive neither. The caller retains infrastructure
- * containment and the Runner service until this owner closes.
+ * Composes the shared native backend with Linux trusted-file ownership and original daemon collection.
+ * The supervisor retains its infrastructure containment until this owner and its Runner leases close.
  */
-final class LinuxBazelBackend implements AutoCloseable
+public final class LinuxBazelBackend implements AutoCloseable
 {
-    /** Distribution manifest emitted only after all native binaries have been built and hashed. */
-    private static final String MANIFEST = "backend-manifest.json";
-    /** Supported real Codex release target; every executable must also have its native ARM64 ELF header. */
-    private static final String TARGET = "aarch64-unknown-linux-musl";
-    /** Buildbarn source identity whose configuration and Runner protocol this adapter implements. */
-    private static final String EXECUTION_COMMIT = "1fbffdc417797f6afdb7f67b1f0d5cc27352db43";
-    /** bb-storage module revision pinned by the selected Buildbarn checkout. */
-    private static final String STORAGE_COMMIT = "025ab8081c7f";
-    /** Complete executable set required before any backend process may start. */
-    private static final Set<String> EXECUTABLES = Set.of("bb_storage", "bb_scheduler", "bb_worker",
-        "linux-bazel-action-owner", "linux-bazel-action-waiter", "codex-tooling", "codex-cargo-wrapper-linux");
-    /** Invocation state and keys remain inaccessible to the unprivileged action user. */
-    private static final Set<PosixFilePermission> PRIVATE_DIRECTORY = PosixFilePermissions.fromString("rwx------");
-    /** Credentials remain readable and writable only by their trusted owner. */
-    private static final Set<PosixFilePermission> PRIVATE_FILE = PosixFilePermissions.fromString("rw-------");
-    /** Class-relative maintained configuration resources. */
-    private static final String RESOURCE_ROOT = "buildbarn/";
-    /** Processes in acquisition order; retained after uncertain shutdown. */
-    private final List<Process> daemons = new ArrayList<>();
-    /** Caller-owned Runner cleanup must reach zero before its backend disappears. */
-    private final Cleanup cleanup;
-    /** Invocation configuration retained for endpoint and directory ownership. */
-    private final Configuration configuration;
-    /** Private storage endpoint also forwards execution to the scheduler. */
-    private final String address;
-    /** Host-selected startup configuration consumed by the trusted Bazel launcher. */
-    private final Path startupRc;
-    /** Indicates whether Runner cleanup and daemon reaping completed. */
-    private boolean closed;
+    /** Linux invocation directories exclude every other identity. */
+    private static final Set<PosixFilePermission> PRIVATE_DIRECTORY =
+        Set.copyOf(PosixFilePermissions.fromString("rwx------"));
+    /** Linux credentials and configurations exclude every other identity. */
+    private static final Set<PosixFilePermission> PRIVATE_FILE =
+        Set.copyOf(PosixFilePermissions.fromString("rw-------"));
+    /** Shared configuration, authenticated readiness and daemon lifecycle owner. */
+    private final BazelNativeBackend backend;
+    /** Original processes retained for infrastructure accounting. */
+    private final List<Process> processes;
 
     /**
-     * Retains initialized ownership before any subprocess acquisition.
-     * @param configuration validated invocation settings
-     * @param cleanup owner of outstanding Runner cleanup leases
-     * @param address private storage address
-     * @param startupRc private Bazel policy file
+     * Retains a shared backend and its original Linux processes, including partially acquired owners.
+     * @param backend shared backend whose cleanup remains owned
+     * @param processes original acquired daemons in launch order
      */
-    private LinuxBazelBackend(Configuration configuration, Cleanup cleanup, String address, Path startupRc)
+    private LinuxBazelBackend(BazelNativeBackend backend, List<Process> processes)
     {
-        this.configuration = configuration;
-        this.cleanup = cleanup;
-        this.address = address;
-        this.startupRc = startupRc;
+        this.backend = backend;
+        this.processes = processes;
     }
 
     /**
@@ -92,599 +49,367 @@ final class LinuxBazelBackend implements AutoCloseable
      * @param args exactly source backend directory and absent destination directory
      * @throws IOException if copying or identity validation fails
      * @throws IllegalArgumentException if argument count is invalid
-     * @throws UnsupportedOperationException if staging is attempted outside Linux ARM64
+     * @throws UnsupportedOperationException if staging is attempted outside Linux x64 or ARM64
      */
     public static void main(String[] args) throws IOException
     {
         if (args.length != 2) throw new IllegalArgumentException("Expected native backend source and new staging directory");
-        Path source = Path.of(args[0]).toAbsolutePath().normalize();
-        Path target = Path.of(args[1]).toAbsolutePath().normalize();
-        try (com.holdmyspot.codexunleashed.tooling.DefaultToolingScope scope =
-            new com.holdmyspot.codexunleashed.tooling.DefaultToolingScope())
-        {
-            Map<String, Path> selected = validateDistribution(scope, source,
-                System.getProperty("os.name"), System.getProperty("os.arch"));
-            byte[] manifest = Files.readAllBytes(source.resolve(MANIFEST));
-            Files.createDirectory(target);
-            try
-            {
-                for (Map.Entry<String, Path> executable : selected.entrySet())
-                {
-                    Path output = target.resolve(executable.getKey());
-                    Files.copy(executable.getValue(), output);
-                    Files.setPosixFilePermissions(output, PosixFilePermissions.fromString("rwxr-xr-x"));
-                }
-                Files.write(target.resolve(MANIFEST), manifest);
-                validateDistribution(scope, target, System.getProperty("os.name"), System.getProperty("os.arch"));
-                Path licenses = source.resolve("licenses");
-                if (Files.isDirectory(licenses, LinkOption.NOFOLLOW_LINKS))
-                {
-                    Files.createDirectory(target.resolve("licenses"));
-                    try (java.util.stream.Stream<Path> files = Files.list(licenses))
-                    {
-                        for (Path file : files.toList())
-                        {
-                            requireRegularFile(file);
-                            Files.copy(file, target.resolve("licenses").resolve(file.getFileName()));
-                        }
-                    }
-                }
-            }
-            catch (IOException | RuntimeException | Error failure)
-            {
-                try { org.apache.commons.io.file.PathUtils.deleteDirectory(target); }
-                catch (IOException cleanupFailure) { failure.addSuppressed(cleanupFailure); }
-                throw failure;
-            }
-        }
+        NativeTarget.forHost(System.getProperty("os.name"), System.getProperty("os.arch"));
+        BazelNativeBackend.main(args);
     }
 
     /**
-     * Starts native daemons after validating all binaries, credentials and invocation directories.
-     * The Runner endpoint must already be listening and its build-root descriptor must refer to
-     * {@code configuration.invocationRoot().resolve("worker-builds")} before this call.
-     * The root supervisor and its trusted infrastructure containment must contain this thread and
-     * inherited daemon children; the configured trusted UID owns worker files, not daemon processes.
-     * Failed acquisition closes acquired daemons and retains its cause, including uncertain cleanup.
-     * @param scope borrowed Pouch mapper scope
-     * @param configuration native distribution, paths, identities and explicit cache capacities
-     * @param cleanup cancels Runner admissions and waits for all native cleanup leases
-     * @return started backend; close it after the original Bazel producer terminates
-     * @throws IOException if identity validation, configuration, startup or readiness fails
-     * @throws UnsupportedOperationException if the current host is not Linux ARM64
+     * Starts the shared native backend with Linux UID/GID authority.
+     * Only the actual authenticated Runner callback may complete workerReadiness after native-path validation.
+     * The supervisor and acquired daemons must already belong to caller-owned infrastructure containment.
+     * @param scope borrowed Pouch services retained through closure
+     * @param configuration Linux invocation paths, identities and cache policy
+     * @param cleanup withdraws admissions and collects native Runner leases
+     * @param workerReadiness actual authenticated Runner readiness acknowledgement
+     * @return retained backend after genuine worker readiness
+     * @throws IOException if native validation, acquisition, readiness or cleanup fails
+     * @throws UnsupportedOperationException if the current host is not Linux x64 or ARM64
      */
-    static LinuxBazelBackend start(ToolingScope scope, Configuration configuration, Cleanup cleanup)
-        throws IOException
+    static LinuxBazelBackend start(ToolingScope scope, Configuration configuration, Cleanup cleanup,
+        CompletableFuture<Void> workerReadiness) throws IOException
     {
         Objects.requireNonNull(cleanup, "cleanup");
-        Map<String, Path> executables = validateDistribution(scope, configuration.distribution(),
-            System.getProperty("os.name"), System.getProperty("os.arch"));
-        Path root = configuration.invocationRoot();
-        requirePrivateDirectory(root);
-        validateCredentials(configuration);
-        Path backendRoot = root.resolve("backend");
-        Files.createDirectory(backendRoot, PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY));
-        trustedOwnership(backendRoot, configuration);
-        for (String name : List.of("cas", "action-cache", "worker-cache", "file-pool"))
-        {
-            Files.createDirectory(root.resolve(name), PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY));
-            trustedOwnership(root.resolve(name), configuration);
-        }
-        Path workerRoot = root.resolve("worker-builds");
-        Files.setPosixFilePermissions(workerRoot, PRIVATE_DIRECTORY);
-        trustedOwnership(workerRoot, configuration);
-        requirePrivateDirectory(workerRoot);
-
-        int storagePort = unusedPort();
-        int schedulerPort = unusedPort();
-        int workerPort = unusedPort();
-        while (schedulerPort == storagePort) schedulerPort = unusedPort();
-        while (workerPort == storagePort || workerPort == schedulerPort) workerPort = unusedPort();
-        Path rc = backendRoot.resolve("backend.bazelrc");
-        LinuxBazelBackend backend = new LinuxBazelBackend(configuration, cleanup,
-            "grpcs://localhost:" + storagePort, rc);
+        Objects.requireNonNull(workerReadiness, "workerReadiness");
+        BazelNativeBackend.NativeTarget target = linuxTarget(System.getProperty("os.name"), System.getProperty("os.arch"));
+        BazelNativeBackend.ValidatedDistribution distribution =
+            BazelNativeBackend.validateDistribution(scope, target, configuration.distribution());
+        LinuxOwner owner = new LinuxOwner(configuration);
+        BazelNativeBackend.Configuration shared = new BazelNativeBackend.Configuration(distribution,
+            configuration.invocationRoot(), configuration.runnerAddress(), configuration.credentials().shared(),
+            configuration.concurrency(), configuration.casBytes(), configuration.actionCacheBytes(),
+            BazelNativeBackend.CachePolicy.valueOf(configuration.cachePolicy().name()), workerReadiness, cleanup::close);
         try
         {
-            JsonMapper mapper = scope.getJsonMapper();
-            Map<String, Object> values = backend.configurationValues(storagePort, schedulerPort, workerPort);
-            for (String name : List.of("storage", "scheduler", "worker"))
-                writeConfiguration(mapper, backendRoot.resolve(name + ".json"), name + ".json.template", values);
-            backend.writeBazelRc(storagePort);
-            try (java.util.stream.Stream<Path> files = Files.list(backendRoot))
-            {
-                for (Path file : files.toList()) trustedOwnership(file, configuration);
-            }
-            backend.launch(executables.get("bb_storage"), backendRoot.resolve("storage.json"));
-            backend.awaitEndpoint("localhost:" + storagePort);
-            backend.launch(executables.get("bb_scheduler"), backendRoot.resolve("scheduler.json"));
-            backend.awaitEndpoint("localhost:" + schedulerPort);
-            backend.awaitEndpoint("localhost:" + workerPort);
-            backend.launch(executables.get("bb_worker"), backendRoot.resolve("worker.json"));
-            backend.requireAlive();
-            return backend;
+            return new LinuxBazelBackend(BazelNativeBackend.start(scope, shared, owner), owner.processes);
         }
-        catch (IOException | RuntimeException | Error failure)
+        catch (BazelNativeBackend.AcquisitionFailure failure)
         {
-            try { backend.close(); }
-            catch (IOException | RuntimeException | Error cleanupFailure)
-            {
-                throw new AcquisitionFailure(backend, failure, cleanupFailure);
-            }
-            throw failure;
+            throw new AcquisitionFailure(new LinuxBazelBackend(failure.backend(), owner.processes), failure);
         }
     }
 
     /**
-     * Retains a partially acquired backend when cleanup has not established native quiescence.
+     * Selects exact native Linux products through the shared manifest and no-follow identity validator.
+     * @param scope borrowed mapper services
+     * @param distribution original installed backend directory
+     * @param operatingSystem explicit host operating system
+     * @param architecture explicit host processor
+     * @return immutable exact native executable paths
+     * @throws IOException if product identity, pins, membership or native format differs
+     * @throws UnsupportedOperationException if the host is not Linux x64 or ARM64
      */
-    @SuppressWarnings("serial") // A live process owner cannot be serialized; callers retain this original exception.
+    static Map<String, Path> validateDistribution(ToolingScope scope, Path distribution,
+        String operatingSystem, String architecture) throws IOException
+    {
+        return BazelNativeBackend.validateDistribution(scope, linuxTarget(operatingSystem, architecture), distribution)
+            .executables();
+    }
+
+    /**
+     * Selects a supported Linux target without accepting another platform's backend.
+     * @param operatingSystem host operating system
+     * @param architecture host processor
+     * @return supported native Linux target
+     * @throws UnsupportedOperationException if the host is not Linux x64 or ARM64
+     */
+    private static BazelNativeBackend.NativeTarget linuxTarget(String operatingSystem, String architecture)
+    {
+        BazelNativeBackend.NativeTarget target = BazelNativeBackend.NativeTarget.forHost(operatingSystem, architecture);
+        if (!target.isLinux()) throw new UnsupportedOperationException("Linux backend requires Linux: " + operatingSystem);
+        return target;
+    }
+
+    /**
+     * Returns the invocation-private authenticated execution frontend.
+     * @return grpcs execution address
+     */
+    String executorAddress() { return backend.executorAddress(); }
+
+    /**
+     * Returns the invocation-private authenticated CAS frontend.
+     * @return grpcs cache address
+     */
+    String cacheAddress() { return backend.cacheAddress(); }
+
+    /**
+     * Returns mandatory private Bazel startup policy.
+     * @return original startup rc path
+     */
+    Path startupRc() { return backend.startupRc(); }
+
+    /**
+     * Returns the original worker root validated by the authenticated Runner.
+     * @return private worker materialization root
+     */
+    Path workerBuildRoot() { return backend.workerBuildRoot(); }
+
+    /**
+     * Returns original native process handles for separate infrastructure accounting.
+     * @return immutable acquired daemon handles
+     */
+    List<ProcessHandle> processes() { return processes.stream().map(Process::toHandle).toList(); }
+
+    /**
+     * Rejects an original backend daemon's unexpected exit.
+     * @throws IOException if an original daemon exited
+     */
+    void requireAlive() throws IOException { backend.requireAlive(); }
+
+    @Override public void close() throws IOException { backend.close(); }
+
+    /**
+     * Retains Linux cleanup access when shared native acquisition cannot establish quiescence.
+     */
+    @SuppressWarnings("serial")
     static final class AcquisitionFailure extends IOException
     {
-        /** Local exception format identity; the retained live owner is never serialized. */
+        /** Exception format identity; live owners are never serialized. */
         private static final long serialVersionUID = 1L;
-        /** Exact process owner retained until a later close establishes quiescence. */
+        /** Exact retained compatibility owner. */
         private final LinuxBazelBackend backend;
 
         /**
-         * Retains both the initial acquisition failure and the failed cleanup attempt.
-         * @param backend owner that must be retained and closed again
-         * @param acquisitionFailure original acquisition failure
-         * @param cleanupFailure cleanup failure that prevented ownership release
+         * Preserves the original acquisition failure and its retained native cleanup owner.
+         * @param backend original Linux owner requiring another close attempt
+         * @param failure shared acquisition and suppressed cleanup failures
          */
-        private AcquisitionFailure(LinuxBazelBackend backend, Throwable acquisitionFailure, Throwable cleanupFailure)
+        private AcquisitionFailure(LinuxBazelBackend backend, BazelNativeBackend.AcquisitionFailure failure)
         {
-            super("Backend acquisition failed and cleanup remains incomplete", acquisitionFailure);
+            super(failure.getMessage(), failure);
             this.backend = backend;
-            addSuppressed(cleanupFailure);
         }
 
         /**
-         * Returns the original retained owner for cleanup retry.
-         * @return backend whose original processes and cleanup callback remain owned
+         * Returns the original owner for explicit cleanup retry.
+         * @return retained native backend owner
          */
         LinuxBazelBackend backend() { return backend; }
     }
 
     /**
-     * Validates source pins, exact executable membership, no-follow hashes and ARM64 ELF headers.
-     * @param scope borrowed Pouch mapper scope
-     * @param distribution directory containing the manifest and all executables
-     * @param operatingSystem host operating system, resolved at the process boundary
-     * @param architecture host processor, resolved at the process boundary
-     * @return immutable native executable paths indexed by manifest name
-     * @throws IOException if the manifest, file identity or architecture does not match
-     * @throws UnsupportedOperationException if the host is not Linux ARM64
+     * Supplies Linux trusted UID/GID protection and original daemon process owners.
      */
-    static Map<String, Path> validateDistribution(ToolingScope scope, Path distribution,
-        String operatingSystem, String architecture) throws IOException
+    private static final class LinuxOwner implements BazelNativeBackend.PlatformOwner
     {
-        boolean arm64 = architecture.equals("aarch64") || architecture.equals("arm64");
-        if (!operatingSystem.equals("Linux") || !arm64)
-            throw new UnsupportedOperationException("Production Bazel backend requires Linux ARM64: " +
-                operatingSystem + "/" + architecture);
-        Path root = distribution.toAbsolutePath().normalize();
-        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
-            throw new IOException("Native backend directory is absent or is a symbolic link: " + root);
-        Path manifest = root.resolve(MANIFEST);
-        requireRegularFile(manifest);
-        JsonNode document = scope.getJsonMapper().readTree(Files.readAllBytes(manifest));
-        boolean correctPins = document.path("schema").asInt() == 1 && TARGET.equals(document.path("target").asString()) &&
-            EXECUTION_COMMIT.equals(document.path("executionCommit").asString()) &&
-            STORAGE_COMMIT.equals(document.path("storageCommit").asString());
-        if (!correctPins) throw new IOException("Native backend manifest has unsupported target, schema or source pins: " + manifest);
-        JsonNode entries = document.path("executables");
-        Set<String> names = new java.util.HashSet<>();
-        entries.propertyNames().forEach(names::add);
-        if (!names.equals(EXECUTABLES)) throw new IOException("Native backend manifest executable set differs: " + names);
-        Map<String, Path> selected = new LinkedHashMap<>();
-        for (String name : EXECUTABLES)
+        /** Bounded Linux file ownership authority. */
+        private final LinuxProtection protection;
+        /** Native worker materialization identity. */
+        private final BazelNativeBackend.PosixWorkerIdentity identity;
+        /** Original daemon process handles in acquisition order. */
+        private final List<Process> processes = new ArrayList<>();
+
+        /**
+         * Authenticates the existing private root before any native acquisition.
+         * @param configuration Linux trusted invocation and identity
+         * @throws IOException if the root lacks the required authority
+         */
+        private LinuxOwner(Configuration configuration) throws IOException
         {
-            JsonNode entry = entries.path(name);
-            if (!entry.path("path").asString().equals(name))
-                throw new IOException("Native backend executable path must be its fixed manifest name: " + name);
-            Path executable = root.resolve(name);
-            requireRegularFile(executable);
-            if (!Files.isExecutable(executable)) throw new IOException("Native backend executable lacks execute permission: " + executable);
-            String digest = sha256(executable);
-            if (!digest.equals(entry.path("sha256").asString()))
-                throw new IOException("Native backend executable SHA-256 differs: " + executable);
-            try (InputStream input = Files.newInputStream(executable, LinkOption.NOFOLLOW_LINKS))
-            {
-                byte[] header = input.readNBytes(64);
-                boolean nativeElf = header.length == 64 && header[0] == 0x7f && header[1] == 'E' &&
-                    header[2] == 'L' && header[3] == 'F' && header[4] == 2 && header[5] == 1 &&
-                    ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getShort(18) == 183;
-                if (!nativeElf) throw new IOException("Native backend executable is not little-endian ARM64 ELF64: " + executable);
-            }
-            selected.put(name, executable);
+            this.protection = new LinuxProtection(configuration.invocationRoot(), configuration.trustedUid(),
+                configuration.trustedGid());
+            this.identity = new BazelNativeBackend.PosixWorkerIdentity(configuration.trustedUid(), configuration.trustedGid());
         }
-        return Map.copyOf(selected);
-    }
 
-    /**
-     * Returns the mTLS execution endpoint selected by the private storage frontend.
-     * @return invocation-private grpcs address
-     */
-    String executorAddress() { return address; }
+        @Override public BazelBackendCredentials.Protection protection() { return protection; }
+        @Override public BazelNativeBackend.WorkerIdentity workerIdentity() { return identity; }
 
-    /**
-     * Returns the mTLS CAS/action-cache endpoint.
-     * @return invocation-private grpcs address
-     */
-    String cacheAddress() { return address; }
-
-    /**
-     * Returns the startup rc containing mandatory execution/cache/TLS policy.
-     * @return host-owned rc path passed through the launcher's --bazelrc startup argument
-     */
-    Path startupRc() { return startupRc; }
-
-    /**
-     * Returns the pinned worker directory containing request-relative input roots.
-     * @return existing invocation-owned worker build directory
-     */
-    Path workerBuildRoot() { return configuration.invocationRoot().resolve("worker-builds"); }
-
-    /**
-     * Returns backend process identities for separately reserved infrastructure accounting.
-     * @return immutable handles, never action estimates
-     */
-    List<ProcessHandle> processes() { return daemons.stream().map(Process::toHandle).toList(); }
-
-    /**
-     * Rejects a backend whose original daemon has exited unexpectedly.
-     * @throws IOException if a backend daemon has exited
-     */
-    void requireAlive() throws IOException
-    {
-        for (Process daemon : daemons)
-            if (!daemon.isAlive()) throw new IOException("Native backend daemon exited with status " + daemon.exitValue() +
-                "; inspect invocation backend logs");
-    }
-
-    /**
-     * Revokes Runner work and waits for its independent cleanup leases before stopping native daemons.
-     * A failed cleanup retains live backend ownership; callers must retry closure after resolving it.
-     * @throws IOException if cleanup authority remains open or a daemon cannot be reaped
-     */
-    @Override public synchronized void close() throws IOException
-    {
-        if (closed) return;
-        cleanup.close();
-        boolean interrupted = Thread.interrupted();
-        try
+        @Override public BazelNativeBackend.Daemon launch(Path executable, Path configuration, Path log,
+            Path workingDirectory, Map<String, String> environment) throws IOException
         {
-            for (Process daemon : daemons.reversed())
+            ProcessBuilder builder = new ProcessBuilder(executable.toString(), configuration.toString());
+            builder.directory(workingDirectory.toFile());
+            builder.environment().clear();
+            builder.environment().putAll(environment);
+            builder.redirectErrorStream(true).redirectOutput(log.toFile());
+            Process process = builder.start();
+            processes.add(process);
+            return new LinuxDaemon(process);
+        }
+    }
+
+    /**
+     * Retains and collects the original Linux daemon process, preserving interruption across cleanup.
+     * The caller retains the separately owned infrastructure containment until all daemon owners close.
+     */
+    private static final class LinuxDaemon implements BazelNativeBackend.Daemon
+    {
+        /** Original acquired daemon, never replaced by a PID lookup. */
+        private final Process process;
+
+        /**
+         * Transfers original process collection ownership.
+         * @param process original acquired native process
+         */
+        private LinuxDaemon(Process process) { this.process = process; }
+
+        @Override public boolean isAlive() { return process.isAlive(); }
+        @Override public long exitValue() { return process.exitValue(); }
+        @Override public CompletableFuture<Long> onExit()
+        {
+            return process.onExit().thenApply(original -> (long) original.exitValue());
+        }
+
+        @Override public synchronized void close()
+        {
+            boolean interrupted = Thread.interrupted();
+            try
             {
-                daemon.destroy();
-                boolean terminated = false;
-                while (!terminated)
+                process.destroy();
+                while (true)
                 {
-                    try { daemon.waitFor(); terminated = true; }
+                    try { process.waitFor(); return; }
                     catch (InterruptedException failure) { interrupted = true; }
                 }
             }
-            closed = true;
+            finally { if (interrupted) Thread.currentThread().interrupt(); }
         }
-        finally { if (interrupted) Thread.currentThread().interrupt(); }
     }
 
     /**
-     * Builds values for maintained configurations using the pinned Buildbarn protobuf field contracts.
-     * @param storagePort storage frontend TCP port
-     * @param schedulerPort scheduler client TCP port
-     * @param workerPort scheduler worker TCP port
-     * @return typed substitutions consumed by the JSON templates
-     * @throws IOException if a credential cannot be read
+     * Protects private Linux objects owned by the trusted worker UID/GID rather than the supervisor UID.
+     * Every admitted path retains its original no-follow file key until backend cleanup finishes.
      */
-    private Map<String, Object> configurationValues(int storagePort, int schedulerPort, int workerPort)
-        throws IOException
+    private static final class LinuxProtection implements BazelBackendCredentials.Protection
     {
-        Path root = configuration.invocationRoot();
-        Credentials credentials = configuration.credentials();
-        String ca = Files.readString(credentials.certificateAuthority());
-        Map<String, Object> keyPair = fileKeyPair(credentials.serverCertificate(), credentials.serverKey());
-        Map<String, Object> clientTls = Map.of("serverCertificateAuthorities", ca, "serverName", "localhost",
-            "clientKeyPair", fileKeyPair(credentials.workerCertificate(), credentials.workerKey()));
-        Map<String, Object> authentication = Map.of("tlsClientCertificate", Map.of("clientCertificateAuthorities", ca,
-            "validationJmespathExpression", Map.of("expression", "`true`"),
-            "metadataExtractionJmespathExpression", Map.of("expression", "`{}`")));
-        Map<String, Object> storageClient = Map.of("address", "localhost:" + storagePort, "tls", clientTls);
-        Map<String, Object> schedulerClient = Map.of("address", "localhost:" + schedulerPort, "tls", clientTls);
-        Map<String, Object> schedulerWorker = Map.of("address", "localhost:" + workerPort, "tls", clientTls);
-        Map<String, Object> runnerClient = Map.of("address", configuration.runnerAddress(), "tls", clientTls);
-        Map<String, Object> values = new LinkedHashMap<>();
-        values.put("STORAGE_SERVER", server(storagePort, keyPair, authentication));
-        values.put("SCHEDULER_SERVER", server(schedulerPort, keyPair, authentication));
-        values.put("WORKER_SERVER", server(workerPort, keyPair, authentication));
-        values.put("STORAGE_CLIENT", storageClient);
-        values.put("SCHEDULER_CLIENT", schedulerClient);
-        values.put("SCHEDULER_WORKER", schedulerWorker);
-        values.put("RUNNER_CLIENT", runnerClient);
-        values.put("CAS_LOCAL", localStore(root.resolve("cas"), configuration.casBytes(), 3));
-        values.put("AC_LOCAL", localStore(root.resolve("action-cache"), configuration.actionCacheBytes(), 1));
-        values.put("WORKER_ROOT", workerBuildRoot().toString());
-        values.put("WORKER_CACHE", root.resolve("worker-cache").toString());
-        values.put("FILE_POOL", root.resolve("file-pool").resolve("data").toString());
-        values.put("CONCURRENCY", configuration.concurrency());
-        values.put("TRUSTED_UID", configuration.trustedUid());
-        values.put("TRUSTED_GID", configuration.trustedGid());
-        return values;
-    }
+        /** Private invocation boundary. */
+        private final Path root;
+        /** Trusted original consumer and worker-file UID. */
+        private final int userId;
+        /** Trusted original consumer and worker-file GID. */
+        private final int groupId;
+        /** Original no-follow keys of admitted directories and files. */
+        private final Map<Path, Object> identities = new HashMap<>();
 
-    /**
-     * Configures an invocation-owned certificate pair using the pinned daemon's file-key API.
-     * The positive refresh duration is required even for certificates whose bytes remain fixed for this invocation.
-     * @param certificate exact host-owned PEM certificate path
-     * @param privateKey exact host-owned private key path
-     * @return typed file-certificate configuration shared by server and client TLS
-     */
-    static Map<String, Object> fileKeyPair(Path certificate, Path privateKey)
-    {
-        return Map.of("files", Map.of("certificatePath", certificate.toString(),
-            "privateKeyPath", privateKey.toString(), "refreshInterval", "3600s"));
-    }
-
-    /**
-     * Constructs a loopback-only TLS server with mandatory client-certificate authentication.
-     * @param port invocation-selected TCP port
-     * @param keyPair trusted server certificate and key
-     * @param authentication invocation CA client verifier
-     * @return pinned Buildbarn ServerConfiguration JSON members
-     */
-    private static Map<String, Object> server(int port, Map<String, Object> keyPair,
-        Map<String, Object> authentication)
-    {
-        return Map.of("listenAddresses", List.of("127.0.0.1:" + port), "tls", Map.of("serverKeyPair", keyPair),
-            "authenticationPolicy", authentication, "maximumReceivedMessageSizeBytes", 67108864);
-    }
-
-    /**
-     * Configures a disk-backed private circular store using upstream recommended block/hash settings.
-     * @param directory owned store directory
-     * @param bytes explicit data capacity in bytes
-     * @param newBlocks CAS uses three new blocks; mutable action cache uses one
-     * @return supported LocalBlobAccessConfiguration wrapper
-     */
-    private static Map<String, Object> localStore(Path directory, long bytes, int newBlocks)
-    {
-        Map<String, Object> map = Map.of("onBlockDevice", Map.of("file", Map.of("path",
-            directory.resolve("keys").toString(), "sizeBytes", Math.max(1048576, bytes / 64))),
-            "maximumGetAttempts", 16, "maximumPutAttempts", 64);
-        return Map.of("local", Map.of("keyLocationMap", map, "oldBlocks", 8, "currentBlocks", 24,
-            "newBlocks", newBlocks, "blocksOnBlockDevice", Map.of("source", Map.of("file",
-                Map.of("path", directory.resolve("data").toString(), "sizeBytes", bytes)), "spareBlocks", 3),
-            "persistent", Map.of("stateDirectoryPath", directory.toString(), "minimumEpochInterval", "300s")));
-    }
-
-    /**
-     * Renders a maintained template using JSON serialization for every typed substitution.
-     * @param mapper borrowed scope mapper
-     * @param output new invocation-owned configuration path
-     * @param resource class-relative template name
-     * @param values complete host-selected JSON substitutions
-     * @throws IOException if a resource, substitution or output is invalid
-     */
-    private static void writeConfiguration(JsonMapper mapper, Path output, String resource,
-        Map<String, Object> values) throws IOException
-    {
-        String text;
-        try (InputStream input = LinuxBazelBackend.class.getResourceAsStream(RESOURCE_ROOT + resource))
+        /**
+         * Retains and authenticates the original private Linux root.
+         * @param root invocation-private original directory
+         * @param userId trusted file UID
+         * @param groupId trusted file GID
+         * @throws IOException if native root authority is unsafe
+         */
+        private LinuxProtection(Path root, int userId, int groupId) throws IOException
         {
-            if (input == null) throw new IOException("Packaged Buildbarn configuration is absent: " + resource);
-            text = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            this.root = root;
+            this.userId = userId;
+            this.groupId = groupId;
+            requireDirectory(root);
         }
-        for (Map.Entry<String, Object> value : values.entrySet())
-            text = text.replace('"' + "@" + value.getKey() + "@" + '"', mapper.writeValueAsString(value.getValue()));
-        if (text.contains("\"@")) throw new IOException("Buildbarn configuration contains an unresolved substitution: " + resource);
-        JsonNode parsed = mapper.readTree(text);
-        Files.writeString(output, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(parsed));
-        Files.setPosixFilePermissions(output, PRIVATE_FILE);
-    }
 
-    /**
-     * Writes mandatory remote-only Bazel policy using host-issued TLS credentials.
-     * @param storagePort invocation-private storage frontend port
-     * @throws IOException if the maintained template cannot be read or written
-     */
-    private void writeBazelRc(int storagePort) throws IOException
-    {
-        Files.writeString(startupRc, startupRc(configuration, storagePort));
-        Files.setPosixFilePermissions(startupRc, PRIVATE_FILE);
-    }
-
-    /**
-     * Renders maintained remote-only startup policy independently of native daemon acquisition.
-     * @param configuration exact invocation credentials, concurrency and explicit action-cache policy
-     * @param storagePort private backend storage/frontend port
-     * @return complete private Bazel rc, preserving the original consumer argument vector
-     * @throws IOException if the packaged policy template cannot be read
-     */
-    static String startupRc(Configuration configuration, int storagePort) throws IOException
-    {
-        String template;
-        try (InputStream input = LinuxBazelBackend.class.getResourceAsStream(RESOURCE_ROOT + "backend.bazelrc.template"))
+        @Override public synchronized void createDirectory(Path path) throws IOException
         {
-            if (input == null) throw new IOException("Packaged backend Bazel policy is absent");
-            template = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            Path target = bounded(path);
+            requireDirectory(target.getParent());
+            Files.createDirectory(target, PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY));
+            assignOwnership(target);
+            requireDirectory(target);
         }
-        Credentials credentials = configuration.credentials();
-        Map<String, String> values = Map.of("ENDPOINT", "grpcs://localhost:" + storagePort,
-            "CA", rcQuote(credentials.certificateAuthority()), "CERT", rcQuote(credentials.workerCertificate()),
-            "KEY", rcQuote(credentials.workerKey()), "JOBS", Integer.toString(configuration.concurrency()));
-        for (Map.Entry<String, String> value : values.entrySet())
-            template = template.replace("@" + value.getKey() + "@", value.getValue());
-        if (configuration.cachePolicy() == CachePolicy.UNCACHED_RECOVERY)
-            template += "build --remote_accept_cached=false\n";
-        return template;
-    }
 
-    /**
-     * Quotes a host path for Bazel's documented shell-like rc token syntax.
-     * @param path host-selected file path
-     * @return quoted rc argument, preserving spaces and literal backslashes
-     */
-    private static String rcQuote(Path path)
-    {
-        return "\"" + path.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
-
-    /**
-     * Starts an exact-hash native daemon with one supported configuration argument and owned logs.
-     * @param executable validated pinned daemon executable
-     * @param config invocation-owned JSON configuration
-     * @throws IOException if startup fails
-     */
-    private void launch(Path executable, Path config) throws IOException
-    {
-        ProcessBuilder builder = new ProcessBuilder(executable.toString(), config.toString());
-        builder.directory(configuration.invocationRoot().toFile());
-        builder.environment().clear();
-        builder.environment().put("TMPDIR", configuration.invocationRoot().resolve("file-pool").toString());
-        builder.redirectErrorStream(true).redirectOutput(config.resolveSibling(config.getFileName() + ".log").toFile());
-        daemons.add(builder.start());
-    }
-
-    /**
-     * Waits for authenticated HTTP/2 transport availability while also observing every original daemon.
-     * Actual worker synchronization and real command behavior remain native acceptance conditions.
-     * @param endpoint private backend address
-     * @throws IOException if TLS, a daemon, or the waiting thread fails
-     */
-    private void awaitEndpoint(String endpoint) throws IOException
-    {
-        Credentials credentials = configuration.credentials();
-        SslContext ssl = GrpcSslContexts.configure(GrpcSslContexts.forClient(), SslProvider.JDK).
-            trustManager(credentials.certificateAuthority().toFile()).
-            keyManager(credentials.workerCertificate().toFile(), credentials.workerKey().toFile()).build();
-        ManagedChannel channel = NettyChannelBuilder.forTarget(endpoint).overrideAuthority("localhost").sslContext(ssl).build();
-        try
+        @Override public synchronized void createFile(Path path) throws IOException
         {
-            while (true)
+            Path target = bounded(path);
+            requireDirectory(target.getParent());
+            Files.createFile(target, PosixFilePermissions.asFileAttribute(PRIVATE_FILE));
+            assignOwnership(target);
+            requireFile(target);
+        }
+
+        @Override public synchronized void protectFile(Path path) throws IOException
+        {
+            Path target = bounded(path);
+            ancestors(target);
+            validate(target, false, false);
+            Files.setPosixFilePermissions(target, PRIVATE_FILE);
+            validate(target, false, true);
+        }
+
+        @Override public synchronized void requireDirectory(Path path) throws IOException
+        {
+            Path target = bounded(path);
+            ancestors(target);
+            validate(target, true, true);
+        }
+
+        @Override public synchronized void requireFile(Path path) throws IOException
+        {
+            Path target = bounded(path);
+            ancestors(target);
+            validate(target, false, true);
+        }
+
+        /**
+         * Resolves a path inside the private invocation without permitting escape.
+         * @param path original private file or directory
+         * @return normalized path bounded by the invocation root
+         * @throws IOException if the path escapes the private root
+         */
+        private Path bounded(Path path) throws IOException
+        {
+            Path target = path.toAbsolutePath().normalize();
+            if (!target.startsWith(root)) throw new IOException("Linux private path escapes invocation root: " + target);
+            return target;
+        }
+
+        /**
+         * Authenticates every retained parent before accessing its child.
+         * @param path bounded original object
+         * @throws IOException if an ancestor's identity or authority differs
+         */
+        private void ancestors(Path path) throws IOException
+        {
+            validate(root, true, true);
+            if (path.equals(root)) return;
+            Path current = root;
+            for (Path component : root.relativize(path.getParent()))
             {
-                requireAlive();
-                ConnectivityState state = channel.getState(true);
-                if (state == ConnectivityState.READY) return;
-                CountDownLatch change = new CountDownLatch(1);
-                channel.notifyWhenStateChanged(state, change::countDown);
-                for (Process daemon : daemons) daemon.onExit().thenRun(change::countDown);
-                try { change.await(); }
-                catch (InterruptedException failure)
-                {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while connecting to private backend " + endpoint, failure);
-                }
+                if (component.toString().isEmpty()) continue;
+                current = current.resolve(component);
+                validate(current, true, true);
             }
         }
-        finally { channel.shutdownNow(); }
-    }
 
-    /**
-     * Chooses a currently unbound loopback port; daemon startup detects acquisition races.
-     * @return available local TCP port
-     * @throws IOException if loopback binding fails
-     */
-    private static int unusedPort() throws IOException
-    {
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress()))
+        /**
+         * Assigns a newly created object to the invocation's trusted worker identity.
+         * @param path newly created private object
+         * @throws IOException if UID or GID assignment fails
+         */
+        private void assignOwnership(Path path) throws IOException
         {
-            return socket.getLocalPort();
+            Files.setAttribute(path, "unix:uid", userId, LinkOption.NOFOLLOW_LINKS);
+            Files.setAttribute(path, "unix:gid", groupId, LinkOption.NOFOLLOW_LINKS);
         }
-    }
 
-    /**
-     * Validates that every key stays in an owner-only tree with the trusted worker UID.
-     * @param configuration invocation credentials and trusted identity
-     * @throws IOException if credential paths, ownership or permissions are unsafe
-     */
-    private static void validateCredentials(Configuration configuration) throws IOException
-    {
-        Path root = configuration.invocationRoot();
-        for (Path path : configuration.credentials().paths())
+        /**
+         * Authenticates type, original no-follow identity, Linux owner and required private permissions.
+         * @param path original object
+         * @param directory indicates whether a directory is required
+         * @param permissions indicates whether exact owner-only permissions are required
+         * @throws IOException if the object or any required authority property differs
+         */
+        private void validate(Path path, boolean directory, boolean permissions) throws IOException
         {
-            requireRegularFile(path);
-            if (!path.startsWith(root)) throw new IOException("Backend credential lies outside the invocation: " + path);
-            Path parent = path.getParent();
-            while (parent.startsWith(root))
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            boolean expectedType = directory ? attributes.isDirectory() : attributes.isRegularFile();
+            if (!expectedType || attributes.fileKey() == null)
+                throw new IOException("Linux private object has wrong native type or no stable identity: " + path);
+            Object previous = identities.putIfAbsent(path, attributes.fileKey());
+            if (previous != null && !previous.equals(attributes.fileKey()))
+                throw new IOException("Linux private object was replaced: " + path);
+            int actualUid = (Integer) Files.getAttribute(path, "unix:uid", LinkOption.NOFOLLOW_LINKS);
+            int actualGid = (Integer) Files.getAttribute(path, "unix:gid", LinkOption.NOFOLLOW_LINKS);
+            if (actualUid != userId || actualGid != groupId)
+                throw new IOException("Linux private object UID/GID differs from trusted worker identity: " + path);
+            if (permissions)
             {
-                requirePrivateDirectory(parent);
-                if (parent.equals(root)) break;
-                parent = parent.getParent();
+                Set<PosixFilePermission> expected = directory ? PRIVATE_DIRECTORY : PRIVATE_FILE;
+                if (!Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS).equals(expected))
+                    throw new IOException("Linux private object permissions differ from owner-only mode: " + path);
             }
-            int uid = (Integer) Files.getAttribute(path, "unix:uid", LinkOption.NOFOLLOW_LINKS);
-            if (uid != configuration.trustedUid() || !PRIVATE_FILE.containsAll(Files.getPosixFilePermissions(path)))
-                throw new IOException("Backend credential ownership or permissions differ from its trusted owner: " + path);
         }
-    }
-
-    /**
-     * Assigns a new invocation object to the trusted original-consumer and worker-file UID and GID.
-     * @param path new invocation-owned file or directory
-     * @param configuration trusted file-owner identity
-     * @throws IOException if ownership cannot be established
-     */
-    private static void trustedOwnership(Path path, Configuration configuration) throws IOException
-    {
-        Files.setAttribute(path, "unix:uid", configuration.trustedUid(), LinkOption.NOFOLLOW_LINKS);
-        Files.setAttribute(path, "unix:gid", configuration.trustedGid(), LinkOption.NOFOLLOW_LINKS);
-    }
-
-    /**
-     * Requires a real invocation directory whose group and other users cannot change its entries.
-     * Execute-only traversal permits distinct trusted producer/backend UIDs without exposing secrets.
-     * @param path host-owned invocation directory
-     * @throws IOException if its type or write permissions are unsafe
-     */
-    private static void requireInvocationDirectory(Path path) throws IOException
-    {
-        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
-            throw new IOException("Invocation directory is absent or is a symlink: " + path);
-        Set<PosixFilePermission> mode = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
-        if (mode.contains(PosixFilePermission.GROUP_WRITE) || mode.contains(PosixFilePermission.OTHERS_WRITE))
-            throw new IOException("Invocation directory is writable by a different identity: " + path);
-    }
-
-    /**
-     * Requires an existing no-follow owner-only directory.
-     * @param path trusted invocation directory
-     * @throws IOException if its type or permissions are unsafe
-     */
-    private static void requirePrivateDirectory(Path path) throws IOException
-    {
-        if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) ||
-            !PRIVATE_DIRECTORY.equals(Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS)))
-            throw new IOException("Backend directory must be a real owner-only directory: " + path);
-    }
-
-    /**
-     * Requires a regular file without accepting a symbolic link.
-     * @param path trusted input file
-     * @throws IOException if its no-follow type is not regular
-     */
-    private static void requireRegularFile(Path path) throws IOException
-    {
-        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-            throw new IOException("Backend file is absent, nonregular or a symbolic link: " + path);
-    }
-
-    /**
-     * Computes exact file bytes using the platform SHA-256 implementation.
-     * @param path no-follow file to hash
-     * @return lowercase SHA-256 hexadecimal digest
-     * @throws IOException if reading fails
-     */
-    private static String sha256(Path path) throws IOException
-    {
-        MessageDigest digest;
-        try { digest = MessageDigest.getInstance("SHA-256"); }
-        catch (java.security.NoSuchAlgorithmException failure) { throw new AssertionError("JDK lacks SHA-256", failure); }
-        try (InputStream input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS))
-        {
-            byte[] buffer = new byte[65536];
-            int length;
-            while ((length = input.read(buffer)) >= 0) digest.update(buffer, 0, length);
-        }
-        return HexFormat.of().formatHex(digest.digest());
     }
 
     /**
@@ -697,6 +422,68 @@ final class LinuxBazelBackend implements AutoCloseable
          * @throws IOException if zero cannot be established
          */
         void close() throws IOException;
+    }
+
+    /**
+     * Preserves Linux native-target callers while the shared backend owns all target mappings.
+     */
+    public enum NativeTarget
+    {
+        /** Native 64-bit ARM Linux distribution. */
+        ARM64(BazelNativeBackend.NativeTarget.ARM64),
+        /** Native 64-bit x86 Linux distribution. */
+        X64(BazelNativeBackend.NativeTarget.X64);
+
+        /** Shared authority for native build-tool and release target values. */
+        private final BazelNativeBackend.NativeTarget target;
+
+        /**
+         * Retains the common target without copying its platform mapping.
+         * @param target authoritative shared Linux target
+         */
+        NativeTarget(BazelNativeBackend.NativeTarget target) { this.target = target; }
+
+        /**
+         * Selects the supported Linux target from the shared native-host mapping.
+         * @param operatingSystem actual native host operating system
+         * @param architecture actual native host processor
+         * @return matching Linux x64 or ARM64 target
+         * @throws NullPointerException if an argument is null
+         * @throws UnsupportedOperationException if the host is not supported Linux x64 or ARM64
+         */
+        public static NativeTarget forHost(String operatingSystem, String architecture)
+        {
+            return switch (linuxTarget(operatingSystem, architecture))
+            {
+                case ARM64 -> ARM64;
+                case X64 -> X64;
+                default -> throw new AssertionError("Linux target selection returned a foreign target");
+            };
+        }
+
+        /**
+         * Returns the release target required by the shared native manifest.
+         * @return Linux native release target triple
+         */
+        public String triple() { return target.triple(); }
+
+        /**
+         * Returns the processor identifier used by official Go archives and GOARCH.
+         * @return authoritative native Go processor identifier
+         */
+        public String goArchitecture() { return target.goArchitecture(); }
+
+        /**
+         * Returns the processor identifier used by official Bazel release filenames.
+         * @return authoritative native Bazel processor identifier
+         */
+        public String bazelArchitecture() { return target.bazelArchitecture(); }
+
+        /**
+         * Returns native system headers searched after musl headers by the Linux builder.
+         * @return authoritative absolute native system-header directory
+         */
+        public Path systemHeaders() { return target.systemHeaders(); }
     }
 
     /**
@@ -800,125 +587,35 @@ final class LinuxBazelBackend implements AutoCloseable
         }
 
         /**
-         * Issues an invocation CA and localhost server/trusted-worker leaf certificates with JDK keytool.
-         * The caller owns the new directory and must remove it after every server and native process closes.
-         * Certificate validity is one day; each invocation receives a new CA and private keys.
-         * @param credentialRoot new directory under an already private invocation root
-         * @param keytool absolute trusted JDK keytool executable
-         * @return issued PEM credentials; signing stores remain private beneath the owned directory
-         * @throws IOException if issuance or protected-file creation fails
+         * Issues invocation-private TLS identities using the shared credential authority.
+         * The parent must belong to the creating supervisor until issuance finishes.
+         * @param credentialRoot new directory beneath a private supervisor-owned root
+         * @param keytool trusted JDK certificate tool
+         * @return issued credentials retained until every native consumer closes
+         * @throws IOException if credential issuance or parent protection fails
          */
         static Credentials generate(Path credentialRoot, Path keytool) throws IOException
         {
-            Path root = credentialRoot.toAbsolutePath().normalize();
-            requireInvocationDirectory(root.getParent());
-            Files.createDirectory(root, PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY));
-            byte[] secret = new byte[32];
-            new SecureRandom().nextBytes(secret);
-            Path password = root.resolve("store-password");
-            char[] chars = HexFormat.of().formatHex(secret).toCharArray();
-            try
-            {
-                Files.writeString(password, new String(chars));
-                Files.setPosixFilePermissions(password, PRIVATE_FILE);
-                issue(keytool, root, "-genkeypair", "-alias", "ca", "-dname", "CN=Invocation CA",
-                    "-keyalg", "EC", "-groupname", "secp256r1", "-validity", "1", "-ext", "BC=ca:true",
-                    "-keystore", root.resolve("ca.p12").toString(), "-storetype", "PKCS12", "-storepass:file", password.toString());
-                issue(keytool, root, "-exportcert", "-rfc", "-alias", "ca", "-keystore", root.resolve("ca.p12").toString(),
-                    "-storepass:file", password.toString(), "-file", root.resolve("ca.pem").toString());
-                for (String name : List.of("server", "worker")) issueLeaf(keytool, root, name, password, chars);
-                try (java.util.stream.Stream<Path> paths = Files.list(root))
-                {
-                    for (Path path : paths.toList()) Files.setPosixFilePermissions(path, PRIVATE_FILE);
-                }
-                return new Credentials(root.resolve("ca.pem"), root.resolve("server-cert.pem"), root.resolve("server-key.pem"),
-                    root.resolve("worker-cert.pem"), root.resolve("worker-key.pem"));
-            }
-            catch (GeneralSecurityException failure)
-            {
-                IOException reported = new IOException("JDK could not read the invocation certificate keystore", failure);
-                try { org.apache.commons.io.file.PathUtils.deleteDirectory(root); }
-                catch (IOException cleanupFailure) { reported.addSuppressed(cleanupFailure); }
-                throw reported;
-            }
-            catch (IOException | RuntimeException | Error failure)
-            {
-                try { org.apache.commons.io.file.PathUtils.deleteDirectory(root); }
-                catch (IOException cleanupFailure) { failure.addSuppressed(cleanupFailure); }
-                throw failure;
-            }
-            finally { java.util.Arrays.fill(chars, '\0'); java.util.Arrays.fill(secret, (byte) 0); }
+            BazelBackendCredentials issued = BazelBackendCredentials.generate(credentialRoot, keytool,
+                BazelBackendCredentials.nativeProtection(credentialRoot.toAbsolutePath().normalize().getParent()));
+            return new Credentials(issued.certificateAuthority(), issued.serverCertificate(), issued.serverKey(),
+                issued.workerCertificate(), issued.workerKey());
         }
 
         /**
-         * Issues one CA-signed leaf and exports its PKCS8 key without exposing a password in argv.
-         * @param keytool trusted JDK keytool
-         * @param root private credential directory containing the CA store
-         * @param name server or worker leaf role
-         * @param password protected keystore password file
-         * @param chars in-memory keystore password
-         * @throws IOException if issuance or PEM writing fails
-         * @throws GeneralSecurityException if the generated keystore cannot be read
-         */
-        private static void issueLeaf(Path keytool, Path root, String name, Path password, char[] chars)
-            throws IOException, GeneralSecurityException
-        {
-            Path store = root.resolve(name + ".p12");
-            issue(keytool, root, "-genkeypair", "-alias", name, "-dname", "CN=" + name,
-                "-keyalg", "EC", "-groupname", "secp256r1", "-validity", "1", "-keystore", store.toString(),
-                "-storetype", "PKCS12", "-storepass:file", password.toString());
-            Path request = root.resolve(name + ".csr");
-            issue(keytool, root, "-certreq", "-alias", name, "-keystore", store.toString(),
-                "-storepass:file", password.toString(), "-file", request.toString());
-            String extendedUsage = name.equals("server") ? "serverAuth" : "clientAuth";
-            issue(keytool, root, "-gencert", "-rfc", "-alias", "ca", "-keystore", root.resolve("ca.p12").toString(),
-                "-storepass:file", password.toString(), "-infile", request.toString(), "-outfile",
-                root.resolve(name + "-cert.pem").toString(), "-validity", "1", "-ext", "KU=digitalSignature",
-                "-ext", "EKU=" + extendedUsage, "-ext", "SAN=DNS:localhost,IP:127.0.0.1");
-            KeyStore keys = KeyStore.getInstance("PKCS12");
-            try (InputStream input = Files.newInputStream(store)) { keys.load(input, chars); }
-            byte[] encoded = keys.getKey(name, chars).getEncoded();
-            String pem = "-----BEGIN PRIVATE KEY-----\n" +
-                Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(encoded) + "\n-----END PRIVATE KEY-----\n";
-            Files.writeString(root.resolve(name + "-key.pem"), pem);
-            java.util.Arrays.fill(encoded, (byte) 0);
-        }
-
-        /**
-         * Runs the supported JDK certificate tool with owned diagnostics and waits for its original exit.
-         * @param keytool trusted JDK executable
-         * @param root private credential working directory
-         * @param arguments exact keytool argument elements
-         * @throws IOException if keytool cannot run or reports a failure
-         */
-        private static void issue(Path keytool, Path root, String... arguments) throws IOException
-        {
-            List<String> command = new ArrayList<>();
-            command.add(keytool.toAbsolutePath().toString());
-            command.addAll(List.of(arguments));
-            Path log = root.resolve("keytool.log");
-            ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true).
-                redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
-            Process process = builder.start();
-            boolean interrupted = false;
-            int result;
-            while (true)
-            {
-                try { result = process.waitFor(); break; }
-                catch (InterruptedException failure) { interrupted = true; process.destroy(); }
-            }
-            if (interrupted)
-            {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted during invocation certificate issuance; keytool was reaped");
-            }
-            if (result != 0) throw new IOException("JDK keytool failed with status " + result + ": " + Files.readString(log));
-        }
-
-        /**
-         * Returns every credential file for no-follow permission validation.
+         * Returns every original credential file for caller-owned identity assignment.
          * @return immutable credential paths
          */
-        List<Path> paths() { return List.of(certificateAuthority, serverCertificate, serverKey, workerCertificate, workerKey); }
+        List<Path> paths() { return shared().paths(); }
+
+        /**
+         * Adapts the retained Linux caller representation to the shared credential contract.
+         * @return same original credential paths
+         */
+        private BazelBackendCredentials shared()
+        {
+            return new BazelBackendCredentials(certificateAuthority, serverCertificate, serverKey,
+                workerCertificate, workerKey);
+        }
     }
 }

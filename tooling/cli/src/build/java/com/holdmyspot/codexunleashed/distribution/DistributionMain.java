@@ -48,28 +48,23 @@ public final class DistributionMain
 	/**
 	 * Builds a runtime image from the packaged tooling modules.
 	 *
-	 * @param args the module directory, new output directory, and optional native source directory;
-	 *             the native source directory is required on Linux and macOS. Linux ARM64 may instead specify
-	 *             {@code --bazel-backend <prebuilt-directory>} as the third and fourth arguments
+	 * @param args module and new runtime directories, followed by an optional native source directory;
+     *             Linux and macOS ordinary packaging require sources. Optional Bazel packaging uses
+     *             {@code --bazel-backend <prebuilt-directory>} after the first two arguments on Linux and Windows,
+     *             or after the required third native source argument on macOS. The shared backend stage validates
+     *             the actual native host architecture and prebuilt products
 	 * @throws IllegalArgumentException if the argument count is invalid or the output already exists
 	 * @throws IOException if linking or writing the image fails
 	 */
 	public static void main(String[] args) throws IOException
 	{
-		boolean bazelBackend = args.length == 4 && args[2].equals("--bazel-backend");
-		if (args.length < 2 || (args.length > 3 && !bazelBackend))
-			throw new IllegalArgumentException("Expected modules, runtime output, optional native source directory or --bazel-backend directory");
-		if (bazelBackend && (!System.getProperty("os.name").equals("Linux") ||
-			!System.getProperty("os.arch").equals("aarch64")))
-			throw new UnsupportedOperationException("The optional Bazel backend distribution requires native Linux ARM64");
-		boolean mac = System.getProperty("os.name").equals("Mac OS X");
-		boolean linux = System.getProperty("os.name").equals("Linux");
-		if (linux && !bazelBackend && args.length != 3)
-			throw new IllegalArgumentException("Linux packaging requires the native source directory");
-		if (mac && args.length != 3)
-			throw new IllegalArgumentException("macOS packaging requires the native source directory");
-		Path modules = Path.of(args[0]).toAbsolutePath();
-		Path output = Path.of(args[1]).toAbsolutePath();
+        String operatingSystem = System.getProperty("os.name");
+        PackagingArguments arguments = PackagingArguments.parse(args, operatingSystem);
+        boolean bazelBackend = arguments.backend() != null;
+        boolean mac = operatingSystem.equals("Mac OS X") || operatingSystem.equals("Darwin");
+        boolean linux = operatingSystem.equals("Linux");
+        Path modules = arguments.modules();
+        Path output = arguments.output();
 		if (Files.exists(output))
 			throw new IllegalArgumentException("Runtime output already exists: " + output);
 		modularizeToml(modules);
@@ -120,14 +115,14 @@ public final class DistributionMain
 		if (linux)
 		{
 			if (bazelBackend)
-				stageLinuxLaunchers(Path.of(args[3]).toAbsolutePath().normalize(), output);
+				stageLinuxLaunchers(arguments.backend(), output);
 			else
-				packageLinuxLaunchers(Path.of(args[2]).toAbsolutePath(), output);
+				packageLinuxLaunchers(arguments.sources(), output);
 		}
 		if (mac)
-			packageMacSupport(Path.of(args[2]).toAbsolutePath(), output);
+			packageMacSupport(arguments.sources(), output);
 		if (bazelBackend)
-			stageBazelCompanion(modules, output, Path.of(args[3]).toAbsolutePath().normalize());
+			stageBazelCompanion(modules, output, arguments.backend());
 		Files.createFile(output.resolve(".complete"));
 	}
 
@@ -263,61 +258,161 @@ public final class DistributionMain
     }
 
 
-	/**
-	 * Stages a validated native backend and one actual application classpath JAR for Linux process helpers.
-	 * The ordinary modular launcher remains unchanged. The companion uses the unnamed module because existing
-	 * authority/supervisor children consume a single java.class.path artifact; its native-access grant therefore
-	 * names ALL-UNNAMED, the only JDK-supported target for those classpath FFM callers.
-	 * @param modules packaged application and dependency JARs
-	 * @param output newly linked runtime image
-	 * @param backend prebuilt backend whose manifest is checked by the production consumer
-	 * @throws IOException if assembly, native validation or a child process fails
-	 */
-	private static void stageBazelCompanion(Path modules, Path output, Path backend) throws IOException
-	{
-		if (!System.getProperty("os.name").equals("Linux") || !System.getProperty("os.arch").equals("aarch64"))
-			throw new UnsupportedOperationException("The optional Bazel backend distribution requires native Linux ARM64");
-		Path lib = output.resolve("lib/bazel-backend");
-		Files.createDirectory(lib);
-		Path application = lib.resolve("codex-tooling.jar");
-		assembleClasspath(modules, application);
-		Path javaExecutable = output.resolve("bin/java");
-		Path log = lib.resolve("native-validation.log");
-		ProcessBuilder validation = new ProcessBuilder(javaExecutable.toString(), "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
-			"-cp", application.toString(), "com.holdmyspot.codexunleashed.scheduler.LinuxBazelBackend",
-			backend.toString(), lib.resolve("native").toString());
-		validation.redirectErrorStream(true).redirectOutput(log.toFile());
-		try (Process process = validation.start())
-		{
-			int result = process.waitFor();
-			if (result != 0) throw new IOException("Native backend package validation failed with status " + result + ": " + Files.readString(log));
-		}
-		catch (InterruptedException failure)
-		{
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted while validating native backend distribution", failure);
-		}
-		Path keytool = Path.of(System.getProperty("java.home"), "bin/keytool");
-		Path linkedKeytool = output.resolve("bin/keytool");
-		if (!Files.exists(linkedKeytool, java.nio.file.LinkOption.NOFOLLOW_LINKS))
-			Files.copy(keytool, linkedKeytool, StandardCopyOption.COPY_ATTRIBUTES);
-		else if (!Files.isRegularFile(linkedKeytool, java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
-			!Files.isExecutable(linkedKeytool))
-			throw new IOException("Fresh linked runtime keytool is not a regular executable: " + linkedKeytool);
-		Files.writeString(lib.resolve("application.sha256"), sha256(application) + "  codex-tooling.jar\n");
-		String companion = """
-			#!/bin/sh
-			set -eu
-			DIR=$(CDPATH= cd -- "${0%/*}" && pwd)
-			JAVA_TEMP=${TMPDIR:-/tmp}
-			exec "$DIR/java" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
-				--enable-native-access=ALL-UNNAMED -cp "$DIR/../lib/bazel-backend/codex-tooling.jar" \
-				com.holdmyspot.codexunleashed.tooling.Main "$@"
-			""";
-		Files.writeString(output.resolve("bin/codex-tooling-bazel"), companion);
-		Files.setPosixFilePermissions(output.resolve("bin/codex-tooling-bazel"),
-			java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
-	}
+    /**
+     * Resolves process-owned platform settings and stages the optional companion.
+     * @param modules packaged application and dependency JARs
+     * @param output newly linked runtime image
+     * @param backend original prebuilt native backend
+     * @throws IOException if staging or publication fails
+     */
+    private static void stageBazelCompanion(Path modules, Path output, Path backend) throws IOException
+    {
+        stageBazelCompanion(modules, output, backend, System.getProperty("os.name"),
+            Path.of(System.getProperty("java.home")), Path.of(System.getProperty("java.io.tmpdir")),
+            DistributionMain::runStageTool);
+    }
+
+    /**
+     * Stages the helper classpath, invokes the sole native product authority and publishes native launchers.
+     * Native architecture validation belongs to the shared subprocess, which selects its actual host.
+     * The explicit platform and tool operation let packaging callers retain their own environment and ownership.
+     * @param modules packaged application and dependency JARs
+     * @param output newly linked runtime image
+     * @param backend prebuilt products consumed by the shared stage
+     * @param operatingSystem resolved packaging host operating system
+     * @param javaHome selected build JDK containing keytool
+     * @param temporaryDirectory explicit child JVM temporary directory
+     * @param tools owned external packaging operation
+     * @throws IOException if assembly, native validation or publication fails
+     */
+    static void stageBazelCompanion(Path modules, Path output, Path backend, String operatingSystem,
+        Path javaHome, Path temporaryDirectory, StageTool tools) throws IOException
+    {
+        boolean windows = operatingSystem.startsWith("Windows");
+        String suffix = windows ? ".exe" : "";
+        Path lib = Files.createDirectory(output.resolve("lib/bazel-backend"));
+        Path application = lib.resolve("codex-tooling.jar");
+        assembleClasspath(modules, application);
+        Path javaExecutable = output.resolve("bin").resolve("java" + suffix);
+        Path log = lib.resolve("native-validation.log");
+        List<String> command = List.of(javaExecutable.toString(), "-Djava.io.tmpdir=" + temporaryDirectory,
+            "-cp", application.toString(), "com.holdmyspot.codexunleashed.scheduler.BazelNativeBackend",
+            backend.toString(), lib.resolve("native").toString());
+        int result = tools.run(command, log);
+        if (result != 0)
+            throw new IOException("Native backend package validation failed with status " + result + ": " + Files.readString(log));
+
+        Path keytool = javaHome.resolve("bin").resolve("keytool" + suffix);
+        Path linkedKeytool = output.resolve("bin").resolve("keytool" + suffix);
+        if (!Files.exists(linkedKeytool, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+            Files.copy(keytool, linkedKeytool, StandardCopyOption.COPY_ATTRIBUTES);
+        else if (!Files.isRegularFile(linkedKeytool, java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
+            !Files.isExecutable(linkedKeytool))
+            throw new IOException("Fresh linked runtime keytool is not a regular executable: " + linkedKeytool);
+        Files.writeString(lib.resolve("application.sha256"), sha256(application) + "  codex-tooling.jar\n");
+        String companion = """
+            #!/bin/sh
+            set -eu
+            DIR=$(CDPATH= cd -- "${0%%/*}" && pwd)
+            JAVA_TEMP=${TMPDIR:-/tmp}
+            if command -v cygpath >/dev/null 2>&1; then
+                JAVA_TEMP=$(cygpath -m "$JAVA_TEMP")
+            fi
+            exec "$DIR/java%s" "-Djava.io.tmpdir=$JAVA_TEMP" -Xlog:all=off:stdout -Xlog:all=warning:stderr \
+                --enable-native-access=ALL-UNNAMED -cp "$DIR/../lib/bazel-backend/codex-tooling.jar" \
+                com.holdmyspot.codexunleashed.tooling.Main "$@"
+            """.formatted(suffix);
+        Path launcher = output.resolve("bin/codex-tooling-bazel");
+        Files.writeString(launcher, companion);
+        if (windows)
+        {
+            String commandLauncher = """
+                @echo off
+                setlocal
+                if defined TMPDIR (set "JAVA_TEMP=%TMPDIR%") else (set "JAVA_TEMP=%TEMP%")
+                "%~dp0java.exe" "-Djava.io.tmpdir=%JAVA_TEMP%" -Xlog:all=off:stdout -Xlog:all=warning:stderr --enable-native-access=ALL-UNNAMED -cp "%~dp0..\\lib\\bazel-backend\\codex-tooling.jar" com.holdmyspot.codexunleashed.tooling.Main %*
+                exit /b %errorlevel%
+                """;
+            Files.writeString(output.resolve("bin/codex-tooling-bazel.cmd"), commandLauncher.replace("\n", "\r\n"));
+        }
+        else
+            Files.setPosixFilePermissions(launcher, java.nio.file.attribute.PosixFilePermissions.fromString("rwxr-xr-x"));
+    }
+
+    /** One owned external stage operation; the returned value is its authentic process exit status. */
+    @FunctionalInterface
+    interface StageTool
+    {
+        /**
+         * Executes one packaging command with captured diagnostics.
+         * @param command exact executable and argument vector
+         * @param diagnostic owned output file
+         * @return native process status
+         * @throws IOException if launch or collection fails
+         */
+        int run(List<String> command, Path diagnostic) throws IOException;
+    }
+
+    /**
+     * Runs the shared native stager and collects it before returning to the packaging owner.
+     * @param command exact executable and arguments
+     * @param diagnostic owned diagnostic file
+     * @return actual child exit status
+     * @throws IOException if launch or collection fails
+     */
+    private static int runStageTool(List<String> command, Path diagnostic) throws IOException
+    {
+        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(diagnostic.toFile());
+        try (Process child = builder.start()) { return child.waitFor(); }
+        catch (InterruptedException failure)
+        {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while validating native backend distribution", failure);
+        }
+    }
+
+    /**
+     * Resolved packaging paths, retaining the distinct ordinary native source and optional prebuilt backend.
+     * @param modules original staged modules
+     * @param output absent runtime destination
+     * @param sources ordinary native support source directory, or null when unused
+     * @param backend optional prebuilt backend, or null for ordinary packaging
+     */
+    record PackagingArguments(Path modules, Path output, Path sources, Path backend)
+    {
+        /**
+         * Selects the supported argument form before any packaging effect.
+         * @param args exact user arguments
+         * @param operatingSystem resolved host operating system
+         * @return normalized paths with their original distinct responsibilities
+         * @throws IllegalArgumentException if the argument form omits required native sources
+         * @throws UnsupportedOperationException if optional packaging names an unsupported operating system
+         */
+        static PackagingArguments parse(String[] args, String operatingSystem)
+        {
+            boolean mac = operatingSystem.equals("Mac OS X") || operatingSystem.equals("Darwin");
+            boolean linux = operatingSystem.equals("Linux");
+            boolean windows = operatingSystem.startsWith("Windows");
+            boolean backendOnly = args.length == 4 && args[2].equals("--bazel-backend");
+            boolean sourcesAndBackend = args.length == 5 && args[3].equals("--bazel-backend");
+            boolean optional = backendOnly || sourcesAndBackend;
+            boolean ordinary = args.length == 2 || args.length == 3;
+            if (!ordinary && !optional)
+                throw new IllegalArgumentException("Expected modules, runtime, optional native sources and optional --bazel-backend directory");
+            if (optional && !linux && !mac && !windows)
+                throw new UnsupportedOperationException("Optional native Bazel packaging requires Linux, macOS or Windows");
+            if (mac && args.length != 3 && !sourcesAndBackend)
+                throw new IllegalArgumentException("macOS packaging requires native sources before optional --bazel-backend directory");
+            if (linux && !optional && args.length != 3)
+                throw new IllegalArgumentException("Linux packaging requires the native source directory");
+            if (sourcesAndBackend && !mac)
+                throw new IllegalArgumentException("Only macOS Bazel packaging accepts the native sources before --bazel-backend");
+            Path sources = args.length == 3 || sourcesAndBackend ? Path.of(args[2]).toAbsolutePath().normalize() : null;
+            Path backend = optional ? Path.of(args[args.length - 1]).toAbsolutePath().normalize() : null;
+            return new PackagingArguments(Path.of(args[0]).toAbsolutePath().normalize(),
+                Path.of(args[1]).toAbsolutePath().normalize(), sources, backend);
+        }
+    }
 
 	/**
 	 * Assembles exact packaged classes/resources into one deterministic helper-compatible classpath JAR.

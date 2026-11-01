@@ -58,6 +58,13 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 		() -> JsonMapper.builder(JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).
 			streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(4).maxStringLength(8192).
 				maxDocumentLength(8192).build()).build()).build(), value -> {});
+	/** Immutable parser for the separately bounded authenticated namespace-control protocol. */
+	private final ConcurrentLazyFactory<JsonMapper> namespaceControls = ConcurrentLazyFactory.create(
+		() -> JsonMapper.builder(JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).
+			streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(16).
+				maxStringLength(MAX_NAMESPACE_CONTROL_FRAME_BYTES).maxNameLength(MAX_NAMESPACE_CONTROL_FRAME_BYTES).
+				maxNumberLength(20).maxDocumentLength(MAX_NAMESPACE_CONTROL_FRAME_BYTES).build()).build()).
+			enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build(), value -> {});
 	/** Default JSON behavior retained for the leader's configuration and copied frames. */
 	private final ConcurrentLazyFactory<JsonMapper> leaderJson = ConcurrentLazyFactory.create(
 		() -> JsonMapper.builder().build(), value -> {});
@@ -146,6 +153,13 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 	}
 
 	@Override
+	public JsonMapper getNamespaceControlMapper()
+	{
+		ensureOpen();
+		return namespaceControls.getValue();
+	}
+
+	@Override
 	public JsonMapper getLeaderJsonMapper()
 	{
 		ensureOpen();
@@ -179,7 +193,7 @@ public final class DefaultToolingScope extends AbstractScope implements ToolingS
 		if (closed.compareAndSet(false, true) == false)
 			return;
 		Scopes.runAll(() -> children.shutdown(Duration.ZERO), stableReleaseTag::close, yaml::close,
-			leaderJson::close, allocationEnvelopes::close, allocationMessages::close, artifactJson::close,
+			leaderJson::close, namespaceControls::close, allocationEnvelopes::close, allocationMessages::close, artifactJson::close,
 			retentionJson::close, windowsFileTimes::close, unixFileMetadata::close, unixFileTimes::close,
 			linuxBorrowedStreamBindings::close, linuxFifoBindings::close, nativeLinker::close);
 	}

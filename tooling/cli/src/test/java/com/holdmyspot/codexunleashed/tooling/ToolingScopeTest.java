@@ -23,6 +23,8 @@ public final class ToolingScopeTest
 			requireThat(first.getArtifactJsonMapper() == first.getArtifactJsonMapper(), "sharedArtifactMapper").isTrue();
 			requireThat(first.getAllocationMessageMapper() == first.getAllocationMessageMapper(), "sharedMessageMapper").isTrue();
 			requireThat(first.getAllocationEnvelopeMapper() == first.getAllocationEnvelopeMapper(), "sharedEnvelopeMapper").isTrue();
+			requireThat(first.getNamespaceControlMapper() == first.getNamespaceControlMapper(), "sharedNamespaceControlMapper").isTrue();
+			requireThat(first.getNamespaceControlMapper() == second.getNamespaceControlMapper(), "crossScopeNamespaceControlSharing").isFalse();
 			requireThat(first.getLeaderJsonMapper() == first.getLeaderJsonMapper(), "sharedLeaderMapper").isTrue();
 			requireThat(first.getYamlMapper() == first.getYamlMapper(), "sharedYamlMapper").isTrue();
 			requireThat(first.getStableReleaseTagPattern() == first.getStableReleaseTagPattern(), "sharedPattern").isTrue();
@@ -55,9 +57,42 @@ public final class ToolingScopeTest
 		requireException(IllegalStateException.class, scope::getArtifactJsonMapper);
 		requireException(IllegalStateException.class, scope::getAllocationMessageMapper);
 		requireException(IllegalStateException.class, scope::getAllocationEnvelopeMapper);
+		requireException(IllegalStateException.class, scope::getNamespaceControlMapper);
 		requireException(IllegalStateException.class, scope::getLeaderJsonMapper);
 		requireException(IllegalStateException.class, scope::getYamlMapper);
 		requireException(IllegalStateException.class, scope::getStableReleaseTagPattern);
+	}
+
+	/**
+	 * Keeps diagnostic limits independent from the larger authenticated namespace-control frames.
+	 * @throws java.io.IOException if a supported bounded control cannot be parsed
+	 */
+	@Test public void separatesNamespaceAndDiagnosticLimits() throws java.io.IOException
+	{
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			String control = "{\"arguments\":\"" + "x".repeat(11_376) + "\"}";
+			byte[] bytes = control.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+			requireThat(scope.getNamespaceControlMapper().readTree(bytes).path("arguments").asString().length(),
+				"completeNamespaceArguments").isEqualTo(11_376);
+			requireException(tools.jackson.core.JacksonException.class, () -> scope.getAllocationEnvelopeMapper().readTree(bytes));
+			requireException(tools.jackson.core.JacksonException.class, () -> scope.getAllocationMessageMapper().readTree(bytes));
+			requireException(tools.jackson.core.JacksonException.class, () -> scope.getAllocationEnvelopeMapper().readTree(
+				("{\"x\":\"" + "x".repeat(8193) + "\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		}
+	}
+
+	/** Bounds JSON structure and rejects an oversized document through the scoped mapper itself. */
+	@Test public void boundsNamespaceControlStructure()
+	{
+		try (ToolingScope scope = new DefaultToolingScope())
+		{
+			for (String invalid : java.util.List.of("[".repeat(17) + "0" + "]".repeat(17),
+				"{\"value\":123456789012345678901}", "{\"value\":\"" +
+				"x".repeat(ToolingScope.MAX_NAMESPACE_CONTROL_FRAME_BYTES + 1) + "\"}"))
+				requireException(tools.jackson.core.JacksonException.class, () -> scope.getNamespaceControlMapper().readTree(
+					invalid.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+		}
 	}
 
 	/** Per-document writers preserve ASCII formatting and never change the next document's key ordering. */
