@@ -385,8 +385,8 @@
   },
   {
     "path": "tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRegistration.java",
-    "sha256": "b8bd2552c36d7eb1b692286272781e6b87fbcf809a02beb43a54ba5cde43b543",
-    "bytes": 31430,
+    "sha256": "46ed319188b749daf3a9df102c80e2ee48e10b156dc2d3dd953de8bdb0022ddc",
+    "bytes": 32880,
     "mode": "0o644"
   },
   {
@@ -1357,8 +1357,8 @@
   },
   {
     "path": "tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/LinuxCargoRegistrationTest.java",
-    "sha256": "179cb8ef17bde93a709d0f7068f5a82bf969411733b08748efebd63359adc7a0",
-    "bytes": 30879,
+    "sha256": "b1f5b65927b20a91c7c3ebb012e821dc6eb48599f16e1dab07d4d13abe52f5ca",
+    "bytes": 36129,
     "mode": "0o644"
   },
   {
