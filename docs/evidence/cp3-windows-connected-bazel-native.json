@@ -1,0 +1,189 @@
+{
+  "status": "four scoped native outcome gates passed; full Windows consumer acceptance incomplete",
+  "sourceSnapshot": "consumer-snapshot-2",
+  "sourceManifest": [
+    {
+      "path": "main/BazelNativeBackend.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/common4/BazelNativeBackend.java",
+      "sha256": "04604c6266e381cbcb8418e5f7bed909b6feeb3d249bb3fe683de245006edfee"
+    },
+    {
+      "path": "main/BazelBackendCredentials.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/common4/BazelBackendCredentials.java",
+      "sha256": "ed7d5a1501b80b416be47475f773299bb5e846d48a07fb9242d8d1c69e5e62df"
+    },
+    {
+      "path": "main/WindowsBazelDaemon.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/WindowsBazelDaemon.java",
+      "sha256": "6b177b387cad1d9399cc34e02426e37ee6b782ea995a85969f1b1bcd090fe78a"
+    },
+    {
+      "path": "main/WindowsBazelInvocation.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelInvocation.java",
+      "sha256": "a97cda6e43039a5691de5c6034c3fbdae48a91b443371e60ef68a7a89c9b6de5"
+    },
+    {
+      "path": "main/WindowsBazelSecurity.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198d5-94f7-7f61-a777-f616144ce549/temp/security-recreation-hQGFR6/WindowsBazelSecurity.java",
+      "sha256": "adf5674d9a0cc86d26100555a59b61f5cd9cd6ed4edc942cc6573e5f18bcfce4"
+    },
+    {
+      "path": "main/WindowsProcess.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198d5-94f7-7f61-a777-f616144ce549/temp/windows-security-TMVR7Z/WindowsProcess.java",
+      "sha256": "3dc2b97f5756a13aac826284784282bc2e64141b2e826f9a2b9279f31e987650"
+    },
+    {
+      "path": "main/BazelRunner.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a18dac-44b7-7d73-a2e5-f19e9ad9fa48/temp/shared-backend-integration-mC83l7/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelRunner.java",
+      "sha256": "cd186c46e1e98a758af30c03bd20563f48fc10c1512badb2090b44e88a49367d"
+    },
+    {
+      "path": "main/WindowsAttempt.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempt.java",
+      "sha256": "cb0f4abe84f6cfe8c65f0b97c3a4fa0eb853694bf8b8249afd32bd37f3f41a0d"
+    },
+    {
+      "path": "main/WindowsAttempts.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttempts.java",
+      "sha256": "efd4dca252b90fbcd62ce80b2b0a4f3eb5794385286bd7b0dd310f6499d44bab"
+    },
+    {
+      "path": "main/BazelWorkspace.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelWorkspace.java",
+      "sha256": "1b6730656f9cb4806ed0f7142fe642388213f5011f8ea195389f9f65c8d752d0"
+    },
+    {
+      "path": "main/BazelWorkIdentity.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/BazelWorkIdentity.java",
+      "sha256": "52971aab18802a09564a5e4fced3b526677ba7d6988b94d9ec08eaafca99291d"
+    },
+    {
+      "path": "main/WindowsBazelSchedule.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelSchedule.java",
+      "sha256": "883363cb19a5fd803fa07cfa99279e62497c81eeb375638cba42cd8aac75da72"
+    },
+    {
+      "path": "main/WindowsBazelScope.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelScope.java",
+      "sha256": "c40e2e80af6d9673d1db8f539fa9c6a2efa61fabe118884012ccaf348447e181"
+    },
+    {
+      "path": "main/WindowsBazelFiles.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelFiles.java",
+      "sha256": "5058826dd1b1e211cbebc61d968a4ee806aec1c336f43b5783131be035b55980"
+    },
+    {
+      "path": "main/WindowsBazelWorkspace.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelWorkspace.java",
+      "sha256": "1fd011e9838648e1ce14498474281dd7785aa995c13a3fc74d768fe2c18df873"
+    },
+    {
+      "path": "main/WindowsBazelLaunchConfiguration.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLaunchConfiguration.java",
+      "sha256": "0fc8a49203872e75b173eb8376f9d3e624821450fa8900b991b7decbc175b6bc"
+    },
+    {
+      "path": "main/WindowsBazelStreams.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelStreams.java",
+      "sha256": "76d61d5c02829ae27696415a1d5a0d7031183c341d2400d429da3a2f59f6ae50"
+    },
+    {
+      "path": "main/Scheduler.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/concreteCaller/Scheduler.java",
+      "sha256": "3356c7b8294f7f4d499dc153b74bb9dbe85a5df809f95d609eaa035552e5a5a9"
+    },
+    {
+      "path": "main/WindowsBazelLauncher.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/main/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLauncher.java",
+      "sha256": "2b23c9ae0b045f0a5afd645ac63302129fdf6762428f39d94e7d9b39fde2b585"
+    },
+    {
+      "path": "tests/WindowsBazelLauncherTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLauncherTest.java",
+      "sha256": "3c6d754656e7cd80a8437b42361c10b58dc7f4597e39d9f30c98499c95bf2f8a"
+    },
+    {
+      "path": "tests/WindowsBazelStreamsTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelStreamsTest.java",
+      "sha256": "f8c8d27f30f879fa79715fad03c49c5556ae052d0bc1dad273e5d4b01249dcbc"
+    },
+    {
+      "path": "tests/WindowsBazelScheduleTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelScheduleTest.java",
+      "sha256": "072ce0960f680f9f4e8fdc0039b728decb9a8f58a7300364c8dc7542668421f1"
+    },
+    {
+      "path": "tests/WindowsBazelLaunchConfigurationTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelLaunchConfigurationTest.java",
+      "sha256": "9cf66b63fe366f5cc9498a8cab45ea8c7d15d62eba8983572f9aae1889520873"
+    },
+    {
+      "path": "tests/WindowsBazelWorkspaceTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsBazelWorkspaceTest.java",
+      "sha256": "9d41e03971a85ac6b4405ba941e0c29e7e59e1e8355d632f4d3796ecbb85be4e"
+    },
+    {
+      "path": "tests/WindowsWorkIdentityTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsWorkIdentityTest.java",
+      "sha256": "168cf2d3f46329853ce8f082e5d8ef792b3486f9bfee62b7b0168a82488a71c7"
+    },
+    {
+      "path": "tests/WindowsAttemptTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptTest.java",
+      "sha256": "81c1e8839ac53f366e0d387cd1460b661f76504ffb836a86eb7d4f6d3117bd04"
+    },
+    {
+      "path": "tests/WindowsAttemptsTest.java",
+      "source": "/home/gili/codex-unleashed/workspace/.cat/sessions/01a198c3-e333-7261-b53f-6a1e607d6847/temp/windows-bazel-3WEBom/worktree/tooling/cli/src/test/java/com/holdmyspot/codexunleashed/scheduler/WindowsAttemptsTest.java",
+      "sha256": "3e7e0e06a6a22f4c3bd8a6485e486d713070ff4606008bf0b3200767b66c55c6"
+    }
+  ],
+  "nativeEvidence": {
+    "path": "docs/evidence/artifacts/cp3-windows-connected-bazel-native.tar.gz",
+    "bytes": 9604,
+    "sha256": "53e2f63dcd5d6ec3cde264090fa1644a35dadee984b75d69a2e83f55f7ec2aed"
+  },
+  "sourceArchive": {
+    "path": "docs/evidence/artifacts/cp3-windows-connected-bazel-source.tar.gz",
+    "bytes": 132472,
+    "sha256": "554682f6622035ae2d34f7168aae512309a356d4a35588fc1829dc0707e6eda9"
+  },
+  "architectures": {
+    "x86_64": {
+      "run": 41355193180,
+      "usefulReceipt": "native2-x64/CP3_DONE_1bfe84aa4bc74e9a94bd1a3a82848743.output",
+      "ordinary23Receipt": "native2-x64/CP3_DONE_83c49d605f544a29b18366a1cb7a75cb.output",
+      "noRetryReceipt": "native2-x64/CP3_DONE_71e33e7308684b3eba64f8149d5c2e14.output"
+    },
+    "aarch64": {
+      "run": 41355193248,
+      "usefulReceipt": "native2-arm64/CP3_DONE_e3739640367f4bbda520637d50b4edef.output",
+      "ordinary23Receipt": "native2-arm64/CP3_DONE_2e3ab2d8823e4cd78c2e337884fb1b86.output",
+      "noRetryReceipt": "native2-arm64/CP3_DONE_66ac7fde484c46b9a08f1c5badd58e95.output"
+    }
+  },
+  "passed": [
+    "actual Windows x64 useful generation and Bazel0 with cleanup",
+    "actual Windows ARM64 useful generation and Bazel0 with cleanup",
+    "actual Windows x64 action23/Bazel1 with one attempt and no retry",
+    "actual Windows ARM64 action23/Bazel1 with one attempt and no retry"
+  ],
+  "unrun": [
+    "denial rollback retry",
+    "full exact action contract/cache isolation",
+    "cancellation",
+    "controller death safe successor",
+    "installed public release packaging"
+  ],
+  "recordingLifetimeRepair": "Native invocation close releases native ownership; outer cleanup retains recording until coordinator terminal event and then closes it. Original stream-closed failure is separate from these accepted results.",
+  "fixtureEnvironment": "Explicit action environment supplies SystemRoot and LOCALAPPDATA; production does not inject undeclared environment.",
+  "failureSemantics": "Original action23 is published as its ordinary failed action result; original Bazel returns1. One attempt, no blocked or rollback event, cleanup returns.",
+  "lifecycle": "Workers remain active for remaining gates; provider and SSH terminal cleanup not yet accepted.",
+  "sourcePromotion": false,
+  "checkpoint3": "incomplete",
+  "limitations": [
+    "Useful gate generates real source through native remote action; it does not prove final CLI/app-server release.",
+    "Snapshot3 launcher changes and durable recovery candidate have separate source identities and unrun native gates.",
+    "Earlier cancelled provider cleanup remains a separate failed result; current active workers do not repair it retroactively."
+  ]
+}
