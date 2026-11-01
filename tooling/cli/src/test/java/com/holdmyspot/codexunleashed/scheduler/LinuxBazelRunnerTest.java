@@ -59,6 +59,30 @@ public final class LinuxBazelRunnerTest
     }
 
     /**
+     * A pending cancellation still permits bounded transport cleanup and survives that cleanup.
+     * @throws Exception if the authenticated listener cannot start or finish cleanup
+     */
+    @Test
+    public void pendingCancellationStillClosesRunnerAndRestoresInterrupt() throws Exception
+    {
+        try (Fixture fixture = Fixture.open())
+        {
+            fixture.readiness();
+            Thread.currentThread().interrupt();
+            try
+            {
+                fixture.runner.close();
+                requireThat(Thread.currentThread().isInterrupted(), "pendingCancellationPreserved").isTrue();
+            }
+            finally
+            {
+                // The fixture owns subsequent cleanup; keep this test's cancellation off its worker thread.
+                Thread.interrupted();
+            }
+        }
+    }
+
+    /**
      * Real authenticated wire admission retains generated-tool argv, environment and empty cwd exactly.
      * @throws Exception if TLS, filesystem or wire operations fail
      */

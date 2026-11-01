@@ -148,15 +148,18 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
 
     /**
      * Stops the owned transport; native actions must have been collected by the producer first.
-     * @throws IOException if the listener cannot be joined
+     * An already pending interrupt is restored after bounded cleanup. A new interrupt while joining
+     * preserves its cause and leaves termination unresolved for the caller to reconcile.
+     * @throws IOException if the listener cannot be joined or joining is newly interrupted
      */
     @Override public void close() throws IOException
     {
-        stopAccepting();
-        if (server != null) server.shutdownNow();
-        if (transport != null) transport.shutdownGracefully(0, 10, TimeUnit.SECONDS);
+        boolean interrupted = Thread.interrupted();
         try
         {
+            stopAccepting();
+            if (server != null) server.shutdownNow();
+            if (transport != null) transport.shutdownGracefully(0, 10, TimeUnit.SECONDS);
             if (server != null && !server.awaitTermination(10, TimeUnit.SECONDS))
                 throw new IOException("Runner listener termination remains unresolved");
             if (transport != null && !transport.awaitTermination(10, TimeUnit.SECONDS))
@@ -166,6 +169,10 @@ final class BazelRunner<A extends BazelRunner.Admission> implements AutoCloseabl
         {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while joining Runner listener", cause);
+        }
+        finally
+        {
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 
